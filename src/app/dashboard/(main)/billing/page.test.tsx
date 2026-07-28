@@ -54,9 +54,9 @@ beforeEach(() => {
   mockAuth.mockResolvedValue({ user: { id: 'user-1' } });
   prismaMock.organization.findUnique.mockResolvedValue({
     facilities: [{ staffCount: 5 }],
-    subscription: { plan: 'professional', status: 'active', pausedAt: null, pauseEndsAt: null },
+    subscription: { plan: 'growth', status: 'active', pausedAt: null, pauseEndsAt: null },
   });
-  mockGetPlanPrices.mockResolvedValue({ starter: {}, professional: {}, enterprise: {} });
+  mockGetPlanPrices.mockResolvedValue({ starter: {}, growth: {}, enterprise: {} });
 });
 
 describe('BillingPageRoute — billing.read gate', () => {
@@ -66,7 +66,7 @@ describe('BillingPageRoute — billing.read gate', () => {
     const element = await BillingPageRoute();
     render(element);
 
-    expect(screen.getByTestId('billing-page')).toHaveTextContent('plan professional');
+    expect(screen.getByTestId('billing-page')).toHaveTextContent('plan growth');
     expect(screen.queryByText(/don.t have access to billing/i)).not.toBeInTheDocument();
   });
 
@@ -137,7 +137,7 @@ describe('BillingPageRoute — hasLiveSubscription computation', () => {
     prismaMock.organization.findUnique.mockResolvedValue({
       facilities: [{ staffCount: 5 }],
       subscription: {
-        plan: 'professional',
+        plan: 'growth',
         status: 'active',
         pausedAt: null,
         pauseEndsAt: null,
@@ -155,7 +155,7 @@ describe('BillingPageRoute — hasLiveSubscription computation', () => {
     prismaMock.organization.findUnique.mockResolvedValue({
       facilities: [{ staffCount: 5 }],
       subscription: {
-        plan: 'professional',
+        plan: 'growth',
         status: 'active',
         pausedAt: new Date('2026-01-01'),
         pauseEndsAt: new Date('2026-04-01'),
@@ -173,7 +173,7 @@ describe('BillingPageRoute — hasLiveSubscription computation', () => {
     prismaMock.organization.findUnique.mockResolvedValue({
       facilities: [{ staffCount: 5 }],
       subscription: {
-        plan: 'professional',
+        plan: 'growth',
         status: 'canceled',
         pausedAt: null,
         pauseEndsAt: null,

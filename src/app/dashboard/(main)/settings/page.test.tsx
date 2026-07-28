@@ -57,7 +57,7 @@ beforeEach(() => {
     name: 'Acme Clinic',
     type: 'clinic',
   });
-  prismaMock.subscription.findUnique.mockResolvedValue({ plan: 'professional', status: 'active' });
+  prismaMock.subscription.findUnique.mockResolvedValue({ plan: 'growth', status: 'active' });
   prismaMock.user.count.mockResolvedValue(3);
   prismaMock.invite.count.mockResolvedValue(0);
 });
@@ -152,7 +152,7 @@ describe('SettingsPageRoute — data shaping for the owner path', () => {
 
   it('derives planLimit/planName only for a non-canceled subscription', async () => {
     prismaMock.subscription.findUnique.mockResolvedValueOnce({
-      plan: 'professional',
+      plan: 'growth',
       status: 'canceled',
     });
 

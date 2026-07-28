@@ -136,7 +136,7 @@ async function main(): Promise<void> {
       organizationId: org.id,
       stripeSubscriptionId: 'sub_e2e_seed_0001',
       stripePriceId: 'price_e2e_seed_0001',
-      plan: 'professional',
+      plan: 'growth',
       billingCycle: 'yearly',
       status: 'active',
       currentPeriodStart: subNow,

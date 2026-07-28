@@ -272,6 +272,52 @@ describe('POST /api/webhooks/stripe — F-014 idempotency', () => {
   });
 });
 
+describe('POST /api/webhooks/stripe — normalizePlanKey (professional -> growth tier rename)', () => {
+  it('persists plan "growth" for a subscription event whose metadata still carries the legacy planKey "professional"', async () => {
+    prismaMock.subscription.findUnique.mockResolvedValue(null);
+
+    const incoming = stripeSubscription({
+      metadata: { planKey: 'professional', billingCycle: 'monthly' },
+    });
+    stripeMock.webhooks.constructEvent.mockReturnValue({
+      id: 'evt_legacy_plan_key',
+      type: 'customer.subscription.updated',
+      data: { object: incoming },
+    });
+
+    await POST(makeReq('{}'));
+
+    expect(prismaMock.subscription.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ plan: 'growth' }),
+        update: expect.objectContaining({ plan: 'growth' }),
+      }),
+    );
+  });
+
+  it('persists plan "pro" for a normal event whose metadata already carries the current planKey "pro"', async () => {
+    prismaMock.subscription.findUnique.mockResolvedValue(null);
+
+    const incoming = stripeSubscription({
+      metadata: { planKey: 'pro', billingCycle: 'monthly' },
+    });
+    stripeMock.webhooks.constructEvent.mockReturnValue({
+      id: 'evt_current_plan_key',
+      type: 'customer.subscription.updated',
+      data: { object: incoming },
+    });
+
+    await POST(makeReq('{}'));
+
+    expect(prismaMock.subscription.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ plan: 'pro' }),
+        update: expect.objectContaining({ plan: 'pro' }),
+      }),
+    );
+  });
+});
+
 describe('POST /api/webhooks/stripe — F-014 retryable errors', () => {
   it('returns 5xx (so Stripe retries) when processing throws a transient/DB error', async () => {
     prismaMock.subscription.findUnique.mockResolvedValue(null);
@@ -444,7 +490,7 @@ describe('POST /api/webhooks/stripe — scheduled-change carry-forward (Phase 4 
    * price now matching the previously-scheduled price).
    */
   const SCHEDULED_FIELDS = {
-    scheduledPlan: 'professional',
+    scheduledPlan: 'growth',
     scheduledBillingCycle: 'yearly',
     scheduledPriceId: 'price_pro_yearly',
     scheduledEffectiveAt: new Date('2026-08-17T00:00:00Z'),

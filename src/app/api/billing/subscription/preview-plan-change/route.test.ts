@@ -55,17 +55,29 @@ vi.mock('@/lib/billing-plans', () => ({
       },
     },
     {
-      key: 'professional',
-      name: 'Professional',
+      key: 'growth',
+      name: 'Growth',
       staffMin: 11,
       staffMax: 50,
+      isEnterprise: false,
+      priceId: {
+        monthly: 'price_growth_monthly',
+        quarterly: 'price_growth_q',
+        yearly: 'price_growth_y',
+      },
+    },
+    {
+      key: 'pro',
+      name: 'Pro',
+      staffMin: 51,
+      staffMax: 150,
       isEnterprise: false,
       priceId: { monthly: 'price_pro_monthly', quarterly: 'price_pro_q', yearly: 'price_pro_y' },
     },
     {
       key: 'enterprise',
       name: 'Enterprise',
-      staffMin: 51,
+      staffMin: 151,
       staffMax: null,
       isEnterprise: true,
       priceId: { monthly: null, quarterly: null, yearly: null },
@@ -93,7 +105,7 @@ function liveSubscription(overrides: Record<string, unknown> = {}) {
   return {
     status: 'active',
     stripeSubscriptionId: 'sub_existing',
-    plan: 'professional',
+    plan: 'growth',
     billingCycle: 'monthly',
     currentPeriodEnd: PERIOD_END_FAR_OUT,
     ...overrides,
@@ -116,7 +128,7 @@ describe('POST /api/billing/subscription/preview-plan-change — RBAC (billing.r
     async (role) => {
       mockAuth.mockResolvedValue({ user: { id: 'user-x', role, organizationId: 'org-1' } });
 
-      const res = await POST(makeReq({ planKey: 'professional', billingCycle: 'monthly' }));
+      const res = await POST(makeReq({ planKey: 'growth', billingCycle: 'monthly' }));
       const body = await res.json();
 
       expect(res.status).toBe(403);
@@ -130,10 +142,10 @@ describe('POST /api/billing/subscription/preview-plan-change — RBAC (billing.r
       user: { id: 'user-1', role: 'finance', organizationId: 'org-1' },
     });
     prismaMock.subscription.findUnique.mockResolvedValue(
-      liveSubscription({ plan: 'professional', billingCycle: 'monthly' }),
+      liveSubscription({ plan: 'growth', billingCycle: 'monthly' }),
     );
 
-    const res = await POST(makeReq({ planKey: 'professional', billingCycle: 'monthly' }));
+    const res = await POST(makeReq({ planKey: 'growth', billingCycle: 'monthly' }));
     const body = await res.json();
 
     expect(res.status).toBe(200);
@@ -144,10 +156,10 @@ describe('POST /api/billing/subscription/preview-plan-change — RBAC (billing.r
 describe('POST /api/billing/subscription/preview-plan-change — classification', () => {
   it('returns no_op for the current plan/cycle', async () => {
     prismaMock.subscription.findUnique.mockResolvedValue(
-      liveSubscription({ plan: 'professional', billingCycle: 'monthly' }),
+      liveSubscription({ plan: 'growth', billingCycle: 'monthly' }),
     );
 
-    const res = await POST(makeReq({ planKey: 'professional', billingCycle: 'monthly' }));
+    const res = await POST(makeReq({ planKey: 'growth', billingCycle: 'monthly' }));
     const body = await res.json();
 
     expect(res.status).toBe(200);
@@ -155,9 +167,36 @@ describe('POST /api/billing/subscription/preview-plan-change — classification'
     expect(stripeMock.invoices.createPreview).not.toHaveBeenCalled();
   });
 
+  it('classifies growth -> pro (the new inserted tier) as an immediate upgrade and previews the Stripe charge', async () => {
+    prismaMock.subscription.findUnique.mockResolvedValue(
+      liveSubscription({ plan: 'growth', billingCycle: 'yearly' }),
+    );
+    stripeMock.subscriptions.retrieve.mockResolvedValue({
+      items: { data: [{ id: 'si_1', price: { id: 'price_growth_yearly' } }] },
+    });
+    stripeMock.invoices.createPreview.mockResolvedValue({ amount_due: 12000, currency: 'usd' });
+
+    const res = await POST(makeReq({ planKey: 'pro', billingCycle: 'yearly' }));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toEqual({
+      classification: 'immediate_prorate',
+      amountDueCents: 12000,
+      currency: 'usd',
+    });
+    expect(stripeMock.invoices.createPreview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subscription_details: expect.objectContaining({
+          items: [{ id: 'si_1', price: 'price_pro_y' }],
+        }),
+      }),
+    );
+  });
+
   it('returns scheduled with the current period end as effectiveAt for a downgrade', async () => {
     prismaMock.subscription.findUnique.mockResolvedValue(
-      liveSubscription({ plan: 'professional', billingCycle: 'monthly' }),
+      liveSubscription({ plan: 'growth', billingCycle: 'monthly' }),
     );
 
     const res = await POST(makeReq({ planKey: 'starter', billingCycle: 'monthly' }));
@@ -180,7 +219,7 @@ describe('POST /api/billing/subscription/preview-plan-change — classification'
       }),
     );
 
-    const res = await POST(makeReq({ planKey: 'professional', billingCycle: 'monthly' }));
+    const res = await POST(makeReq({ planKey: 'growth', billingCycle: 'monthly' }));
     const body = await res.json();
 
     expect(body.classification).toBe('scheduled');
@@ -198,14 +237,14 @@ describe('POST /api/billing/subscription/preview-plan-change — immediate_prora
     });
     stripeMock.invoices.createPreview.mockResolvedValue({ amount_due: 5000, currency: 'usd' });
 
-    const res = await POST(makeReq({ planKey: 'professional', billingCycle: 'monthly' }));
+    const res = await POST(makeReq({ planKey: 'growth', billingCycle: 'monthly' }));
     const body = await res.json();
 
     expect(res.status).toBe(200);
     expect(stripeMock.invoices.createPreview).toHaveBeenCalledWith({
       subscription: 'sub_existing',
       subscription_details: {
-        items: [{ id: 'si_1', price: 'price_pro_monthly' }],
+        items: [{ id: 'si_1', price: 'price_growth_monthly' }],
         proration_behavior: 'always_invoice',
       },
     });
@@ -225,7 +264,7 @@ describe('POST /api/billing/subscription/preview-plan-change — immediate_prora
     });
     stripeMock.invoices.createPreview.mockResolvedValue({ amount_due: 5000, currency: 'usd' });
 
-    await POST(makeReq({ planKey: 'professional', billingCycle: 'monthly' }));
+    await POST(makeReq({ planKey: 'growth', billingCycle: 'monthly' }));
 
     expect(stripeMock.subscriptions.update).not.toHaveBeenCalled();
     expect(stripeMock.subscriptionSchedules.create).not.toHaveBeenCalled();
@@ -240,7 +279,7 @@ describe('POST /api/billing/subscription/preview-plan-change — immediate_prora
     );
     stripeMock.subscriptions.retrieve.mockResolvedValue({ items: { data: [] } });
 
-    const res = await POST(makeReq({ planKey: 'professional', billingCycle: 'monthly' }));
+    const res = await POST(makeReq({ planKey: 'growth', billingCycle: 'monthly' }));
 
     expect(res.status).toBe(409);
     expect(stripeMock.invoices.createPreview).not.toHaveBeenCalled();
@@ -251,7 +290,7 @@ describe('POST /api/billing/subscription/preview-plan-change — guards', () => 
   it('returns 404 when the org has no live subscription', async () => {
     prismaMock.subscription.findUnique.mockResolvedValue(null);
 
-    const res = await POST(makeReq({ planKey: 'professional', billingCycle: 'monthly' }));
+    const res = await POST(makeReq({ planKey: 'growth', billingCycle: 'monthly' }));
     const body = await res.json();
 
     expect(res.status).toBe(404);
@@ -261,7 +300,7 @@ describe('POST /api/billing/subscription/preview-plan-change — guards', () => 
   it('returns 404 when the only subscription row is canceled', async () => {
     prismaMock.subscription.findUnique.mockResolvedValue(liveSubscription({ status: 'canceled' }));
 
-    const res = await POST(makeReq({ planKey: 'professional', billingCycle: 'monthly' }));
+    const res = await POST(makeReq({ planKey: 'growth', billingCycle: 'monthly' }));
 
     expect(res.status).toBe(404);
   });
@@ -279,7 +318,7 @@ describe('POST /api/billing/subscription/preview-plan-change — guards', () => 
   it('returns 401 when there is no session', async () => {
     mockAuth.mockResolvedValue(null);
 
-    const res = await POST(makeReq({ planKey: 'professional', billingCycle: 'monthly' }));
+    const res = await POST(makeReq({ planKey: 'growth', billingCycle: 'monthly' }));
 
     expect(res.status).toBe(401);
     expect(prismaMock.subscription.findUnique).not.toHaveBeenCalled();
@@ -288,7 +327,7 @@ describe('POST /api/billing/subscription/preview-plan-change — guards', () => 
   it('returns 401/403 (guard-rejected) when the session role is not admin', async () => {
     mockAuth.mockResolvedValue({ user: { id: 'user-2', role: 'nurse' } });
 
-    const res = await POST(makeReq({ planKey: 'professional', billingCycle: 'monthly' }));
+    const res = await POST(makeReq({ planKey: 'growth', billingCycle: 'monthly' }));
 
     expect([401, 403]).toContain(res.status);
     expect(prismaMock.subscription.findUnique).not.toHaveBeenCalled();
@@ -297,7 +336,7 @@ describe('POST /api/billing/subscription/preview-plan-change — guards', () => 
   it('returns 404 when the user has no organization', async () => {
     mockAuth.mockResolvedValue({ user: { id: 'user-1', role: 'owner', organizationId: null } });
 
-    const res = await POST(makeReq({ planKey: 'professional', billingCycle: 'monthly' }));
+    const res = await POST(makeReq({ planKey: 'growth', billingCycle: 'monthly' }));
     const body = await res.json();
 
     expect(res.status).toBe(404);
@@ -313,7 +352,7 @@ describe('POST /api/billing/subscription/preview-plan-change — guards', () => 
     });
     stripeMock.invoices.createPreview.mockRejectedValue(new Error('Stripe API error'));
 
-    const res = await POST(makeReq({ planKey: 'professional', billingCycle: 'monthly' }));
+    const res = await POST(makeReq({ planKey: 'growth', billingCycle: 'monthly' }));
 
     expect(res.status).toBe(500);
   });
