@@ -2,7 +2,8 @@
 
 enum SubscriptionPlan {
   starter
-  professional
+  growth
+  pro
   enterprise
 }
 

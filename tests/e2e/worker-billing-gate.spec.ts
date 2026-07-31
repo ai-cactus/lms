@@ -88,7 +88,7 @@ async function seedWorker(opts: {
          id, organization_id, stripe_subscription_id, stripe_price_id, plan,
          billing_cycle, status, current_period_start, current_period_end,
          cancel_at_period_end, paused_at, created_at, updated_at
-       ) VALUES ($1, $2, $3, $4, 'professional'::"SubscriptionPlan", 'yearly'::"SubscriptionBillingCycle",
+       ) VALUES ($1, $2, $3, $4, 'growth'::"SubscriptionPlan", 'yearly'::"SubscriptionBillingCycle",
          $5::"SubscriptionStatus", $6, $7, false, $8, NOW(), NOW())`,
       [
         crypto.randomUUID(),

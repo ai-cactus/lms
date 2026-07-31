@@ -18,8 +18,9 @@ import type { PlanKey, BillingCycle } from '@/lib/billing-plans';
 /** Ordinal tier ranking used to derive upgrade/downgrade direction. */
 export const PLAN_TIER_ORDER: Record<PlanKey, number> = {
   starter: 1,
-  professional: 2,
-  enterprise: 3,
+  growth: 2,
+  pro: 3,
+  enterprise: 4,
 };
 
 export type PlanChangeClassification = 'no_op' | 'scheduled' | 'immediate_prorate';

@@ -91,7 +91,7 @@ export default async function BillingPageRoute() {
   // as having a plan — the paused state is conveyed separately below.
   const activePlan =
     sub?.status === 'active' || sub?.status === 'trialing'
-      ? sub.plan // 'starter' | 'professional' | 'enterprise'
+      ? sub.plan // 'starter' | 'growth' | 'pro' | 'enterprise'
       : null;
 
   // Whether the org has a live Stripe subscription that a plan change would swap

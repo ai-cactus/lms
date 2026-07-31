@@ -544,7 +544,7 @@ export default function SubscriptionTab({
           ))}
         </div>
 
-        <div className="grid w-full grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid w-full grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
           {BILLING_PLANS.map((plan) => {
             const allowed = canSelectPlan(plan, orgStaffCount);
             const cyclePrice = getPlanCardPrice(planPrices[plan.key][cycle]);
@@ -557,7 +557,7 @@ export default function SubscriptionTab({
             // The design paints the recommended plan as a solid brand card, unless
             // the org is already subscribed to another plan — then the subscribed
             // card takes the emphasis and every other card stays neutral.
-            const isFeatured = plan.key === 'professional' && !currentPlan;
+            const isFeatured = !!plan.popular && !currentPlan;
 
             return (
               <div
@@ -582,7 +582,7 @@ export default function SubscriptionTab({
                     >
                       {plan.name}
                     </p>
-                    {plan.key === 'professional' && (
+                    {plan.popular && (
                       <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full border border-primary bg-[#f2f3ff] px-2 py-1 text-[11.8px] leading-[16px] tracking-[0.2px] text-primary">
                         <Flame className="size-4" aria-hidden="true" />
                         Popular
