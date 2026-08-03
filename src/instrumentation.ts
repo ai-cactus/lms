@@ -44,11 +44,13 @@ export async function register() {
         { getVideoTranscodeWorker },
         { getVideoSweepWorker },
         { getReminderSweepWorker },
+        { getNotificationDigestWorker },
       ] = await Promise.all([
         import('@/lib/queue/manual-indexer-worker'),
         import('@/lib/queue/video-transcode-worker'),
         import('@/lib/queue/video-sweep-worker'),
         import('@/lib/queue/reminder-sweep-worker'),
+        import('@/lib/queue/notification-digest-worker'),
       ]);
 
       for (const worker of [
@@ -56,6 +58,7 @@ export async function register() {
         getVideoTranscodeWorker(),
         getVideoSweepWorker(),
         getReminderSweepWorker(),
+        getNotificationDigestWorker(),
       ]) {
         // Sweep getters return null when disabled via their enable flag.
         if (worker) startedWorkers.push(worker);

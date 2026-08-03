@@ -6,7 +6,9 @@ import InviteStaffModal from '@/components/dashboard/staff/InviteStaffModal';
 import UsersPermissionsTab from './UsersPermissionsTab';
 import RolesMatrixTab from './RolesMatrixTab';
 import FacilityTab from './FacilityTab';
+import NotificationSettingsTab from './NotificationSettingsTab';
 import type { Role } from '@/types/next-auth';
+import type { DigestFrequency } from '@/generated/prisma/enums';
 
 export interface SettingsTeamMember {
   id: string;
@@ -31,6 +33,7 @@ interface SettingsClientProps {
   inviterRole: Role;
   remainingSeats: number | null;
   existingEmails: string[];
+  digestFrequency: DigestFrequency;
 }
 
 const TAB_TRIGGER_CLASS =
@@ -43,6 +46,7 @@ export default function SettingsClient({
   inviterRole,
   remainingSeats,
   existingEmails,
+  digestFrequency,
 }: SettingsClientProps) {
   const [showInviteModal, setShowInviteModal] = useState(false);
 
@@ -71,6 +75,9 @@ export default function SettingsClient({
           <TabsTrigger value="facility" className={TAB_TRIGGER_CLASS}>
             Facility
           </TabsTrigger>
+          <TabsTrigger value="notifications" className={TAB_TRIGGER_CLASS}>
+            Notifications
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="users">
@@ -83,6 +90,10 @@ export default function SettingsClient({
 
         <TabsContent value="facility">
           <FacilityTab facility={facility} planName={planName} />
+        </TabsContent>
+
+        <TabsContent value="notifications">
+          <NotificationSettingsTab digestFrequency={digestFrequency} />
         </TabsContent>
       </Tabs>
 

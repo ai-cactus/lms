@@ -6,5 +6,5 @@ export const metadata = {
 };
 
 export default function WorkerHelpPage() {
-  return <HelpCenterContent />;
+  return <HelpCenterContent audience="worker" />;
 }

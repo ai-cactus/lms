@@ -4,11 +4,24 @@ import {
   BookOpen,
   CheckCircle2,
   Clock,
+  FileText,
   RefreshCw,
   RotateCcw,
+  ShieldAlert,
+  UserPlus,
   XCircle,
   type LucideIcon,
 } from 'lucide-react';
+
+// The type catalog moved to `src/lib/notifications/catalog.ts` so the engine
+// (emit + digest, server-side) and the bell UI share one source of truth.
+// Re-exported here so existing component imports keep working.
+export {
+  NOTIFICATION_TYPES,
+  notificationTypesFor,
+  type NotificationAudience,
+  type NotificationTypeMeta,
+} from '@/lib/notifications/catalog';
 
 /** Shape shared by the dropdown panel and the full-page notifications view. */
 export interface NotificationLike {
@@ -20,86 +33,6 @@ export interface NotificationLike {
   linkUrl?: string | null;
   resolvedAt?: Date | string | null;
   createdAt: Date | string;
-}
-
-export type NotificationAudience = 'admin' | 'worker' | 'all';
-
-export interface NotificationTypeMeta {
-  key: string;
-  /** Short label for filter chips. */
-  label: string;
-  /** Sentence used in the preferences panel. */
-  description: string;
-  audience: NotificationAudience;
-}
-
-/** Catalog of notification types — drives filter chips and preference toggles. */
-export const NOTIFICATION_TYPES: NotificationTypeMeta[] = [
-  {
-    key: 'COURSE_ASSIGNED',
-    label: 'Assigned',
-    description: 'When a course is assigned to you',
-    audience: 'worker',
-  },
-  {
-    key: 'RETAKE_ASSIGNED',
-    label: 'Retakes',
-    description: 'When an admin assigns you a quiz retake',
-    audience: 'worker',
-  },
-  {
-    key: 'COURSE_PASSED',
-    label: 'Completed',
-    description: 'When a worker completes a course',
-    audience: 'admin',
-  },
-  {
-    key: 'COURSE_FAILED',
-    label: 'Failed',
-    description: 'When a worker fails a quiz',
-    audience: 'admin',
-  },
-  {
-    key: 'COURSE_RETRY_REQUESTED',
-    label: 'Retry requests',
-    description: 'When a worker requests a course retry',
-    audience: 'admin',
-  },
-  {
-    key: 'QUIZ_RETRY_LIMIT_REACHED',
-    label: 'Retry limit',
-    description: 'When a worker reaches their quiz retry limit',
-    audience: 'admin',
-  },
-  {
-    key: 'COURSE_DEADLINE_REMINDER',
-    label: 'Deadline reminders',
-    description: 'When a course deadline is approaching',
-    audience: 'worker',
-  },
-  {
-    key: 'COURSE_OVERDUE',
-    label: 'Overdue',
-    description: 'When a course deadline has passed',
-    audience: 'worker',
-  },
-  {
-    key: 'COMPLIANCE_ESCALATION',
-    label: 'Compliance alerts',
-    description: 'When an overdue course is escalated for compliance',
-    audience: 'admin',
-  },
-  {
-    key: 'COURSE_RETAKE_REMINDER',
-    label: 'Retake reminders',
-    description: 'When you have remaining quiz attempts to use',
-    audience: 'worker',
-  },
-];
-
-/** The notification types relevant to a given audience (includes 'all'). */
-export function notificationTypesFor(audience: NotificationAudience): NotificationTypeMeta[] {
-  return NOTIFICATION_TYPES.filter((t) => t.audience === audience || t.audience === 'all');
 }
 
 /** Compact, human-friendly "time ago" — falls back to a date past a week. */
@@ -148,6 +81,14 @@ export function getNotificationVisual(type?: string | null): NotificationVisual 
       return { Icon: AlertTriangle, iconClass: 'text-red-600', ringClass: 'bg-red-50' };
     case 'COURSE_RETAKE_REMINDER':
       return { Icon: RotateCcw, iconClass: 'text-amber-600', ringClass: 'bg-amber-50' };
+    case 'STAFF_ADDED':
+      return { Icon: UserPlus, iconClass: 'text-blue-600', ringClass: 'bg-blue-50' };
+    case 'DOCUMENT_UPLOADED':
+      return { Icon: FileText, iconClass: 'text-indigo-600', ringClass: 'bg-indigo-50' };
+    case 'ROLE_FALLBACK_TRIGGERED':
+      return { Icon: ShieldAlert, iconClass: 'text-amber-600', ringClass: 'bg-amber-50' };
+    case 'COMPLIANCE_LICENSE_EXPIRING':
+      return { Icon: ShieldAlert, iconClass: 'text-red-600', ringClass: 'bg-red-50' };
     default:
       return { Icon: Bell, iconClass: 'text-slate-500', ringClass: 'bg-slate-100' };
   }

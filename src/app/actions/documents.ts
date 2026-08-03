@@ -13,6 +13,7 @@ import { logger } from '@/lib/logger';
 import { audit, getClientContext } from '@/lib/audit';
 import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
 import { can } from '@/lib/rbac/permissions';
+import { emitNotificationEvent } from '@/lib/notifications/emit';
 import { headers } from 'next/headers';
 import { revalidatePath } from 'next/cache';
 import { Prisma } from '@/generated/prisma/client';
@@ -228,7 +229,6 @@ export async function uploadDocument(
     });
 
     revalidatePath('/dashboard/documents');
-    return { success: true, phiDetected: phiResult.hasPHI };
   } catch (err: unknown) {
     const e = err as Error;
     logger.error({
@@ -246,6 +246,33 @@ export async function uploadDocument(
     });
     return { error: 'Upload failed. Please try again.' };
   }
+
+  // Notify the clinical/quality director (falling back to the owner). Kept
+  // outside the block above so a notification-side failure can never trigger the
+  // orphan cleanup and delete a document that was stored successfully.
+  const uploader = await prisma.user
+    .findUnique({
+      where: { id: userId },
+      select: { facilityId: true, profile: { select: { fullName: true } } },
+    })
+    .catch((err: unknown) => {
+      logger.error({ msg: '[doc] Could not load uploader for upload notification', err, userId });
+      return null;
+    });
+  const uploaderName = uploader?.profile?.fullName || session.user.email.split('@')[0];
+
+  await emitNotificationEvent({
+    organizationId: session.user.organizationId,
+    type: 'DOCUMENT_UPLOADED',
+    title: 'New document uploaded',
+    message: `${uploaderName} uploaded '${file.name}'.`,
+    actor: { userId, role: session.user.role },
+    facilityId: uploader?.facilityId ?? null,
+    linkUrl: '/dashboard/documents',
+    context: { documentTitle: file.name, uploaderName },
+  });
+
+  return { success: true, phiDetected: phiResult.hasPHI };
 }
 
 export async function getDocuments() {

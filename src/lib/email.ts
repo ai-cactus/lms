@@ -1402,3 +1402,240 @@ export async function sendAuditorPackPdfEmail(
     return { success: false, error };
   }
 }
+
+/**
+ * Shared HTML shell for the notification-engine emails (instant alerts and
+ * digests). Only the two senders below use it — the existing templates predate
+ * it and are deliberately left alone rather than churned.
+ */
+function renderEmailLayout(title: string, bodyHtml: string): string {
+  const appName = 'Theraptly';
+  return `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+      <div style="background: #4C6EF5; border-radius: 12px 12px 0 0; padding: 24px 32px;">
+        <h1 style="margin: 0; color: #ffffff; font-size: 20px;">${escapeHtml(title)}</h1>
+      </div>
+      <div style="background: #ffffff; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; padding: 28px 32px;">
+        ${bodyHtml}
+        <p style="color: #718096; font-size: 12px; margin: 32px 0 0 0;">
+          This is an automated notification from ${appName}. Manage what you receive in your
+          notification settings.
+        </p>
+      </div>
+    </div>
+  `;
+}
+
+/** Accept either an absolute URL or an app-relative path for call-to-action links. */
+function resolveAppLink(link: string): string {
+  if (/^https?:\/\//i.test(link)) return link;
+  return `${reminderBaseUrl()}${link.startsWith('/') ? '' : '/'}${link}`;
+}
+
+/** Render a notification timestamp compactly (UTC — the digest runs on UTC periods). */
+function formatEventTimestamp(date: Date | string | null | undefined): string {
+  if (!date) return '';
+  const parsed = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return `${parsed.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZone: 'UTC',
+  })} UTC`;
+}
+
+/** Body of a Tier-1 (instant) notification email. */
+export interface InstantNotificationEmailContent {
+  subject: string;
+  title: string;
+  /** Paragraphs of the body, in order. Escaped before rendering. */
+  bodyLines: string[];
+  actionLabel?: string;
+  /** Absolute URL, or an app-relative path resolved against the app base URL. */
+  actionLink?: string;
+}
+
+/**
+ * Tier 1 — instant alert. Generic on purpose: the engine owns the copy (it holds
+ * the event payload), this owns delivery and presentation.
+ */
+export async function sendInstantNotificationEmail(
+  to: string,
+  recipientName: string | null,
+  content: InstantNotificationEmailContent,
+): Promise<{ success: boolean; messageId?: string; error?: unknown }> {
+  if (!to) {
+    logger.warn({ msg: '[email] Instant notification email skipped — missing recipient' });
+    return { success: false, error: 'Missing recipient email' };
+  }
+
+  const appName = 'Theraptly';
+  const greetingName = recipientName?.trim() || 'there';
+  const resolvedActionLink = content.actionLink ? resolveAppLink(content.actionLink) : null;
+
+  const bodyHtml = `
+        <p style="color: #333; font-size: 15px; line-height: 1.6; margin-top: 0;">
+          Hi <strong>${escapeHtml(greetingName)}</strong>,
+        </p>
+        ${content.bodyLines
+          .map(
+            (line) =>
+              `<p style="color: #333; font-size: 15px; line-height: 1.6;">${escapeHtml(line)}</p>`,
+          )
+          .join('')}
+        ${
+          resolvedActionLink
+            ? `<div style="text-align: center; margin: 28px 0 8px 0;">
+                 <a href="${resolvedActionLink}" style="display: inline-block; background-color: #4C6EF5; color: white; padding: 12px 28px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 15px;">${escapeHtml(content.actionLabel || 'Open Theraptly')}</a>
+               </div>`
+            : ''
+        }
+  `;
+
+  try {
+    const info = await sendMailTracked(
+      {
+        from: `"${appName}" <${user}>`,
+        to,
+        subject: content.subject,
+        html: renderEmailLayout(content.title, bodyHtml),
+      },
+      'notification-instant',
+    );
+    logger.info({
+      msg: '[email] Instant notification email sent',
+      messageId: info.messageId,
+      to: maskEmail(to),
+    });
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    logger.error({
+      msg: '[email] Failed to send instant notification email',
+      err: error,
+      to: maskEmail(to),
+    });
+    return { success: false, error };
+  }
+}
+
+/** One batched notification inside a digest section. */
+export interface NotificationDigestEmailItem {
+  title: string;
+  message: string;
+  occurredAt: Date | string | null;
+}
+
+/** Items of one notification type, chronological. */
+export interface NotificationDigestEmailGroup {
+  label: string;
+  items: NotificationDigestEmailItem[];
+}
+
+/** All groups for one facility (or the organization-wide bucket). */
+export interface NotificationDigestEmailSection {
+  facilityName: string;
+  groups: NotificationDigestEmailGroup[];
+}
+
+export interface NotificationDigestEmailContent {
+  organizationName: string;
+  /** e.g. "Daily summary — August 3, 2026". */
+  periodLabel: string;
+  totalCount: number;
+  sections: NotificationDigestEmailSection[];
+  actionLabel?: string;
+  actionLink?: string;
+}
+
+/**
+ * Tier 2 — batched digest. Renders facility → type → chronological items, which
+ * is why it needs the shared layout: the body length varies with the period.
+ */
+export async function sendNotificationDigestEmail(
+  to: string,
+  recipientName: string | null,
+  digest: NotificationDigestEmailContent,
+): Promise<{ success: boolean; messageId?: string; error?: unknown }> {
+  if (!to) {
+    logger.warn({ msg: '[email] Notification digest email skipped — missing recipient' });
+    return { success: false, error: 'Missing recipient email' };
+  }
+
+  const appName = 'Theraptly';
+  const greetingName = recipientName?.trim() || 'there';
+  const resolvedActionLink = digest.actionLink ? resolveAppLink(digest.actionLink) : null;
+
+  const sectionsHtml = digest.sections
+    .map((section) => {
+      const groupsHtml = section.groups
+        .map((group) => {
+          const itemsHtml = group.items
+            .map((item) => {
+              const timestamp = formatEventTimestamp(item.occurredAt);
+              return `
+                <li style="margin: 0 0 10px 0; color: #2d3748; font-size: 14px; line-height: 1.5;">
+                  <strong>${escapeHtml(item.title)}</strong><br />
+                  <span style="color: #4a5568;">${escapeHtml(item.message)}</span>
+                  ${timestamp ? `<br /><span style="color: #a0aec0; font-size: 12px;">${escapeHtml(timestamp)}</span>` : ''}
+                </li>`;
+            })
+            .join('');
+          return `
+            <p style="margin: 18px 0 8px 0; color: #4C6EF5; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;">${escapeHtml(group.label)}</p>
+            <ul style="margin: 0; padding-left: 18px;">${itemsHtml}</ul>`;
+        })
+        .join('');
+      return `
+        <div style="border: 1px solid #e2e8f0; border-radius: 10px; padding: 18px 20px; margin: 20px 0;">
+          <p style="margin: 0; color: #2d3748; font-size: 15px; font-weight: 700;">${escapeHtml(section.facilityName)}</p>
+          ${groupsHtml}
+        </div>`;
+    })
+    .join('');
+
+  const bodyHtml = `
+        <p style="color: #333; font-size: 15px; line-height: 1.6; margin-top: 0;">
+          Hi <strong>${escapeHtml(greetingName)}</strong>,
+        </p>
+        <p style="color: #333; font-size: 15px; line-height: 1.6;">
+          Here is what happened at <strong>${escapeHtml(digest.organizationName)}</strong> —
+          ${escapeHtml(digest.periodLabel)} (${escapeHtml(digest.totalCount)} update${digest.totalCount === 1 ? '' : 's'}).
+        </p>
+        ${sectionsHtml}
+        ${
+          resolvedActionLink
+            ? `<div style="text-align: center; margin: 28px 0 8px 0;">
+                 <a href="${resolvedActionLink}" style="display: inline-block; background-color: #4C6EF5; color: white; padding: 12px 28px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 15px;">${escapeHtml(digest.actionLabel || 'Open Theraptly')}</a>
+               </div>`
+            : ''
+        }
+  `;
+
+  try {
+    const info = await sendMailTracked(
+      {
+        from: `"${appName}" <${user}>`,
+        to,
+        subject: `${digest.periodLabel} — ${digest.organizationName}`,
+        html: renderEmailLayout('Notification summary', bodyHtml),
+      },
+      'notification-digest',
+    );
+    logger.info({
+      msg: '[email] Notification digest email sent',
+      messageId: info.messageId,
+      to: maskEmail(to),
+      totalCount: digest.totalCount,
+    });
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    logger.error({
+      msg: '[email] Failed to send notification digest email',
+      err: error,
+      to: maskEmail(to),
+    });
+    return { success: false, error };
+  }
+}
