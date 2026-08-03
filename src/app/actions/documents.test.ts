@@ -35,6 +35,8 @@ const {
   const prismaMock = {
     $transaction: vi.fn(async (cb: (tx: typeof txClient) => Promise<unknown>) => cb(txClient)),
     _tx: txClient,
+    // Uploader lookup that feeds the post-upload notification's facility + name.
+    user: { findUnique: vi.fn() },
     // Top-level `document` methods used by getDocuments/renameDocument/deleteDocument
     // (distinct from `_tx.document`, which is scoped to the uploadDocument transaction).
     document: {
@@ -69,11 +71,16 @@ vi.mock('@/lib/rate-limit', () => ({ checkRateLimit: mockCheckRateLimit }));
 vi.mock('@/lib/audit', () => ({ audit: vi.fn(), getClientContext: () => ({}) }));
 vi.mock('next/headers', () => ({ headers: async () => new Headers() }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
+// The upload notification is a best-effort side-channel with its own unit tests.
+vi.mock('@/lib/notifications/emit', () => ({ emitNotificationEvent: vi.fn() }));
 vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
 import { uploadDocument, getDocuments, renameDocument, deleteDocument } from './documents';
+import { emitNotificationEvent } from '@/lib/notifications/emit';
+
+const mockEmitNotificationEvent = vi.mocked(emitNotificationEvent);
 
 function makeFormData(fileName = 'policy.pdf', opts: { attested?: boolean } = {}) {
   const { attested = true } = opts;
@@ -92,6 +99,10 @@ beforeEach(() => {
   mockCalculateHash.mockResolvedValue('hash-abc');
   mockSaveFile.mockResolvedValue('gcs://bucket/policy.pdf');
   mockCheckRateLimit.mockResolvedValue({ allowed: true, remaining: 19, resetInSeconds: 300 });
+  prismaMock.user.findUnique.mockResolvedValue({
+    facilityId: 'facility-1',
+    profile: { fullName: 'Ada Owner' },
+  });
   delete process.env.PHI_FAIL_CLOSED;
 });
 
@@ -459,5 +470,53 @@ describe('Document Hub — full org parity (getDocuments/renameDocument/deleteDo
       expect(result).toEqual({ error: 'Document not found' });
       expect(prismaMock.document.findUnique).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('uploadDocument — DOCUMENT_UPLOADED notification wiring', () => {
+  it('emits DOCUMENT_UPLOADED with the uploader as actor, their facility, and the file name in context', async () => {
+    mockScanText.mockResolvedValue({ hasPHI: false, findings: [] });
+    prismaMock._tx.document.findFirst.mockResolvedValue(null);
+    prismaMock._tx.document.create.mockResolvedValue({ id: 'doc-1' });
+    prismaMock._tx.documentVersion.create.mockResolvedValue({ id: 'ver-1' });
+    prismaMock.user.findUnique.mockResolvedValue({
+      facilityId: 'facility-1',
+      profile: { fullName: 'Ada Owner' },
+    });
+
+    await uploadDocument(null, makeFormData('policy.pdf'));
+
+    expect(mockEmitNotificationEvent).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        organizationId: 'org-1',
+        type: 'DOCUMENT_UPLOADED',
+        actor: { userId: 'user-1', role: 'owner' },
+        facilityId: 'facility-1',
+        context: expect.objectContaining({
+          documentTitle: 'policy.pdf',
+          uploaderName: 'Ada Owner',
+        }),
+      }),
+    );
+  });
+
+  it('falls back to the email-prefix name and a null facilityId when the uploader lookup fails', async () => {
+    mockScanText.mockResolvedValue({ hasPHI: false, findings: [] });
+    prismaMock._tx.document.findFirst.mockResolvedValue(null);
+    prismaMock._tx.document.create.mockResolvedValue({ id: 'doc-1' });
+    prismaMock._tx.documentVersion.create.mockResolvedValue({ id: 'ver-1' });
+    mockAuth.mockResolvedValue({
+      user: { id: 'user-1', organizationId: 'org-1', role: 'owner', email: 'ada@acme.com' },
+    });
+    prismaMock.user.findUnique.mockRejectedValueOnce(new Error('DB unavailable'));
+
+    await uploadDocument(null, makeFormData('policy.pdf'));
+
+    expect(mockEmitNotificationEvent).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        facilityId: null,
+        context: expect.objectContaining({ uploaderName: 'ada' }),
+      }),
+    );
   });
 });
