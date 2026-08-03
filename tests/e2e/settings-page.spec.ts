@@ -189,3 +189,71 @@ test.describe('Settings page — Facility tab persistence', () => {
     }
   });
 });
+
+test.describe('Settings page — Notifications tab persistence', () => {
+  test('owner can switch the digest frequency to weekly and it persists after reload', async ({
+    page,
+  }) => {
+    const email = uid('owner-notif');
+    const seeded = await seedWithRole('owner', email, 'Own3rNotif!y9');
+    try {
+      await login(page, email, 'Own3rNotif!y9');
+      await page.goto('/dashboard/settings');
+      await page.waitForLoadState('networkidle');
+
+      await page.getByRole('tab', { name: /^notifications$/i }).click();
+
+      // A freshly-seeded organization defaults to daily; assert the starting
+      // state before changing it, so the persistence check below is meaningful.
+      await expect(page.getByRole('radio', { name: /^daily/i })).toBeChecked();
+
+      const responsePromise = page.waitForResponse(
+        (resp) => resp.url().includes('/dashboard/settings') && resp.status() === 200,
+        { timeout: 10000 },
+      );
+      await page.getByRole('radio', { name: /^weekly/i }).click();
+      await page.getByRole('button', { name: /save changes/i }).click();
+      await responsePromise;
+
+      await expect(page.getByText(/notification settings updated/i)).toBeVisible({
+        timeout: 10000,
+      });
+
+      const client = new Client({ connectionString: DB_URL });
+      await client.connect();
+      try {
+        const res = await client.query(
+          `SELECT notification_digest_frequency FROM organizations WHERE id = $1`,
+          [seeded.orgId],
+        );
+        expect(res.rows[0].notification_digest_frequency).toBe('weekly');
+      } finally {
+        await client.end();
+      }
+
+      // Persistence check: a hard reload must re-fetch the server-rendered
+      // value rather than relying on client-side form state.
+      await page.reload();
+      await page.waitForLoadState('networkidle');
+      await page.getByRole('tab', { name: /^notifications$/i }).click();
+      await expect(page.getByRole('radio', { name: /^weekly/i })).toBeChecked();
+    } finally {
+      await cleanup(seeded);
+    }
+  });
+
+  test('a non-owner admin (hr) cannot reach the Notifications tab at all', async ({ page }) => {
+    const email = uid('hr-notif');
+    const seeded = await seedWithRole('hr', email, 'HrNotif!y99x');
+    try {
+      await login(page, email, 'HrNotif!y99x');
+      await page.goto('/dashboard/settings');
+      await page.waitForLoadState('networkidle');
+
+      await expect(page.getByRole('tab', { name: /^notifications$/i })).not.toBeVisible();
+      await expect(page.getByText(/don.t have access to settings/i)).toBeVisible();
+    } finally {
+      await cleanup(seeded);
+    }
+  });
+});

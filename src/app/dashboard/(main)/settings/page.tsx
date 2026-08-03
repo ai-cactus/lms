@@ -77,52 +77,64 @@ export default async function SettingsPageRoute() {
   const now = new Date();
   const adminRoleFilter = { in: [...ADMIN_ROLES] };
 
-  const [members, adminInvites, facility, subscription, workerCount, pendingInviteCount, allUsers] =
-    await Promise.all([
-      // Admin-tier team members (owner + managers) shown on Users & Permissions.
-      prisma.user.findMany({
-        where: { organizationId, role: adminRoleFilter },
-        select: {
-          id: true,
-          email: true,
-          role: true,
-          lastLoginAt: true,
-          profile: { select: { fullName: true } },
-        },
-        orderBy: { createdAt: 'asc' },
-      }),
-      // Pending admin-role invites (not yet accepted / not expired).
-      prisma.invite.findMany({
-        where: {
-          organizationId,
-          role: adminRoleFilter,
-          status: 'pending',
-          expiresAt: { gt: now },
-        },
-        select: { id: true, email: true, role: true },
-        orderBy: { createdAt: 'desc' },
-      }),
-      prisma.facility.findFirst({
-        where: { organizationId },
-        select: { id: true, name: true, type: true },
-      }),
-      prisma.subscription.findUnique({
-        where: { organizationId },
-        select: { plan: true, status: true },
-      }),
-      // Seat accounting for the invite modal — every role except owner consumes a seat.
-      prisma.user.count({ where: { organizationId, role: { not: 'owner' } } }),
-      prisma.invite.count({
-        where: {
-          organizationId,
-          role: { not: 'owner' },
-          status: 'pending',
-          expiresAt: { gt: now },
-        },
-      }),
-      // Emails already present (members + pending invites) — flags CSV dupes.
-      prisma.user.findMany({ where: { organizationId }, select: { email: true } }),
-    ]);
+  const [
+    members,
+    adminInvites,
+    facility,
+    subscription,
+    workerCount,
+    pendingInviteCount,
+    allUsers,
+    organization,
+  ] = await Promise.all([
+    // Admin-tier team members (owner + managers) shown on Users & Permissions.
+    prisma.user.findMany({
+      where: { organizationId, role: adminRoleFilter },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        lastLoginAt: true,
+        profile: { select: { fullName: true } },
+      },
+      orderBy: { createdAt: 'asc' },
+    }),
+    // Pending admin-role invites (not yet accepted / not expired).
+    prisma.invite.findMany({
+      where: {
+        organizationId,
+        role: adminRoleFilter,
+        status: 'pending',
+        expiresAt: { gt: now },
+      },
+      select: { id: true, email: true, role: true },
+      orderBy: { createdAt: 'desc' },
+    }),
+    prisma.facility.findFirst({
+      where: { organizationId },
+      select: { id: true, name: true, type: true },
+    }),
+    prisma.subscription.findUnique({
+      where: { organizationId },
+      select: { plan: true, status: true },
+    }),
+    // Seat accounting for the invite modal — every role except owner consumes a seat.
+    prisma.user.count({ where: { organizationId, role: { not: 'owner' } } }),
+    prisma.invite.count({
+      where: {
+        organizationId,
+        role: { not: 'owner' },
+        status: 'pending',
+        expiresAt: { gt: now },
+      },
+    }),
+    // Emails already present (members + pending invites) — flags CSV dupes.
+    prisma.user.findMany({ where: { organizationId }, select: { email: true } }),
+    prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { notificationDigestFrequency: true },
+    }),
+  ]);
 
   const activeMembers: SettingsTeamMember[] = members.map((member) => ({
     id: member.id,
@@ -169,6 +181,7 @@ export default async function SettingsPageRoute() {
       inviterRole={user.role as Role}
       remainingSeats={remainingSeats}
       existingEmails={existingEmails}
+      digestFrequency={organization?.notificationDigestFrequency ?? 'daily'}
     />
   );
 }

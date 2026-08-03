@@ -5,11 +5,12 @@ import prisma from '@/lib/prisma';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
-import { createNotification, notifyOrganizationAdmins } from './notifications';
+import { createNotification } from './notifications';
 import { logger } from '@/lib/logger';
 import { headers } from 'next/headers';
 import { checkRateLimit } from '@/lib/rate-limit';
-import { DEFAULT_SELF_SERVE_WORKER_ROLE } from '@/lib/rbac/role-utils';
+import { DEFAULT_SELF_SERVE_WORKER_ROLE, getRoleDisplayName } from '@/lib/rbac/role-utils';
+import { emitNotificationEvent } from '@/lib/notifications/emit';
 import { enrollUserForRoleTargets } from '@/lib/enrollment/role-targets';
 
 // Helper to generate a cryptographically-random 6-digit code
@@ -205,18 +206,26 @@ export async function joinOrganization(code: string) {
       message: `You have successfully joined the organization. Your training will appear here when assigned.`,
     });
 
-    // Notify admins that a new worker joined
+    // Self-serve join: no actor, so the addition routes to HR and falls back to
+    // the owner when nobody holds that role. Never throws.
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      include: { profile: true },
+      select: { email: true, profile: { select: { fullName: true } } },
     });
 
-    await notifyOrganizationAdmins(orgId, {
-      type: 'WORKER_JOINED',
-      title: 'New Member Joined',
-      message: `${user?.profile?.fullName || user?.email || 'A new worker'} has joined your organization using the invite code.`,
+    const workerName = user?.profile?.fullName || user?.email?.split('@')[0] || 'A new worker';
+    const roleLabel = getRoleDisplayName(DEFAULT_SELF_SERVE_WORKER_ROLE);
+
+    await emitNotificationEvent({
+      organizationId: orgId,
+      type: 'STAFF_ADDED',
+      title: 'New staff member added',
+      message: `${workerName} joined as ${roleLabel} using an organization join code.`,
+      actor: null,
+      subjectUserId: userId,
+      facilityId: facility?.id ?? null,
       linkUrl: `/dashboard/staff/${userId}`,
-      metadata: { userId },
+      context: { workerName, roleLabel, addedVia: 'join_code' },
     });
 
     return { success: true, organizationId: orgId };
