@@ -21,32 +21,35 @@ enum SubscriptionStatus {
 }
 
 model Organization {
-  id                       String              @id @default(uuid())
-  name                     String
-  slug                     String              @unique
-  dba                      String?
-  ein                      String?
-  primaryContact           String?             @map("primary_contact")
-  primaryEmail             String?             @map("primary_email")
-  isHipaaCompliant         Boolean             @default(false) @map("is_hipaa_compliant")
-  hasAuditorAccess         Boolean             @default(false) @map("has_auditor_access")
-  primaryBusinessType      String?             @map("primary_business_type")
-  additionalBusinessTypes  String[]            @default([]) @map("additional_business_types")
-  joinCode                 String?             @unique @map("join_code")
-  joinCodeExpiresAt        DateTime?           @map("join_code_expires_at")
-  stripeCustomerId         String?             @unique @map("stripe_customer_id")
-  inactivityTimeoutMinutes Int                 @default(15) @map("inactivity_timeout_minutes")
-  requireMfa               Boolean             @default(false) @map("require_mfa")
-  users                    User[]
-  facilities               Facility[]
-  createdAt                DateTime            @default(now()) @map("created_at")
-  updatedAt                DateTime            @updatedAt @map("updated_at")
-  invites                  Invite[]
-  subscription             Subscription?
-  invoices                 Invoice[]
-  customCategories         CourseCategory[]
-  offerings                OrgCourseOffering[]
-  courseAssignments        CourseAssignment[]
+  id                          String              @id @default(uuid())
+  name                        String
+  slug                        String              @unique
+  dba                         String?
+  ein                         String?
+  primaryContact              String?             @map("primary_contact")
+  primaryEmail                String?             @map("primary_email")
+  isHipaaCompliant            Boolean             @default(false) @map("is_hipaa_compliant")
+  hasAuditorAccess            Boolean             @default(false) @map("has_auditor_access")
+  primaryBusinessType         String?             @map("primary_business_type")
+  additionalBusinessTypes     String[]            @default([]) @map("additional_business_types")
+  joinCode                    String?             @unique @map("join_code")
+  joinCodeExpiresAt           DateTime?           @map("join_code_expires_at")
+  stripeCustomerId            String?             @unique @map("stripe_customer_id")
+  inactivityTimeoutMinutes    Int                 @default(15) @map("inactivity_timeout_minutes")
+  requireMfa                  Boolean             @default(false) @map("require_mfa")
+  // How often batched (Tier 2) notifications are emailed. Per-type opt-outs
+  // stay per-user on NotificationPreference; this is the org-wide cadence.
+  notificationDigestFrequency DigestFrequency     @default(daily) @map("notification_digest_frequency")
+  users                       User[]
+  facilities                  Facility[]
+  createdAt                   DateTime            @default(now()) @map("created_at")
+  updatedAt                   DateTime            @updatedAt @map("updated_at")
+  invites                     Invite[]
+  subscription                Subscription?
+  invoices                    Invoice[]
+  customCategories            CourseCategory[]
+  offerings                   OrgCourseOffering[]
+  courseAssignments           CourseAssignment[]
 
   @@map("organizations")
 }

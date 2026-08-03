@@ -6,9 +6,13 @@ import { isAdminRole, ADMIN_ROLES } from '@/lib/rbac/role-utils';
  * Escalation recipient resolution.
  *
  * Escalation targets a worker's manager when one is set and that manager is a
- * same-org admin (managers must be admin-role for now — full RBAC is a separate
- * effort). Otherwise it falls back to every admin in the worker's organization,
- * mirroring the query shape in `notifyOrganizationAdmins`.
+ * same-org admin. Otherwise it falls back to every admin in the worker's
+ * organization, mirroring the query shape in `notifyOrganizationAdmins`.
+ *
+ * This is the *per-worker* chain (manager first, then all admins). Events that
+ * target a specific role instead — HR, clinical/quality director — resolve
+ * through `resolveRoleRecipients` in `src/lib/notifications/recipients.ts`,
+ * which owns the owner-fallback escalation pathway.
  */
 
 export interface EscalationRecipients {

@@ -25,6 +25,9 @@ export function Footer() {
           <Link href="/partners" className={`hover:text-brand ${focusRing}`}>
             Partner Program
           </Link>
+          <Link href="/help" className={`hover:text-brand ${focusRing}`}>
+            Help Center
+          </Link>
           <Link href="/privacy" className={`hover:text-brand ${focusRing}`}>
             Privacy Policy
           </Link>

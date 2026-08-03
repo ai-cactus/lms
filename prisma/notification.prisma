@@ -32,3 +32,72 @@ model NotificationPreference {
   @@unique([userId, type])
   @@map("notification_preferences")
 }
+
+// ── Notification engine (tiered outbox + digests) ────────────────────────────
+
+/// Delivery tier of an engine notification. `instant` events email immediately;
+/// `digest` events are batched into the organization's daily/weekly summary.
+enum NotificationTier {
+  instant
+  digest
+}
+
+enum NotificationEventStatus {
+  pending
+  dispatched
+  skipped
+}
+
+/// How often an organization's batched (Tier 2) notifications are emailed.
+enum DigestFrequency {
+  daily
+  weekly
+}
+
+/// Outbox row for a single engine notification. Deliberately FK-free (mirroring
+/// EmailMessage): the actor/subject/facility references are plain ids so the
+/// audit trail survives deletion of the rows it describes, and `payload` is a
+/// display snapshot captured at emit time rather than a live join.
+///
+/// Instant-tier events are written already `dispatched`; digest-tier events stay
+/// `pending` until a digest run claims and sends them. `skipped` means the event
+/// resolved to zero recipients.
+model NotificationEvent {
+  id             String                  @id @default(uuid())
+  organizationId String                  @map("organization_id")
+  facilityId     String?                 @map("facility_id")
+  tier           NotificationTier
+  type           String
+  actorUserId    String?                 @map("actor_user_id")
+  subjectUserId  String?                 @map("subject_user_id")
+  payload        Json
+  status         NotificationEventStatus @default(pending)
+  dedupeKey      String?                 @map("dedupe_key")
+  digestRunId    String?                 @map("digest_run_id")
+  dispatchedAt   DateTime?               @map("dispatched_at")
+  createdAt      DateTime                @default(now()) @map("created_at")
+
+  // Digest collection (pending events per org, chronological).
+  @@index([organizationId, status, createdAt])
+  // Throttle lookups for repeat meta-alerts (e.g. role-fallback).
+  @@index([organizationId, dedupeKey, createdAt])
+  @@map("notification_events")
+}
+
+/// Claim row for one organization's digest period. Created BEFORE any sending so
+/// a concurrent run loses the race on the unique constraint (P2002 = already
+/// digested), mirroring the ReminderLog claim-first pattern.
+/// `periodKey` is `"daily:2026-08-03"` / `"weekly:2026-W32"`.
+/// `status` is one of `claimed` | `sent` | `failed`.
+model NotificationDigestRun {
+  id             String    @id @default(uuid())
+  organizationId String    @map("organization_id")
+  periodKey      String    @map("period_key")
+  status         String    @default("claimed")
+  eventCount     Int       @default(0) @map("event_count")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  sentAt         DateTime? @map("sent_at")
+
+  @@unique([organizationId, periodKey])
+  @@map("notification_digest_runs")
+}

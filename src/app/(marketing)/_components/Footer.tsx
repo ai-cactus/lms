@@ -10,6 +10,12 @@ export default function Footer() {
           </span>
           <div className="flex flex-col items-center gap-4 md:flex-row md:gap-6">
             <Link
+              href="/help"
+              className="text-[15px] text-text-secondary transition-colors hover:text-foreground"
+            >
+              Help Center
+            </Link>
+            <Link
               href="/privacy"
               className="text-[15px] text-text-secondary transition-colors hover:text-foreground"
             >
