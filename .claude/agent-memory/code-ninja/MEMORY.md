@@ -29,3 +29,5 @@
 - [Figma WORKER CERTIFICATES + cert modal](reference_figma_worker_certificates.md) — they live in a second "WORKERS" section (14044:73449), not WORKER USERTYPE; grep the page metadata dump by text.
 - [Full-bleed dialog + fixed-px artwork](gotcha_fullbleed_dialog_scaling.md) — grid min-content breaks %-width scale measurement; viewport-corner close needs viewport-spanning content.
 - [Figma STAFF section map](reference_figma_staff_section.md) — list/profile/mobile frames; the profile design omits the real Passed/Locked states and its Retry row is unbuildable literally.
+- [RHF watch() breaks React Compiler](gotcha_rhf_watch_react_compiler.md) — lint warns on `watch()`; use `useWatch({control,name})` in client forms.
+- [Radix Select in a form echoes ""](gotcha_radix_select_in_form_echoes_empty.md) — programmatic value set gets wiped by the hidden native select; guard `onValueChange`.

@@ -43,6 +43,11 @@ export interface OnboardingStep2 {
   licenseNumber?: string;
   documents?: OnboardingDocument[];
 }
+/**
+ * Each value is either a canonical option id from `@/lib/constants/onboarding-options`
+ * or, for an "Other (specify)" selection, the free text the user typed. Nothing in
+ * the schema enforces this — the columns are plain strings.
+ */
 export interface OnboardingStep3 {
   primaryBusinessType?: string;
   additionalBusinessType?: string;
