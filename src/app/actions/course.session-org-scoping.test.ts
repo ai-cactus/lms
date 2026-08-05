@@ -22,6 +22,7 @@ const {
   mockCourseFindFirst,
   mockEnrollmentFindUnique,
   mockEnrollmentCreate,
+  mockEnrollmentGroupBy,
   mockNotificationUpdateMany,
 } = vi.hoisted(() => ({
   mockAdminAuth: vi.fn(),
@@ -31,6 +32,7 @@ const {
   mockCourseFindFirst: vi.fn(),
   mockEnrollmentFindUnique: vi.fn(),
   mockEnrollmentCreate: vi.fn(),
+  mockEnrollmentGroupBy: vi.fn(),
   mockNotificationUpdateMany: vi.fn(),
 }));
 
@@ -42,6 +44,7 @@ vi.mock('@/lib/prisma', () => {
       findUnique: mockEnrollmentFindUnique,
       findFirst: vi.fn(),
       create: mockEnrollmentCreate,
+      groupBy: mockEnrollmentGroupBy,
     },
     notification: { updateMany: mockNotificationUpdateMany },
   };
@@ -64,6 +67,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockCourseFindMany.mockResolvedValue([]);
   mockOrgCourseOfferingFindMany.mockResolvedValue([]);
+  mockEnrollmentGroupBy.mockResolvedValue([]);
 });
 
 describe('getCourses — org-scoping sourced from the session', () => {
@@ -125,7 +129,9 @@ describe('getCourseForOrgView — org-scoped enrollment visibility sourced from 
     await getCourseForOrgView('course-1');
 
     const callArgs = mockCourseFindFirst.mock.calls[0][0];
-    expect(callArgs.include.enrollments.where).toEqual({ user: { organizationId: 'org-A' } });
+    // Tier 3 5.2: include -> select (courseDetailSelect), but the org `where`
+    // value scoping enrolled staff to the caller's org is unchanged.
+    expect(callArgs.select.enrollments.where).toEqual({ user: { organizationId: 'org-A' } });
   });
 
   it('rejects with "Course not found" (never leaking existence) for an org-less session, without ever calling the DB', async () => {
