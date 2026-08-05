@@ -16,6 +16,20 @@
  *     and org-less WORKER accounts are an unrelated, expected pre-onboarding
  *     state that must keep reaching /onboarding-worker.
  *
+ * Tier 3 5.1 update (commits 56a3eab / 66aa961): a short-TTL Redis cache
+ * (`src/lib/auth/session-revalidation-cache.ts`, default 30s,
+ * `AUTH_REVALIDATE_TTL_SECONDS`) now sits in front of the `jwt()` callback's
+ * DB re-validation. That alone would have masked a removal for up to the TTL.
+ * `removeStaff()` (and every other `sessionVersion`-bumping action) now also
+ * calls `invalidateRevalidationCache(userId)` immediately after its write, so
+ * the "killed on next navigation" guarantee below holds at the DEFAULT TTL via
+ * the real production path — see the "real removeStaff() action" test. A
+ * write that bypasses every server action (e.g. raw SQL) still has no active
+ * bust and is genuinely bounded by the TTL only — see the "out-of-band" test
+ * immediately after it, and the fast, deterministic proof that it eventually
+ * self-heals in `src/lib/create-auth-instance.cache-integration.test.ts`
+ * ("TTL backstop vs. active invalidation for a sessionVersion bump").
+ *
  * Pre-conditions:
  *   - App running on http://localhost:3005 (Playwright webServer).
  *   - DATABASE_URL reachable for direct DB seeding/mutation.
@@ -189,7 +203,14 @@ async function cleanupOrgAndUsers(userIds: string[], orgId: string): Promise<voi
   }
 }
 
-/** Mirrors the exact write removeStaff() performs (src/app/actions/staff.ts). */
+/**
+ * Mirrors ONLY the raw DB write removeStaff() performs (src/app/actions/staff.ts)
+ * — deliberately an OUT-OF-BAND mutation. It does NOT call
+ * `invalidateRevalidationCache()` the way the real server action does, so it's
+ * used to exercise the TTL-backstop path (a write that never goes through any
+ * server action), not the "killed on next navigation" guarantee — that is now
+ * covered by driving the real `removeStaff()` action below.
+ */
 async function simulateRemoveStaff(userId: string): Promise<void> {
   const client = await db();
   try {
@@ -241,11 +262,82 @@ test.describe('QA ISSUE 2 — removed staff member cannot log in or keep a live 
     }
   });
 
-  test('a live HR session is killed by removeStaff() — the next navigation redirects to /login', async ({
+  test('a live HR session is killed by the real removeStaff() action — the next navigation redirects to /login, at the DEFAULT cache TTL', async ({
+    browser,
+  }) => {
+    test.setTimeout(60_000);
+    // Runs against whatever AUTH_REVALIDATE_TTL_SECONDS the webServer booted
+    // with (unset in .env/.env.example → the 30s default). This is the whole
+    // point of this test: it must pass WITHOUT relying on that TTL, because
+    // the real removeStaff() action (commit 66aa961) actively busts the
+    // target's cached snapshot immediately after its write — see
+    // src/app/actions/staff.ts. If this ever starts failing at the default
+    // TTL again, the active-invalidation call was lost, not just slow.
+    const ownerEmail = uniqueEmail('live-owner');
+    const ownerPassword = 'LiveOwner!Pwd9';
+    const hrEmail = uniqueEmail('live-hr');
+    const hrPassword = 'LiveHr!Pwd992';
+
+    const { ownerId, hrId, orgId } = await seedOrgWithOwnerAndHr(
+      ownerEmail,
+      ownerPassword,
+      hrEmail,
+      hrPassword,
+    );
+
+    const hrContext = await browser.newContext();
+    const hrPage = await hrContext.newPage();
+    const ownerContext = await browser.newContext();
+    const ownerPage = await ownerContext.newPage();
+
+    try {
+      // The HR staffer logs in first and keeps this session live throughout.
+      await loginAs(hrPage, hrEmail, hrPassword);
+      await hrPage.waitForURL('**/dashboard', { timeout: 15000 });
+      expect(hrPage.url()).toContain('/dashboard');
+
+      // A separate owner session removes them via the real "Remove Staff" UI
+      // flow — the exact same production path as the full UI-driven test
+      // below, but this time with the target's session still live so the
+      // kill-on-next-navigation guarantee can be observed directly.
+      await loginAs(ownerPage, ownerEmail, ownerPassword);
+      await ownerPage.waitForURL('**/dashboard', { timeout: 15000 });
+      await ownerPage.goto('/dashboard/staff');
+      await ownerPage.waitForLoadState('networkidle');
+      await ownerPage.getByPlaceholder('Search for staff...').fill(hrEmail);
+      await ownerPage.getByRole('button', { name: 'Row actions' }).click();
+      await ownerPage.getByRole('menuitem', { name: 'Remove Staff' }).click();
+      const dialog = ownerPage.getByRole('dialog');
+      await expect(dialog.getByText('Remove Staff Member')).toBeVisible();
+      await dialog.getByRole('button', { name: 'Remove Staff' }).click();
+      await expect(dialog).toBeHidden({ timeout: 10000 });
+
+      // Back on the still-live HR session: the next navigation must redirect
+      // to /login well within the default TTL.
+      await hrPage.goto('/dashboard');
+      await hrPage.waitForURL('**/login**', { timeout: 15000 });
+      expect(hrPage.url()).toContain('/login');
+    } finally {
+      await ownerContext.close();
+      await hrContext.close();
+      await cleanupOrgAndUsers([ownerId, hrId], orgId);
+    }
+  });
+
+  test('an out-of-band sessionVersion bump (bypassing every server action) does NOT kill a live session immediately — it is bounded by the TTL backstop only', async ({
     page,
   }) => {
-    const email = uniqueEmail('live-hr');
-    const password = 'LiveHr!Pwd992';
+    // Contrast with the test above: a raw DB write that skips removeStaff()
+    // entirely (e.g. a manual data fix, a script, a different code path that
+    // forgets to call invalidateRevalidationCache()) never busts the cache, so
+    // within the TTL window the session stays alive — exactly the pre-66aa961
+    // behavior. The deterministic, fast proof that this same bump IS still
+    // caught once the TTL elapses lives in
+    // src/lib/create-auth-instance.cache-integration.test.ts ("TTL backstop vs.
+    // active invalidation for a sessionVersion bump"), since this shared
+    // webServer's TTL isn't overridable per-test.
+    const email = uniqueEmail('oob-hr');
+    const password = 'OobHr!Pwd9921';
     const { userId, orgId } = await seedUser({ email, password, role: 'hr', withOrg: true });
 
     try {
@@ -253,13 +345,12 @@ test.describe('QA ISSUE 2 — removed staff member cannot log in or keep a live 
       await page.waitForURL('**/dashboard', { timeout: 15000 });
       expect(page.url()).toContain('/dashboard');
 
-      // Simulate an owner removing this HR staffer via "Remove Staff" while the
-      // HR session above is still live in this same browser context.
       await simulateRemoveStaff(userId);
 
       await page.goto('/dashboard');
-      await page.waitForURL('**/login**', { timeout: 15000 });
-      expect(page.url()).toContain('/login');
+      // No active bust fired for this write, so the still-cached snapshot
+      // keeps the session alive — the removal has NOT taken effect yet.
+      expect(page.url()).toContain('/dashboard');
     } finally {
       await cleanupUser(userId, orgId);
     }
