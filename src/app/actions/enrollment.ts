@@ -12,7 +12,12 @@ import { logger } from '@/lib/logger';
 import type { StaffEntry } from '@/types/enrollment';
 import { RenewalCycle, ReminderStage, UserRole } from '@/generated/prisma/enums';
 import { REMINDER_STAGE_DEFAULTS, SWEEP_STAGES } from '@/lib/reminders/stages';
-import { createEnrollmentForUser, type CreateEnrollmentContext } from '@/lib/enrollment/create';
+import {
+  createEnrollmentForUser,
+  createEnrollmentsForUsers,
+  type CreateEnrollmentContext,
+  type EnrollmentOutcome,
+} from '@/lib/enrollment/create';
 import { getSeatUsage } from '@/lib/seat-limits';
 
 export interface AssignmentSettingsInput {
@@ -154,6 +159,30 @@ async function upsertCourseAssignment(params: UpsertCourseAssignmentParams): Pro
 async function resolveSession() {
   const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
   return admin?.user?.id ? admin : worker?.user?.id ? worker : null;
+}
+
+/**
+ * Sequential enrollment path — the pre-existing per-entry loop, retained as the
+ * instant fallback behind the `ENROLLMENT_BATCH_ENABLED` kill-switch. Seat-rejected
+ * emails are force-failed without any DB work, exactly as before. Returns one
+ * outcome per entry in input order so the caller's result bucketing is identical
+ * whether the batched or sequential path ran.
+ */
+async function enrollSequentially(
+  entries: StaffEntry[],
+  ctx: CreateEnrollmentContext,
+  skipEmails: ReadonlySet<string>,
+): Promise<EnrollmentOutcome[]> {
+  const outcomes: EnrollmentOutcome[] = [];
+  for (const entry of entries) {
+    const normalizedEmail = entry.email.toLowerCase().trim();
+    if (skipEmails.has(normalizedEmail)) {
+      outcomes.push({ status: 'failed', email: normalizedEmail });
+      continue;
+    }
+    outcomes.push(await createEnrollmentForUser(entry, ctx));
+  }
+  return outcomes;
 }
 
 /**
@@ -412,14 +441,17 @@ export async function enrollUsers(
     }
   }
 
-  for (const entry of staffEntries) {
-    const normalizedEmail = entry.email.toLowerCase().trim();
-    if (seatRejectedEmails.has(normalizedEmail)) {
-      results.failed.push(normalizedEmail);
-      continue;
-    }
+  // Kill-switch (default OFF): the batched path collapses the per-user reads into
+  // batched look-ups and runs the side-effects with bounded concurrency; the
+  // sequential path is the instant fallback. Both return one outcome per entry in
+  // input order (seat-rejected emails force-failed), so the bucketing below is
+  // identical either way.
+  const batchEnabled = process.env.ENROLLMENT_BATCH_ENABLED === 'true';
+  const outcomes = batchEnabled
+    ? await createEnrollmentsForUsers(staffEntries, enrollmentContext, seatRejectedEmails)
+    : await enrollSequentially(staffEntries, enrollmentContext, seatRejectedEmails);
 
-    const outcome = await createEnrollmentForUser(entry, enrollmentContext);
+  for (const outcome of outcomes) {
     switch (outcome.status) {
       case 'failed':
         results.failed.push(outcome.email);
@@ -633,8 +665,14 @@ export async function assignCourseToRole(
   };
 
   const results = { enrolled: 0, alreadyEnrolled: 0, failed: 0 };
-  for (const holder of holders) {
-    const outcome = await createEnrollmentForUser({ email: holder.email }, enrollmentContext);
+  const holderEntries: StaffEntry[] = holders.map((holder) => ({ email: holder.email }));
+  // Same kill-switch as enrollUsers; role holders carry no seat rejection.
+  const batchEnabled = process.env.ENROLLMENT_BATCH_ENABLED === 'true';
+  const outcomes = batchEnabled
+    ? await createEnrollmentsForUsers(holderEntries, enrollmentContext)
+    : await enrollSequentially(holderEntries, enrollmentContext, new Set());
+
+  for (const outcome of outcomes) {
     // Role holders are always existing org members, so `invited` is unreachable
     // here; count it defensively alongside `enrolled` if it ever occurs.
     if (outcome.status === 'enrolled' || outcome.status === 'invited') results.enrolled += 1;
