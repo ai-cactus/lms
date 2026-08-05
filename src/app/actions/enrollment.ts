@@ -175,8 +175,13 @@ export async function getAvailableUsers() {
 
   const users = await prisma.user.findMany({
     where: { organizationId },
-    include: {
-      profile: true,
+    // Explicit projection — the DTO uses only these fields, so never load the
+    // password hash / MFA-secret columns of the full user row into memory.
+    select: {
+      id: true,
+      email: true,
+      role: true,
+      profile: { select: { fullName: true, avatarUrl: true } },
     },
     orderBy: {
       createdAt: 'desc',
