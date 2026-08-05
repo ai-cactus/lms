@@ -110,3 +110,27 @@ export async function setCachedRevalidation(
     });
   }
 }
+
+/**
+ * Actively evict a user's cached snapshot so the next JWT decode misses the
+ * cache and re-reads fresh from the DB. Call this immediately AFTER a committed
+ * write that bumps the user's `sessionVersion` (role change, staff removal,
+ * password reset/change), so a revocation takes effect on the user's next
+ * navigation instead of lagging up to the TTL.
+ *
+ * Best-effort and fail-safe by design: a Redis error is caught and logged as a
+ * `warn` but never rethrown — a caching hiccup must not break the surrounding
+ * staff-removal / password-reset transaction. The TTL remains the backstop, so
+ * a missed bust still self-heals within the window.
+ */
+export async function invalidateRevalidationCache(userId: string): Promise<void> {
+  try {
+    await rateLimiterRedis.del(`${REVALIDATE_PREFIX}${userId}`);
+  } catch (error) {
+    logger.warn({
+      msg: '[auth] Session revalidation cache invalidation failed; TTL remains the backstop',
+      userId,
+      error: String(error),
+    });
+  }
+}

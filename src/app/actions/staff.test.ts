@@ -107,6 +107,11 @@ vi.mock('@/lib/email', () => ({
 }));
 // assignCourseToStaffMember delegates to enrollUsers — mock the enrollment module.
 vi.mock('@/app/actions/enrollment', () => ({ enrollUsers: mockEnrollUsers }));
+// removeStaff / role change actively bust the JWT revalidation cache; stub it so
+// the tests don't reach the real Redis client (its connect attempt would hang).
+vi.mock('@/lib/auth/session-revalidation-cache', () => ({
+  invalidateRevalidationCache: vi.fn(),
+}));
 
 import {
   updateStaffDetails,
