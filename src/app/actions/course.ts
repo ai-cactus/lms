@@ -7,7 +7,7 @@ import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
 import { notifyOrganizationAdmins } from './notifications';
-import { CourseWithStats, CourseWithRelations } from '@/types/course';
+import { CourseWithStats, CourseWithRelations, courseDetailSelect } from '@/types/course';
 import { QuizQuestion } from '@/types/quiz';
 import type { StaffEntry } from '@/types/enrollment';
 import { logger } from '@/lib/logger';
@@ -111,41 +111,7 @@ export async function getCourseById(courseId: string): Promise<CourseWithRelatio
 
   const course = await prisma.course.findUnique({
     where: { id: courseId },
-    include: {
-      modules: {
-        orderBy: { order: 'asc' },
-        include: {
-          lessons: {
-            orderBy: { order: 'asc' },
-            include: {
-              quiz: {
-                include: { questions: { orderBy: { order: 'asc' } } },
-              },
-            },
-          },
-        },
-      },
-      quiz: {
-        include: { questions: { orderBy: { order: 'asc' } } },
-      },
-      lessons: {
-        orderBy: { order: 'asc' },
-        include: {
-          quiz: {
-            include: { questions: { orderBy: { order: 'asc' } } },
-          },
-        },
-      },
-      enrollments: {
-        include: {
-          user: { include: { profile: true } },
-          certificate: true,
-        },
-      },
-      creator: {
-        include: { profile: true },
-      },
-    },
+    select: courseDetailSelect,
   });
 
   if (!course) {
@@ -187,27 +153,13 @@ export async function getCourseForOrgView(courseId: string): Promise<CourseWithR
 
   const course = await prisma.course.findFirst({
     where: { id: courseId, type: 'video', isGlobal: true, status: 'published' },
-    include: {
-      modules: {
-        orderBy: { order: 'asc' },
-        include: {
-          lessons: {
-            orderBy: { order: 'asc' },
-            include: { quiz: { include: { questions: { orderBy: { order: 'asc' } } } } },
-          },
-        },
-      },
-      quiz: { include: { questions: { orderBy: { order: 'asc' } } } },
-      lessons: {
-        orderBy: { order: 'asc' },
-        include: { quiz: { include: { questions: { orderBy: { order: 'asc' } } } } },
-      },
+    select: {
+      ...courseDetailSelect,
       // Scope enrolled staff to the caller's org — never leak other orgs' users.
       enrollments: {
+        ...courseDetailSelect.enrollments,
         where: { user: { organizationId } },
-        include: { user: { include: { profile: true } }, certificate: true },
       },
-      creator: { include: { profile: true } },
     },
   });
 
