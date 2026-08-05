@@ -29,10 +29,8 @@ export async function getCourses(): Promise<CourseWithStats[]> {
     throw new Error('Unauthorized');
   }
 
-  const currentUser = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { organizationId: true },
-  });
+  // Org/role are authoritative on the DB-revalidated session — no re-query.
+  const organizationId = session.user.organizationId;
 
   const [ownCourses, offerings] = await Promise.all([
     prisma.course.findMany({
@@ -43,16 +41,16 @@ export async function getCourses(): Promise<CourseWithStats[]> {
       },
       orderBy: { createdAt: 'desc' },
     }),
-    currentUser?.organizationId
+    organizationId
       ? prisma.orgCourseOffering.findMany({
-          where: { organizationId: currentUser.organizationId },
+          where: { organizationId },
           orderBy: { createdAt: 'desc' },
           include: {
             course: {
               include: {
                 lessons: { select: { id: true } },
                 enrollments: {
-                  where: { user: { organizationId: currentUser.organizationId } },
+                  where: { user: { organizationId } },
                   select: { status: true },
                 },
               },
@@ -181,14 +179,11 @@ export async function getCourseForOrgView(courseId: string): Promise<CourseWithR
     throw new Error('Unauthorized');
   }
 
-  const currentUser = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { organizationId: true },
-  });
-  if (!currentUser?.organizationId) {
+  // Org is authoritative on the DB-revalidated session — no re-query.
+  const organizationId = session.user.organizationId;
+  if (!organizationId) {
     throw new Error('Course not found');
   }
-  const organizationId = currentUser.organizationId;
 
   const course = await prisma.course.findFirst({
     where: { id: courseId, type: 'video', isGlobal: true, status: 'published' },
@@ -374,60 +369,51 @@ export async function getDashboardData() {
   // { courseId, score, completedAt } projection — for the average / monthly /
   // pass-fail stats that genuinely need row-level scores.
   const createdBy = session.user.id;
-  const [coursesRaw, courseStatusCounts, userStatusCounts, scoredEnrollments, currentUser] =
-    await Promise.all([
-      prisma.course.findMany({
-        where: { createdBy },
-        select: {
-          id: true,
-          title: true,
-          description: true,
-          thumbnail: true,
-          status: true,
-          type: true,
-          duration: true,
-          createdAt: true,
-          updatedAt: true,
-          lessons: { select: { quiz: { select: { passingScore: true } } } },
-        },
-        orderBy: { createdAt: 'desc' },
-      }),
-      // Per-course enrollment totals + completed/attested tallies.
-      prisma.enrollment.groupBy({
-        by: ['courseId', 'status'],
-        where: { course: { createdBy } },
-        _count: { _all: true },
-      }),
-      // Per-user status tallies for training coverage + distinct staff assigned.
-      prisma.enrollment.groupBy({
-        by: ['userId', 'status'],
-        where: { course: { createdBy } },
-        _count: { _all: true },
-      }),
-      // Only scored enrollments, narrow projection — used for average grade,
-      // monthly performance and per-course pass/fail distribution.
-      prisma.enrollment.findMany({
-        where: { course: { createdBy }, score: { not: null } },
-        select: { courseId: true, score: true, completedAt: true },
-      }),
-      prisma.user.findUnique({
-        where: { id: session.user.id },
-        select: { organizationId: true },
-      }),
-    ]);
-
-  if (!currentUser?.organizationId) {
-    // User authenticated but has no organization. We no longer force redirect here.
-    // The client-side OrganizationActivationModal will show a welcome message for 60 seconds
-    // and then auto-redirect if they don't click anything.
-  }
+  // Org is authoritative on the DB-revalidated session — no re-query.
+  const organizationId = session.user.organizationId;
+  const [coursesRaw, courseStatusCounts, userStatusCounts, scoredEnrollments] = await Promise.all([
+    prisma.course.findMany({
+      where: { createdBy },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        thumbnail: true,
+        status: true,
+        type: true,
+        duration: true,
+        createdAt: true,
+        updatedAt: true,
+        lessons: { select: { quiz: { select: { passingScore: true } } } },
+      },
+      orderBy: { createdAt: 'desc' },
+    }),
+    // Per-course enrollment totals + completed/attested tallies.
+    prisma.enrollment.groupBy({
+      by: ['courseId', 'status'],
+      where: { course: { createdBy } },
+      _count: { _all: true },
+    }),
+    // Per-user status tallies for training coverage + distinct staff assigned.
+    prisma.enrollment.groupBy({
+      by: ['userId', 'status'],
+      where: { course: { createdBy } },
+      _count: { _all: true },
+    }),
+    // Only scored enrollments, narrow projection — used for average grade,
+    // monthly performance and per-course pass/fail distribution.
+    prisma.enrollment.findMany({
+      where: { course: { createdBy }, score: { not: null } },
+      select: { courseId: true, score: true, completedAt: true },
+    }),
+  ]);
 
   // Get total staff (workers) in organization to ensure accurate coverage base
   let totalOrgStaff = 0;
-  if (currentUser?.organizationId) {
+  if (organizationId) {
     totalOrgStaff = await prisma.user.count({
       where: {
-        organizationId: currentUser.organizationId,
+        organizationId,
         role: { in: [...WORKER_ROLES] },
       },
     });
@@ -847,12 +833,8 @@ export async function createFullCourse(data: {
     throw new Error('Unauthorized');
   }
 
-  const currentUser = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { organizationId: true },
-  });
-
-  if (!currentUser?.organizationId) {
+  // Org is authoritative on the DB-revalidated session — no re-query.
+  if (!session.user.organizationId) {
     throw new Error('Organization not found');
   }
 
@@ -1311,12 +1293,8 @@ export async function assignRetake(enrollmentId: string, retakeReason?: string) 
     throw new Error('Unauthorized');
   }
 
-  const adminUser = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { role: true },
-  });
-
-  if (!adminUser || !isAdminRole(adminUser.role)) {
+  // Role is authoritative on the DB-revalidated session — no re-query.
+  if (!isAdminRole(session.user.role)) {
     throw new Error('Insufficient permissions');
   }
 

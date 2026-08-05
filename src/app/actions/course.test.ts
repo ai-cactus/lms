@@ -150,7 +150,7 @@ describe('getDashboardData', () => {
       { courseId: 'course-b', score: 50, completedAt: new Date(2026, 4, 1) },
     ]);
 
-    mockUserFindUnique.mockResolvedValue({ organizationId: 'org-1' });
+    mockAdminAuth.mockResolvedValue({ user: { id: 'admin-1', organizationId: 'org-1' } });
     mockUserCount.mockResolvedValue(10); // total workers in the org
 
     const result = await getDashboardData();
@@ -222,7 +222,7 @@ describe('getDashboardData', () => {
     mockCourseFindMany.mockResolvedValue([]);
     wireGroupBy([], []);
     mockEnrollmentFindMany.mockResolvedValue([]);
-    mockUserFindUnique.mockResolvedValue({ organizationId: null });
+    mockAdminAuth.mockResolvedValue({ user: { id: 'admin-1', organizationId: null } });
 
     const result = await getDashboardData();
 
@@ -247,7 +247,7 @@ describe('getDashboardData', () => {
     mockCourseFindMany.mockResolvedValue([]);
     wireGroupBy([], []);
     mockEnrollmentFindMany.mockResolvedValue([]);
-    mockUserFindUnique.mockResolvedValue({ organizationId: 'org-1' });
+    mockAdminAuth.mockResolvedValue({ user: { id: 'admin-1', organizationId: 'org-1' } });
     mockUserCount.mockResolvedValue(0);
 
     await getDashboardData();

@@ -24,9 +24,8 @@ import { getCourses } from './course';
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockAuth.mockResolvedValue({ user: { id: 'admin-1' } });
+  mockAuth.mockResolvedValue({ user: { id: 'admin-1', organizationId: 'org-1' } });
   mockWorkerAuth.mockResolvedValue(null);
-  mockUserFindUnique.mockResolvedValue({ organizationId: 'org-1' });
 });
 
 describe('getCourses', () => {

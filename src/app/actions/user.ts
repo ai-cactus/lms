@@ -36,12 +36,9 @@ export async function getStaffUsers() {
     throw new Error('Unauthorized');
   }
 
-  const currentUser = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { organizationId: true },
-  });
-
-  if (!currentUser?.organizationId) {
+  // Org is authoritative on the DB-revalidated session — no re-query.
+  const organizationId = session.user.organizationId;
+  if (!organizationId) {
     return [];
   }
 
@@ -49,7 +46,7 @@ export async function getStaffUsers() {
     const [users, invites] = await Promise.all([
       prisma.user.findMany({
         where: {
-          organizationId: currentUser.organizationId,
+          organizationId,
           // Show every seat-consuming staff member (all roles except owner).
           role: { not: 'owner' },
         },
@@ -58,7 +55,7 @@ export async function getStaffUsers() {
       }),
       prisma.invite.findMany({
         where: {
-          organizationId: currentUser.organizationId,
+          organizationId,
           status: 'pending',
         },
         orderBy: { createdAt: 'desc' },
@@ -115,12 +112,9 @@ export async function searchStaffUsers(query: string) {
     return [];
   }
 
-  const currentUser = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { organizationId: true },
-  });
-
-  if (!currentUser?.organizationId) {
+  // Org is authoritative on the DB-revalidated session — no re-query.
+  const organizationId = session.user.organizationId;
+  if (!organizationId) {
     return [];
   }
 
@@ -129,7 +123,7 @@ export async function searchStaffUsers(query: string) {
   try {
     const users = await prisma.user.findMany({
       where: {
-        organizationId: currentUser.organizationId,
+        organizationId,
         role: { not: 'owner' },
         OR: [
           { email: { contains: query, mode: 'insensitive' } },

@@ -166,17 +166,15 @@ export async function getAvailableUsers() {
     throw new Error('Unauthorized');
   }
 
-  // Restrict to the caller's own organization — never return users from other tenants.
-  const caller = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { organizationId: true },
-  });
-  if (!caller?.organizationId) {
+  // Restrict to the caller's own organization — never return users from other
+  // tenants. Org is authoritative on the DB-revalidated session — no re-query.
+  const organizationId = session.user.organizationId;
+  if (!organizationId) {
     return [];
   }
 
   const users = await prisma.user.findMany({
-    where: { organizationId: caller.organizationId },
+    where: { organizationId },
     include: {
       profile: true,
     },
@@ -455,23 +453,20 @@ export async function getCourseAssignmentSettings(
     throw new Error('Unauthorized');
   }
 
-  const currentUser = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { role: true, organizationId: true },
-  });
-
-  if (!isAdminRole(currentUser?.role)) {
+  // Role/org are authoritative on the DB-revalidated session — no re-query.
+  if (!isAdminRole(session.user.role)) {
     throw new Error('Forbidden');
   }
 
-  if (!currentUser?.organizationId) {
+  const organizationId = session.user.organizationId;
+  if (!organizationId) {
     return null;
   }
 
   // Scope strictly to the caller's org so an admin can never read another
   // tenant's assignment configuration for the same (possibly global) course.
   const assignment = await prisma.courseAssignment.findFirst({
-    where: { organizationId: currentUser.organizationId, courseId },
+    where: { organizationId, courseId },
     orderBy: { createdAt: 'desc' },
     include: { reminderStages: true },
   });
@@ -665,21 +660,18 @@ export async function getRoleHolderCounts(): Promise<Record<string, number>> {
     throw new Error('Unauthorized');
   }
 
-  const currentUser = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { role: true, organizationId: true },
-  });
-
-  if (!isAdminRole(currentUser?.role)) {
+  // Role/org are authoritative on the DB-revalidated session — no re-query.
+  if (!isAdminRole(session.user.role)) {
     throw new Error('Forbidden');
   }
-  if (!currentUser?.organizationId) {
+  const organizationId = session.user.organizationId;
+  if (!organizationId) {
     return {};
   }
 
   const grouped = await prisma.user.groupBy({
     by: ['role'],
-    where: { organizationId: currentUser.organizationId },
+    where: { organizationId },
     _count: { _all: true },
   });
 
