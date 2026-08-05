@@ -1,6 +1,7 @@
 'use server';
 
 import prisma from '@/lib/prisma';
+import type { Prisma } from '@/generated/prisma/client';
 import { isAdminRole, WORKER_ROLES } from '@/lib/rbac/role-utils';
 import { hasActiveBilling } from '@/lib/billing';
 import { auth as adminAuth } from '@/auth';
@@ -32,47 +33,90 @@ export async function getCourses(): Promise<CourseWithStats[]> {
   // Org/role are authoritative on the DB-revalidated session — no re-query.
   const organizationId = session.user.organizationId;
 
+  // Course structure only — lesson/enrollment tallies come from grouped
+  // aggregation below, not from materializing every enrollment row per course.
+  const courseCardSelect = {
+    id: true,
+    title: true,
+    description: true,
+    thumbnail: true,
+    status: true,
+    type: true,
+    duration: true,
+    createdAt: true,
+    updatedAt: true,
+    _count: { select: { lessons: true } },
+  } satisfies Prisma.CourseSelect;
+
   const [ownCourses, offerings] = await Promise.all([
     prisma.course.findMany({
       where: { createdBy: session.user.id },
-      include: {
-        lessons: { select: { id: true } },
-        enrollments: { select: { status: true } },
-      },
+      select: courseCardSelect,
       orderBy: { createdAt: 'desc' },
     }),
     organizationId
       ? prisma.orgCourseOffering.findMany({
           where: { organizationId },
           orderBy: { createdAt: 'desc' },
-          include: {
-            course: {
-              include: {
-                lessons: { select: { id: true } },
-                enrollments: {
-                  where: { user: { organizationId } },
-                  select: { status: true },
-                },
-              },
-            },
-          },
+          select: { course: { select: courseCardSelect } },
         })
       : Promise.resolve([]),
   ]);
 
-  const toStats = (course: {
-    id: string;
-    title: string;
-    description: string | null;
-    thumbnail: string | null;
-    status: string;
-    type: string;
-    duration: number | null;
-    createdAt: Date;
-    updatedAt: Date;
-    lessons: { id: string }[];
-    enrollments: { status: string }[];
-  }): CourseWithStats => ({
+  const adoptedCourses = offerings.map((o) => o.course);
+  const adoptedCourseIds = adoptedCourses.map((c) => c.id);
+
+  // Per-course enrollment totals + completed/attested tallies via grouped
+  // aggregation (F-028 pattern). Own courses count ALL enrollments (unscoped,
+  // matching the prior behavior); adopted courses count only THIS org's staff.
+  const [ownCounts, adoptedCounts] = await Promise.all([
+    prisma.enrollment.groupBy({
+      by: ['courseId', 'status'],
+      where: { course: { createdBy: session.user.id } },
+      _count: { _all: true },
+    }),
+    organizationId && adoptedCourseIds.length
+      ? prisma.enrollment.groupBy({
+          by: ['courseId', 'status'],
+          where: { courseId: { in: adoptedCourseIds }, user: { organizationId } },
+          _count: { _all: true },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const toCountMap = (
+    rows: { courseId: string; status: string; _count: { _all: number } }[],
+  ): Map<string, { total: number; completed: number }> => {
+    const map = new Map<string, { total: number; completed: number }>();
+    for (const row of rows) {
+      const entry = map.get(row.courseId) ?? { total: 0, completed: 0 };
+      entry.total += row._count._all;
+      if (row.status === 'completed' || row.status === 'attested') {
+        entry.completed += row._count._all;
+      }
+      map.set(row.courseId, entry);
+    }
+    return map;
+  };
+
+  const ownCountMap = toCountMap(ownCounts);
+  const adoptedCountMap = toCountMap(adoptedCounts);
+
+  const toStats = (
+    course: {
+      id: string;
+      title: string;
+      description: string | null;
+      thumbnail: string | null;
+      status: string;
+      type: string;
+      duration: number | null;
+      createdAt: Date;
+      updatedAt: Date;
+      _count: { lessons: number };
+    },
+    counts: { total: number; completed: number },
+  ): CourseWithStats => ({
     id: course.id,
     title: course.title,
     description: course.description,
@@ -82,21 +126,17 @@ export async function getCourses(): Promise<CourseWithStats[]> {
     duration: course.duration,
     createdAt: course.createdAt,
     updatedAt: course.updatedAt,
-    lessonsCount: course.lessons.length,
-    enrollmentsCount: course.enrollments.length,
-    completionRate:
-      course.enrollments.length > 0
-        ? Math.round(
-            (course.enrollments.filter((e) => e.status === 'completed' || e.status === 'attested')
-              .length /
-              course.enrollments.length) *
-              100,
-          )
-        : 0,
+    lessonsCount: course._count.lessons,
+    enrollmentsCount: counts.total,
+    completionRate: counts.total > 0 ? Math.round((counts.completed / counts.total) * 100) : 0,
   });
 
-  const own = ownCourses.map(toStats);
-  const adopted = offerings.map((o) => toStats(o.course));
+  const own = ownCourses.map((course) =>
+    toStats(course, ownCountMap.get(course.id) ?? { total: 0, completed: 0 }),
+  );
+  const adopted = adoptedCourses.map((course) =>
+    toStats(course, adoptedCountMap.get(course.id) ?? { total: 0, completed: 0 }),
+  );
 
   // De-dupe in case the admin both created and adopted the same course id.
   const seen = new Set(own.map((c) => c.id));
