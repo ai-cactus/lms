@@ -42,27 +42,35 @@ export async function getStaffDetails(userId: string) {
   try {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      include: {
-        profile: true,
-        manager: {
-          include: { profile: true },
-        },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        organizationId: true,
+        managerId: true,
+        profile: { select: { fullName: true, avatarUrl: true, jobTitle: true } },
+        manager: { select: { email: true, profile: { select: { fullName: true } } } },
         enrollments: {
-          include: {
+          orderBy: { startedAt: 'desc' },
+          select: {
+            id: true,
+            courseId: true,
+            status: true,
+            progress: true,
+            score: true,
+            startedAt: true,
+            completedAt: true,
+            dueAt: true,
             course: {
-              include: {
+              select: {
+                title: true,
+                thumbnail: true,
+                type: true,
                 lessons: {
-                  include: { quiz: true },
+                  select: { quiz: { select: { passingScore: true, allowedAttempts: true } } },
                 },
               },
             },
-            quizAttempts: {
-              orderBy: { completedAt: 'desc' },
-              take: 1,
-            },
-          },
-          orderBy: {
-            startedAt: 'desc',
           },
         },
       },
