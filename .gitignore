@@ -84,6 +84,8 @@ platform-speed-*.pdf
 platform-speed-*.md
 # Perf snapshot CSVs from scripts/perf-snapshot.sh — local measurement data
 perf-results/
+# Security incident reports — sensitive; kept locally, never committed
+security/incidents/
 testing_stages.jpeg
 Theraptly_LMS_QA_Test_Cases.docx
 
