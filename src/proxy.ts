@@ -88,8 +88,8 @@ async function handleProxy(req: NextRequest, correlationId: string): Promise<Nex
     req.cookies.get(cookieName)?.value ||
     req.cookies.get(`${cfg.cookiePrefix}.session-token`)?.value;
 
-  logger.info({ msg: `[Proxy] Target Auth: ${context}` });
-  logger.info({ msg: `[Proxy] Searching for cookie: ${cookieName}. Found token? ${!!rawToken}` });
+  logger.debug({ msg: `[Proxy] Target Auth: ${context}` });
+  logger.debug({ msg: `[Proxy] Searching for cookie: ${cookieName}. Found token? ${!!rawToken}` });
 
   // Not logged in — send to the correct login page
   if (!rawToken) {
@@ -104,7 +104,7 @@ async function handleProxy(req: NextRequest, correlationId: string): Promise<Nex
     token = await decode({ token: rawToken, secret, salt });
     /* eslint-disable-next-line @typescript-eslint/ban-ts-comment */
     // @ts-ignore - JWT email is injected natively but omitted from standard JWT definition
-    logger.info({
+    logger.debug({
       msg: `[Proxy] Decoded token successfully for ${context}`,
       email: maskEmail(token?.email ?? ''),
     });
@@ -117,7 +117,7 @@ async function handleProxy(req: NextRequest, correlationId: string): Promise<Nex
   }
 
   if (!token) {
-    logger.info({ msg: `[Proxy] Token is null after decode.` });
+    logger.debug({ msg: `[Proxy] Token is null after decode.` });
     return NextResponse.redirect(new URL(cfg.loginPath, req.url));
   }
 
