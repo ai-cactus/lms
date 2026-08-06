@@ -38,6 +38,7 @@ const {
   mockSendStaffRemovalConfirmationEmail,
   mockAudit,
   mockEnrollUsers,
+  mockInvalidateRevalidationCache,
   prismaMock,
 } = vi.hoisted(() => {
   const mockUserFindUnique = vi.fn();
@@ -84,6 +85,7 @@ const {
     mockSendStaffRemovalConfirmationEmail: vi.fn(),
     mockAudit: vi.fn(),
     mockEnrollUsers: vi.fn(),
+    mockInvalidateRevalidationCache: vi.fn(),
     prismaMock,
   };
 });
@@ -107,6 +109,13 @@ vi.mock('@/lib/email', () => ({
 }));
 // assignCourseToStaffMember delegates to enrollUsers — mock the enrollment module.
 vi.mock('@/app/actions/enrollment', () => ({ enrollUsers: mockEnrollUsers }));
+// removeStaff / role change actively bust the JWT revalidation cache; stub it so
+// the tests don't reach the real Redis client (its connect attempt would hang).
+// Kept as a spy (not an inline vi.fn()) so tests can assert it's actually
+// called — a stub that silently swallows the call would hide a real regression.
+vi.mock('@/lib/auth/session-revalidation-cache', () => ({
+  invalidateRevalidationCache: mockInvalidateRevalidationCache,
+}));
 
 import {
   updateStaffDetails,
@@ -164,6 +173,7 @@ beforeEach(() => {
     newInvited: [],
     failed: [],
   });
+  mockInvalidateRevalidationCache.mockResolvedValue(undefined);
 });
 
 // ── updateStaffDetails() ────────────────────────────────────────────────────────
@@ -354,9 +364,16 @@ describe('updateStaffDetails() — in-place role change (canChangeRole integrati
         metadata: { fromRole: 'hr', toRole: 'nurse' },
       }),
     );
+    // commit 66aa961: the role change bumped sessionVersion, so the target's
+    // cached revalidation snapshot must be busted with THEIR id (not the
+    // actor's), and only after the DB write that bumped the version.
+    expect(mockInvalidateRevalidationCache).toHaveBeenCalledExactlyOnceWith('target-1');
+    expect(mockUserUpdate.mock.invocationCallOrder[0]).toBeLessThan(
+      mockInvalidateRevalidationCache.mock.invocationCallOrder[0],
+    );
   });
 
-  it('a same-role resubmit does NOT bump sessionVersion and does NOT write a staff.role.change audit entry', async () => {
+  it('a same-role resubmit does NOT bump sessionVersion, does NOT write a staff.role.change audit entry, and does NOT invalidate the cache', async () => {
     mockAuth.mockResolvedValue(makeAdminSession('owner'));
     mockUserFindUnique.mockResolvedValue({ organizationId: 'org-1', role: 'nurse' });
 
@@ -370,6 +387,8 @@ describe('updateStaffDetails() — in-place role change (canChangeRole integrati
     expect(mockAudit).not.toHaveBeenCalledWith(
       expect.objectContaining({ action: 'staff.role.change' }),
     );
+    // No sessionVersion bump happened, so there's nothing to invalidate.
+    expect(mockInvalidateRevalidationCache).not.toHaveBeenCalled();
   });
 
   it('denies a role change attempted by hr (hr may edit staff but not re-role them)', async () => {
@@ -960,6 +979,15 @@ describe('removeStaff() — org disconnect + sessionVersion bump (QA ISSUE 2)', 
     );
   });
 
+  it("commit 66aa961: busts the removed user's cached revalidation snapshot, with THEIR id, after the transaction commits", async () => {
+    await removeStaff('target-1');
+
+    expect(mockInvalidateRevalidationCache).toHaveBeenCalledExactlyOnceWith('target-1');
+    expect(mockTransaction.mock.invocationCallOrder[0]).toBeLessThan(
+      mockInvalidateRevalidationCache.mock.invocationCallOrder[0],
+    );
+  });
+
   it('rejects when the caller has no session', async () => {
     mockAuth.mockResolvedValue(null);
 
@@ -967,6 +995,7 @@ describe('removeStaff() — org disconnect + sessionVersion bump (QA ISSUE 2)', 
 
     expect(result).toEqual({ success: false, error: 'Unauthorized' });
     expect(mockUserUpdate).not.toHaveBeenCalled();
+    expect(mockInvalidateRevalidationCache).not.toHaveBeenCalled();
   });
 
   it('rejects when the target user belongs to a different organization', async () => {
@@ -980,6 +1009,7 @@ describe('removeStaff() — org disconnect + sessionVersion bump (QA ISSUE 2)', 
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/does not belong to your organization/i);
     expect(mockUserUpdate).not.toHaveBeenCalled();
+    expect(mockInvalidateRevalidationCache).not.toHaveBeenCalled();
   });
 
   it('rejects when the target user is not found', async () => {
@@ -992,6 +1022,7 @@ describe('removeStaff() — org disconnect + sessionVersion bump (QA ISSUE 2)', 
 
     expect(result).toEqual({ success: false, error: 'User not found' });
     expect(mockUserUpdate).not.toHaveBeenCalled();
+    expect(mockInvalidateRevalidationCache).not.toHaveBeenCalled();
   });
 
   it('still returns success even if the removal notification emails fail', async () => {
@@ -1002,6 +1033,24 @@ describe('removeStaff() — org disconnect + sessionVersion bump (QA ISSUE 2)', 
     expect(result).toEqual({ success: true });
     // The DB mutation (the security-relevant part) already happened.
     expect(mockUserUpdate).toHaveBeenCalledOnce();
+    expect(mockInvalidateRevalidationCache).toHaveBeenCalledExactlyOnceWith('target-1');
+  });
+
+  it('OBSERVATION (not currently exploitable): removeStaff has no local try/catch around invalidateRevalidationCache — it relies entirely on that module\'s own internal fail-safety. If it ever violated its "never rethrows" contract, the already-committed removal would be reported as a failure', async () => {
+    // The REAL invalidateRevalidationCache() catches every Redis error
+    // internally and is documented to never rethrow — this mock deliberately
+    // violates that contract to pin down what removeStaff's single top-level
+    // try/catch does in that (currently unreachable) case: the DB transaction
+    // already committed, but the caller sees `success: false`. Unlike the
+    // notification-email block a few lines below it (which has its own
+    // dedicated try/catch specifically so a non-critical failure can't mask a
+    // successful removal), this call site has no equivalent local guard.
+    mockInvalidateRevalidationCache.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+
+    const result = await removeStaff('target-1');
+
+    expect(mockTransaction).toHaveBeenCalledOnce();
+    expect(result).toEqual({ success: false, error: 'ECONNREFUSED' });
   });
 });
 

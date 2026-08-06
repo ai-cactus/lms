@@ -35,7 +35,10 @@ import { createFullCourse, publishCourse } from './course';
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockAuth.mockResolvedValue({ user: { id: 'admin-1' } });
+  // Org is read straight off the DB-revalidated session (see createFullCourse
+  // in course.ts) rather than a separate user.findUnique — mockUserFindUnique
+  // is unused by the code under test now, kept only as a harmless mock.
+  mockAuth.mockResolvedValue({ user: { id: 'admin-1', organizationId: 'org-1' } });
   mockWorkerAuth.mockResolvedValue(null);
   mockUserFindUnique.mockResolvedValue({ organizationId: 'org-1' });
 });

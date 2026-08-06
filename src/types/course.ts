@@ -78,40 +78,73 @@ export interface GeneratedCourse {
   warning?: string;
 }
 
-export type CourseWithRelations = Prisma.CourseGetPayload<{
-  include: {
-    modules: {
-      include: {
-        lessons: {
-          include: {
-            quiz: {
-              include: { questions: true };
-            };
-          };
-        };
-      };
-    };
-    quiz: {
-      include: { questions: true };
-    };
-    lessons: {
-      include: {
-        quiz: {
-          include: { questions: true };
-        };
-      };
-    };
-    enrollments: {
-      include: {
-        user: { include: { profile: true } };
-        certificate: true;
-      };
-    };
-    creator: {
-      include: { profile: true };
-    };
-  };
-}>;
+/**
+ * Field selection for the course-detail read path (getCourseById /
+ * getCourseForOrgView). Explicit `select` (not `include`) so the query fetches
+ * only what the course-detail and preview UIs actually consume — never the heavy
+ * raw-AI JSON columns on Course, the full user rows behind enrollments (password
+ * hash / MFA secrets), or the per-question answer columns. Every field kept here
+ * is read by `TrainingDetails` and/or `CoursePreview`; narrowing it will drop a
+ * UI section, so audit those components before removing a field.
+ */
+export const courseDetailSelect = {
+  id: true,
+  title: true,
+  description: true,
+  type: true,
+  duration: true,
+  status: true,
+  updatedAt: true,
+  overview: true,
+  objectives: true,
+  skillLevel: true,
+  previewVideoStorageUri: true,
+  createdBy: true,
+  modules: {
+    orderBy: { order: 'asc' as const },
+    select: {
+      id: true,
+      title: true,
+      order: true,
+      lessons: {
+        orderBy: { order: 'asc' as const },
+        select: { id: true, title: true, order: true, videoDurationSeconds: true },
+      },
+    },
+  },
+  quiz: {
+    select: {
+      title: true,
+      passingScore: true,
+      questions: { select: { id: true } },
+    },
+  },
+  lessons: {
+    orderBy: { order: 'asc' as const },
+    select: {
+      id: true,
+      title: true,
+      order: true,
+      videoStorageUri: true,
+      videoDurationSeconds: true,
+      quiz: { select: { passingScore: true } },
+    },
+  },
+  enrollments: {
+    select: {
+      id: true,
+      userId: true,
+      status: true,
+      score: true,
+      progress: true,
+      user: { select: { email: true, role: true, profile: { select: { fullName: true } } } },
+      certificate: { select: { id: true, issuedAt: true } },
+    },
+  },
+  creator: { select: { email: true, profile: { select: { fullName: true } } } },
+} satisfies Prisma.CourseSelect;
+
+export type CourseWithRelations = Prisma.CourseGetPayload<{ select: typeof courseDetailSelect }>;
 
 export type EnrollmentWithRelations = Prisma.EnrollmentGetPayload<{
   include: {

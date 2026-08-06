@@ -26,6 +26,8 @@ const {
   mockProfileCreate,
   mockEnrollUserForRoleTargets,
   mockEnrollInviteCourses,
+  mockGetCachedRevalidation,
+  mockSetCachedRevalidation,
 } = vi.hoisted(() => {
   const mockCookieStore = {
     has: vi.fn().mockReturnValue(false),
@@ -47,6 +49,13 @@ const {
     mockProfileCreate: vi.fn(),
     mockEnrollUserForRoleTargets: vi.fn(),
     mockEnrollInviteCourses: vi.fn(),
+    // 5.1: the revalidation cache is mocked at the interface level here (see
+    // create-auth-instance.cache-integration.test.ts for the REAL cache
+    // module wired end-to-end). Defaults to an always-miss cache below so
+    // every pre-existing test in this file keeps exercising the DB path
+    // exactly as before.
+    mockGetCachedRevalidation: vi.fn(),
+    mockSetCachedRevalidation: vi.fn(),
   };
 });
 
@@ -75,6 +84,10 @@ vi.mock('@/lib/enrollment/role-targets', () => ({
 }));
 vi.mock('@/lib/enrollment/invite-courses', () => ({
   enrollInviteCourses: mockEnrollInviteCourses,
+}));
+vi.mock('@/lib/auth/session-revalidation-cache', () => ({
+  getCachedRevalidation: mockGetCachedRevalidation,
+  setCachedRevalidation: mockSetCachedRevalidation,
 }));
 
 import { adminConfig } from '@/auth';
@@ -125,6 +138,8 @@ beforeEach(() => {
   mockProfileCreate.mockResolvedValue({});
   mockEnrollUserForRoleTargets.mockResolvedValue(undefined);
   mockEnrollInviteCourses.mockResolvedValue(undefined);
+  mockGetCachedRevalidation.mockResolvedValue(null);
+  mockSetCachedRevalidation.mockResolvedValue(undefined);
 });
 
 const freshUserBase = {
@@ -525,5 +540,138 @@ describe('OAuth signIn callback — pending-invite auto-enroll hooks (fix/worker
     expect(result).toBe(true);
     expect(mockEnrollUserForRoleTargets).not.toHaveBeenCalled();
     expect(mockEnrollInviteCourses).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Tier 3 5.1 — session revalidation cache, exercised at the interface level
+ * (getCachedRevalidation/setCachedRevalidation mocked). The REAL cache module
+ * wired end-to-end (real Redis-shaped fake, real TTL parsing) is covered
+ * separately in create-auth-instance.cache-integration.test.ts; this file
+ * pins the exact CONTRACT create-auth-instance.ts calls that module with.
+ */
+describe('5.1 cache — claim 7: the object written to the cache on a fresh DB read contains exactly the documented fields', () => {
+  it('never forwards mfaVerifiedAt (selected from the DB but deliberately excluded from the cached snapshot) or any other DB field beyond the 8 documented ones', async () => {
+    mockFindUnique.mockResolvedValue({
+      ...freshUserBase,
+      role: 'owner',
+      mfaVerifiedAt: new Date('2026-01-01'),
+    });
+    const token = { id: 'user-1', role: 'owner', sessionVersion: 1 };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (adminConfig.callbacks!.jwt as any)({ token });
+
+    expect(mockSetCachedRevalidation).toHaveBeenCalledExactlyOnceWith(
+      'user-1',
+      expect.objectContaining({
+        id: 'user-1',
+        role: 'owner',
+        organizationId: 'org-1',
+        mfaEnabled: false,
+        passwordResetRequired: false,
+        sessionVersion: 1,
+        authProvider: 'credentials',
+        profileFullName: 'Person',
+      }),
+    );
+    const [, snapshotArg] = mockSetCachedRevalidation.mock.calls[0];
+    expect(Object.keys(snapshotArg).sort()).toEqual(
+      [
+        'id',
+        'role',
+        'organizationId',
+        'mfaEnabled',
+        'passwordResetRequired',
+        'sessionVersion',
+        'authProvider',
+        'profileFullName',
+      ].sort(),
+    );
+  });
+
+  it('never calls setCachedRevalidation for a deleted (null) user — negative results are not cached', async () => {
+    mockFindUnique.mockResolvedValue(null);
+    const token = { id: 'user-1', role: 'owner', sessionVersion: 1 };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await (adminConfig.callbacks!.jwt as any)({ token });
+
+    expect(result).toBeNull();
+    expect(mockSetCachedRevalidation).not.toHaveBeenCalled();
+  });
+});
+
+describe('5.1 cache — claim 5: a cache hit is fed through every revocation guard identically to a DB read', () => {
+  it('a cache hit skips prisma.user.findUnique and still enforces the sessionVersion kill-switch', async () => {
+    mockGetCachedRevalidation.mockResolvedValue({
+      id: 'user-1',
+      role: 'owner',
+      organizationId: 'org-1',
+      mfaEnabled: false,
+      passwordResetRequired: false,
+      sessionVersion: 2, // fresher than the token's stamped version
+      authProvider: 'credentials',
+      profileFullName: 'Owner Person',
+    });
+    const token = { id: 'user-1', role: 'owner', sessionVersion: 1 };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await (adminConfig.callbacks!.jwt as any)({ token });
+
+    expect(mockFindUnique).not.toHaveBeenCalled();
+    expect(result).toBeNull(); // sessionVersion mismatch still invalidates from a cache hit
+  });
+
+  it('a cache hit still enforces the org-less non-owner-admin defense-in-depth guard', async () => {
+    mockGetCachedRevalidation.mockResolvedValue({
+      id: 'user-1',
+      role: 'hr',
+      organizationId: null,
+      mfaEnabled: false,
+      passwordResetRequired: false,
+      sessionVersion: 1,
+      authProvider: 'credentials',
+      profileFullName: 'HR Person',
+    });
+    const token = { id: 'user-1', role: 'hr', sessionVersion: 1 };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await (adminConfig.callbacks!.jwt as any)({ token });
+
+    expect(mockFindUnique).not.toHaveBeenCalled();
+    expect(result).toBeNull();
+  });
+
+  it('a cache hit never re-writes the cache (only a fresh DB read populates it)', async () => {
+    mockGetCachedRevalidation.mockResolvedValue({
+      id: 'user-1',
+      role: 'owner',
+      organizationId: 'org-1',
+      mfaEnabled: false,
+      passwordResetRequired: false,
+      sessionVersion: 1,
+      authProvider: 'credentials',
+      profileFullName: 'Owner Person',
+    });
+    const token = { id: 'user-1', role: 'owner', sessionVersion: 1 };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (adminConfig.callbacks!.jwt as any)({ token });
+
+    expect(mockSetCachedRevalidation).not.toHaveBeenCalled();
+  });
+});
+
+describe('5.1 cache — claim 6: the retired-admin guard runs strictly before the cache lookup', () => {
+  it('never calls getCachedRevalidation for a token carrying the retired admin role', async () => {
+    const token = { id: 'user-1', role: 'admin', sessionVersion: 1 };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await (adminConfig.callbacks!.jwt as any)({ token });
+
+    expect(result).toBeNull();
+    expect(mockGetCachedRevalidation).not.toHaveBeenCalled();
+    expect(mockFindUnique).not.toHaveBeenCalled();
   });
 });

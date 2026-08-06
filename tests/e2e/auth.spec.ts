@@ -1,6 +1,30 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Authentication Flows', () => {
+  test('Tier 3 5.2: /login renders the hero image immediately (static fallback or hydrated framer-motion slider)', async ({
+    page,
+  }) => {
+    // AuthHeroSlider (src/app/(auth)/components/AuthHeroSlider.tsx) now lazy-loads
+    // its framer-motion implementation via next/dynamic({ ssr: false }), painting
+    // a static first-slide fallback in the meantime so the LCP image on /login
+    // isn't blocked behind the framer-motion chunk. Whether the page is caught in
+    // the fallback or already hydrated, slide 0's priority image and copy must be
+    // visible — this guards against a regression to blank/spinner on first paint.
+    await page.goto('/login');
+
+    const heroImage = page.getByAltText(
+      'Audit-ready training, built from your policies',
+    );
+    await expect(heroImage).toBeVisible();
+    // Next/Image rewrites the src through its optimizer (e.g.
+    // /_next/image?url=%2Fimages%2Fslider_1.png&w=...&q=100) — "." isn't a
+    // URI-reserved character, so the original filename survives verbatim.
+    await expect(heroImage).toHaveAttribute('src', /slider_1\.png/);
+    await expect(
+      page.getByText('Audit-ready training, built from your policies'),
+    ).toBeVisible();
+  });
+
   test('ENG-001: Microsoft OAuth Sign Up callbackUrl points to /dashboard (signup is owner-only, no role selection)', async ({
     page,
   }) => {

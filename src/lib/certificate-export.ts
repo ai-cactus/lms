@@ -6,8 +6,6 @@
  * `CertificateDocument` component. This keeps the on-screen design and the
  * exported file perfectly in sync (and matching Figma) with no second renderer.
  */
-import { toPng } from 'html-to-image';
-import { jsPDF } from 'jspdf';
 import QRCode from 'qrcode';
 
 /** Generate a PNG data URL QR code for the certificate verification value. */
@@ -33,6 +31,11 @@ export async function exportCertificatePdf(node: HTMLElement, filename: string):
   if (typeof document !== 'undefined' && document.fonts?.ready) {
     await document.fonts.ready;
   }
+
+  // jspdf + html-to-image are only needed when a certificate is actually
+  // exported, so they are loaded on demand at click time rather than shipped in
+  // the initial bundle of the training/certificate UI.
+  const [{ toPng }, { jsPDF }] = await Promise.all([import('html-to-image'), import('jspdf')]);
 
   const width = node.offsetWidth;
   const height = node.offsetHeight;

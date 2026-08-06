@@ -5,7 +5,7 @@ import { verifySystemAdminCookie } from '@/lib/system-auth';
 import { getOrCreateSystemUser } from '@/lib/video/system-user';
 import { objectExists } from '@/lib/storage';
 import type { ParsedQuiz } from '@/lib/video/types';
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, revalidateTag } from 'next/cache';
 import { logger } from '@/lib/logger';
 
 export interface CreateVideoCourseInput {
@@ -178,6 +178,8 @@ export async function createVideoCourse(
 
   logger.info({ msg: '[video-course] created', courseId, transcodeJobs: videoTargets.length });
   revalidatePath('/system/video-courses');
+  // A new published global course changes the org-facing catalog for every org.
+  revalidateTag('video-catalog', 'max');
   return { courseId };
 }
 
@@ -369,6 +371,9 @@ export async function updateVideoCourse(
   logger.info({ msg: '[video-course] updated', courseId, transcodeJobs: videoTargets.length });
   revalidatePath('/system/video-courses');
   revalidatePath(`/system/video-courses/${courseId}/edit`);
+  // Title/description/category/duration/question-count edits are reflected in the
+  // org-facing catalog.
+  revalidateTag('video-catalog', 'max');
 }
 
 export async function listGlobalVideoCourses() {
@@ -403,6 +408,8 @@ export async function setVideoCourseStatus(courseId: string, status: 'inactive' 
   await assertSystemAdmin();
   await prisma.course.update({ where: { id: courseId }, data: { status } });
   revalidatePath('/system/video-courses');
+  // Publishing / deactivating adds or removes the course from the org catalog.
+  revalidateTag('video-catalog', 'max');
 }
 
 export interface VerifyMediaResult {

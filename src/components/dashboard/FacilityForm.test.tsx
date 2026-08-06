@@ -84,6 +84,26 @@ describe('FacilityForm — read-only fields', () => {
     }
   });
 
+  it('renders an unrecognized program-services value as an "Other: {value}" row', () => {
+    render(
+      <FacilityForm
+        initialData={{
+          ...baseFacility,
+          programServices: ['behavioral', 'A Custom Program Service'],
+        }}
+      />,
+    );
+
+    expect(screen.getByLabelText('Behavioral Health')).toBeChecked();
+    expect(screen.getByText('Other: A Custom Program Service')).toBeInTheDocument();
+  });
+
+  it('renders no "Other:" rows when every program service is a known id', () => {
+    render(<FacilityForm initialData={baseFacility} />);
+
+    expect(screen.queryByText(/^Other:/)).not.toBeInTheDocument();
+  });
+
   it('renders no Save Changes / Discard / Upload / Replace Document buttons', () => {
     render(<FacilityForm initialData={baseFacility} />);
 
