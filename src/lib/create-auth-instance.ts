@@ -9,6 +9,10 @@ import { expireSiblingSessionCookies } from '@/lib/auth/session-cookies';
 import { logger, maskEmail } from '@/lib/logger';
 import { isSessionMfaVerified } from '@/lib/session-mfa';
 import {
+  getCachedRevalidation,
+  setCachedRevalidation,
+} from '@/lib/auth/session-revalidation-cache';
+import {
   ADMIN_ROLES,
   WORKER_ROLES,
   ALL_ROLES,
@@ -596,34 +600,97 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
             return null;
           }
 
-          let freshUser;
-          try {
-            freshUser = await prisma.user.findUnique({
-              where: { id: token.id as string },
-              select: {
-                id: true,
-                role: true,
-                organizationId: true,
-                mfaEnabled: true,
-                mfaVerifiedAt: true,
-                passwordResetRequired: true,
-                sessionVersion: true,
-                authProvider: true,
-                profile: { select: { fullName: true } },
-              },
-            });
-          } catch (dbError) {
-            // F-036 (deliberate, do not change): this path is fail-OPEN. A DB
-            // failure (timeout, connection pool exhaustion, etc.) must NOT
-            // destroy sessions — we return the existing token to keep the user
-            // logged in. This trades revocation latency for availability: a DB
-            // blip should never mass-log-out the fleet. Session invalidation
-            // still happens on the next successful decode once the DB recovers.
-            logger.error({
-              msg: '[Auth] JWT callback DB query failed, preserving session',
-              error: String(dbError),
-            });
-            return token;
+          // The minimal, non-sensitive snapshot the revocation checks below
+          // consume. Sourced from either the short-TTL Redis cache or a fresh
+          // DB read — every guard runs identically regardless of the source.
+          type RevalidatedUser = {
+            id: string;
+            role: Role;
+            organizationId: string | null;
+            mfaEnabled: boolean;
+            passwordResetRequired: boolean;
+            sessionVersion: number;
+            authProvider: string | null;
+            profile: { fullName: string | null } | null;
+          };
+
+          let freshUser: RevalidatedUser | null = null;
+
+          // 5.1: skip the per-decode DB re-validation when a recent snapshot is
+          // cached (default 30s TTL, AUTH_REVALIDATE_TTL_SECONDS). This lags
+          // revocation by at most the TTL — a deliberate, bounded trade (see
+          // docs/perf/tier3-implementation-plan.md §6). A Redis miss/error
+          // returns null and falls through to the DB read below, so a cache
+          // outage never fails closed. The retired-`admin` guard above already
+          // ran against the token, so it is unaffected by the cache.
+          const cached = await getCachedRevalidation(token.id as string);
+          if (cached) {
+            freshUser = {
+              id: cached.id,
+              role: cached.role,
+              organizationId: cached.organizationId,
+              mfaEnabled: cached.mfaEnabled,
+              passwordResetRequired: cached.passwordResetRequired,
+              sessionVersion: cached.sessionVersion,
+              authProvider: cached.authProvider,
+              profile: cached.profileFullName ? { fullName: cached.profileFullName } : null,
+            };
+          } else {
+            let dbUser;
+            try {
+              dbUser = await prisma.user.findUnique({
+                where: { id: token.id as string },
+                select: {
+                  id: true,
+                  role: true,
+                  organizationId: true,
+                  mfaEnabled: true,
+                  mfaVerifiedAt: true,
+                  passwordResetRequired: true,
+                  sessionVersion: true,
+                  authProvider: true,
+                  profile: { select: { fullName: true } },
+                },
+              });
+            } catch (dbError) {
+              // F-036 (deliberate, do not change): this path is fail-OPEN. A DB
+              // failure (timeout, connection pool exhaustion, etc.) must NOT
+              // destroy sessions — we return the existing token to keep the user
+              // logged in. This trades revocation latency for availability: a DB
+              // blip should never mass-log-out the fleet. Session invalidation
+              // still happens on the next successful decode once the DB recovers.
+              logger.error({
+                msg: '[Auth] JWT callback DB query failed, preserving session',
+                error: String(dbError),
+              });
+              return token;
+            }
+
+            if (dbUser) {
+              freshUser = {
+                id: dbUser.id,
+                role: dbUser.role as Role,
+                organizationId: dbUser.organizationId,
+                mfaEnabled: dbUser.mfaEnabled,
+                passwordResetRequired: dbUser.passwordResetRequired,
+                sessionVersion: dbUser.sessionVersion,
+                authProvider: dbUser.authProvider,
+                profile: dbUser.profile,
+              };
+              // Cache only a positive snapshot of non-sensitive validity fields.
+              // Negative results (deleted user) are never cached, so a deletion
+              // is caught on the very next decode rather than after the TTL.
+              await setCachedRevalidation(token.id as string, {
+                id: freshUser.id,
+                role: freshUser.role,
+                organizationId: freshUser.organizationId,
+                mfaEnabled: freshUser.mfaEnabled,
+                passwordResetRequired: freshUser.passwordResetRequired,
+                sessionVersion: freshUser.sessionVersion,
+                authProvider: freshUser.authProvider,
+                profileFullName: freshUser.profile?.fullName ?? null,
+              });
+            }
           }
 
           if (!freshUser) return null; // User was deleted — invalidate

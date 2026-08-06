@@ -49,9 +49,8 @@ const BASE_COURSE_INPUT = {
 describe('createFullCourse — assignment delegation to enrollUsers', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockAdminAuth.mockResolvedValue({ user: { id: 'admin-1' } });
+    mockAdminAuth.mockResolvedValue({ user: { id: 'admin-1', organizationId: 'org-1' } });
     mockWorkerAuth.mockResolvedValue(null);
-    mockUserFindUnique.mockResolvedValue({ organizationId: 'org-1' });
     mockCourseCreate.mockResolvedValue({ id: 'course-1' });
     mockEnrollUsers.mockResolvedValue({
       success: [],

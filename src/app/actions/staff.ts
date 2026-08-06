@@ -18,6 +18,7 @@ import { enrollUserForRoleTargets } from '@/lib/enrollment/role-targets';
 import { logger } from '@/lib/logger';
 import { audit, getClientContext } from '@/lib/audit';
 import { headers } from 'next/headers';
+import { invalidateRevalidationCache } from '@/lib/auth/session-revalidation-cache';
 import type { ActivityReportEnrollment } from '@/lib/pdf-reports';
 
 // Caller-facing copy for each role-change denial. `target_not_reachable` and
@@ -41,27 +42,35 @@ export async function getStaffDetails(userId: string) {
   try {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      include: {
-        profile: true,
-        manager: {
-          include: { profile: true },
-        },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        organizationId: true,
+        managerId: true,
+        profile: { select: { fullName: true, avatarUrl: true, jobTitle: true } },
+        manager: { select: { email: true, profile: { select: { fullName: true } } } },
         enrollments: {
-          include: {
+          orderBy: { startedAt: 'desc' },
+          select: {
+            id: true,
+            courseId: true,
+            status: true,
+            progress: true,
+            score: true,
+            startedAt: true,
+            completedAt: true,
+            dueAt: true,
             course: {
-              include: {
+              select: {
+                title: true,
+                thumbnail: true,
+                type: true,
                 lessons: {
-                  include: { quiz: true },
+                  select: { quiz: { select: { passingScore: true, allowedAttempts: true } } },
                 },
               },
             },
-            quizAttempts: {
-              orderBy: { completedAt: 'desc' },
-              take: 1,
-            },
-          },
-          orderBy: {
-            startedAt: 'desc',
           },
         },
       },
@@ -216,6 +225,10 @@ export async function updateStaffDetails(
     });
 
     if (roleChanged) {
+      // The role change bumped sessionVersion; evict the cached revalidation
+      // snapshot so the target's next decode reads the new version immediately.
+      await invalidateRevalidationCache(userId);
+
       await audit({
         action: 'staff.role.change',
         actorId: session.user.id,
@@ -625,6 +638,10 @@ export async function removeStaff(userId: string) {
         data: { status: 'expired' },
       }),
     ]);
+
+    // The unlink bumped sessionVersion; evict the cached revalidation snapshot
+    // so the removed user's next decode misses the cache and is invalidated.
+    await invalidateRevalidationCache(userId);
 
     // F-001: record the sensitive mutation on the authorized, successful path.
     await audit({
