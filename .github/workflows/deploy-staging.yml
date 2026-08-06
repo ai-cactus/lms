@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - staging
+  # Manual trigger — run the staging deploy on demand, independent of the push
+  # event (e.g. `gh workflow run deploy-staging.yml --ref staging`). Requires this
+  # trigger to be present on the default branch to be dispatchable.
+  workflow_dispatch:
 
 # Cancel any in-progress deployment for the same branch to avoid race conditions
 concurrency:
