@@ -166,7 +166,19 @@ export async function getCourseById(courseId: string): Promise<CourseWithRelatio
     throw new Error('Course not found');
   }
 
-  return course;
+  // Only the creator or an org admin may receive the full enrolled-staff roster.
+  // A non-privileged enrolled worker must never get other staff's enrollment PII
+  // (email/role/name/certificate) back from this action — the worker page discards
+  // it client-side, but a direct server-action call would otherwise leak it (IDOR).
+  const isPrivileged = isCreator || isAdminRole(session.user.role);
+  if (isPrivileged) {
+    return course;
+  }
+
+  return {
+    ...course,
+    enrollments: course.enrollments.filter((e) => e.userId === session.user.id),
+  };
 }
 
 /**
