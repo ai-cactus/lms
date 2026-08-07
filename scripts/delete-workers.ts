@@ -4,51 +4,58 @@ import { WORKER_ROLES } from '@/lib/rbac/role-utils';
 async function main() {
   const orgs = await prisma.organization.findMany({
     include: {
-      users: {
+      organizationUsers: {
         where: { role: { in: [...WORKER_ROLES] } },
-        select: { id: true, email: true, role: true },
+        select: { id: true, userId: true, role: true, user: { select: { email: true } } },
       },
     },
   });
 
   for (const org of orgs) {
     console.log(`\nOrg: ${org.name} (${org.id})`);
-    console.log(`Workers: ${org.users.length}`);
-    org.users.forEach((m) => console.log(`  - ${m.email} (${m.role})`));
+    console.log(`Workers: ${org.organizationUsers.length}`);
+    org.organizationUsers.forEach((m) => console.log(`  - ${m.user.email} (${m.role})`));
   }
 
-  const allWorkers = orgs.flatMap((o) => o.users);
-  console.log(`\nTotal workers to delete: ${allWorkers.length}`);
+  const allWorkerMemberships = orgs.flatMap((o) => o.organizationUsers);
+  console.log(`\nTotal worker memberships to delete: ${allWorkerMemberships.length}`);
 
-  if (allWorkers.length === 0) {
+  if (allWorkerMemberships.length === 0) {
     console.log('No workers found.');
     return;
   }
 
-  const workerIds = allWorkers.map((w) => w.id);
+  // Distinct identities behind those memberships. Deleting the User cascades
+  // EVERY membership it holds, across all orgs — not just the worker-role one
+  // found here. That matches this script's original single-org-per-user
+  // assumption, but for a genuinely multi-org user it would also remove their
+  // other, non-worker memberships.
+  const workerUserIds = [...new Set(allWorkerMemberships.map((m) => m.userId))];
 
-  // Delete related data first (enrollments, quiz attempts, profiles)
   console.log('\nDeleting quiz attempts...');
   const deletedAttempts = await prisma.quizAttempt.deleteMany({
-    where: { enrollment: { userId: { in: workerIds } } },
+    where: { enrollment: { organizationUser: { userId: { in: workerUserIds } } } },
   });
   console.log(`  Deleted ${deletedAttempts.count} quiz attempts`);
 
   console.log('Deleting enrollments...');
   const deletedEnrollments = await prisma.enrollment.deleteMany({
-    where: { userId: { in: workerIds } },
+    where: { organizationUser: { userId: { in: workerUserIds } } },
   });
   console.log(`  Deleted ${deletedEnrollments.count} enrollments`);
 
-  console.log('Deleting profiles...');
-  const deletedProfiles = await prisma.profile.deleteMany({
-    where: { user: { id: { in: workerIds } } },
+  // Course.creator is onDelete: Restrict, so a membership that authored a
+  // course (not expected for a worker role, but not enforced at the DB level
+  // either) would otherwise abort the user deletion below.
+  console.log('Deleting authored courses...');
+  const deletedCourses = await prisma.course.deleteMany({
+    where: { creator: { userId: { in: workerUserIds } } },
   });
-  console.log(`  Deleted ${deletedProfiles.count} profiles`);
+  console.log(`  Deleted ${deletedCourses.count} courses`);
 
   console.log('Deleting workers...');
   const deletedUsers = await prisma.user.deleteMany({
-    where: { id: { in: workerIds } },
+    where: { id: { in: workerUserIds } },
   });
   console.log(`  Deleted ${deletedUsers.count} workers`);
 

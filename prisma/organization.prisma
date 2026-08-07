@@ -40,7 +40,7 @@ model Organization {
   // How often batched (Tier 2) notifications are emailed. Per-type opt-outs
   // stay per-user on NotificationPreference; this is the org-wide cadence.
   notificationDigestFrequency DigestFrequency     @default(daily) @map("notification_digest_frequency")
-  users                       User[]
+  organizationUsers           OrganizationUser[]
   facilities                  Facility[]
   createdAt                   DateTime            @default(now()) @map("created_at")
   updatedAt                   DateTime            @updatedAt @map("updated_at")
@@ -55,30 +55,98 @@ model Organization {
 }
 
 model Facility {
-  id                     String       @id @default(uuid())
-  organizationId         String       @map("organization_id")
+  id                     String                     @id @default(uuid())
+  organizationId         String                     @map("organization_id")
   name                   String
   type                   String?
   address                String?
   city                   String?
   state                  String?
   country                String?
-  zipCode                String?      @map("zip_code")
+  zipCode                String?                    @map("zip_code")
   phone                  String?
-  licenseNumber          String?      @map("license_number")
-  staffCount             String?      @map("staff_count")
-  programServices        String[]     @default([]) @map("program_services")
-  complianceDocumentUrl  String?      @map("compliance_document_url")
-  complianceDocumentName String?      @map("compliance_document_name")
-  timezone               String?      @map("timezone")
-  createdAt              DateTime     @default(now()) @map("created_at")
-  updatedAt              DateTime     @updatedAt @map("updated_at")
-  organization           Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  users                  User[]
+  licenseNumber          String?                    @map("license_number")
+  staffCount             String?                    @map("staff_count")
+  programServices        String[]                   @default([]) @map("program_services")
+  complianceDocumentUrl  String?                    @map("compliance_document_url")
+  complianceDocumentName String?                    @map("compliance_document_name")
+  timezone               String?                    @map("timezone")
+  createdAt              DateTime                   @default(now()) @map("created_at")
+  updatedAt              DateTime                   @updatedAt @map("updated_at")
+  organization           Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userFacilities         OrganizationUserFacility[]
   documents              FacilityDocument[]
+  invites                Invite[]
+  enrollments            Enrollment[]
 
   @@index([organizationId])
   @@map("facilities")
+}
+
+/// One row per (user, organization) membership — the seam that lets a single
+/// identity belong to multiple organizations, each with its own role, facility
+/// assignments, and login history. Replaces
+/// User.organizationId/role/roleAssignedAt/managerId/lastLoginAt. All org-scoped
+/// domain artifacts (courses authored, documents uploaded, enrollments,
+/// certificates, notifications) hang off this row, not User.
+model OrganizationUser {
+  id             String    @id @default(uuid())
+  userId         String    @map("user_id")
+  organizationId String    @map("organization_id")
+  role           UserRole
+  jobTitle       String?   @map("job_title")
+  // Org-wide revocation (HR/Owner-initiated). Distinct from per-facility
+  // revocation on OrganizationUserFacility.active.
+  active         Boolean   @default(true)
+  managerId      String?   @map("manager_id")
+  joinedAt       DateTime  @default(now()) @map("joined_at")
+  roleAssignedAt DateTime  @default(now()) @map("role_assigned_at")
+  deactivatedAt  DateTime? @map("deactivated_at")
+  // Last login INTO THIS org context (replaces the single global User.lastLoginAt).
+  lastLoginAt    DateTime? @map("last_login_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  user         User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  manager      OrganizationUser?          @relation("OrgUserManager", fields: [managerId], references: [id], onDelete: SetNull)
+  reports      OrganizationUser[]         @relation("OrgUserManager")
+  facilities   OrganizationUserFacility[]
+
+  createdCourses    Course[]                 @relation("CourseCreator")
+  approvedCourses   Course[]                 @relation("CourseApprover")
+  documents         Document[]
+  enrollments       Enrollment[]
+  certificates      Certificate[]
+  notifications     Notification[]
+  notificationPrefs NotificationPreference[]
+
+  @@unique([userId, organizationId])
+  @@index([organizationId])
+  @@index([organizationId, role])
+  @@index([organizationId, active])
+  @@index([managerId])
+  @@map("organization_users")
+}
+
+/// A membership's facility assignments. Supervisors accumulate multiple active
+/// rows (permitted facilities); workers typically have one. `active = false`
+/// revokes access to that single facility without touching the parent
+/// OrganizationUser or its other facility rows.
+model OrganizationUserFacility {
+  id                 String    @id @default(uuid())
+  organizationUserId String    @map("organization_user_id")
+  facilityId         String    @map("facility_id")
+  active             Boolean   @default(true)
+  joinedAt           DateTime  @default(now()) @map("joined_at")
+  deactivatedAt      DateTime? @map("deactivated_at")
+
+  organizationUser OrganizationUser @relation(fields: [organizationUserId], references: [id], onDelete: Cascade)
+  facility         Facility         @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationUserId, facilityId])
+  @@index([facilityId])
+  @@map("organization_user_facilities")
 }
 
 model FacilityDocument {
@@ -97,23 +165,23 @@ model FacilityDocument {
 }
 
 model Subscription {
-  id                   String                   @id @default(uuid())
-  organizationId       String                   @unique @map("organization_id")
-  organization         Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  stripeSubscriptionId String                   @unique @map("stripe_subscription_id")
-  stripePriceId        String                   @map("stripe_price_id")
-  plan                 SubscriptionPlan
-  billingCycle         SubscriptionBillingCycle @map("billing_cycle")
-  status               SubscriptionStatus
-  currentPeriodStart   DateTime                 @map("current_period_start")
-  currentPeriodEnd     DateTime                 @map("current_period_end")
-  cancelAtPeriodEnd    Boolean                  @default(false) @map("cancel_at_period_end")
+  id                    String                    @id @default(uuid())
+  organizationId        String                    @unique @map("organization_id")
+  organization          Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  stripeSubscriptionId  String                    @unique @map("stripe_subscription_id")
+  stripePriceId         String                    @map("stripe_price_id")
+  plan                  SubscriptionPlan
+  billingCycle          SubscriptionBillingCycle  @map("billing_cycle")
+  status                SubscriptionStatus
+  currentPeriodStart    DateTime                  @map("current_period_start")
+  currentPeriodEnd      DateTime                  @map("current_period_end")
+  cancelAtPeriodEnd     Boolean                   @default(false) @map("cancel_at_period_end")
   // Set while billing is paused via Stripe `pause_collection`. Stripe keeps the
   // status as `active` when paused, so this is what gates access while paused.
-  pausedAt             DateTime?                @map("paused_at")
+  pausedAt              DateTime?                 @map("paused_at")
   // When the pause window ends (pausedAt + chosen months, max 3). Once reached,
   // the admin is prompted to either continue (resume) or cancel the plan.
-  pauseEndsAt          DateTime?                @map("pause_ends_at")
+  pauseEndsAt           DateTime?                 @map("pause_ends_at")
   // Pending future plan change that takes effect at currentPeriodEnd (null = no
   // pending change). plan/billingCycle/stripePriceId keep representing what is
   // LIVE NOW; these scheduled* columns represent the queued replacement backed
@@ -126,15 +194,15 @@ model Subscription {
   // Active Stripe discount on this subscription (null when none). Populated by
   // the subscription webhook; promo code text falls back to coupon name when
   // applied from the dashboard without a promotion code.
-  discountPromoCode    String?                  @map("discount_promo_code")
-  discountCouponName   String?                  @map("discount_coupon_name")
-  discountPercentOff   Float?                   @map("discount_percent_off")
-  discountAmountOff    Int?                     @map("discount_amount_off") // minor units
-  discountCurrency     String?                  @map("discount_currency")
-  discountDuration     String?                  @map("discount_duration") // once | repeating | forever
-  discountEndsAt       DateTime?                @map("discount_ends_at") // null for once/forever
-  createdAt            DateTime                 @default(now()) @map("created_at")
-  updatedAt            DateTime                 @updatedAt @map("updated_at")
+  discountPromoCode     String?                   @map("discount_promo_code")
+  discountCouponName    String?                   @map("discount_coupon_name")
+  discountPercentOff    Float?                    @map("discount_percent_off")
+  discountAmountOff     Int?                      @map("discount_amount_off") // minor units
+  discountCurrency      String?                   @map("discount_currency")
+  discountDuration      String?                   @map("discount_duration") // once | repeating | forever
+  discountEndsAt        DateTime?                 @map("discount_ends_at") // null for once/forever
+  createdAt             DateTime                  @default(now()) @map("created_at")
+  updatedAt             DateTime                  @updatedAt @map("updated_at")
 
   @@map("subscriptions")
 }

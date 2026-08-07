@@ -27,19 +27,25 @@ enum ReminderNudgeKind {
   ADMIN_REASSIGN
 }
 
-/// F-053: at most one *active* enrollment may exist per (user_id, course_id).
+/// F-053: at most one *active* enrollment may exist per
+/// (organization_user_id, course_id).
 /// "Active" = the in-flight statuses enrolled | assigned | in_progress |
 /// lessons_complete. Terminal/historical statuses (completed, attested, locked,
 /// failed, retry_requested) are excluded so retakes — which create a new
 /// enrollment while the prior one stays completed/failed — remain valid.
 /// This is enforced by a PARTIAL unique index
-/// (`enrollments_user_id_course_id_active_key ... WHERE status IN (...)`) added in
-/// migration `20260706120001_enrollment_category_uniques`. Prisma cannot express a
+/// (`enrollments_org_user_id_course_id_active_key ... WHERE status IN (...)`),
+/// rekeyed onto organization_user_id in the multi-org migration. Prisma cannot express a
 /// partial/filtered unique, so it exists only at the DB level (no `@@unique` here).
 model Enrollment {
   id                   String            @id @default(uuid())
-  userId               String            @map("user_id")
+  organizationUserId   String            @map("organization_user_id")
   courseId             String            @map("course_id")
+  /// Facility the learner belonged to when the enrollment was created. Denormalised
+  /// so facility-scoped dashboards can aggregate without walking the membership's
+  /// (mutable) facility assignments — a later transfer must not rewrite history.
+  /// Null when the member has no active facility row.
+  facilityId           String?           @map("facility_id")
   status               EnrollmentStatus  @default(enrolled)
   progress             Int               @default(0)
   videoPositionSeconds Int?              @map("video_position_seconds")
@@ -59,14 +65,17 @@ model Enrollment {
   dueAt                DateTime?         @map("due_at")
   assignment           CourseAssignment? @relation(fields: [assignmentId], references: [id], onDelete: SetNull)
   course               Course            @relation(fields: [courseId], references: [id])
-  user                 User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organizationUser     OrganizationUser  @relation(fields: [organizationUserId], references: [id], onDelete: Cascade)
+  facility             Facility?         @relation(fields: [facilityId], references: [id], onDelete: SetNull)
   quizAttempts         QuizAttempt[]
   certificate          Certificate?
   reminderLogs         ReminderLog[]
   reminderNudges       ReminderNudge[]
 
-  @@index([userId, courseId])
+  @@index([organizationUserId, courseId])
   @@index([courseId])
+  @@index([facilityId])
+  @@index([facilityId, status])
   @@index([completedAt])
   @@index([assignmentId])
   @@index([status, dueAt])
@@ -75,19 +84,19 @@ model Enrollment {
 }
 
 model Certificate {
-  id             String     @id @default(uuid())
-  enrollmentId   String     @unique @map("enrollment_id")
-  userId         String     @map("user_id")
-  courseId       String     @map("course_id")
-  issuedAt       DateTime   @default(now()) @map("issued_at")
-  score          Int
-  pdfStoragePath String?    @map("pdf_storage_path")
-  pdfGeneratedAt DateTime?  @map("pdf_generated_at")
-  user           User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  enrollment     Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
-  course         Course     @relation(fields: [courseId], references: [id], onDelete: Restrict)
+  id                 String           @id @default(uuid())
+  enrollmentId       String           @unique @map("enrollment_id")
+  organizationUserId String           @map("organization_user_id")
+  courseId           String           @map("course_id")
+  issuedAt           DateTime         @default(now()) @map("issued_at")
+  score              Int
+  pdfStoragePath     String?          @map("pdf_storage_path")
+  pdfGeneratedAt     DateTime?        @map("pdf_generated_at")
+  organizationUser   OrganizationUser @relation(fields: [organizationUserId], references: [id], onDelete: Cascade)
+  enrollment         Enrollment       @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  course             Course           @relation(fields: [courseId], references: [id], onDelete: Restrict)
 
-  @@index([userId])
+  @@index([organizationUserId])
   @@index([courseId])
   @@map("certificates")
 }

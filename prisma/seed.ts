@@ -22,6 +22,7 @@ import 'dotenv/config';
 import bcrypt from 'bcryptjs';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../generated/prisma/client';
+import type { UserRole } from '../generated/prisma/enums';
 import { BCRYPT_COST } from '../src/lib/bcrypt-config';
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
@@ -31,6 +32,7 @@ const prisma = new PrismaClient({ adapter });
 // Hard-coded UUIDs keep the seed idempotent: upserting by these keys updates the
 // same rows on every run instead of accumulating duplicates.
 const ORG_SLUG = 'e2e-test-org';
+const FACILITY_ID = '11111111-1111-4111-8111-111111111111';
 const ADMIN_ID = '22222222-2222-4222-8222-222222222221';
 const WORKER_ID = '22222222-2222-4222-8222-222222222222';
 const SARAH_ID = '22222222-2222-4222-8222-222222222223';
@@ -86,6 +88,13 @@ const ENROLLMENT_LOCKOUT_ID = '88888888-8888-4888-8888-888888888886';
 const RETAKE_WORKER_ID = '22222222-2222-4222-8222-222222222230';
 const ENROLLMENT_RETAKE_ID = '88888888-8888-4888-8888-888888888887';
 
+// A second organization + a user with an ACTIVE membership in BOTH orgs, for
+// the org-picker e2e flow (2+ active memberships and no remembered org lands
+// on /select-organization instead of auto-selecting).
+const SECOND_ORG_SLUG = 'e2e-second-org';
+const SECOND_FACILITY_ID = '11111111-1111-4111-8111-111111111112';
+const MULTI_ORG_USER_ID = '22222222-2222-4222-8222-222222222231';
+
 // The correct answer is stored as the option TEXT (the worker learn/grading flow
 // compares by string equality, not by letter or index).
 const QUIZ_OPTIONS = [
@@ -104,6 +113,68 @@ async function hash(password: string): Promise<string> {
   return bcrypt.hash(password, BCRYPT_COST);
 }
 
+interface SeedUserInput {
+  id: string;
+  email: string;
+  password: string;
+  firstName: string;
+  lastName: string;
+  role: UserRole;
+  /** Reset the membership's manager back to unset on every run (a test fixture some spec assigns live). */
+  resetManager?: boolean;
+}
+
+/**
+ * Upserts the global `User` identity, its `OrganizationUser` membership in the
+ * fixed e2e org, and that membership's `OrganizationUserFacility` row — the
+ * three rows every seeded staff member needs under the multi-org model.
+ */
+async function upsertOrgUser(input: SeedUserInput, organizationId: string, facilityId: string) {
+  const fullName = `${input.firstName} ${input.lastName}`;
+  const user = await prisma.user.upsert({
+    where: { email: input.email },
+    update: {
+      password: input.password,
+      emailVerified: true,
+      mfaEnabled: false,
+      passwordResetRequired: false,
+      firstName: input.firstName,
+      lastName: input.lastName,
+      fullName,
+    },
+    create: {
+      id: input.id,
+      email: input.email,
+      password: input.password,
+      emailVerified: true,
+      mfaEnabled: false,
+      authProvider: 'credentials',
+      firstName: input.firstName,
+      lastName: input.lastName,
+      fullName,
+    },
+  });
+
+  const membership = await prisma.organizationUser.upsert({
+    where: { userId_organizationId: { userId: user.id, organizationId } },
+    update: {
+      role: input.role,
+      active: true,
+      deactivatedAt: null,
+      ...(input.resetManager ? { managerId: null } : {}),
+    },
+    create: { userId: user.id, organizationId, role: input.role },
+  });
+
+  await prisma.organizationUserFacility.upsert({
+    where: { organizationUserId_facilityId: { organizationUserId: membership.id, facilityId } },
+    update: { active: true, deactivatedAt: null },
+    create: { organizationUserId: membership.id, facilityId },
+  });
+
+  return { user, membership };
+}
+
 async function main(): Promise<void> {
   if (!process.env.DATABASE_URL) {
     throw new Error('[seed] DATABASE_URL is not set — refusing to seed.');
@@ -120,6 +191,18 @@ async function main(): Promise<void> {
     },
   });
   log(`organization ready (${org.slug})`);
+
+  // 1a. Facility — every membership needs at least one facility assignment.
+  const facility = await prisma.facility.upsert({
+    where: { id: FACILITY_ID },
+    update: { organizationId: org.id },
+    create: {
+      id: FACILITY_ID,
+      organizationId: org.id,
+      name: 'E2E Test Facility',
+    },
+  });
+  log(`facility ready (${facility.name})`);
 
   // 1b. Active subscription — several admin flows (e.g. course creation) are
   // gated behind `hasActiveBilling()`, which requires a `Subscription` row
@@ -145,358 +228,161 @@ async function main(): Promise<void> {
   });
   log('subscription ready (active)');
 
-  // 2. Users + profiles. All users belong to the org (a worker with no org is
-  //    bounced to /onboarding-worker), have verified emails, and MFA disabled.
+  // 2. Users + memberships. All users belong to the org (a worker with no org
+  //    is bounced to /onboarding-worker), have verified emails, and MFA disabled.
   const [adminPassword, workerPassword, sarahPassword] = await Promise.all([
     hash('Admin123!'),
     hash('TestPassword123!'),
     hash('TestPassword123!'),
   ]);
 
-  const admin = await prisma.user.upsert({
-    where: { email: 'admin@test.com' },
-    update: {
-      password: adminPassword,
-      role: 'owner',
-      emailVerified: true,
-      mfaEnabled: false,
-      organizationId: org.id,
-      passwordResetRequired: false,
-    },
-    create: {
+  const { membership: admin } = await upsertOrgUser(
+    {
       id: ADMIN_ID,
       email: 'admin@test.com',
       password: adminPassword,
-      role: 'owner',
-      emailVerified: true,
-      mfaEnabled: false,
-      organizationId: org.id,
-      authProvider: 'credentials',
-    },
-  });
-  await prisma.profile.upsert({
-    where: { id: admin.id },
-    update: { fullName: 'Jane Doe', firstName: 'Jane', lastName: 'Doe' },
-    create: {
-      id: admin.id,
-      email: 'admin@test.com',
-      fullName: 'Jane Doe',
       firstName: 'Jane',
       lastName: 'Doe',
+      role: 'owner',
     },
-  });
+    org.id,
+    facility.id,
+  );
 
-  const worker = await prisma.user.upsert({
-    where: { email: 'worker@test.com' },
-    update: {
-      password: workerPassword,
-      role: 'front_desk_admin',
-      emailVerified: true,
-      mfaEnabled: false,
-      organizationId: org.id,
-      // Must start unset — REM-002 sets the manager during the test run.
-      managerId: null,
-      passwordResetRequired: false,
-    },
-    create: {
+  const { membership: worker } = await upsertOrgUser(
+    {
       id: WORKER_ID,
       email: 'worker@test.com',
       password: workerPassword,
-      role: 'front_desk_admin',
-      emailVerified: true,
-      mfaEnabled: false,
-      organizationId: org.id,
-      authProvider: 'credentials',
-    },
-  });
-  await prisma.profile.upsert({
-    where: { id: worker.id },
-    update: { fullName: 'Test Worker', firstName: 'Test', lastName: 'Worker' },
-    create: {
-      id: worker.id,
-      email: 'worker@test.com',
-      fullName: 'Test Worker',
       firstName: 'Test',
       lastName: 'Worker',
-    },
-  });
-
-  const sarah = await prisma.user.upsert({
-    where: { email: 'sarah.johnson@company.com' },
-    update: {
-      password: sarahPassword,
       role: 'front_desk_admin',
-      emailVerified: true,
-      mfaEnabled: false,
-      organizationId: org.id,
-      passwordResetRequired: false,
+      // Must start unset — REM-002 sets the manager during the test run.
+      resetManager: true,
     },
-    create: {
+    org.id,
+    facility.id,
+  );
+
+  const { membership: sarah } = await upsertOrgUser(
+    {
       id: SARAH_ID,
       email: 'sarah.johnson@company.com',
       password: sarahPassword,
-      role: 'front_desk_admin',
-      emailVerified: true,
-      mfaEnabled: false,
-      organizationId: org.id,
-      authProvider: 'credentials',
-    },
-  });
-  await prisma.profile.upsert({
-    where: { id: sarah.id },
-    update: { fullName: 'Sarah Johnson', firstName: 'Sarah', lastName: 'Johnson' },
-    create: {
-      id: sarah.id,
-      email: 'sarah.johnson@company.com',
-      fullName: 'Sarah Johnson',
       firstName: 'Sarah',
       lastName: 'Johnson',
-    },
-  });
-  const overdueWorker = await prisma.user.upsert({
-    where: { email: 'olivia.overdue@test.com' },
-    update: {
-      password: workerPassword,
       role: 'front_desk_admin',
-      emailVerified: true,
-      mfaEnabled: false,
-      organizationId: org.id,
-      passwordResetRequired: false,
     },
-    create: {
+    org.id,
+    facility.id,
+  );
+
+  const { membership: overdueWorker } = await upsertOrgUser(
+    {
       id: OVERDUE_WORKER_ID,
       email: 'olivia.overdue@test.com',
       password: workerPassword,
-      role: 'front_desk_admin',
-      emailVerified: true,
-      mfaEnabled: false,
-      organizationId: org.id,
-      authProvider: 'credentials',
-    },
-  });
-  await prisma.profile.upsert({
-    where: { id: overdueWorker.id },
-    update: { fullName: 'Olivia Overdue', firstName: 'Olivia', lastName: 'Overdue' },
-    create: {
-      id: overdueWorker.id,
-      email: 'olivia.overdue@test.com',
-      fullName: 'Olivia Overdue',
       firstName: 'Olivia',
       lastName: 'Overdue',
+      role: 'front_desk_admin',
     },
-  });
-  const admin2 = await prisma.user.upsert({
-    where: { email: 'admin2@test.com' },
-    update: {
-      password: adminPassword,
-      role: 'supervisor',
-      emailVerified: true,
-      mfaEnabled: false,
-      organizationId: org.id,
-      passwordResetRequired: false,
-    },
-    create: {
+    org.id,
+    facility.id,
+  );
+
+  const { membership: admin2 } = await upsertOrgUser(
+    {
       id: ADMIN2_ID,
       email: 'admin2@test.com',
       password: adminPassword,
-      role: 'supervisor',
-      emailVerified: true,
-      mfaEnabled: false,
-      organizationId: org.id,
-      authProvider: 'credentials',
-    },
-  });
-  await prisma.profile.upsert({
-    where: { id: admin2.id },
-    update: { fullName: 'Alex Second', firstName: 'Alex', lastName: 'Second' },
-    create: {
-      id: admin2.id,
-      email: 'admin2@test.com',
-      fullName: 'Alex Second',
       firstName: 'Alex',
       lastName: 'Second',
+      role: 'supervisor',
     },
-  });
+    org.id,
+    facility.id,
+  );
 
-  const nearDeadlineWorker = await prisma.user.upsert({
-    where: { email: 'nadia.nearing@test.com' },
-    update: {
-      password: workerPassword,
-      role: 'front_desk_admin',
-      emailVerified: true,
-      mfaEnabled: false,
-      organizationId: org.id,
-      passwordResetRequired: false,
-    },
-    create: {
+  const { membership: nearDeadlineWorker } = await upsertOrgUser(
+    {
       id: NEAR_DEADLINE_WORKER_ID,
       email: 'nadia.nearing@test.com',
       password: workerPassword,
-      role: 'front_desk_admin',
-      emailVerified: true,
-      mfaEnabled: false,
-      organizationId: org.id,
-      authProvider: 'credentials',
-    },
-  });
-  await prisma.profile.upsert({
-    where: { id: nearDeadlineWorker.id },
-    update: { fullName: 'Nadia Nearing', firstName: 'Nadia', lastName: 'Nearing' },
-    create: {
-      id: nearDeadlineWorker.id,
-      email: 'nadia.nearing@test.com',
-      fullName: 'Nadia Nearing',
       firstName: 'Nadia',
       lastName: 'Nearing',
-    },
-  });
-  const assignableWorker = await prisma.user.upsert({
-    where: { email: 'walt.assignable@test.com' },
-    update: {
-      password: workerPassword,
       role: 'front_desk_admin',
-      emailVerified: true,
-      mfaEnabled: false,
-      organizationId: org.id,
-      passwordResetRequired: false,
     },
-    create: {
+    org.id,
+    facility.id,
+  );
+
+  const { membership: assignableWorker } = await upsertOrgUser(
+    {
       id: ASSIGNABLE_WORKER_ID,
       email: 'walt.assignable@test.com',
       password: workerPassword,
-      role: 'front_desk_admin',
-      emailVerified: true,
-      mfaEnabled: false,
-      organizationId: org.id,
-      authProvider: 'credentials',
-    },
-  });
-  await prisma.profile.upsert({
-    where: { id: assignableWorker.id },
-    update: { fullName: 'Walt Assignable', firstName: 'Walt', lastName: 'Assignable' },
-    create: {
-      id: assignableWorker.id,
-      email: 'walt.assignable@test.com',
-      fullName: 'Walt Assignable',
       firstName: 'Walt',
       lastName: 'Assignable',
+      role: 'front_desk_admin',
     },
-  });
+    org.id,
+    facility.id,
+  );
   // Idempotency: the assign-page e2e spec enrolls this worker live via the UI
   // on every run — remove any enrollment/assignment it created on a prior run
   // so re-seeding always restores the pristine "not yet assigned" starting
   // state the spec assumes.
-  await prisma.enrollment.deleteMany({ where: { userId: assignableWorker.id } });
+  await prisma.enrollment.deleteMany({ where: { organizationUserId: assignableWorker.id } });
 
-  const nurse = await prisma.user.upsert({
-    where: { email: 'nina.nurse@test.com' },
-    update: {
-      password: workerPassword,
-      role: 'nurse',
-      emailVerified: true,
-      mfaEnabled: false,
-      organizationId: org.id,
-      passwordResetRequired: false,
-    },
-    create: {
+  const { membership: nurse } = await upsertOrgUser(
+    {
       id: NURSE_ID,
       email: 'nina.nurse@test.com',
       password: workerPassword,
-      role: 'nurse',
-      emailVerified: true,
-      mfaEnabled: false,
-      organizationId: org.id,
-      authProvider: 'credentials',
-    },
-  });
-  await prisma.profile.upsert({
-    where: { id: nurse.id },
-    update: { fullName: 'Nina Nurse', firstName: 'Nina', lastName: 'Nurse' },
-    create: {
-      id: nurse.id,
-      email: 'nina.nurse@test.com',
-      fullName: 'Nina Nurse',
       firstName: 'Nina',
       lastName: 'Nurse',
+      role: 'nurse',
     },
-  });
+    org.id,
+    facility.id,
+  );
 
-  const lockoutWorker = await prisma.user.upsert({
-    where: { email: 'larry.lockout@test.com' },
-    update: {
-      password: workerPassword,
-      role: 'front_desk_admin',
-      emailVerified: true,
-      mfaEnabled: false,
-      organizationId: org.id,
-      passwordResetRequired: false,
-    },
-    create: {
+  const { membership: lockoutWorker } = await upsertOrgUser(
+    {
       id: LOCKOUT_WORKER_ID,
       email: 'larry.lockout@test.com',
       password: workerPassword,
-      role: 'front_desk_admin',
-      emailVerified: true,
-      mfaEnabled: false,
-      organizationId: org.id,
-      authProvider: 'credentials',
-    },
-  });
-  await prisma.profile.upsert({
-    where: { id: lockoutWorker.id },
-    update: { fullName: 'Larry Lockout', firstName: 'Larry', lastName: 'Lockout' },
-    create: {
-      id: lockoutWorker.id,
-      email: 'larry.lockout@test.com',
-      fullName: 'Larry Lockout',
       firstName: 'Larry',
       lastName: 'Lockout',
-    },
-  });
-
-  const retakeWorker = await prisma.user.upsert({
-    where: { email: 'rita.retake@test.com' },
-    update: {
-      password: workerPassword,
       role: 'front_desk_admin',
-      emailVerified: true,
-      mfaEnabled: false,
-      organizationId: org.id,
-      passwordResetRequired: false,
     },
-    create: {
+    org.id,
+    facility.id,
+  );
+
+  const { membership: retakeWorker } = await upsertOrgUser(
+    {
       id: RETAKE_WORKER_ID,
       email: 'rita.retake@test.com',
       password: workerPassword,
-      role: 'front_desk_admin',
-      emailVerified: true,
-      mfaEnabled: false,
-      organizationId: org.id,
-      authProvider: 'credentials',
-    },
-  });
-  await prisma.profile.upsert({
-    where: { id: retakeWorker.id },
-    update: { fullName: 'Rita Retake', firstName: 'Rita', lastName: 'Retake' },
-    create: {
-      id: retakeWorker.id,
-      email: 'rita.retake@test.com',
-      fullName: 'Rita Retake',
       firstName: 'Rita',
       lastName: 'Retake',
+      role: 'front_desk_admin',
     },
-  });
+    org.id,
+    facility.id,
+  );
   log(
-    'users + profiles ready (admin, admin2, worker, sarah, overdueWorker, nearDeadlineWorker, assignableWorker, nurse, lockoutWorker, retakeWorker)',
+    'users + memberships ready (admin, admin2, worker, sarah, overdueWorker, nearDeadlineWorker, assignableWorker, nurse, lockoutWorker, retakeWorker)',
   );
 
   // 3. Document + version owned by the admin (feeds the ENG-024 wizard picker).
   await prisma.document.upsert({
     where: { id: DOC_ID },
-    update: { userId: admin.id },
+    update: { organizationUserId: admin.id },
     create: {
       id: DOC_ID,
-      userId: admin.id,
+      organizationUserId: admin.id,
       filename: 'e2e-compliance-policy.pdf',
       originalName: 'Compliance Policy.pdf',
       mimeType: 'application/pdf',
@@ -521,10 +407,10 @@ async function main(): Promise<void> {
   const DOC2_VERSION_ID = '33333333-3333-4333-8333-333333333334';
   await prisma.document.upsert({
     where: { id: DOC2_ID },
-    update: { userId: admin2.id },
+    update: { organizationUserId: admin2.id },
     create: {
       id: DOC2_ID,
-      userId: admin2.id,
+      organizationUserId: admin2.id,
       filename: 'e2e-admin2-policy.pdf',
       originalName: 'Admin2 Policy.pdf',
       mimeType: 'application/pdf',
@@ -551,7 +437,7 @@ async function main(): Promise<void> {
   //    course.quiz — so the quiz attaches via courseId, not lessonId).
   await prisma.course.upsert({
     where: { id: COURSE_ID },
-    update: { status: 'published', createdBy: admin.id },
+    update: { status: 'published', createdByOrgUserId: admin.id },
     create: {
       id: COURSE_ID,
       title: 'E2E Compliance Training',
@@ -559,7 +445,7 @@ async function main(): Promise<void> {
       status: 'published',
       type: 'text',
       isGlobal: false,
-      createdBy: admin.id,
+      createdByOrgUserId: admin.id,
       category: 'Compliance',
       overview: 'Learn how to handle sensitive records and report incidents.',
       objectives: ['Recognize a data breach', 'Report incidents correctly'],
@@ -648,7 +534,7 @@ async function main(): Promise<void> {
     where: { retakeOf: { in: [ENROLLMENT_SARAH_ID, ENROLLMENT_WORKER_ID] } },
   });
   await prisma.notification.deleteMany({
-    where: { userId: { in: [worker.id, sarah.id] }, type: 'RETAKE_ASSIGNED' },
+    where: { organizationUserId: { in: [worker.id, sarah.id] }, type: 'RETAKE_ASSIGNED' },
   });
 
   // The Assign-page e2e specs (reminders.spec.ts) exercise enrollUsers/
@@ -675,7 +561,7 @@ async function main(): Promise<void> {
     },
     create: {
       id: ENROLLMENT_SARAH_ID,
-      userId: sarah.id,
+      organizationUserId: sarah.id,
       courseId: COURSE_ID,
       status: 'in_progress',
       progress: 10,
@@ -695,7 +581,7 @@ async function main(): Promise<void> {
     },
     create: {
       id: ENROLLMENT_WORKER_ID,
-      userId: worker.id,
+      organizationUserId: worker.id,
       courseId: COURSE_ID,
       status: 'locked',
       progress: 100,
@@ -723,7 +609,7 @@ async function main(): Promise<void> {
     },
     create: {
       id: ENROLLMENT_OVERDUE_ID,
-      userId: overdueWorker.id,
+      organizationUserId: overdueWorker.id,
       courseId: COURSE_ID,
       status: 'in_progress',
       progress: 0,
@@ -751,7 +637,7 @@ async function main(): Promise<void> {
     },
     create: {
       id: ENROLLMENT_NEAR_DEADLINE_ID,
-      userId: nearDeadlineWorker.id,
+      organizationUserId: nearDeadlineWorker.id,
       courseId: COURSE_ID,
       status: 'in_progress',
       progress: 20,
@@ -777,7 +663,7 @@ async function main(): Promise<void> {
     },
     create: {
       id: ENROLLMENT_NURSE_ID,
-      userId: nurse.id,
+      organizationUserId: nurse.id,
       courseId: COURSE_ID,
       status: 'in_progress',
       progress: 100,
@@ -799,7 +685,7 @@ async function main(): Promise<void> {
     },
     create: {
       id: ENROLLMENT_LOCKOUT_ID,
-      userId: lockoutWorker.id,
+      organizationUserId: lockoutWorker.id,
       courseId: COURSE_ID,
       status: 'in_progress',
       progress: 100,
@@ -822,7 +708,7 @@ async function main(): Promise<void> {
     },
     create: {
       id: ENROLLMENT_RETAKE_ID,
-      userId: retakeWorker.id,
+      organizationUserId: retakeWorker.id,
       courseId: COURSE_ID,
       status: 'in_progress',
       progress: 100,
@@ -833,6 +719,62 @@ async function main(): Promise<void> {
   log(
     'enrollments ready (sarah in_progress, worker locked, overdueWorker 10d overdue, nearDeadlineWorker due in 3d, nurse + lockoutWorker + retakeWorker at progress:100; retakes + quiz attempts reset)',
   );
+
+  // 5. Second organization + a user with an active membership in BOTH orgs —
+  //    exercises the 2+-membership login path (org picker) end-to-end.
+  const secondOrg = await prisma.organization.upsert({
+    where: { slug: SECOND_ORG_SLUG },
+    update: { requireMfa: false },
+    create: {
+      name: 'E2E Second Organization',
+      slug: SECOND_ORG_SLUG,
+      requireMfa: false,
+    },
+  });
+  const secondFacility = await prisma.facility.upsert({
+    where: { id: SECOND_FACILITY_ID },
+    update: { organizationId: secondOrg.id },
+    create: {
+      id: SECOND_FACILITY_ID,
+      organizationId: secondOrg.id,
+      name: 'E2E Second Facility',
+    },
+  });
+  const multiOrgPassword = await hash('MultiOrg123!');
+  // Membership in the primary e2e org — picker card 1.
+  await upsertOrgUser(
+    {
+      id: MULTI_ORG_USER_ID,
+      email: 'multi.org@test.com',
+      password: multiOrgPassword,
+      firstName: 'Morgan',
+      lastName: 'Multi',
+      role: 'hr',
+    },
+    org.id,
+    facility.id,
+  );
+  // Membership in the second org — picker card 2. Same identity, different
+  // (org, role) pair; upsertOrgUser upserts the User by email idempotently.
+  await upsertOrgUser(
+    {
+      id: MULTI_ORG_USER_ID,
+      email: 'multi.org@test.com',
+      password: multiOrgPassword,
+      firstName: 'Morgan',
+      lastName: 'Multi',
+      role: 'owner',
+    },
+    secondOrg.id,
+    secondFacility.id,
+  );
+  // Always start from "no remembered org" so the picker is deterministic —
+  // the org-switch e2e spec sets this live and must not leak into re-seeds.
+  await prisma.user.update({
+    where: { id: MULTI_ORG_USER_ID },
+    data: { lastActiveOrganizationId: null },
+  });
+  log('second organization + multi-membership user ready (multi.org@test.com in 2 orgs)');
 
   log('seed complete');
 }
