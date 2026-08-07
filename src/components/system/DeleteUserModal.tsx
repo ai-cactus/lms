@@ -67,7 +67,6 @@ export default function DeleteUserModal({ preview, onClose, onSuccess }: DeleteU
 
   const impactRows = [
     { label: 'User Account', count: 1 },
-    { label: 'Profile', count: counts.profile },
     { label: 'Courses Created', count: counts.courses },
     { label: 'Lessons (in courses)', count: counts.lessons },
     { label: 'Quizzes (in courses)', count: counts.quizzes },

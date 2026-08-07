@@ -15,38 +15,66 @@ import type { Role } from '@/types/next-auth';
 import { getStatusTrackerSummaryForOrg } from '@/lib/reminders/status-tracker';
 import Link from 'next/link';
 import { BookOpen, Users, BadgeCheck } from 'lucide-react';
+import { listAccessibleFacilities, resolveFacilityScope } from '@/lib/facility/scope';
+import { getGlobalDashboardData } from '@/app/actions/dashboard-facility';
+import GlobalDashboardView from '@/components/dashboard/global/GlobalDashboardView';
+import FacilityScopeSwitcher from '@/components/dashboard/FacilityScopeSwitcher';
 
-export default async function DashboardPage() {
+interface DashboardPageProps {
+  searchParams: Promise<{ facility?: string | string[] }>;
+}
+
+export default async function DashboardPage({ searchParams }: DashboardPageProps) {
   const session = await auth();
   if (!session?.user) redirect('/login');
 
   const role = session.user.role;
   if (isWorkerRole(role)) redirect('/worker');
 
+  const organizationId = session.user.organizationId;
+
+  // Scope comes from the URL, never the session: switching facilities must not
+  // mint a new token, and a stale token must not carry a facility the user has
+  // since lost. `resolveFacilityScope` re-derives the accessible set per request.
+  const { facility: facilityParam } = await searchParams;
+  const requestedFacilityId = typeof facilityParam === 'string' ? facilityParam : null;
+  const scope = await resolveFacilityScope(session, requestedFacilityId);
+
+  // Roster-wide training and compliance data — same gate as the Status Tracker
+  // widget below, so finance (an admin-tier role) keeps its own dashboard.
+  const canSeeRosterMetrics = can(dbRoleToRoleKey(role as Role), 'assignment.read');
+
+  if (canSeeRosterMetrics && scope.mode === 'all') {
+    const globalData = await getGlobalDashboardData();
+    // An organisation with no facilities has nothing to compare across sites;
+    // it keeps the single-scope dashboard until one is created.
+    if (globalData.facilities.length > 0) {
+      return <GlobalDashboardView data={globalData} userName={session.user.name} />;
+    }
+  }
+
+  const scopedFacility = scope.mode === 'single' ? scope.facility : null;
+
   // Fetch billing status alongside dashboard data so the Create Course button
   // can apply the same billing gate as the Courses list page.
-  const [{ courses, stats }, user] = await Promise.all([
-    getDashboardData(),
-    prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: {
-        organizationId: true,
-        organization: {
+  const [{ courses, stats }, organization, accessibleFacilities] = await Promise.all([
+    getDashboardData(scopedFacility?.id),
+    organizationId
+      ? prisma.organization.findUnique({
+          where: { id: organizationId },
           select: { subscription: { select: { status: true, pausedAt: true } } },
-        },
-      },
-    }),
+        })
+      : null,
+    scopedFacility ? listAccessibleFacilities(session) : Promise.resolve([]),
   ]);
 
-  const hasBilling = hasActiveBilling(user?.organization?.subscription);
+  const hasBilling = hasActiveBilling(organization?.subscription);
 
   // Status Tracker overview — gated on roster-wide assignment visibility so
-  // finance (an admin-tier role) never sees worker-training metrics. Fetched
-  // after the user lookup since it needs the resolved organizationId.
-  const canSeeStatusTracker = can(dbRoleToRoleKey(role as Role), 'assignment.read');
+  // finance (an admin-tier role) never sees worker-training metrics.
   const statusTracker =
-    canSeeStatusTracker && user?.organizationId
-      ? await getStatusTrackerSummaryForOrg(user.organizationId)
+    canSeeRosterMetrics && organizationId
+      ? await getStatusTrackerSummaryForOrg(organizationId, new Date(), scopedFacility?.id)
       : { overdueCount: 0, hardEscalationCount: 0, rows: [], nearDeadline: { count: 0, rows: [] } };
 
   // Merge overdue + due-soon rows (same order as the full Status Tracker page:
@@ -113,17 +141,27 @@ export default async function DashboardPage() {
             Home
           </Link>
           <span className="text-[#a0aec0]"> / </span>
-          <span className="text-[#2d3748]">Training</span>
+          <span className="text-[#2d3748]">{scopedFacility?.name ?? 'Training'}</span>
         </p>
         <div className="flex flex-col gap-[5px] px-1 py-0.5">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <h1 className="text-[22px] font-semibold leading-tight tracking-[-0.88px] text-[#272b30] md:text-[28px] md:tracking-[-1.12px] xl:text-[33.5px] xl:leading-[44px] xl:tracking-[-1.34px]">
               Dashboard
             </h1>
-            <DashboardCreateCourseButton hasBilling={hasBilling} />
+            <div className="flex flex-wrap items-center gap-3">
+              {scopedFacility && (
+                <FacilityScopeSwitcher
+                  facilities={accessibleFacilities}
+                  selectedFacilityId={scopedFacility.id}
+                />
+              )}
+              <DashboardCreateCourseButton hasBilling={hasBilling} />
+            </div>
           </div>
           <p className="text-sm leading-[28px] text-[#525252] md:text-base xl:text-lg">
-            Here is an overview of your courses
+            {scopedFacility
+              ? 'Here is an overview of your facility'
+              : 'Here is an overview of your courses'}
           </p>
         </div>
       </div>
@@ -155,7 +193,7 @@ export default async function DashboardPage() {
 
       <MyCoursesTable courses={courses} maxItems={5} />
 
-      {canSeeStatusTracker && <StatusTrackerOverview rows={statusTrackerRows} />}
+      {canSeeRosterMetrics && <StatusTrackerOverview rows={statusTrackerRows} />}
 
       <DashboardEmptyState totalCourses={totalCourses} />
     </div>

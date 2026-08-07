@@ -76,8 +76,8 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
 
   const filteredEnrollments = enrollments.filter((e) => {
     const q = searchQuery.toLowerCase();
-    const nameMatch = e.user?.profile?.fullName?.toLowerCase().includes(q);
-    const emailMatch = e.user?.email.toLowerCase().includes(q);
+    const nameMatch = e.organizationUser?.user?.fullName?.toLowerCase().includes(q);
+    const emailMatch = e.organizationUser?.user?.email.toLowerCase().includes(q);
     return nameMatch || emailMatch;
   });
 
@@ -285,17 +285,18 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
                       <div className="flex items-center gap-3 sm:gap-[18px]">
                         <div className="flex size-[38px] shrink-0 items-center justify-center rounded-full bg-[#1a202c] text-sm font-semibold text-white">
                           {(
-                            enrollment.user?.profile?.fullName?.[0] ||
-                            enrollment.user?.email?.[0] ||
+                            enrollment.organizationUser?.user?.fullName?.[0] ||
+                            enrollment.organizationUser?.user?.email?.[0] ||
                             '?'
                           ).toUpperCase()}
                         </div>
                         <div className="flex min-w-0 flex-col gap-[4.5px]">
                           <span className="truncate text-[15.5px] font-semibold tracking-[0.31px] text-[#0d0d12]">
-                            {enrollment.user?.profile?.fullName || enrollment.user?.email}
+                            {enrollment.organizationUser?.user?.fullName ||
+                              enrollment.organizationUser?.user?.email}
                           </span>
                           <span className="truncate text-[13.5px] tracking-[0.27px] text-[#666d80]">
-                            {enrollment.user?.role || 'Staff'}
+                            {enrollment.organizationUser?.role || 'Staff'}
                           </span>
                         </div>
                       </div>
@@ -412,17 +413,18 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
                           <div className="flex items-center gap-3 sm:gap-[18px]">
                             <div className="flex size-[38px] shrink-0 items-center justify-center rounded-full bg-[#1a202c] text-sm font-semibold text-white">
                               {(
-                                enrollment.user?.profile?.fullName?.[0] ||
-                                enrollment.user?.email?.[0] ||
+                                enrollment.organizationUser?.user?.fullName?.[0] ||
+                                enrollment.organizationUser?.user?.email?.[0] ||
                                 '?'
                               ).toUpperCase()}
                             </div>
                             <div className="flex min-w-0 flex-col gap-[4.5px]">
                               <span className="truncate text-[15.5px] font-semibold tracking-[0.31px] text-[#0d0d12]">
-                                {enrollment.user?.profile?.fullName || enrollment.user?.email}
+                                {enrollment.organizationUser?.user?.fullName ||
+                                  enrollment.organizationUser?.user?.email}
                               </span>
                               <span className="truncate text-[13.5px] tracking-[0.27px] text-[#666d80]">
-                                {enrollment.user?.role || 'Staff'}
+                                {enrollment.organizationUser?.role || 'Staff'}
                               </span>
                             </div>
                           </div>

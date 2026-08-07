@@ -105,16 +105,16 @@ export default function WorkerHeader({ fullName, onMenuClick }: Omit<HeaderProps
           <Menu className="size-[22px]" />
         </button>
 
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-4">
           <div className="relative inline-flex" ref={notifRef}>
             <button
-              className="relative rounded-full bg-[#f7fafc] p-2 text-[#718096] transition-colors hover:bg-[#edf2f7]"
+              className="relative flex size-10 cursor-pointer items-center justify-center rounded-[12px] bg-[#f9fafb] text-[#0c111d] transition-colors hover:bg-[#edf2f7] lg:size-14"
               onClick={toggleNotif}
               aria-label="Toggle notifications"
             >
-              <Bell className="size-5" />
+              <Bell className="size-5 lg:size-[26px]" />
               {unreadCount > 0 && (
-                <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full border-2 border-white bg-[#e53e3e] px-1 text-[10px] font-bold text-white">
+                <span className="absolute right-1 top-1 flex size-[17px] items-center justify-center rounded-full bg-[#ac0000] text-[11px] font-medium leading-none text-white lg:right-[9px] lg:top-[9px]">
                   {unreadCount}
                 </span>
               )}
@@ -135,11 +135,11 @@ export default function WorkerHeader({ fullName, onMenuClick }: Omit<HeaderProps
 
           <div className="relative" ref={dropdownRef}>
             <div
-              className="flex cursor-pointer select-none items-center gap-3 rounded-full bg-[#f7fafc] py-1.5 pl-1.5 pr-3 transition-colors hover:bg-[#edf2f7]"
+              className="flex h-[44px] cursor-pointer select-none items-center gap-2 rounded-full bg-[#f7f7f7] px-[7px] transition-colors hover:bg-[#edf2f7] lg:h-[56px] lg:px-[10px]"
               onClick={toggleDropdown}
             >
-              <div className="flex size-8 items-center justify-center rounded-full bg-[#bfccfa] text-xs font-semibold text-[#2d4ddd]">
-                <span className="text-xs font-semibold">
+              <div className="flex size-[30px] shrink-0 items-center justify-center rounded-full bg-[#bfccfa] text-sm font-semibold text-[#2d4ddd] lg:size-[38px]">
+                <span>
                   {fullName
                     ? fullName
                         .split(' ')
@@ -150,12 +150,12 @@ export default function WorkerHeader({ fullName, onMenuClick }: Omit<HeaderProps
                     : 'U'}
                 </span>
               </div>
-              <span className="hidden text-sm font-semibold text-[#2d3748] lg:block">
+              <span className="hidden text-sm font-semibold text-[#292d32] lg:block">
                 {fullName}
               </span>
               <ChevronDown
                 className={[
-                  'hidden size-4 text-[#cbd5e0] transition-transform duration-200 lg:inline',
+                  'hidden size-6 text-[#cbd5e0] transition-transform duration-200 lg:inline',
                   isOpen ? 'rotate-180' : 'rotate-0',
                 ].join(' ')}
               />

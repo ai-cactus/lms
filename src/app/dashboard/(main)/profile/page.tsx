@@ -4,7 +4,6 @@ import prisma from '@/lib/prisma';
 import { redirect } from 'next/navigation';
 import { getSignedUrl } from '@/lib/storage';
 import { logger } from '@/lib/logger';
-import type { Role } from '@/types/next-auth';
 import { can } from '@/lib/rbac/permissions';
 import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
 
@@ -15,27 +14,37 @@ export default async function ProfilePage() {
     redirect('/login');
   }
 
-  const profile = await prisma.profile.findUnique({
-    where: { id: session.user.id },
-  });
+  const { organizationUserId } = session.user;
 
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    include: { organization: true, facility: true },
-  });
+  const [user, membership] = await Promise.all([
+    prisma.user.findUnique({ where: { id: session.user.id } }),
+    organizationUserId
+      ? prisma.organizationUser.findUnique({
+          where: { id: organizationUserId },
+          select: {
+            jobTitle: true,
+            organization: true,
+            facilities: {
+              where: { active: true },
+              take: 1,
+              select: { facility: true },
+            },
+          },
+        })
+      : null,
+  ]);
 
-  const role = (user?.role || 'worker') as Role;
+  const role = session.user.role;
   const roleKey = dbRoleToRoleKey(role);
   const canReadFacility = can(roleKey, 'facility.read');
 
   logger.info({ msg: 'ProfilePage Session:', data: session?.user?.id });
-  logger.info({ msg: 'ProfilePage Profile:', data: profile });
-  logger.info({ msg: 'ProfilePage User:', data: user });
+  logger.info({ msg: 'ProfilePage User:', data: { userId: user?.id } });
 
   let avatarDisplayUrl: string | null = null;
-  if (profile?.avatarUrl) {
+  if (user?.avatarUrl) {
     try {
-      avatarDisplayUrl = await getSignedUrl(profile.avatarUrl);
+      avatarDisplayUrl = await getSignedUrl(user.avatarUrl);
     } catch (error) {
       logger.error({ msg: 'Failed to get signed URL for avatar:', err: error });
     }
@@ -43,34 +52,34 @@ export default async function ProfilePage() {
 
   const initialData = {
     id: session.user.id!,
-    first_name: profile?.firstName || '',
-    last_name: profile?.lastName || '',
+    first_name: user?.firstName || '',
+    last_name: user?.lastName || '',
     email: user?.email || session.user.email || '',
     role,
-    company_name: profile?.companyName || '',
-    jobTitle: profile?.jobTitle || '',
-    avatarUrl: profile?.avatarUrl || null,
+    jobTitle: membership?.jobTitle || '',
+    avatarUrl: user?.avatarUrl || null,
     avatarDisplayUrl,
     authProvider: user?.authProvider || 'credentials',
   };
 
   // Organization data — org-level fields only.
-  const organizationData = user?.organization
+  const organization = membership?.organization;
+  const organizationData = organization
     ? {
-        id: user.organization.id,
-        name: user.organization.name,
-        dba: user.organization.dba,
-        ein: user.organization.ein,
-        primaryContact: user.organization.primaryContact,
-        primaryEmail: user.organization.primaryEmail,
-        isHipaaCompliant: user.organization.isHipaaCompliant,
-        primaryBusinessType: user.organization.primaryBusinessType,
-        additionalBusinessTypes: user.organization.additionalBusinessTypes || [],
+        id: organization.id,
+        name: organization.name,
+        dba: organization.dba,
+        ein: organization.ein,
+        primaryContact: organization.primaryContact,
+        primaryEmail: organization.primaryEmail,
+        isHipaaCompliant: organization.isHipaaCompliant,
+        primaryBusinessType: organization.primaryBusinessType,
+        additionalBusinessTypes: organization.additionalBusinessTypes || [],
       }
     : null;
 
   // Facility data — location/compliance fields now live on the facility.
-  const facility = user?.facility;
+  const facility = membership?.facilities[0]?.facility;
   const facilityData = facility
     ? {
         id: facility.id,

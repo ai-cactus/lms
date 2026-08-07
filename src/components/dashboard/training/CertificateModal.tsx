@@ -90,7 +90,10 @@ export default function CertificateModal({
     if (!docRef.current || !data) return;
     setExporting(true);
     try {
-      const name = data.user?.profile?.fullName || data.user?.email || 'certificate';
+      const name =
+        data.organizationUser?.user?.fullName ||
+        data.organizationUser?.user?.email ||
+        'certificate';
       await exportCertificatePdf(docRef.current, `Certificate-${data.course?.title}-${name}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to export certificate');
@@ -165,9 +168,13 @@ export default function CertificateModal({
             >
               <CertificateDocument
                 ref={docRef}
-                studentName={data.user?.profile?.fullName || data.user?.email || 'Student Name'}
+                studentName={
+                  data.organizationUser?.user?.fullName ||
+                  data.organizationUser?.user?.email ||
+                  'Student Name'
+                }
                 courseName={data.course?.title || 'Course Title'}
-                organizationName={data.user?.organization?.name}
+                organizationName={data.organizationUser?.organization?.name}
                 issueDate={formatIssueDate(data.issuedAt)}
                 certificateId={formatCertificateId(data.enrollmentId)}
                 qrDataUrl={qrDataUrl}

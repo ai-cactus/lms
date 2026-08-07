@@ -5,16 +5,19 @@ import { computeDisplayProgress } from '@/lib/enrollment-progress';
 
 export default async function WorkerTrainingsPage() {
   const session = await auth();
-  const allEnrollments = await prisma.enrollment.findMany({
-    where: { userId: session?.user?.id },
-    include: {
-      course: { include: { quiz: { select: { passingScore: true } } } },
-      quizAttempts: {
-        orderBy: { completedAt: 'desc' },
-        take: 1,
-      },
-    },
-  });
+  const organizationUserId = session?.user?.organizationUserId;
+  const allEnrollments = organizationUserId
+    ? await prisma.enrollment.findMany({
+        where: { organizationUserId },
+        include: {
+          course: { include: { quiz: { select: { passingScore: true } } } },
+          quizAttempts: {
+            orderBy: { completedAt: 'desc' },
+            take: 1,
+          },
+        },
+      })
+    : [];
 
   // Deduplicate: one entry per course, preferring completed/attested, then latest enrollment
   const latestByCourse = new Map<string, (typeof allEnrollments)[number]>();
