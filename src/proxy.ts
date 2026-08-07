@@ -8,10 +8,14 @@ import type { Role } from '@/types/next-auth';
 
 // All route rules live in one config object — easy to audit and extend.
 // `allowedRoles` is a set: after the RBAC migration the admin portal is shared by
-// every admin-tier role (owner/supervisor/hr/clinical_director/finance). The
+// every admin-tier role (owner/admin/supervisor/hr/clinical_director/finance). The
 // worker portal accepts every role at the proxy so an admin bridged into learner
 // mode (see actions/session-bridge.ts) can reach /worker on their worker cookie;
 // the worker LOGIN form still gates on WORKER_ROLES.
+//
+// `token.organizationId` is the ACTIVE organization of the session (one identity
+// may hold several memberships); it is null only while a user has no membership
+// yet, which is exactly what the onboarding gates below key off.
 const ROUTE_CONFIG = {
   worker: {
     cookiePrefix: 'worker',

@@ -20,6 +20,14 @@ import { audit, getClientContext } from '@/lib/audit';
 import { BCRYPT_COST } from '@/lib/bcrypt-config';
 import { enrollUserForRoleTargets } from '@/lib/enrollment/role-targets';
 import { enrollInviteCourses } from '@/lib/enrollment/invite-courses';
+import {
+  createMembership,
+  getActiveMembership,
+  recordMembershipLogin,
+  resolveActiveMembership,
+  type MembershipResolution,
+  type MembershipSummary,
+} from '@/lib/auth/membership';
 
 interface AuthInstanceConfig {
   cookiePrefix: 'admin' | 'worker';
@@ -34,13 +42,55 @@ interface AuthInstanceConfig {
   sessionAllowedRoles?: readonly Role[];
 }
 
-// Record the user's most-recent sign-in time. Fire-and-forget and fully
-// guarded: a failure here must never break the auth path, so it is logged at
-// `warn` and swallowed rather than propagated.
-function recordLoginTimestamp(userId: string, instance: string) {
-  prisma.user.update({ where: { id: userId }, data: { lastLoginAt: new Date() } }).catch((err) => {
-    logger.warn({ msg: '[auth] Failed to record lastLoginAt', userId, instance, err });
-  });
+/** Session claims derived from a membership resolution. */
+interface ResolvedClaims {
+  role: Role;
+  organizationId: string | null;
+  organizationUserId: string | null;
+}
+
+/**
+ * The role a session carries while its owner has no membership yet. A user with
+ * ZERO membership rows has never joined an organization: on the admin portal
+ * that is a prospective founder heading into onboarding, on the worker portal a
+ * self-serve learner heading into join-by-code. Both reproduce exactly the
+ * state such an account held before memberships existed (a role, no
+ * organization), keeping the signup → onboarding paths unchanged.
+ *
+ * Not to be confused with the `revoked` resolution (memberships exist but all
+ * are deactivated), which denies login instead.
+ */
+function provisionalRoleFor(cookiePrefix: 'admin' | 'worker'): Role {
+  return cookiePrefix === 'worker' ? DEFAULT_SELF_SERVE_WORKER_ROLE : 'owner';
+}
+
+function claimsFor(
+  membership: MembershipSummary | null,
+  cookiePrefix: 'admin' | 'worker',
+): ResolvedClaims {
+  return membership
+    ? {
+        role: membership.role,
+        organizationId: membership.organizationId,
+        organizationUserId: membership.organizationUserId,
+      }
+    : {
+        role: provisionalRoleFor(cookiePrefix),
+        organizationId: null,
+        organizationUserId: null,
+      };
+}
+
+/**
+ * Pick the membership a resolution activates. On `choice` the org picker lets
+ * the user switch afterwards, but the session must always be scoped to a real
+ * membership, so the first (oldest-joined, deterministic) one is provisionally
+ * activated rather than leaving the session org-less.
+ */
+function activeMembershipOf(resolution: MembershipResolution): MembershipSummary | null {
+  if (resolution.kind === 'resolved') return resolution.membership;
+  if (resolution.kind === 'choice') return resolution.memberships[0];
+  return null;
 }
 
 export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
@@ -152,8 +202,6 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
               id: true,
               email: true,
               password: true,
-              role: true,
-              organizationId: true,
               mfaEnabled: true,
               passwordResetRequired: true,
             },
@@ -169,28 +217,13 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
             return null;
           }
 
-          if (!allowedRoles.includes(user.role as Role)) {
-            logger.warn({
-              msg: 'Auth login failed: role mismatch',
-              role: user.role,
-              allowed: allowedRoles.join(','),
-              instance: cookiePrefix,
-            });
-            await audit({
-              action: 'auth.login.failure',
-              actorId: user.id,
-              actorRole: user.role,
-              organizationId: user.organizationId ?? undefined,
-              ...clientCtx,
-              metadata: { reason: 'role_mismatch', instance: cookiePrefix, email: maskedEmail },
-            });
-            return null;
-          }
+          const resolution = await resolveActiveMembership(user.id);
 
-          // ISSUE 2: a non-owner admin-tier account with no org has been removed
-          // from its organization (owner is the only legitimately org-less admin
-          // role, mid-onboarding). Deny login before verifying the password.
-          if (cookiePrefix === 'admin' && user.role !== 'owner' && !user.organizationId) {
+          // ISSUE 2: every membership this account held has been deactivated —
+          // it was removed from its organization(s). Deny before verifying the
+          // password. A user with NO membership rows at all is a prospective
+          // founder mid-onboarding and is deliberately NOT caught here.
+          if (resolution.kind === 'revoked') {
             logger.warn({
               msg: 'Auth login failed: removed from organization',
               instance: cookiePrefix,
@@ -198,9 +231,29 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
             await audit({
               action: 'auth.login.failure',
               actorId: user.id,
-              actorRole: user.role,
               ...clientCtx,
               metadata: { reason: 'removed_from_org', instance: cookiePrefix, email: maskedEmail },
+            });
+            return null;
+          }
+
+          const membership = activeMembershipOf(resolution);
+          const claims = claimsFor(membership, cookiePrefix);
+
+          if (!allowedRoles.includes(claims.role)) {
+            logger.warn({
+              msg: 'Auth login failed: role mismatch',
+              role: claims.role,
+              allowed: allowedRoles.join(','),
+              instance: cookiePrefix,
+            });
+            await audit({
+              action: 'auth.login.failure',
+              actorId: user.id,
+              actorRole: claims.role,
+              organizationId: claims.organizationId ?? undefined,
+              ...clientCtx,
+              metadata: { reason: 'role_mismatch', instance: cookiePrefix, email: maskedEmail },
             });
             return null;
           }
@@ -211,8 +264,8 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
             await audit({
               action: 'auth.login.failure',
               actorId: user.id,
-              actorRole: user.role,
-              organizationId: user.organizationId ?? undefined,
+              actorRole: claims.role,
+              organizationId: claims.organizationId ?? undefined,
               ...clientCtx,
               metadata: { reason: 'invalid_password', instance: cookiePrefix, email: maskedEmail },
             });
@@ -254,19 +307,27 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
           await audit({
             action: 'auth.login.success',
             actorId: user.id,
-            actorRole: user.role,
-            organizationId: user.organizationId ?? undefined,
+            actorRole: claims.role,
+            organizationId: claims.organizationId ?? undefined,
             ...clientCtx,
             metadata: { instance: cookiePrefix, mfaEnabled: user.mfaEnabled },
           });
 
-          recordLoginTimestamp(user.id, cookiePrefix);
+          // Only a DEFINITE activation may be remembered. On `choice` the
+          // membership above is the provisional first-joined default
+          // `activeMembershipOf` falls back to so this JWT has a target;
+          // persisting it would make `resolveActiveMembership` read it back as a
+          // genuine pick and suppress the org picker on every later login. The
+          // remembered org is stamped only by an explicit pick — see
+          // `switchOrganization` in app/actions/session-bridge.ts.
+          if (membership && resolution.kind === 'resolved') {
+            recordMembershipLogin(user.id, membership);
+          }
 
           return {
             id: user.id,
             email: user.email,
-            role: user.role as Role,
-            organizationId: user.organizationId,
+            ...claims,
             passwordResetRequired: user.passwordResetRequired,
             mfaVerified: !user.mfaEnabled, // If MFA disabled, auto-verified; if enabled, must verify
           } as User & { mfaVerified: boolean; passwordResetRequired: boolean };
@@ -307,190 +368,160 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       async signIn({ user, account }: any) {
         if (account?.provider === 'microsoft-entra-id') {
+          const email = user.email!;
           let dbUser = await prisma.user.findUnique({
-            where: { email: user.email! },
-            select: { id: true, organizationId: true, role: true },
+            where: { email },
+            select: { id: true, fullName: true },
           });
 
           const pendingInvite = await prisma.invite.findFirst({
-            where: { email: user.email!, status: 'pending' },
+            where: { email, status: 'pending' },
             orderBy: { createdAt: 'desc' },
           });
 
+          const inviteRole: Role | null = pendingInvite
+            ? ALL_ROLES.includes(pendingInvite.role as Role)
+              ? (pendingInvite.role as Role)
+              : DEFAULT_SELF_SERVE_WORKER_ROLE
+            : null;
+
+          const isNewUser = !dbUser;
           if (!dbUser) {
-            // D3: a brand-new admin-instance user with no invite becomes `owner`
-            // (they are founding an organisation). A worker-instance user with no
-            // invite becomes the default self-serve worker role.
-            let matchedOrgId = null;
-            let matchedRole: Role =
-              cookiePrefix === 'worker' ? DEFAULT_SELF_SERVE_WORKER_ROLE : 'owner';
-
-            logger.info({
-              msg: 'OAuth: creating new user',
-              email: maskEmail(user.email!),
-              role: matchedRole,
-            });
-
-            if (pendingInvite) {
-              matchedOrgId = pendingInvite.organizationId;
-              const inviteRole = pendingInvite.role;
-              const isValidRole = (r: unknown): r is Role => ALL_ROLES.includes(r as Role);
-              matchedRole = isValidRole(inviteRole) ? inviteRole : DEFAULT_SELF_SERVE_WORKER_ROLE;
-              logger.info({
-                msg: 'OAuth: pending invite found',
-                email: maskEmail(user.email!),
-                orgId: matchedOrgId,
-                role: matchedRole,
-              });
-            }
-
             const randomPassword = await bcrypt.hash(
               crypto.randomUUID() + Date.now().toString(),
               BCRYPT_COST,
             );
 
-            // Attach to the org's facility when joining via invite; null otherwise.
-            const matchedFacilityId = matchedOrgId
-              ? ((
-                  await prisma.facility.findFirst({
-                    where: { organizationId: matchedOrgId },
-                    select: { id: true },
-                  })
-                )?.id ?? null)
-              : null;
+            const oauthName = user.name || '';
+            const nameParts = oauthName.split(' ');
 
             dbUser = await prisma.user.create({
               data: {
-                email: user.email!,
+                email,
                 password: randomPassword,
                 authProvider: 'microsoft-entra-id',
-                role: matchedRole,
-                organizationId: matchedOrgId,
-                facilityId: matchedFacilityId,
                 emailVerified: true, // Trust OAuth provider email verification
+                firstName: nameParts[0] || '',
+                lastName: nameParts.slice(1).join(' ') || '',
+                fullName: oauthName || email,
               },
-              select: { id: true, organizationId: true, role: true },
+              select: { id: true, fullName: true },
+            });
+
+            logger.info({
+              msg: '[auth] OAuth: created new identity',
+              email: maskEmail(email),
+              viaInvite: !!pendingInvite,
             });
 
             // F-001: OAuth-originated signup.
             await audit({
               action: 'auth.signup',
               actorId: dbUser.id,
-              actorRole: matchedRole,
-              organizationId: dbUser.organizationId ?? undefined,
+              actorRole: inviteRole ?? undefined,
+              organizationId: pendingInvite?.organizationId,
               metadata: {
                 provider: 'microsoft-entra-id',
                 viaInvite: !!pendingInvite,
-                email: maskEmail(user.email!),
+                email: maskEmail(email),
               },
             });
+          }
 
-            if (pendingInvite) {
-              await prisma.invite.update({
-                where: { id: pendingInvite.id },
-                data: { status: 'accepted' },
-              });
-              await audit({
-                action: 'auth.invite.accept',
-                actorId: dbUser.id,
-                actorRole: matchedRole,
-                organizationId: pendingInvite.organizationId ?? undefined,
-                targetType: 'invite',
-                targetId: pendingInvite.id,
-                metadata: { provider: 'microsoft-entra-id', email: maskEmail(user.email!) },
-              });
-            }
-
-            // Live auto-enroll: a new OAuth account that joined an org via invite
-            // must pick up that role's active role-target assignments. Never throws.
-            if (dbUser.organizationId) {
-              await enrollUserForRoleTargets(dbUser.id, dbUser.organizationId);
-              // Materialise any courses parked on the accepted invite. Never throws.
-              if (pendingInvite) {
-                await enrollInviteCourses(dbUser.id, pendingInvite.id);
-              }
-            }
-          } else {
-            if (pendingInvite && !dbUser.organizationId) {
+          // A pending invite is consumed whenever the invitee is not already a
+          // member of that organization — for a brand-new identity as well as an
+          // existing one joining an additional org.
+          let invitedMembership: MembershipSummary | null = null;
+          if (pendingInvite && inviteRole) {
+            const existing = await getActiveMembership(dbUser.id, pendingInvite.organizationId);
+            if (!existing) {
               logger.info({
-                msg: 'OAuth: existing user accepting invite',
-                email: maskEmail(user.email!),
+                msg: '[auth] OAuth: accepting pending invite',
+                email: maskEmail(email),
                 orgId: pendingInvite.organizationId,
               });
-              const inviteFacility = await prisma.facility.findFirst({
-                where: { organizationId: pendingInvite.organizationId },
-                select: { id: true },
-              });
-              dbUser = await prisma.user.update({
-                where: { id: dbUser.id },
-                data: {
-                  organizationId: pendingInvite.organizationId,
-                  facilityId: inviteFacility?.id ?? null,
-                  role: ALL_ROLES.includes(pendingInvite.role as Role)
-                    ? pendingInvite.role
-                    : DEFAULT_SELF_SERVE_WORKER_ROLE,
-                  // Join date drives the deadline window for role-target assignments.
-                  roleAssignedAt: new Date(),
-                },
-                select: { id: true, organizationId: true, role: true },
+
+              invitedMembership = await createMembership({
+                userId: dbUser.id,
+                organizationId: pendingInvite.organizationId,
+                facilityId: pendingInvite.facilityId,
+                role: inviteRole,
               });
 
               await prisma.invite.update({
                 where: { id: pendingInvite.id },
                 data: { status: 'accepted' },
               });
-              // F-001: existing OAuth user consuming a pending invite.
+
+              // F-001: OAuth user consuming a pending invite.
               await audit({
                 action: 'auth.invite.accept',
                 actorId: dbUser.id,
-                actorRole: (dbUser.role as Role) ?? undefined,
-                organizationId: pendingInvite.organizationId ?? undefined,
+                actorRole: inviteRole,
+                organizationId: pendingInvite.organizationId,
                 targetType: 'invite',
                 targetId: pendingInvite.id,
-                metadata: { provider: 'microsoft-entra-id', email: maskEmail(user.email!) },
+                metadata: { provider: 'microsoft-entra-id', email: maskEmail(email) },
               });
 
-              // Live auto-enroll into the accepted role's role-target assignments.
-              if (dbUser.organizationId) {
-                await enrollUserForRoleTargets(dbUser.id, dbUser.organizationId);
-                // Materialise any courses parked on the accepted invite. Never throws.
-                await enrollInviteCourses(dbUser.id, pendingInvite.id);
-              }
-            } else if (
-              cookiePrefix === 'admin' &&
-              dbUser.role !== 'owner' &&
-              !dbUser.organizationId
-            ) {
-              // ISSUE 2: a non-owner admin-tier account with no org has been
-              // removed from its organization — deny the OAuth login.
-              logger.warn({
-                msg: 'OAuth: removed non-owner admin denied',
-                email: maskEmail(user.email!),
-              });
-              return `${config.pages?.signIn}?error=AccessRevoked`;
+              // Live auto-enroll: the new membership must pick up its role's
+              // active role-target assignments, then materialise any courses
+              // parked on the accepted invite. Neither throws.
+              await enrollUserForRoleTargets(
+                invitedMembership.organizationUserId,
+                invitedMembership.organizationId,
+              );
+              await enrollInviteCourses(invitedMembership.organizationUserId, pendingInvite.id);
             }
           }
 
-          if (!dbUser.role) {
-            logger.info({ msg: 'OAuth: user has no role, continuing for onboarding' });
-          } else if (!allowedRoles.includes(dbUser.role as Role)) {
+          const resolution = await resolveActiveMembership(dbUser.id);
+
+          // ISSUE 2: every membership was deactivated — access removed.
+          if (resolution.kind === 'revoked') {
             logger.warn({
-              msg: 'OAuth: role mismatch, routing to correct instance',
-              expected: allowedRoles.join(','),
-              got: dbUser.role,
+              msg: '[auth] OAuth: removed member denied',
+              email: maskEmail(email),
             });
-            if (WORKER_ROLES.includes(dbUser.role as Role))
+            return `${config.pages?.signIn}?error=AccessRevoked`;
+          }
+
+          const membership = invitedMembership ?? activeMembershipOf(resolution);
+          const claims = claimsFor(membership, cookiePrefix);
+
+          // A brand-new identity with no invite has no membership yet and is
+          // heading into onboarding; every other session must land on the portal
+          // that matches its resolved role.
+          if (membership && !allowedRoles.includes(claims.role)) {
+            logger.warn({
+              msg: '[auth] OAuth: role mismatch, routing to correct instance',
+              expected: allowedRoles.join(','),
+              got: claims.role,
+            });
+            if (WORKER_ROLES.includes(claims.role))
               return '/api/auth-worker/signin/microsoft-entra-id?callbackUrl=/worker';
-            if (ADMIN_ROLES.includes(dbUser.role as Role))
+            if (ADMIN_ROLES.includes(claims.role))
               return '/api/auth/signin/microsoft-entra-id?callbackUrl=/dashboard';
             return `${config.pages?.signIn}?error=AccessDenied`;
           }
 
-          user.id = dbUser.id;
-          user.organizationId = dbUser.organizationId;
-          user.role = dbUser.role as Role;
+          if (isNewUser) {
+            logger.info({ msg: '[auth] OAuth: new identity, continuing for onboarding' });
+          }
 
-          recordLoginTimestamp(dbUser.id, cookiePrefix);
+          user.id = dbUser.id;
+          user.organizationId = claims.organizationId;
+          user.organizationUserId = claims.organizationUserId;
+          user.role = claims.role;
+          user.name = dbUser.fullName || user.name || email;
+
+          // Remember the org only for a definite activation: an invite the user
+          // explicitly accepted, or a resolution that needed no picker. A
+          // `choice` resolution's provisional default must NOT be persisted —
+          // see the matching guard in the credentials provider above.
+          if (membership && (invitedMembership !== null || resolution.kind === 'resolved')) {
+            recordMembershipLogin(dbUser.id, membership);
+          }
           // OAuth users bypass MFA — Microsoft Entra ID has its own MFA policies
           (user as User & { mfaVerified?: boolean }).mfaVerified = true;
 
@@ -498,44 +529,14 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
           await audit({
             action: 'auth.login.success',
             actorId: dbUser.id,
-            actorRole: (dbUser.role as Role) ?? undefined,
-            organizationId: dbUser.organizationId ?? undefined,
+            actorRole: claims.role,
+            organizationId: claims.organizationId ?? undefined,
             metadata: {
               provider: 'microsoft-entra-id',
               instance: cookiePrefix,
-              email: maskEmail(user.email!),
+              email: maskEmail(email),
             },
           });
-
-          const profile = await prisma.profile.findUnique({
-            where: { id: dbUser.id },
-            select: { fullName: true },
-          });
-
-          if (profile?.fullName) {
-            user.name = profile.fullName;
-          } else {
-            const oauthName = user.name || '';
-            const nameParts = oauthName.split(' ');
-            const firstName = nameParts[0] || '';
-            const lastName = nameParts.slice(1).join(' ') || '';
-
-            try {
-              await prisma.profile.create({
-                data: {
-                  id: dbUser.id,
-                  email: user.email!,
-                  firstName,
-                  lastName,
-                  fullName: oauthName || user.email!,
-                },
-              });
-              user.name = oauthName || user.email!;
-            } catch (profileErr) {
-              logger.error({ msg: 'OAuth: failed to create profile', error: String(profileErr) });
-              user.name = user.email!;
-            }
-          }
         }
 
         // ISSUE 4: a successful login on this instance must drop any lingering
@@ -569,6 +570,7 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
           token.id = user.id;
           token.role = user.role;
           token.organizationId = user.organizationId;
+          token.organizationUserId = user.organizationUserId ?? null;
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           token.passwordResetRequired = (user as any).passwordResetRequired ?? false;
           token.mfaVerified = (user as User & { mfaVerified?: boolean }).mfaVerified ?? false;
@@ -583,35 +585,27 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
 
         // ✅ Re-validate against DB on every decode
         if (token.id) {
-          // Retired-role guard: the legacy `admin` role no longer exists. Any JWT
-          // still carrying it predates the RBAC rollout and must be forced to
-          // re-authenticate. A stale `worker` token needs no such guard — it
-          // self-heals below when DB re-validation overwrites token.role with the
-          // user's migrated worker-category role.
-          if (token.role === 'admin') {
-            logger.warn({
-              msg: '[Auth] Stale JWT with retired admin role detected, forcing re-auth',
-              instance: cookiePrefix,
-            });
-            return null;
-          }
-
           let freshUser;
+          let membership: MembershipSummary | null = null;
           try {
             freshUser = await prisma.user.findUnique({
               where: { id: token.id as string },
               select: {
                 id: true,
-                role: true,
-                organizationId: true,
+                fullName: true,
                 mfaEnabled: true,
                 mfaVerifiedAt: true,
                 passwordResetRequired: true,
                 sessionVersion: true,
                 authProvider: true,
-                profile: { select: { fullName: true } },
               },
             });
+            // Re-check the ACTIVE membership itself, not just the identity: a
+            // membership deactivated (or re-roled) since the token was minted
+            // must take effect on the next decode.
+            if (freshUser && token.organizationId) {
+              membership = await getActiveMembership(freshUser.id, token.organizationId as string);
+            }
           } catch (dbError) {
             // F-036 (deliberate, do not change): this path is fail-OPEN. A DB
             // failure (timeout, connection pool exhaustion, etc.) must NOT
@@ -627,7 +621,20 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
           }
 
           if (!freshUser) return null; // User was deleted — invalidate
-          if (!sessionAllowedRoles.includes(freshUser.role as Role)) return null; // Role no longer permitted on this instance — invalidate
+
+          // The session was scoped to an organization the user is no longer an
+          // active member of — invalidate rather than silently downgrading it to
+          // an org-less session.
+          if (token.organizationId && !membership) {
+            logger.warn({
+              msg: '[Auth] Session membership revoked, invalidating',
+              instance: cookiePrefix,
+            });
+            return null;
+          }
+
+          const claims = claimsFor(membership, cookiePrefix);
+          if (!sessionAllowedRoles.includes(claims.role)) return null; // Role no longer permitted on this instance — invalidate
 
           // F-059: a completed password reset bumps `sessionVersion`, logging out
           // every other existing session. On sign-in `token.sessionVersion` is
@@ -645,21 +652,10 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
           }
           token.sessionVersion = freshUser.sessionVersion;
 
-          // Defense-in-depth: a non-owner admin-tier account with no org can only be
-          // in this state after staff removal (owner is the only legitimately
-          // org-less admin role, mid-onboarding). Catches it even if a future removal
-          // path forgets to bump sessionVersion.
-          if (cookiePrefix === 'admin' && freshUser.role !== 'owner' && !freshUser.organizationId) {
-            logger.warn({
-              msg: '[Auth] Removed non-owner admin session detected, invalidating',
-              instance: cookiePrefix,
-            });
-            return null;
-          }
-
-          token.role = freshUser.role as Role;
-          token.organizationId = freshUser.organizationId;
-          token.name = freshUser.profile?.fullName || token.email || 'User';
+          token.role = claims.role;
+          token.organizationId = claims.organizationId;
+          token.organizationUserId = claims.organizationUserId;
+          token.name = freshUser.fullName || token.email || 'User';
           token.mfaEnabled = freshUser.mfaEnabled;
           token.authProvider = freshUser.authProvider;
           token.passwordResetRequired = freshUser.passwordResetRequired;
@@ -690,6 +686,7 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
           session.user.id = token.id as string;
           session.user.role = token.role as Role;
           session.user.organizationId = token.organizationId as string | null;
+          session.user.organizationUserId = token.organizationUserId as string | null;
           session.user.authProvider = (token.authProvider as string) ?? 'credentials';
           (session.user as User & { mfaVerified?: boolean }).mfaVerified =
             (token.mfaVerified as boolean) ?? false;

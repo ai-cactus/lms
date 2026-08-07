@@ -11,6 +11,12 @@ export type CourseWithStats = {
   lessonsCount: number;
   enrollmentsCount: number;
   completionRate: number;
+  /**
+   * Document the course was generated from, when the caller loaded that lineage.
+   * Null for forked courses (duplicates and adopted prebuilts carry no
+   * `CourseVersion` of their own), and absent from views that do not query it.
+   */
+  sourceDocumentId?: string | null;
 };
 
 export interface CourseWizardData {
@@ -103,12 +109,12 @@ export type CourseWithRelations = Prisma.CourseGetPayload<{
     };
     enrollments: {
       include: {
-        user: { include: { profile: true } };
+        organizationUser: { include: { user: true } };
         certificate: true;
       };
     };
     creator: {
-      include: { profile: true };
+      include: { user: true };
     };
   };
 }>;
@@ -116,8 +122,8 @@ export type CourseWithRelations = Prisma.CourseGetPayload<{
 export type EnrollmentWithRelations = Prisma.EnrollmentGetPayload<{
   include: {
     quizAttempts: true;
-    user: {
-      include: { profile: true; organization: true };
+    organizationUser: {
+      include: { user: true; organization: true };
     };
     course: true;
     certificate: true;

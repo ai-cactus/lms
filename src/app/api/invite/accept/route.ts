@@ -13,6 +13,7 @@ import { enrollUserForRoleTargets } from '@/lib/enrollment/role-targets';
 import { enrollInviteCourses } from '@/lib/enrollment/invite-courses';
 import { emitNotificationEvent } from '@/lib/notifications/emit';
 import { getRoleDisplayName } from '@/lib/rbac/role-utils';
+import { createMembership } from '@/lib/auth/membership';
 
 const acceptInviteSchema = z.object({
   token: z.string().min(1, 'Token is required'),
@@ -96,30 +97,25 @@ export async function POST(req: Request) {
 
     const existingUser = await prisma.user.findUnique({
       where: { email: invite.email },
-      select: { id: true, organizationId: true },
+      select: { id: true },
     });
 
-    // An account already bound to an organization cannot accept a new invite. An
-    // org-less account (e.g. a removed user) IS allowed through and relinked into
-    // the inviting org below — the emailed token proves control of the address,
-    // the same trust model as a password-reset link.
-    if (existingUser && existingUser.organizationId !== null) {
-      return NextResponse.json({ error: 'User with this email already exists' }, { status: 400 });
+    // An identity may already exist (in this org or another — multi-org
+    // membership is the point of this model). Only an ACTIVE membership in
+    // THIS invite's organization is a true duplicate accept.
+    if (existingUser) {
+      const existingMembership = await prisma.organizationUser.findUnique({
+        where: {
+          userId_organizationId: { userId: existingUser.id, organizationId: invite.organizationId },
+        },
+        select: { active: true },
+      });
+      if (existingMembership?.active) {
+        return NextResponse.json({ error: 'User with this email already exists' }, { status: 400 });
+      }
     }
 
     const hashedPassword = await bcrypt.hash(password, BCRYPT_COST);
-
-    const facility = await prisma.facility.findFirst({
-      where: { organizationId: invite.organizationId },
-      select: { id: true },
-    });
-    if (!facility) {
-      logger.warn({
-        msg: '[invite] Accepting invite: no facility for organization',
-        organizationId: invite.organizationId,
-      });
-    }
-
     const fullName = `${firstName} ${lastName}`;
 
     const newUser = await prisma.$transaction(async (tx) => {
@@ -130,24 +126,19 @@ export async function POST(req: Request) {
       // source; a no-op for unlimited plans / no active subscription.
       await assertSeatAvailable(invite.organizationId, { seatsNeeded: 1, client: tx });
 
-      // Relink an org-less account (removed user rejoining): reset its org,
-      // facility, role, credentials and verification, and upsert the profile —
-      // equivalent to a fresh join for an address whose control was just proven.
+      // Relink an existing identity (rejoining, or joining an additional org):
+      // reset its credentials and verification, and refresh its name — the
+      // emailed token proves control of the address, the same trust model as a
+      // password-reset link.
       const user = existingUser
         ? await tx.user.update({
             where: { id: existingUser.id },
             data: {
               emailVerified: true,
               password: hashedPassword,
-              organizationId: invite.organizationId,
-              facilityId: facility?.id ?? null,
-              role: invite.role,
-              profile: {
-                upsert: {
-                  create: { firstName, lastName, fullName, email: invite.email },
-                  update: { firstName, lastName, fullName, email: invite.email },
-                },
-              },
+              firstName,
+              lastName,
+              fullName,
             },
           })
         : await tx.user.create({
@@ -155,12 +146,9 @@ export async function POST(req: Request) {
               email: invite.email,
               emailVerified: true,
               password: hashedPassword,
-              organizationId: invite.organizationId,
-              facilityId: facility?.id ?? null,
-              role: invite.role,
-              profile: {
-                create: { firstName, lastName, fullName, email: invite.email },
-              },
+              firstName,
+              lastName,
+              fullName,
             },
           });
 
@@ -172,12 +160,21 @@ export async function POST(req: Request) {
       return user;
     });
 
+    // Attach the (new-or-relinked) identity to the inviting org, on the
+    // invite's facility, with the invited role.
+    const membership = await createMembership({
+      userId: newUser.id,
+      organizationId: invite.organizationId,
+      facilityId: invite.facilityId,
+      role: invite.role,
+    });
+
     // F-001: invite accepted — a new credentialed account joined the org.
     await audit({
       action: 'auth.invite.accept',
       actorId: newUser.id,
       actorRole: invite.role,
-      organizationId: invite.organizationId ?? undefined,
+      organizationId: invite.organizationId,
       targetType: 'invite',
       targetId: invite.id,
       ...getClientContext(req.headers),
@@ -186,20 +183,20 @@ export async function POST(req: Request) {
 
     // Live auto-enroll: a new account just joined the org with a role — enroll it
     // in any active role-target assignments for that role. Never throws.
-    await enrollUserForRoleTargets(newUser.id, invite.organizationId);
+    await enrollUserForRoleTargets(membership.organizationUserId, invite.organizationId);
 
     // Materialise any courses parked on this invite (assigned to the email before
     // the account existed) into real enrollments. Never throws.
-    await enrollInviteCourses(newUser.id, invite.id);
+    await enrollInviteCourses(membership.organizationUserId, invite.id);
 
     // Staff addition is recorded at acceptance, not at invite creation — an
     // invite is intent, an accepted invite is a real member. The inviter is the
     // actor, which is what routes an HR-sent invite to the owner and everyone
     // else's to HR (falling back to the owner). Never throws.
-    const inviter = invite.invitedBy
-      ? await prisma.user.findUnique({
-          where: { id: invite.invitedBy },
-          select: { id: true, role: true },
+    const inviterMembership = invite.invitedBy
+      ? await prisma.organizationUser.findFirst({
+          where: { userId: invite.invitedBy, organizationId: invite.organizationId },
+          select: { role: true },
         })
       : null;
 
@@ -209,10 +206,13 @@ export async function POST(req: Request) {
       type: 'STAFF_ADDED',
       title: 'New staff member added',
       message: `${fullName} joined as ${roleLabel} via invitation.`,
-      actor: inviter ? { userId: inviter.id, role: inviter.role } : null,
+      actor:
+        inviterMembership && invite.invitedBy
+          ? { userId: invite.invitedBy, role: inviterMembership.role }
+          : null,
       subjectUserId: newUser.id,
-      facilityId: newUser.facilityId,
-      linkUrl: `/dashboard/staff/${newUser.id}`,
+      facilityId: invite.facilityId,
+      linkUrl: `/dashboard/staff/${membership.organizationUserId}`,
       context: { workerName: fullName, roleLabel, addedVia: 'invite' },
     });
 
