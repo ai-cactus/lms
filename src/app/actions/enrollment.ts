@@ -13,7 +13,12 @@ import { logger } from '@/lib/logger';
 import type { StaffEntry } from '@/types/enrollment';
 import { RenewalCycle, ReminderStage, UserRole } from '@/generated/prisma/enums';
 import { REMINDER_STAGE_DEFAULTS, SWEEP_STAGES } from '@/lib/reminders/stages';
-import { createEnrollmentForUser, type CreateEnrollmentContext } from '@/lib/enrollment/create';
+import {
+  createEnrollmentForUser,
+  createEnrollmentsForUsers,
+  type CreateEnrollmentContext,
+  type EnrollmentOutcome,
+} from '@/lib/enrollment/create';
 import { getSeatUsage } from '@/lib/seat-limits';
 
 export interface AssignmentSettingsInput {
@@ -158,6 +163,30 @@ async function resolveSession() {
 }
 
 /**
+ * Sequential enrollment path — the pre-existing per-entry loop, retained as the
+ * instant fallback behind the `ENROLLMENT_BATCH_ENABLED` kill-switch. Seat-rejected
+ * emails are force-failed without any DB work, exactly as before. Returns one
+ * outcome per entry in input order so the caller's result bucketing is identical
+ * whether the batched or sequential path ran.
+ */
+async function enrollSequentially(
+  entries: StaffEntry[],
+  ctx: CreateEnrollmentContext,
+  skipEmails: ReadonlySet<string>,
+): Promise<EnrollmentOutcome[]> {
+  const outcomes: EnrollmentOutcome[] = [];
+  for (const entry of entries) {
+    const normalizedEmail = entry.email.toLowerCase().trim();
+    if (skipEmails.has(normalizedEmail)) {
+      outcomes.push({ status: 'failed', email: normalizedEmail });
+      continue;
+    }
+    outcomes.push(await createEnrollmentForUser(entry, ctx));
+  }
+  return outcomes;
+}
+
+/**
  * Get all available users (workers) that can be enrolled in courses.
  * Used by Share Modal to show selectable users.
  */
@@ -169,7 +198,8 @@ export async function getAvailableUsers() {
 
   // Restrict to the caller's ACTIVE organization — never return members of
   // other tenants. `id` is the organizationUserId, the membership every
-  // org-scoped artifact is owned by.
+  // org-scoped artifact is owned by. Org is authoritative on the DB-revalidated
+  // session — no re-query.
   const organizationId = session.user.organizationId;
   if (!organizationId) {
     return [];
@@ -177,7 +207,13 @@ export async function getAvailableUsers() {
 
   const members = await prisma.organizationUser.findMany({
     where: { organizationId, active: true },
-    include: { user: true },
+    // Explicit projection — the DTO uses only these fields, so never load the
+    // password hash / MFA-secret columns of the full user row into memory.
+    select: {
+      id: true,
+      role: true,
+      user: { select: { email: true, fullName: true, avatarUrl: true } },
+    },
     orderBy: { createdAt: 'desc' },
   });
 
@@ -410,14 +446,17 @@ export async function enrollUsers(
     }
   }
 
-  for (const entry of staffEntries) {
-    const normalizedEmail = entry.email.toLowerCase().trim();
-    if (seatRejectedEmails.has(normalizedEmail)) {
-      results.failed.push(normalizedEmail);
-      continue;
-    }
+  // Kill-switch (default OFF): the batched path collapses the per-user reads into
+  // batched look-ups and runs the side-effects with bounded concurrency; the
+  // sequential path is the instant fallback. Both return one outcome per entry in
+  // input order (seat-rejected emails force-failed), so the bucketing below is
+  // identical either way.
+  const batchEnabled = process.env.ENROLLMENT_BATCH_ENABLED === 'true';
+  const outcomes = batchEnabled
+    ? await createEnrollmentsForUsers(staffEntries, enrollmentContext, seatRejectedEmails)
+    : await enrollSequentially(staffEntries, enrollmentContext, seatRejectedEmails);
 
-    const outcome = await createEnrollmentForUser(entry, enrollmentContext);
+  for (const outcome of outcomes) {
     switch (outcome.status) {
       case 'failed':
         results.failed.push(outcome.email);
@@ -456,6 +495,7 @@ export async function getCourseAssignmentSettings(
     throw new Error('Unauthorized');
   }
 
+  // Role/org are authoritative on the DB-revalidated session — no re-query.
   if (!can(dbRoleToRoleKey(session.user.role), 'assignment.read')) {
     logger.warn({
       msg: '[enrollment] getCourseAssignmentSettings denied — missing assignment.read',
@@ -640,8 +680,14 @@ export async function assignCourseToRole(
   };
 
   const results = { enrolled: 0, alreadyEnrolled: 0, failed: 0 };
-  for (const holder of holders) {
-    const outcome = await createEnrollmentForUser({ email: holder.user.email }, enrollmentContext);
+  const holderEntries: StaffEntry[] = holders.map((holder) => ({ email: holder.user.email }));
+  // Same kill-switch as enrollUsers; role holders carry no seat rejection.
+  const batchEnabled = process.env.ENROLLMENT_BATCH_ENABLED === 'true';
+  const outcomes = batchEnabled
+    ? await createEnrollmentsForUsers(holderEntries, enrollmentContext)
+    : await enrollSequentially(holderEntries, enrollmentContext, new Set());
+
+  for (const outcome of outcomes) {
     // Role holders are always existing org members, so `invited` is unreachable
     // here; count it defensively alongside `enrolled` if it ever occurs.
     if (outcome.status === 'enrolled' || outcome.status === 'invited') results.enrolled += 1;
@@ -672,6 +718,7 @@ export async function getRoleHolderCounts(): Promise<Record<string, number>> {
     throw new Error('Unauthorized');
   }
 
+  // Role/org are authoritative on the DB-revalidated session — no re-query.
   if (!can(dbRoleToRoleKey(session.user.role), 'assignment.read')) {
     logger.warn({
       msg: '[enrollment] getRoleHolderCounts denied — missing assignment.read',

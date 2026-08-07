@@ -5,6 +5,7 @@ const {
   mockGetSystemUser,
   mockTransaction,
   mockRevalidate,
+  mockRevalidateTag,
   mockEnqueueTranscode,
   txCourseCreate,
   txLessonCreate,
@@ -25,6 +26,7 @@ const {
   mockGetSystemUser: vi.fn(),
   mockTransaction: vi.fn(),
   mockRevalidate: vi.fn(),
+  mockRevalidateTag: vi.fn(),
   mockEnqueueTranscode: vi.fn(),
   txCourseCreate: vi.fn(),
   txLessonCreate: vi.fn(),
@@ -59,7 +61,7 @@ vi.mock('@/lib/prisma', () => {
 vi.mock('@/lib/system-auth', () => ({ verifySystemAdminCookie: mockVerify }));
 vi.mock('@/lib/video/system-user', () => ({ getOrCreateSystemUser: mockGetSystemUser }));
 vi.mock('@/lib/storage', () => ({ objectExists: mockObjectExists }));
-vi.mock('next/cache', () => ({ revalidatePath: mockRevalidate }));
+vi.mock('next/cache', () => ({ revalidatePath: mockRevalidate, revalidateTag: mockRevalidateTag }));
 vi.mock('@/lib/logger', () => ({ logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn() } }));
 
 import { createVideoCourse, verifyGlobalVideoMedia } from './video-course';
@@ -133,6 +135,8 @@ describe('createVideoCourse', () => {
       targetId: 'course-1',
       storageUri: 'minio://preview.mp4',
     });
+    // A new published global course must bust the cached org-facing catalog.
+    expect(mockRevalidateTag).toHaveBeenCalledWith('video-catalog', 'max');
   });
 
   it('allows an unspecified skill level', async () => {
@@ -196,6 +200,8 @@ describe('setVideoCourseStatus', () => {
       data: { status: 'inactive' },
     });
     expect(mockRevalidate).toHaveBeenCalledWith('/system/video-courses');
+    // Deactivating removes the course from the org-facing catalog — bust it.
+    expect(mockRevalidateTag).toHaveBeenCalledWith('video-catalog', 'max');
   });
 
   it('reactivates a course back to published', async () => {
@@ -205,6 +211,8 @@ describe('setVideoCourseStatus', () => {
       where: { id: 'c1' },
       data: { status: 'published' },
     });
+    // Publishing adds the course to the org-facing catalog — bust it too.
+    expect(mockRevalidateTag).toHaveBeenCalledWith('video-catalog', 'max');
   });
 
   it('rejects when not a system admin', async () => {
@@ -260,6 +268,8 @@ describe('updateVideoCourse', () => {
     expect(txLessonCreate).not.toHaveBeenCalled();
     expect(mockEnqueueTranscode).not.toHaveBeenCalled();
     expect(mockRevalidate).toHaveBeenCalledWith('/system/video-courses');
+    // Title/scoring edits are reflected in the org-facing catalog — bust it.
+    expect(mockRevalidateTag).toHaveBeenCalledWith('video-catalog', 'max');
   });
 
   it('replaces the course video and enqueues a transcode for it', async () => {

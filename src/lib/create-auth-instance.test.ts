@@ -34,6 +34,8 @@ const {
   mockRecordMembershipLogin,
   mockEnrollUserForRoleTargets,
   mockEnrollInviteCourses,
+  mockGetCachedRevalidation,
+  mockSetCachedRevalidation,
 } = vi.hoisted(() => {
   const mockCookieStore = {
     has: vi.fn().mockReturnValue(false),
@@ -56,6 +58,13 @@ const {
     mockRecordMembershipLogin: vi.fn(),
     mockEnrollUserForRoleTargets: vi.fn(),
     mockEnrollInviteCourses: vi.fn(),
+    // 5.1: the revalidation cache is mocked at the interface level here (see
+    // create-auth-instance.cache-integration.test.ts for the REAL cache
+    // module wired end-to-end). Defaults to an always-miss cache below so
+    // every pre-existing test in this file keeps exercising the DB path
+    // exactly as before.
+    mockGetCachedRevalidation: vi.fn(),
+    mockSetCachedRevalidation: vi.fn(),
   };
 });
 
@@ -91,6 +100,10 @@ vi.mock('@/lib/auth/membership', () => ({
   getActiveMembership: mockGetActiveMembership,
   createMembership: mockCreateMembership,
   recordMembershipLogin: mockRecordMembershipLogin,
+}));
+vi.mock('@/lib/auth/session-revalidation-cache', () => ({
+  getCachedRevalidation: mockGetCachedRevalidation,
+  setCachedRevalidation: mockSetCachedRevalidation,
 }));
 
 import { adminConfig } from '@/auth';
@@ -154,6 +167,8 @@ beforeEach(() => {
   mockRecordMembershipLogin.mockReturnValue(undefined);
   mockEnrollUserForRoleTargets.mockResolvedValue(undefined);
   mockEnrollInviteCourses.mockResolvedValue(undefined);
+  mockGetCachedRevalidation.mockResolvedValue(null);
+  mockSetCachedRevalidation.mockResolvedValue(undefined);
 });
 
 // The `freshUser` select in jwt() is { id, fullName, mfaEnabled, mfaVerifiedAt,
@@ -653,5 +668,149 @@ describe('OAuth signIn callback — pending-invite auto-enroll hooks (fix/worker
     expect(mockInviteUpdate).not.toHaveBeenCalled();
     expect(mockEnrollUserForRoleTargets).not.toHaveBeenCalled();
     expect(mockEnrollInviteCourses).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Tier 3 5.1 — session revalidation cache, exercised at the interface level
+ * (getCachedRevalidation/setCachedRevalidation mocked). The REAL cache module
+ * wired end-to-end (real Redis-shaped fake, real TTL parsing) is covered
+ * separately in create-auth-instance.cache-integration.test.ts; this file
+ * pins the exact CONTRACT create-auth-instance.ts calls that module with.
+ */
+describe('5.1 cache — claim 7: the object written to the cache on a fresh DB read contains exactly the documented fields', () => {
+  it('never forwards mfaVerifiedAt (selected from the DB but deliberately excluded from the cached snapshot) or any other DB field beyond the 6 documented ones', async () => {
+    mockFindUnique.mockResolvedValue({
+      ...freshUserBase,
+      mfaVerifiedAt: new Date('2026-01-01'),
+    });
+    mockGetActiveMembership.mockResolvedValue(
+      makeMembership({ role: 'owner', organizationId: 'org-1' }),
+    );
+    const token = { id: 'user-1', organizationId: 'org-1', role: 'owner', sessionVersion: 1 };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (adminConfig.callbacks!.jwt as any)({ token });
+
+    expect(mockSetCachedRevalidation).toHaveBeenCalledExactlyOnceWith(
+      'user-1',
+      expect.objectContaining({
+        id: 'user-1',
+        fullName: 'Person',
+        mfaEnabled: false,
+        passwordResetRequired: false,
+        sessionVersion: 1,
+        authProvider: 'credentials',
+      }),
+    );
+    const [, snapshotArg] = mockSetCachedRevalidation.mock.calls[0];
+    // Identity-only: role/organizationId come from the per-org membership, which
+    // is re-read live on every decode and deliberately never cached.
+    expect(Object.keys(snapshotArg).sort()).toEqual(
+      [
+        'id',
+        'fullName',
+        'mfaEnabled',
+        'passwordResetRequired',
+        'sessionVersion',
+        'authProvider',
+      ].sort(),
+    );
+  });
+
+  it('never calls setCachedRevalidation for a deleted (null) user — negative results are not cached', async () => {
+    mockFindUnique.mockResolvedValue(null);
+    const token = { id: 'user-1', role: 'owner', sessionVersion: 1 };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await (adminConfig.callbacks!.jwt as any)({ token });
+
+    expect(result).toBeNull();
+    expect(mockSetCachedRevalidation).not.toHaveBeenCalled();
+  });
+});
+
+describe('5.1 cache — claim 5: a cache hit is fed through every revocation guard identically to a DB read', () => {
+  it('a cache hit skips prisma.user.findUnique and still enforces the sessionVersion kill-switch', async () => {
+    mockGetCachedRevalidation.mockResolvedValue({
+      id: 'user-1',
+      role: 'owner',
+      organizationId: 'org-1',
+      mfaEnabled: false,
+      passwordResetRequired: false,
+      sessionVersion: 2, // fresher than the token's stamped version
+      authProvider: 'credentials',
+      profileFullName: 'Owner Person',
+    });
+    const token = { id: 'user-1', role: 'owner', sessionVersion: 1 };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await (adminConfig.callbacks!.jwt as any)({ token });
+
+    expect(mockFindUnique).not.toHaveBeenCalled();
+    expect(result).toBeNull(); // sessionVersion mismatch still invalidates from a cache hit
+  });
+
+  it('a cache hit still enforces the revoked-membership guard — the membership is re-read live even when the identity snapshot is cached', async () => {
+    mockGetCachedRevalidation.mockResolvedValue({
+      id: 'user-1',
+      fullName: 'HR Person',
+      mfaEnabled: false,
+      passwordResetRequired: false,
+      sessionVersion: 1,
+      authProvider: 'credentials',
+    });
+    // The membership was deactivated since the token was minted.
+    mockGetActiveMembership.mockResolvedValue(null);
+    const token = { id: 'user-1', organizationId: 'org-1', role: 'hr', sessionVersion: 1 };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await (adminConfig.callbacks!.jwt as any)({ token });
+
+    // The identity read is served from cache, but the membership never is.
+    expect(mockFindUnique).not.toHaveBeenCalled();
+    expect(mockGetActiveMembership).toHaveBeenCalledExactlyOnceWith('user-1', 'org-1');
+    expect(result).toBeNull();
+  });
+
+  it('a cache hit never re-writes the cache (only a fresh DB read populates it)', async () => {
+    mockGetCachedRevalidation.mockResolvedValue({
+      id: 'user-1',
+      fullName: 'Owner Person',
+      mfaEnabled: false,
+      passwordResetRequired: false,
+      sessionVersion: 1,
+      authProvider: 'credentials',
+    });
+    mockGetActiveMembership.mockResolvedValue(
+      makeMembership({ role: 'owner', organizationId: 'org-1' }),
+    );
+    const token = { id: 'user-1', organizationId: 'org-1', role: 'owner', sessionVersion: 1 };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (adminConfig.callbacks!.jwt as any)({ token });
+
+    expect(mockSetCachedRevalidation).not.toHaveBeenCalled();
+  });
+});
+
+describe('5.1 cache — `admin` is a live role, not a retired one, so no pre-cache guard rejects it', () => {
+  it('revalidates an `admin` token through the normal cache/membership path instead of hard-rejecting it', async () => {
+    // The dev branch short-circuited `role: 'admin'` to null before the cache
+    // lookup, treating it as a stale pre-RBAC token. The multi-org auth rework
+    // un-retired `admin` as a delegated Owner-equivalent seat and removed that
+    // guard, so the token must revalidate normally.
+    mockFindUnique.mockResolvedValue(freshUserBase);
+    mockGetActiveMembership.mockResolvedValue(
+      makeMembership({ role: 'admin', organizationId: 'org-1' }),
+    );
+    const token = { id: 'user-1', organizationId: 'org-1', role: 'admin', sessionVersion: 1 };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await (adminConfig.callbacks!.jwt as any)({ token });
+
+    expect(result).not.toBeNull();
+    expect(result.role).toBe('admin');
+    expect(mockGetCachedRevalidation).toHaveBeenCalledExactlyOnceWith('user-1');
   });
 });

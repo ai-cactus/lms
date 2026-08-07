@@ -4,7 +4,8 @@ import prisma from '@/lib/prisma';
 import { isAdminRole } from '@/lib/rbac/role-utils';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, unstable_cache } from 'next/cache';
+import type { Role } from '@/types/next-auth';
 
 // ---------------------------------------------------------------------------
 // Session helper — mirrors the pattern in course.ts
@@ -15,16 +16,18 @@ async function resolveSession() {
 }
 
 // ---------------------------------------------------------------------------
-// Org resolver — derives organizationId for the ACTIVE membership and asserts admin
+// Org resolver — derives the ACTIVE membership's organizationId and asserts
+// admin from the session. role/organizationId are authoritative on the
+// DB-revalidated session, so this needs no extra user query.
 // ---------------------------------------------------------------------------
-function resolveOrg(session: { organizationId: string | null; role: string }): string {
-  if (!session.organizationId) {
+function resolveOrg(sessionUser: { organizationId: string | null; role: Role }): string {
+  if (!sessionUser.organizationId) {
     throw new Error('No organization');
   }
-  if (!isAdminRole(session.role)) {
+  if (!isAdminRole(sessionUser.role)) {
     throw new Error('Forbidden');
   }
-  return session.organizationId;
+  return sessionUser.organizationId;
 }
 
 // ---------------------------------------------------------------------------
@@ -43,6 +46,64 @@ export interface VideoCourseAvailabilityRow {
 }
 
 // ---------------------------------------------------------------------------
+// Global video catalog (tenant-independent, cached)
+//   The published-global-video list is identical for every org between
+//   publishes, so it's cached for 1h and tagged `video-catalog`. The per-org
+//   "is this offered" flag is joined AFTER this read (see
+//   listAvailableVideoCourses) so the cached payload never carries a tenant id
+//   and one invalidation refreshes every org at once. Invalidate via
+//   revalidateTag('video-catalog') at every global-video create / edit /
+//   status-change site (see video-course.ts).
+// ---------------------------------------------------------------------------
+interface GlobalVideoCatalogRow {
+  id: string;
+  title: string;
+  description: string | null;
+  category: string | null;
+  durationSeconds: number | null;
+  questionCount: number;
+  hasPreview: boolean;
+}
+
+const getGlobalVideoCatalog = unstable_cache(
+  async (): Promise<GlobalVideoCatalogRow[]> => {
+    const courses = await prisma.course.findMany({
+      where: { type: 'video', isGlobal: true, status: 'published' },
+      // Upload order (oldest first) — the catalog reads chronologically.
+      orderBy: { createdAt: 'asc' },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        category: true,
+        previewVideoStorageUri: true,
+        lessons: {
+          select: {
+            videoDurationSeconds: true,
+            quiz: { select: { _count: { select: { questions: true } } } },
+          },
+        },
+      },
+    });
+
+    return courses.map((course) => {
+      const firstLesson = course.lessons[0];
+      return {
+        id: course.id,
+        title: course.title,
+        description: course.description,
+        category: course.category,
+        durationSeconds: firstLesson?.videoDurationSeconds ?? null,
+        questionCount: firstLesson?.quiz?._count?.questions ?? 0,
+        hasPreview: Boolean(course.previewVideoStorageUri),
+      };
+    });
+  },
+  ['global-video-catalog'],
+  { revalidate: 3600, tags: ['video-catalog'] },
+);
+
+// ---------------------------------------------------------------------------
 // 1. listAvailableVideoCourses
 //    Returns all published global video courses with this org's adoption state.
 // ---------------------------------------------------------------------------
@@ -54,43 +115,23 @@ export async function listAvailableVideoCourses(): Promise<VideoCourseAvailabili
 
   const organizationId = resolveOrg(session.user);
 
-  const courses = await prisma.course.findMany({
-    where: { type: 'video', isGlobal: true, status: 'published' },
-    // Upload order (oldest first) — the catalog reads chronologically.
-    orderBy: { createdAt: 'asc' },
-    include: {
-      lessons: {
-        include: {
-          quiz: {
-            include: {
-              _count: { select: { questions: true } },
-            },
-          },
-        },
-      },
-      offerings: {
-        where: { organizationId },
-      },
-    },
-  });
+  const catalog = await getGlobalVideoCatalog();
 
-  return courses.map((course) => {
-    const firstLesson = course.lessons[0];
-    const durationSeconds = firstLesson?.videoDurationSeconds ?? null;
-    const questionCount = firstLesson?.quiz?._count?.questions ?? 0;
+  // Per-org adoption state, joined AFTER the cached read so the cached catalog
+  // payload stays tenant-independent.
+  const offerings = catalog.length
+    ? await prisma.orgCourseOffering.findMany({
+        where: { organizationId, courseId: { in: catalog.map((c) => c.id) } },
+        select: { id: true, courseId: true },
+      })
+    : [];
+  const offeringByCourse = new Map(offerings.map((o) => [o.courseId, o.id]));
 
-    return {
-      id: course.id,
-      title: course.title,
-      description: course.description,
-      category: course.category,
-      durationSeconds,
-      questionCount,
-      hasPreview: Boolean(course.previewVideoStorageUri),
-      isOffered: course.offerings.length > 0,
-      offeringId: course.offerings[0]?.id ?? null,
-    };
-  });
+  return catalog.map((course) => ({
+    ...course,
+    isOffered: offeringByCourse.has(course.id),
+    offeringId: offeringByCourse.get(course.id) ?? null,
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -184,7 +225,6 @@ export async function offerCourseToOrg(courseId: string, overrides?: OfferingOve
     throw new Error('Unauthorized');
   }
 
-  const userId = session.user.id;
   const organizationId = resolveOrg(session.user);
 
   const course = await prisma.course.findFirst({
@@ -199,7 +239,7 @@ export async function offerCourseToOrg(courseId: string, overrides?: OfferingOve
     create: {
       organizationId,
       courseId,
-      addedByAdminId: userId,
+      addedByAdminId: session.user.id,
       ...(overrides ?? {}),
     },
   });

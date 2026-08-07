@@ -32,7 +32,11 @@ const ORG_USER_ID = 'ou-admin-1';
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockAuth.mockResolvedValue({ user: { id: 'admin-1', organizationUserId: ORG_USER_ID } });
+  // Org/membership are read straight off the DB-revalidated session (see
+  // createFullCourse in course.ts) rather than a separate user.findUnique.
+  mockAuth.mockResolvedValue({
+    user: { id: 'admin-1', organizationUserId: ORG_USER_ID, organizationId: 'org-1' },
+  });
   mockWorkerAuth.mockResolvedValue(null);
 });
 

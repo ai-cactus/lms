@@ -32,3 +32,7 @@
 - [Full-bleed dialog + fixed-px artwork](gotcha_fullbleed_dialog_scaling.md) — grid min-content breaks %-width scale measurement; viewport-corner close needs viewport-spanning content.
 - [Figma STAFF section map](reference_figma_staff_section.md) — list/profile/mobile frames; the profile design omits the real Passed/Locked states and its Retry row is unbuildable literally.
 - [EnrollmentStatus.failed is never written](gotcha_enrollment_failed_status_unused.md) — quiz failures stay `in_progress`; derive pass/fail from score vs Quiz.passingScore, never from status.
+- [RHF watch() breaks React Compiler](gotcha_rhf_watch_react_compiler.md) — lint warns on `watch()`; use `useWatch({control,name})` in client forms.
+- [Radix Select in a form echoes ""](gotcha_radix_select_in_form_echoes_empty.md) — programmatic value set gets wiped by the hidden native select; guard `onValueChange`.
+- [Revalidation cache is identity-only](gotcha_revalidation_cache_is_identity_only.md) — never cache role/organizationId; membership is re-read live every decode.
+- [`admin` is un-retired](gotcha_admin_role_unretired.md) — drop dev's retired-admin JWT guard; gate roster PII on `user.read`, not `isAdminRole`.

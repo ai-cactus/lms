@@ -7,8 +7,11 @@
  *   - Step1: legal name, staff count, contact fields, phone, and country (US,
  *     defaulted) are required; street/zip/city/state are optional and left
  *     blank here.
- *   - Step3: a primary business type + at least one additional business type
- *     (via the "Additional Business Type" popover-checkbox list) are required.
+ *   - Step3 (Figma redesign): a primary business type (shadcn Select, 9 options)
+ *     + at least one additional business type (inline 2-col checkbox grid, 8
+ *     options incl. an "Other (specify)" toggle-button row) are required.
+ *     Program Services is the same inline-grid shape but optional. Choosing
+ *     "Other" on any of the three sections reveals a required text input.
  *   - Step4 "Invite your managers": renders exactly ONE empty row on load. A
  *     single manager row (email + role) is filled in; submitting creates a
  *     pending `Invite` row with that role.
@@ -31,6 +34,15 @@
  * target comboboxes positionally (DOM order) or by their visible placeholder/
  * option text instead. See onboarding step1-5 source for the authoritative
  * field order if this spec needs updating.
+ *
+ * Real Playwright `.click()` on a Select trigger/option commits reliably —
+ * confirmed throughout this file (staff-count, HIPAA, role selects). This
+ * differs from a qa-mafia run that could only commit via keyboard through a
+ * separate (non-Playwright) browser-automation channel; see
+ * qa-reports/auth-rbac-staging.md:119 for that reclassified "not a bug" note.
+ * Step 3's Primary Business Type is the ONLY combobox on that page — the old
+ * Additional Business Type popover-Select is gone, replaced by an inline
+ * checkbox grid, so `getByRole('combobox')` is unambiguous there now.
  *
  * Pre-conditions:
  *   - App running on http://localhost:3005.
@@ -81,10 +93,7 @@ async function cleanup(seeded: SeededOwner, orgName: string): Promise<void> {
     const orgId: string | undefined = org.rows[0]?.id;
 
     if (orgId) {
-      await client.query(
-        `DELETE FROM invites WHERE organization_id = $1`,
-        [orgId],
-      );
+      await client.query(`DELETE FROM invites WHERE organization_id = $1`, [orgId]);
       await client.query(
         `DELETE FROM facility_documents WHERE facility_id IN (SELECT id FROM facilities WHERE organization_id = $1)`,
         [orgId],
@@ -148,10 +157,8 @@ test.describe('Onboarding wizard — 5-step happy path', () => {
       // ── Step 1 ──────────────────────────────────────────────────────────────
       await page.getByPlaceholder('e.g. Acme Healthcare Ltd').fill(orgName);
       await page.getByPlaceholder('Enter business name (if applicable)').fill('Onb Wizard DBA');
-      await page.getByPlaceholder("Enter the full name of the main contact").fill('Jane Founder');
-      await page
-        .getByPlaceholder('Enter the email address of the main contact')
-        .fill(seeded.email);
+      await page.getByPlaceholder('Enter the full name of the main contact').fill('Jane Founder');
+      await page.getByPlaceholder('Enter the email address of the main contact').fill(seeded.email);
 
       // "Number of Staff" is the first combobox on this page (Country defaults
       // to "United States" already selected; State/Country/Staff are the only
@@ -175,15 +182,13 @@ test.describe('Onboarding wizard — 5-step happy path', () => {
       await page.waitForURL('**/onboarding/step3**', { timeout: 25000 });
 
       // ── Step 3 ──────────────────────────────────────────────────────────────
-      // Primary Business Type first — once chosen, its trigger no longer shows
-      // "Select an option", leaving only the Additional Business Type popover
-      // button with that text (avoids an ambiguous match between the two).
+      // Primary Business Type — the only combobox on this page since the
+      // redesign replaced the Additional Business Type popover-Select with an
+      // inline checkbox grid.
       await page.getByRole('combobox').click();
-      await page.getByRole('option', { name: 'Clinic' }).click();
+      await page.getByRole('option', { name: /private practice/i }).click();
 
-      await page.getByRole('button', { name: 'Select an option' }).click();
-      await page.getByRole('checkbox', { name: /school-.*campus-based program/i }).click();
-      await page.keyboard.press('Escape');
+      await page.getByRole('checkbox', { name: 'Outpatient Services' }).click();
 
       await page.getByRole('button', { name: /^next$/i }).click();
       await page.waitForURL('**/onboarding/step4**', { timeout: 25000 });
@@ -236,10 +241,8 @@ test.describe('Onboarding wizard — 5-step happy path', () => {
 
       await page.getByPlaceholder('e.g. Acme Healthcare Ltd').fill(orgName);
       await page.getByPlaceholder('Enter business name (if applicable)').fill('DB Assert DBA');
-      await page.getByPlaceholder("Enter the full name of the main contact").fill('Jane Founder');
-      await page
-        .getByPlaceholder('Enter the email address of the main contact')
-        .fill(seeded.email);
+      await page.getByPlaceholder('Enter the full name of the main contact').fill('Jane Founder');
+      await page.getByPlaceholder('Enter the email address of the main contact').fill(seeded.email);
       await page.getByRole('combobox').first().click();
       await page.getByRole('option', { name: '11-49' }).click();
       await page.locator('input[type="tel"]').fill('5559876543');
@@ -252,10 +255,9 @@ test.describe('Onboarding wizard — 5-step happy path', () => {
       await page.waitForURL('**/onboarding/step3**', { timeout: 25000 });
 
       await page.getByRole('combobox').click();
-      await page.getByRole('option', { name: 'Group Practice' }).click();
-      await page.getByRole('button', { name: 'Select an option' }).click();
-      await page.getByRole('checkbox', { name: /school-.*campus-based program/i }).click();
-      await page.keyboard.press('Escape');
+      await page.getByRole('option', { name: /private practice/i }).click();
+      await page.getByRole('checkbox', { name: 'Outpatient Services' }).click();
+      await page.getByRole('checkbox', { name: 'Crisis Stabilization Unit' }).click();
       await page.getByRole('button', { name: /^next$/i }).click();
       await page.waitForURL('**/onboarding/step4**', { timeout: 25000 });
 
@@ -275,11 +277,17 @@ test.describe('Onboarding wizard — 5-step happy path', () => {
       await client.connect();
       try {
         const orgRes = await client.query(
-          `SELECT id, name FROM organizations WHERE name = $1`,
+          `SELECT id, name, primary_business_type, additional_business_types FROM organizations WHERE name = $1`,
           [orgName],
         );
         expect(orgRes.rows).toHaveLength(1);
         const orgId = orgRes.rows[0].id as string;
+        // Step 3 now persists canonical ids (was labels) — confirms the
+        // stored-format change reaches the DB via completeOnboarding.
+        expect(orgRes.rows[0].primary_business_type).toBe('private_group_practice');
+        expect(orgRes.rows[0].additional_business_types).toEqual(
+          expect.arrayContaining(['outpatient_services', 'crisis_stabilization']),
+        );
 
         const facilityRes = await client.query(
           `SELECT id, name FROM facilities WHERE organization_id = $1`,
@@ -327,6 +335,146 @@ test.describe('Onboarding wizard — 5-step happy path', () => {
     }
   });
 
+  test('step3 "Other (Specify)" free text on primary and additional business type lands in the DB', async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    const seeded = await seedUnboardedOwner();
+    const orgName = `Onb Other Specify Co ${crypto.randomBytes(4).toString('hex')}`;
+    const primaryOtherText = `Custom Provider Org ${crypto.randomBytes(3).toString('hex')}`;
+    const additionalOtherText = `Custom Additional Type ${crypto.randomBytes(3).toString('hex')}`;
+
+    try {
+      await login(page, seeded.email, seeded.password);
+      await page.goto('/onboarding/step1');
+      await page.waitForLoadState('networkidle');
+
+      await page.getByPlaceholder('e.g. Acme Healthcare Ltd').fill(orgName);
+      await page.getByPlaceholder('Enter business name (if applicable)').fill('Other Specify DBA');
+      await page.getByPlaceholder('Enter the full name of the main contact').fill('Jane Founder');
+      await page.getByPlaceholder('Enter the email address of the main contact').fill(seeded.email);
+      await page.getByRole('combobox').first().click();
+      await page.getByRole('option', { name: '1-10' }).click();
+      await page.locator('input[type="tel"]').fill('5552223333');
+      await page.getByRole('button', { name: /^next$/i }).click();
+      await page.waitForURL('**/onboarding/step2**', { timeout: 25000 });
+
+      await page.getByRole('combobox').click();
+      await page.getByRole('option', { name: /^yes$/i }).click();
+      await page.getByRole('button', { name: /^next$/i }).click();
+      await page.waitForURL('**/onboarding/step3**', { timeout: 25000 });
+
+      // Primary Business Type: "Other (Specify)" reveals a required text input.
+      await page.getByRole('combobox').click();
+      await page.getByRole('option', { name: /^other \(specify\)/i }).click();
+      await page.getByPlaceholder('Please specify').fill(primaryOtherText);
+
+      // Additional Business Type: the "Other (specify)" row is a toggle
+      // button (not a checkbox) that reveals its own required text input.
+      // Program Services renders an identical "Other (specify)" button below
+      // it (unclicked here), so `.first()` disambiguates by DOM/section order.
+      await page
+        .getByRole('button', { name: /^other \(specify\)/i })
+        .first()
+        .click();
+      // Two "Please specify" inputs are now visible (primary's, already
+      // filled, then additional's) — DOM order matches section order.
+      await page.getByPlaceholder('Please specify').nth(1).fill(additionalOtherText);
+
+      await page.getByRole('button', { name: /^next$/i }).click();
+      await page.waitForURL('**/onboarding/step4**', { timeout: 25000 });
+
+      await page.getByRole('button', { name: /skip for now/i }).click();
+      await page.waitForURL('**/onboarding/step5**', { timeout: 25000 });
+      await page.getByRole('button', { name: /skip for now/i }).click();
+      await page.waitForURL('**/onboarding/complete**', { timeout: 30000 });
+
+      const client = new Client({ connectionString: DB_URL });
+      await client.connect();
+      try {
+        const orgRes = await client.query(
+          `SELECT primary_business_type, additional_business_types FROM organizations WHERE name = $1`,
+          [orgName],
+        );
+        expect(orgRes.rows).toHaveLength(1);
+        expect(orgRes.rows[0].primary_business_type).toBe(primaryOtherText);
+        expect(orgRes.rows[0].additional_business_types).toEqual([additionalOtherText]);
+      } finally {
+        await client.end();
+      }
+    } finally {
+      await cleanup(seeded, orgName);
+    }
+  });
+
+  test('step3 Back-navigation from step4 rehydrates prior selections and "Other" text', async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    const seeded = await seedUnboardedOwner();
+    const additionalOtherText = `Custom Rehab Type ${crypto.randomBytes(3).toString('hex')}`;
+
+    try {
+      await login(page, seeded.email, seeded.password);
+      await page.goto('/onboarding/step1');
+      await page.waitForLoadState('networkidle');
+
+      await page.getByPlaceholder('e.g. Acme Healthcare Ltd').fill('Rehydration Regression Co');
+      await page.getByPlaceholder('Enter business name (if applicable)').fill('Rehydration DBA');
+      await page.getByPlaceholder('Enter the full name of the main contact').fill('Jane Founder');
+      await page.getByPlaceholder('Enter the email address of the main contact').fill(seeded.email);
+      await page.getByRole('combobox').first().click();
+      await page.getByRole('option', { name: '1-10' }).click();
+      await page.locator('input[type="tel"]').fill('5554445555');
+      await page.getByRole('button', { name: /^next$/i }).click();
+      await page.waitForURL('**/onboarding/step2**', { timeout: 25000 });
+
+      await page.getByRole('combobox').click();
+      await page.getByRole('option', { name: /^yes$/i }).click();
+      await page.getByRole('button', { name: /^next$/i }).click();
+      await page.waitForURL('**/onboarding/step3**', { timeout: 25000 });
+
+      // Fill step 3: a known primary type, a known + an "other" additional
+      // business type, and one program service.
+      await page.getByRole('combobox').click();
+      await page.getByRole('option', { name: /telehealth-only/i }).click();
+
+      await page.getByRole('checkbox', { name: 'Detoxification / Withdrawal Management' }).click();
+      // Program Services renders an identical "Other (specify)" button below
+      // it (unclicked here), so `.first()` disambiguates by section order.
+      await page
+        .getByRole('button', { name: /^other \(specify\)/i })
+        .first()
+        .click();
+      await page.getByPlaceholder('Please specify').fill(additionalOtherText);
+
+      await page.getByRole('checkbox', { name: 'Vision Rehabilitation Services' }).click();
+
+      await page.getByRole('button', { name: /^next$/i }).click();
+      await page.waitForURL('**/onboarding/step4**', { timeout: 25000 });
+
+      // Navigate back — step 3 must rehydrate from the localStorage draft
+      // rather than resetting to its blank defaultValues.
+      await page.getByRole('button', { name: /^back$/i }).click();
+      await page.waitForURL('**/onboarding/step3**', { timeout: 25000 });
+
+      await expect(page.getByRole('combobox')).toHaveText(/telehealth-only/i);
+      await expect(
+        page.getByRole('checkbox', { name: 'Detoxification / Withdrawal Management' }),
+      ).toBeChecked();
+      await expect(page.getByPlaceholder('Please specify')).toHaveValue(additionalOtherText);
+      await expect(
+        page.getByRole('checkbox', { name: 'Vision Rehabilitation Services' }),
+      ).toBeChecked();
+      // A checkbox that was never selected stays unchecked after rehydration.
+      await expect(page.getByRole('checkbox', { name: 'Outpatient Services' })).not.toBeChecked();
+    } finally {
+      // The wizard is never completed in this test, but pass the typed org
+      // name defensively — cleanup() no-ops if no matching row exists.
+      await cleanup(seeded, 'Rehydration Regression Co');
+    }
+  });
+
   test('step5 skip-for-now still completes onboarding without creating any worker invite', async ({
     page,
   }) => {
@@ -341,10 +489,8 @@ test.describe('Onboarding wizard — 5-step happy path', () => {
 
       await page.getByPlaceholder('e.g. Acme Healthcare Ltd').fill(orgName);
       await page.getByPlaceholder('Enter business name (if applicable)').fill('Skip Worker DBA');
-      await page.getByPlaceholder("Enter the full name of the main contact").fill('Jane Founder');
-      await page
-        .getByPlaceholder('Enter the email address of the main contact')
-        .fill(seeded.email);
+      await page.getByPlaceholder('Enter the full name of the main contact').fill('Jane Founder');
+      await page.getByPlaceholder('Enter the email address of the main contact').fill(seeded.email);
       await page.getByRole('combobox').first().click();
       await page.getByRole('option', { name: '1-10' }).click();
       await page.locator('input[type="tel"]').fill('5551110000');
@@ -357,10 +503,8 @@ test.describe('Onboarding wizard — 5-step happy path', () => {
       await page.waitForURL('**/onboarding/step3**', { timeout: 25000 });
 
       await page.getByRole('combobox').click();
-      await page.getByRole('option', { name: 'Clinic' }).click();
-      await page.getByRole('button', { name: 'Select an option' }).click();
-      await page.getByRole('checkbox', { name: /school-.*campus-based program/i }).click();
-      await page.keyboard.press('Escape');
+      await page.getByRole('option', { name: /private practice/i }).click();
+      await page.getByRole('checkbox', { name: 'Outpatient Services' }).click();
       await page.getByRole('button', { name: /^next$/i }).click();
       await page.waitForURL('**/onboarding/step4**', { timeout: 25000 });
 
@@ -380,10 +524,9 @@ test.describe('Onboarding wizard — 5-step happy path', () => {
         expect(orgRes.rows).toHaveLength(1);
         const orgId = orgRes.rows[0].id as string;
 
-        const inviteRes = await client.query(
-          `SELECT id FROM invites WHERE organization_id = $1`,
-          [orgId],
-        );
+        const inviteRes = await client.query(`SELECT id FROM invites WHERE organization_id = $1`, [
+          orgId,
+        ]);
         expect(inviteRes.rows).toHaveLength(0);
       } finally {
         await client.end();
@@ -393,9 +536,7 @@ test.describe('Onboarding wizard — 5-step happy path', () => {
     }
   });
 
-  test('step5 blocks submission when a row has an email but no role selected', async ({
-    page,
-  }) => {
+  test('step5 blocks submission when a row has an email but no role selected', async ({ page }) => {
     test.setTimeout(60_000);
     const seeded = await seedUnboardedOwner();
 
@@ -458,10 +599,9 @@ test.describe('Onboarding wizard — 5-step happy path', () => {
       const client = new Client({ connectionString: DB_URL });
       await client.connect();
       try {
-        const res = await client.query(
-          `SELECT id FROM organization_users WHERE user_id = $1`,
-          [seeded.userId],
-        );
+        const res = await client.query(`SELECT id FROM organization_users WHERE user_id = $1`, [
+          seeded.userId,
+        ]);
         expect(res.rows).toHaveLength(0);
       } finally {
         await client.end();

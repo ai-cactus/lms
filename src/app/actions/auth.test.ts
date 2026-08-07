@@ -24,6 +24,7 @@ const {
   mockSendEmailVerification,
   mockAdminAuth,
   mockWorkerAuth,
+  mockInvalidateRevalidationCache,
 } = vi.hoisted(() => {
   const prismaMock = {
     user: { findUnique: vi.fn(), update: vi.fn() },
@@ -31,6 +32,7 @@ const {
       deleteMany: vi.fn(),
       create: vi.fn(),
       findFirst: vi.fn(),
+      delete: vi.fn(),
     },
     organizationUser: { findMany: vi.fn(), count: vi.fn() },
   };
@@ -56,6 +58,7 @@ const {
     mockSendEmailVerification,
     mockAdminAuth,
     mockWorkerAuth,
+    mockInvalidateRevalidationCache: vi.fn(),
   };
 });
 
@@ -103,10 +106,17 @@ vi.mock('@/lib/mfa-challenge', () => ({
   createMfaChallenge: vi.fn(),
 }));
 
+// Both password-reset paths actively bust the JWT revalidation cache; stub it
+// so tests don't reach the real Redis client, and kept as a spy (not an
+// inline vi.fn()) so tests can assert it's actually called.
+vi.mock('@/lib/auth/session-revalidation-cache', () => ({
+  invalidateRevalidationCache: mockInvalidateRevalidationCache,
+}));
+
 // ---------------------------------------------------------------------------
 // Import under test AFTER all vi.mock() declarations.
 // ---------------------------------------------------------------------------
-import { signup, authenticate, forceResetPassword } from './auth';
+import { signup, authenticate, forceResetPassword, resetPasswordWithToken } from './auth';
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -412,6 +422,7 @@ describe('forceResetPassword — session-derived email (F-057)', () => {
     const bcrypt = await import('bcryptjs');
     (bcrypt.default.compare as ReturnType<typeof vi.fn>).mockResolvedValue(false);
     (bcrypt.default.hash as ReturnType<typeof vi.fn>).mockResolvedValue('new-hashed-password');
+    mockInvalidateRevalidationCache.mockResolvedValue(undefined);
   });
 
   it('returns "Not authenticated." and touches no DB when there is no admin or worker session', async () => {
@@ -420,11 +431,13 @@ describe('forceResetPassword — session-derived email (F-057)', () => {
     expect(result).toEqual({ error: 'Not authenticated.' });
     expect(prismaMock.user.findUnique).not.toHaveBeenCalled();
     expect(prismaMock.user.update).not.toHaveBeenCalled();
+    expect(mockInvalidateRevalidationCache).not.toHaveBeenCalled();
   });
 
   it("updates the session-derived email's password on a valid admin session + correct current password", async () => {
     mockAdminAuth.mockResolvedValue({ user: { email: SESSION_EMAIL } });
     prismaMock.user.findUnique.mockResolvedValue({
+      id: 'staff-user-1',
       email: SESSION_EMAIL,
       password: EXISTING_HASH,
     });
@@ -448,12 +461,19 @@ describe('forceResetPassword — session-derived email (F-057)', () => {
         sessionVersion: { increment: 1 },
       },
     });
+    // commit 66aa961: busts the target's cached revalidation snapshot, by id,
+    // only after the DB write that bumped sessionVersion.
+    expect(mockInvalidateRevalidationCache).toHaveBeenCalledExactlyOnceWith('staff-user-1');
+    expect(prismaMock.user.update.mock.invocationCallOrder[0]).toBeLessThan(
+      mockInvalidateRevalidationCache.mock.invocationCallOrder[0],
+    );
   });
 
   it('updates the password for a valid worker session (no admin session present)', async () => {
     mockAdminAuth.mockResolvedValue(null);
     mockWorkerAuth.mockResolvedValue({ user: { email: SESSION_EMAIL } });
     prismaMock.user.findUnique.mockResolvedValue({
+      id: 'worker-user-1',
       email: SESSION_EMAIL,
       password: EXISTING_HASH,
     });
@@ -474,11 +494,13 @@ describe('forceResetPassword — session-derived email (F-057)', () => {
         sessionVersion: { increment: 1 },
       },
     });
+    expect(mockInvalidateRevalidationCache).toHaveBeenCalledExactlyOnceWith('worker-user-1');
   });
 
   it('returns "Invalid current password." and does NOT update when the current password is wrong', async () => {
     mockAdminAuth.mockResolvedValue({ user: { email: SESSION_EMAIL } });
     prismaMock.user.findUnique.mockResolvedValue({
+      id: 'staff-user-1',
       email: SESSION_EMAIL,
       password: EXISTING_HASH,
     });
@@ -490,5 +512,104 @@ describe('forceResetPassword — session-derived email (F-057)', () => {
 
     expect(result).toEqual({ error: 'Invalid current password.' });
     expect(prismaMock.user.update).not.toHaveBeenCalled();
+    expect(mockInvalidateRevalidationCache).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resetPasswordWithToken(token, newPassword) — emailed-link password reset.
+// F-059 bumps sessionVersion on completion; commit 66aa961 added an active
+// cache bust on top so the invalidation isn't bounded by the revalidation
+// cache's TTL.
+// ---------------------------------------------------------------------------
+
+describe('resetPasswordWithToken — emailed-token password reset', () => {
+  const TOKEN = 'reset-token-abc123';
+  const IDENTIFIER_EMAIL = 'reset-target@example.com';
+  const VERIFICATION_TOKEN_ROW = {
+    identifier: IDENTIFIER_EMAIL,
+    token: TOKEN,
+    type: 'password_reset',
+    expires: new Date(Date.now() + 60_000),
+  };
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    prismaMock.verificationToken.findFirst.mockResolvedValue(VERIFICATION_TOKEN_ROW);
+    prismaMock.verificationToken.delete.mockResolvedValue({});
+    prismaMock.user.update.mockResolvedValue({
+      id: 'reset-target-1',
+      role: 'nurse',
+      organizationId: 'org-1',
+    });
+    mockInvalidateRevalidationCache.mockResolvedValue(undefined);
+
+    const bcrypt = await import('bcryptjs');
+    (bcrypt.default.hash as ReturnType<typeof vi.fn>).mockResolvedValue('new-hashed-password');
+  });
+
+  it('returns "Invalid or expired reset link." and touches no DB when the token does not resolve', async () => {
+    prismaMock.verificationToken.findFirst.mockResolvedValue(null);
+
+    const result = await resetPasswordWithToken(TOKEN, 'NewStr0ng!Pass');
+
+    expect(result).toEqual({ error: 'Invalid or expired reset link.' });
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
+    expect(mockInvalidateRevalidationCache).not.toHaveBeenCalled();
+  });
+
+  it('scopes the token lookup to type "password_reset" and a non-expired window', async () => {
+    await resetPasswordWithToken(TOKEN, 'NewStr0ng!Pass');
+
+    expect(prismaMock.verificationToken.findFirst).toHaveBeenCalledWith({
+      where: {
+        token: TOKEN,
+        type: 'password_reset',
+        expires: { gt: expect.any(Date) },
+      },
+    });
+  });
+
+  it("updates the password, bumps sessionVersion, and busts the target user's cached revalidation snapshot by id, after the DB write", async () => {
+    const result = await resetPasswordWithToken(TOKEN, 'NewStr0ng!Pass');
+
+    expect(result).toEqual({ success: true });
+    expect(prismaMock.user.update).toHaveBeenCalledWith({
+      where: { email: IDENTIFIER_EMAIL },
+      data: { password: 'new-hashed-password', sessionVersion: { increment: 1 } },
+      // Post multi-org split, role/organizationId live on OrganizationUser — the
+      // reset only ever needs the identity id it must bust the cache for.
+      select: { id: true },
+    });
+    // commit 66aa961: unlike the pre-existing F-059 sessionVersion bump alone
+    // (which only self-heals within the cache TTL), this is the active bust
+    // that makes the invalidation immediate.
+    expect(mockInvalidateRevalidationCache).toHaveBeenCalledExactlyOnceWith('reset-target-1');
+    expect(prismaMock.user.update.mock.invocationCallOrder[0]).toBeLessThan(
+      mockInvalidateRevalidationCache.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('deletes the consumed verification token after a successful reset', async () => {
+    await resetPasswordWithToken(TOKEN, 'NewStr0ng!Pass');
+
+    expect(prismaMock.verificationToken.delete).toHaveBeenCalledWith({
+      where: { identifier_token: { identifier: IDENTIFIER_EMAIL, token: TOKEN } },
+    });
+  });
+
+  it('rejects a password that fails policy validation before ever touching the DB', async () => {
+    const passwordPolicy = await import('@/lib/password-policy');
+    (passwordPolicy.validatePassword as ReturnType<typeof vi.fn>).mockReturnValueOnce({
+      valid: false,
+      errors: ['too short'],
+    });
+
+    const result = await resetPasswordWithToken(TOKEN, 'short');
+
+    expect(result).toEqual({ error: 'Password does not meet requirements: too short' });
+    expect(prismaMock.verificationToken.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
+    expect(mockInvalidateRevalidationCache).not.toHaveBeenCalled();
   });
 });

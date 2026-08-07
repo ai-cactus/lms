@@ -18,6 +18,7 @@ import { enrollUserForRoleTargets } from '@/lib/enrollment/role-targets';
 import { logger, maskEmail } from '@/lib/logger';
 import { audit, getClientContext } from '@/lib/audit';
 import { headers } from 'next/headers';
+import { invalidateRevalidationCache } from '@/lib/auth/session-revalidation-cache';
 import type { ActivityReportEnrollment } from '@/lib/pdf-reports';
 
 // Caller-facing copy for each role-change denial. `target_not_reachable` and
@@ -46,27 +47,37 @@ export async function getStaffDetails(organizationUserId: string) {
   try {
     const orgUser = await prisma.organizationUser.findUnique({
       where: { id: organizationUserId },
-      include: {
-        user: true,
-        manager: {
-          include: { user: true },
-        },
+      // Explicit projection — this DTO never needs the credential columns behind
+      // the joined User rows (password hash, MFA state, reset flags).
+      select: {
+        id: true,
+        role: true,
+        jobTitle: true,
+        organizationId: true,
+        managerId: true,
+        user: { select: { email: true, fullName: true, avatarUrl: true } },
+        manager: { select: { user: { select: { email: true, fullName: true } } } },
         enrollments: {
-          include: {
+          orderBy: { startedAt: 'desc' },
+          select: {
+            id: true,
+            courseId: true,
+            status: true,
+            progress: true,
+            score: true,
+            startedAt: true,
+            completedAt: true,
+            dueAt: true,
             course: {
-              include: {
+              select: {
+                title: true,
+                thumbnail: true,
+                type: true,
                 lessons: {
-                  include: { quiz: true },
+                  select: { quiz: { select: { passingScore: true, allowedAttempts: true } } },
                 },
               },
             },
-            quizAttempts: {
-              orderBy: { completedAt: 'desc' },
-              take: 1,
-            },
-          },
-          orderBy: {
-            startedAt: 'desc',
           },
         },
       },
@@ -228,6 +239,10 @@ export async function updateStaffDetails(
         where: { id: target.userId },
         data: { sessionVersion: { increment: 1 } },
       });
+
+      // Evict the cached revalidation snapshot so that next decode reads the
+      // new sessionVersion immediately rather than waiting out the Redis TTL.
+      await invalidateRevalidationCache(target.userId);
 
       await audit({
         action: 'staff.role.change',
@@ -742,6 +757,10 @@ export async function removeStaff(organizationUserId: string) {
         data: { status: 'expired' },
       }),
     ]);
+
+    // The unlink bumped sessionVersion; evict the cached revalidation snapshot
+    // so the removed user's next decode misses the cache and is invalidated.
+    await invalidateRevalidationCache(staffOrgUser.userId);
 
     // F-001: record the sensitive mutation on the authorized, successful path.
     await audit({

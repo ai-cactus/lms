@@ -9,6 +9,11 @@ import { expireSiblingSessionCookies } from '@/lib/auth/session-cookies';
 import { logger, maskEmail } from '@/lib/logger';
 import { isSessionMfaVerified } from '@/lib/session-mfa';
 import {
+  getCachedRevalidation,
+  setCachedRevalidation,
+  type RevalidationSnapshot,
+} from '@/lib/auth/session-revalidation-cache';
+import {
   ADMIN_ROLES,
   WORKER_ROLES,
   ALL_ROLES,
@@ -585,21 +590,60 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
 
         // ✅ Re-validate against DB on every decode
         if (token.id) {
-          let freshUser;
+          // The minimal, non-sensitive identity snapshot the revocation checks
+          // below consume. Sourced from either the short-TTL Redis cache or a
+          // fresh DB read — every guard runs identically regardless of source.
+          let freshUser: RevalidationSnapshot | null = null;
           let membership: MembershipSummary | null = null;
+
+          // Tier 3 §5.1: skip the per-decode identity re-read when a recent
+          // snapshot is cached (default 30s TTL, AUTH_REVALIDATE_TTL_SECONDS).
+          // This lags identity-level revocation by at most the TTL — a
+          // deliberate, bounded trade (see docs/perf/tier3-implementation-plan.md
+          // §6) that the active bust on every sessionVersion bump keeps short. A
+          // Redis miss/error returns null and falls through to the DB read, so a
+          // cache outage never fails closed.
+          //
+          // MEMBERSHIP IS NEVER CACHED. The cache is keyed by identity, but role
+          // and organization live on the per-org membership, so a cached copy
+          // would be ambiguous for a multi-org user and could carry another org's
+          // role. The membership is therefore always re-read below, keeping
+          // deactivation and re-roling effective on the very next decode.
+          const cached = await getCachedRevalidation(token.id as string);
+
           try {
-            freshUser = await prisma.user.findUnique({
-              where: { id: token.id as string },
-              select: {
-                id: true,
-                fullName: true,
-                mfaEnabled: true,
-                mfaVerifiedAt: true,
-                passwordResetRequired: true,
-                sessionVersion: true,
-                authProvider: true,
-              },
-            });
+            if (cached) {
+              freshUser = cached;
+            } else {
+              const dbUser = await prisma.user.findUnique({
+                where: { id: token.id as string },
+                select: {
+                  id: true,
+                  fullName: true,
+                  mfaEnabled: true,
+                  mfaVerifiedAt: true,
+                  passwordResetRequired: true,
+                  sessionVersion: true,
+                  authProvider: true,
+                },
+              });
+
+              if (dbUser) {
+                freshUser = {
+                  id: dbUser.id,
+                  fullName: dbUser.fullName,
+                  mfaEnabled: dbUser.mfaEnabled,
+                  passwordResetRequired: dbUser.passwordResetRequired,
+                  sessionVersion: dbUser.sessionVersion,
+                  authProvider: dbUser.authProvider,
+                };
+                // Cache only a positive snapshot of non-sensitive validity
+                // fields. Negative results (deleted user) are never cached, so a
+                // deletion is caught on the very next decode, not after the TTL.
+                await setCachedRevalidation(token.id as string, freshUser);
+              }
+            }
+
             // Re-check the ACTIVE membership itself, not just the identity: a
             // membership deactivated (or re-roled) since the token was minted
             // must take effect on the next decode.

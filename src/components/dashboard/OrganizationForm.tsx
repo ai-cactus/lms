@@ -14,6 +14,11 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { logger } from '@/lib/logger';
+import {
+  ADDITIONAL_BUSINESS_TYPES,
+  PRIMARY_BUSINESS_TYPES,
+  getOptionLabel,
+} from '@/lib/constants/onboarding-options';
 import { panelLabelClass, sectionHeadingClass } from './profile-tab-styles';
 
 interface OrganizationData {
@@ -40,20 +45,14 @@ const HIPAA_OPTIONS = [
   { label: 'No', value: 'no' },
 ];
 
-// Exact options from onboarding/step3
-const PRIMARY_BUSINESS_TYPES = [
-  { label: 'Solo / Independent Provider', value: 'solo' },
-  { label: 'Group Practice', value: 'group' },
-  { label: 'Clinic', value: 'clinic' },
-  { label: 'Hospital', value: 'hospital' },
-];
-
-const ADDITIONAL_BUSINESS_TYPES = [
-  { label: 'Other', value: 'none' },
-  { label: 'Non-Profit', value: 'non-profit' },
-  { label: 'Private', value: 'private' },
-  { label: 'Public', value: 'public' },
-];
+// Organizations onboarded before the step 3 option set was reworked still hold
+// these ids; they are no longer offered, but must remain readable here.
+const LEGACY_PRIMARY_BUSINESS_TYPE_LABELS: Record<string, string> = {
+  solo: 'Solo / Independent Provider',
+  group: 'Group Practice',
+  clinic: 'Clinic',
+  hospital: 'Hospital',
+};
 
 const requiredClass = 'text-error';
 const optionalClass = 'text-text-tertiary font-normal';
@@ -223,7 +222,17 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
     );
   }
 
-  const additionalBusinessType = (initialData.additionalBusinessTypes || [])[0] || '';
+  const primaryBusinessType = initialData.primaryBusinessType || '';
+  const primaryBusinessTypeLabel = primaryBusinessType
+    ? (getOptionLabel(PRIMARY_BUSINESS_TYPES, primaryBusinessType) ??
+      LEGACY_PRIMARY_BUSINESS_TYPE_LABELS[primaryBusinessType] ??
+      primaryBusinessType)
+    : '';
+
+  // Values that match no known id are the free text captured by "Other (specify)".
+  const additionalBusinessTypeLabels = (initialData.additionalBusinessTypes || [])
+    .map((value) => getOptionLabel(ADDITIONAL_BUSINESS_TYPES, value) ?? value)
+    .join(', ');
 
   return (
     <div className="flex w-full flex-col gap-10">
@@ -326,20 +335,24 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
             <label className={panelLabelClass}>
               Primary Business Type <span className={requiredClass}>*</span>
             </label>
-            <ReadOnlySelect
-              value={initialData.primaryBusinessType || ''}
-              options={PRIMARY_BUSINESS_TYPES}
+            <Input
+              name="primaryBusinessType"
+              value={primaryBusinessTypeLabel}
               placeholder="Select an option"
+              disabled
+              readOnly
             />
           </div>
           <div>
             <label className={panelLabelClass}>
               Additional Business Type <span className={requiredClass}>*</span>
             </label>
-            <ReadOnlySelect
-              value={additionalBusinessType}
-              options={ADDITIONAL_BUSINESS_TYPES}
+            <Input
+              name="additionalBusinessTypes"
+              value={additionalBusinessTypeLabels}
               placeholder="Select an option"
+              disabled
+              readOnly
             />
           </div>
         </div>

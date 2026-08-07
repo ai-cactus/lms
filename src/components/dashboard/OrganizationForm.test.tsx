@@ -33,8 +33,8 @@ const baseOrg = {
   primaryContact: 'Jane Doe',
   primaryEmail: 'jane@acme.com',
   isHipaaCompliant: true,
-  primaryBusinessType: 'clinic',
-  additionalBusinessTypes: ['non-profit'],
+  primaryBusinessType: 'private_group_practice',
+  additionalBusinessTypes: ['outpatient_services', 'crisis_stabilization'],
 };
 
 beforeEach(() => {
@@ -56,16 +56,51 @@ describe.each([
       screen.getByDisplayValue('12-3456789'),
       screen.getByDisplayValue('Jane Doe'),
       screen.getByDisplayValue('jane@acme.com'),
+      // Primary/additional business type are read-only <Input>s (not Selects)
+      // since the redesign, so their resolved labels show as input values.
+      screen.getByDisplayValue('Private Practice / Group Practice'),
+      screen.getByDisplayValue('Outpatient Services, Crisis Stabilization Unit'),
     ];
     textFields.forEach((field) => expect(field).toBeDisabled());
 
+    // Only HIPAA compliance remains a Select combobox — business type fields
+    // were converted to disabled/readOnly <Input>s so they can show resolved
+    // labels (or free "Other" text) without needing a matching SelectItem.
     const comboboxes = screen.getAllByRole('combobox');
-    expect(comboboxes).toHaveLength(3);
+    expect(comboboxes).toHaveLength(1);
     comboboxes.forEach((box) => expect(box).toBeDisabled());
 
     expect(screen.getByText('Yes')).toBeInTheDocument(); // HIPAA
-    expect(screen.getByText('Clinic')).toBeInTheDocument(); // primary business type
-    expect(screen.getByText('Non-Profit')).toBeInTheDocument(); // additional business type
+
+    if (isAdmin) {
+      await waitFor(() => expect(getOrganizationCode).toHaveBeenCalled());
+    }
+  });
+
+  it('resolves a legacy (pre-redesign) primaryBusinessType id to its label via the fallback map', async () => {
+    render(
+      <OrganizationForm
+        initialData={{ ...baseOrg, primaryBusinessType: 'clinic' }}
+        isAdmin={isAdmin}
+      />,
+    );
+
+    expect(screen.getByDisplayValue('Clinic')).toBeDisabled();
+
+    if (isAdmin) {
+      await waitFor(() => expect(getOrganizationCode).toHaveBeenCalled());
+    }
+  });
+
+  it('falls back to the raw stored value for an unrecognized additionalBusinessTypes id with no legacy mapping', async () => {
+    render(
+      <OrganizationForm
+        initialData={{ ...baseOrg, additionalBusinessTypes: ['non-profit'] }}
+        isAdmin={isAdmin}
+      />,
+    );
+
+    expect(screen.getByDisplayValue('non-profit')).toBeDisabled();
 
     if (isAdmin) {
       await waitFor(() => expect(getOrganizationCode).toHaveBeenCalled());

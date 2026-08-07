@@ -87,6 +87,13 @@ const ENROLLMENT_LOCKOUT_ID = '88888888-8888-4888-8888-888888888886';
 // contend over the same enrollment's attempt history.
 const RETAKE_WORKER_ID = '22222222-2222-4222-8222-222222222230';
 const ENROLLMENT_RETAKE_ID = '88888888-8888-4888-8888-888888888887';
+// A worker with a fully completed enrollment and an already-issued certificate,
+// for the certificate-modal e2e coverage (button-overlap regression). Kept
+// separate from the other fixtures so opening the modal never depends on
+// driving a real course through to completion via the UI/quiz.
+const CERTIFICATE_WORKER_ID = '22222222-2222-4222-8222-222222222231';
+const ENROLLMENT_CERTIFICATE_ID = '88888888-8888-4888-8888-888888888888';
+const CERTIFICATE_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
 // A second organization + a user with an ACTIVE membership in BOTH orgs, for
 // the org-picker e2e flow (2+ active memberships and no remembered org lands
@@ -372,8 +379,20 @@ async function main(): Promise<void> {
     org.id,
     facility.id,
   );
+  const { membership: certificateWorker } = await upsertOrgUser(
+    {
+      id: CERTIFICATE_WORKER_ID,
+      email: 'cara.certificate@test.com',
+      password: workerPassword,
+      firstName: 'Cara',
+      lastName: 'Certificate',
+      role: 'front_desk_admin',
+    },
+    org.id,
+    facility.id,
+  );
   log(
-    'users + memberships ready (admin, admin2, worker, sarah, overdueWorker, nearDeadlineWorker, assignableWorker, nurse, lockoutWorker, retakeWorker)',
+    'users + memberships ready (admin, admin2, worker, sarah, overdueWorker, nearDeadlineWorker, assignableWorker, nurse, lockoutWorker, retakeWorker, certificateWorker)',
   );
 
   // 3. Document + version owned by the admin (feeds the ENG-024 wizard picker).
@@ -716,8 +735,56 @@ async function main(): Promise<void> {
     },
   });
 
+  await prisma.enrollment.upsert({
+    where: { id: ENROLLMENT_CERTIFICATE_ID },
+    update: {
+      status: 'completed',
+      progress: 100,
+      score: 95,
+      completedAt: now,
+      lockedAt: null,
+      retakeOf: null,
+      retakeReason: null,
+    },
+    create: {
+      id: ENROLLMENT_CERTIFICATE_ID,
+      organizationUserId: certificateWorker.id,
+      courseId: COURSE_ID,
+      status: 'completed',
+      progress: 100,
+      score: 95,
+      startedAt: now,
+      completedAt: now,
+    },
+  });
+  // The certificate is issued directly rather than via issueCertificate() (which
+  // uploads a PDF to object storage) — CertificateModal's preview and export are
+  // both driven client-side from the DB row + DOM, so no storage backend is
+  // needed to reach or interact with the modal.
+  await prisma.certificate.upsert({
+    where: { enrollmentId: ENROLLMENT_CERTIFICATE_ID },
+    update: {
+      organizationUserId: certificateWorker.id,
+      courseId: COURSE_ID,
+      score: 95,
+      pdfStoragePath: 'certificates/e2e-seed-fixture.pdf',
+      pdfGeneratedAt: now,
+      issuedAt: now,
+    },
+    create: {
+      id: CERTIFICATE_ID,
+      enrollmentId: ENROLLMENT_CERTIFICATE_ID,
+      organizationUserId: certificateWorker.id,
+      courseId: COURSE_ID,
+      score: 95,
+      pdfStoragePath: 'certificates/e2e-seed-fixture.pdf',
+      pdfGeneratedAt: now,
+      issuedAt: now,
+    },
+  });
+
   log(
-    'enrollments ready (sarah in_progress, worker locked, overdueWorker 10d overdue, nearDeadlineWorker due in 3d, nurse + lockoutWorker + retakeWorker at progress:100; retakes + quiz attempts reset)',
+    'enrollments ready (sarah in_progress, worker locked, overdueWorker 10d overdue, nearDeadlineWorker due in 3d, nurse + lockoutWorker + retakeWorker at progress:100, certificateWorker completed + certificate issued; retakes + quiz attempts reset)',
   );
 
   // 5. Second organization + a user with an active membership in BOTH orgs —

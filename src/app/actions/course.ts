@@ -1,6 +1,7 @@
 'use server';
 
 import prisma from '@/lib/prisma';
+import type { Prisma } from '@/generated/prisma/client';
 import { dbRoleToRoleKey, WORKER_ROLES } from '@/lib/rbac/role-utils';
 import { can } from '@/lib/rbac/permissions';
 import { hasActiveBilling } from '@/lib/billing';
@@ -8,7 +9,7 @@ import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
 import { notifyOrganizationAdmins } from './notifications';
-import { CourseWithStats, CourseWithRelations } from '@/types/course';
+import { CourseWithStats, CourseWithRelations, courseDetailSelect } from '@/types/course';
 import { QuizQuestion } from '@/types/quiz';
 import type { StaffEntry } from '@/types/enrollment';
 import { logger } from '@/lib/logger';
@@ -36,14 +37,30 @@ export async function getCourses(): Promise<CourseWithStats[]> {
     throw new Error('No active organization membership');
   }
 
+  // Org/membership are authoritative on the DB-revalidated session — no re-query.
   const organizationId = session.user.organizationId;
+  const createdByOrgUserId = session.user.organizationUserId;
+
+  // Course structure only — lesson/enrollment tallies come from grouped
+  // aggregation below, not from materializing every enrollment row per course.
+  const courseCardSelect = {
+    id: true,
+    title: true,
+    description: true,
+    thumbnail: true,
+    status: true,
+    type: true,
+    duration: true,
+    createdAt: true,
+    updatedAt: true,
+    _count: { select: { lessons: true } },
+  } satisfies Prisma.CourseSelect;
 
   const [ownCourses, offerings] = await Promise.all([
     prisma.course.findMany({
-      where: { createdByOrgUserId: session.user.organizationUserId },
-      include: {
-        lessons: { select: { id: true } },
-        enrollments: { select: { status: true } },
+      where: { createdByOrgUserId },
+      select: {
+        ...courseCardSelect,
         // Latest source-document lineage, so the list can offer "View Source
         // Document" only for courses that actually have one.
         versions: {
@@ -58,35 +75,69 @@ export async function getCourses(): Promise<CourseWithStats[]> {
       ? prisma.orgCourseOffering.findMany({
           where: { organizationId },
           orderBy: { createdAt: 'desc' },
-          include: {
-            course: {
-              include: {
-                lessons: { select: { id: true } },
-                enrollments: {
-                  where: { organizationUser: { organizationId } },
-                  select: { status: true },
-                },
-              },
-            },
-          },
+          select: { course: { select: courseCardSelect } },
         })
       : Promise.resolve([]),
   ]);
 
-  const toStats = (course: {
-    id: string;
-    title: string;
-    description: string | null;
-    thumbnail: string | null;
-    status: string;
-    type: string;
-    duration: number | null;
-    createdAt: Date;
-    updatedAt: Date;
-    lessons: { id: string }[];
-    enrollments: { status: string }[];
-    versions?: { documentVersion: { documentId: string } }[];
-  }): CourseWithStats => ({
+  const adoptedCourses = offerings.map((o) => o.course);
+  const adoptedCourseIds = adoptedCourses.map((c) => c.id);
+
+  // Per-course enrollment totals + completed/attested tallies via grouped
+  // aggregation (F-028 pattern). Own courses count ALL enrollments (unscoped,
+  // matching the prior behavior); adopted courses count only THIS org's staff.
+  const [ownCounts, adoptedCounts] = await Promise.all([
+    prisma.enrollment.groupBy({
+      by: ['courseId', 'status'],
+      where: { course: { createdByOrgUserId } },
+      _count: { _all: true },
+    }),
+    organizationId && adoptedCourseIds.length
+      ? prisma.enrollment.groupBy({
+          by: ['courseId', 'status'],
+          where: {
+            courseId: { in: adoptedCourseIds },
+            organizationUser: { organizationId },
+          },
+          _count: { _all: true },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const toCountMap = (
+    rows: { courseId: string; status: string; _count: { _all: number } }[],
+  ): Map<string, { total: number; completed: number }> => {
+    const map = new Map<string, { total: number; completed: number }>();
+    for (const row of rows) {
+      const entry = map.get(row.courseId) ?? { total: 0, completed: 0 };
+      entry.total += row._count._all;
+      if (row.status === 'completed' || row.status === 'attested') {
+        entry.completed += row._count._all;
+      }
+      map.set(row.courseId, entry);
+    }
+    return map;
+  };
+
+  const ownCountMap = toCountMap(ownCounts);
+  const adoptedCountMap = toCountMap(adoptedCounts);
+
+  const toStats = (
+    course: {
+      id: string;
+      title: string;
+      description: string | null;
+      thumbnail: string | null;
+      status: string;
+      type: string;
+      duration: number | null;
+      createdAt: Date;
+      updatedAt: Date;
+      _count: { lessons: number };
+      versions?: { documentVersion: { documentId: string } }[];
+    },
+    counts: { total: number; completed: number },
+  ): CourseWithStats => ({
     id: course.id,
     title: course.title,
     description: course.description,
@@ -96,24 +147,20 @@ export async function getCourses(): Promise<CourseWithStats[]> {
     duration: course.duration,
     createdAt: course.createdAt,
     updatedAt: course.updatedAt,
-    lessonsCount: course.lessons.length,
-    enrollmentsCount: course.enrollments.length,
+    lessonsCount: course._count.lessons,
+    enrollmentsCount: counts.total,
     // Adopted offerings deliberately resolve to null: their source document
     // belongs to the publishing org and must never be linked from this tenant.
     sourceDocumentId: course.versions?.[0]?.documentVersion.documentId ?? null,
-    completionRate:
-      course.enrollments.length > 0
-        ? Math.round(
-            (course.enrollments.filter((e) => e.status === 'completed' || e.status === 'attested')
-              .length /
-              course.enrollments.length) *
-              100,
-          )
-        : 0,
+    completionRate: counts.total > 0 ? Math.round((counts.completed / counts.total) * 100) : 0,
   });
 
-  const own = ownCourses.map(toStats);
-  const adopted = offerings.map((o) => toStats(o.course));
+  const own = ownCourses.map((course) =>
+    toStats(course, ownCountMap.get(course.id) ?? { total: 0, completed: 0 }),
+  );
+  const adopted = adoptedCourses.map((course) =>
+    toStats(course, adoptedCountMap.get(course.id) ?? { total: 0, completed: 0 }),
+  );
 
   // De-dupe in case the admin both created and adopted the same course id.
   const seen = new Set(own.map((c) => c.id));
@@ -128,41 +175,7 @@ export async function getCourseById(courseId: string): Promise<CourseWithRelatio
 
   const course = await prisma.course.findUnique({
     where: { id: courseId },
-    include: {
-      modules: {
-        orderBy: { order: 'asc' },
-        include: {
-          lessons: {
-            orderBy: { order: 'asc' },
-            include: {
-              quiz: {
-                include: { questions: { orderBy: { order: 'asc' } } },
-              },
-            },
-          },
-        },
-      },
-      quiz: {
-        include: { questions: { orderBy: { order: 'asc' } } },
-      },
-      lessons: {
-        orderBy: { order: 'asc' },
-        include: {
-          quiz: {
-            include: { questions: { orderBy: { order: 'asc' } } },
-          },
-        },
-      },
-      enrollments: {
-        include: {
-          organizationUser: { include: { user: true } },
-          certificate: true,
-        },
-      },
-      creator: {
-        include: { user: true },
-      },
-    },
+    select: courseDetailSelect,
   });
 
   if (!course) {
@@ -177,7 +190,22 @@ export async function getCourseById(courseId: string): Promise<CourseWithRelatio
     throw new Error('Course not found');
   }
 
-  return course;
+  // Only the creator or an org admin may receive the full enrolled-staff roster.
+  // A non-privileged enrolled worker must never get other staff's enrollment PII
+  // (email/role/name/certificate) back from this action — the worker page discards
+  // it client-side, but a direct server-action call would otherwise leak it (IDOR).
+  // `user.read` is the staff-roster permission (the Staff Management gate), so it
+  // is what separates a manager who may legitimately see other people's records
+  // from a learner who may only ever see their own.
+  const isPrivileged = isCreator || can(dbRoleToRoleKey(session.user.role), 'user.read');
+  if (isPrivileged) {
+    return course;
+  }
+
+  return {
+    ...course,
+    enrollments: course.enrollments.filter((e) => e.organizationUser.userId === session.user.id),
+  };
 }
 
 /**
@@ -196,6 +224,7 @@ export async function getCourseForOrgView(courseId: string): Promise<CourseWithR
     throw new Error('Unauthorized');
   }
 
+  // Org is authoritative on the DB-revalidated session — no re-query.
   const organizationId = session.user.organizationId;
   if (!organizationId) {
     throw new Error('Course not found');
@@ -203,27 +232,13 @@ export async function getCourseForOrgView(courseId: string): Promise<CourseWithR
 
   const course = await prisma.course.findFirst({
     where: { id: courseId, type: 'video', isGlobal: true, status: 'published' },
-    include: {
-      modules: {
-        orderBy: { order: 'asc' },
-        include: {
-          lessons: {
-            orderBy: { order: 'asc' },
-            include: { quiz: { include: { questions: { orderBy: { order: 'asc' } } } } },
-          },
-        },
-      },
-      quiz: { include: { questions: { orderBy: { order: 'asc' } } } },
-      lessons: {
-        orderBy: { order: 'asc' },
-        include: { quiz: { include: { questions: { orderBy: { order: 'asc' } } } } },
-      },
+    select: {
+      ...courseDetailSelect,
       // Scope enrolled staff to the caller's org — never leak other orgs' users.
       enrollments: {
+        ...courseDetailSelect.enrollments,
         where: { organizationUser: { organizationId } },
-        include: { organizationUser: { include: { user: true } }, certificate: true },
       },
-      creator: { include: { user: true } },
     },
   });
 

@@ -1,0 +1,469 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- fake-Prisma/mock arg shapes in test doubles; matches the repo's test-mock convention */
+/**
+ * Tier 3 §5.3 PR-7 — end-to-end equivalence tests for `enrollUsers` and
+ * `assignCourseToRole` (src/app/actions/enrollment.ts) across both states of
+ * the `ENROLLMENT_BATCH_ENABLED` kill-switch.
+ *
+ * The core algorithmic equivalence between the batched (`createEnrollmentsForUsers`)
+ * and sequential (`enrollSequentially`) paths is covered exhaustively in
+ * ./../../lib/enrollment/create-batch.test.ts (seat-limit force-fail, already-enrolled
+ * skip, no-duplicate-email guarantee, mixed-batch ordering, 50+ holder scale,
+ * bounded concurrency, partial-failure semantics, and a confirmed divergence in
+ * post-failure commit behavior). This file instead proves the WIRING: that
+ * `enrollUsers`/`assignCourseToRole` genuinely read `process.env.ENROLLMENT_BATCH_ENABLED`
+ * at call time and route to the matching function, and that the result-bucketing
+ * (`success`/`alreadyEnrolled`/`newInvited`/`failed`) is identical end-to-end for
+ * flag unset, `'false'`, and `'true'`.
+ *
+ * Email/invite-email call-COUNT assertions are intentionally avoided for batches
+ * with 2+ distinct emails — see the header comment in create-batch.test.ts for why
+ * (a Vitest dynamic-import mocking artifact under concurrency, not a product bug).
+ * DB-write assertions here go through the statically-imported prisma mock, which is
+ * reliable under the same concurrency.
+ */
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+interface FakeUser {
+  id: string;
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+  fullName: string | null;
+}
+/** Post multi-org split: an identity's per-organization seat. */
+interface FakeMembership {
+  id: string;
+  userId: string;
+  organizationId: string;
+  role: string;
+  active: boolean;
+}
+interface FakeEnrollment {
+  id: string;
+  organizationUserId: string;
+  courseId: string;
+}
+interface FakeInvite {
+  id: string;
+  email: string;
+  organizationId: string;
+  status: 'pending';
+  token: string;
+  role: string;
+  createdAt: Date;
+  expiresAt: Date;
+  invitedBy: string;
+}
+
+const {
+  prismaMock,
+  mockAdminAuth,
+  mockWorkerAuth,
+  mockCreateNotification,
+  mockSendCourseInviteEmail,
+  mockSendCourseLaunchEmail,
+} = vi.hoisted(() => {
+  const prismaMock = {
+    course: { findUnique: vi.fn() },
+    user: { findUnique: vi.fn(), findMany: vi.fn(), update: vi.fn() },
+    organizationUser: { findFirst: vi.fn(), findMany: vi.fn(), count: vi.fn() },
+    organizationUserFacility: { findFirst: vi.fn(), findMany: vi.fn() },
+    organization: { findUnique: vi.fn() },
+    orgCourseOffering: { findUnique: vi.fn(), upsert: vi.fn() },
+    courseAssignment: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
+    assignmentReminderStage: { upsert: vi.fn() },
+    enrollment: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn() },
+    facility: { findFirst: vi.fn() },
+    reminderLog: { create: vi.fn() },
+    invite: {
+      findFirst: vi.fn(),
+      findMany: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      count: vi.fn(),
+    },
+    inviteCourseAssignment: { upsert: vi.fn() },
+  };
+  return {
+    prismaMock,
+    mockAdminAuth: vi.fn(),
+    mockWorkerAuth: vi.fn(),
+    mockCreateNotification: vi.fn(),
+    mockSendCourseInviteEmail: vi.fn(),
+    mockSendCourseLaunchEmail: vi.fn(),
+  };
+});
+
+vi.mock('@/lib/prisma', () => ({ prisma: prismaMock, default: prismaMock }));
+vi.mock('@/auth', () => ({ auth: mockAdminAuth }));
+vi.mock('@/auth.worker', () => ({ auth: mockWorkerAuth }));
+vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
+vi.mock('@/lib/logger', () => ({
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+  maskEmail: (e: string) => e,
+}));
+vi.mock('./notifications', () => ({
+  createNotification: mockCreateNotification,
+  notifyOrganizationAdmins: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock('@/lib/email', () => ({
+  sendCourseInviteEmail: mockSendCourseInviteEmail,
+  sendCourseLaunchEmail: mockSendCourseLaunchEmail,
+  sendCourseEnrollmentEmail: vi.fn().mockResolvedValue(undefined),
+}));
+
+import { enrollUsers, assignCourseToRole } from './enrollment';
+import type { StaffEntry } from '@/types/enrollment';
+import type { UserRole } from '@/generated/prisma/enums';
+
+const ADMIN_ID = 'admin-1';
+const ADMIN_ORG_USER_ID = 'ou-admin-1';
+const ORG_ID = 'org-1';
+const COURSE_ID = 'course-1';
+
+const ownCourse = {
+  id: COURSE_ID,
+  title: 'Safety Training',
+  createdByOrgUserId: ADMIN_ORG_USER_ID,
+  isGlobal: false,
+  status: 'published',
+};
+
+interface Seed {
+  users?: FakeUser[];
+  memberships?: FakeMembership[];
+  enrollments?: FakeEnrollment[];
+  invites?: FakeInvite[];
+  orgSubscription?: { plan?: string; status: string; pausedAt: Date | null } | null;
+  workerCount?: number;
+  pendingInviteCount?: number;
+}
+
+function seedDb(seed: Seed = {}) {
+  const state = {
+    users: (seed.users ?? []).map((u) => ({ ...u })),
+    memberships: (seed.memberships ?? []).map((m) => ({ ...m })),
+    enrollments: (seed.enrollments ?? []).map((e) => ({ ...e })),
+    invites: (seed.invites ?? []).map((i) => ({ ...i })),
+    orgSubscription:
+      seed.orgSubscription === undefined
+        ? { status: 'active', pausedAt: null } // active, no matching plan → getSeatUsage no-ops
+        : seed.orgSubscription,
+    workerCount: seed.workerCount ?? 0,
+    pendingInviteCount: seed.pendingInviteCount ?? 0,
+    nextEnrollmentId: 1,
+    nextInviteId: 1,
+  };
+
+  prismaMock.course.findUnique.mockResolvedValue(ownCourse);
+
+  prismaMock.user.findUnique.mockImplementation(async (args: any) => {
+    const email = args.where.email.toLowerCase();
+    const u = state.users.find((u) => u.email.toLowerCase() === email);
+    return u ? { ...u } : null;
+  });
+
+  // createEnrollmentForUser / createEnrollmentsForUsers identity reads.
+  prismaMock.user.findMany.mockImplementation(async (args: any) => {
+    const emails: string[] = args.where.email.in.map((e: string) => e.toLowerCase());
+    return state.users.filter((u) => emails.includes(u.email.toLowerCase())).map((u) => ({ ...u }));
+  });
+
+  const activeMemberships = () => state.memberships.filter((m) => m.active);
+
+  prismaMock.organizationUser.findFirst.mockImplementation(async (args: any) => {
+    const m = activeMemberships().find(
+      (m) => m.userId === args.where.userId && m.organizationId === args.where.organizationId,
+    );
+    return m ? { id: m.id } : null;
+  });
+
+  prismaMock.organizationUser.findMany.mockImplementation(async (args: any) => {
+    const where = args.where ?? {};
+    if (where.role) {
+      // assignCourseToRole holder query.
+      return activeMemberships()
+        .filter((m) => m.organizationId === where.organizationId && m.role === where.role)
+        .map((m) => ({
+          id: m.id,
+          user: { email: state.users.find((u) => u.id === m.userId)!.email },
+        }));
+    }
+    if (where.user?.email?.in) {
+      // enrollUsers seat-gate existing-members query.
+      const emails: string[] = where.user.email.in.map((e: string) => e.toLowerCase());
+      return activeMemberships()
+        .filter((m) => m.organizationId === where.organizationId)
+        .map((m) => ({ user: { email: state.users.find((u) => u.id === m.userId)!.email } }))
+        .filter((row) => emails.includes(row.user.email.toLowerCase()));
+    }
+    // createEnrollmentsForUsers batched membership read.
+    const ids: string[] = where.userId.in;
+    return activeMemberships()
+      .filter((m) => ids.includes(m.userId) && m.organizationId === where.organizationId)
+      .map((m) => ({ id: m.id, userId: m.userId }));
+  });
+
+  // getSeatUsage counts every non-owner ACTIVE membership as a consumed seat.
+  prismaMock.organizationUser.count.mockImplementation(async () => state.workerCount);
+
+  prismaMock.organization.findUnique.mockImplementation(async (args: any) => {
+    if (args.where.id !== ORG_ID) return null;
+    return { subscription: state.orgSubscription };
+  });
+
+  prismaMock.courseAssignment.findFirst.mockResolvedValue(null);
+  prismaMock.courseAssignment.create.mockResolvedValue({ id: 'assignment-1' });
+  prismaMock.assignmentReminderStage.upsert.mockResolvedValue({});
+  prismaMock.orgCourseOffering.findUnique.mockResolvedValue(null);
+  prismaMock.orgCourseOffering.upsert.mockResolvedValue({ id: 'offering-1' });
+  prismaMock.facility.findFirst.mockResolvedValue({ id: 'facility-1' });
+  prismaMock.organizationUserFacility.findFirst.mockResolvedValue(null);
+  prismaMock.organizationUserFacility.findMany.mockResolvedValue([]);
+  prismaMock.user.update.mockResolvedValue({});
+  prismaMock.reminderLog.create.mockResolvedValue({ id: 'log' });
+  prismaMock.inviteCourseAssignment.upsert.mockResolvedValue({});
+
+  prismaMock.enrollment.findFirst.mockImplementation(async (args: any) => {
+    return (
+      state.enrollments.find(
+        (e) =>
+          e.organizationUserId === args.where.organizationUserId &&
+          e.courseId === args.where.courseId,
+      ) ?? null
+    );
+  });
+  prismaMock.enrollment.findMany.mockImplementation(async (args: any) => {
+    const ids: string[] = args.where.organizationUserId.in;
+    return state.enrollments
+      .filter((e) => e.courseId === args.where.courseId && ids.includes(e.organizationUserId))
+      .map((e) => ({ organizationUserId: e.organizationUserId }));
+  });
+  prismaMock.enrollment.create.mockImplementation(async (args: any) => {
+    const id = `enr-${state.nextEnrollmentId++}`;
+    state.enrollments.push({
+      id,
+      organizationUserId: args.data.organizationUserId,
+      courseId: args.data.courseId,
+    });
+    return { id, ...args.data };
+  });
+
+  prismaMock.invite.count.mockImplementation(async () => state.pendingInviteCount);
+  prismaMock.invite.findFirst.mockImplementation(async (args: any) => {
+    const matches = state.invites
+      .filter(
+        (i) =>
+          i.email.toLowerCase() === args.where.email.toLowerCase() &&
+          i.organizationId === args.where.organizationId &&
+          i.status === args.where.status,
+      )
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    return matches[0] ?? null;
+  });
+  prismaMock.invite.findMany.mockImplementation(async (args: any) => {
+    const emails: string[] = args.where.email.in.map((e: string) => e.toLowerCase());
+    const base = state.invites.filter(
+      (i) =>
+        emails.includes(i.email.toLowerCase()) &&
+        i.organizationId === args.where.organizationId &&
+        i.status === 'pending',
+    );
+    if (args.select) {
+      const now = new Date();
+      return base.filter((i) => i.expiresAt > now).map((i) => ({ email: i.email }));
+    }
+    return [...base].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  });
+  prismaMock.invite.create.mockImplementation(async (args: any) => {
+    const id = `inv-${state.nextInviteId++}`;
+    const record: FakeInvite = { id, createdAt: new Date(), ...args.data };
+    state.invites.push(record);
+    return record;
+  });
+  prismaMock.invite.update.mockImplementation(async (args: any) => {
+    const inv = state.invites.find((i) => i.id === args.where.id);
+    if (!inv) throw new Error(`no invite ${args.where.id}`);
+    Object.assign(inv, args.data);
+    return { ...inv };
+  });
+
+  return state;
+}
+
+interface SeededMember {
+  user: FakeUser;
+  membership: FakeMembership;
+}
+
+function member(id: string, email: string, role = 'nurse'): SeededMember {
+  return {
+    user: { id, email, firstName: null, lastName: null, fullName: null },
+    membership: { id: `ou-${id}`, userId: id, organizationId: ORG_ID, role, active: true },
+  };
+}
+
+/** Split a member list into the identity + membership tables the fake DB holds. */
+function membersSeed(members: SeededMember[]) {
+  return { users: members.map((m) => m.user), memberships: members.map((m) => m.membership) };
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  process.env.NEXT_PUBLIC_APP_URL = 'https://app.example.com';
+  mockAdminAuth.mockResolvedValue({
+    user: {
+      id: ADMIN_ID,
+      role: 'owner',
+      organizationId: ORG_ID,
+      organizationUserId: ADMIN_ORG_USER_ID,
+    },
+  });
+  mockWorkerAuth.mockResolvedValue(null);
+  mockCreateNotification.mockResolvedValue(undefined);
+  mockSendCourseInviteEmail.mockResolvedValue(undefined);
+  mockSendCourseLaunchEmail.mockResolvedValue(undefined);
+});
+
+afterEach(() => {
+  delete process.env.ENROLLMENT_BATCH_ENABLED;
+});
+
+type FlagState = 'unset' | 'false' | 'true';
+function setFlag(flag: FlagState) {
+  if (flag === 'unset') delete process.env.ENROLLMENT_BATCH_ENABLED;
+  else process.env.ENROLLMENT_BATCH_ENABLED = flag;
+}
+
+const FLAG_STATES: FlagState[] = ['unset', 'false', 'true'];
+
+describe('enrollUsers — ENROLLMENT_BATCH_ENABLED equivalence', () => {
+  it.each(FLAG_STATES)(
+    'flag=%s: enrolls a mixed batch (existing member, new invite, seat-rejected) into identical buckets',
+    async (flag) => {
+      setFlag(flag);
+      seedDb({
+        ...membersSeed([member('u-1', 'staff@example.com')]),
+        orgSubscription: { plan: 'starter', status: 'active', pausedAt: null }, // staffMax 10
+        workerCount: 10, // at cap — any brand-new email is rejected
+      });
+
+      const entries: StaffEntry[] = [
+        { email: 'staff@example.com' }, // existing member → success
+        { email: 'brandnew@example.com' }, // unknown, at seat cap → failed
+      ];
+
+      const result = await enrollUsers(COURSE_ID, entries);
+
+      expect(result.success).toEqual(['staff@example.com']);
+      expect(result.failed).toEqual(['brandnew@example.com']);
+      expect(result.newInvited).toEqual([]);
+      expect(result.alreadyEnrolled).toEqual([]);
+      expect(prismaMock.invite.create).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(FLAG_STATES)(
+    'flag=%s: an already-enrolled staff member is bucketed as alreadyEnrolled, no duplicate write',
+    async (flag) => {
+      setFlag(flag);
+      seedDb({
+        ...membersSeed([member('u-1', 'staff@example.com')]),
+        enrollments: [{ id: 'enr-existing', organizationUserId: 'ou-u-1', courseId: COURSE_ID }],
+      });
+
+      const result = await enrollUsers(COURSE_ID, [{ email: 'staff@example.com' }]);
+
+      expect(result.alreadyEnrolled).toEqual(['staff@example.com']);
+      expect(result.success).toEqual([]);
+      expect(prismaMock.enrollment.create).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(FLAG_STATES)(
+    'flag=%s: an unknown email is invited, not account-created, mapped into newInvited',
+    async (flag) => {
+      setFlag(flag);
+      seedDb();
+
+      const result = await enrollUsers(COURSE_ID, [{ email: 'unknown@example.com' }]);
+
+      expect(result.newInvited).toEqual(['unknown@example.com']);
+      expect(result.success).toEqual([]);
+      expect(result.failed).toEqual([]);
+      expect(prismaMock.invite.create).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('produces byte-identical results between flag UNSET and flag "false" (the fallback path is untouched)', async () => {
+    const buildSeed = () =>
+      membersSeed([member('u-1', 'existing@example.com'), member('u-2', 'holder2@example.com')]);
+    const entries: StaffEntry[] = [
+      { email: 'existing@example.com' },
+      { email: 'unknown@example.com' },
+      { email: 'not-an-email' },
+    ];
+
+    setFlag('unset');
+    seedDb(buildSeed());
+    const unsetResult = await enrollUsers(COURSE_ID, entries);
+
+    vi.clearAllMocks();
+    mockAdminAuth.mockResolvedValue({
+      user: {
+        id: ADMIN_ID,
+        role: 'owner',
+        organizationId: ORG_ID,
+        organizationUserId: ADMIN_ORG_USER_ID,
+      },
+    });
+    mockWorkerAuth.mockResolvedValue(null);
+    mockCreateNotification.mockResolvedValue(undefined);
+    mockSendCourseInviteEmail.mockResolvedValue(undefined);
+    mockSendCourseLaunchEmail.mockResolvedValue(undefined);
+    setFlag('false');
+    seedDb(buildSeed());
+    const falseResult = await enrollUsers(COURSE_ID, entries);
+
+    expect(falseResult).toEqual(unsetResult);
+  });
+});
+
+describe('assignCourseToRole — ENROLLMENT_BATCH_ENABLED equivalence', () => {
+  it.each(FLAG_STATES)('flag=%s: enrolls every current role holder exactly once', async (flag) => {
+    setFlag(flag);
+    const holders = [
+      member('u-1', 'nurse1@example.com', 'nurse'),
+      member('u-2', 'nurse2@example.com', 'nurse'),
+      member('u-3', 'nurse3@example.com', 'nurse'),
+    ];
+    seedDb(membersSeed(holders));
+
+    const result = await assignCourseToRole(COURSE_ID, 'nurse' as UserRole);
+
+    expect(result.holderCount).toBe(3);
+    expect(result.enrolled).toBe(3);
+    expect(result.alreadyEnrolled).toBe(0);
+    expect(result.failed).toBe(0);
+    expect(prismaMock.enrollment.create).toHaveBeenCalledTimes(3);
+  });
+
+  it.each(FLAG_STATES)(
+    'flag=%s: scales to 50+ current holders with correct counts',
+    async (flag) => {
+      setFlag(flag);
+      const holderCount = 55;
+      const holders = Array.from({ length: holderCount }, (_, i) =>
+        member(`u-${i}`, `holder${i}@example.com`, 'front_desk_admin'),
+      );
+      seedDb(membersSeed(holders));
+
+      const result = await assignCourseToRole(COURSE_ID, 'front_desk_admin' as UserRole);
+
+      expect(result.holderCount).toBe(holderCount);
+      expect(result.enrolled).toBe(holderCount);
+      expect(result.failed).toBe(0);
+      expect(prismaMock.enrollment.create).toHaveBeenCalledTimes(holderCount);
+    },
+  );
+});

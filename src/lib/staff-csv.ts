@@ -11,7 +11,6 @@
  * derives org/role/inviter from the admin session — this module never assigns
  * roles or touches onboarding.
  */
-import * as XLSX from 'xlsx';
 
 /** Same email shape used by the manual invite-chip input, kept consistent. */
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -178,7 +177,12 @@ export async function readStaffSpreadsheetRows(file: File): Promise<unknown[][]>
 
   const data = await file.arrayBuffer();
 
-  let workbook: XLSX.WorkBook;
+  // SheetJS (~400 kB) is only needed once a file is actually uploaded, so it is
+  // loaded on demand here rather than shipped in the initial client bundle of
+  // every page that mounts the staff-invite / onboarding UIs.
+  const XLSX = await import('xlsx');
+
+  let workbook: import('xlsx').WorkBook;
   try {
     workbook = XLSX.read(data, { type: 'array' });
   } catch {

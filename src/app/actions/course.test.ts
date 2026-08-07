@@ -5,6 +5,7 @@ const {
   mockWorkerAuth,
   mockCourseFindMany,
   mockCourseFindFirst,
+  mockCourseFindUnique,
   mockEnrollmentGroupBy,
   mockEnrollmentFindMany,
   mockOrgUserCount,
@@ -15,6 +16,7 @@ const {
   mockWorkerAuth: vi.fn(),
   mockCourseFindMany: vi.fn(),
   mockCourseFindFirst: vi.fn(),
+  mockCourseFindUnique: vi.fn(),
   mockEnrollmentGroupBy: vi.fn(),
   mockEnrollmentFindMany: vi.fn(),
   mockOrgUserCount: vi.fn(),
@@ -24,7 +26,11 @@ const {
 
 vi.mock('@/lib/prisma', () => {
   const prisma = {
-    course: { findMany: mockCourseFindMany, findFirst: mockCourseFindFirst },
+    course: {
+      findMany: mockCourseFindMany,
+      findFirst: mockCourseFindFirst,
+      findUnique: mockCourseFindUnique,
+    },
     enrollment: { groupBy: mockEnrollmentGroupBy, findMany: mockEnrollmentFindMany },
     // Post refactor: total org staff is counted on OrganizationUser (scoped to
     // WORKER_ROLES), not a raw `prisma.user.count`.
@@ -46,10 +52,14 @@ vi.mock('@/lib/logger', () => ({
 
 import {
   getDashboardData,
+  getCourseById,
   duplicateCourse,
   addPrebuiltCourseToOrg,
   getPrebuiltCourses,
 } from './course';
+import { ADMIN_ROLES, WORKER_ROLES, dbRoleToRoleKey } from '@/lib/rbac/role-utils';
+import { can } from '@/lib/rbac/permissions';
+import type { Role } from '@/types/next-auth';
 
 const ORG_USER_ID = 'ou-admin-1';
 const ORG_ID = 'org-1';
@@ -569,5 +579,220 @@ describe('getPrebuiltCourses', () => {
     const result = await getPrebuiltCourses();
 
     expect(result).toEqual([{ id: 'c1', title: 'Course 1', description: null, duration: 30 }]);
+  });
+});
+
+// The roster gate is `user.read` (the Staff Management permission), which is the
+// registry's own line between a manager who may see other people's records and a
+// learner who may only see their own. Partitioned from the registry so a matrix
+// change surfaces here rather than silently widening PII exposure.
+const ROSTER_PRIVILEGED_ROLES = ADMIN_ROLES.filter((role) =>
+  can(dbRoleToRoleKey(role), 'user.read'),
+);
+const ROSTER_UNPRIVILEGED_ADMIN_ROLES = ADMIN_ROLES.filter(
+  (role) => !can(dbRoleToRoleKey(role), 'user.read'),
+);
+
+describe('getCourseById', () => {
+  const CREATOR_USER_ID = 'creator-user-1';
+  const CREATOR_ORG_USER_ID = 'ou-creator-1';
+
+  function makeEnrollment(userId: string, index: number) {
+    return {
+      id: `enrollment-${userId}`,
+      organizationUserId: `ou-${userId}`,
+      status: 'in_progress',
+      score: null,
+      progress: 40,
+      organizationUser: {
+        userId,
+        role: 'nurse',
+        user: { email: `${userId}@example.com`, fullName: `Staff Member ${index}` },
+      },
+      certificate: null,
+    };
+  }
+
+  function makeCourse(
+    enrollments: ReturnType<typeof makeEnrollment>[],
+    overrides: Record<string, unknown> = {},
+  ) {
+    return {
+      id: 'course-1',
+      title: 'Infection Control',
+      description: null,
+      type: 'document',
+      duration: 30,
+      status: 'published',
+      updatedAt: new Date(2026, 0, 1),
+      overview: null,
+      objectives: null,
+      skillLevel: null,
+      previewVideoStorageUri: null,
+      createdByOrgUserId: CREATOR_ORG_USER_ID,
+      modules: [],
+      quiz: null,
+      lessons: [],
+      enrollments,
+      creator: {
+        userId: CREATOR_USER_ID,
+        user: { email: 'creator@example.com', fullName: 'Course Creator' },
+      },
+      ...overrides,
+    };
+  }
+
+  function setAdminSession(userId: string, role: Role, organizationId = ORG_ID) {
+    mockAdminAuth.mockResolvedValue({
+      user: { id: userId, role, organizationId, organizationUserId: `ou-${userId}` },
+    });
+    mockWorkerAuth.mockResolvedValue(null);
+  }
+
+  function setWorkerSession(userId: string, role: Role, organizationId = ORG_ID) {
+    mockAdminAuth.mockResolvedValue(null);
+    mockWorkerAuth.mockResolvedValue({
+      user: { id: userId, role, organizationId, organizationUserId: `ou-${userId}` },
+    });
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it.each(WORKER_ROLES)(
+    "SECURITY REGRESSION: an enrolled worker (%s) never receives another user's enrollment row",
+    async (role) => {
+      const selfId = 'worker-self';
+      const otherA = makeEnrollment('worker-other-a', 1);
+      const otherB = makeEnrollment('worker-other-b', 2);
+      const self = makeEnrollment(selfId, 3);
+      mockCourseFindUnique.mockResolvedValue(makeCourse([otherA, self, otherB]));
+      setWorkerSession(selfId, role);
+
+      const result = await getCourseById('course-1');
+
+      expect(result.enrollments).toHaveLength(1);
+      expect(result.enrollments[0].organizationUser.userId).toBe(selfId);
+      const leakedEmails = result.enrollments
+        .filter((e) => e.organizationUser.userId !== selfId)
+        .map((e) => e.organizationUser.user.email);
+      expect(leakedEmails).toEqual([]);
+      const emails = result.enrollments.map((e) => e.organizationUser.user.email);
+      expect(emails).not.toContain('worker-other-a@example.com');
+      expect(emails).not.toContain('worker-other-b@example.com');
+    },
+  );
+
+  it('an enrolled worker with a large roster (20 other enrollees) still gets exactly their own 1 row', async () => {
+    const selfId = 'worker-self';
+    const others = Array.from({ length: 20 }, (_, i) => makeEnrollment(`other-${i}`, i));
+    const self = makeEnrollment(selfId, 99);
+    mockCourseFindUnique.mockResolvedValue(makeCourse([...others, self]));
+    setWorkerSession(selfId, 'therapist_clinician');
+
+    const result = await getCourseById('course-1');
+
+    expect(result.enrollments).toHaveLength(1);
+    expect(result.enrollments[0].organizationUser.userId).toBe(selfId);
+  });
+
+  it.each(ROSTER_UNPRIVILEGED_ADMIN_ROLES)(
+    'an enrolled manager without user.read (%s) also receives only their own row',
+    async (role) => {
+      const selfId = 'manager-self';
+      const otherA = makeEnrollment('staff-a', 1);
+      const self = makeEnrollment(selfId, 2);
+      mockCourseFindUnique.mockResolvedValue(makeCourse([otherA, self]));
+      setAdminSession(selfId, role);
+
+      const result = await getCourseById('course-1');
+
+      expect(result.enrollments).toHaveLength(1);
+      expect(result.enrollments[0].organizationUser.userId).toBe(selfId);
+    },
+  );
+
+  it('the course creator (a worker-category role) receives the full roster — creator wins over role', async () => {
+    const otherA = makeEnrollment('staff-a', 1);
+    const otherB = makeEnrollment('staff-b', 2);
+    const creatorEnrollment = makeEnrollment(CREATOR_USER_ID, 3);
+    mockCourseFindUnique.mockResolvedValue(makeCourse([otherA, creatorEnrollment, otherB]));
+    // Creator authenticates via the worker auth instance with a non-privileged
+    // role — proves isCreator, not the permission, is what grants the roster here.
+    setWorkerSession(CREATOR_USER_ID, 'nurse');
+
+    const result = await getCourseById('course-1');
+
+    expect(result.enrollments).toHaveLength(3);
+    expect(result.enrollments.map((e) => e.organizationUser.userId).sort()).toEqual(
+      ['staff-a', 'staff-b', CREATOR_USER_ID].sort(),
+    );
+  });
+
+  it.each(ROSTER_PRIVILEGED_ROLES)(
+    'a manager holding user.read (%s) who is NOT the creator still receives the full roster',
+    async (role) => {
+      const adminId = 'admin-viewer';
+      const otherA = makeEnrollment('staff-a', 1);
+      const otherB = makeEnrollment('staff-b', 2);
+      const adminEnrollment = makeEnrollment(adminId, 3);
+      mockCourseFindUnique.mockResolvedValue(makeCourse([otherA, adminEnrollment, otherB]));
+      setAdminSession(adminId, role);
+
+      const result = await getCourseById('course-1');
+
+      expect(result.enrollments).toHaveLength(3);
+      expect(result.enrollments.map((e) => e.organizationUser.userId).sort()).toEqual(
+        ['staff-a', 'staff-b', adminId].sort(),
+      );
+      // Full roster must include the other staff's PII — same shape the
+      // pre-fix code returned to every caller.
+      const emails = result.enrollments.map((e) => e.organizationUser.user.email);
+      expect(emails).toContain('staff-a@example.com');
+      expect(emails).toContain('staff-b@example.com');
+    },
+  );
+
+  it('the course creator who is also an org admin receives the full roster (both privilege paths agree)', async () => {
+    const otherA = makeEnrollment('staff-a', 1);
+    mockCourseFindUnique.mockResolvedValue(makeCourse([otherA]));
+    setAdminSession(CREATOR_USER_ID, 'owner');
+
+    const result = await getCourseById('course-1');
+
+    expect(result.enrollments).toHaveLength(1);
+    expect(result.enrollments[0].organizationUser.userId).toBe('staff-a');
+  });
+
+  it('a user who is neither creator, admin, nor enrolled still gets "Course not found" (access gate unchanged)', async () => {
+    const otherA = makeEnrollment('staff-a', 1);
+    const otherB = makeEnrollment('staff-b', 2);
+    mockCourseFindUnique.mockResolvedValue(makeCourse([otherA, otherB]));
+    setWorkerSession('outsider-1', 'nurse');
+
+    await expect(getCourseById('course-1')).rejects.toThrow('Course not found');
+  });
+
+  it('an admin from another org who is neither creator nor enrolled still gets "Course not found" (privilege does not widen the access gate)', async () => {
+    const otherA = makeEnrollment('staff-a', 1);
+    mockCourseFindUnique.mockResolvedValue(makeCourse([otherA]));
+    setAdminSession('admin-outsider', 'owner', 'org-2');
+
+    await expect(getCourseById('course-1')).rejects.toThrow('Course not found');
+  });
+
+  it('throws Unauthorized when there is no session at all', async () => {
+    mockAdminAuth.mockResolvedValue(null);
+    mockWorkerAuth.mockResolvedValue(null);
+
+    await expect(getCourseById('course-1')).rejects.toThrow('Unauthorized');
+  });
+
+  it('throws "Course not found" when the course does not exist', async () => {
+    mockCourseFindUnique.mockResolvedValue(null);
+    setWorkerSession('worker-1', 'nurse');
+
+    await expect(getCourseById('course-1')).rejects.toThrow('Course not found');
   });
 });

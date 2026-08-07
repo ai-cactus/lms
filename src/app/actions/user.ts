@@ -7,6 +7,7 @@ import { revalidatePath } from 'next/cache';
 
 import { headers } from 'next/headers';
 import { logger, maskEmail } from '@/lib/logger';
+import { invalidateRevalidationCache } from '@/lib/auth/session-revalidation-cache';
 import bcrypt from 'bcryptjs';
 
 // Helper: resolve the active session from either auth instance
@@ -36,6 +37,7 @@ export async function getStaffUsers() {
     throw new Error('Unauthorized');
   }
 
+  // Org is authoritative on the DB-revalidated session — no re-query.
   const organizationId = session.user.organizationId;
   if (!organizationId) {
     return [];
@@ -122,6 +124,7 @@ export async function searchStaffUsers(query: string) {
     return [];
   }
 
+  // Org is authoritative on the DB-revalidated session — no re-query.
   const organizationId = session.user.organizationId;
   if (!organizationId) {
     return [];
@@ -324,6 +327,10 @@ export async function changePassword(data: { currentPassword?: string; newPasswo
         sessionVersion: { increment: 1 },
       },
     });
+
+    // The password change bumped sessionVersion; evict the cached revalidation
+    // snapshot so every other live session is invalidated on its next decode.
+    await invalidateRevalidationCache(session.user.id);
 
     logger.info({ msg: 'User changed password successfully', userId: session.user.id });
     return { success: true };

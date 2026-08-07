@@ -11,6 +11,9 @@ import { formatCertificateId } from '@/lib/certificate-id';
 
 type CertificateData = Awaited<ReturnType<typeof getCertificateDetails>>;
 
+// Matches the previous max-w-[1000px] cap on the preview card.
+const MAX_CARD_WIDTH = 1000;
+
 interface CertificateModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -37,7 +40,7 @@ export default function CertificateModal({
   const [exporting, setExporting] = useState(false);
 
   const docRef = useRef<HTMLDivElement>(null);
-  const cardRef = useRef<HTMLDivElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0);
 
   useEffect(() => {
@@ -73,13 +76,23 @@ export default function CertificateModal({
   }, [isOpen, certificateId]);
 
   // The certificate is authored at a fixed A4-landscape size, so it is scaled to
-  // whatever width the card gets. The card is measured rather than the certificate's
-  // own wrapper — a percentage-width wrapper would be inflated to the certificate's
-  // intrinsic 1123px by the dialog's min-content sizing.
+  // fit the space available inside the padded viewport region — bounded by BOTH the
+  // available width and height so the preview never grows tall enough to slide under
+  // (and block clicks on) the floating action bar. The card itself is given explicit
+  // pixel dimensions, so the padded region is measured rather than the card to avoid
+  // the certificate's intrinsic 1123px inflating a min-content wrapper.
   useLayoutEffect(() => {
-    const el = cardRef.current;
+    const el = viewportRef.current;
     if (!el) return;
-    const update = () => setScale(el.clientWidth / CERT_WIDTH);
+    const update = () => {
+      const styles = window.getComputedStyle(el);
+      const padX = parseFloat(styles.paddingLeft) + parseFloat(styles.paddingRight);
+      const padY = parseFloat(styles.paddingTop) + parseFloat(styles.paddingBottom);
+      const availWidth = Math.min(el.clientWidth - padX, MAX_CARD_WIDTH);
+      const availHeight = el.clientHeight - padY;
+      const nextScale = Math.min(availWidth / CERT_WIDTH, availHeight / CERT_HEIGHT);
+      setScale(nextScale > 0 ? nextScale : 0);
+    };
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
@@ -103,8 +116,8 @@ export default function CertificateModal({
   };
 
   // The dialog content spans the viewport so the close button can sit in the page's
-  // top-right corner, which means Radix no longer sees clicks beside the certificate
-  // as "outside" — dismiss them here instead.
+  // top-right corner, which means Radix no longer sees clicks in the empty space
+  // around the certificate as "outside" — dismiss them here instead.
   const handleBackdropClick = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
       if (event.target === event.currentTarget) onClose();
@@ -123,12 +136,11 @@ export default function CertificateModal({
     >
       <DialogContent
         showCloseButton={false}
-        onClick={handleBackdropClick}
-        className="top-0 left-0 flex h-full max-w-none translate-x-0 translate-y-0 items-center justify-center overflow-y-auto rounded-none border-0 bg-transparent px-4 py-20 shadow-none sm:max-w-none"
+        className="top-0 left-0 flex h-full max-w-none translate-x-0 translate-y-0 flex-col overflow-hidden rounded-none border-0 bg-transparent p-0 shadow-none sm:max-w-none"
       >
         <DialogTitle className="sr-only">Certificate of completion</DialogTitle>
 
-        <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-end gap-3 p-4 sm:p-[30px]">
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-end gap-3 p-4 sm:p-[30px]">
           <Button
             variant="outline"
             onClick={handleExport}
@@ -148,40 +160,45 @@ export default function CertificateModal({
           </DialogClose>
         </div>
 
-        {loading ? (
-          <div className="rounded-[14px] bg-white p-12 text-center text-text-secondary shadow-lg">
-            Loading certificate...
-          </div>
-        ) : error ? (
-          <div className="rounded-[14px] bg-white p-12 text-center text-error shadow-lg">
-            {error}
-          </div>
-        ) : data ? (
-          <div
-            ref={cardRef}
-            className="w-full max-w-[1000px] overflow-hidden rounded-[14px] shadow-2xl"
-            style={{ height: CERT_HEIGHT * scale }}
-          >
-            <div
-              className="origin-top-left"
-              style={{ width: CERT_WIDTH, transform: `scale(${scale})` }}
-            >
-              <CertificateDocument
-                ref={docRef}
-                studentName={
-                  data.organizationUser?.user?.fullName ||
-                  data.organizationUser?.user?.email ||
-                  'Student Name'
-                }
-                courseName={data.course?.title || 'Course Title'}
-                organizationName={data.organizationUser?.organization?.name}
-                issueDate={formatIssueDate(data.issuedAt)}
-                certificateId={formatCertificateId(data.enrollmentId)}
-                qrDataUrl={qrDataUrl}
-              />
+        <div
+          ref={viewportRef}
+          onClick={handleBackdropClick}
+          className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-4 py-20"
+        >
+          {loading ? (
+            <div className="rounded-[14px] bg-white p-12 text-center text-text-secondary shadow-lg">
+              Loading certificate...
             </div>
-          </div>
-        ) : null}
+          ) : error ? (
+            <div className="rounded-[14px] bg-white p-12 text-center text-error shadow-lg">
+              {error}
+            </div>
+          ) : data ? (
+            <div
+              className="overflow-hidden rounded-[14px] shadow-2xl"
+              style={{ width: CERT_WIDTH * scale, height: CERT_HEIGHT * scale }}
+            >
+              <div
+                className="origin-top-left"
+                style={{ width: CERT_WIDTH, transform: `scale(${scale})` }}
+              >
+                <CertificateDocument
+                  ref={docRef}
+                  studentName={
+                    data.organizationUser?.user?.fullName ||
+                    data.organizationUser?.user?.email ||
+                    'Student Name'
+                  }
+                  courseName={data.course?.title || 'Course Title'}
+                  organizationName={data.organizationUser?.organization?.name}
+                  issueDate={formatIssueDate(data.issuedAt)}
+                  certificateId={formatCertificateId(data.enrollmentId)}
+                  qrDataUrl={qrDataUrl}
+                />
+              </div>
+            </div>
+          ) : null}
+        </div>
       </DialogContent>
     </Dialog>
   );

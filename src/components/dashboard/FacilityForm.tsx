@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { PhoneInput } from '@/components/ui';
+import { OTHER_OPTION_ID, PROGRAM_SERVICES } from '@/lib/constants/onboarding-options';
 import { panelLabelClass, sectionHeadingClass } from './profile-tab-styles';
 
 interface FacilityData {
@@ -99,15 +100,12 @@ const STATE_OPTIONS = [
   { label: 'Wyoming', value: 'WY' },
 ];
 
-const PROGRAM_SERVICES = [
-  { id: 'aging', label: 'Aging Services' },
-  { id: 'behavioral', label: 'Behavioral Health' },
-  { id: 'child-youth', label: 'Child & Youth Services' },
-  { id: 'employment', label: 'Employment & Community Services' },
-  { id: 'medical-rehab', label: 'Medical Rehabilitation' },
-  { id: 'opioid', label: 'Opioid Treatment Program' },
-  { id: 'vision', label: 'Vision Rehabilitation Services' },
-];
+// "Other" is a free-text escape hatch during onboarding, so it is never stored
+// as an id — the typed value is. It therefore gets no checkbox of its own.
+const SELECTABLE_PROGRAM_SERVICES = PROGRAM_SERVICES.filter(
+  (service) => service.id !== OTHER_OPTION_ID,
+);
+const KNOWN_PROGRAM_SERVICE_IDS = new Set(SELECTABLE_PROGRAM_SERVICES.map((s) => s.id));
 
 const optionalClass = 'text-text-tertiary font-normal';
 
@@ -155,6 +153,9 @@ export default function FacilityForm({ initialData }: FacilityFormProps) {
   }
 
   const programServices = initialData.programServices || [];
+  const otherProgramServices = programServices.filter(
+    (service) => !KNOWN_PROGRAM_SERVICE_IDS.has(service),
+  );
 
   return (
     <div className="flex w-full flex-col gap-10">
@@ -300,7 +301,7 @@ export default function FacilityForm({ initialData }: FacilityFormProps) {
         <div>
           <label className={panelLabelClass}>Program Services</label>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {PROGRAM_SERVICES.map((service) => (
+            {SELECTABLE_PROGRAM_SERVICES.map((service) => (
               <div key={service.id} className="flex items-center gap-2">
                 <Checkbox
                   id={`facility-program-${service.id}`}
@@ -316,6 +317,16 @@ export default function FacilityForm({ initialData }: FacilityFormProps) {
               </div>
             ))}
           </div>
+
+          {otherProgramServices.length > 0 && (
+            <div className="mt-4 flex flex-col gap-2">
+              {otherProgramServices.map((service) => (
+                <span key={service} className="text-sm text-foreground">
+                  Other: {service}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

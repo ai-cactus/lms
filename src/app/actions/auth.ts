@@ -19,6 +19,7 @@ import { resolveActiveMembership } from '@/lib/auth/membership';
 import { verifyCaptcha } from '@/lib/captcha';
 import { audit, getClientContext } from '@/lib/audit';
 import { BCRYPT_COST } from '@/lib/bcrypt-config';
+import { invalidateRevalidationCache } from '@/lib/auth/session-revalidation-cache';
 
 // Pre-computed dummy hash for constant-time response when a user email doesn't exist.
 // bcrypt runs its full computation and returns false, preventing timing-based
@@ -381,6 +382,10 @@ export async function resetPasswordWithToken(
     select: { id: true },
   });
 
+  // The reset bumped sessionVersion; evict the cached revalidation snapshot so
+  // every other live session is invalidated on its next decode, not after the TTL.
+  await invalidateRevalidationCache(updatedUser.id);
+
   await prisma.verificationToken.delete({
     where: {
       identifier_token: {
@@ -444,6 +449,10 @@ export async function forceResetPassword(
       sessionVersion: { increment: 1 },
     },
   });
+
+  // The forced reset bumped sessionVersion; evict the cached revalidation
+  // snapshot so every other live session is invalidated on its next decode.
+  await invalidateRevalidationCache(user.id);
 
   logger.info({ msg: '[auth] Forced password reset completed', email: maskEmail(email) });
   // F-001: forced password reset completed (user re-authenticated with current pw).
