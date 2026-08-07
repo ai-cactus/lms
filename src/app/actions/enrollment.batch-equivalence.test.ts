@@ -23,6 +23,11 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
+// Same load-flake guard as create-batch.test.ts: the first test in this file
+// pays @/lib/email's dynamic-import resolution cost, which can exceed the 5s
+// default under full-suite parallelism while passing in isolation.
+vi.setConfig({ testTimeout: 30_000 });
+
 interface FakeUser {
   id: string;
   email: string;
