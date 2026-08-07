@@ -209,6 +209,20 @@ test.describe('Reminders & Escalations', () => {
   }) => {
     await loginAsAdmin(page);
 
+    // Multi-facility dashboards (DashboardPage) land any roster-visible role on
+    // the Global (Enterprise) View by default — it renders whenever the org has
+    // at least one facility and no `?facility=` scope was requested, per
+    // `src/app/dashboard/(main)/page.tsx`. The compact "Status Tracker" widget
+    // this test targets only exists on the single-facility scoped dashboard, so
+    // drill into the seeded org's one facility first, same as a real admin
+    // would via "Facilities Overview" → "View dashboard" (see
+    // facility-dashboard.spec.ts's "drills into a facility" flow).
+    const overviewSection = page
+      .locator('section')
+      .filter({ has: page.getByRole('heading', { name: 'Facilities Overview' }) });
+    await overviewSection.getByRole('link', { name: 'View dashboard' }).click();
+    await page.waitForURL('**/dashboard?facility=**');
+
     const section = page.locator('section', {
       has: page.getByRole('heading', { name: 'Status Tracker', level: 3 }),
     });
@@ -261,7 +275,7 @@ test.describe('Reminders & Escalations', () => {
   // for), so this drives the assign page directly — the same server action the
   // wizard delegates to.
   // ---------------------------------------------------------------------------
-  test('TC-015: a due date set on assignment shows up on the assigned worker\'s training list', async ({
+  test("TC-015: a due date set on assignment shows up on the assigned worker's training list", async ({
     page,
   }) => {
     await loginAsAdmin(page);
@@ -320,9 +334,7 @@ test.describe('Reminders & Escalations', () => {
     // factory-default form.
     await page.getByRole('button', { name: 'Assign', exact: true }).click();
     await page.waitForURL('**/assign');
-    await expect(
-      page.getByText(/this course has an existing assignment/i),
-    ).toBeVisible();
+    await expect(page.getByText(/this course has an existing assignment/i)).toBeVisible();
 
     // The saved schedule/deadline/renewal/reminder SETTINGS are prefilled from
     // the existing CourseAssignment, but the assignee list is not (it isn't

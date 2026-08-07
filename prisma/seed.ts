@@ -91,7 +91,7 @@ const ENROLLMENT_RETAKE_ID = '88888888-8888-4888-8888-888888888887';
 // for the certificate-modal e2e coverage (button-overlap regression). Kept
 // separate from the other fixtures so opening the modal never depends on
 // driving a real course through to completion via the UI/quiz.
-const CERTIFICATE_WORKER_ID = '22222222-2222-4222-8222-222222222231';
+const CERTIFICATE_WORKER_ID = '22222222-2222-4222-8222-222222222232';
 const ENROLLMENT_CERTIFICATE_ID = '88888888-8888-4888-8888-888888888888';
 const CERTIFICATE_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
@@ -577,6 +577,7 @@ async function main(): Promise<void> {
       lockedAt: null,
       retakeOf: null,
       retakeReason: null,
+      facilityId: facility.id,
     },
     create: {
       id: ENROLLMENT_SARAH_ID,
@@ -585,6 +586,7 @@ async function main(): Promise<void> {
       status: 'in_progress',
       progress: 10,
       startedAt: now,
+      facilityId: facility.id,
     },
   });
   await prisma.enrollment.upsert({
@@ -597,6 +599,7 @@ async function main(): Promise<void> {
       lockedAt: now,
       retakeOf: null,
       retakeReason: null,
+      facilityId: facility.id,
     },
     create: {
       id: ENROLLMENT_WORKER_ID,
@@ -607,6 +610,7 @@ async function main(): Promise<void> {
       score: 40,
       startedAt: now,
       lockedAt: now,
+      facilityId: facility.id,
     },
   });
   // Overdue enrollment for the Status Tracker fixtures: dueAt is always computed
@@ -625,6 +629,7 @@ async function main(): Promise<void> {
       retakeOf: null,
       retakeReason: null,
       dueAt: tenDaysAgo,
+      facilityId: facility.id,
     },
     create: {
       id: ENROLLMENT_OVERDUE_ID,
@@ -634,6 +639,7 @@ async function main(): Promise<void> {
       progress: 0,
       startedAt: now,
       dueAt: tenDaysAgo,
+      facilityId: facility.id,
     },
   });
   // Near-deadline enrollment for the status-tracker "At Risk — Next 7 Days"
@@ -653,6 +659,7 @@ async function main(): Promise<void> {
       retakeOf: null,
       retakeReason: null,
       dueAt: threeDaysFromNow,
+      facilityId: facility.id,
     },
     create: {
       id: ENROLLMENT_NEAR_DEADLINE_ID,
@@ -662,6 +669,7 @@ async function main(): Promise<void> {
       progress: 20,
       startedAt: now,
       dueAt: threeDaysFromNow,
+      facilityId: facility.id,
     },
   });
   // Nurse + lockout-worker enrollments: progress:100 (lesson content already
@@ -679,6 +687,7 @@ async function main(): Promise<void> {
       lockedAt: null,
       retakeOf: null,
       retakeReason: null,
+      facilityId: facility.id,
     },
     create: {
       id: ENROLLMENT_NURSE_ID,
@@ -687,6 +696,7 @@ async function main(): Promise<void> {
       status: 'in_progress',
       progress: 100,
       startedAt: now,
+      facilityId: facility.id,
     },
   });
   await prisma.enrollment.upsert({
@@ -701,6 +711,7 @@ async function main(): Promise<void> {
       lockedAt: null,
       retakeOf: null,
       retakeReason: null,
+      facilityId: facility.id,
     },
     create: {
       id: ENROLLMENT_LOCKOUT_ID,
@@ -709,6 +720,7 @@ async function main(): Promise<void> {
       status: 'in_progress',
       progress: 100,
       startedAt: now,
+      facilityId: facility.id,
     },
   });
 
@@ -724,6 +736,7 @@ async function main(): Promise<void> {
       lockedAt: null,
       retakeOf: null,
       retakeReason: null,
+      facilityId: facility.id,
     },
     create: {
       id: ENROLLMENT_RETAKE_ID,
@@ -732,6 +745,7 @@ async function main(): Promise<void> {
       status: 'in_progress',
       progress: 100,
       startedAt: now,
+      facilityId: facility.id,
     },
   });
 
@@ -745,6 +759,7 @@ async function main(): Promise<void> {
       lockedAt: null,
       retakeOf: null,
       retakeReason: null,
+      facilityId: facility.id,
     },
     create: {
       id: ENROLLMENT_CERTIFICATE_ID,
@@ -755,6 +770,7 @@ async function main(): Promise<void> {
       score: 95,
       startedAt: now,
       completedAt: now,
+      facilityId: facility.id,
     },
   });
   // The certificate is issued directly rather than via issueCertificate() (which

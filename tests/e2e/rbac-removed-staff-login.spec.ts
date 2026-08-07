@@ -271,10 +271,20 @@ async function cleanupOrgAndUsers(
  * deactivate the membership (active=false, deactivated_at set) and bump the
  * identity's sessionVersion. Scoped by user_id since each test using this only
  * has one org. Deliberately an OUT-OF-BAND mutation: it does NOT call
- * `invalidateRevalidationCache()` the way the real server action does, so it
- * exercises the TTL-backstop path (a write that never goes through any server
- * action), not the "killed on next navigation" guarantee — that is now covered
- * by driving the real `removeStaff()` action below.
+ * `invalidateRevalidationCache()` the way the real server action does.
+ *
+ * This does NOT land in the TTL-backstop path, because the JWT callback's
+ * membership re-check is unconditional — see the "MEMBERSHIP IS NEVER CACHED"
+ * comment in `create-auth-instance.ts`. Only the *identity* snapshot
+ * (sessionVersion, mfaEnabled, etc.) goes through the short-TTL cache; role
+ * and membership always come from a live DB read, keyed by org, on every
+ * decode. So flipping `active=false` here is caught on the very next
+ * navigation regardless of the cache or of `invalidateRevalidationCache()`
+ * ever being called — see the test below. A pure identity-only out-of-band
+ * bump (no membership write) genuinely is masked until the TTL elapses; that
+ * case is covered deterministically, without a real sleep, in
+ * `src/lib/create-auth-instance.cache-integration.test.ts` ("TTL backstop vs.
+ * active invalidation for a sessionVersion bump").
  */
 async function simulateRemoveStaff(userId: string): Promise<void> {
   const client = await db();
@@ -399,18 +409,22 @@ test.describe('QA ISSUE 2 — removed staff member cannot log in or keep a live 
     }
   });
 
-  test('an out-of-band sessionVersion bump (bypassing every server action) does NOT kill a live session immediately — it is bounded by the TTL backstop only', async ({
+  test('an out-of-band membership deactivation (bypassing invalidateRevalidationCache) is STILL caught on the very next navigation — membership is always live-read, never cached', async ({
     page,
   }) => {
     // Contrast with the test above: a raw DB write that skips removeStaff()
     // entirely (e.g. a manual data fix, a script, a different code path that
-    // forgets to call invalidateRevalidationCache()) never busts the cache, so
-    // within the TTL window the session stays alive — exactly the pre-66aa961
-    // behavior. The deterministic, fast proof that this same bump IS still
-    // caught once the TTL elapses lives in
+    // forgets to call invalidateRevalidationCache()) never busts the identity
+    // cache. That used to leave a TTL-bounded window where the session stayed
+    // alive. It no longer does: the JWT callback's membership re-check is
+    // unconditional (see "MEMBERSHIP IS NEVER CACHED" in
+    // create-auth-instance.ts), so an `active=false` write is effective on the
+    // very next decode no matter how it got there. The TTL cache only ever
+    // covered identity fields (sessionVersion, mfaEnabled, ...); the
+    // deterministic, fast proof that a PURE identity-only bump (no membership
+    // write) is what's actually masked until the TTL elapses lives in
     // src/lib/create-auth-instance.cache-integration.test.ts ("TTL backstop vs.
-    // active invalidation for a sessionVersion bump"), since this shared
-    // webServer's TTL isn't overridable per-test.
+    // active invalidation for a sessionVersion bump").
     const email = uniqueEmail('oob-hr');
     const password = 'OobHr!Pwd9921';
     const { userId, orgId, orgUserId } = await seedUser({
@@ -428,9 +442,11 @@ test.describe('QA ISSUE 2 — removed staff member cannot log in or keep a live 
       await simulateRemoveStaff(userId);
 
       await page.goto('/dashboard');
-      // No active bust fired for this write, so the still-cached snapshot
-      // keeps the session alive — the removal has NOT taken effect yet.
-      expect(page.url()).toContain('/dashboard');
+      // No active bust fired for this write, but membership is read live on
+      // every decode regardless of the cache — the deactivation still takes
+      // effect immediately.
+      await page.waitForURL('**/login**', { timeout: 15000 });
+      expect(page.url()).toContain('/login');
     } finally {
       await cleanupUser(userId, orgId, orgUserId);
     }
