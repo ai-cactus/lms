@@ -35,8 +35,9 @@ const {
   const prismaMock = {
     $transaction: vi.fn(async (cb: (tx: typeof txClient) => Promise<unknown>) => cb(txClient)),
     _tx: txClient,
-    // Uploader lookup that feeds the post-upload notification's facility + name.
-    user: { findUnique: vi.fn() },
+    // Uploader lookup that feeds the post-upload notification's facility + name —
+    // now resolved via the OrganizationUser row, not a flat User.
+    organizationUser: { findUnique: vi.fn() },
     // Top-level `document` methods used by getDocuments/renameDocument/deleteDocument
     // (distinct from `_tx.document`, which is scoped to the uploadDocument transaction).
     document: {
@@ -77,7 +78,13 @@ vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-import { uploadDocument, getDocuments, renameDocument, deleteDocument } from './documents';
+import {
+  uploadDocument,
+  uploadDocuments,
+  getDocuments,
+  renameDocument,
+  deleteDocument,
+} from './documents';
 import { emitNotificationEvent } from '@/lib/notifications/emit';
 
 const mockEmitNotificationEvent = vi.mocked(emitNotificationEvent);
@@ -94,14 +101,16 @@ function makeFormData(fileName = 'policy.pdf', opts: { attested?: boolean } = {}
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockAuth.mockResolvedValue({ user: { id: 'user-1', organizationId: 'org-1', role: 'owner' } });
+  mockAuth.mockResolvedValue({
+    user: { id: 'user-1', organizationId: 'org-1', organizationUserId: 'ou-1', role: 'owner' },
+  });
   mockExtractTextFromFile.mockResolvedValue('some extracted document text');
   mockCalculateHash.mockResolvedValue('hash-abc');
   mockSaveFile.mockResolvedValue('gcs://bucket/policy.pdf');
   mockCheckRateLimit.mockResolvedValue({ allowed: true, remaining: 19, resetInSeconds: 300 });
-  prismaMock.user.findUnique.mockResolvedValue({
-    facilityId: 'facility-1',
-    profile: { fullName: 'Ada Owner' },
+  prismaMock.organizationUser.findUnique.mockResolvedValue({
+    user: { fullName: 'Ada Owner' },
+    facilities: [{ facilityId: 'facility-1' }],
   });
   delete process.env.PHI_FAIL_CLOSED;
 });
@@ -253,7 +262,9 @@ describe('Document Hub — per-role registry gate (RBAC billing+documents tighte
   // uploaded documents live on staging. It now requires `document.create`,
   // which Finance is not granted (Finance has no document.* permissions).
   it('denies uploadDocument for role=finance (regression: was live-exploitable)', async () => {
-    mockAuth.mockResolvedValue({ user: { id: 'fin-1', organizationId: 'org-1', role: 'finance' } });
+    mockAuth.mockResolvedValue({
+      user: { id: 'fin-1', organizationId: 'org-1', organizationUserId: 'ou-1', role: 'finance' },
+    });
 
     const result = await uploadDocument(null, makeFormData());
 
@@ -262,20 +273,31 @@ describe('Document Hub — per-role registry gate (RBAC billing+documents tighte
     expect(mockSaveFile).not.toHaveBeenCalled();
   });
 
-  // HR has document.read only (invites/roster/compliance-metrics manager) — it
-  // is NOT granted document.create, so it stays read-only on the Document Hub.
-  it('denies uploadDocument for role=hr (document.read only, no document.create)', async () => {
-    mockAuth.mockResolvedValue({ user: { id: 'hr-1', organizationId: 'org-1', role: 'hr' } });
+  // RBAC ruling: HR now holds full document CRUD (document.create/read/edit/
+  // delete), not just document.read — updated from the prior "HR is read-only
+  // on documents" assumption.
+  it('allows uploadDocument for role=hr (full document CRUD per RBAC ruling)', async () => {
+    mockAuth.mockResolvedValue({
+      user: { id: 'hr-1', organizationId: 'org-1', organizationUserId: 'ou-1', role: 'hr' },
+    });
+    mockScanText.mockResolvedValue({ hasPHI: false, findings: [] });
+    prismaMock._tx.document.findFirst.mockResolvedValue(null);
+    prismaMock._tx.document.create.mockResolvedValue({ id: 'doc-1' });
+    prismaMock._tx.documentVersion.create.mockResolvedValue({ id: 'ver-1' });
 
     const result = await uploadDocument(null, makeFormData());
 
-    expect(result).toEqual({ error: 'You do not have permission to upload documents.' });
-    expect(mockSaveFile).not.toHaveBeenCalled();
+    expect(result).toEqual({ success: true, phiDetected: false });
   });
 
   it('allows uploadDocument for role=clinical_director (full document access)', async () => {
     mockAuth.mockResolvedValue({
-      user: { id: 'cd-1', organizationId: 'org-1', role: 'clinical_director' },
+      user: {
+        id: 'cd-1',
+        organizationId: 'org-1',
+        organizationUserId: 'ou-1',
+        role: 'clinical_director',
+      },
     });
     mockScanText.mockResolvedValue({ hasPHI: false, findings: [] });
     prismaMock._tx.document.findFirst.mockResolvedValue(null);
@@ -290,7 +312,9 @@ describe('Document Hub — per-role registry gate (RBAC billing+documents tighte
   // Finance has no document.* permission at all (not even read) — the
   // Document Hub must be entirely invisible to it.
   it('returns [] for getDocuments with role=finance, without querying the database', async () => {
-    mockAuth.mockResolvedValue({ user: { id: 'fin-1', organizationId: 'org-1', role: 'finance' } });
+    mockAuth.mockResolvedValue({
+      user: { id: 'fin-1', organizationId: 'org-1', organizationUserId: 'ou-1', role: 'finance' },
+    });
 
     const result = await getDocuments();
 
@@ -298,39 +322,56 @@ describe('Document Hub — per-role registry gate (RBAC billing+documents tighte
     expect(prismaMock.document.findMany).not.toHaveBeenCalled();
   });
 
-  // HR keeps read-only Document Hub access (document.read) but is not granted
-  // document.delete or document.edit — it must lose delete/rename.
   it('allows getDocuments for role=hr (document.read granted)', async () => {
-    mockAuth.mockResolvedValue({ user: { id: 'hr-1', organizationId: 'org-1', role: 'hr' } });
+    mockAuth.mockResolvedValue({
+      user: { id: 'hr-1', organizationId: 'org-1', organizationUserId: 'ou-1', role: 'hr' },
+    });
     prismaMock.document.findMany.mockResolvedValue([]);
 
     await getDocuments();
 
     expect(prismaMock.document.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { user: { organizationId: 'org-1' } } }),
+      expect.objectContaining({ where: { organizationUser: { organizationId: 'org-1' } } }),
     );
   });
 
-  it('denies deleteDocument for role=hr (no document.delete) without querying the document', async () => {
-    mockAuth.mockResolvedValue({ user: { id: 'hr-1', organizationId: 'org-1', role: 'hr' } });
+  // RBAC ruling: HR now holds document.delete too (full document CRUD),
+  // superseding the prior "HR loses delete/rename" assumption.
+  it('allows deleteDocument for role=hr (full document CRUD per RBAC ruling)', async () => {
+    mockAuth.mockResolvedValue({
+      user: { id: 'hr-1', organizationId: 'org-1', organizationUserId: 'ou-1', role: 'hr' },
+    });
+    prismaMock.document.findUnique.mockResolvedValue({
+      organizationUser: { organizationId: 'org-1' },
+      versions: [],
+    });
+    prismaMock.document.delete.mockResolvedValue({});
 
     const result = await deleteDocument('doc-1');
 
-    expect(result).toEqual({ error: 'Document not found' });
-    expect(prismaMock.document.findUnique).not.toHaveBeenCalled();
+    expect(result).toEqual({ success: true });
   });
 
-  it('denies renameDocument for role=hr (no document.edit) without querying the document', async () => {
-    mockAuth.mockResolvedValue({ user: { id: 'hr-1', organizationId: 'org-1', role: 'hr' } });
+  // RBAC ruling: HR now holds document.edit too (full document CRUD),
+  // superseding the prior "HR loses delete/rename" assumption.
+  it('allows renameDocument for role=hr (full document CRUD per RBAC ruling)', async () => {
+    mockAuth.mockResolvedValue({
+      user: { id: 'hr-1', organizationId: 'org-1', organizationUserId: 'ou-1', role: 'hr' },
+    });
+    prismaMock.document.findUnique.mockResolvedValue({
+      organizationUser: { organizationId: 'org-1' },
+    });
+    prismaMock.document.update.mockResolvedValue({});
 
     const result = await renameDocument('doc-1', 'New Name.pdf');
 
-    expect(result).toEqual({ error: 'Document not found' });
-    expect(prismaMock.document.findUnique).not.toHaveBeenCalled();
+    expect(result).toEqual({ success: true });
   });
 
   it('denies deleteDocument for role=finance (no document.delete)', async () => {
-    mockAuth.mockResolvedValue({ user: { id: 'fin-1', organizationId: 'org-1', role: 'finance' } });
+    mockAuth.mockResolvedValue({
+      user: { id: 'fin-1', organizationId: 'org-1', organizationUserId: 'ou-1', role: 'finance' },
+    });
 
     const result = await deleteDocument('doc-1');
 
@@ -340,9 +381,16 @@ describe('Document Hub — per-role registry gate (RBAC billing+documents tighte
 
   it('allows deleteDocument/renameDocument for role=clinical_director (full document access)', async () => {
     mockAuth.mockResolvedValue({
-      user: { id: 'cd-1', organizationId: 'org-1', role: 'clinical_director' },
+      user: {
+        id: 'cd-1',
+        organizationId: 'org-1',
+        organizationUserId: 'ou-1',
+        role: 'clinical_director',
+      },
     });
-    prismaMock.document.findUnique.mockResolvedValue({ user: { organizationId: 'org-1' } });
+    prismaMock.document.findUnique.mockResolvedValue({
+      organizationUser: { organizationId: 'org-1' },
+    });
     prismaMock.document.update.mockResolvedValue({});
 
     const result = await renameDocument('doc-1', 'New Name.pdf');
@@ -352,9 +400,18 @@ describe('Document Hub — per-role registry gate (RBAC billing+documents tighte
 });
 
 describe('Document Hub — full org parity (getDocuments/renameDocument/deleteDocument)', () => {
-  const ORG_A_ADMIN = { user: { id: 'admin-a1', organizationId: 'org-a', role: 'owner' } };
-  const ORG_A_ADMIN_2 = { user: { id: 'admin-a2', organizationId: 'org-a', role: 'supervisor' } };
-  const ORG_B_ADMIN = { user: { id: 'admin-b1', organizationId: 'org-b', role: 'owner' } };
+  const ORG_A_ADMIN = {
+    user: { id: 'admin-a1', organizationId: 'org-a', organizationUserId: 'ou-a1', role: 'owner' },
+  };
+  // RBAC ruling: supervisor is read-only (no document.edit/delete), so this
+  // "different admin in the same org" fixture uses hr (full document CRUD)
+  // instead — supervisor would now be correctly denied on rename/delete.
+  const ORG_A_ADMIN_2 = {
+    user: { id: 'admin-a2', organizationId: 'org-a', organizationUserId: 'ou-a2', role: 'hr' },
+  };
+  const ORG_B_ADMIN = {
+    user: { id: 'admin-b1', organizationId: 'org-b', organizationUserId: 'ou-b1', role: 'owner' },
+  };
 
   describe('getDocuments', () => {
     it('scopes the query by the caller organizationId, not the caller userId', async () => {
@@ -365,7 +422,7 @@ describe('Document Hub — full org parity (getDocuments/renameDocument/deleteDo
 
       expect(prismaMock.document.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { user: { organizationId: 'org-a' } },
+          where: { organizationUser: { organizationId: 'org-a' } },
         }),
       );
     });
@@ -395,7 +452,7 @@ describe('Document Hub — full org parity (getDocuments/renameDocument/deleteDo
     it('renames a document uploaded by a DIFFERENT admin in the same org (full parity)', async () => {
       mockAuth.mockResolvedValue(ORG_A_ADMIN_2);
       prismaMock.document.findUnique.mockResolvedValue({
-        user: { organizationId: 'org-a' }, // uploaded by admin-a1, renamed by admin-a2
+        organizationUser: { organizationId: 'org-a' }, // uploaded by admin-a1, renamed by admin-a2
       });
       prismaMock.document.update.mockResolvedValue({});
 
@@ -412,7 +469,9 @@ describe('Document Hub — full org parity (getDocuments/renameDocument/deleteDo
 
     it('reports "not found" (never leaking existence) for a document in a different org', async () => {
       mockAuth.mockResolvedValue(ORG_B_ADMIN);
-      prismaMock.document.findUnique.mockResolvedValue({ user: { organizationId: 'org-a' } });
+      prismaMock.document.findUnique.mockResolvedValue({
+        organizationUser: { organizationId: 'org-a' },
+      });
 
       const result = await renameDocument('doc-1', 'New Name.pdf');
 
@@ -434,7 +493,7 @@ describe('Document Hub — full org parity (getDocuments/renameDocument/deleteDo
     it('deletes a document uploaded by a DIFFERENT admin in the same org (full parity)', async () => {
       mockAuth.mockResolvedValue(ORG_A_ADMIN_2);
       prismaMock.document.findUnique.mockResolvedValue({
-        user: { organizationId: 'org-a' },
+        organizationUser: { organizationId: 'org-a' },
         versions: [{ id: 'ver-1', storagePath: 'gcs://bucket/policy.pdf' }],
       });
       mockDeleteFile.mockResolvedValue(undefined);
@@ -449,7 +508,7 @@ describe('Document Hub — full org parity (getDocuments/renameDocument/deleteDo
     it('reports "not found" for a document in a different org and never deletes it', async () => {
       mockAuth.mockResolvedValue(ORG_B_ADMIN);
       prismaMock.document.findUnique.mockResolvedValue({
-        user: { organizationId: 'org-a' },
+        organizationUser: { organizationId: 'org-a' },
         versions: [],
       });
 
@@ -479,9 +538,9 @@ describe('uploadDocument — DOCUMENT_UPLOADED notification wiring', () => {
     prismaMock._tx.document.findFirst.mockResolvedValue(null);
     prismaMock._tx.document.create.mockResolvedValue({ id: 'doc-1' });
     prismaMock._tx.documentVersion.create.mockResolvedValue({ id: 'ver-1' });
-    prismaMock.user.findUnique.mockResolvedValue({
-      facilityId: 'facility-1',
-      profile: { fullName: 'Ada Owner' },
+    prismaMock.organizationUser.findUnique.mockResolvedValue({
+      user: { fullName: 'Ada Owner' },
+      facilities: [{ facilityId: 'facility-1' }],
     });
 
     await uploadDocument(null, makeFormData('policy.pdf'));
@@ -506,9 +565,15 @@ describe('uploadDocument — DOCUMENT_UPLOADED notification wiring', () => {
     prismaMock._tx.document.create.mockResolvedValue({ id: 'doc-1' });
     prismaMock._tx.documentVersion.create.mockResolvedValue({ id: 'ver-1' });
     mockAuth.mockResolvedValue({
-      user: { id: 'user-1', organizationId: 'org-1', role: 'owner', email: 'ada@acme.com' },
+      user: {
+        id: 'user-1',
+        organizationId: 'org-1',
+        organizationUserId: 'ou-1',
+        role: 'owner',
+        email: 'ada@acme.com',
+      },
     });
-    prismaMock.user.findUnique.mockRejectedValueOnce(new Error('DB unavailable'));
+    prismaMock.organizationUser.findUnique.mockRejectedValueOnce(new Error('DB unavailable'));
 
     await uploadDocument(null, makeFormData('policy.pdf'));
 
@@ -518,5 +583,159 @@ describe('uploadDocument — DOCUMENT_UPLOADED notification wiring', () => {
         context: expect.objectContaining({ uploaderName: 'ada' }),
       }),
     );
+  });
+});
+
+describe('uploadDocuments — multi-file batch upload', () => {
+  function makeBatchFormData(
+    files: Array<{ name: string; type?: string }>,
+    opts: { attested?: boolean; category?: string } = {},
+  ) {
+    const { attested = true, category } = opts;
+    const formData = new FormData();
+    for (const f of files) {
+      formData.append(
+        'files',
+        new File(['contents'], f.name, { type: f.type ?? 'application/pdf' }),
+      );
+    }
+    if (attested) formData.set('phiAttested', 'true');
+    if (category) formData.set('category', category);
+    return formData;
+  }
+
+  beforeEach(() => {
+    mockScanText.mockResolvedValue({ hasPHI: false, findings: [] });
+    prismaMock._tx.document.findFirst.mockResolvedValue(null);
+    let docCounter = 0;
+    prismaMock._tx.document.create.mockImplementation(() =>
+      Promise.resolve({ id: `doc-${++docCounter}` }),
+    );
+    prismaMock._tx.documentVersion.create.mockResolvedValue({ id: 'ver-1' });
+  });
+
+  it('rejects with no results when not authenticated', async () => {
+    mockAuth.mockResolvedValue(null);
+
+    const result = await uploadDocuments(makeBatchFormData([{ name: 'a.pdf' }]));
+
+    expect(result).toEqual({ results: [], error: 'Not authenticated or not in an organization' });
+  });
+
+  it('denies a role without document.create (finance) before touching any file', async () => {
+    mockAuth.mockResolvedValue({
+      user: { id: 'user-1', organizationId: 'org-1', organizationUserId: 'ou-1', role: 'finance' },
+    });
+
+    const result = await uploadDocuments(makeBatchFormData([{ name: 'a.pdf' }]));
+
+    expect(result.results).toEqual([]);
+    expect(result.error).toMatch(/permission/i);
+    expect(prismaMock._tx.document.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects with no results when no files are provided', async () => {
+    const result = await uploadDocuments(makeBatchFormData([]));
+
+    expect(result).toEqual({ results: [], error: 'No files provided' });
+  });
+
+  it('rejects the whole batch when PHI attestation is missing — authoritative gate applies to the batch surface too', async () => {
+    const result = await uploadDocuments(
+      makeBatchFormData([{ name: 'a.pdf' }], { attested: false }),
+    );
+
+    expect(result).toEqual({
+      results: [],
+      error: 'You must confirm these documents contain no PHI (Personal Health Information).',
+    });
+    expect(prismaMock._tx.document.create).not.toHaveBeenCalled();
+  });
+
+  it('processes every file sequentially and reports success for each independently', async () => {
+    const result = await uploadDocuments(makeBatchFormData([{ name: 'a.pdf' }, { name: 'b.pdf' }]));
+
+    expect(result.results).toEqual([
+      { name: 'a.pdf', ok: true, error: undefined },
+      { name: 'b.pdf', ok: true, error: undefined },
+    ]);
+    expect(prismaMock._tx.document.create).toHaveBeenCalledTimes(2);
+  });
+
+  it('a file that fails (e.g. unsupported type) is reported in its own row and does not abort the rest of the batch', async () => {
+    const result = await uploadDocuments(
+      makeBatchFormData([
+        { name: 'good.pdf' },
+        { name: 'bad.exe', type: 'application/octet-stream' },
+        { name: 'also-good.pdf' },
+      ]),
+    );
+
+    expect(result.results).toEqual([
+      { name: 'good.pdf', ok: true, error: undefined },
+      { name: 'bad.exe', ok: false, error: 'Only PDF and DOCX files are allowed.' },
+      { name: 'also-good.pdf', ok: true, error: undefined },
+    ]);
+    // Only the two valid files reached persistence.
+    expect(prismaMock._tx.document.create).toHaveBeenCalledTimes(2);
+  });
+
+  it('a file blocked by the PHI gate is reported ok:false with phiDetected consequence, not thrown', async () => {
+    mockScanText
+      .mockResolvedValueOnce({ hasPHI: false, findings: [] })
+      .mockResolvedValueOnce({ hasPHI: true, findings: [{ type: 'SSN' }] });
+
+    const result = await uploadDocuments(
+      makeBatchFormData([{ name: 'clean.pdf' }, { name: 'has-phi.pdf' }]),
+    );
+
+    expect(result.results[0]).toEqual({ name: 'clean.pdf', ok: true, error: undefined });
+    expect(result.results[1].ok).toBe(false);
+    expect(result.results[1].error).toMatch(/PHI/);
+  });
+
+  it('stamps the shared category onto every file in the batch', async () => {
+    await uploadDocuments(
+      makeBatchFormData([{ name: 'a.pdf' }, { name: 'b.pdf' }], { category: 'Policies' }),
+    );
+
+    const categories = prismaMock._tx.document.create.mock.calls.map(
+      (call) => call[0].data.category,
+    );
+    expect(categories).toEqual(['Policies', 'Policies']);
+  });
+
+  it('stamps a null category when none is provided', async () => {
+    await uploadDocuments(makeBatchFormData([{ name: 'a.pdf' }]));
+
+    expect(prismaMock._tx.document.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ category: null }) }),
+    );
+  });
+
+  it('does not revalidate the documents path when every file in the batch failed', async () => {
+    const { revalidatePath } = await import('next/cache');
+    vi.mocked(revalidatePath).mockClear();
+
+    const result = await uploadDocuments(
+      makeBatchFormData([{ name: 'bad.exe', type: 'application/octet-stream' }]),
+    );
+
+    expect(result.results.every((r) => !r.ok)).toBe(true);
+    expect(revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it('revalidates the documents path when at least one file in the batch succeeded', async () => {
+    const { revalidatePath } = await import('next/cache');
+    vi.mocked(revalidatePath).mockClear();
+
+    await uploadDocuments(
+      makeBatchFormData([
+        { name: 'good.pdf' },
+        { name: 'bad.exe', type: 'application/octet-stream' },
+      ]),
+    );
+
+    expect(revalidatePath).toHaveBeenCalledWith('/dashboard/documents');
   });
 });

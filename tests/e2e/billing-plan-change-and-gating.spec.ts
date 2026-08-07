@@ -73,6 +73,7 @@ interface SeededAdmin {
   orgId: string;
   facilityId: string;
   adminId: string;
+  adminOrgUserId: string;
   email: string;
   password: string;
 }
@@ -102,6 +103,7 @@ async function seedAdmin(opts: {
     const orgId = crypto.randomUUID();
     const facilityId = crypto.randomUUID();
     const adminId = crypto.randomUUID();
+    const adminOrgUserId = crypto.randomUUID();
 
     await client.query(
       `INSERT INTO organizations (id, name, slug, primary_email, is_hipaa_compliant, created_at, updated_at)
@@ -114,14 +116,19 @@ async function seedAdmin(opts: {
       [facilityId, orgId, `Billing E2E Facility ${slug}`],
     );
     await client.query(
-      `INSERT INTO users (id, email, password, role, email_verified, organization_id, facility_id, created_at, updated_at)
-       VALUES ($1, $2, $3, 'owner'::"UserRole", true, $4, $5, NOW(), NOW())`,
-      [adminId, email, hashed, orgId, facilityId],
+      `INSERT INTO users (id, email, password, email_verified, auth_provider, first_name, last_name, full_name, created_at, updated_at)
+       VALUES ($1, $2, $3, true, 'credentials', $4, $5, $6, NOW(), NOW())`,
+      [adminId, email, hashed, 'Billing', 'Owner', 'Billing Owner'],
     );
     await client.query(
-      `INSERT INTO profiles (id, email, first_name, last_name, full_name, created_at, updated_at)
-       VALUES ($1, $2, 'Billing', 'Owner', 'Billing Owner', NOW(), NOW())`,
-      [adminId, email],
+      `INSERT INTO organization_users (id, user_id, organization_id, role, active, joined_at, role_assigned_at, created_at, updated_at)
+       VALUES ($1, $2, $3, 'owner'::"UserRole", true, NOW(), NOW(), NOW(), NOW())`,
+      [adminOrgUserId, adminId, orgId],
+    );
+    await client.query(
+      `INSERT INTO organization_user_facilities (id, organization_user_id, facility_id, active, joined_at)
+       VALUES ($1, $2, $3, true, NOW())`,
+      [crypto.randomUUID(), adminOrgUserId, facilityId],
     );
 
     if (opts.subscription) {
@@ -159,7 +166,7 @@ async function seedAdmin(opts: {
       );
     }
 
-    return { orgId, facilityId, adminId, email, password };
+    return { orgId, facilityId, adminId, adminOrgUserId, email, password };
   } finally {
     await client.end();
   }
@@ -169,7 +176,11 @@ async function cleanup(seeded: SeededAdmin): Promise<void> {
   const client = await db();
   try {
     await client.query(`DELETE FROM subscriptions WHERE organization_id = $1`, [seeded.orgId]);
-    await client.query(`DELETE FROM profiles WHERE id = $1`, [seeded.adminId]);
+    await client.query(
+      `DELETE FROM organization_user_facilities WHERE organization_user_id = $1`,
+      [seeded.adminOrgUserId],
+    );
+    await client.query(`DELETE FROM organization_users WHERE id = $1`, [seeded.adminOrgUserId]);
     await client.query(`DELETE FROM users WHERE id = $1`, [seeded.adminId]);
     await client.query(`DELETE FROM facilities WHERE organization_id = $1`, [seeded.orgId]);
     await client.query(`DELETE FROM organizations WHERE id = $1`, [seeded.orgId]);
@@ -179,6 +190,11 @@ async function cleanup(seeded: SeededAdmin): Promise<void> {
 }
 
 async function loginAs(page: Page, email: string, password: string): Promise<void> {
+  // Random per-login IP so this spec's several logins don't share the
+  // credential-layer rate-limit bucket with each other or with other specs
+  // running concurrently (see staff-invite-flow.spec.ts for the convention).
+  const ip = `10.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`;
+  await page.setExtraHTTPHeaders({ 'x-forwarded-for': ip });
   await page.goto('/login');
   await page.fill('input[type="email"]', email);
   await page.fill('input[type="password"]', password);

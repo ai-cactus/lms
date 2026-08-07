@@ -35,12 +35,22 @@ vi.mock('./recipients', () => ({ resolveRoleRecipients: mockResolveRoleRecipient
 
 import { emitNotificationEvent } from './emit';
 
-const NO_RECIPIENTS = { userIds: [], emails: [], usedFallback: false, missingRoles: [] };
+const NO_RECIPIENTS = {
+  organizationUserIds: [],
+  emails: [],
+  usedFallback: false,
+  missingRoles: [],
+};
 
 function recipients(ids: string[], opts: { usedFallback?: boolean; missingRoles?: string[] } = {}) {
   return {
-    userIds: ids,
-    emails: ids.map((id) => ({ userId: id, email: `${id}@acme.com`, name: null })),
+    organizationUserIds: ids,
+    emails: ids.map((id) => ({
+      organizationUserId: id,
+      userId: id,
+      email: `${id}@acme.com`,
+      name: null,
+    })),
     usedFallback: opts.usedFallback ?? false,
     missingRoles: opts.missingRoles ?? [],
   };
@@ -75,7 +85,7 @@ describe('emitNotificationEvent — digest tier', () => {
     );
     expect(mockCreateNotification).toHaveBeenCalledTimes(2);
     expect(mockCreateNotification).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: 'hr-1', type: 'STAFF_ADDED' }),
+      expect.objectContaining({ organizationUserId: 'hr-1', type: 'STAFF_ADDED' }),
     );
     expect(mockSendInstantEmail).not.toHaveBeenCalled();
     expect(prismaMock.notificationEvent.update).not.toHaveBeenCalled();

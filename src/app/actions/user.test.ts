@@ -11,7 +11,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const { prismaMock, mockHeaders, mockAdminAuth, mockWorkerAuth, mockRevalidatePath } = vi.hoisted(
   () => ({
-    prismaMock: { profile: { upsert: vi.fn() } },
+    // Profile was merged into User (name fields live directly on the identity);
+    // jobTitle now lives on the active OrganizationUser membership.
+    prismaMock: { user: { update: vi.fn() }, organizationUser: { update: vi.fn() } },
     mockHeaders: vi.fn(),
     mockAdminAuth: vi.fn(),
     mockWorkerAuth: vi.fn(),
@@ -45,7 +47,7 @@ beforeEach(() => {
   mockHeaders.mockResolvedValue({ get: () => null }); // non-worker referer → resolveSession uses adminAuth
   mockAdminAuth.mockResolvedValue(SESSION);
   mockWorkerAuth.mockResolvedValue(null);
-  prismaMock.profile.upsert.mockResolvedValue({ id: 'user-1' });
+  prismaMock.user.update.mockResolvedValue({ id: 'user-1' });
 });
 
 describe('updateProfile — server-side name validation', () => {
@@ -53,14 +55,14 @@ describe('updateProfile — server-side name validation', () => {
     const result = await updateProfile(baseData({ first_name: '' }));
 
     expect(result).toEqual({ success: false, error: 'First and last name are required.' });
-    expect(prismaMock.profile.upsert).not.toHaveBeenCalled();
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
   });
 
   it('rejects a whitespace-only last name and never touches the database', async () => {
     const result = await updateProfile(baseData({ last_name: '   ' }));
 
     expect(result).toEqual({ success: false, error: 'First and last name are required.' });
-    expect(prismaMock.profile.upsert).not.toHaveBeenCalled();
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
   });
 
   it('rejects a first name over 100 characters', async () => {
@@ -70,7 +72,7 @@ describe('updateProfile — server-side name validation', () => {
       success: false,
       error: 'Name is too long (maximum 100 characters).',
     });
-    expect(prismaMock.profile.upsert).not.toHaveBeenCalled();
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
   });
 
   it('rejects a last name over 100 characters', async () => {
@@ -80,23 +82,24 @@ describe('updateProfile — server-side name validation', () => {
       success: false,
       error: 'Name is too long (maximum 100 characters).',
     });
-    expect(prismaMock.profile.upsert).not.toHaveBeenCalled();
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
   });
 
   it('accepts a name at exactly the 100-character boundary', async () => {
     const result = await updateProfile(baseData({ first_name: 'a'.repeat(100) }));
 
     expect(result).toEqual({ success: true });
-    expect(prismaMock.profile.upsert).toHaveBeenCalledOnce();
+    expect(prismaMock.user.update).toHaveBeenCalledOnce();
   });
 
   it('trims surrounding whitespace before persisting and computing the full name', async () => {
     const result = await updateProfile(baseData({ first_name: '  Jane ', last_name: ' Doe  ' }));
 
     expect(result).toEqual({ success: true });
-    expect(prismaMock.profile.upsert).toHaveBeenCalledWith(
+    expect(prismaMock.user.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        update: expect.objectContaining({
+        where: { id: 'user-1' },
+        data: expect.objectContaining({
           firstName: 'Jane',
           lastName: 'Doe',
           fullName: 'Jane Doe',
@@ -112,6 +115,6 @@ describe('updateProfile — server-side name validation', () => {
     const result = await updateProfile(baseData({ first_name: '' }));
 
     expect(result).toEqual({ success: false, error: 'Not authenticated' });
-    expect(prismaMock.profile.upsert).not.toHaveBeenCalled();
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
   });
 });

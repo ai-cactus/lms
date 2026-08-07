@@ -63,14 +63,9 @@ async function seedUnboardedOwner(): Promise<SeededOwner> {
     const userId = crypto.randomUUID();
 
     await client.query(
-      `INSERT INTO users (id, email, password, role, email_verified, created_at, updated_at)
-       VALUES ($1, $2, $3, 'owner'::"UserRole", true, NOW(), NOW())`,
-      [userId, email, hashed],
-    );
-    await client.query(
-      `INSERT INTO profiles (id, email, first_name, last_name, full_name, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`,
-      [userId, email, 'Onb', 'Owner', 'Onb Owner'],
+      `INSERT INTO users (id, email, password, email_verified, auth_provider, first_name, last_name, full_name, created_at, updated_at)
+       VALUES ($1, $2, $3, true, 'credentials', $4, $5, $6, NOW(), NOW())`,
+      [userId, email, hashed, 'Onb', 'Owner', 'Onb Owner'],
     );
     return { userId, email, password };
   } finally {
@@ -95,10 +90,17 @@ async function cleanup(seeded: SeededOwner, orgName: string): Promise<void> {
         [orgId],
       );
     }
-    await client.query(`DELETE FROM profiles WHERE id = $1`, [seeded.userId]);
-    await client.query(`UPDATE users SET organization_id = NULL, facility_id = NULL WHERE id = $1`, [
-      seeded.userId,
-    ]);
+    // Reset the identity to its pre-onboarding, org-less state — role/org/
+    // facility no longer live on `users`, so this means removing whatever
+    // organization_users membership(s) onboarding created for it (cascades to
+    // organization_user_facilities), not updating columns that don't exist
+    // on `users` anymore.
+    await client.query(
+      `DELETE FROM organization_user_facilities WHERE organization_user_id IN
+         (SELECT id FROM organization_users WHERE user_id = $1)`,
+      [seeded.userId],
+    );
+    await client.query(`DELETE FROM organization_users WHERE user_id = $1`, [seeded.userId]);
     await client.query(`DELETE FROM users WHERE id = $1`, [seeded.userId]);
     if (orgId) {
       await client.query(`DELETE FROM facilities WHERE organization_id = $1`, [orgId]);
@@ -286,7 +288,10 @@ test.describe('Onboarding wizard — 5-step happy path', () => {
         expect(facilityRes.rows).toHaveLength(1);
 
         const ownerRes = await client.query(
-          `SELECT role, organization_id, facility_id FROM users WHERE id = $1`,
+          `SELECT ou.role, ou.organization_id, ouf.facility_id
+           FROM organization_users ou
+           JOIN organization_user_facilities ouf ON ouf.organization_user_id = ou.id
+           WHERE ou.user_id = $1`,
           [seeded.userId],
         );
         expect(ownerRes.rows[0]).toMatchObject({
@@ -454,10 +459,10 @@ test.describe('Onboarding wizard — 5-step happy path', () => {
       await client.connect();
       try {
         const res = await client.query(
-          `SELECT organization_id FROM users WHERE id = $1`,
+          `SELECT id FROM organization_users WHERE user_id = $1`,
           [seeded.userId],
         );
-        expect(res.rows[0]?.organization_id).toBeNull();
+        expect(res.rows).toHaveLength(0);
       } finally {
         await client.end();
       }

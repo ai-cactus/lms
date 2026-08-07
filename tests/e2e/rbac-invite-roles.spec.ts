@@ -65,6 +65,7 @@ type Role =
 
 interface Seeded {
   userId: string;
+  orgUserId: string;
   orgId: string;
   facilityId: string;
 }
@@ -78,6 +79,7 @@ async function seedInviter(role: Role, email: string, password: string): Promise
     const orgId = crypto.randomUUID();
     const facilityId = crypto.randomUUID();
     const userId = crypto.randomUUID();
+    const orgUserId = crypto.randomUUID();
 
     await client.query(
       `INSERT INTO organizations (id, name, slug, primary_email, is_hipaa_compliant, created_at, updated_at)
@@ -90,16 +92,21 @@ async function seedInviter(role: Role, email: string, password: string): Promise
       [facilityId, orgId, `Invite Test ${slug}`],
     );
     await client.query(
-      `INSERT INTO users (id, email, password, role, email_verified, organization_id, facility_id, created_at, updated_at)
-       VALUES ($1, $2, $3, $4::\"UserRole\", true, $5, $6, NOW(), NOW())`,
-      [userId, email, hashed, role, orgId, facilityId],
+      `INSERT INTO users (id, email, password, email_verified, auth_provider, first_name, last_name, full_name, created_at, updated_at)
+       VALUES ($1, $2, $3, true, 'credentials', $4, $5, $6, NOW(), NOW())`,
+      [userId, email, hashed, 'Inv', 'Test', 'Inv Test'],
     );
     await client.query(
-      `INSERT INTO profiles (id, email, first_name, last_name, full_name, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`,
-      [userId, email, 'Inv', 'Test', 'Inv Test'],
+      `INSERT INTO organization_users (id, user_id, organization_id, role, active, joined_at, role_assigned_at, created_at, updated_at)
+       VALUES ($1, $2, $3, $4::\"UserRole\", true, NOW(), NOW(), NOW(), NOW())`,
+      [orgUserId, userId, orgId, role],
     );
-    return { userId, orgId, facilityId };
+    await client.query(
+      `INSERT INTO organization_user_facilities (id, organization_user_id, facility_id, active, joined_at)
+       VALUES ($1, $2, $3, true, NOW())`,
+      [crypto.randomUUID(), orgUserId, facilityId],
+    );
+    return { userId, orgUserId, orgId, facilityId };
   } finally {
     await client.end();
   }
@@ -109,7 +116,10 @@ async function cleanup(seeded: Seeded): Promise<void> {
   const client = new Client({ connectionString: DB_URL });
   await client.connect();
   try {
-    await client.query(`DELETE FROM profiles WHERE id = $1`, [seeded.userId]);
+    await client.query(`DELETE FROM organization_user_facilities WHERE organization_user_id = $1`, [
+      seeded.orgUserId,
+    ]);
+    await client.query(`DELETE FROM organization_users WHERE id = $1`, [seeded.orgUserId]);
     await client.query(`DELETE FROM users WHERE id = $1`, [seeded.userId]);
     await client.query(`DELETE FROM facilities WHERE id = $1`, [seeded.facilityId]);
     await client.query(`DELETE FROM organizations WHERE id = $1`, [seeded.orgId]);

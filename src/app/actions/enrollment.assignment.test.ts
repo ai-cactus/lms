@@ -6,6 +6,7 @@ const {
   mockRevalidate,
   mockCourseFindUnique,
   mockUserFindUnique,
+  mockOrgUserFindFirst,
   mockOfferingFindUnique,
   mockOfferingUpsert,
   mockAssignmentCreate,
@@ -16,12 +17,17 @@ const {
   mockEnrollmentCreate,
   mockReminderLogCreate,
   mockNotificationCreate,
+  mockOrganizationFindUnique,
 } = vi.hoisted(() => ({
   mockAuth: vi.fn(),
   mockWorkerAuth: vi.fn(),
   mockRevalidate: vi.fn(),
   mockCourseFindUnique: vi.fn(),
+  // Staff-email lookup inside createEnrollmentForUser (@/lib/enrollment/create) —
+  // NOT a "current user" fetch; the session carries the caller's own role/org
+  // context directly post User/OrganizationUser split.
   mockUserFindUnique: vi.fn(),
+  mockOrgUserFindFirst: vi.fn(),
   mockOfferingFindUnique: vi.fn(),
   mockOfferingUpsert: vi.fn(),
   mockAssignmentCreate: vi.fn(),
@@ -32,12 +38,16 @@ const {
   mockEnrollmentCreate: vi.fn(),
   mockReminderLogCreate: vi.fn(),
   mockNotificationCreate: vi.fn(),
+  mockOrganizationFindUnique: vi.fn(),
 }));
 
 vi.mock('@/lib/prisma', () => {
   const prisma = {
     course: { findUnique: mockCourseFindUnique },
     user: { findUnique: mockUserFindUnique },
+    // Membership lookup for the staff email (createEnrollmentForUser) and the
+    // seat-gate's existing-member dedup both key off OrganizationUser now.
+    organizationUser: { findFirst: mockOrgUserFindFirst, findMany: vi.fn().mockResolvedValue([]) },
     orgCourseOffering: { findUnique: mockOfferingFindUnique, upsert: mockOfferingUpsert },
     courseAssignment: {
       create: mockAssignmentCreate,
@@ -48,12 +58,20 @@ vi.mock('@/lib/prisma', () => {
     enrollment: { findFirst: mockEnrollmentFindFirst, create: mockEnrollmentCreate },
     // Added in facility split: enrollUsers resolves facilityId for new users.
     facility: { findFirst: vi.fn().mockResolvedValue(null) },
+    // Facility stamped on each created enrollment (resolveMemberFacilityId).
+    organizationUserFacility: { findFirst: vi.fn().mockResolvedValue(null) },
     reminderLog: { create: mockReminderLogCreate },
+    invite: { findMany: vi.fn().mockResolvedValue([]) },
     // Seat gate (F-022): enrollUsers now calls getSeatUsage(organizationId, ...)
-    // unconditionally when the caller has an org. No subscription on this org
-    // → getSeatUsage returns staffMax: null, a no-op — none of these tests are
-    // focused on the seat gate itself (see enrollment.test.ts for that).
-    organization: { findUnique: vi.fn().mockResolvedValue(null) },
+    // unconditionally when the caller has an org. The subscription below has no
+    // recognized `plan` value, so getSeatUsage's BILLING_PLANS lookup misses and
+    // it returns staffMax: null (a no-op) — none of these tests are focused on
+    // the seat gate itself (see enrollment.test.ts for that). This same
+    // organization.findUnique mock also backs the outer billing gate, which
+    // DOES require an active, unpaused subscription to proceed.
+    organization: {
+      findUnique: mockOrganizationFindUnique,
+    },
   };
   return { prisma, default: prisma };
 });
@@ -73,28 +91,43 @@ vi.mock('@/lib/email', () => ({
 
 import { enrollUsers } from './enrollment';
 
+const ADMIN_ORG_USER_ID = 'ou-admin-1';
+
 beforeEach(() => {
   vi.clearAllMocks();
-  mockAuth.mockResolvedValue({ user: { id: 'admin-1' } });
+  // Post User/OrganizationUser split: the session carries role/org context
+  // directly. 'owner' is the admin-equivalent role after the RBAC ruling.
+  mockAuth.mockResolvedValue({
+    user: {
+      id: 'admin-1',
+      organizationUserId: ADMIN_ORG_USER_ID,
+      organizationId: 'org-1',
+      role: 'owner',
+    },
+  });
   mockWorkerAuth.mockResolvedValue(null);
   mockCourseFindUnique.mockResolvedValue({
     id: 'course-1',
     title: 'Course',
-    createdBy: 'admin-1',
+    createdByOrgUserId: ADMIN_ORG_USER_ID,
     isGlobal: false,
   });
-  mockUserFindUnique
-    .mockResolvedValueOnce({
-      id: 'admin-1',
-      // After RBAC migration: 'admin' is retired; 'owner' is an admin role.
-      role: 'owner',
-      organizationId: 'org-1',
-      // Defect B billing gate: enrollUsers now requires active, unpaused
-      // billing — without this the gate throws before reaching the
-      // assignment-batch logic under test here.
-      organization: { name: 'Org', subscription: { status: 'active', pausedAt: null } },
-    })
-    .mockResolvedValue({ id: 'worker-1', email: 'w@x.com', profile: { fullName: 'W' } });
+  // Defect B billing gate: enrollUsers now requires active, unpaused billing —
+  // without this the gate throws before reaching the assignment-batch logic
+  // under test here. No `plan` field, so the seat gate (getSeatUsage) treats
+  // this as an unenforced/no-op plan.
+  mockOrganizationFindUnique.mockResolvedValue({
+    name: 'Org',
+    subscription: { status: 'active', pausedAt: null },
+  });
+  // createEnrollmentForUser's own staff-email lookup + membership check.
+  mockUserFindUnique.mockResolvedValue({
+    id: 'worker-1',
+    firstName: null,
+    lastName: null,
+    fullName: 'W',
+  });
+  mockOrgUserFindFirst.mockResolvedValue({ id: 'ou-worker-1' });
   // No prior assignment for this (org, course) — upsertCourseAssignment takes the create branch.
   mockAssignmentFindFirst.mockResolvedValue(null);
   mockAssignmentCreate.mockResolvedValue({ id: 'assignment-1' });
@@ -143,7 +176,7 @@ describe('enrollUsers assignment batch', () => {
     mockCourseFindUnique.mockResolvedValue({
       id: 'course-2',
       title: 'Catalog Course',
-      createdBy: 'system-user',
+      createdByOrgUserId: 'ou-system-user',
       isGlobal: true,
       status: 'published',
     });

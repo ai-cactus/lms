@@ -52,9 +52,11 @@ interface Seeded {
   orgId: string;
   facilityId: string;
   ownerId: string;
+  ownerOrgUserId: string;
   ownerEmail: string;
   ownerPassword: string;
   staffId: string;
+  staffOrgUserId: string;
   staffEmail: string;
 }
 
@@ -74,7 +76,9 @@ async function seedOrgWithOwnerAndHrStaffer(): Promise<Seeded> {
     const orgId = crypto.randomUUID();
     const facilityId = crypto.randomUUID();
     const ownerId = crypto.randomUUID();
+    const ownerOrgUserId = crypto.randomUUID();
     const staffId = crypto.randomUUID();
+    const staffOrgUserId = crypto.randomUUID();
 
     await client.query(
       `INSERT INTO organizations (id, name, slug, primary_email, is_hipaa_compliant, created_at, updated_at)
@@ -87,27 +91,47 @@ async function seedOrgWithOwnerAndHrStaffer(): Promise<Seeded> {
       [facilityId, orgId, `Re-Invite E2E Facility ${slug}`],
     );
     await client.query(
-      `INSERT INTO users (id, email, password, role, email_verified, organization_id, facility_id, created_at, updated_at)
-       VALUES ($1, $2, $3, 'owner'::"UserRole", true, $4, $5, NOW(), NOW())`,
-      [ownerId, ownerEmail, ownerHashed, orgId, facilityId],
+      `INSERT INTO users (id, email, password, email_verified, auth_provider, first_name, last_name, full_name, created_at, updated_at)
+       VALUES ($1, $2, $3, true, 'credentials', $4, $5, $6, NOW(), NOW())`,
+      [ownerId, ownerEmail, ownerHashed, 'Owner', 'ReInvite', 'Owner ReInvite'],
     );
     await client.query(
-      `INSERT INTO users (id, email, password, role, email_verified, organization_id, facility_id, created_at, updated_at)
-       VALUES ($1, $2, $3, 'hr'::"UserRole", true, $4, $5, NOW(), NOW())`,
-      [staffId, staffEmail, staffHashed, orgId, facilityId],
+      `INSERT INTO users (id, email, password, email_verified, auth_provider, first_name, last_name, full_name, created_at, updated_at)
+       VALUES ($1, $2, $3, true, 'credentials', $4, $5, $6, NOW(), NOW())`,
+      [staffId, staffEmail, staffHashed, 'Original', 'Staffer', 'Original Staffer'],
     );
     await client.query(
-      `INSERT INTO profiles (id, email, first_name, last_name, full_name, created_at, updated_at)
-       VALUES ($1, $2, 'Owner', 'ReInvite', 'Owner ReInvite', NOW(), NOW())`,
-      [ownerId, ownerEmail],
+      `INSERT INTO organization_users (id, user_id, organization_id, role, active, joined_at, role_assigned_at, created_at, updated_at)
+       VALUES ($1, $2, $3, 'owner'::"UserRole", true, NOW(), NOW(), NOW(), NOW())`,
+      [ownerOrgUserId, ownerId, orgId],
     );
     await client.query(
-      `INSERT INTO profiles (id, email, first_name, last_name, full_name, created_at, updated_at)
-       VALUES ($1, $2, 'Original', 'Staffer', 'Original Staffer', NOW(), NOW())`,
-      [staffId, staffEmail],
+      `INSERT INTO organization_users (id, user_id, organization_id, role, active, joined_at, role_assigned_at, created_at, updated_at)
+       VALUES ($1, $2, $3, 'hr'::"UserRole", true, NOW(), NOW(), NOW(), NOW())`,
+      [staffOrgUserId, staffId, orgId],
+    );
+    await client.query(
+      `INSERT INTO organization_user_facilities (id, organization_user_id, facility_id, active, joined_at)
+       VALUES ($1, $2, $3, true, NOW())`,
+      [crypto.randomUUID(), ownerOrgUserId, facilityId],
+    );
+    await client.query(
+      `INSERT INTO organization_user_facilities (id, organization_user_id, facility_id, active, joined_at)
+       VALUES ($1, $2, $3, true, NOW())`,
+      [crypto.randomUUID(), staffOrgUserId, facilityId],
     );
 
-    return { orgId, facilityId, ownerId, ownerEmail, ownerPassword, staffId, staffEmail };
+    return {
+      orgId,
+      facilityId,
+      ownerId,
+      ownerOrgUserId,
+      ownerEmail,
+      ownerPassword,
+      staffId,
+      staffOrgUserId,
+      staffEmail,
+    };
   } finally {
     await client.end();
   }
@@ -116,10 +140,14 @@ async function seedOrgWithOwnerAndHrStaffer(): Promise<Seeded> {
 async function cleanup(seeded: Seeded): Promise<void> {
   const client = await db();
   try {
+    await client.query(`DELETE FROM organization_user_facilities WHERE organization_user_id IN ($1, $2)`, [
+      seeded.ownerOrgUserId,
+      seeded.staffOrgUserId,
+    ]);
     await client.query(`DELETE FROM invites WHERE organization_id = $1`, [seeded.orgId]);
-    await client.query(`DELETE FROM profiles WHERE id IN ($1, $2)`, [
-      seeded.ownerId,
-      seeded.staffId,
+    await client.query(`DELETE FROM organization_users WHERE id IN ($1, $2)`, [
+      seeded.ownerOrgUserId,
+      seeded.staffOrgUserId,
     ]);
     await client.query(`DELETE FROM users WHERE id IN ($1, $2)`, [seeded.ownerId, seeded.staffId]);
     await client.query(`DELETE FROM users WHERE email = $1`, [seeded.staffEmail]);
@@ -165,14 +193,17 @@ test.describe('Removed-user re-invite lifecycle', () => {
       await removeDialog.getByRole('button', { name: 'Remove Staff' }).click();
       await expect(removeDialog).toBeHidden({ timeout: 10000 });
 
-      // DB-level confirmation: the account is now org-less (removed), not deleted.
+      // DB-level confirmation: the membership is deactivated (removed), not
+      // the identity deleted — removeStaff() flips organization_users.active
+      // to false; the users row itself has no org-scoped columns to null out.
       const dbAfterRemoval = await db();
       try {
         const res = await dbAfterRemoval.query(
-          `SELECT organization_id FROM users WHERE id = $1`,
-          [seeded.staffId],
+          `SELECT active, deactivated_at FROM organization_users WHERE id = $1`,
+          [seeded.staffOrgUserId],
         );
-        expect(res.rows[0].organization_id).toBeNull();
+        expect(res.rows[0].active).toBe(false);
+        expect(res.rows[0].deactivated_at).not.toBeNull();
       } finally {
         await dbAfterRemoval.end();
       }
@@ -190,9 +221,9 @@ test.describe('Removed-user re-invite lifecycle', () => {
       await expect(page.getByText('Assign roles')).toBeVisible();
       await expect(page.getByText(seeded.staffEmail)).toBeVisible();
       await page.getByRole('combobox').nth(1).click();
-      // Role options render the full RBAC displayName ("Supervisor (Facility
-      // Admin)"), not the bare role key — match on the leading word only.
-      await page.getByRole('option', { name: /^supervisor\b/i }).click();
+      // Role options render the full RBAC displayName ("Facility Supervisor"
+      // per src/lib/rbac/permissions.ts), not the bare role key "supervisor".
+      await page.getByRole('option', { name: /^facility supervisor\b/i }).click();
       await page.getByRole('button', { name: /^continue$/i }).click();
 
       await expect(page.getByText('Invite sent')).toBeVisible({ timeout: 10000 });
@@ -245,17 +276,25 @@ test.describe('Removed-user re-invite lifecycle', () => {
       }
 
       // DB-level confirmation of the relink: SAME user id, back in the SAME
-      // org, with the NEW role and a working new password.
+      // org via the SAME organization_users row (createMembership() upserts
+      // on (userId, organizationId)), with the NEW role and a working new
+      // password.
       const dbAfterAccept = await db();
       try {
         const res = await dbAfterAccept.query(
-          `SELECT id, organization_id, role, email_verified FROM users WHERE email = $1`,
-          [seeded.staffEmail],
+          `SELECT u.id AS user_id, u.email_verified, ou.id AS org_user_id,
+                  ou.organization_id, ou.role, ou.active
+             FROM users u
+             JOIN organization_users ou ON ou.user_id = u.id AND ou.organization_id = $2
+            WHERE u.email = $1`,
+          [seeded.staffEmail, seeded.orgId],
         );
         expect(res.rows).toHaveLength(1);
-        expect(res.rows[0].id).toBe(seeded.staffId);
+        expect(res.rows[0].user_id).toBe(seeded.staffId);
+        expect(res.rows[0].org_user_id).toBe(seeded.staffOrgUserId);
         expect(res.rows[0].organization_id).toBe(seeded.orgId);
         expect(res.rows[0].role).toBe('supervisor');
+        expect(res.rows[0].active).toBe(true);
         expect(res.rows[0].email_verified).toBe(true);
       } finally {
         await dbAfterAccept.end();

@@ -82,6 +82,11 @@ async function pickFutureDate(
 
 // ─── Test suite ───────────────────────────────────────────────────────────────
 
+// TC-015 and TC-018 mutate the same seeded CourseAssignment row (TC-018 re-submits
+// it with a different due date and assumes TC-015 ran first), so this file must
+// opt out of fullyParallel to run in seeded order within one worker.
+test.describe.configure({ mode: 'default' });
+
 test.describe('Reminders & Escalations', () => {
   // ---------------------------------------------------------------------------
   // Flow 1: Admin assigns a course to a new assignee via the course "Assign"
@@ -102,7 +107,10 @@ test.describe('Reminders & Escalations', () => {
     const assignInput = page.locator('#assign-input');
     await assignInput.fill('rem001.newhire@example.com');
     await assignInput.press('Enter');
-    await expect(page.getByText('rem001.newhire@example.com')).toBeVisible();
+    // The added recipient now renders in two places (an input chip and a
+    // separate "selected recipients" summary) — scope to the first match,
+    // this test only cares that the email was accepted as a recipient.
+    await expect(page.getByText('rem001.newhire@example.com').first()).toBeVisible();
 
     // The Due Date control is part of this surface. Scope to the section
     // heading — the surface also has a "Select due date" button, so a plain

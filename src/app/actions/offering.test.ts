@@ -14,7 +14,6 @@ const {
   mockOrgCourseOfferingDelete,
   mockCourseFindMany,
   mockCourseFindFirst,
-  mockUserFindUnique,
 } = vi.hoisted(() => {
   const mockAdminAuth = vi.fn();
   const mockWorkerAuth = vi.fn();
@@ -25,7 +24,6 @@ const {
   const mockOrgCourseOfferingDelete = vi.fn();
   const mockCourseFindMany = vi.fn();
   const mockCourseFindFirst = vi.fn();
-  const mockUserFindUnique = vi.fn();
 
   return {
     mockAdminAuth,
@@ -37,14 +35,12 @@ const {
     mockOrgCourseOfferingDelete,
     mockCourseFindMany,
     mockCourseFindFirst,
-    mockUserFindUnique,
   };
 });
 
 vi.mock('@/lib/prisma', () => {
   const prisma = {
     course: { findMany: mockCourseFindMany, findFirst: mockCourseFindFirst },
-    user: { findUnique: mockUserFindUnique },
     orgCourseOffering: {
       findUnique: mockOrgCourseOfferingFindUnique,
       upsert: mockOrgCourseOfferingUpsert,
@@ -74,10 +70,18 @@ const ADMIN_USER_ID = 'user-admin-1';
 const ORG_ID = 'org-1';
 
 function setupAdminSession() {
-  mockAdminAuth.mockResolvedValue({ user: { id: ADMIN_USER_ID } });
+  // resolveOrg() reads organizationId/role directly off the session — no DB
+  // lookup — so the JWT session itself must carry them (post multi-org split,
+  // these are resolved into the session at login from the active OrganizationUser).
+  mockAdminAuth.mockResolvedValue({
+    user: {
+      id: ADMIN_USER_ID,
+      organizationId: ORG_ID,
+      organizationUserId: 'ou-admin-1',
+      role: 'owner',
+    },
+  });
   mockWorkerAuth.mockResolvedValue(null);
-  // After RBAC migration: 'admin' is retired; use 'owner' which is an admin role.
-  mockUserFindUnique.mockResolvedValue({ organizationId: ORG_ID, role: 'owner' });
 }
 
 beforeEach(() => {
@@ -166,17 +170,24 @@ describe('listAvailableVideoCourses', () => {
   });
 
   it('throws No organization when user has no organizationId', async () => {
-    mockAdminAuth.mockResolvedValue({ user: { id: ADMIN_USER_ID } });
+    mockAdminAuth.mockResolvedValue({
+      user: { id: ADMIN_USER_ID, organizationId: null, organizationUserId: null, role: 'owner' },
+    });
     mockWorkerAuth.mockResolvedValue(null);
-    mockUserFindUnique.mockResolvedValue({ organizationId: null, role: 'owner' });
 
     await expect(listAvailableVideoCourses()).rejects.toThrow('No organization');
   });
 
   it('throws Forbidden when user role is not admin', async () => {
-    mockAdminAuth.mockResolvedValue({ user: { id: ADMIN_USER_ID } });
+    mockAdminAuth.mockResolvedValue({
+      user: {
+        id: ADMIN_USER_ID,
+        organizationId: ORG_ID,
+        organizationUserId: 'ou-worker-1',
+        role: 'nurse',
+      },
+    });
     mockWorkerAuth.mockResolvedValue(null);
-    mockUserFindUnique.mockResolvedValue({ organizationId: ORG_ID, role: 'nurse' });
 
     await expect(listAvailableVideoCourses()).rejects.toThrow('Forbidden');
   });
@@ -251,9 +262,15 @@ describe('offerCourseToOrg', () => {
   });
 
   it('throws Forbidden when caller has worker role', async () => {
-    mockAdminAuth.mockResolvedValue({ user: { id: ADMIN_USER_ID } });
+    mockAdminAuth.mockResolvedValue({
+      user: {
+        id: ADMIN_USER_ID,
+        organizationId: ORG_ID,
+        organizationUserId: 'ou-worker-1',
+        role: 'nurse',
+      },
+    });
     mockWorkerAuth.mockResolvedValue(null);
-    mockUserFindUnique.mockResolvedValue({ organizationId: ORG_ID, role: 'nurse' });
 
     await expect(offerCourseToOrg('c1')).rejects.toThrow('Forbidden');
     expect(mockOrgCourseOfferingUpsert).not.toHaveBeenCalled();
@@ -339,9 +356,15 @@ describe('withdrawOffering', () => {
   });
 
   it('throws Forbidden when caller has worker role', async () => {
-    mockAdminAuth.mockResolvedValue({ user: { id: ADMIN_USER_ID } });
+    mockAdminAuth.mockResolvedValue({
+      user: {
+        id: ADMIN_USER_ID,
+        organizationId: ORG_ID,
+        organizationUserId: 'ou-worker-1',
+        role: 'nurse',
+      },
+    });
     mockWorkerAuth.mockResolvedValue(null);
-    mockUserFindUnique.mockResolvedValue({ organizationId: ORG_ID, role: 'nurse' });
 
     await expect(withdrawOffering('o1')).rejects.toThrow('Forbidden');
     expect(mockOrgCourseOfferingDelete).not.toHaveBeenCalled();

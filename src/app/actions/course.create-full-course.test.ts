@@ -10,18 +10,15 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockAdminAuth, mockWorkerAuth, mockUserFindUnique, mockCourseCreate, mockEnrollUsers } =
-  vi.hoisted(() => ({
-    mockAdminAuth: vi.fn(),
-    mockWorkerAuth: vi.fn(),
-    mockUserFindUnique: vi.fn(),
-    mockCourseCreate: vi.fn(),
-    mockEnrollUsers: vi.fn(),
-  }));
+const { mockAdminAuth, mockWorkerAuth, mockCourseCreate, mockEnrollUsers } = vi.hoisted(() => ({
+  mockAdminAuth: vi.fn(),
+  mockWorkerAuth: vi.fn(),
+  mockCourseCreate: vi.fn(),
+  mockEnrollUsers: vi.fn(),
+}));
 
 vi.mock('@/lib/prisma', () => {
   const prisma = {
-    user: { findUnique: mockUserFindUnique },
     course: { create: mockCourseCreate },
   };
   return { prisma, default: prisma };
@@ -49,9 +46,12 @@ const BASE_COURSE_INPUT = {
 describe('createFullCourse — assignment delegation to enrollUsers', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockAdminAuth.mockResolvedValue({ user: { id: 'admin-1' } });
+    // Post User/OrganizationUser split: the session carries organizationUserId
+    // directly (no separate `prisma.user` lookup enriches it).
+    mockAdminAuth.mockResolvedValue({
+      user: { id: 'admin-1', organizationUserId: 'ou-admin-1', organizationId: 'org-1' },
+    });
     mockWorkerAuth.mockResolvedValue(null);
-    mockUserFindUnique.mockResolvedValue({ organizationId: 'org-1' });
     mockCourseCreate.mockResolvedValue({ id: 'course-1' });
     mockEnrollUsers.mockResolvedValue({
       success: [],

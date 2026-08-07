@@ -19,26 +19,39 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ── Hoisted mocks ─────────────────────────────────────────────────────────────
 
-const { mockAuth, mockSendInviteEmail, mockLoggerWarn, txMock } = vi.hoisted(() => {
-  const txMock = {
-    organization: { findFirst: vi.fn(), create: vi.fn() },
-    facility: { create: vi.fn() },
-    facilityDocument: { createMany: vi.fn() },
-    user: { update: vi.fn(), findUnique: vi.fn() },
-    invite: { create: vi.fn() },
-  };
-  return { mockAuth: vi.fn(), mockSendInviteEmail: vi.fn(), mockLoggerWarn: vi.fn(), txMock };
-});
+const { mockAuth, mockSendInviteEmail, mockLoggerWarn, mockCreateMembership, txMock } = vi.hoisted(
+  () => {
+    const txMock = {
+      organization: { findFirst: vi.fn(), create: vi.fn() },
+      facility: { create: vi.fn() },
+      facilityDocument: { createMany: vi.fn() },
+      user: { findUnique: vi.fn() },
+      invite: { create: vi.fn() },
+    };
+    return {
+      mockAuth: vi.fn(),
+      mockSendInviteEmail: vi.fn(),
+      mockLoggerWarn: vi.fn(),
+      mockCreateMembership: vi.fn(),
+      txMock,
+    };
+  },
+);
 
 vi.mock('@/auth', () => ({ auth: mockAuth }));
 
 vi.mock('@/lib/prisma', () => {
   const prisma = {
-    user: { findUnique: vi.fn() },
+    // One-org-per-user guard now reads OrganizationUser, not a flat User.organizationId.
+    organizationUser: { findFirst: vi.fn() },
     $transaction: vi.fn(async (cb: (tx: typeof txMock) => unknown) => cb(txMock)),
   };
   return { prisma, default: prisma };
 });
+
+// Founding-user linkage now goes through createMembership() (OrganizationUser +
+// OrganizationUserFacility upsert), not a direct tx.user.update.
+vi.mock('@/lib/auth/membership', () => ({ createMembership: mockCreateMembership }));
 
 vi.mock('@/lib/email', () => ({ sendInviteEmail: mockSendInviteEmail }));
 vi.mock('@/lib/logger', () => ({
@@ -72,12 +85,18 @@ const BASE_DATA: OnboardingData = {
 beforeEach(() => {
   vi.clearAllMocks();
   mockAuth.mockResolvedValue({ user: { id: 'user-1' } });
-  vi.mocked(prisma.user.findUnique).mockResolvedValue({ organizationId: null } as never);
+  vi.mocked(prisma.organizationUser.findFirst).mockResolvedValue(null);
+  mockCreateMembership.mockResolvedValue({
+    organizationUserId: 'ou-1',
+    organizationId: 'org-1',
+    organizationName: 'Acme Health',
+    organizationSlug: 'acme-health',
+    role: 'owner',
+  });
   txMock.organization.findFirst.mockResolvedValue(null);
   txMock.organization.create.mockResolvedValue({ id: 'org-1', name: 'Acme Health' });
   txMock.facility.create.mockResolvedValue({ id: 'facility-1' });
   txMock.facilityDocument.createMany.mockResolvedValue({ count: 0 });
-  txMock.user.update.mockResolvedValue({});
   txMock.user.findUnique.mockResolvedValue(null); // no existing user for invite emails
   txMock.invite.create.mockResolvedValue({});
   mockSendInviteEmail.mockResolvedValue(undefined);
@@ -135,24 +154,19 @@ describe('completeOnboarding — Organization/Facility split', () => {
     expect(facilityData.timezone).toBe('America/New_York');
   });
 
-  it('links the founding user with organizationId, facilityId, and role "owner"', async () => {
+  it('links the founding user via createMembership with organizationId, facilityId, and role "owner"', async () => {
     await completeOnboarding(BASE_DATA);
 
-    expect(txMock.user.update).toHaveBeenCalledWith({
-      where: { id: 'user-1' },
-      data: {
-        organizationId: 'org-1',
-        facilityId: 'facility-1',
-        role: 'owner',
-        roleAssignedAt: expect.any(Date),
-      },
+    expect(mockCreateMembership).toHaveBeenCalledWith({
+      userId: 'user-1',
+      organizationId: 'org-1',
+      facilityId: 'facility-1',
+      role: 'owner',
     });
   });
 
   it('rejects when the user already belongs to an organization', async () => {
-    vi.mocked(prisma.user.findUnique).mockResolvedValue({
-      organizationId: 'org-existing',
-    } as never);
+    vi.mocked(prisma.organizationUser.findFirst).mockResolvedValue({ id: 'ou-existing' } as never);
 
     const result = await completeOnboarding(BASE_DATA);
 
@@ -426,7 +440,7 @@ describe('completeOnboarding — THER-017 regression (missing step1)', () => {
     // The missing-step1 check must short-circuit before any read/write —
     // this is what lets step5's mount guard safely redirect to step1 instead
     // of dead-ending on a raw error with half-committed side effects.
-    expect(prisma.user.findUnique).not.toHaveBeenCalled();
+    expect(prisma.organizationUser.findFirst).not.toHaveBeenCalled();
     expect(prisma.$transaction).not.toHaveBeenCalled();
     expect(txMock.organization.create).not.toHaveBeenCalled();
   });

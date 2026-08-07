@@ -1,6 +1,12 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
+import { Client } from 'pg';
+import * as bcrypt from 'bcryptjs';
+import * as crypto from 'crypto';
 
 const SEEDED_COURSE_TITLE = 'E2E Compliance Training';
+
+const DB_URL =
+  process.env.DATABASE_URL || 'postgresql://postgres:0951@localhost:5433/lms?schema=public';
 
 async function loginAsAdmin(page: import('@playwright/test').Page): Promise<void> {
   await page.goto('/login');
@@ -92,5 +98,208 @@ test.describe('Course Flows', () => {
     // ENG-024 fix: reopening starts a fresh wizard at Step 1 rather than
     // silently resuming at Step 2.
     await expect(page.getByText(/step 1 of 7/i)).toBeVisible();
+  });
+});
+
+// ── Courses list: Video/Slides tabs + registry-gated row actions (multi-facility v3) ──
+
+interface CourseTabsSeeded {
+  orgId: string;
+  ownerId: string;
+  ownerOrgUserId: string;
+  ownerEmail: string;
+  ownerPassword: string;
+  supervisorEmail: string;
+  supervisorPassword: string;
+  supervisorOrgUserId: string;
+  facilityId: string;
+  videoCourseTitle: string;
+  slidesCourseTitle: string;
+}
+
+function courseTabsUid(prefix: string): string {
+  return `${prefix}-${crypto.randomBytes(4).toString('hex')}@course-tabs-e2e.invalid`;
+}
+
+async function seedCourseTabsFixture(): Promise<CourseTabsSeeded> {
+  const client = new Client({ connectionString: DB_URL });
+  await client.connect();
+  try {
+    const ownerEmail = courseTabsUid('owner');
+    const ownerPassword = 'CrsTabs!Owner9';
+    const ownerHashed = await bcrypt.hash(ownerPassword, 10);
+    const supervisorEmail = courseTabsUid('supervisor');
+    const supervisorPassword = 'CrsTabs!Sup9x';
+    const supervisorHashed = await bcrypt.hash(supervisorPassword, 10);
+    const slug = `course-tabs-${crypto.randomBytes(4).toString('hex')}`;
+    const orgId = crypto.randomUUID();
+    const facilityId = crypto.randomUUID();
+    const ownerId = crypto.randomUUID();
+    const ownerOrgUserId = crypto.randomUUID();
+    const supervisorId = crypto.randomUUID();
+    const supervisorOrgUserId = crypto.randomUUID();
+    const videoCourseTitle = `Video Course ${slug}`;
+    const slidesCourseTitle = `Slides Course ${slug}`;
+
+    await client.query(
+      `INSERT INTO organizations (id, name, slug, primary_email, is_hipaa_compliant, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, false, NOW(), NOW())`,
+      [orgId, `Course Tabs E2E ${slug}`, slug, ownerEmail],
+    );
+    await client.query(
+      `INSERT INTO facilities (id, organization_id, name, program_services, created_at, updated_at)
+       VALUES ($1, $2, $3, '{}', NOW(), NOW())`,
+      [facilityId, orgId, `Course Tabs Facility ${slug}`],
+    );
+    await client.query(
+      `INSERT INTO users (id, email, password, email_verified, auth_provider, first_name, last_name, full_name, created_at, updated_at)
+       VALUES ($1, $2, $3, true, 'credentials', 'Crs', 'Owner', 'Crs Owner', NOW(), NOW())`,
+      [ownerId, ownerEmail, ownerHashed],
+    );
+    await client.query(
+      `INSERT INTO organization_users (id, user_id, organization_id, role, active, joined_at, role_assigned_at, created_at, updated_at)
+       VALUES ($1, $2, $3, 'owner'::"UserRole", true, NOW(), NOW(), NOW(), NOW())`,
+      [ownerOrgUserId, ownerId, orgId],
+    );
+    await client.query(
+      `INSERT INTO organization_user_facilities (id, organization_user_id, facility_id, active, joined_at)
+       VALUES ($1, $2, $3, true, NOW())`,
+      [crypto.randomUUID(), ownerOrgUserId, facilityId],
+    );
+    await client.query(
+      `INSERT INTO users (id, email, password, email_verified, auth_provider, first_name, last_name, full_name, created_at, updated_at)
+       VALUES ($1, $2, $3, true, 'credentials', 'Crs', 'Supervisor', 'Crs Supervisor', NOW(), NOW())`,
+      [supervisorId, supervisorEmail, supervisorHashed],
+    );
+    await client.query(
+      `INSERT INTO organization_users (id, user_id, organization_id, role, active, joined_at, role_assigned_at, created_at, updated_at)
+       VALUES ($1, $2, $3, 'supervisor'::"UserRole", true, NOW(), NOW(), NOW(), NOW())`,
+      [supervisorOrgUserId, supervisorId, orgId],
+    );
+    await client.query(
+      `INSERT INTO organization_user_facilities (id, organization_user_id, facility_id, active, joined_at)
+       VALUES ($1, $2, $3, true, NOW())`,
+      [crypto.randomUUID(), supervisorOrgUserId, facilityId],
+    );
+
+    const videoCourseId = crypto.randomUUID();
+    const slidesCourseId = crypto.randomUUID();
+    await client.query(
+      `INSERT INTO courses (id, title, status, created_by_org_user_id, type, is_global, created_at, updated_at)
+       VALUES ($1, $2, 'published'::"CourseStatus", $3, 'video'::"CourseType", false, NOW(), NOW())`,
+      [videoCourseId, videoCourseTitle, ownerOrgUserId],
+    );
+    await client.query(
+      `INSERT INTO courses (id, title, status, created_by_org_user_id, type, is_global, created_at, updated_at)
+       VALUES ($1, $2, 'published'::"CourseStatus", $3, 'text'::"CourseType", false, NOW(), NOW())`,
+      [slidesCourseId, slidesCourseTitle, ownerOrgUserId],
+    );
+
+    // getCourses() (src/app/actions/course.ts) only returns courses the
+    // caller's OWN membership created, plus org-wide "offerings" — a
+    // supervisor viewing courses THE OWNER created needs an explicit
+    // org_course_offerings row per course, same as production onboarding.
+    for (const courseId of [videoCourseId, slidesCourseId]) {
+      await client.query(
+        `INSERT INTO org_course_offerings (id, organization_id, course_id, added_by_admin_id, created_at)
+         VALUES ($1, $2, $3, $4, NOW())`,
+        [crypto.randomUUID(), orgId, courseId, ownerOrgUserId],
+      );
+    }
+
+    return {
+      orgId,
+      ownerId,
+      ownerOrgUserId,
+      ownerEmail,
+      ownerPassword,
+      supervisorEmail,
+      supervisorPassword,
+      supervisorOrgUserId,
+      facilityId,
+      videoCourseTitle,
+      slidesCourseTitle,
+    };
+  } finally {
+    await client.end();
+  }
+}
+
+async function cleanupCourseTabsFixture(seeded: CourseTabsSeeded): Promise<void> {
+  const client = new Client({ connectionString: DB_URL });
+  await client.connect();
+  try {
+    await client.query(
+      `DELETE FROM courses WHERE created_by_org_user_id = $1 AND title IN ($2, $3)`,
+      [seeded.ownerOrgUserId, seeded.videoCourseTitle, seeded.slidesCourseTitle],
+    );
+    await client.query(
+      `DELETE FROM organization_user_facilities WHERE organization_user_id IN ($1, $2)`,
+      [seeded.ownerOrgUserId, seeded.supervisorOrgUserId],
+    );
+    await client.query(`DELETE FROM organization_users WHERE id IN ($1, $2)`, [
+      seeded.ownerOrgUserId,
+      seeded.supervisorOrgUserId,
+    ]);
+    await client.query(`DELETE FROM users WHERE id = $1`, [seeded.ownerId]);
+    await client.query(`DELETE FROM users WHERE email = $1`, [seeded.supervisorEmail]);
+    await client.query(`DELETE FROM facilities WHERE id = $1`, [seeded.facilityId]);
+    await client.query(`DELETE FROM organizations WHERE id = $1`, [seeded.orgId]);
+  } finally {
+    await client.end();
+  }
+}
+
+async function loginAs(page: Page, email: string, password: string): Promise<void> {
+  const ip = `10.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`;
+  await page.setExtraHTTPHeaders({ 'x-forwarded-for': ip });
+  await page.goto('/login');
+  await page.fill('input[type="email"]', email);
+  await page.fill('input[type="password"]', password);
+  await page.click('button[type="submit"]');
+  await page.waitForURL('**/dashboard**', { timeout: 15000 });
+}
+
+test.describe('Courses list — Video/Slides tabs and role-gated row actions', () => {
+  test('owner sees both tabs with correct counts, filtered by the active tab', async ({ page }) => {
+    const seeded = await seedCourseTabsFixture();
+    try {
+      await loginAs(page, seeded.ownerEmail, seeded.ownerPassword);
+      await page.goto('/dashboard/courses');
+      await page.waitForLoadState('networkidle');
+
+      await expect(page.getByRole('tab', { name: 'Video (1)' })).toBeVisible();
+      await expect(page.getByRole('tab', { name: 'Slides (1)' })).toBeVisible();
+      await expect(page.getByText(seeded.videoCourseTitle)).toBeVisible();
+      await expect(page.getByText(seeded.slidesCourseTitle)).not.toBeVisible();
+
+      await page.getByRole('tab', { name: 'Slides (1)' }).click();
+      await expect(page.getByText(seeded.slidesCourseTitle)).toBeVisible();
+      await expect(page.getByText(seeded.videoCourseTitle)).not.toBeVisible();
+    } finally {
+      await cleanupCourseTabsFixture(seeded);
+    }
+  });
+
+  test("supervisor (read-only) sees no write items in a course row's kebab menu", async ({
+    page,
+  }) => {
+    const seeded = await seedCourseTabsFixture();
+    try {
+      await loginAs(page, seeded.supervisorEmail, seeded.supervisorPassword);
+      await page.goto('/dashboard/courses');
+      await page.waitForLoadState('networkidle');
+
+      const row = page.getByRole('row', { name: new RegExp(seeded.videoCourseTitle) });
+      await expect(row).toBeVisible();
+      // Neither a source document nor a Row Actions trigger — this seeded
+      // course has no sourceDocumentId (it wasn't AI-generated), so a
+      // read-only supervisor's buildRowActions() resolves to an empty list
+      // and CoursesListClient renders no menu trigger for the row at all.
+      await expect(row.getByRole('button', { name: 'Row actions' })).not.toBeVisible();
+      await expect(page.getByRole('button', { name: 'Create Course' })).not.toBeVisible();
+    } finally {
+      await cleanupCourseTabsFixture(seeded);
+    }
   });
 });

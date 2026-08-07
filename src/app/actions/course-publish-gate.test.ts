@@ -1,24 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const {
-  mockAuth,
-  mockWorkerAuth,
-  mockUserFindUnique,
-  mockCourseCreate,
-  mockCourseFindUnique,
-  mockCourseUpdate,
-} = vi.hoisted(() => ({
-  mockAuth: vi.fn(),
-  mockWorkerAuth: vi.fn(),
-  mockUserFindUnique: vi.fn(),
-  mockCourseCreate: vi.fn(),
-  mockCourseFindUnique: vi.fn(),
-  mockCourseUpdate: vi.fn(),
-}));
+const { mockAuth, mockWorkerAuth, mockCourseCreate, mockCourseFindUnique, mockCourseUpdate } =
+  vi.hoisted(() => ({
+    mockAuth: vi.fn(),
+    mockWorkerAuth: vi.fn(),
+    mockCourseCreate: vi.fn(),
+    mockCourseFindUnique: vi.fn(),
+    mockCourseUpdate: vi.fn(),
+  }));
 
 vi.mock('@/lib/prisma', () => {
   const prisma = {
-    user: { findUnique: mockUserFindUnique },
     course: {
       create: mockCourseCreate,
       findUnique: mockCourseFindUnique,
@@ -33,11 +25,15 @@ vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 
 import { createFullCourse, publishCourse } from './course';
 
+// Post User/OrganizationUser split: the session carries the active
+// membership id directly (`organizationUserId`) — course ownership is
+// checked against it, with no separate `prisma.user` lookup.
+const ORG_USER_ID = 'ou-admin-1';
+
 beforeEach(() => {
   vi.clearAllMocks();
-  mockAuth.mockResolvedValue({ user: { id: 'admin-1' } });
+  mockAuth.mockResolvedValue({ user: { id: 'admin-1', organizationUserId: ORG_USER_ID } });
   mockWorkerAuth.mockResolvedValue(null);
-  mockUserFindUnique.mockResolvedValue({ organizationId: 'org-1' });
 });
 
 // A base v4.6 payload with no quality issues.
@@ -132,7 +128,7 @@ describe('publishCourse publish-review gate', () => {
   it('blocks publishing a review-required course without acknowledgement', async () => {
     mockCourseFindUnique.mockResolvedValue({
       id: 'course-1',
-      createdBy: 'admin-1',
+      createdByOrgUserId: ORG_USER_ID,
       reviewRequired: true,
       qualityWarnings: ['No slides were generated for this course.'],
     });
@@ -150,7 +146,7 @@ describe('publishCourse publish-review gate', () => {
   it('publishes and clears the gate when warnings are acknowledged', async () => {
     mockCourseFindUnique.mockResolvedValue({
       id: 'course-1',
-      createdBy: 'admin-1',
+      createdByOrgUserId: ORG_USER_ID,
       reviewRequired: true,
       qualityWarnings: ['No slides were generated for this course.'],
     });
@@ -168,7 +164,7 @@ describe('publishCourse publish-review gate', () => {
   it('publishes a normal course without touching the review flag', async () => {
     mockCourseFindUnique.mockResolvedValue({
       id: 'course-3',
-      createdBy: 'admin-1',
+      createdByOrgUserId: ORG_USER_ID,
       reviewRequired: false,
       qualityWarnings: [],
     });

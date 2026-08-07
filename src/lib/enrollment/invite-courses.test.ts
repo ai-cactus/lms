@@ -18,7 +18,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const { prismaMock, mockCreateEnrollmentForUser, mockLogger } = vi.hoisted(() => {
   const prismaMock = {
     invite: { findUnique: vi.fn() },
-    user: { findUnique: vi.fn() },
+    organizationUser: { findFirst: vi.fn() },
     courseAssignment: { findFirst: vi.fn() },
     course: { findUnique: vi.fn() },
   };
@@ -35,13 +35,11 @@ vi.mock('./create', () => ({ createEnrollmentForUser: mockCreateEnrollmentForUse
 
 import { enrollInviteCourses } from './invite-courses';
 
-const USER_ID = 'user-1';
+const ORG_USER_ID = 'ou-1';
 const INVITE_ID = 'invite-1';
 
-const baseUser = {
-  email: 'staff@example.com',
-  facilityId: 'facility-1',
-  organizationId: 'org-1',
+const baseMembership = {
+  user: { email: 'staff@example.com' },
   organization: { name: 'Acme Corp' },
 };
 
@@ -50,7 +48,7 @@ beforeEach(() => {
   mockCreateEnrollmentForUser.mockResolvedValue({
     status: 'enrolled',
     email: 'staff@example.com',
-    userId: USER_ID,
+    userId: 'user-1',
     enrollmentId: 'enrollment-1',
   });
 });
@@ -59,7 +57,7 @@ describe('enrollInviteCourses — guard clauses (no-op, never throws)', () => {
   it('is a no-op when the invite does not exist', async () => {
     prismaMock.invite.findUnique.mockResolvedValue(null);
 
-    await enrollInviteCourses(USER_ID, INVITE_ID);
+    await enrollInviteCourses(ORG_USER_ID, INVITE_ID);
 
     expect(mockCreateEnrollmentForUser).not.toHaveBeenCalled();
   });
@@ -67,47 +65,60 @@ describe('enrollInviteCourses — guard clauses (no-op, never throws)', () => {
   it('is a no-op when the invite has no parked courses', async () => {
     prismaMock.invite.findUnique.mockResolvedValue({
       organizationId: 'org-1',
+      facilityId: 'facility-1',
       courseAssignments: [],
     });
 
-    await enrollInviteCourses(USER_ID, INVITE_ID);
+    await enrollInviteCourses(ORG_USER_ID, INVITE_ID);
 
-    expect(prismaMock.user.findUnique).not.toHaveBeenCalled();
+    expect(prismaMock.organizationUser.findFirst).not.toHaveBeenCalled();
     expect(mockCreateEnrollmentForUser).not.toHaveBeenCalled();
   });
 
-  it('is a no-op when the user does not exist', async () => {
+  it('is a no-op when the membership does not exist', async () => {
     prismaMock.invite.findUnique.mockResolvedValue({
       organizationId: 'org-1',
+      facilityId: 'facility-1',
       courseAssignments: [{ courseId: 'course-1' }],
     });
-    prismaMock.user.findUnique.mockResolvedValue(null);
+    prismaMock.organizationUser.findFirst.mockResolvedValue(null);
 
-    await enrollInviteCourses(USER_ID, INVITE_ID);
+    await enrollInviteCourses(ORG_USER_ID, INVITE_ID);
 
     expect(mockCreateEnrollmentForUser).not.toHaveBeenCalled();
   });
 
-  it("is a no-op when the user does not belong to the invite's organization (cross-tenant safety)", async () => {
+  it("is a no-op when the membership does not belong to the invite's organization (cross-tenant safety, enforced structurally by the where clause)", async () => {
     prismaMock.invite.findUnique.mockResolvedValue({
       organizationId: 'org-1',
+      facilityId: 'facility-1',
       courseAssignments: [{ courseId: 'course-1' }],
     });
-    prismaMock.user.findUnique.mockResolvedValue({ ...baseUser, organizationId: 'org-OTHER' });
+    // A membership scoped to a different org is filtered out by the DB query
+    // itself (`where: { id, organizationId: invite.organizationId, active }`),
+    // which findFirst models here by resolving to null.
+    prismaMock.organizationUser.findFirst.mockResolvedValue(null);
 
-    await enrollInviteCourses(USER_ID, INVITE_ID);
+    await enrollInviteCourses(ORG_USER_ID, INVITE_ID);
 
+    expect(prismaMock.organizationUser.findFirst).toHaveBeenCalledWith({
+      where: { id: ORG_USER_ID, organizationId: 'org-1', active: true },
+      select: {
+        user: { select: { email: true } },
+        organization: { select: { name: true } },
+      },
+    });
     expect(mockCreateEnrollmentForUser).not.toHaveBeenCalled();
   });
 
   it('never throws — logs and swallows a DB failure', async () => {
     prismaMock.invite.findUnique.mockRejectedValue(new Error('db down'));
 
-    await expect(enrollInviteCourses(USER_ID, INVITE_ID)).resolves.toBeUndefined();
+    await expect(enrollInviteCourses(ORG_USER_ID, INVITE_ID)).resolves.toBeUndefined();
     expect(mockLogger.error).toHaveBeenCalledWith(
       expect.objectContaining({
         msg: '[enrollment] Invite-course enroll on accept failed',
-        userId: USER_ID,
+        organizationUserId: ORG_USER_ID,
         inviteId: INVITE_ID,
       }),
     );
@@ -118,9 +129,10 @@ describe('enrollInviteCourses — materialising parked courses', () => {
   it("enrolls a parked course using the org's live CourseAssignment settings", async () => {
     prismaMock.invite.findUnique.mockResolvedValue({
       organizationId: 'org-1',
+      facilityId: 'facility-1',
       courseAssignments: [{ courseId: 'course-1' }],
     });
-    prismaMock.user.findUnique.mockResolvedValue(baseUser);
+    prismaMock.organizationUser.findFirst.mockResolvedValue(baseMembership);
     const scheduleAt = new Date('2026-08-01T00:00:00Z');
     const dueAt = new Date('2026-09-01T00:00:00Z');
     prismaMock.courseAssignment.findFirst.mockResolvedValue({
@@ -131,7 +143,7 @@ describe('enrollInviteCourses — materialising parked courses', () => {
       course: { title: 'Safety Training' },
     });
 
-    await enrollInviteCourses(USER_ID, INVITE_ID);
+    await enrollInviteCourses(ORG_USER_ID, INVITE_ID);
 
     expect(prismaMock.courseAssignment.findFirst).toHaveBeenCalledWith({
       where: { organizationId: 'org-1', courseId: 'course-1' },
@@ -156,7 +168,7 @@ describe('enrollInviteCourses — materialising parked courses', () => {
         scheduleAt,
         assignmentDueAt: dueAt,
         assignmentWindowDays: 14,
-        enrolledByUserId: USER_ID,
+        enrolledByUserId: ORG_USER_ID,
       },
     );
     expect(prismaMock.course.findUnique).not.toHaveBeenCalled();
@@ -165,13 +177,14 @@ describe('enrollInviteCourses — materialising parked courses', () => {
   it('falls back to bare nulls (courseTitle from Course directly) when no CourseAssignment row exists for the course', async () => {
     prismaMock.invite.findUnique.mockResolvedValue({
       organizationId: 'org-1',
+      facilityId: 'facility-1',
       courseAssignments: [{ courseId: 'course-2' }],
     });
-    prismaMock.user.findUnique.mockResolvedValue(baseUser);
+    prismaMock.organizationUser.findFirst.mockResolvedValue(baseMembership);
     prismaMock.courseAssignment.findFirst.mockResolvedValue(null);
     prismaMock.course.findUnique.mockResolvedValue({ title: 'Fallback Course' });
 
-    await enrollInviteCourses(USER_ID, INVITE_ID);
+    await enrollInviteCourses(ORG_USER_ID, INVITE_ID);
 
     expect(prismaMock.course.findUnique).toHaveBeenCalledWith({
       where: { id: 'course-2' },
@@ -190,12 +203,16 @@ describe('enrollInviteCourses — materialising parked courses', () => {
     );
   });
 
-  it('defaults organizationName to "Your Organization" when the user has no organization name on record', async () => {
+  it('defaults organizationName to "Your Organization" when the membership has no organization name on record', async () => {
     prismaMock.invite.findUnique.mockResolvedValue({
       organizationId: 'org-1',
+      facilityId: 'facility-1',
       courseAssignments: [{ courseId: 'course-1' }],
     });
-    prismaMock.user.findUnique.mockResolvedValue({ ...baseUser, organization: null });
+    prismaMock.organizationUser.findFirst.mockResolvedValue({
+      ...baseMembership,
+      organization: null,
+    });
     prismaMock.courseAssignment.findFirst.mockResolvedValue({
       id: 'assignment-1',
       scheduleAt: null,
@@ -204,7 +221,7 @@ describe('enrollInviteCourses — materialising parked courses', () => {
       course: { title: 'Safety Training' },
     });
 
-    await enrollInviteCourses(USER_ID, INVITE_ID);
+    await enrollInviteCourses(ORG_USER_ID, INVITE_ID);
 
     expect(mockCreateEnrollmentForUser).toHaveBeenCalledWith(
       { email: 'staff@example.com' },
@@ -215,13 +232,14 @@ describe('enrollInviteCourses — materialising parked courses', () => {
   it('skips a course whose title cannot be resolved at all (no CourseAssignment row and no Course row)', async () => {
     prismaMock.invite.findUnique.mockResolvedValue({
       organizationId: 'org-1',
+      facilityId: 'facility-1',
       courseAssignments: [{ courseId: 'deleted-course' }],
     });
-    prismaMock.user.findUnique.mockResolvedValue(baseUser);
+    prismaMock.organizationUser.findFirst.mockResolvedValue(baseMembership);
     prismaMock.courseAssignment.findFirst.mockResolvedValue(null);
     prismaMock.course.findUnique.mockResolvedValue(null);
 
-    await enrollInviteCourses(USER_ID, INVITE_ID);
+    await enrollInviteCourses(ORG_USER_ID, INVITE_ID);
 
     expect(mockCreateEnrollmentForUser).not.toHaveBeenCalled();
   });
@@ -229,15 +247,16 @@ describe('enrollInviteCourses — materialising parked courses', () => {
   it('processes every parked course independently', async () => {
     prismaMock.invite.findUnique.mockResolvedValue({
       organizationId: 'org-1',
+      facilityId: 'facility-1',
       courseAssignments: [{ courseId: 'course-a' }, { courseId: 'course-b' }],
     });
-    prismaMock.user.findUnique.mockResolvedValue(baseUser);
+    prismaMock.organizationUser.findFirst.mockResolvedValue(baseMembership);
     prismaMock.courseAssignment.findFirst.mockResolvedValue(null);
     prismaMock.course.findUnique
       .mockResolvedValueOnce({ title: 'Course A' })
       .mockResolvedValueOnce({ title: 'Course B' });
 
-    await enrollInviteCourses(USER_ID, INVITE_ID);
+    await enrollInviteCourses(ORG_USER_ID, INVITE_ID);
 
     expect(mockCreateEnrollmentForUser).toHaveBeenCalledTimes(2);
     expect(mockCreateEnrollmentForUser).toHaveBeenNthCalledWith(
@@ -255,9 +274,10 @@ describe('enrollInviteCourses — materialising parked courses', () => {
   it('is idempotent: an already-enrolled outcome logs nothing new and does not throw', async () => {
     prismaMock.invite.findUnique.mockResolvedValue({
       organizationId: 'org-1',
+      facilityId: 'facility-1',
       courseAssignments: [{ courseId: 'course-1' }],
     });
-    prismaMock.user.findUnique.mockResolvedValue(baseUser);
+    prismaMock.organizationUser.findFirst.mockResolvedValue(baseMembership);
     prismaMock.courseAssignment.findFirst.mockResolvedValue({
       id: 'assignment-1',
       scheduleAt: null,
@@ -270,7 +290,7 @@ describe('enrollInviteCourses — materialising parked courses', () => {
       email: 'staff@example.com',
     });
 
-    await enrollInviteCourses(USER_ID, INVITE_ID);
+    await enrollInviteCourses(ORG_USER_ID, INVITE_ID);
 
     expect(mockLogger.info).not.toHaveBeenCalledWith(
       expect.objectContaining({ msg: '[enrollment] Invite-parked course enrolled on accept' }),
@@ -280,9 +300,10 @@ describe('enrollInviteCourses — materialising parked courses', () => {
   it('logs when a course is newly enrolled', async () => {
     prismaMock.invite.findUnique.mockResolvedValue({
       organizationId: 'org-1',
+      facilityId: 'facility-1',
       courseAssignments: [{ courseId: 'course-1' }],
     });
-    prismaMock.user.findUnique.mockResolvedValue(baseUser);
+    prismaMock.organizationUser.findFirst.mockResolvedValue(baseMembership);
     prismaMock.courseAssignment.findFirst.mockResolvedValue({
       id: 'assignment-1',
       scheduleAt: null,
@@ -291,12 +312,12 @@ describe('enrollInviteCourses — materialising parked courses', () => {
       course: { title: 'Safety Training' },
     });
 
-    await enrollInviteCourses(USER_ID, INVITE_ID);
+    await enrollInviteCourses(ORG_USER_ID, INVITE_ID);
 
     expect(mockLogger.info).toHaveBeenCalledWith(
       expect.objectContaining({
         msg: '[enrollment] Invite-parked course enrolled on accept',
-        userId: USER_ID,
+        organizationUserId: ORG_USER_ID,
         courseId: 'course-1',
         inviteId: INVITE_ID,
       }),

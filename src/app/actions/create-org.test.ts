@@ -14,24 +14,23 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const {
   mockAuth,
-  mockUserFindUnique,
+  mockOrgUserFindFirst,
   mockOrgFindFirst,
   mockOrgCreate,
   mockFacilityCreate,
-  mockUserUpdate,
+  mockCreateMembership,
   mockTransaction,
 } = vi.hoisted(() => {
   const mockOrgCreate = vi.fn();
   const mockFacilityCreate = vi.fn();
-  const mockUserUpdate = vi.fn();
 
   return {
     mockAuth: vi.fn(),
-    mockUserFindUnique: vi.fn(),
+    mockOrgUserFindFirst: vi.fn(),
     mockOrgFindFirst: vi.fn(),
     mockOrgCreate,
     mockFacilityCreate,
-    mockUserUpdate,
+    mockCreateMembership: vi.fn(),
     mockTransaction: vi.fn(),
   };
 });
@@ -40,12 +39,17 @@ vi.mock('@/auth', () => ({ auth: mockAuth }));
 
 vi.mock('@/lib/prisma', () => ({
   default: {
-    user: { findUnique: mockUserFindUnique, update: mockUserUpdate },
+    // One-org-per-user guard reads OrganizationUser, not a flat User.organizationId.
+    organizationUser: { findFirst: mockOrgUserFindFirst },
     facility: { update: vi.fn(), create: mockFacilityCreate },
     organization: { findFirst: mockOrgFindFirst, create: mockOrgCreate, update: vi.fn() },
     $transaction: mockTransaction,
   },
 }));
+
+// createOrganization() links the founder via createMembership() (OrganizationUser +
+// OrganizationUserFacility), not a direct user.update inside the org/facility transaction.
+vi.mock('@/lib/auth/membership', () => ({ createMembership: mockCreateMembership }));
 
 vi.mock('@/lib/logger', () => ({
   logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -67,17 +71,22 @@ function makeSession(overrides: Record<string, unknown> = {}) {
   };
 }
 
-/** Wire up $transaction to execute the callback with a mock tx object. */
+/** Wire up $transaction to execute the callback with a mock tx object (org + facility only). */
 function setupTransaction() {
   mockOrgCreate.mockResolvedValue({ id: 'org-new' });
   mockFacilityCreate.mockResolvedValue({ id: 'fac-new' });
-  mockUserUpdate.mockResolvedValue({});
+  mockCreateMembership.mockResolvedValue({
+    organizationUserId: 'ou-new',
+    organizationId: 'org-new',
+    organizationName: 'New Corp',
+    organizationSlug: 'new-corp',
+    role: 'owner',
+  });
   mockTransaction.mockImplementation(
-    async (fn: (tx: { organization: unknown; facility: unknown; user: unknown }) => unknown) => {
+    async (fn: (tx: { organization: unknown; facility: unknown }) => unknown) => {
       return fn({
         organization: { create: mockOrgCreate },
         facility: { create: mockFacilityCreate },
-        user: { update: mockUserUpdate },
       });
     },
   );
@@ -101,9 +110,9 @@ describe('createOrganization() — unauthenticated', () => {
 // ── One-org-per-user guard ────────────────────────────────────────────────────
 
 describe('createOrganization() — one-org-per-user guard', () => {
-  it('rejects when user already has an organizationId', async () => {
+  it('rejects when user already has an active OrganizationUser membership', async () => {
     mockAuth.mockResolvedValue(makeSession({ organizationId: 'org-existing' }));
-    mockUserFindUnique.mockResolvedValue({ organizationId: 'org-existing' });
+    mockOrgUserFindFirst.mockResolvedValue({ id: 'ou-existing' });
 
     const result = await createOrganization(validData);
 
@@ -118,7 +127,7 @@ describe('createOrganization() — one-org-per-user guard', () => {
 describe('createOrganization() — input validation', () => {
   beforeEach(() => {
     mockAuth.mockResolvedValue(makeSession());
-    mockUserFindUnique.mockResolvedValue({ organizationId: null });
+    mockOrgUserFindFirst.mockResolvedValue(null);
   });
 
   it('rejects when legalName is an empty string', async () => {
@@ -139,7 +148,7 @@ describe('createOrganization() — input validation', () => {
 describe('createOrganization() — happy path', () => {
   beforeEach(() => {
     mockAuth.mockResolvedValue(makeSession());
-    mockUserFindUnique.mockResolvedValue({ organizationId: null });
+    mockOrgUserFindFirst.mockResolvedValue(null);
     mockOrgFindFirst.mockResolvedValue(null); // no duplicate name
     setupTransaction();
   });
@@ -151,14 +160,15 @@ describe('createOrganization() — happy path', () => {
     expect(result.organizationId).toBe('org-new');
   });
 
-  it('links the user to the new org and facility as owner', async () => {
+  it('links the user to the new org and facility as owner via createMembership', async () => {
     await createOrganization(validData);
 
-    expect(mockUserUpdate).toHaveBeenCalledOnce();
-    const updateArg = mockUserUpdate.mock.calls[0][0].data;
-    expect(updateArg.role).toBe('owner');
-    expect(updateArg.organizationId).toBe('org-new');
-    expect(updateArg.facilityId).toBe('fac-new');
+    expect(mockCreateMembership).toHaveBeenCalledWith({
+      userId: 'user-1',
+      organizationId: 'org-new',
+      facilityId: 'fac-new',
+      role: 'owner',
+    });
   });
 
   it('creates a facility with the org legalName as the facility name', async () => {
@@ -176,7 +186,7 @@ describe('createOrganization() — happy path', () => {
 describe('createOrganization() — duplicate name guard', () => {
   it('rejects when an org with the same name already exists', async () => {
     mockAuth.mockResolvedValue(makeSession());
-    mockUserFindUnique.mockResolvedValue({ organizationId: null });
+    mockOrgUserFindFirst.mockResolvedValue(null);
     mockOrgFindFirst.mockResolvedValue({ id: 'existing-org', name: 'New Corp' });
 
     const result = await createOrganization(validData);

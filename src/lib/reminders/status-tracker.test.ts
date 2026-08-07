@@ -61,17 +61,16 @@ function makeEnrollment(
   } = opts;
   return {
     id,
-    userId: `user-${id}`,
+    organizationUserId: `ou-${id}`,
     courseId: `course-${id}`,
     dueAt: new Date(dueAtIso),
     status,
     assignment,
     course: { title: `Course ${id}` },
-    user: {
-      email: `worker-${id}@test.com`,
-      profile: fullName !== null ? { fullName } : null,
-      manager: managerName !== null ? { profile: { fullName: managerName } } : null,
-      facility: timezone !== null ? { timezone } : null,
+    organizationUser: {
+      user: { email: `worker-${id}@test.com`, fullName },
+      manager: managerName !== null ? { user: { fullName: managerName } } : null,
+      facilities: timezone !== null ? [{ facility: { timezone } }] : [],
     },
   };
 }
@@ -100,7 +99,7 @@ describe('getStatusTrackerSummaryForOrg', () => {
     expect(result.rows).toHaveLength(1);
     const row = result.rows[0];
     expect(row.enrollmentId).toBe('e1');
-    expect(row.userId).toBe('user-e1');
+    expect(row.userId).toBe('ou-e1');
     expect(row.workerName).toBe('Worker e1');
     expect(row.workerEmail).toBe('worker-e1@test.com');
     expect(row.courseId).toBe('course-e1');
@@ -148,7 +147,7 @@ describe('getStatusTrackerSummaryForOrg', () => {
     expect(rows[1].daysOverdue).toBeGreaterThanOrEqual(rows[2].daysOverdue);
   });
 
-  it('falls back to worker email when profile fullName is null', async () => {
+  it('falls back to worker email when fullName is null', async () => {
     prismaMock.enrollment.findMany.mockResolvedValue([
       makeEnrollment('e1', '2024-06-05T12:00:00Z', { fullName: null }),
     ]);
@@ -166,7 +165,7 @@ describe('getStatusTrackerSummaryForOrg', () => {
     expect(rows[0].managerName).toBeNull();
   });
 
-  it('uses DEFAULT_TZ when facility timezone is null', async () => {
+  it('uses DEFAULT_TZ when the worker has no active facility (empty facilities array)', async () => {
     // dueAt = June 5 noon UTC; with DEFAULT_TZ (America/New_York) daysOverdue = 10
     prismaMock.enrollment.findMany.mockResolvedValue([
       makeEnrollment('e1', '2024-06-05T12:00:00Z', { timezone: null }),
@@ -195,8 +194,12 @@ describe('getStatusTrackerSummaryForOrg', () => {
     expect(rows[0].daysOverdue).toBe(11);
 
     const call = prismaMock.enrollment.findMany.mock.calls[0][0];
-    expect(call.select.user.select.facility).toEqual({ select: { timezone: true } });
-    expect(call.select.user.select.organization).toBeUndefined();
+    expect(call.select.organizationUser.select.facilities).toEqual({
+      where: { active: true },
+      take: 1,
+      select: { facility: { select: { timezone: true } } },
+    });
+    expect(call.select.organizationUser.select.organization).toBeUndefined();
   });
 
   it('queries with the correct orgId filter (passes it to prisma)', async () => {
@@ -207,7 +210,7 @@ describe('getStatusTrackerSummaryForOrg', () => {
     expect(prismaMock.enrollment.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          user: { is: { organizationId: 'org-42' } },
+          organizationUser: { is: { organizationId: 'org-42', active: true } },
         }),
       }),
     );

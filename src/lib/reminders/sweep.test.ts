@@ -59,7 +59,8 @@ const {
     notification: { updateMany: vi.fn() },
     emailMessage: { findMany: vi.fn() },
     courseAssignment: { findMany: vi.fn() },
-    user: { findMany: vi.fn() },
+    organizationUser: { findMany: vi.fn() },
+    organizationUserFacility: { findMany: vi.fn() },
   };
   const mockDispatchLadderStage = vi.fn();
   const mockDispatchNudge = vi.fn();
@@ -157,16 +158,18 @@ function makeTrackAEnrollment(
 ) {
   return {
     id,
-    userId: `user-${id}`,
+    organizationUserId: `ou-${id}`,
     courseId: `course-${id}`,
     dueAt,
     assignment, // null models an assignment-less enrollment (assignmentId === null)
     course: { title: `Course ${id}` },
-    user: {
-      id: `user-${id}`,
-      email: `worker-${id}@test.com`,
-      profile: { fullName: `Worker ${id}` },
-      facility: { timezone: null } as { timezone: string | null } | null, // → DEFAULT_TZ (America/New_York)
+    organizationUser: {
+      id: `ou-${id}`,
+      user: { email: `worker-${id}@test.com`, fullName: `Worker ${id}` },
+      // A facility row present but with a null timezone → falls back to DEFAULT_TZ
+      // (America/New_York). See the dedicated "no facility at all" test for the
+      // empty-array case.
+      facilities: [{ facility: { timezone: null as string | null } }],
     },
   };
 }
@@ -181,14 +184,13 @@ function makeTrackBEnrollment(
 ) {
   return {
     id,
-    userId: `user-${id}`,
+    organizationUserId: `ou-${id}`,
     courseId: `course-${id}`,
     status,
     course: { title: `Course ${id}`, quiz },
-    user: {
-      id: `user-${id}`,
-      email: `worker-${id}@test.com`,
-      profile: { fullName: `Worker ${id}` },
+    organizationUser: {
+      id: `ou-${id}`,
+      user: { email: `worker-${id}@test.com`, fullName: `Worker ${id}` },
     },
   };
 }
@@ -211,7 +213,8 @@ beforeEach(() => {
   // Role-target reconcile + renewal re-trigger pre-passes share this mock (each
   // filters on a different `where` clause) — [] ⇒ both are a clean no-op by default.
   prismaMock.courseAssignment.findMany.mockResolvedValue([]);
-  prismaMock.user.findMany.mockResolvedValue([]);
+  prismaMock.organizationUser.findMany.mockResolvedValue([]);
+  prismaMock.organizationUserFacility.findMany.mockResolvedValue([]);
   prismaMock.enrollment.create.mockResolvedValue({ id: 'new-enrollment-1' });
   prismaMock.reminderLog.create.mockResolvedValue({ id: 'log-1' });
   mockCreateEnrollmentForUser.mockResolvedValue({
@@ -225,7 +228,7 @@ beforeEach(() => {
   mockDispatchLadderStage.mockResolvedValue({ sent: true, reason: 'sent' });
   mockDispatchNudge.mockResolvedValue({ sent: true, reason: 'sent' });
   mockRetryReminderEmail.mockResolvedValue(true);
-  mockResolveEscalationRecipients.mockResolvedValue({ userIds: [], emails: [] });
+  mockResolveEscalationRecipients.mockResolvedValue({ organizationUserIds: [], emails: [] });
   mockRunRetentionPurge.mockResolvedValue({
     verificationTokens: 0,
     invites: 0,
@@ -267,7 +270,7 @@ describe('runReminderSweep — Track A (deadline ladder)', () => {
     // entirely, so `?? DEFAULT_TZ` would silently kick in and the assertion
     // below would fail (America/New_York !== America/Los_Angeles).
     const enrollment = makeTrackAEnrollment('e1');
-    enrollment.user.facility = { timezone: 'America/Los_Angeles' };
+    enrollment.organizationUser.facilities = [{ facility: { timezone: 'America/Los_Angeles' } }];
 
     prismaMock.enrollment.findMany.mockResolvedValueOnce([enrollment]).mockResolvedValueOnce([]);
     prismaMock.reminderLog.findMany.mockResolvedValue([]);
@@ -278,17 +281,22 @@ describe('runReminderSweep — Track A (deadline ladder)', () => {
       expect.objectContaining({ timezone: 'America/Los_Angeles' }),
     );
 
-    // Structural guard: the query must select facility.timezone, not
-    // organization.timezone — Organization no longer has a timezone column.
+    // Structural guard: the query must select facility.timezone via the
+    // organizationUser's active facilities, not organization.timezone —
+    // Organization no longer has a timezone column.
     const call = prismaMock.enrollment.findMany.mock.calls[0][0];
-    expect(call.select.user.select.facility).toEqual({ select: { timezone: true } });
-    expect(call.select.user.select.organization).toBeUndefined();
+    expect(call.select.organizationUser.select.facilities).toEqual({
+      where: { active: true },
+      take: 1,
+      select: { facility: { select: { timezone: true } } },
+    });
+    expect(call.select.organizationUser.select.organization).toBeUndefined();
   });
 
-  it('falls back to DEFAULT_TZ when the worker has no facility (facility: null)', async () => {
+  it('falls back to DEFAULT_TZ when the worker has no active facility (empty facilities array)', async () => {
     const enrollment = makeTrackAEnrollment('e1');
     // Models a worker who has not been attached to a facility yet.
-    enrollment.user.facility = null;
+    enrollment.organizationUser.facilities = [];
 
     prismaMock.enrollment.findMany.mockResolvedValueOnce([enrollment]).mockResolvedValueOnce([]);
     prismaMock.reminderLog.findMany.mockResolvedValue([]);
@@ -518,20 +526,20 @@ describe('runReminderSweep — Track B (quiz nudges)', () => {
       .mockResolvedValueOnce([]); // active retakes: none
     prismaMock.quizAttempt.findMany.mockResolvedValue([]);
     mockResolveEscalationRecipients.mockResolvedValue({
-      userIds: ['admin-1'],
+      organizationUserIds: ['admin-1'],
       emails: [{ email: 'admin@test.com', name: 'Admin' }],
     });
 
     const summary = await runReminderSweep(BASE_OPTS);
 
     expect(mockResolveEscalationRecipients).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: 'user-e1' }),
+      expect.objectContaining({ organizationUserId: 'ou-e1' }),
     );
     expect(mockDispatchNudge).toHaveBeenCalledWith(
       expect.objectContaining({
         kind: 'ADMIN_REASSIGN',
         enrollmentId: 'e1',
-        recipients: expect.objectContaining({ userIds: ['admin-1'] }),
+        recipients: expect.objectContaining({ organizationUserIds: ['admin-1'] }),
       }),
     );
     expect(summary.nudgesSent).toBe(1);
@@ -600,10 +608,9 @@ describe('runReminderSweep — email retry pre-pass', () => {
       enrollment: {
         dueAt: DUE_AT_FIRES_TODAY,
         course: { title: 'Course e1' },
-        user: {
-          email: 'worker-e1@test.com',
-          profile: { fullName: 'Worker e1' },
-          facility: { timezone: null },
+        organizationUser: {
+          user: { email: 'worker-e1@test.com', fullName: 'Worker e1' },
+          facilities: [{ facility: { timezone: null } }],
         },
       },
     };
@@ -735,10 +742,10 @@ function makeRoleTargetAssignment(overrides: Record<string, unknown> = {}) {
 function makeRoleHolder(overrides: Record<string, unknown> = {}) {
   return {
     id: 'holder-1',
-    email: 'holder@test.com',
     organizationId: 'org-1',
     role: 'nurse',
     roleAssignedAt: new Date('2024-06-01T00:00:00Z'),
+    user: { email: 'holder@test.com' },
     ...overrides,
   };
 }
@@ -746,7 +753,7 @@ function makeRoleHolder(overrides: Record<string, unknown> = {}) {
 describe('runReminderSweep — role-target reconcile pre-pass', () => {
   it('enrolls a role-holder missing an enrollment, with the deadline window counted from roleAssignedAt', async () => {
     wireCourseAssignmentFindMany({ roleTarget: [makeRoleTargetAssignment()] });
-    prismaMock.user.findMany.mockResolvedValue([makeRoleHolder()]);
+    prismaMock.organizationUser.findMany.mockResolvedValue([makeRoleHolder()]);
     prismaMock.enrollment.findMany
       .mockResolvedValueOnce([]) // existing-enrollments check for role-target holders: none
       .mockResolvedValueOnce([]) // Track A
@@ -770,9 +777,9 @@ describe('runReminderSweep — role-target reconcile pre-pass', () => {
 
   it('skips a holder who already has an enrollment for the targeted course (idempotent second run)', async () => {
     wireCourseAssignmentFindMany({ roleTarget: [makeRoleTargetAssignment()] });
-    prismaMock.user.findMany.mockResolvedValue([makeRoleHolder()]);
+    prismaMock.organizationUser.findMany.mockResolvedValue([makeRoleHolder()]);
     prismaMock.enrollment.findMany
-      .mockResolvedValueOnce([{ userId: 'holder-1', courseId: 'course-role-1' }]) // already enrolled
+      .mockResolvedValueOnce([{ organizationUserId: 'holder-1', courseId: 'course-role-1' }]) // already enrolled
       .mockResolvedValueOnce([]) // Track A
       .mockResolvedValueOnce([]); // Track B
 
@@ -784,10 +791,18 @@ describe('runReminderSweep — role-target reconcile pre-pass', () => {
 
   it('only enrolls holders matching the assignment org+role (no cross-org, no other-role leakage)', async () => {
     wireCourseAssignmentFindMany({ roleTarget: [makeRoleTargetAssignment()] }); // targets org-1/nurse
-    prismaMock.user.findMany.mockResolvedValue([
-      makeRoleHolder({ id: 'holder-1', email: 'nurse@test.com' }), // org-1 nurse — matches
-      makeRoleHolder({ id: 'holder-2', email: 'other-org@test.com', organizationId: 'org-2' }), // wrong org
-      makeRoleHolder({ id: 'holder-3', email: 'wrong-role@test.com', role: 'front_desk_admin' }), // wrong role
+    prismaMock.organizationUser.findMany.mockResolvedValue([
+      makeRoleHolder({ id: 'holder-1', user: { email: 'nurse@test.com' } }), // org-1 nurse — matches
+      makeRoleHolder({
+        id: 'holder-2',
+        user: { email: 'other-org@test.com' },
+        organizationId: 'org-2',
+      }), // wrong org
+      makeRoleHolder({
+        id: 'holder-3',
+        user: { email: 'wrong-role@test.com' },
+        role: 'front_desk_admin',
+      }), // wrong role
     ]);
     prismaMock.enrollment.findMany
       .mockResolvedValueOnce([])
@@ -829,11 +844,11 @@ function makeRenewalAssignment(overrides: Record<string, unknown> = {}) {
 function makeRenewalCandidate(overrides: Record<string, unknown> = {}) {
   return {
     id: 'completed-enrollment-1',
-    userId: 'user-1',
+    organizationUserId: 'ou-1',
     courseId: 'course-renewal-1',
     completedAt: new Date('2023-01-01T12:00:00Z'), // well past a 365-day annual cycle by NOW
     assignmentId: 'assignment-renewal-1',
-    user: { email: 'worker@test.com', profile: { fullName: 'Worker One' } },
+    organizationUser: { user: { email: 'worker@test.com', fullName: 'Worker One' } },
     ...overrides,
   };
 }
@@ -855,7 +870,7 @@ describe('runReminderSweep — renewal re-trigger pre-pass', () => {
     expect(prismaMock.enrollment.create).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          userId: 'user-1',
+          organizationUserId: 'ou-1',
           courseId: 'course-renewal-1',
           status: 'enrolled',
           progress: 0,
@@ -866,6 +881,42 @@ describe('runReminderSweep — renewal re-trigger pre-pass', () => {
       }),
     );
     expect(summary.renewalsCreated).toBe(1);
+  });
+
+  it("stamps the renewal with the member's CURRENT facility, not the completed enrollment's facility", async () => {
+    // Batched via resolveMemberFacilityIds — this is the underlying
+    // organizationUserFacility.findMany query, not a mock of the resolver.
+    prismaMock.organizationUserFacility.findMany.mockResolvedValue([
+      { organizationUserId: 'ou-1', facilityId: 'fac-current' },
+    ]);
+    wireCourseAssignmentFindMany({ renewal: [makeRenewalAssignment()] });
+    prismaMock.enrollment.findMany
+      .mockResolvedValueOnce([makeRenewalCandidate({ facilityId: 'fac-stale-old' })])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    await runReminderSweep(BASE_OPTS);
+
+    expect(prismaMock.enrollment.create).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ data: expect.objectContaining({ facilityId: 'fac-current' }) }),
+    );
+  });
+
+  it('stamps facilityId: null for a renewal when the member has no active facility assignment', async () => {
+    prismaMock.organizationUserFacility.findMany.mockResolvedValue([]);
+    wireCourseAssignmentFindMany({ renewal: [makeRenewalAssignment()] });
+    prismaMock.enrollment.findMany
+      .mockResolvedValueOnce([makeRenewalCandidate()])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    await runReminderSweep(BASE_OPTS);
+
+    expect(prismaMock.enrollment.create).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ data: expect.objectContaining({ facilityId: null }) }),
+    );
   });
 
   it('creates the renewal exactly at dueAt − RENEWAL_LEAD_DAYS (14d before the deadline), keeping dueAt = completedAt + cycle', async () => {
@@ -923,7 +974,7 @@ describe('runReminderSweep — renewal re-trigger pre-pass', () => {
       ])
       .mockResolvedValueOnce([
         {
-          userId: 'user-1',
+          organizationUserId: 'ou-1',
           courseId: 'course-renewal-1',
           startedAt: new Date('2024-06-15T12:00:00Z'),
         },
@@ -944,7 +995,7 @@ describe('runReminderSweep — renewal re-trigger pre-pass', () => {
       .mockResolvedValueOnce([
         // The renewal created on the first run started AFTER the original completion.
         {
-          userId: 'user-1',
+          organizationUserId: 'ou-1',
           courseId: 'course-renewal-1',
           startedAt: new Date('2024-01-01T12:00:00Z'),
         },
@@ -965,7 +1016,7 @@ describe('runReminderSweep — renewal re-trigger pre-pass', () => {
       .mockResolvedValueOnce([
         // A manual re-enroll/active retake started after the completion.
         {
-          userId: 'user-1',
+          organizationUserId: 'ou-1',
           courseId: 'course-renewal-1',
           startedAt: new Date('2023-06-01T00:00:00Z'),
         },

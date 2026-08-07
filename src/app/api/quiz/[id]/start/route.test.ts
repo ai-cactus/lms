@@ -51,13 +51,13 @@ function makeReq(body: unknown): NextRequest {
 
 const ENROLLMENT = {
   id: 'enr-1',
-  userId: 'user-1',
+  organizationUserId: 'ou-1',
   courseId: 'course-1',
   status: 'in_progress',
   // Active billing so the defense-in-depth gate lets the attempt through.
-  user: { organization: { subscription: { status: 'active', pausedAt: null } } },
+  organizationUser: { organization: { subscription: { status: 'active', pausedAt: null } } },
 };
-const WORKER_SESSION = { user: { id: 'user-1', role: 'worker' } };
+const WORKER_SESSION = { user: { id: 'user-1', organizationUserId: 'ou-1', role: 'worker' } };
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -93,7 +93,10 @@ describe('POST /api/quiz/[id]/start — auth', () => {
   });
 
   it('403s when the enrollment does not belong to the calling session', async () => {
-    prismaMock.enrollment.findUnique.mockResolvedValue({ ...ENROLLMENT, userId: 'someone-else' });
+    prismaMock.enrollment.findUnique.mockResolvedValue({
+      ...ENROLLMENT,
+      organizationUserId: 'someone-else',
+    });
 
     const res = await POST(makeReq({ enrollmentId: 'enr-1' }), { params });
     const body = await res.json();
@@ -134,7 +137,7 @@ describe('POST /api/quiz/[id]/start — billing gate (TC-041-B defense in depth)
   it('403s and never starts a transaction when the subscription is paused', async () => {
     prismaMock.enrollment.findUnique.mockResolvedValue({
       ...ENROLLMENT,
-      user: {
+      organizationUser: {
         organization: { subscription: { status: 'active', pausedAt: new Date('2026-06-01') } },
       },
     });
@@ -150,7 +153,7 @@ describe('POST /api/quiz/[id]/start — billing gate (TC-041-B defense in depth)
   it('403s when the org has no subscription row at all', async () => {
     prismaMock.enrollment.findUnique.mockResolvedValue({
       ...ENROLLMENT,
-      user: { organization: { subscription: null } },
+      organizationUser: { organization: { subscription: null } },
     });
 
     const res = await POST(makeReq({ enrollmentId: 'enr-1' }), { params });
