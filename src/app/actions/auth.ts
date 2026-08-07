@@ -14,7 +14,8 @@ import { checkRateLimit } from '@/lib/rate-limit';
 import { EMAIL_VERIFICATION_EXPIRY_MS } from '@/lib/auth-constants';
 import { logger, maskEmail } from '@/lib/logger';
 import { createMfaChallenge } from '@/lib/mfa-challenge';
-import { isAdminRole, isWorkerRole } from '@/lib/rbac/role-utils';
+import { isWorkerRole } from '@/lib/rbac/role-utils';
+import { resolveActiveMembership } from '@/lib/auth/membership';
 import { verifyCaptcha } from '@/lib/captcha';
 import { audit, getClientContext } from '@/lib/audit';
 import { BCRYPT_COST } from '@/lib/bcrypt-config';
@@ -64,7 +65,7 @@ export async function authenticate(
     const lookupUser = email
       ? await prisma.user.findUnique({
           where: { email },
-          select: { role: true, mfaEnabled: true, id: true, organizationId: true },
+          select: { id: true, mfaEnabled: true },
         })
       : null;
 
@@ -91,17 +92,29 @@ export async function authenticate(
       return { error: 'Invalid credentials.' };
     }
 
-    // A non-owner admin-tier account with no org has been removed from its
-    // organization — surface an actionable message instead of routing to a
-    // signIn that authorize() would reject as generic invalid credentials.
-    if (isAdminRole(lookupUser.role) && lookupUser.role !== 'owner' && !lookupUser.organizationId) {
+    const resolution = await resolveActiveMembership(lookupUser.id);
+
+    // Every membership this account held has been deactivated — surface an
+    // actionable message instead of routing to a signIn that authorize() would
+    // reject as generic invalid credentials.
+    if (resolution.kind === 'revoked') {
       return {
         error:
           'Your access to this organization has been removed. Please contact your administrator.',
       };
     }
 
-    if (isWorkerRole(lookupUser.role)) {
+    // The portal is chosen by the membership that will be activated. With no
+    // membership the account is heading into onboarding, which lives on the
+    // admin portal — the pre-membership default.
+    const activeRole =
+      resolution.kind === 'resolved'
+        ? resolution.membership.role
+        : resolution.kind === 'choice'
+          ? resolution.memberships[0].role
+          : null;
+
+    if (activeRole && isWorkerRole(activeRole)) {
       role = 'worker';
     }
 
@@ -120,15 +133,24 @@ export async function authenticate(
       mfaRedirect = `/mfa/verify?challenge=${challengeToken}`;
     }
 
+    // Two or more active memberships and no remembered org — land on the picker
+    // instead of silently committing to one of them.
+    const homePath =
+      resolution.kind === 'choice'
+        ? '/select-organization'
+        : role === 'worker'
+          ? '/worker'
+          : '/dashboard';
+
     if (role === 'worker') {
       await signInWorker('credentials', {
         ...Object.fromEntries(formData),
-        redirectTo: mfaRedirect || '/worker',
+        redirectTo: mfaRedirect || homePath,
       });
     } else {
       await signIn('credentials', {
         ...Object.fromEntries(formData),
-        redirectTo: mfaRedirect || '/dashboard',
+        redirectTo: mfaRedirect || homePath,
       });
     }
 
@@ -281,7 +303,7 @@ export async function sendPasswordResetLink(email: string) {
     return { success: true }; // Security: don't reveal throttling or user existence
   }
 
-  const user = await prisma.user.findUnique({ where: { email } });
+  const user = await prisma.user.findUnique({ where: { email }, select: { id: true } });
   if (!user) {
     logger.info({
       msg: '[auth] Password reset requested: email not found (no-op for security)',
@@ -319,8 +341,6 @@ export async function sendPasswordResetLink(email: string) {
   await audit({
     action: 'auth.password.reset_request',
     actorId: user.id,
-    actorRole: user.role,
-    organizationId: user.organizationId ?? undefined,
     ...getClientContext(headersList),
     metadata: { email: maskEmail(email) },
   });
@@ -358,7 +378,7 @@ export async function resetPasswordWithToken(
   const updatedUser = await prisma.user.update({
     where: { email: verificationToken.identifier },
     data: { password: hashedPassword, sessionVersion: { increment: 1 } },
-    select: { id: true, role: true, organizationId: true },
+    select: { id: true },
   });
 
   await prisma.verificationToken.delete({
@@ -378,8 +398,6 @@ export async function resetPasswordWithToken(
   await audit({
     action: 'auth.password.reset',
     actorId: updatedUser.id,
-    actorRole: updatedUser.role,
-    organizationId: updatedUser.organizationId ?? undefined,
     ...getClientContext(await headers()),
     metadata: { email: maskEmail(verificationToken.identifier), method: 'token' },
   });
@@ -432,8 +450,6 @@ export async function forceResetPassword(
   await audit({
     action: 'auth.password.reset',
     actorId: user.id,
-    actorRole: user.role,
-    organizationId: user.organizationId ?? undefined,
     ...getClientContext(await headers()),
     metadata: { email: maskEmail(email), method: 'forced' },
   });

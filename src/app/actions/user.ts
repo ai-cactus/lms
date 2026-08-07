@@ -6,7 +6,7 @@ import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
 
 import { headers } from 'next/headers';
-import { logger } from '@/lib/logger';
+import { logger, maskEmail } from '@/lib/logger';
 import bcrypt from 'bcryptjs';
 
 // Helper: resolve the active session from either auth instance
@@ -36,29 +36,33 @@ export async function getStaffUsers() {
     throw new Error('Unauthorized');
   }
 
-  const currentUser = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { organizationId: true },
-  });
-
-  if (!currentUser?.organizationId) {
+  const organizationId = session.user.organizationId;
+  if (!organizationId) {
     return [];
   }
 
   try {
-    const [users, invites] = await Promise.all([
-      prisma.user.findMany({
+    const [orgUsers, invites] = await Promise.all([
+      prisma.organizationUser.findMany({
         where: {
-          organizationId: currentUser.organizationId,
+          organizationId,
+          active: true,
           // Show every seat-consuming staff member (all roles except owner).
           role: { not: 'owner' },
         },
-        include: { profile: true },
-        orderBy: { createdAt: 'desc' },
+        include: {
+          user: true,
+          facilities: {
+            where: { active: true },
+            select: { facility: { select: { id: true, name: true } } },
+            orderBy: { joinedAt: 'asc' },
+          },
+        },
+        orderBy: { joinedAt: 'desc' },
       }),
       prisma.invite.findMany({
         where: {
-          organizationId: currentUser.organizationId,
+          organizationId,
           status: 'pending',
         },
         orderBy: { createdAt: 'desc' },
@@ -68,19 +72,20 @@ export async function getStaffUsers() {
     const now = new Date();
 
     // Build a set of emails that already have accounts to avoid duplication
-    const acceptedEmails = new Set(users.map((u) => u.email.toLowerCase()));
+    const acceptedEmails = new Set(orgUsers.map((ou) => ou.user.email.toLowerCase()));
 
-    const acceptedEntries = users.map((user) => ({
-      id: user.id,
-      name: user.profile?.fullName || user.email.split('@')[0],
-      email: user.email,
-      avatarUrl: user.profile?.avatarUrl || null,
-      role: user.role,
-      jobTitle: user.profile?.jobTitle || 'Staff Member',
-      dateInvited: user.createdAt,
+    const acceptedEntries = orgUsers.map((ou) => ({
+      id: ou.id,
+      name: ou.user.fullName || ou.user.email.split('@')[0],
+      email: ou.user.email,
+      avatarUrl: ou.user.avatarUrl || null,
+      role: ou.role,
+      jobTitle: ou.jobTitle || 'Staff Member',
+      dateInvited: ou.joinedAt,
       isPending: false,
       isExpired: false,
       token: null as string | null,
+      facilities: ou.facilities.map((assignment) => assignment.facility),
     }));
 
     const pendingEntries = invites
@@ -98,6 +103,8 @@ export async function getStaffUsers() {
           isPending: true,
           isExpired,
           token: invite.token as string | null,
+          // An invite has no membership yet, so no facility assignments exist.
+          facilities: [] as { id: string; name: string }[],
         };
       });
 
@@ -115,39 +122,36 @@ export async function searchStaffUsers(query: string) {
     return [];
   }
 
-  const currentUser = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { organizationId: true },
-  });
-
-  if (!currentUser?.organizationId) {
+  const organizationId = session.user.organizationId;
+  if (!organizationId) {
     return [];
   }
 
   if (!query || query.length < 2) return [];
 
   try {
-    const users = await prisma.user.findMany({
+    const orgUsers = await prisma.organizationUser.findMany({
       where: {
-        organizationId: currentUser.organizationId,
+        organizationId,
+        active: true,
         role: { not: 'owner' },
         OR: [
-          { email: { contains: query, mode: 'insensitive' } },
-          { profile: { fullName: { contains: query, mode: 'insensitive' } } },
+          { user: { email: { contains: query, mode: 'insensitive' } } },
+          { user: { fullName: { contains: query, mode: 'insensitive' } } },
         ],
       },
       include: {
-        profile: true,
+        user: true,
       },
       take: 5,
     });
 
-    return users.map((user) => ({
-      id: user.id,
-      name: user.profile?.fullName || user.email.split('@')[0],
-      email: user.email,
-      initials: (user.profile?.fullName || user.email).slice(0, 2).toUpperCase(),
-      role: user.role,
+    return orgUsers.map((ou) => ({
+      id: ou.id,
+      name: ou.user.fullName || ou.user.email.split('@')[0],
+      email: ou.user.email,
+      initials: (ou.user.fullName || ou.user.email).slice(0, 2).toUpperCase(),
+      role: ou.role,
     }));
   } catch (error) {
     logger.error({ msg: 'Failed to search staff:', err: error });
@@ -185,40 +189,37 @@ export async function updateProfile(data: {
     const fullName = `${firstName} ${lastName}`;
 
     if (!session.user.id) {
-      logger.warn({ msg: '[user] updateProfile: user ID missing', email: session.user.email });
+      logger.warn({
+        msg: '[user] updateProfile: user ID missing',
+        email: maskEmail(session.user.email),
+      });
       return { success: false, error: 'User ID missing' };
     }
 
-    logger.info({ msg: '[user] Upserting profile', userId: session.user.id });
-    const result = await prisma.profile.upsert({
-      where: {
-        id: session.user.id,
-      },
-      update: {
+    logger.info({ msg: '[user] Updating profile', userId: session.user.id });
+    // firstName/lastName/fullName/avatarUrl now live directly on the identity;
+    // companyName has no home anymore (organization name lives on Organization).
+    await prisma.user.update({
+      where: { id: session.user.id },
+      data: {
         firstName,
         lastName,
-        fullName: fullName,
-        companyName: data.company_name,
-        jobTitle: data.jobTitle,
-        email: session.user.email,
-        avatarUrl: data.avatarUrl,
-      },
-      create: {
-        id: session.user.id,
-        email: session.user.email,
-        firstName,
-        lastName,
-        fullName: fullName,
-        companyName: data.company_name,
-        jobTitle: data.jobTitle,
+        fullName,
         avatarUrl: data.avatarUrl,
       },
     });
 
+    // jobTitle now lives on the active membership, not the identity.
+    if (session.user.organizationUserId && data.jobTitle !== undefined) {
+      await prisma.organizationUser.update({
+        where: { id: session.user.organizationUserId },
+        data: { jobTitle: data.jobTitle },
+      });
+    }
+
     logger.info({
       msg: '[user] Profile updated successfully',
       userId: session.user.id,
-      profileId: result.id,
     });
 
     revalidatePath('/dashboard/profile');

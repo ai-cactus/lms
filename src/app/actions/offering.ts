@@ -15,20 +15,16 @@ async function resolveSession() {
 }
 
 // ---------------------------------------------------------------------------
-// Org resolver — derives organizationId for the current user and asserts admin
+// Org resolver — derives organizationId for the ACTIVE membership and asserts admin
 // ---------------------------------------------------------------------------
-async function resolveOrg(userId: string): Promise<string> {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { organizationId: true, role: true },
-  });
-  if (!user?.organizationId) {
+function resolveOrg(session: { organizationId: string | null; role: string }): string {
+  if (!session.organizationId) {
     throw new Error('No organization');
   }
-  if (!isAdminRole(user.role)) {
+  if (!isAdminRole(session.role)) {
     throw new Error('Forbidden');
   }
-  return user.organizationId;
+  return session.organizationId;
 }
 
 // ---------------------------------------------------------------------------
@@ -56,8 +52,7 @@ export async function listAvailableVideoCourses(): Promise<VideoCourseAvailabili
     throw new Error('Unauthorized');
   }
 
-  const userId = session.user.id;
-  const organizationId = await resolveOrg(userId);
+  const organizationId = resolveOrg(session.user);
 
   const courses = await prisma.course.findMany({
     where: { type: 'video', isGlobal: true, status: 'published' },
@@ -125,8 +120,7 @@ export async function listOfferedVideoCourses(): Promise<OfferedVideoCourseRow[]
     throw new Error('Unauthorized');
   }
 
-  const userId = session.user.id;
-  const organizationId = await resolveOrg(userId);
+  const organizationId = resolveOrg(session.user);
 
   const offerings = await prisma.orgCourseOffering.findMany({
     // Exclude soft-deleted (inactive) courses so a deactivated course drops out
@@ -149,7 +143,7 @@ export async function listOfferedVideoCourses(): Promise<OfferedVideoCourseRow[]
   const counts = courseIds.length
     ? await prisma.enrollment.groupBy({
         by: ['courseId'],
-        where: { courseId: { in: courseIds }, user: { organizationId } },
+        where: { courseId: { in: courseIds }, organizationUser: { organizationId } },
         _count: { _all: true },
       })
     : [];
@@ -191,7 +185,7 @@ export async function offerCourseToOrg(courseId: string, overrides?: OfferingOve
   }
 
   const userId = session.user.id;
-  const organizationId = await resolveOrg(userId);
+  const organizationId = resolveOrg(session.user);
 
   const course = await prisma.course.findFirst({
     where: { id: courseId, isGlobal: true, type: 'video', status: 'published' },
@@ -226,8 +220,7 @@ export async function updateOffering(id: string, overrides: OfferingOverrides) {
     throw new Error('Unauthorized');
   }
 
-  const userId = session.user.id;
-  const organizationId = await resolveOrg(userId);
+  const organizationId = resolveOrg(session.user);
 
   const existing = await prisma.orgCourseOffering.findUnique({ where: { id } });
   if (!existing || existing.organizationId !== organizationId) {
@@ -259,8 +252,7 @@ export async function withdrawOffering(id: string) {
     throw new Error('Unauthorized');
   }
 
-  const userId = session.user.id;
-  const organizationId = await resolveOrg(userId);
+  const organizationId = resolveOrg(session.user);
 
   const existing = await prisma.orgCourseOffering.findUnique({ where: { id } });
   if (!existing || existing.organizationId !== organizationId) {

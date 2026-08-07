@@ -6,6 +6,8 @@ import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
 import { requireActionSession, AuthzError } from '@/lib/auth-guard';
 import { logger } from '@/lib/logger';
+import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
+import { can } from '@/lib/rbac/permissions';
 
 const digestFrequencySchema = z.object({
   frequency: z.enum(['daily', 'weekly']),
@@ -26,13 +28,18 @@ export async function updateDigestFrequency(input: DigestFrequencyInput) {
     // The guard throws on an unauthenticated session, so `user` is present here.
     const user = session!.user;
 
-    if (user.role !== 'owner') {
+    // Org-wide setting — restricted to the Owner-equivalent seats via the
+    // registry rather than a hard-coded role literal.
+    if (!can(dbRoleToRoleKey(user.role), 'organization.edit')) {
       logger.warn({
-        msg: '[notifications] Digest frequency update denied — not the owner',
+        msg: '[notifications] Digest frequency update denied — not owner-equivalent',
         userId: user.id,
         role: user.role,
       });
-      return { success: false, error: 'Only the organization owner can change this setting.' };
+      return {
+        success: false,
+        error: 'Only an organization owner or admin can change this setting.',
+      };
     }
 
     const organizationId = user.organizationId;

@@ -1,6 +1,7 @@
 import prisma from '@/lib/prisma';
 import { logger } from '@/lib/logger';
 import { Prisma } from '@/generated/prisma/client';
+import { listActiveMemberships } from '@/lib/auth/membership';
 
 export type JobType =
   | 'GENERATE_DRAFT'
@@ -45,15 +46,26 @@ async function processJob(jobId: string, payload: Record<string, unknown>) {
 
   try {
     if (payload.documentVersionId && payload.userId) {
-      const course = await prisma.course.create({
-        data: {
-          title: 'Generated Course from Document',
-          description: 'Automatically generated from compliance doc.',
-          createdBy: payload.userId as string,
-          status: 'draft',
-        },
-      });
-      result = { ...result, courseId: course.id } as Record<string, unknown>;
+      const userId = payload.userId as string;
+      // Course.creator is now an org membership, not the bare identity — resolve
+      // the user's (single, in the common case) active membership to author it.
+      const [membership] = await listActiveMemberships(userId);
+      if (membership) {
+        const course = await prisma.course.create({
+          data: {
+            title: 'Generated Course from Document',
+            description: 'Automatically generated from compliance doc.',
+            createdByOrgUserId: membership.organizationUserId,
+            status: 'draft',
+          },
+        });
+        result = { ...result, courseId: course.id } as Record<string, unknown>;
+      } else {
+        logger.warn({
+          msg: '[jobs] Cannot create course — user has no active organization membership',
+          userId,
+        });
+      }
     }
   } catch (e) {
     logger.error({ msg: 'Failed to create course in job', err: e });

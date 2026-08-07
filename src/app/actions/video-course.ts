@@ -88,7 +88,7 @@ export async function createVideoCourse(
         type: 'video',
         isGlobal: true,
         status: 'published',
-        createdBy: system.id,
+        createdByOrgUserId: system.id,
       },
     });
 

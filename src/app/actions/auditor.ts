@@ -43,14 +43,11 @@ async function requireAdminSession() {
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
   }
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { role: true, organizationId: true },
-  });
-  if (!user || !isAdminRole(user.role) || !user.organizationId) {
+  const { role, organizationId } = session.user;
+  if (!isAdminRole(role) || !organizationId) {
     throw new Error('Unauthorized');
   }
-  return { userId: session.user.id, organizationId: user.organizationId };
+  return { userId: session.user.id, organizationId };
 }
 
 // ---------------------------------------------------------------------------
@@ -80,26 +77,18 @@ export async function getAuditorOverviewStats(
   const { organizationId } = await requireAdminSession();
   const dateWhere = startedAtWhere(range);
 
-  // Courses created within this org (by any admin/user in the org)
-  const orgUserIds = await prisma.user
-    .findMany({
-      where: { organizationId },
-      select: { id: true },
-    })
-    .then((users) => users.map((u) => u.id));
-
   const [totalCourses, enrollmentStats, staffCount] = await Promise.all([
     // Count published courses created by org users
     prisma.course.count({
-      where: { createdBy: { in: orgUserIds }, status: 'published' },
+      where: { creator: { organizationId }, status: 'published' },
     }),
     // Enrollment stats for all org workers (completion rate respects the range)
     prisma.enrollment.findMany({
-      where: { userId: { in: orgUserIds }, ...dateWhere },
+      where: { organizationUser: { organizationId }, ...dateWhere },
       select: { status: true },
     }),
     // Staff count (workers only)
-    prisma.user.count({
+    prisma.organizationUser.count({
       where: { organizationId, role: { in: [...WORKER_ROLES] } },
     }),
   ]);
@@ -138,16 +127,9 @@ export async function getAuditorCourses(
   const { organizationId } = await requireAdminSession();
   const dateWhere = startedAtWhere(range);
 
-  const orgUserIds = await prisma.user
-    .findMany({
-      where: { organizationId },
-      select: { id: true },
-    })
-    .then((users) => users.map((u) => u.id));
-
   const courses = await prisma.course.findMany({
     where: {
-      createdBy: { in: orgUserIds },
+      creator: { organizationId },
       status: 'published',
       ...(search ? { title: { contains: search, mode: 'insensitive' } } : {}),
     },
@@ -158,17 +140,17 @@ export async function getAuditorCourses(
       thumbnail: true,
       createdAt: true,
       enrollments: {
-        // Per-course stats reflect only enrollments started within the range.
-        where: dateWhere,
-        select: { userId: true, status: true },
+        // Per-course stats reflect only enrollments started within the range,
+        // scoped to this org (a global course may be enrolled by other orgs too).
+        where: { organizationUser: { organizationId }, ...dateWhere },
+        select: { status: true },
       },
     },
   });
 
   return courses.map((course) => {
-    const orgEnrollments = course.enrollments.filter((e) => orgUserIds.includes(e.userId));
-    const total = orgEnrollments.length;
-    const completed = orgEnrollments.filter((e) =>
+    const total = course.enrollments.length;
+    const completed = course.enrollments.filter((e) =>
       ['completed', 'attested'].includes(e.status),
     ).length;
 
@@ -194,27 +176,22 @@ export async function getAuditorStaff(
   const { organizationId } = await requireAdminSession();
   const dateWhere = startedAtWhere(range);
 
-  const workers = await prisma.user.findMany({
+  const workers = await prisma.organizationUser.findMany({
     where: {
       organizationId,
       role: { in: [...WORKER_ROLES] },
       ...(search
         ? {
             OR: [
-              { email: { contains: search, mode: 'insensitive' } },
-              {
-                profile: {
-                  fullName: { contains: search, mode: 'insensitive' },
-                },
-              },
+              { user: { email: { contains: search, mode: 'insensitive' } } },
+              { user: { fullName: { contains: search, mode: 'insensitive' } } },
             ],
           }
         : {}),
     },
     select: {
       id: true,
-      email: true,
-      profile: { select: { fullName: true } },
+      user: { select: { email: true, fullName: true } },
       enrollments: {
         // Per-staff stats reflect only enrollments started within the range.
         where: dateWhere,
@@ -234,8 +211,8 @@ export async function getAuditorStaff(
 
     return {
       id: worker.id,
-      name: worker.profile?.fullName ?? worker.email.split('@')[0],
-      email: worker.email,
+      name: worker.user.fullName ?? worker.user.email.split('@')[0],
+      email: worker.user.email,
       coursesAssigned: total,
       coursesCompleted: completed,
       lastActivity,
@@ -250,14 +227,10 @@ export async function getAuditorStaff(
 export async function generateAuditorPackCsv(): Promise<string> {
   const { organizationId } = await requireAdminSession();
 
-  const orgUserIds = await prisma.user
-    .findMany({ where: { organizationId }, select: { id: true } })
-    .then((u) => u.map((x) => x.id));
-
   const enrollments = await prisma.enrollment.findMany({
-    where: { userId: { in: orgUserIds } },
+    where: { organizationUser: { organizationId } },
     include: {
-      user: { include: { profile: { select: { fullName: true } } } },
+      organizationUser: { include: { user: { select: { email: true, fullName: true } } } },
       course: { select: { title: true } },
     },
     orderBy: { startedAt: 'desc' },
@@ -266,8 +239,8 @@ export async function generateAuditorPackCsv(): Promise<string> {
   const rows = [
     ['Staff Name', 'Email', 'Course', 'Status', 'Progress (%)', 'Started At', 'Completed At'],
     ...enrollments.map((e) => [
-      e.user.profile?.fullName ?? e.user.email,
-      e.user.email,
+      e.organizationUser.user.fullName ?? e.organizationUser.user.email,
+      e.organizationUser.user.email,
       e.course.title,
       e.status,
       String(e.progress),

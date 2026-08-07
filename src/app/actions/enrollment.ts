@@ -1,7 +1,8 @@
 'use server';
 
 import prisma from '@/lib/prisma';
-import { isAdminRole, ALL_ROLES } from '@/lib/rbac/role-utils';
+import { dbRoleToRoleKey, ALL_ROLES } from '@/lib/rbac/role-utils';
+import { can } from '@/lib/rbac/permissions';
 import { hasActiveBilling } from '@/lib/billing';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
@@ -166,31 +167,26 @@ export async function getAvailableUsers() {
     throw new Error('Unauthorized');
   }
 
-  // Restrict to the caller's own organization — never return users from other tenants.
-  const caller = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { organizationId: true },
-  });
-  if (!caller?.organizationId) {
+  // Restrict to the caller's ACTIVE organization — never return members of
+  // other tenants. `id` is the organizationUserId, the membership every
+  // org-scoped artifact is owned by.
+  const organizationId = session.user.organizationId;
+  if (!organizationId) {
     return [];
   }
 
-  const users = await prisma.user.findMany({
-    where: { organizationId: caller.organizationId },
-    include: {
-      profile: true,
-    },
-    orderBy: {
-      createdAt: 'desc',
-    },
+  const members = await prisma.organizationUser.findMany({
+    where: { organizationId, active: true },
+    include: { user: true },
+    orderBy: { createdAt: 'desc' },
   });
 
-  return users.map((user) => ({
-    id: user.id,
-    email: user.email,
-    fullName: user.profile?.fullName || user.email,
-    role: user.role,
-    avatarUrl: user.profile?.avatarUrl,
+  return members.map((member) => ({
+    id: member.id,
+    email: member.user.email,
+    fullName: member.user.fullName || member.user.email,
+    role: member.role,
+    avatarUrl: member.user.avatarUrl,
   }));
 }
 
@@ -214,33 +210,38 @@ export async function enrollUsers(
     throw new Error('Unauthorized');
   }
 
+  // The session check above only proves *someone* is logged in (a worker
+  // session would pass it). Gate on the registry rather than the coarse
+  // admin-tier check: since the RBAC ruling made Supervisor read-only, an
+  // admin-tier check would let a supervisor create enrollments.
+  if (!can(dbRoleToRoleKey(session.user.role), 'enrollment.create')) {
+    logger.warn({
+      msg: '[enrollment] enrollUsers denied — missing enrollment.create',
+      userId: session.user.id,
+      role: session.user.role,
+      courseId,
+    });
+    throw new Error('Forbidden');
+  }
+
   // Verify course exists and the calling admin is allowed to enroll staff into it.
   const course = await prisma.course.findUnique({
     where: { id: courseId },
   });
 
   // Get organization info for new user creation and offering checks.
-  const currentUser = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    include: {
-      organization: {
-        include: { subscription: { select: { status: true, pausedAt: true } } },
-      },
-    },
-  });
+  const organizationId = session.user.organizationId;
+  const organization = organizationId
+    ? await prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: { name: true, subscription: { select: { status: true, pausedAt: true } } },
+      })
+    : null;
 
-  // Enrolling staff is an admin-only action. The session check above only
-  // proves *someone* is logged in (a worker session would pass it); require
-  // the admin role explicitly (mirrors assertOrgAdmin in offering.ts).
-  if (!isAdminRole(currentUser?.role)) {
-    throw new Error('Forbidden');
-  }
-
-  const isOwnCourse = course?.createdBy === session.user.id;
+  const isOwnCourse = course?.createdByOrgUserId === session.user.organizationUserId;
 
   // An org admin may also enroll staff into a global course that their
   // organization has explicitly offered (an OrgCourseOffering row exists).
-  const organizationId = currentUser?.organizationId ?? null;
   const isOfferedGlobal =
     !isOwnCourse && course?.isGlobal === true && organizationId !== null
       ? (await prisma.orgCourseOffering.findUnique({
@@ -268,7 +269,7 @@ export async function enrollUsers(
   // Billing gate (defense in depth): an org must have active billing to create
   // new enrollments. Placed after auth/existence checks so we never leak course
   // state, and before any assignment/enrollment writes.
-  if (!hasActiveBilling(currentUser?.organization?.subscription)) {
+  if (!hasActiveBilling(organization?.subscription)) {
     logger.warn({
       msg: '[enrollment] Course assignment blocked — organization lacks active billing',
       organizationId,
@@ -343,7 +344,7 @@ export async function enrollUsers(
     courseId,
     courseTitle: course.title,
     organizationId,
-    organizationName: currentUser?.organization?.name || 'Your Organization',
+    organizationName: organization?.name || 'Your Organization',
     facilityId,
     assignmentId,
     scheduleAt,
@@ -363,9 +364,9 @@ export async function enrollUsers(
     if (usage.staffMax !== null) {
       const normalizedEmails = staffEntries.map((e) => e.email.toLowerCase().trim());
       const [existingMembers, existingPending] = await Promise.all([
-        prisma.user.findMany({
-          where: { email: { in: normalizedEmails }, organizationId },
-          select: { email: true },
+        prisma.organizationUser.findMany({
+          where: { organizationId, active: true, user: { email: { in: normalizedEmails } } },
+          select: { user: { select: { email: true } } },
         }),
         prisma.invite.findMany({
           where: {
@@ -379,7 +380,7 @@ export async function enrollUsers(
       ]);
 
       const known = new Set([
-        ...existingMembers.map((u) => u.email.toLowerCase()),
+        ...existingMembers.map((m) => m.user.email.toLowerCase()),
         ...existingPending.map((i) => i.email.toLowerCase()),
       ]);
 
@@ -445,7 +446,7 @@ export async function enrollUsers(
  * cadence) so the assign page can prefill instead of showing factory defaults.
  * Returns null when no assignment exists yet.
  *
- * Admin-only, and strictly scoped to the caller's own organization.
+ * Requires `assignment.read`, and strictly scoped to the caller's own organization.
  */
 export async function getCourseAssignmentSettings(
   courseId: string,
@@ -455,23 +456,25 @@ export async function getCourseAssignmentSettings(
     throw new Error('Unauthorized');
   }
 
-  const currentUser = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { role: true, organizationId: true },
-  });
-
-  if (!isAdminRole(currentUser?.role)) {
+  if (!can(dbRoleToRoleKey(session.user.role), 'assignment.read')) {
+    logger.warn({
+      msg: '[enrollment] getCourseAssignmentSettings denied — missing assignment.read',
+      userId: session.user.id,
+      role: session.user.role,
+      courseId,
+    });
     throw new Error('Forbidden');
   }
 
-  if (!currentUser?.organizationId) {
+  const organizationId = session.user.organizationId;
+  if (!organizationId) {
     return null;
   }
 
   // Scope strictly to the caller's org so an admin can never read another
   // tenant's assignment configuration for the same (possibly global) course.
   const assignment = await prisma.courseAssignment.findFirst({
-    where: { organizationId: currentUser.organizationId, courseId },
+    where: { organizationId, courseId },
     orderBy: { createdAt: 'desc' },
     include: { reminderStages: true },
   });
@@ -503,7 +506,8 @@ export async function getCourseAssignmentSettings(
  * are auto-enrolled live by {@link enrollUserForRoleTargets} at each role-write
  * site, with the nightly sweep as a backstop.
  *
- * Admin-only, strictly scoped to the caller's own organization. Role-target
+ * Requires `assignment.create`, strictly scoped to the caller's own
+ * organization. Role-target
  * assignments never carry an absolute `dueAt` — the per-user deadline is always
  * `start + window` — so an explicit `dueAt` is rejected server-side.
  */
@@ -521,27 +525,30 @@ export async function assignCourseToRole(
     throw new Error('Invalid role');
   }
 
-  const course = await prisma.course.findUnique({ where: { id: courseId } });
-
-  const currentUser = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    include: {
-      organization: {
-        include: { subscription: { select: { status: true, pausedAt: true } } },
-      },
-    },
-  });
-
-  if (!isAdminRole(currentUser?.role)) {
+  if (!can(dbRoleToRoleKey(session.user.role), 'assignment.create')) {
+    logger.warn({
+      msg: '[enrollment] assignCourseToRole denied — missing assignment.create',
+      userId: session.user.id,
+      role: session.user.role,
+      courseId,
+      targetRole,
+    });
     throw new Error('Forbidden');
   }
 
-  const organizationId = currentUser?.organizationId ?? null;
+  const organizationId = session.user.organizationId;
   if (!organizationId) {
     throw new Error('Forbidden');
   }
 
-  const isOwnCourse = course?.createdBy === session.user.id;
+  const course = await prisma.course.findUnique({ where: { id: courseId } });
+
+  const organization = await prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: { name: true, subscription: { select: { status: true, pausedAt: true } } },
+  });
+
+  const isOwnCourse = course?.createdByOrgUserId === session.user.organizationUserId;
   const isOfferedGlobal =
     !isOwnCourse && course?.isGlobal === true
       ? (await prisma.orgCourseOffering.findUnique({
@@ -559,7 +566,7 @@ export async function assignCourseToRole(
     throw new Error('Course not found');
   }
 
-  if (!hasActiveBilling(currentUser?.organization?.subscription)) {
+  if (!hasActiveBilling(organization?.subscription)) {
     logger.warn({
       msg: '[enrollment] Role assignment blocked — organization lacks active billing',
       organizationId,
@@ -614,16 +621,16 @@ export async function assignCourseToRole(
 
   // Enroll every CURRENT holder of the role; their deadline window counts from
   // the assignment start (now, unless a schedule date is set).
-  const holders = await prisma.user.findMany({
-    where: { organizationId, role: targetRole },
-    select: { id: true, email: true },
+  const holders = await prisma.organizationUser.findMany({
+    where: { organizationId, role: targetRole, active: true },
+    select: { id: true, user: { select: { email: true } } },
   });
 
   const enrollmentContext: CreateEnrollmentContext = {
     courseId,
     courseTitle: course.title,
     organizationId,
-    organizationName: currentUser?.organization?.name || 'Your Organization',
+    organizationName: organization?.name || 'Your Organization',
     facilityId: null,
     assignmentId,
     scheduleAt,
@@ -634,7 +641,7 @@ export async function assignCourseToRole(
 
   const results = { enrolled: 0, alreadyEnrolled: 0, failed: 0 };
   for (const holder of holders) {
-    const outcome = await createEnrollmentForUser({ email: holder.email }, enrollmentContext);
+    const outcome = await createEnrollmentForUser({ email: holder.user.email }, enrollmentContext);
     // Role holders are always existing org members, so `invited` is unreachable
     // here; count it defensively alongside `enrolled` if it ever occurs.
     if (outcome.status === 'enrolled' || outcome.status === 'invited') results.enrolled += 1;
@@ -657,7 +664,7 @@ export async function assignCourseToRole(
 /**
  * Count the current holders of each assignable role in the caller's org, so the
  * assign UI can show how many workers a role-target assignment will enroll.
- * Admin-only, scoped to the caller's own organization.
+ * Requires `assignment.read`, scoped to the caller's own organization.
  */
 export async function getRoleHolderCounts(): Promise<Record<string, number>> {
   const session = await resolveSession();
@@ -665,21 +672,22 @@ export async function getRoleHolderCounts(): Promise<Record<string, number>> {
     throw new Error('Unauthorized');
   }
 
-  const currentUser = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { role: true, organizationId: true },
-  });
-
-  if (!isAdminRole(currentUser?.role)) {
+  if (!can(dbRoleToRoleKey(session.user.role), 'assignment.read')) {
+    logger.warn({
+      msg: '[enrollment] getRoleHolderCounts denied — missing assignment.read',
+      userId: session.user.id,
+      role: session.user.role,
+    });
     throw new Error('Forbidden');
   }
-  if (!currentUser?.organizationId) {
+  const organizationId = session.user.organizationId;
+  if (!organizationId) {
     return {};
   }
 
-  const grouped = await prisma.user.groupBy({
+  const grouped = await prisma.organizationUser.groupBy({
     by: ['role'],
-    where: { organizationId: currentUser.organizationId },
+    where: { organizationId, active: true },
     _count: { _all: true },
   });
 
@@ -698,8 +706,8 @@ export async function getEnrollmentWithResults(enrollmentId: string) {
   const enrollment = await prisma.enrollment.findUnique({
     where: { id: enrollmentId },
     include: {
-      user: {
-        include: { profile: true, organization: true },
+      organizationUser: {
+        include: { user: true, organization: true },
       },
       course: {
         include: {
@@ -735,8 +743,8 @@ export async function getEnrollmentWithResults(enrollmentId: string) {
     throw new Error('Enrollment not found');
   }
 
-  const isEnrolledUser = enrollment.userId === session.user.id;
-  const isCourseCreator = enrollment.course.createdBy === session.user.id;
+  const isEnrolledUser = enrollment.organizationUserId === session.user.organizationUserId;
+  const isCourseCreator = enrollment.course.createdByOrgUserId === session.user.organizationUserId;
 
   if (!isEnrolledUser && !isCourseCreator) {
     throw new Error('Access denied');
@@ -758,19 +766,26 @@ export async function submitQuizAttempt(
     (await import('@/auth')).auth(),
     (await import('@/auth.worker')).auth(),
   ]);
-  const adminId = admin?.user?.id;
-  const workerId = worker?.user?.id;
+  // The enrollment must belong to whichever session (admin or worker) is
+  // active, matched by membership — not by identity — so one identity's
+  // enrollment in org A is never mistaken for its enrollment in org B.
+  const adminOrgUserId = admin?.user?.organizationUserId ?? null;
+  const workerOrgUserId = worker?.user?.organizationUserId ?? null;
 
-  if (!adminId && !workerId) {
+  if (!admin?.user?.id && !worker?.user?.id) {
     throw new Error('Unauthorized');
   }
 
   const enrollment = await prisma.enrollment.findUnique({
     where: { id: enrollmentId },
-    include: { course: true },
+    include: { course: true, organizationUser: { include: { user: true } } },
   });
 
-  if (!enrollment || (enrollment.userId !== adminId && enrollment.userId !== workerId)) {
+  if (
+    !enrollment ||
+    (enrollment.organizationUserId !== adminOrgUserId &&
+      enrollment.organizationUserId !== workerOrgUserId)
+  ) {
     throw new Error('Enrollment not found');
   }
 
@@ -824,20 +839,18 @@ export async function submitQuizAttempt(
   }
 
   if (!passed) {
-    const user = await prisma.user.findUnique({
-      where: { id: enrollment.userId },
-      include: { profile: true },
+    const { organizationUser } = enrollment;
+    await notifyOrganizationAdmins(organizationUser.organizationId, {
+      type: 'COURSE_FAILED',
+      title: 'Quiz Failed',
+      message: `${organizationUser.user.fullName || organizationUser.user.email} has failed the quiz for course: ${enrollment.course?.title || 'Unknown Course'}.`,
+      linkUrl: `/dashboard/staff/${organizationUser.id}`,
+      metadata: {
+        organizationUserId: organizationUser.id,
+        courseId: enrollment.courseId,
+        score,
+      },
     });
-
-    if (user && user.organizationId) {
-      await notifyOrganizationAdmins(user.organizationId, {
-        type: 'COURSE_FAILED',
-        title: 'Quiz Failed',
-        message: `${user.profile?.fullName || user.email} has failed the quiz for course: ${enrollment.course?.title || 'Unknown Course'}.`,
-        linkUrl: `/dashboard/staff/${user.id}`,
-        metadata: { userId: user.id, courseId: enrollment.courseId, score },
-      });
-    }
   }
 
   await prisma.enrollment.update({
@@ -876,22 +889,26 @@ export async function requestCourseRetry(enrollmentId: string) {
     (await import('@/auth')).auth(),
     (await import('@/auth.worker')).auth(),
   ]);
-  const adminId = admin?.user?.id;
-  const workerId = worker?.user?.id;
+  const adminOrgUserId = admin?.user?.organizationUserId ?? null;
+  const workerOrgUserId = worker?.user?.organizationUserId ?? null;
 
-  if (!adminId && !workerId) {
+  if (!admin?.user?.id && !worker?.user?.id) {
     throw new Error('Unauthorized');
   }
 
   const enrollment = await prisma.enrollment.findUnique({
     where: { id: enrollmentId },
     include: {
-      user: { include: { profile: true } },
+      organizationUser: { include: { user: true } },
       course: true,
     },
   });
 
-  if (!enrollment || (enrollment.userId !== adminId && enrollment.userId !== workerId)) {
+  if (
+    !enrollment ||
+    (enrollment.organizationUserId !== adminOrgUserId &&
+      enrollment.organizationUserId !== workerOrgUserId)
+  ) {
     throw new Error('Enrollment not found');
   }
 
@@ -907,18 +924,17 @@ export async function requestCourseRetry(enrollmentId: string) {
     msg: '[enrollment] Course retry requested',
     enrollmentId,
     courseId: enrollment.courseId,
-    userId: enrollment.userId,
+    organizationUserId: enrollment.organizationUserId,
   });
 
-  if (enrollment.user.organizationId) {
-    await notifyOrganizationAdmins(enrollment.user.organizationId, {
-      type: 'COURSE_RETRY_REQUESTED',
-      title: 'Course Retry Requested',
-      message: `${enrollment.user.profile?.fullName || enrollment.user.email} has requested a retry for the course: ${enrollment.course.title}.`,
-      linkUrl: `/dashboard/staff/${enrollment.user.id}`,
-      metadata: { userId: enrollment.user.id, courseId: enrollment.courseId },
-    });
-  }
+  const { organizationUser } = enrollment;
+  await notifyOrganizationAdmins(organizationUser.organizationId, {
+    type: 'COURSE_RETRY_REQUESTED',
+    title: 'Course Retry Requested',
+    message: `${organizationUser.user.fullName || organizationUser.user.email} has requested a retry for the course: ${enrollment.course.title}.`,
+    linkUrl: `/dashboard/staff/${organizationUser.id}`,
+    metadata: { organizationUserId: organizationUser.id, courseId: enrollment.courseId },
+  });
 
   revalidatePath(`/worker/trainings`);
   return { success: true };
@@ -937,7 +953,6 @@ export async function removeWorkerAssignment(enrollmentId: string) {
     where: { id: enrollmentId },
     include: {
       course: true,
-      user: { include: { profile: true } },
     },
   });
 
@@ -945,8 +960,8 @@ export async function removeWorkerAssignment(enrollmentId: string) {
     throw new Error('Enrollment not found');
   }
 
-  // Ensure the user trying to remove the assignment is the course creator
-  if (enrollment.course.createdBy !== session.user.id) {
+  // Ensure the membership trying to remove the assignment is the course creator
+  if (enrollment.course.createdByOrgUserId !== session.user.organizationUserId) {
     throw new Error('Access denied. Only the course creator can remove assignments.');
   }
 

@@ -1,7 +1,8 @@
 'use server';
 
 import prisma from '@/lib/prisma';
-import { isAdminRole, WORKER_ROLES } from '@/lib/rbac/role-utils';
+import { dbRoleToRoleKey, WORKER_ROLES } from '@/lib/rbac/role-utils';
+import { can } from '@/lib/rbac/permissions';
 import { hasActiveBilling } from '@/lib/billing';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
@@ -11,6 +12,9 @@ import { CourseWithStats, CourseWithRelations } from '@/types/course';
 import { QuizQuestion } from '@/types/quiz';
 import type { StaffEntry } from '@/types/enrollment';
 import { logger } from '@/lib/logger';
+import { resolveMemberFacilityId, resolveMemberFacilityIds } from '@/lib/facility/member-facility';
+import { resolveFacilityScope } from '@/lib/facility/scope';
+import { forkCourse } from '@/lib/course/fork-course';
 import { resolveOnCompletion } from '@/lib/reminders/sweep';
 import { combineDateAndTime } from '@/lib/reminders/deadline';
 import { enrollUsers } from './enrollment';
@@ -28,31 +32,38 @@ export async function getCourses(): Promise<CourseWithStats[]> {
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
   }
+  if (!session.user.organizationUserId) {
+    throw new Error('No active organization membership');
+  }
 
-  const currentUser = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { organizationId: true },
-  });
+  const organizationId = session.user.organizationId;
 
   const [ownCourses, offerings] = await Promise.all([
     prisma.course.findMany({
-      where: { createdBy: session.user.id },
+      where: { createdByOrgUserId: session.user.organizationUserId },
       include: {
         lessons: { select: { id: true } },
         enrollments: { select: { status: true } },
+        // Latest source-document lineage, so the list can offer "View Source
+        // Document" only for courses that actually have one.
+        versions: {
+          select: { documentVersion: { select: { documentId: true } } },
+          orderBy: { version: 'desc' },
+          take: 1,
+        },
       },
       orderBy: { createdAt: 'desc' },
     }),
-    currentUser?.organizationId
+    organizationId
       ? prisma.orgCourseOffering.findMany({
-          where: { organizationId: currentUser.organizationId },
+          where: { organizationId },
           orderBy: { createdAt: 'desc' },
           include: {
             course: {
               include: {
                 lessons: { select: { id: true } },
                 enrollments: {
-                  where: { user: { organizationId: currentUser.organizationId } },
+                  where: { organizationUser: { organizationId } },
                   select: { status: true },
                 },
               },
@@ -74,6 +85,7 @@ export async function getCourses(): Promise<CourseWithStats[]> {
     updatedAt: Date;
     lessons: { id: string }[];
     enrollments: { status: string }[];
+    versions?: { documentVersion: { documentId: string } }[];
   }): CourseWithStats => ({
     id: course.id,
     title: course.title,
@@ -86,6 +98,9 @@ export async function getCourses(): Promise<CourseWithStats[]> {
     updatedAt: course.updatedAt,
     lessonsCount: course.lessons.length,
     enrollmentsCount: course.enrollments.length,
+    // Adopted offerings deliberately resolve to null: their source document
+    // belongs to the publishing org and must never be linked from this tenant.
+    sourceDocumentId: course.versions?.[0]?.documentVersion.documentId ?? null,
     completionRate:
       course.enrollments.length > 0
         ? Math.round(
@@ -140,12 +155,12 @@ export async function getCourseById(courseId: string): Promise<CourseWithRelatio
       },
       enrollments: {
         include: {
-          user: { include: { profile: true } },
+          organizationUser: { include: { user: true } },
           certificate: true,
         },
       },
       creator: {
-        include: { profile: true },
+        include: { user: true },
       },
     },
   });
@@ -155,8 +170,8 @@ export async function getCourseById(courseId: string): Promise<CourseWithRelatio
   }
 
   // Allow access if user is the creator OR is enrolled in the course
-  const isCreator = course.createdBy === session.user.id;
-  const isEnrolled = course.enrollments.some((e) => e.userId === session.user.id);
+  const isCreator = course.creator.userId === session.user.id;
+  const isEnrolled = course.enrollments.some((e) => e.organizationUser.userId === session.user.id);
 
   if (!isCreator && !isEnrolled) {
     throw new Error('Course not found');
@@ -181,14 +196,10 @@ export async function getCourseForOrgView(courseId: string): Promise<CourseWithR
     throw new Error('Unauthorized');
   }
 
-  const currentUser = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { organizationId: true },
-  });
-  if (!currentUser?.organizationId) {
+  const organizationId = session.user.organizationId;
+  if (!organizationId) {
     throw new Error('Course not found');
   }
-  const organizationId = currentUser.organizationId;
 
   const course = await prisma.course.findFirst({
     where: { id: courseId, type: 'video', isGlobal: true, status: 'published' },
@@ -209,10 +220,10 @@ export async function getCourseForOrgView(courseId: string): Promise<CourseWithR
       },
       // Scope enrolled staff to the caller's org — never leak other orgs' users.
       enrollments: {
-        where: { user: { organizationId } },
-        include: { user: { include: { profile: true } }, certificate: true },
+        where: { organizationUser: { organizationId } },
+        include: { organizationUser: { include: { user: true } }, certificate: true },
       },
-      creator: { include: { profile: true } },
+      creator: { include: { user: true } },
     },
   });
 
@@ -229,11 +240,15 @@ export async function createCourse(data: { title: string; description?: string }
     throw new Error('Unauthorized');
   }
 
+  if (!session.user.organizationUserId) {
+    throw new Error('You must belong to an organization to create courses');
+  }
+
   const course = await prisma.course.create({
     data: {
       title: data.title,
       description: data.description || null,
-      createdBy: session.user.id,
+      createdByOrgUserId: session.user.organizationUserId,
     },
   });
 
@@ -257,7 +272,7 @@ export async function updateCourse(
   }
 
   const existing = await prisma.course.findUnique({ where: { id: courseId } });
-  if (!existing || existing.createdBy !== session.user.id) {
+  if (!existing || existing.createdByOrgUserId !== session.user.organizationUserId) {
     logger.warn({
       msg: '[course] updateCourse: not found or unauthorized',
       courseId,
@@ -289,7 +304,7 @@ export async function publishCourse(courseId: string, opts?: { acknowledgeWarnin
   }
 
   const existing = await prisma.course.findUnique({ where: { id: courseId } });
-  if (!existing || existing.createdBy !== session.user.id) {
+  if (!existing || existing.createdByOrgUserId !== session.user.organizationUserId) {
     logger.warn({
       msg: '[course] publishCourse: not found or unauthorized',
       courseId,
@@ -344,7 +359,7 @@ export async function deleteCourse(courseId: string) {
   }
 
   const existing = await prisma.course.findUnique({ where: { id: courseId } });
-  if (!existing || existing.createdBy !== session.user.id) {
+  if (!existing || existing.createdByOrgUserId !== session.user.organizationUserId) {
     logger.warn({
       msg: '[course] deleteCourse: not found or unauthorized',
       courseId,
@@ -360,12 +375,147 @@ export async function deleteCourse(courseId: string) {
   return { success: true };
 }
 
-// Get dashboard data (combines courses list and stats to prevent duplicate queries)
-export async function getDashboardData() {
+/**
+ * Deep-copies a course the caller's ORGANIZATION owns into a new draft. Scoped to
+ * the org rather than the individual author so a course can be duplicated by any
+ * permitted colleague, not just whoever created it.
+ */
+export async function duplicateCourse(courseId: string) {
+  const session = await resolveSession();
+  if (!session?.user?.id || !session.user.organizationUserId || !session.user.organizationId) {
+    throw new Error('Unauthorized');
+  }
+
+  if (!can(dbRoleToRoleKey(session.user.role), 'course.create')) {
+    logger.warn({
+      msg: '[course] duplicateCourse denied — missing course.create',
+      courseId,
+      userId: session.user.id,
+      role: session.user.role,
+    });
+    throw new Error('Insufficient permissions');
+  }
+
+  // Tenant isolation: a course outside the caller's org is reported as not found
+  // so its existence is never leaked.
+  const existing = await prisma.course.findFirst({
+    where: { id: courseId, creator: { organizationId: session.user.organizationId } },
+    select: { id: true },
+  });
+  if (!existing) {
+    logger.warn({
+      msg: '[course] duplicateCourse: not found or unauthorized',
+      courseId,
+      userId: session.user.id,
+    });
+    throw new Error('Course not found');
+  }
+
+  const fork = await forkCourse({
+    sourceCourseId: courseId,
+    targetOrganizationUserId: session.user.organizationUserId,
+    titleStrategy: 'duplicate',
+  });
+
+  revalidatePath('/dashboard/training');
+  return fork;
+}
+
+/**
+ * Adopts a platform prebuilt course into the caller's organization as an
+ * editable draft. A copy (not an offering pointer) so the org can tailor it
+ * without touching the shared catalog entry.
+ */
+export async function addPrebuiltCourseToOrg(courseId: string) {
+  const session = await resolveSession();
+  if (!session?.user?.id || !session.user.organizationUserId) {
+    throw new Error('Unauthorized');
+  }
+
+  if (!can(dbRoleToRoleKey(session.user.role), 'course.create')) {
+    logger.warn({
+      msg: '[course] addPrebuiltCourseToOrg denied — missing course.create',
+      courseId,
+      userId: session.user.id,
+      role: session.user.role,
+    });
+    throw new Error('Insufficient permissions');
+  }
+
+  // Only the platform catalog is adoptable — this must never become a path to
+  // copy another tenant's private course.
+  const prebuilt = await prisma.course.findFirst({
+    where: { id: courseId, isGlobal: true },
+    select: { id: true },
+  });
+  if (!prebuilt) {
+    logger.warn({
+      msg: '[course] addPrebuiltCourseToOrg: not a prebuilt course',
+      courseId,
+      userId: session.user.id,
+    });
+    throw new Error('Course not found');
+  }
+
+  const fork = await forkCourse({
+    sourceCourseId: courseId,
+    targetOrganizationUserId: session.user.organizationUserId,
+    titleStrategy: 'catalog',
+  });
+
+  revalidatePath('/dashboard/training');
+  return fork;
+}
+
+export interface PrebuiltCourseRow {
+  id: string;
+  title: string;
+  description: string | null;
+  /** Estimated duration in minutes; null when the course does not declare one. */
+  duration: number | null;
+}
+
+/** The platform prebuilt catalog any org member with `course.read` may browse. */
+export async function getPrebuiltCourses(): Promise<PrebuiltCourseRow[]> {
   const session = await resolveSession();
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
   }
+
+  if (!can(dbRoleToRoleKey(session.user.role), 'course.read')) {
+    logger.warn({
+      msg: '[course] getPrebuiltCourses denied — missing course.read',
+      userId: session.user.id,
+      role: session.user.role,
+    });
+    throw new Error('Insufficient permissions');
+  }
+
+  return prisma.course.findMany({
+    where: { isGlobal: true, status: 'published' },
+    select: { id: true, title: true, description: true, duration: true },
+    orderBy: { title: 'asc' },
+  });
+}
+
+// Get dashboard data (combines courses list and stats to prevent duplicate queries)
+/**
+ * @param requestedFacilityId Narrows every enrollment-derived figure (staff
+ *   assigned, average grade, per-course pass/fail, training coverage) to one
+ *   facility. Re-validated here rather than trusted: an unknown or inaccessible
+ *   id widens back to the whole organisation, so a facility-bound caller can
+ *   never read a site they are not assigned to. Omit for the org-wide view.
+ */
+export async function getDashboardData(requestedFacilityId?: string | null) {
+  const session = await resolveSession();
+  if (!session?.user?.id) {
+    throw new Error('Unauthorized');
+  }
+
+  const scope = await resolveFacilityScope(session, requestedFacilityId);
+  const facilityId = scope.mode === 'single' ? scope.facility.id : null;
+  // Spread into a `where` to leave the org-wide query shape byte-identical.
+  const facilityFilter = facilityId ? { facilityId } : {};
 
   // F-028: avoid the unbounded `enrollments: true` materialization that pulled
   // every enrollment row (all columns) for every course on each dashboard load.
@@ -373,62 +523,69 @@ export async function getDashboardData() {
   // queries, and only the score-bearing enrollments are read — as a narrow
   // { courseId, score, completedAt } projection — for the average / monthly /
   // pass-fail stats that genuinely need row-level scores.
-  const createdBy = session.user.id;
-  const [coursesRaw, courseStatusCounts, userStatusCounts, scoredEnrollments, currentUser] =
-    await Promise.all([
-      prisma.course.findMany({
-        where: { createdBy },
-        select: {
-          id: true,
-          title: true,
-          description: true,
-          thumbnail: true,
-          status: true,
-          type: true,
-          duration: true,
-          createdAt: true,
-          updatedAt: true,
-          lessons: { select: { quiz: { select: { passingScore: true } } } },
-        },
-        orderBy: { createdAt: 'desc' },
-      }),
-      // Per-course enrollment totals + completed/attested tallies.
-      prisma.enrollment.groupBy({
-        by: ['courseId', 'status'],
-        where: { course: { createdBy } },
-        _count: { _all: true },
-      }),
-      // Per-user status tallies for training coverage + distinct staff assigned.
-      prisma.enrollment.groupBy({
-        by: ['userId', 'status'],
-        where: { course: { createdBy } },
-        _count: { _all: true },
-      }),
-      // Only scored enrollments, narrow projection — used for average grade,
-      // monthly performance and per-course pass/fail distribution.
-      prisma.enrollment.findMany({
-        where: { course: { createdBy }, score: { not: null } },
-        select: { courseId: true, score: true, completedAt: true },
-      }),
-      prisma.user.findUnique({
-        where: { id: session.user.id },
-        select: { organizationId: true },
-      }),
-    ]);
+  //
+  // `organizationUserId` is null only for a prospective founder mid-onboarding
+  // (no organization yet) — tolerate it with an empty dashboard rather than
+  // throwing; the client-side OrganizationActivationModal handles that state.
+  const createdByOrgUserId = session.user.organizationUserId;
+  const organizationId = session.user.organizationId;
 
-  if (!currentUser?.organizationId) {
-    // User authenticated but has no organization. We no longer force redirect here.
-    // The client-side OrganizationActivationModal will show a welcome message for 60 seconds
-    // and then auto-redirect if they don't click anything.
-  }
+  const [coursesRaw, courseStatusCounts, userStatusCounts, scoredEnrollments] = await Promise.all([
+    createdByOrgUserId
+      ? prisma.course.findMany({
+          where: { createdByOrgUserId },
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            thumbnail: true,
+            status: true,
+            type: true,
+            duration: true,
+            createdAt: true,
+            updatedAt: true,
+            lessons: { select: { quiz: { select: { passingScore: true } } } },
+          },
+          orderBy: { createdAt: 'desc' },
+        })
+      : Promise.resolve([]),
+    // Per-course enrollment totals + completed/attested tallies.
+    createdByOrgUserId
+      ? prisma.enrollment.groupBy({
+          by: ['courseId', 'status'],
+          where: { course: { createdByOrgUserId }, ...facilityFilter },
+          _count: { _all: true },
+        })
+      : Promise.resolve([]),
+    // Per-membership status tallies for training coverage + distinct staff assigned.
+    createdByOrgUserId
+      ? prisma.enrollment.groupBy({
+          by: ['organizationUserId', 'status'],
+          where: { course: { createdByOrgUserId }, ...facilityFilter },
+          _count: { _all: true },
+        })
+      : Promise.resolve([]),
+    // Only scored enrollments, narrow projection — used for average grade,
+    // monthly performance and per-course pass/fail distribution.
+    createdByOrgUserId
+      ? prisma.enrollment.findMany({
+          where: { course: { createdByOrgUserId }, score: { not: null }, ...facilityFilter },
+          select: { courseId: true, score: true, completedAt: true },
+        })
+      : Promise.resolve([]),
+  ]);
 
   // Get total staff (workers) in organization to ensure accurate coverage base
   let totalOrgStaff = 0;
-  if (currentUser?.organizationId) {
-    totalOrgStaff = await prisma.user.count({
+  if (organizationId) {
+    totalOrgStaff = await prisma.organizationUser.count({
       where: {
-        organizationId: currentUser.organizationId,
+        organizationId,
+        active: true,
         role: { in: [...WORKER_ROLES] },
+        // Under facility scope the coverage base is that site's roster, so a
+        // worker at another facility never dilutes its completion percentages.
+        ...(facilityId ? { facilities: { some: { facilityId, active: true } } } : {}),
       },
     });
   }
@@ -537,7 +694,7 @@ export async function getDashboardData() {
     { hasCompleted: boolean; hasInProgress: boolean; hasNotStarted: boolean }
   >();
   for (const row of userStatusCounts) {
-    const entry = enrollmentsByUser.get(row.userId) ?? {
+    const entry = enrollmentsByUser.get(row.organizationUserId) ?? {
       hasCompleted: false,
       hasInProgress: false,
       hasNotStarted: false,
@@ -550,7 +707,7 @@ export async function getDashboardData() {
       // 'enrolled' / 'assigned' — course has been assigned but not yet started
       entry.hasNotStarted = true;
     }
-    enrollmentsByUser.set(row.userId, entry);
+    enrollmentsByUser.set(row.organizationUserId, entry);
   }
 
   // Distinct staff with at least one enrollment across this admin's courses.
@@ -636,10 +793,10 @@ export async function assignCourseToUsers(courseId: string, emails: string[]) {
   // 1. Verify Course Ownership
   const course = await prisma.course.findUnique({
     where: { id: courseId },
-    select: { createdBy: true, title: true },
+    select: { createdByOrgUserId: true, title: true },
   });
 
-  if (!course || course.createdBy !== session.user.id) {
+  if (!course || course.createdByOrgUserId !== session.user.organizationUserId) {
     logger.warn({
       msg: '[course] assignCourseToUsers: not found or unauthorized',
       courseId,
@@ -648,43 +805,40 @@ export async function assignCourseToUsers(courseId: string, emails: string[]) {
     throw new Error('Course not found or unauthorized');
   }
 
-  // 2. Get Current User's Org to ensure we only assign to own staff
-  const currentUser = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: {
-      organizationId: true,
-      organization: {
-        select: {
-          subscription: { select: { status: true, pausedAt: true } },
-        },
-      },
-    },
-  });
-
-  if (!currentUser?.organizationId) {
+  // 2. Get Current Org's billing status to ensure we only assign to own staff
+  const organizationId = session.user.organizationId;
+  if (!organizationId) {
     throw new Error('You must belong to an organization to assign courses');
   }
 
+  const organization = await prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: {
+      subscription: { select: { status: true, pausedAt: true } },
+    },
+  });
+
   // Billing gate (defense in depth): assigning courses requires active billing.
-  if (!hasActiveBilling(currentUser?.organization?.subscription)) {
+  if (!hasActiveBilling(organization?.subscription)) {
     logger.warn({
       msg: '[course] Course assignment blocked — organization lacks active billing',
-      organizationId: currentUser.organizationId,
+      organizationId,
       userId: session.user.id,
     });
     throw new Error('Your organization needs an active subscription to assign courses.');
   }
 
-  // 3. Find Users by Email (filtered by Org)
-  const usersToAssign = await prisma.user.findMany({
+  // 3. Find Staff Memberships by Email (filtered by Org)
+  const membersToAssign = await prisma.organizationUser.findMany({
     where: {
-      organizationId: currentUser.organizationId,
-      email: { in: emails },
+      organizationId,
+      active: true,
+      user: { email: { in: emails } },
     },
-    select: { id: true, email: true },
+    select: { id: true, user: { select: { email: true } } },
   });
 
-  if (usersToAssign.length === 0) {
+  if (membersToAssign.length === 0) {
     logger.warn({
       msg: '[course] assignCourseToUsers: no valid users found',
       courseId,
@@ -694,9 +848,15 @@ export async function assignCourseToUsers(courseId: string, emails: string[]) {
   }
 
   // 4. Create Enrollments (skip duplicates)
-  const enrollmentData = usersToAssign.map((u) => ({
-    userId: u.id,
+  const facilityByMember = await resolveMemberFacilityIds(
+    prisma,
+    membersToAssign.map((m) => m.id),
+  );
+
+  const enrollmentData = membersToAssign.map((m) => ({
+    organizationUserId: m.id,
     courseId: courseId,
+    facilityId: facilityByMember.get(m.id) ?? null,
     status: 'enrolled' as const,
     progress: 0,
     startedAt: new Date(),
@@ -847,12 +1007,7 @@ export async function createFullCourse(data: {
     throw new Error('Unauthorized');
   }
 
-  const currentUser = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { organizationId: true },
-  });
-
-  if (!currentUser?.organizationId) {
+  if (!session.user.organizationUserId) {
     throw new Error('Organization not found');
   }
 
@@ -880,7 +1035,7 @@ export async function createFullCourse(data: {
       status: reviewRequired ? 'draft' : 'published',
       reviewRequired,
       qualityWarnings,
-      createdBy: session.user.id,
+      createdByOrgUserId: session.user.organizationUserId,
       // Pipeline version tracking
       promptVersion,
       // v3.1 fields
@@ -1019,11 +1174,7 @@ export async function attestCourse(enrollmentId: string, signature: string, role
   const enrollment = await prisma.enrollment.findUnique({
     where: { id: enrollmentId },
     include: {
-      user: {
-        include: {
-          profile: true,
-        },
-      },
+      organizationUser: { include: { user: true } },
       course: true,
     },
   });
@@ -1033,7 +1184,10 @@ export async function attestCourse(enrollmentId: string, signature: string, role
   }
 
   // Check if EITHER session owns this enrollment (handles cookie collision)
-  if (enrollment.userId !== adminId && enrollment.userId !== workerId) {
+  if (
+    enrollment.organizationUser.userId !== adminId &&
+    enrollment.organizationUser.userId !== workerId
+  ) {
     throw new Error('Unauthorized');
   }
 
@@ -1055,7 +1209,7 @@ export async function attestCourse(enrollmentId: string, signature: string, role
     msg: '[course] Course attested',
     enrollmentId,
     courseId: enrollment.courseId,
-    userId: enrollment.userId,
+    userId: enrollment.organizationUser.userId,
   });
 
   // Clear any open overdue/escalation/retake reminders for this enrollment now
@@ -1064,15 +1218,13 @@ export async function attestCourse(enrollmentId: string, signature: string, role
   await resolveOnCompletion(enrollmentId);
 
   // Notify Admins of course completion
-  if (enrollment.user.organizationId) {
-    await notifyOrganizationAdmins(enrollment.user.organizationId, {
-      type: 'COURSE_PASSED',
-      title: 'Course Completed',
-      message: `${enrollment.user.profile?.fullName || enrollment.user.email} has completed and attested to the course: ${enrollment.course?.title || 'Unknown Course'}.`,
-      linkUrl: `/dashboard/staff/${enrollment.user.id}`,
-      metadata: { userId: enrollment.user.id, courseId: enrollment.courseId },
-    });
-  }
+  await notifyOrganizationAdmins(enrollment.organizationUser.organizationId, {
+    type: 'COURSE_PASSED',
+    title: 'Course Completed',
+    message: `${enrollment.organizationUser.user.fullName || enrollment.organizationUser.user.email} has completed and attested to the course: ${enrollment.course?.title || 'Unknown Course'}.`,
+    linkUrl: `/dashboard/staff/${enrollment.organizationUserId}`,
+    metadata: { organizationUserId: enrollment.organizationUserId, courseId: enrollment.courseId },
+  });
 
   revalidatePath('/worker');
   revalidatePath(`/learn/${enrollment.courseId}`);
@@ -1093,12 +1245,12 @@ export async function startCourse(courseId: string) {
   let enrollment = null;
   if (workerId) {
     enrollment = await prisma.enrollment.findFirst({
-      where: { courseId, userId: workerId },
+      where: { courseId, organizationUser: { userId: workerId } },
     });
   }
   if (!enrollment && adminId) {
     enrollment = await prisma.enrollment.findFirst({
-      where: { courseId, userId: adminId },
+      where: { courseId, organizationUser: { userId: adminId } },
     });
   }
 
@@ -1148,7 +1300,7 @@ export async function updateQuizQuestions(
     include: { lessons: { include: { quiz: true } } },
   });
 
-  if (!course || course.createdBy !== session.user.id) {
+  if (!course || course.createdByOrgUserId !== session.user.organizationUserId) {
     throw new Error('Unauthorized or Course not found');
   }
 
@@ -1215,7 +1367,7 @@ export async function updateLessonContent(lessonId: string, content: string, tit
     include: { course: true },
   });
 
-  if (!lesson || lesson.course.createdBy !== session.user.id) {
+  if (!lesson || lesson.course.createdByOrgUserId !== session.user.organizationUserId) {
     throw new Error('Unauthorized or Lesson not found');
   }
 
@@ -1250,6 +1402,7 @@ export async function retakeQuiz(enrollmentId: string) {
   const enrollment = await prisma.enrollment.findUnique({
     where: { id: enrollmentId },
     include: {
+      organizationUser: { select: { userId: true } },
       course: {
         include: {
           lessons: {
@@ -1262,7 +1415,11 @@ export async function retakeQuiz(enrollmentId: string) {
   });
 
   // Check if EITHER session owns this enrollment
-  if (!enrollment || (enrollment.userId !== adminId && enrollment.userId !== workerId)) {
+  if (
+    !enrollment ||
+    (enrollment.organizationUser.userId !== adminId &&
+      enrollment.organizationUser.userId !== workerId)
+  ) {
     throw new Error('Enrollment not found or unauthorized');
   }
 
@@ -1305,25 +1462,30 @@ export async function retakeQuiz(enrollmentId: string) {
 }
 
 export async function assignRetake(enrollmentId: string, retakeReason?: string) {
-  // Only admins can assign retakes
   const session = await resolveSession();
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
   }
 
-  const adminUser = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { role: true },
-  });
-
-  if (!adminUser || !isAdminRole(adminUser.role)) {
+  // Assigning someone else a retake is the same administrative verb as
+  // assigning them training, so it gates on `enrollment.create` — NOT
+  // `enrollment.edit`, which every role holds as a self-service permission for
+  // progressing its OWN enrollment and would therefore let a read-only
+  // Supervisor force a retake on another learner.
+  if (!can(dbRoleToRoleKey(session.user.role), 'enrollment.create')) {
+    logger.warn({
+      msg: '[enrollment] assignRetake denied — missing enrollment.create',
+      userId: session.user.id,
+      role: session.user.role,
+      enrollmentId,
+    });
     throw new Error('Insufficient permissions');
   }
 
   const lockedEnrollment = await prisma.enrollment.findUnique({
     where: { id: enrollmentId },
     include: {
-      user: { include: { profile: true } },
+      organizationUser: { include: { user: true } },
       course: true,
     },
   });
@@ -1345,8 +1507,11 @@ export async function assignRetake(enrollmentId: string, retakeReason?: string) 
 
   const retakeEnrollment = await prisma.enrollment.create({
     data: {
-      userId: lockedEnrollment.userId,
+      organizationUserId: lockedEnrollment.organizationUserId,
       courseId: lockedEnrollment.courseId,
+      // Resolved fresh rather than inherited from the locked enrollment: a retake
+      // is new training, so it belongs to wherever the learner is posted now.
+      facilityId: await resolveMemberFacilityId(prisma, lockedEnrollment.organizationUserId),
       status: 'enrolled',
       progress: 100,
       retakeOf: lockedEnrollment.id,
@@ -1369,7 +1534,7 @@ export async function assignRetake(enrollmentId: string, retakeReason?: string) 
 
   const { createNotification } = await import('./notifications');
   await createNotification({
-    userId: lockedEnrollment.userId,
+    organizationUserId: lockedEnrollment.organizationUserId,
     type: 'RETAKE_ASSIGNED',
     title: 'Retake Assigned',
     message: `An admin has assigned you a retake for "${lockedEnrollment.course.title}". You can now take the quiz again.`,
@@ -1387,7 +1552,7 @@ export async function assignRetake(enrollmentId: string, retakeReason?: string) 
     parentEnrollmentId: enrollmentId,
     courseId: lockedEnrollment.courseId,
     assignedBy: session.user.id,
-    targetUserId: lockedEnrollment.userId,
+    targetOrganizationUserId: lockedEnrollment.organizationUserId,
   });
   revalidatePath('/dashboard/staff');
   revalidatePath('/worker/trainings');

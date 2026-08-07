@@ -6,12 +6,15 @@ import { auth as workerAuth } from '@/auth.worker';
 import { isQuizUnlocked } from '@/lib/video/gating';
 
 /**
- * Resolves the current user's id from either the admin or worker session.
- * Returns null when neither session is active.
+ * Resolves the current session's ACTIVE membership id from either the admin or
+ * worker session. Video access and progress are owned by the OrganizationUser,
+ * not the identity, so this — not the identity id — is what every ownership
+ * check below compares against. Returns null when neither session is active
+ * (or the active session has no membership).
  */
-async function currentUserId(): Promise<string | null> {
+async function currentOrganizationUserId(): Promise<string | null> {
   const [a, w] = await Promise.all([adminAuth(), workerAuth()]);
-  return a?.user?.id ?? w?.user?.id ?? null;
+  return a?.user?.organizationUserId ?? w?.user?.organizationUserId ?? null;
 }
 
 /**
@@ -30,8 +33,8 @@ async function currentUserId(): Promise<string | null> {
  * Throws 'Forbidden'    when the caller has no access.
  */
 export async function getVideoPlaybackUrl(lessonId: string): Promise<string> {
-  const uid = await currentUserId();
-  if (!uid) throw new Error('Unauthorized');
+  const organizationUserId = await currentOrganizationUserId();
+  if (!organizationUserId) throw new Error('Unauthorized');
 
   const lesson = await prisma.lesson.findUnique({
     where: { id: lessonId },
@@ -39,7 +42,7 @@ export async function getVideoPlaybackUrl(lessonId: string): Promise<string> {
       course: {
         include: {
           enrollments: {
-            where: { userId: uid },
+            where: { organizationUserId },
             select: { id: true },
           },
         },
@@ -53,7 +56,8 @@ export async function getVideoPlaybackUrl(lessonId: string): Promise<string> {
   // watch (e.g. an org admin previewing before assigning).
   const c = lesson.course;
   const isGlobalCatalog = c.isGlobal && c.status === 'published' && c.type === 'video';
-  const allowed = c.createdBy === uid || c.enrollments.length > 0 || isGlobalCatalog;
+  const allowed =
+    c.createdByOrgUserId === organizationUserId || c.enrollments.length > 0 || isGlobalCatalog;
 
   if (!allowed) throw new Error('Forbidden');
 
@@ -78,15 +82,17 @@ export async function saveVideoProgress(
   positionSeconds: number,
   watchedPct: number,
 ): Promise<{ unlocked: boolean }> {
-  const uid = await currentUserId();
-  if (!uid) throw new Error('Unauthorized');
+  const organizationUserId = await currentOrganizationUserId();
+  if (!organizationUserId) throw new Error('Unauthorized');
 
   const enr = await prisma.enrollment.findUnique({
     where: { id: enrollmentId },
-    select: { userId: true, status: true },
+    select: { organizationUserId: true, status: true },
   });
 
-  if (!enr || enr.userId !== uid) throw new Error('Enrollment not found');
+  if (!enr || enr.organizationUserId !== organizationUserId) {
+    throw new Error('Enrollment not found');
+  }
 
   const pct = Math.max(0, Math.min(100, Math.round(watchedPct)));
 

@@ -3,6 +3,7 @@ import { DEFAULT_SELF_SERVE_WORKER_ROLE } from '@/lib/rbac/role-utils';
 import { logger, maskEmail } from '@/lib/logger';
 import { createNotification } from '@/app/actions/notifications';
 import { computeDueAt, resolveStartDate } from '@/lib/reminders/deadline';
+import { resolveMemberFacilityId } from '@/lib/facility/member-facility';
 import type { StaffEntry } from '@/types/enrollment';
 import type { UserRole } from '@/generated/prisma/enums';
 
@@ -19,14 +20,14 @@ export interface CreateEnrollmentContext {
   organizationId: string | null;
   /** Display name used in invite / launch emails. */
   organizationName: string;
-  /** Facility to attach a newly created worker to; null when the org has none. */
+  /** Facility an invited worker is attached to; null falls back to the org's first. */
   facilityId: string | null;
   /** Parent {@link CourseAssignment} id; null when no assignment batch exists. */
   assignmentId: string | null;
   scheduleAt: Date | null;
   assignmentDueAt: Date | null;
   assignmentWindowDays: number | null;
-  /** Actor recorded on the structured enrollment log. */
+  /** Actor (identity id) recorded on the structured enrollment log. */
   enrolledByUserId: string;
 }
 
@@ -76,35 +77,26 @@ export async function createEnrollmentForUser(
 
   const user = await prisma.user.findUnique({
     where: { email: normalizedEmail },
-    include: { profile: true },
+    select: { id: true, firstName: true, lastName: true, fullName: true },
   });
 
-  // Tenancy guard: an email that resolves to an existing user in a DIFFERENT
-  // organization must never be enrolled by this org. Covers every caller of this
-  // helper (standalone assign, wizard, role-join hook). Reported as a generic
-  // failure; the cross-tenant detail stays in the log only.
-  if (
-    user &&
-    ctx.organizationId &&
-    user.organizationId &&
-    user.organizationId !== ctx.organizationId
-  ) {
-    logger.warn({
-      msg: '[enrollment] Cross-tenant enrollment blocked — user belongs to a different organization',
-      email: maskEmail(normalizedEmail),
-      callerOrganizationId: ctx.organizationId,
-      userOrganizationId: user.organizationId,
-      courseId: ctx.courseId,
-    });
-    return { status: 'failed', email: normalizedEmail };
-  }
+  // Tenancy is now structural: we only ever look for a membership in the
+  // CALLER's organization, so an identity that also belongs to another org is
+  // simply not found here and can never be enrolled cross-tenant.
+  const membership =
+    user && ctx.organizationId
+      ? await prisma.organizationUser.findFirst({
+          where: { userId: user.id, organizationId: ctx.organizationId, active: true },
+          select: { id: true },
+        })
+      : null;
 
-  // Unknown email, or an existing account with no org (e.g. previously removed
-  // staff): do NOT create/enroll a user. Send a `/join` invite and park the
-  // course on it — the enrollment is materialised when the invite is accepted
-  // (see enrollInviteCourses). Unifies the assign flow with the staff-invite
-  // flow; no premature accounts, no temporary passwords.
-  if (!user || user.organizationId === null) {
+  // Unknown email, or an identity with no active membership in this org (e.g.
+  // previously removed staff): do NOT create/enroll. Send a `/join` invite and
+  // park the course on it — the enrollment is materialised when the invite is
+  // accepted (see enrollInviteCourses). Unifies the assign flow with the
+  // staff-invite flow; no premature accounts, no temporary passwords.
+  if (!user || !membership) {
     if (!ctx.organizationId) {
       // No org to attach an invite to — the standalone assign / wizard paths
       // always have one, so this only guards a misconfigured caller.
@@ -121,6 +113,27 @@ export async function createEnrollmentForUser(
     // default self-serve worker role.
     const inviteRole: UserRole =
       entry.role === 'admin' ? 'supervisor' : DEFAULT_SELF_SERVE_WORKER_ROLE;
+
+    // Every invite must name a facility. Prefer the caller's; otherwise fall
+    // back to the org's first facility (onboarding guarantees at least one).
+    const inviteFacilityId =
+      ctx.facilityId ??
+      (
+        await prisma.facility.findFirst({
+          where: { organizationId: ctx.organizationId },
+          orderBy: { createdAt: 'asc' },
+          select: { id: true },
+        })
+      )?.id;
+
+    if (!inviteFacilityId) {
+      logger.warn({
+        msg: '[enrollment] Cannot invite for course assignment — organization has no facility',
+        organizationId: ctx.organizationId,
+        courseId: ctx.courseId,
+      });
+      return { status: 'failed', email: normalizedEmail };
+    }
 
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7);
@@ -144,6 +157,7 @@ export async function createEnrollmentForUser(
               email: normalizedEmail,
               token: crypto.randomUUID(),
               organizationId: ctx.organizationId,
+              facilityId: inviteFacilityId,
               role: inviteRole,
               expiresAt,
               invitedBy: ctx.enrolledByUserId,
@@ -194,31 +208,21 @@ export async function createEnrollmentForUser(
     }
   }
 
-  // Existing org member: opportunistically backfill blank profile name fields
-  // from the CSV without overwriting anything already set.
-  if (firstName || lastName) {
-    const profile = user.profile;
-    if (!profile?.fullName && fullName) {
-      await prisma.profile.upsert({
-        where: { id: user.id },
-        create: {
-          id: user.id,
-          email: normalizedEmail,
-          firstName: firstName ?? null,
-          lastName: lastName ?? null,
-          fullName: fullName ?? null,
-        },
-        update: {
-          firstName: profile?.firstName ?? firstName ?? null,
-          lastName: profile?.lastName ?? lastName ?? null,
-          fullName: profile?.fullName ?? fullName ?? null,
-        },
-      });
-    }
+  // Existing org member: opportunistically backfill blank name fields from the
+  // CSV without overwriting anything already set.
+  if ((firstName || lastName) && !user.fullName && fullName) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        firstName: user.firstName ?? firstName ?? null,
+        lastName: user.lastName ?? lastName ?? null,
+        fullName,
+      },
+    });
   }
 
   const existing = await prisma.enrollment.findFirst({
-    where: { userId: user.id, courseId: ctx.courseId },
+    where: { organizationUserId: membership.id, courseId: ctx.courseId },
   });
 
   if (existing) {
@@ -240,8 +244,11 @@ export async function createEnrollmentForUser(
 
   const enrollment = await prisma.enrollment.create({
     data: {
-      userId: user.id,
+      organizationUserId: membership.id,
       courseId: ctx.courseId,
+      // The member's OWN facility, not ctx.facilityId — the latter is the invite
+      // target for an address with no membership yet, which this branch is not.
+      facilityId: await resolveMemberFacilityId(prisma, membership.id),
       status: 'enrolled',
       progress: 0,
       assignmentId: ctx.assignmentId ?? undefined,
@@ -271,7 +278,7 @@ export async function createEnrollmentForUser(
   }
 
   await createNotification({
-    userId: user.id,
+    organizationUserId: membership.id,
     type: 'COURSE_ASSIGNED',
     title: 'New Required Training Assigned',
     message: `You have been assigned a new course: ${ctx.courseTitle}`,
@@ -282,7 +289,7 @@ export async function createEnrollmentForUser(
   // This path is only reached for a pre-existing org member, so the Stage 1
   // launch email always sends here (invited addresses returned earlier with the
   // `/join` invite email instead).
-  const recipientName = user.profile?.fullName || fullName || 'there';
+  const recipientName = user.fullName || fullName || 'there';
   try {
     await sendCourseLaunchEmail(
       normalizedEmail,

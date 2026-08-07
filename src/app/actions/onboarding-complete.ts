@@ -12,6 +12,7 @@ import {
 } from '@/lib/rbac/role-utils';
 import { logger } from '@/lib/logger';
 import { deriveTimezoneFromState } from '@/lib/reminders/us-state-timezone';
+import { createMembership } from '@/lib/auth/membership';
 
 // Define types for the data we expect
 // Note: We are using 'any' for simplicity here to match the flexible structure,
@@ -102,11 +103,11 @@ export async function completeOnboarding(data: OnboardingData): Promise<Complete
   }
 
   // One organisation per user — a user already in an org cannot create another.
-  const existingMembership = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { organizationId: true },
+  const existingMembership = await prisma.organizationUser.findFirst({
+    where: { userId, active: true },
+    select: { id: true },
   });
-  if (existingMembership?.organizationId) {
+  if (existingMembership) {
     return {
       success: false,
       error: 'You already belong to an organization and cannot create another.',
@@ -194,18 +195,6 @@ export async function completeOnboarding(data: OnboardingData): Promise<Complete
         });
       }
 
-      // 2. Link founding user as the organisation `owner`, attached to the facility.
-      logger.info({ msg: '[completeOnboarding] Linking User:', data: userId });
-      await tx.user.update({
-        where: { id: userId },
-        data: {
-          organizationId: org.id,
-          facilityId: facility.id,
-          role: 'owner',
-          roleAssignedAt: new Date(),
-        },
-      });
-
       // 3. Prepare Invites to be sent
       const invitesToSend: { email: string; role: UserRole; token: string; orgName: string }[] = [];
 
@@ -222,6 +211,7 @@ export async function completeOnboarding(data: OnboardingData): Promise<Complete
             email,
             token,
             organizationId: org.id,
+            facilityId: facility.id,
             role,
             expiresAt,
             invitedBy: userId,
@@ -273,7 +263,16 @@ export async function completeOnboarding(data: OnboardingData): Promise<Complete
         }
       }
 
-      return { org, invitesToSend };
+      return { org, facility, invitesToSend };
+    });
+
+    // 2. Link founding user as the organisation `owner`, attached to the facility.
+    logger.info({ msg: '[completeOnboarding] Linking User:', data: userId });
+    await createMembership({
+      userId,
+      organizationId: result.org.id,
+      facilityId: result.facility.id,
+      role: 'owner',
     });
 
     // 4. Send Emails (Outside Transaction logic, but initiated here)

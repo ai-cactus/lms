@@ -16,67 +16,72 @@ import { isAdminRole, ADMIN_ROLES } from '@/lib/rbac/role-utils';
  */
 
 export interface EscalationRecipients {
-  /** In-app notification targets. */
-  userIds: string[];
+  /** In-app notification targets — `OrganizationUser.id` (createNotification's key). */
+  organizationUserIds: string[];
   /** Email targets, with display name when available. */
   emails: { email: string; name: string | null }[];
 }
 
-const EMPTY: EscalationRecipients = { userIds: [], emails: [] };
+const EMPTY: EscalationRecipients = { organizationUserIds: [], emails: [] };
 
 export async function resolveEscalationRecipients(enrollment: {
-  userId: string;
+  organizationUserId: string;
 }): Promise<EscalationRecipients> {
-  const worker = await prisma.user.findUnique({
-    where: { id: enrollment.userId },
-    select: { id: true, organizationId: true, managerId: true },
+  const worker = await prisma.organizationUser.findUnique({
+    where: { id: enrollment.organizationUserId },
+    select: { organizationId: true, managerId: true },
   });
 
-  if (!worker?.organizationId) {
+  if (!worker) {
     logger.warn({
-      msg: '[reminders] Cannot resolve escalation recipients — worker has no organization',
-      userId: enrollment.userId,
+      msg: '[reminders] Cannot resolve escalation recipients — membership not found',
+      organizationUserId: enrollment.organizationUserId,
     });
     return EMPTY;
   }
 
-  // Prefer a directly-assigned manager, but only if they are a same-org admin.
+  // Prefer a directly-assigned manager, but only if they are an active same-org admin.
   if (worker.managerId) {
-    const manager = await prisma.user.findUnique({
+    const manager = await prisma.organizationUser.findUnique({
       where: { id: worker.managerId },
       select: {
         id: true,
-        email: true,
         role: true,
         organizationId: true,
-        profile: { select: { fullName: true } },
+        active: true,
+        user: { select: { email: true, fullName: true } },
       },
     });
 
-    if (manager && manager.organizationId === worker.organizationId && isAdminRole(manager.role)) {
+    if (
+      manager &&
+      manager.active &&
+      manager.organizationId === worker.organizationId &&
+      isAdminRole(manager.role)
+    ) {
       return {
-        userIds: [manager.id],
-        emails: [{ email: manager.email, name: manager.profile?.fullName ?? null }],
+        organizationUserIds: [manager.id],
+        emails: [{ email: manager.user.email, name: manager.user.fullName }],
       };
     }
   }
 
-  const admins = await prisma.user.findMany({
-    where: { organizationId: worker.organizationId, role: { in: [...ADMIN_ROLES] } },
-    select: { id: true, email: true, profile: { select: { fullName: true } } },
+  const admins = await prisma.organizationUser.findMany({
+    where: { organizationId: worker.organizationId, active: true, role: { in: [...ADMIN_ROLES] } },
+    select: { id: true, user: { select: { email: true, fullName: true } } },
   });
 
   if (admins.length === 0) {
     logger.warn({
       msg: '[reminders] No escalation recipients — no manager and no org admins',
-      userId: enrollment.userId,
+      organizationUserId: enrollment.organizationUserId,
       orgId: worker.organizationId,
     });
     return EMPTY;
   }
 
   return {
-    userIds: admins.map((a) => a.id),
-    emails: admins.map((a) => ({ email: a.email, name: a.profile?.fullName ?? null })),
+    organizationUserIds: admins.map((a) => a.id),
+    emails: admins.map((a) => ({ email: a.user.email, name: a.user.fullName })),
   };
 }

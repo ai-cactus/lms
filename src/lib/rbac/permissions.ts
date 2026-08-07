@@ -42,6 +42,7 @@ export const RESOURCES = [
   'invite', // Pending team invitations
   'assignment', // Org course assignments & auto-enrolment configuration
   'notification', // In-app notifications & reminder preferences
+  'audit', // Audits module — the compliance audit trail / audit reports
   'auditPack', // Auditor packs & compliance reporting exports
   'standardManual', // Accreditation standard manuals (RAG knowledge base)
 ] as const;
@@ -118,6 +119,11 @@ export const permissions: Permission[] = [
   'notification.edit',
   'notification.delete',
 
+  'audit.create',
+  'audit.read',
+  'audit.edit',
+  'audit.delete',
+
   'auditPack.create',
   'auditPack.read',
   'auditPack.edit',
@@ -137,16 +143,29 @@ const all = (resource: Resource): Permission[] => [
   `${resource}.delete`,
 ];
 
-// Full access to every primary resource. Granted to `owner` (organisation-wide,
-// including billing). A facility Supervisor gets the same set MINUS billing.
+// Full access to every primary resource. Granted to `owner` and `admin`, which
+// the RBAC matrix defines as Owner-equivalent (CRUD everywhere, incl. billing).
 const everything: Permission[] = RESOURCES.flatMap(all);
 
-// Facility-wide access minus billing. `supervisor` oversees a facility but must
-// not touch subscriptions/invoices/payment methods — billing.* is reserved for
-// `owner` and `finance` only.
-const everythingExceptBilling: Permission[] = everything.filter(
-  (permission) => !permission.startsWith('billing.'),
-);
+// Read on every primary resource EXCEPT billing, with no write verbs anywhere.
+// Billing is excluded outright rather than merely un-writable: the RBAC matrix
+// gives Facility Supervisor no billing column at all, so even visibility of
+// subscriptions/invoices/payment methods is withheld.
+const readEverythingExceptBilling: Permission[] = RESOURCES.filter(
+  (resource) => resource !== 'billing',
+).map((resource) => `${resource}.read` as Permission);
+
+// Personal, self-service actions every account holds regardless of tier:
+// progressing one's OWN enrollment, submitting one's OWN quiz attempt, and
+// managing one's OWN notifications. These are not administrative verbs, so a
+// read-only admin role keeps them (otherwise Learn Mode would be unusable).
+const selfServicePermissions: Permission[] = [
+  'enrollment.edit',
+  'assessment.create',
+  'notification.create',
+  'notification.edit',
+  'notification.delete',
+];
 
 export interface Role {
   id: string;
@@ -184,13 +203,22 @@ export const roles = {
     permissions: everything,
   },
 
+  admin: {
+    id: 'admin',
+    category: 'manager',
+    displayName: 'Admin',
+    description:
+      'Full-access organisation administrator. Owner-equivalent CRUD across every resource including billing, spanning all facilities under the organisation. Differs from Owner only in that Owner is established at org creation and can never be granted or revoked, whereas Admin is a role an Owner delegates.',
+    permissions: everything,
+  },
+
   supervisor: {
     id: 'supervisor',
     category: 'manager',
-    displayName: 'Supervisor (Facility Admin)',
+    displayName: 'Facility Supervisor',
     description:
-      'Facility-level overseer. Full access to every resource EXCEPT billing, scoped to a SINGLE facility (an org branch/location) — enforced at the data layer. Cannot reach other facilities, organisation-wide configuration, or any billing/subscription/payment function (billing is reserved for Owner and Finance). Narrower scope than an organisation Owner.',
-    permissions: everythingExceptBilling,
+      'Facility-level overseer. READ-ONLY on documents, courses, staff and audits — a supervisor’s power is SCOPE, not verbs: their read access spans the facilities assigned to them (OrganizationUserFacility), enforced at the data layer. Cannot create or edit facilities, cannot change staff roles, and has no billing access whatsoever.',
+    permissions: [...readEverythingExceptBilling, ...selfServicePermissions],
   },
 
   hr: {
@@ -198,7 +226,7 @@ export const roles = {
     category: 'manager',
     displayName: 'HR',
     description:
-      'Workforce personnel & operational compliance manager. Manages worker details, invites staff, assigns general courses (HIPAA/OSHA) and views broad pass/fail and completion metrics. Blocked from billing, from modifying clinical courses, and from question-by-question assessment scoring.',
+      'Workforce personnel & operational compliance manager. Full CRUD over staff, documents and courses; invites staff, assigns training paths and views broad pass/fail and completion metrics. Reads the audit trail but cannot alter it. Blocked from billing and from question-by-question assessment scoring.',
     permissions: [
       'user.create',
       'user.read',
@@ -215,12 +243,19 @@ export const roles = {
       'assignment.read',
       'assignment.edit',
       'assignment.delete',
+      'course.create',
       'course.read',
+      'course.edit',
+      'course.delete',
       'certificate.read',
       'category.read',
+      'document.create',
       'document.read',
+      'document.edit',
+      'document.delete',
       'organization.read',
       'facility.read',
+      'audit.read',
       'auditPack.create',
       'auditPack.read',
       'notification.create',
@@ -235,7 +270,7 @@ export const roles = {
     category: 'manager',
     displayName: 'Clinical Director',
     description:
-      'Clinical quality-assurance & assessment oversight lead. Builds and edits clinical modules/assessments, assigns clinical training paths, and reviews granular, question-by-question assessment logs. Blocked from billing, subscription tiers and HR payroll configuration.',
+      'Clinical quality-assurance & assessment oversight lead. Builds and edits clinical modules/assessments, assigns clinical training paths, and reviews granular, question-by-question assessment logs. Creates and edits documents but cannot DELETE them (deletion is reserved for Owner/Admin/HR). Reads the audit trail. Has no Staff Management access at all, and is blocked from billing and subscription tiers.',
     permissions: [
       'course.create',
       'course.read',
@@ -256,15 +291,15 @@ export const roles = {
       'category.read',
       'category.edit',
       'category.delete',
+      // Documents CRU — delete is deliberately withheld per the RBAC matrix.
       'document.create',
       'document.read',
       'document.edit',
-      'document.delete',
       'standardManual.read',
       'certificate.read',
-      'user.read',
       'organization.read',
       'facility.read',
+      'audit.read',
       'auditPack.create',
       'auditPack.read',
       'notification.create',
@@ -279,7 +314,7 @@ export const roles = {
     category: 'manager',
     displayName: 'Finance',
     description:
-      'Billing, subscription & financial reporting manager. Manages billing settings, payment methods and invoices, and views their own personal learner transcripts. Blocked from building courses, assigning compliance paths and viewing any worker test metrics.',
+      'Billing, subscription & financial reporting manager. Manages billing settings, payment methods and invoices, and views their own personal learner transcripts. Blocked from Staff Management, from the audit trail, from building courses, from assigning compliance paths and from viewing any worker test metrics.',
     permissions: [
       'billing.create',
       'billing.read',
@@ -287,11 +322,9 @@ export const roles = {
       'billing.delete',
       'organization.read',
       'facility.read',
-      'user.read',
       'course.read',
       'enrollment.read',
       'certificate.read',
-      'auditPack.read',
       'notification.create',
       'notification.read',
       'notification.edit',

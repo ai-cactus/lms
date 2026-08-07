@@ -127,7 +127,7 @@ export async function emitNotificationEvent(
       context: input.context ?? {},
     };
 
-    const hasRecipients = recipients.userIds.length > 0;
+    const hasRecipients = recipients.organizationUserIds.length > 0;
     const event = await prisma.notificationEvent.create({
       data: {
         organizationId: input.organizationId,
@@ -162,9 +162,9 @@ export async function emitNotificationEvent(
 
     // Both tiers write the bell row at emit time — the digest batches the email,
     // not the in-app feed.
-    for (const userId of recipients.userIds) {
+    for (const organizationUserId of recipients.organizationUserIds) {
       await createNotification({
-        userId,
+        organizationUserId,
         type: input.type,
         title: input.title,
         message: input.message,
@@ -196,7 +196,7 @@ export async function emitNotificationEvent(
       type: input.type,
       tier: meta.tier,
       eventId: event.id,
-      recipientCount: recipients.userIds.length,
+      recipientCount: recipients.organizationUserIds.length,
       usedFallback: recipients.usedFallback,
     });
 
@@ -205,7 +205,7 @@ export async function emitNotificationEvent(
     return {
       status: meta.tier === 'instant' ? 'dispatched' : 'pending',
       eventId: event.id,
-      recipientCount: recipients.userIds.length,
+      recipientCount: recipients.organizationUserIds.length,
       usedFallback: recipients.usedFallback,
     };
   } catch (err) {
