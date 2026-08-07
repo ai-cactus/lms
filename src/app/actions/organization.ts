@@ -1,14 +1,18 @@
 'use server';
 
 import crypto from 'crypto';
-import { isAdminRole, dbRoleToRoleKey } from '@/lib/rbac/role-utils';
+import { z } from 'zod';
+import { revalidatePath } from 'next/cache';
+import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
 import { can } from '@/lib/rbac/permissions';
 import prisma from '@/lib/prisma';
 import { auth } from '@/auth';
-import { logger } from '@/lib/logger';
+import { logger, maskEmail } from '@/lib/logger';
 import { audit, getClientContext } from '@/lib/audit';
 import { headers } from 'next/headers';
 import { deriveTimezoneFromState } from '@/lib/reminders/us-state-timezone';
+import { createMembership } from '@/lib/auth/membership';
+import { createInvites } from '@/app/actions/invite';
 
 interface OrganizationUpdateData {
   name?: string;
@@ -41,31 +45,30 @@ export async function updateOrganization(data: OrganizationUpdateData) {
       return { success: false, error: 'Not authenticated' };
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { organizationId: true, facilityId: true, role: true },
-    });
-
-    if (!user?.organizationId) {
+    const organizationId = session.user.organizationId;
+    if (!organizationId) {
       logger.error({ msg: '[org] updateOrganization: no org for user', userId: session.user.id });
       return { success: false, error: 'No organization found' };
     }
 
-    // Only admins can update organization (gate unchanged by the facility split).
-    if (!isAdminRole(user.role)) {
+    // Granular gate, mirroring updateFacility: the coarse admin-tier check let
+    // every admin-tier role through, which since the RBAC ruling demoted
+    // Supervisor (and excluded HR/Clinical/Finance from org settings) would be a
+    // privilege escalation. `organization.edit` resolves to Owner/Admin only.
+    if (!can(dbRoleToRoleKey(session.user.role), 'organization.edit')) {
       logger.warn({
-        msg: '[org] updateOrganization: non-admin attempt',
+        msg: '[org] updateOrganization: insufficient permission',
         userId: session.user.id,
-        role: user.role,
+        role: session.user.role,
       });
-      return { success: false, error: 'Only admins can update organization' };
+      return { success: false, error: 'You do not have permission to update this organization' };
     }
 
     // Org-only fields live on Organization; location/compliance fields now live
     // on the Facility. `?? undefined` avoids clobbering array columns when a
     // caller omits them (moved fields are usually saved via updateFacility).
     await prisma.organization.update({
-      where: { id: user.organizationId },
+      where: { id: organizationId },
       data: {
         name: data.name,
         dba: data.dba,
@@ -78,10 +81,17 @@ export async function updateOrganization(data: OrganizationUpdateData) {
       },
     });
 
-    // Moved fields → the user's facility (if one is attached).
-    if (user.facilityId) {
+    // Moved fields → the caller's facility (if their membership has one attached).
+    const membershipFacility = session.user.organizationUserId
+      ? await prisma.organizationUserFacility.findFirst({
+          where: { organizationUserId: session.user.organizationUserId, active: true },
+          select: { facilityId: true },
+        })
+      : null;
+
+    if (membershipFacility) {
       await prisma.facility.update({
-        where: { id: user.facilityId },
+        where: { id: membershipFacility.facilityId },
         data: {
           staffCount: data.staffCount,
           phone: data.phone,
@@ -101,7 +111,7 @@ export async function updateOrganization(data: OrganizationUpdateData) {
 
     logger.info({
       msg: '[org] Organization updated',
-      orgId: user.organizationId,
+      orgId: organizationId,
       userId: session.user.id,
     });
 
@@ -110,10 +120,10 @@ export async function updateOrganization(data: OrganizationUpdateData) {
     await audit({
       action: 'org.settings.update',
       actorId: session.user.id,
-      actorRole: user.role,
-      organizationId: user.organizationId,
+      actorRole: session.user.role,
+      organizationId,
       targetType: 'organization',
-      targetId: user.organizationId,
+      targetId: organizationId,
       ...getClientContext(await headers()),
     });
 
@@ -131,19 +141,29 @@ export async function getOrganization() {
       return { success: false, error: 'Not authenticated', data: null };
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      include: { organization: true, facility: true },
-    });
+    const organizationId = session.user.organizationId;
+    if (!organizationId) {
+      return { success: false, error: 'No organization found', data: null };
+    }
 
-    if (!user?.organization) {
+    const [organization, membershipFacility] = await Promise.all([
+      prisma.organization.findUnique({ where: { id: organizationId } }),
+      session.user.organizationUserId
+        ? prisma.organizationUserFacility.findFirst({
+            where: { organizationUserId: session.user.organizationUserId, active: true },
+            select: { facility: true },
+          })
+        : Promise.resolve(null),
+    ]);
+
+    if (!organization) {
       return { success: false, error: 'No organization found', data: null };
     }
 
     // Nested shape: facility may be null for users not yet attached to one.
     return {
       success: true,
-      data: { organization: user.organization, facility: user.facility ?? null },
+      data: { organization, facility: membershipFacility?.facility ?? null },
     };
   } catch (error) {
     logger.error({ msg: 'Error fetching organization:', err: error });
@@ -194,12 +214,14 @@ export async function updateFacility(data: FacilityUpdateData) {
       return { success: false, error: 'Forbidden' };
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { facilityId: true },
-    });
+    const membershipFacility = session.user.organizationUserId
+      ? await prisma.organizationUserFacility.findFirst({
+          where: { organizationUserId: session.user.organizationUserId, active: true },
+          select: { facilityId: true },
+        })
+      : null;
 
-    if (!user?.facilityId) {
+    if (!membershipFacility) {
       logger.error({
         msg: '[facility] updateFacility: no facility for user',
         userId: session.user.id,
@@ -208,7 +230,7 @@ export async function updateFacility(data: FacilityUpdateData) {
     }
 
     await prisma.facility.update({
-      where: { id: user.facilityId },
+      where: { id: membershipFacility.facilityId },
       data: {
         name: data.name,
         type: data.type,
@@ -228,13 +250,114 @@ export async function updateFacility(data: FacilityUpdateData) {
 
     logger.info({
       msg: '[facility] Facility updated',
-      facilityId: user.facilityId,
+      facilityId: membershipFacility.facilityId,
       userId: session.user.id,
     });
     return { success: true };
   } catch (error) {
     logger.error({ msg: 'Error updating facility:', err: error });
     return { success: false, error: 'Failed to update facility' };
+  }
+}
+
+const createFacilitySchema = z.object({
+  name: z.string().trim().min(1, 'Facility name is required').max(200),
+  type: z.string().trim().min(1, 'Facility type is required').max(200),
+  address: z.string().trim().max(500).optional(),
+  // Blank is a first-class choice — the modal's copy is "leave empty if you'll
+  // manage it yourself" — so an empty string must not fail email validation.
+  supervisorEmail: z
+    .union([z.string().email('Enter a valid supervisor email'), z.literal('')])
+    .optional(),
+});
+
+export type CreateFacilityInput = z.infer<typeof createFacilitySchema>;
+
+/**
+ * Add a facility to the caller's organization, optionally inviting a supervisor
+ * to run it. Gated on `facility.create` (Owner/Admin only per the RBAC matrix).
+ *
+ * The invite is best-effort: a facility that exists without its supervisor
+ * invite is recoverable from the staff screen, whereas failing the whole action
+ * would leave the admin unable to tell whether the facility was created.
+ */
+export async function createFacility(
+  input: CreateFacilityInput,
+): Promise<{ success: boolean; error?: string; facilityId?: string; supervisorInvited?: boolean }> {
+  try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return { success: false, error: 'Not authenticated' };
+    }
+
+    const organizationId = session.user.organizationId;
+    if (!organizationId) {
+      return { success: false, error: 'No organization found' };
+    }
+
+    if (!can(dbRoleToRoleKey(session.user.role), 'facility.create')) {
+      logger.warn({
+        msg: '[org] createFacility: permission denied',
+        userId: session.user.id,
+        role: session.user.role,
+      });
+      return { success: false, error: 'You do not have permission to create facilities.' };
+    }
+
+    const parsed = createFacilitySchema.safeParse(input);
+    if (!parsed.success) {
+      return {
+        success: false,
+        error: parsed.error.issues[0]?.message ?? 'Invalid facility details',
+      };
+    }
+
+    const { name, type, address } = parsed.data;
+    const supervisorEmail = parsed.data.supervisorEmail?.trim().toLowerCase() || undefined;
+
+    const facility = await prisma.facility.create({
+      data: { organizationId, name, type, address },
+      select: { id: true },
+    });
+
+    logger.info({
+      msg: '[org] Facility created',
+      orgId: organizationId,
+      facilityId: facility.id,
+      userId: session.user.id,
+    });
+
+    await audit({
+      action: 'org.facility.create',
+      actorId: session.user.id,
+      actorRole: session.user.role,
+      organizationId,
+      targetType: 'facility',
+      targetId: facility.id,
+      ...getClientContext(await headers()),
+    });
+
+    let supervisorInvited = false;
+    if (supervisorEmail) {
+      const invite = await createInvites([{ email: supervisorEmail, role: 'supervisor' }], {
+        facilityId: facility.id,
+      });
+      supervisorInvited = invite.success && invite.results.some((r) => r.status === 'sent');
+      if (!supervisorInvited) {
+        logger.warn({
+          msg: '[org] Facility supervisor invite not sent',
+          facilityId: facility.id,
+          email: maskEmail(supervisorEmail),
+          error: invite.error,
+        });
+      }
+    }
+
+    revalidatePath('/dashboard/settings');
+    return { success: true, facilityId: facility.id, supervisorInvited };
+  } catch (error) {
+    logger.error({ msg: '[org] Failed to create facility', err: error });
+    return { success: false, error: 'Failed to create facility' };
   }
 }
 
@@ -264,11 +387,11 @@ export async function createOrganization(data: OrganizationCreationData) {
     const userId = session.user.id;
 
     // One organisation per user — a user already in an org cannot create another.
-    const existingMembership = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { organizationId: true },
+    const existingMembership = await prisma.organizationUser.findFirst({
+      where: { userId, active: true },
+      select: { id: true },
     });
-    if (existingMembership?.organizationId) {
+    if (existingMembership) {
       logger.warn({ msg: '[org] createOrganization: user already in an organization', userId });
       return {
         success: false,
@@ -298,7 +421,7 @@ export async function createOrganization(data: OrganizationCreationData) {
       };
     }
 
-    const organizationId = await prisma.$transaction(async (tx) => {
+    const { orgId, facilityId } = await prisma.$transaction(async (tx) => {
       const org = await tx.organization.create({
         data: {
           name: data.legalName,
@@ -326,24 +449,16 @@ export async function createOrganization(data: OrganizationCreationData) {
         },
       });
 
-      // Link user to this new org + facility as its owner (founder).
-      await tx.user.update({
-        where: { id: userId },
-        data: {
-          organizationId: org.id,
-          facilityId: facility.id,
-          role: 'owner',
-          roleAssignedAt: new Date(),
-        },
-      });
-
-      return org.id;
+      return { orgId: org.id, facilityId: facility.id };
     });
 
-    logger.info({ msg: '[org] Organization created', orgId: organizationId, userId });
-    logger.info({ msg: '[org] User linked to new org as owner', userId, orgId: organizationId });
+    // Link user to this new org + facility as its owner (founder).
+    await createMembership({ userId, organizationId: orgId, facilityId, role: 'owner' });
 
-    return { success: true, organizationId };
+    logger.info({ msg: '[org] Organization created', orgId, userId });
+    logger.info({ msg: '[org] User linked to new org as owner', userId, orgId });
+
+    return { success: true, organizationId: orgId };
   } catch (error) {
     logger.error({ msg: 'Error creating organization:', err: error });
     return { success: false, error: 'Failed to create organization' };
@@ -392,12 +507,15 @@ export async function uploadComplianceDocument(formData: FormData) {
       return { success: false, error: 'Unauthorized to upload facility documents' };
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { organizationId: true, facilityId: true },
-    });
+    const organizationId = session.user.organizationId;
+    const membershipFacility = session.user.organizationUserId
+      ? await prisma.organizationUserFacility.findFirst({
+          where: { organizationUserId: session.user.organizationUserId, active: true },
+          select: { facilityId: true },
+        })
+      : null;
 
-    if (!user?.facilityId) {
+    if (!organizationId || !membershipFacility) {
       return { success: false, error: 'No facility found' };
     }
 
@@ -405,18 +523,18 @@ export async function uploadComplianceDocument(formData: FormData) {
     const buffer = Buffer.from(await file.arrayBuffer());
     const timestamp = Date.now();
     const safeName = file.name.replace(/[^a-z0-9.]/gi, '_').toLowerCase();
-    const key = `organizations/${user.organizationId}/compliance/${timestamp}-${safeName}`;
+    const key = `organizations/${organizationId}/compliance/${timestamp}-${safeName}`;
     const { storageUri } = await uploadFile(key, buffer, file.type || 'application/pdf');
 
     // Persist onto the facility so the reference survives a page refresh.
     await prisma.facility.update({
-      where: { id: user.facilityId },
+      where: { id: membershipFacility.facilityId },
       data: { complianceDocumentUrl: storageUri, complianceDocumentName: file.name },
     });
 
     logger.info({
       msg: '[facility] Compliance document uploaded',
-      facilityId: user.facilityId,
+      facilityId: membershipFacility.facilityId,
       userId: session.user.id,
       filename: file.name,
     });

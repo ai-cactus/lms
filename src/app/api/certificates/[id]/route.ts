@@ -17,7 +17,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
     const certificate = await prisma.certificate.findUnique({
       where: { id: params.id },
       include: {
-        user: { select: { organizationId: true } },
+        organizationUser: { select: { organizationId: true } },
       },
     });
 
@@ -25,10 +25,10 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
       return NextResponse.json({ error: 'Certificate not found' }, { status: 404 });
     }
 
-    const isWorker = workerSession?.user?.id === certificate.userId;
+    const isWorker = workerSession?.user?.organizationUserId === certificate.organizationUserId;
     const isAdmin =
       adminSession?.user?.id &&
-      adminSession.user.organizationId === certificate.user.organizationId;
+      adminSession.user.organizationId === certificate.organizationUser.organizationId;
 
     if (!isWorker && !isAdmin) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
@@ -45,7 +45,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
       action: 'certificate.download',
       actorId: isWorker ? workerSession?.user?.id : adminSession?.user?.id,
       actorRole: isWorker ? 'worker' : 'admin',
-      organizationId: certificate.user.organizationId ?? undefined,
+      organizationId: certificate.organizationUser.organizationId,
       targetType: 'certificate',
       targetId: params.id,
       ...getClientContext(request.headers),

@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
+import { Library } from 'lucide-react';
 import { getCategories, createCustomCategory } from '@/app/actions/categories';
 import { Button } from '@/components/ui/button';
 import {
@@ -106,6 +108,14 @@ export default function Step1Category({ selectedCategoryId, onSelect }: Step1Cat
             ))}
           </SelectContent>
         </Select>
+
+        <Link
+          href="/dashboard/courses/prebuilt"
+          className="mt-2 inline-flex items-center gap-2 self-start text-sm font-semibold text-primary hover:underline md:text-base"
+        >
+          <Library className="size-4" aria-hidden="true" />
+          Or choose a prebuilt course on Theraptly
+        </Link>
       </div>
 
       {isCreating && (

@@ -20,7 +20,7 @@ export async function createLesson(data: {
     where: { id: data.courseId },
     include: { lessons: { select: { order: true } } },
   });
-  if (!course || course.createdBy !== session.user.id) {
+  if (!course || course.createdByOrgUserId !== session.user.organizationUserId) {
     throw new Error('Course not found');
   }
 
@@ -57,7 +57,7 @@ export async function updateLesson(
     where: { id: lessonId },
     include: { course: true },
   });
-  if (!existing || existing.course.createdBy !== session.user.id) {
+  if (!existing || existing.course.createdByOrgUserId !== session.user.organizationUserId) {
     throw new Error('Lesson not found');
   }
 
@@ -80,7 +80,7 @@ export async function deleteLesson(lessonId: string) {
     where: { id: lessonId },
     include: { course: true },
   });
-  if (!existing || existing.course.createdBy !== session.user.id) {
+  if (!existing || existing.course.createdByOrgUserId !== session.user.organizationUserId) {
     throw new Error('Lesson not found');
   }
 
@@ -113,7 +113,7 @@ export async function reorderLessons(
   }
 
   const course = await prisma.course.findUnique({ where: { id: courseId } });
-  if (!course || course.createdBy !== session.user.id) {
+  if (!course || course.createdByOrgUserId !== session.user.organizationUserId) {
     throw new Error('Course not found');
   }
 
@@ -155,7 +155,7 @@ export async function createLessonWithQuiz(data: {
     where: { id: data.courseId },
     include: { lessons: { select: { order: true } } },
   });
-  if (!course || course.createdBy !== session.user.id) {
+  if (!course || course.createdByOrgUserId !== session.user.organizationUserId) {
     throw new Error('Course not found');
   }
 

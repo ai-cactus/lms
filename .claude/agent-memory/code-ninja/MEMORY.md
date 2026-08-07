@@ -1,18 +1,20 @@
 # Code-Ninja Memory Index
 
+- [npm install needs --allow-remote=all](gotcha_npm_install_allow_remote.md) — lockfile has ~293 npmmirror.com URLs; npm 12 aborts with EALLOWREMOTE without the flag.
+- [npm audit high gate](project_npm_audit_gate.md) — cleared via overrides; the load-bearing `minimatch@10` pin breaks ~12 currently-disabled react/import/jsx-a11y rules.
 - [Auth instance-selector vs DB role](auth_instance_vs_role.md) — the `'admin'|'worker'` cookie/routing selector is NOT the DB role; don't conflate them.
 - [Build type-checks everything](build_typecheck_scope.md) — `next build` type-checks scripts/ and tests too; `npm run lint` only covers src/.
 - [RBAC role model](rbac_role_model.md) — 13 category-aware DB roles (5 manager + 8 worker, uniform worker perms); DEFAULT_SELF_SERVE_WORKER_ROLE + snake↔camel conversion in role-utils.ts.
-- [Org/Facility split](org_facility_split.md) — location/compliance fields moved to Facility; one facility per org; facility.* = owner+supervisor only.
+- [Org/Facility split](org_facility_split.md) — location/compliance fields moved to Facility; now genuinely multi-facility (OrganizationUserFacility); facility.* = owner+supervisor only.
 - [Offline migrations](project_offline_migrations.md) — dev DB (localhost:5433) often unreachable; scaffold Prisma migrations offline via `migrate diff --from-schema/--to-schema`.
-- [migrate dev destructive diff](project_migrate_dev_destructive_diff.md) — `prisma migrate dev` autogen drops the raw-SQL pgvector `embedding` col + facility defaults; hand-author migrations instead.
+- [migrate dev destructive diff](project_migrate_dev_destructive_diff.md) — autogen drops the raw-SQL pgvector col + facility defaults, AND `migrate dev` hangs on an interactive prompt; hand-author + verify with Prisma-7 `migrate diff` flags.
 - [migrate dev HNSW drift](project_migrate_dev_hnsw_drift.md) — every new migration spuriously drops `manual_chunks_embedding_hnsw_idx` (raw-SQL pgvector index); strip the DROP INDEX line.
 - [Never run prisma format](gotcha_prisma_format_churn.md) — it rewrites every schema file; hand-align the one model you touched and validate instead.
 - [MinIO dev port mismatch](gotcha_minio_dev_port_mismatch.md) — compose publishes MinIO on 9005 but .env expects 9000; run it standalone for storage/video flows to work locally.
 - [Vitest @/generated alias](project_vitest_generated_alias.md) — vitest.config.mts must alias @/generated & @/db (most-specific first) or value-imports of generated Prisma fail in tests.
 - [Email delivery tracking](project_email_delivery_tracking.md) — EmailMessage has two disjoint recording paths (dispatch vs sendMailTracked); reminder senders bypass sendMailTracked to avoid double-record.
 - [E2E seed infra](project_e2e_seed_infra.md) — prisma/seed.ts (tsx, self-contained client), E2E rate-limit bypass, role-based login landings, quiz shape; assignRetake locked-only bug.
-- [Secure-cookie delete + prod e2e gotchas](gotcha_secure_cookie_delete_and_prod_e2e.md) — cookies().delete omits Secure so __Secure- deletions fail in prod (next dev masks it); onboarding-worker image deadlock; CI e2e = next start.
+- [Secure-cookie delete + prod e2e gotchas](gotcha_secure_cookie_delete_and_prod_e2e.md) — cookies().delete omits Secure so __Secure- deletions fail in prod (next dev masks it); CI/local e2e = next start, so rebuild (with NEXT_PUBLIC_APP_URL=3005) before trusting any e2e verdict.
 - [Repro v4.6 AI pipeline locally](repro_v46_ai_pipeline_locally.md) — ADC unavailable in sandbox; drive gemini-flash-lite-latest via AI-Studio Express key in .env; model/token facts.
 - [Phase 2 batch-quiz truncation](phase2_batch_quiz_truncation.md) — Stage C 0-questions root cause = 16384 output cap truncation; hybrid single-call/chunk fix; keep meta.requestedQuestionCount = original.
 - [Local UI verification](project_local_ui_verification.md) — docker start + prisma db seed + redis login-lockout reset before Playwright-driving localhost:3005.
@@ -29,5 +31,8 @@
 - [Figma WORKER CERTIFICATES + cert modal](reference_figma_worker_certificates.md) — they live in a second "WORKERS" section (14044:73449), not WORKER USERTYPE; grep the page metadata dump by text.
 - [Full-bleed dialog + fixed-px artwork](gotcha_fullbleed_dialog_scaling.md) — grid min-content breaks %-width scale measurement; viewport-corner close needs viewport-spanning content.
 - [Figma STAFF section map](reference_figma_staff_section.md) — list/profile/mobile frames; the profile design omits the real Passed/Locked states and its Retry row is unbuildable literally.
+- [EnrollmentStatus.failed is never written](gotcha_enrollment_failed_status_unused.md) — quiz failures stay `in_progress`; derive pass/fail from score vs Quiz.passingScore, never from status.
 - [RHF watch() breaks React Compiler](gotcha_rhf_watch_react_compiler.md) — lint warns on `watch()`; use `useWatch({control,name})` in client forms.
 - [Radix Select in a form echoes ""](gotcha_radix_select_in_form_echoes_empty.md) — programmatic value set gets wiped by the hidden native select; guard `onValueChange`.
+- [Revalidation cache is identity-only](gotcha_revalidation_cache_is_identity_only.md) — never cache role/organizationId; membership is re-read live every decode.
+- [`admin` is un-retired](gotcha_admin_role_unretired.md) — drop dev's retired-admin JWT guard; gate roster PII on `user.read`, not `isAdminRole`.

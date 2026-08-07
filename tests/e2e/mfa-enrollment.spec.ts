@@ -56,6 +56,7 @@ async function dbClient(): Promise<Client> {
 
 interface SeededUser {
   userId: string;
+  orgUserId: string;
   email: string;
   password: string;
   organizationId: string;
@@ -80,6 +81,7 @@ async function seedMfaTestUser(): Promise<SeededUser> {
     const password = 'MfaE2eP@ssw0rd99';
     const hashed = await bcrypt.hash(password, 10);
     const userId = crypto.randomUUID();
+    const orgUserId = crypto.randomUUID();
     const organizationId = crypto.randomUUID();
     const facilityId = crypto.randomUUID();
     const slug = `mfa-e2e-${crypto.randomBytes(4).toString('hex')}`;
@@ -95,16 +97,21 @@ async function seedMfaTestUser(): Promise<SeededUser> {
       [facilityId, organizationId, 'Mfa E2E Facility'],
     );
     await db.query(
-      `INSERT INTO users (id, email, password, role, email_verified, mfa_enabled, organization_id, facility_id, created_at, updated_at)
-       VALUES ($1, $2, $3, 'owner'::"UserRole", true, false, $4, $5, NOW(), NOW())`,
-      [userId, email, hashed, organizationId, facilityId],
+      `INSERT INTO users (id, email, password, email_verified, mfa_enabled, auth_provider, first_name, last_name, full_name, created_at, updated_at)
+       VALUES ($1, $2, $3, true, false, 'credentials', $4, $5, $6, NOW(), NOW())`,
+      [userId, email, hashed, 'Mfa', 'Enrollee', 'Mfa Enrollee'],
     );
     await db.query(
-      `INSERT INTO profiles (id, email, first_name, last_name, full_name, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`,
-      [userId, email, 'Mfa', 'Enrollee', 'Mfa Enrollee'],
+      `INSERT INTO organization_users (id, user_id, organization_id, role, active, joined_at, role_assigned_at, created_at, updated_at)
+       VALUES ($1, $2, $3, 'owner'::"UserRole", true, NOW(), NOW(), NOW(), NOW())`,
+      [orgUserId, userId, organizationId],
     );
-    return { userId, email, password, organizationId, facilityId };
+    await db.query(
+      `INSERT INTO organization_user_facilities (id, organization_user_id, facility_id, active, joined_at)
+       VALUES ($1, $2, $3, true, NOW())`,
+      [crypto.randomUUID(), orgUserId, facilityId],
+    );
+    return { userId, orgUserId, email, password, organizationId, facilityId };
   } finally {
     await db.end();
   }
@@ -115,9 +122,11 @@ async function cleanupMfaTestUser(seeded: SeededUser): Promise<void> {
   try {
     await db.query(`DELETE FROM mfa_recovery_codes WHERE user_id = $1`, [seeded.userId]);
     await db.query(`DELETE FROM mfa_factors WHERE user_id = $1`, [seeded.userId]);
-    await db.query(`DELETE FROM profiles WHERE id = $1`, [seeded.userId]);
-    // users -> organizations/facilities are onDelete: Restrict — the user row
-    // must be gone before the org/facility it points to can be deleted.
+    await db.query(
+      `DELETE FROM organization_user_facilities WHERE organization_user_id = $1`,
+      [seeded.orgUserId],
+    );
+    await db.query(`DELETE FROM organization_users WHERE id = $1`, [seeded.orgUserId]);
     await db.query(`DELETE FROM users WHERE id = $1`, [seeded.userId]);
     await db.query(`DELETE FROM facilities WHERE id = $1`, [seeded.facilityId]);
     await db.query(`DELETE FROM organizations WHERE id = $1`, [seeded.organizationId]);

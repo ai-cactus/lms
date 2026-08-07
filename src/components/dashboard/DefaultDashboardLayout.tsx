@@ -46,8 +46,8 @@ const DefaultDashboardLayout: FC<Props> = ({ role, fullName, children }) => {
   const canSeeBilling = roleKey ? canAccessModule(roleKey, 'Billing') : false;
   const canSeeHelpCenter = roleKey ? canAccessModule(roleKey, 'Help Center') : false;
 
-  const showPerformanceSection = canSeeStaffManagement || canSeeAuditReports;
-  const showSettingsSection = canSeeSettings || canSeeBilling || canSeeHelpCenter;
+  const showManagementSection = canSeeStaffManagement || canSeeAuditReports;
+  const showPreferencesSection = canSeeSettings || canSeeBilling;
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Sync sidebar state with navigation
@@ -67,11 +67,11 @@ const DefaultDashboardLayout: FC<Props> = ({ role, fullName, children }) => {
   }, [sidebarOpen]);
 
   const navSectionLabelCls =
-    'px-3 pb-3 text-xs font-semibold uppercase leading-[1.5] tracking-[0.96px] text-[#a4abb8]';
+    'px-3 pb-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-[#a4abb8]';
   const navItemBase =
-    'flex items-center gap-3 rounded-[7px] px-4 py-[15px] text-lg font-medium leading-7 text-[#808897] transition-colors hover:bg-[#f9fafb] hover:text-[#0c111d]';
+    'flex items-center gap-3 rounded-[7px] px-3 py-2.5 text-sm font-medium text-[#808897] transition-colors hover:bg-[#f9fafb] hover:text-[#0c111d]';
   const navItemActive = 'border border-[#dfe1e6] bg-[#f9fafb] !text-[#0c111d]';
-  const navIconCls = 'size-[23px] shrink-0';
+  const navIconCls = 'size-5 shrink-0';
 
   return (
     <div className="relative flex h-full w-full bg-white">
@@ -91,14 +91,14 @@ const DefaultDashboardLayout: FC<Props> = ({ role, fullName, children }) => {
           sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
         ].join(' ')}
       >
-        <div className="flex h-[92px] shrink-0 items-center justify-between px-6">
+        <div className="flex h-20 shrink-0 items-center justify-between px-6">
           <Logo size="nav" variant="brand" />
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-[18px] overflow-y-auto px-4 pb-[30px]">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 pb-5">
           {isAdminRole(role) && <SidebarModeSwitcher mode="manage" />}
 
-          <nav className="flex flex-col gap-[18px]">
+          <nav className="flex flex-col gap-3">
             <div className="flex flex-col">
               <h4 className={navSectionLabelCls}>Main Menu</h4>
               <div className="flex flex-col gap-1">
@@ -144,9 +144,9 @@ const DefaultDashboardLayout: FC<Props> = ({ role, fullName, children }) => {
               </div>
             </div>
 
-            {showPerformanceSection && (
+            {showManagementSection && (
               <div className="flex flex-col">
-                <h4 className={navSectionLabelCls}>Performance</h4>
+                <h4 className={navSectionLabelCls}>Management</h4>
                 <div className="flex flex-col gap-1">
                   {canSeeStaffManagement && (
                     <Link
@@ -171,20 +171,10 @@ const DefaultDashboardLayout: FC<Props> = ({ role, fullName, children }) => {
               </div>
             )}
 
-            {showSettingsSection && (
+            {showPreferencesSection && (
               <div className="flex flex-col">
-                <h4 className={`${navSectionLabelCls} pt-2`}>Settings</h4>
+                <h4 className={`${navSectionLabelCls} pt-2`}>Preferences</h4>
                 <div className="flex flex-col gap-1">
-                  {canSeeSettings && (
-                    <Link
-                      href="/dashboard/settings"
-                      className={`${navItemBase} ${pathname.startsWith('/dashboard/settings') ? navItemActive : ''}`}
-                    >
-                      <Settings className={navIconCls} />
-                      <span>Settings</span>
-                    </Link>
-                  )}
-
                   {canSeeBilling && (
                     <Link
                       href="/dashboard/billing"
@@ -195,19 +185,31 @@ const DefaultDashboardLayout: FC<Props> = ({ role, fullName, children }) => {
                     </Link>
                   )}
 
-                  {canSeeHelpCenter && (
+                  {canSeeSettings && (
                     <Link
-                      href="/dashboard/help"
-                      className={`${navItemBase} ${pathname.startsWith('/dashboard/help') ? navItemActive : ''}`}
+                      href="/dashboard/settings"
+                      className={`${navItemBase} ${pathname.startsWith('/dashboard/settings') ? navItemActive : ''}`}
                     >
-                      <HelpCircle className={navIconCls} />
-                      <span>Help Center</span>
+                      <Settings className={navIconCls} />
+                      <span>Settings</span>
                     </Link>
                   )}
                 </div>
               </div>
             )}
           </nav>
+
+          {canSeeHelpCenter && (
+            <div className="mt-auto pt-6">
+              <Link
+                href="/dashboard/help"
+                className={`${navItemBase} ${pathname.startsWith('/dashboard/help') ? navItemActive : ''}`}
+              >
+                <HelpCircle className={navIconCls} />
+                <span>Help Center</span>
+              </Link>
+            </div>
+          )}
         </div>
       </aside>
 

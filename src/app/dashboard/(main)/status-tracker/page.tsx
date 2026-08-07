@@ -1,7 +1,6 @@
 import React from 'react';
 import { redirect } from 'next/navigation';
 import { auth } from '@/auth';
-import prisma from '@/lib/prisma';
 import { getStatusTrackerSummaryForOrg } from '@/lib/reminders/status-tracker';
 import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
 import { can } from '@/lib/rbac/permissions';
@@ -23,19 +22,16 @@ export default async function StatusTrackerPage() {
     redirect('/login');
   }
 
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { role: true, organizationId: true },
-  });
+  const { role, organizationId } = session.user;
 
   // Roster-wide assignment visibility gates this page (finance is excluded from
   // worker training metrics even though it is an admin-tier role).
-  if (!user || !can(dbRoleToRoleKey(user.role as Role), 'assignment.read')) {
+  if (!can(dbRoleToRoleKey(role as Role), 'assignment.read')) {
     redirect('/dashboard');
   }
 
-  const summary = user.organizationId
-    ? await getStatusTrackerSummaryForOrg(user.organizationId)
+  const summary = organizationId
+    ? await getStatusTrackerSummaryForOrg(organizationId)
     : {
         overdueCount: 0,
         hardEscalationCount: 0,

@@ -6,9 +6,16 @@
  *   - Session with no invite.create permission → Forbidden
  *   - Invalid role string → per-row 'forbidden' status (not a whole-batch error)
  *   - Privilege escalation (hr→supervisor, anyone→owner) → per-row 'forbidden'
- *   - Valid invite path → invites are created, email is sent
+ *   - Valid invite path → invites are created (with the invite's facility), email is sent
  *   - Per-item roles → each email's invite is created with ITS own role
  *   - Seat counting (D2): all non-owner roles count; owner does not
+ *
+ * Multi-org refactor: every invite now targets a facility (resolved from the
+ * inviter's own OrganizationUserFacility, falling back to the org's oldest
+ * facility), and "already exists" is scoped to an ACTIVE membership in THIS
+ * organization — an identity that exists but has no active membership here
+ * (a different org, or a removed staff member) is invited normally rather
+ * than blocked, since multi-org membership is the point of this model.
  *
  * External deps (@/auth, @/lib/prisma, @/lib/email, @/lib/billing-plans,
  * next/cache) are all mocked to keep this a pure unit test.
@@ -20,9 +27,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const {
   mockAuth,
   mockOrgFindUnique,
-  mockUserCount,
+  mockOrganizationUserCount,
   mockInviteCount,
-  mockUserFindMany,
+  mockOrganizationUserFindMany,
+  mockOrganizationUserFacilityFindFirst,
+  mockFacilityFindFirst,
   mockInviteFindMany,
   mockInviteCreateMany,
   mockInviteUpdate,
@@ -35,9 +44,11 @@ const {
   return {
     mockAuth: vi.fn(),
     mockOrgFindUnique: vi.fn(),
-    mockUserCount: vi.fn(),
+    mockOrganizationUserCount: vi.fn(),
     mockInviteCount: vi.fn(),
-    mockUserFindMany: vi.fn(),
+    mockOrganizationUserFindMany: vi.fn(),
+    mockOrganizationUserFacilityFindFirst: vi.fn(),
+    mockFacilityFindFirst: vi.fn(),
     mockInviteFindMany: vi.fn(),
     mockInviteCreateMany: vi.fn(),
     mockInviteUpdate: vi.fn(),
@@ -54,7 +65,9 @@ vi.mock('@/auth', () => ({ auth: mockAuth }));
 vi.mock('@/lib/prisma', () => ({
   default: {
     organization: { findUnique: mockOrgFindUnique },
-    user: { count: mockUserCount, findMany: mockUserFindMany },
+    organizationUser: { count: mockOrganizationUserCount, findMany: mockOrganizationUserFindMany },
+    organizationUserFacility: { findFirst: mockOrganizationUserFacilityFindFirst },
+    facility: { findFirst: mockFacilityFindFirst },
     invite: {
       count: mockInviteCount,
       findMany: mockInviteFindMany,
@@ -105,6 +118,7 @@ function makeSession(role: string, extras: Record<string, unknown> = {}) {
       email: 'admin@acme.com',
       role,
       organizationId: 'org-1',
+      organizationUserId: 'ou-admin-1',
       ...extras,
     },
   };
@@ -121,11 +135,15 @@ function stubOrgNoSubscription() {
 beforeEach(() => {
   vi.clearAllMocks();
   // Default stubs for the batch lookup used after the seat check
-  mockUserFindMany.mockResolvedValue([]);
+  mockOrganizationUserFindMany.mockResolvedValue([]);
   mockInviteFindMany.mockResolvedValue([]);
   mockInviteCreateMany.mockResolvedValue({ count: 1 });
   mockInviteUpdate.mockResolvedValue({});
   mockSendInviteEmail.mockResolvedValue(undefined);
+  // The inviter's own facility assignment resolves cleanly by default so
+  // facility resolution doesn't need per-test setup unless a test cares.
+  mockOrganizationUserFacilityFindFirst.mockResolvedValue({ facilityId: 'facility-1' });
+  mockFacilityFindFirst.mockResolvedValue({ id: 'facility-1' });
 });
 
 // ── Auth guard ────────────────────────────────────────────────────────────────
@@ -177,15 +195,68 @@ describe('createInvites() — auth guards', () => {
   });
 });
 
+// ── Facility resolution ──────────────────────────────────────────────────────
+
+describe('createInvites() — facility resolution for the invite', () => {
+  // supervisor is read-only (no invite.create) per the RBAC ruling — use hr,
+  // which retains invite.create, as the inviter for these facility-resolution checks.
+  beforeEach(() => {
+    mockAuth.mockResolvedValue(makeSession('hr'));
+    stubOrgNoSubscription();
+  });
+
+  it('prefers the inviter’s own active facility assignment', async () => {
+    mockOrganizationUserFacilityFindFirst.mockResolvedValue({ facilityId: 'facility-inviter' });
+
+    await createInvites([item('hr@acme.com', 'hr')]);
+
+    expect(mockOrganizationUserFacilityFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { organizationUserId: 'ou-admin-1', active: true } }),
+    );
+    expect(mockFacilityFindFirst).not.toHaveBeenCalled();
+    const inviteData = mockInviteCreateMany.mock.calls[0][0].data[0];
+    expect(inviteData.facilityId).toBe('facility-inviter');
+  });
+
+  it('falls back to the org’s oldest facility when the inviter has no facility assignment', async () => {
+    mockOrganizationUserFacilityFindFirst.mockResolvedValue(null);
+    mockFacilityFindFirst.mockResolvedValue({ id: 'facility-fallback' });
+
+    await createInvites([item('hr@acme.com', 'hr')]);
+
+    expect(mockFacilityFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { organizationId: 'org-1' } }),
+    );
+    const inviteData = mockInviteCreateMany.mock.calls[0][0].data[0];
+    expect(inviteData.facilityId).toBe('facility-fallback');
+  });
+
+  it('fails the whole batch when the organization has no facility at all', async () => {
+    mockOrganizationUserFacilityFindFirst.mockResolvedValue(null);
+    mockFacilityFindFirst.mockResolvedValue(null);
+
+    const result = await createInvites([item('hr@acme.com', 'hr')]);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/no facility/i);
+    expect(mockInviteCreateMany).not.toHaveBeenCalled();
+  });
+});
+
 // ── Per-row role validation ───────────────────────────────────────────────────
 
 describe('createInvites() — invalid role is rejected per-row', () => {
+  // supervisor is read-only (no invite.create) per the RBAC ruling — hr is the
+  // representative admin-tier role that CAN issue invites.
   beforeEach(() => {
-    mockAuth.mockResolvedValue(makeSession('supervisor'));
+    mockAuth.mockResolvedValue(makeSession('hr'));
   });
 
   it('flags an unknown role string as a forbidden row (no whole-batch failure)', async () => {
-    const result = await createInvites([item('new@acme.com', 'admin')]);
+    // 'admin' is now a real UserRole (Owner-equivalent) since the multi-org
+    // refactor, so it no longer serves as an "unknown role" fixture — use a
+    // string that was never a valid role.
+    const result = await createInvites([item('new@acme.com', 'super_admin')]);
 
     expect(result.success).toBe(true);
     const row = result.results.find((r) => r.email === 'new@acme.com');
@@ -244,8 +315,8 @@ describe('createInvites() — privilege escalation is blocked per-row', () => {
     expect(result.results.find((r) => r.email === 'new@acme.com')?.status).toBe('forbidden');
   });
 
-  it('supervisor cannot grant owner (owner is non-grantable)', async () => {
-    mockAuth.mockResolvedValue(makeSession('supervisor'));
+  it('admin cannot grant owner (owner is non-grantable, even to an owner-equivalent role)', async () => {
+    mockAuth.mockResolvedValue(makeSession('admin'));
 
     const result = await createInvites([item('new@acme.com', 'owner')]);
 
@@ -253,6 +324,15 @@ describe('createInvites() — privilege escalation is blocked per-row', () => {
     const row = result.results.find((r) => r.email === 'new@acme.com');
     expect(row?.status).toBe('forbidden');
     expect(row?.message).toBe('You cannot grant the requested role.');
+  });
+
+  it('supervisor cannot issue any invite at all (demoted to read-only — no invite.create)', async () => {
+    mockAuth.mockResolvedValue(makeSession('supervisor'));
+
+    const result = await createInvites([item('new@acme.com', 'nurse')]);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('Forbidden');
   });
 
   it('owner cannot grant owner (owner is non-grantable)', async () => {
@@ -267,9 +347,11 @@ describe('createInvites() — privilege escalation is blocked per-row', () => {
 
 // ── Valid invite path ─────────────────────────────────────────────────────────
 
-describe('createInvites() — valid supervisor → hr invite', () => {
+describe('createInvites() — valid hr → hr invite', () => {
+  // supervisor is read-only (no invite.create) per the RBAC ruling — hr is the
+  // representative admin-tier role that CAN issue invites.
   beforeEach(() => {
-    mockAuth.mockResolvedValue(makeSession('supervisor'));
+    mockAuth.mockResolvedValue(makeSession('hr'));
     stubOrgNoSubscription();
   });
 
@@ -291,7 +373,7 @@ describe('createInvites() — valid supervisor → hr invite', () => {
     expect(roleLabel).toContain('HR');
   });
 
-  it('calls prisma.invite.createMany with the requested role and organizationId', async () => {
+  it('calls prisma.invite.createMany with the requested role, organizationId and facilityId', async () => {
     await createInvites([item('hr@acme.com', 'hr')]);
 
     expect(mockInviteCreateMany).toHaveBeenCalledTimes(1);
@@ -299,6 +381,7 @@ describe('createInvites() — valid supervisor → hr invite', () => {
     expect(inviteData.role).toBe('hr');
     expect(inviteData.organizationId).toBe('org-1');
     expect(inviteData.email).toBe('hr@acme.com');
+    expect(inviteData.facilityId).toBe('facility-1');
   });
 
   it('revalidates the staff path after successful invite', async () => {
@@ -345,26 +428,25 @@ describe('createInvites() — seat counting excludes owner (D2)', () => {
     });
   });
 
-  it('seat count query filters role: { not: "owner" } for active users', async () => {
+  it('seat count query filters role: { not: "owner" }, active: true, for this organization', async () => {
     // Set up: 9 active users + 0 pending invites = 9/10 used
-    mockUserCount.mockResolvedValue(9);
+    mockOrganizationUserCount.mockResolvedValue(9);
     mockInviteCount.mockResolvedValue(0);
-    // Seat-check dedup queries
-    mockUserFindMany.mockResolvedValue([]);
+    mockOrganizationUserFindMany.mockResolvedValue([]);
     mockInviteFindMany.mockResolvedValue([]);
 
     await createInvites([item('new@acme.com', 'nurse')]);
 
-    // The first user.count call should have role: { not: 'owner' }
-    const userCountCall = mockUserCount.mock.calls[0][0];
-    expect(userCountCall.where.role).toEqual({ not: 'owner' });
-    expect(userCountCall.where.organizationId).toBe('org-1');
+    const orgUserCountCall = mockOrganizationUserCount.mock.calls[0][0];
+    expect(orgUserCountCall.where.role).toEqual({ not: 'owner' });
+    expect(orgUserCountCall.where.organizationId).toBe('org-1');
+    expect(orgUserCountCall.where.active).toBe(true);
   });
 
   it('seat count query filters role: { not: "owner" } for pending invites', async () => {
-    mockUserCount.mockResolvedValue(0);
+    mockOrganizationUserCount.mockResolvedValue(0);
     mockInviteCount.mockResolvedValue(0);
-    mockUserFindMany.mockResolvedValue([]);
+    mockOrganizationUserFindMany.mockResolvedValue([]);
     mockInviteFindMany.mockResolvedValue([]);
 
     await createInvites([item('new@acme.com', 'nurse')]);
@@ -376,10 +458,10 @@ describe('createInvites() — seat counting excludes owner (D2)', () => {
 
   it('rejects when adding a new invite would exceed the plan limit', async () => {
     // 10/10 seats used
-    mockUserCount.mockResolvedValue(10);
+    mockOrganizationUserCount.mockResolvedValue(10);
     mockInviteCount.mockResolvedValue(0);
     // The email is "new" (not existing)
-    mockUserFindMany.mockResolvedValue([]);
+    mockOrganizationUserFindMany.mockResolvedValue([]);
     mockInviteFindMany.mockResolvedValue([]);
 
     const result = await createInvites([item('new@acme.com', 'nurse')]);
@@ -392,9 +474,9 @@ describe('createInvites() — seat counting excludes owner (D2)', () => {
 
   it('allows invite when within limit', async () => {
     // 9/10 seats — room for 1 more
-    mockUserCount.mockResolvedValue(9);
+    mockOrganizationUserCount.mockResolvedValue(9);
     mockInviteCount.mockResolvedValue(0);
-    mockUserFindMany.mockResolvedValue([]);
+    mockOrganizationUserFindMany.mockResolvedValue([]);
     mockInviteFindMany.mockResolvedValue([]);
     // Also stub the post-check lookups
     mockInviteCreateMany.mockResolvedValue({ count: 1 });
@@ -419,9 +501,9 @@ describe("createInvites() — seat counting enforces the pro plan's 150-seat cap
 
   it("rejects when adding a new invite would exceed the pro plan's 150-seat limit", async () => {
     // 150/150 seats used
-    mockUserCount.mockResolvedValue(150);
+    mockOrganizationUserCount.mockResolvedValue(150);
     mockInviteCount.mockResolvedValue(0);
-    mockUserFindMany.mockResolvedValue([]);
+    mockOrganizationUserFindMany.mockResolvedValue([]);
     mockInviteFindMany.mockResolvedValue([]);
 
     const result = await createInvites([item('new@acme.com', 'nurse')]);
@@ -434,9 +516,9 @@ describe("createInvites() — seat counting enforces the pro plan's 150-seat cap
 
   it("allows the invite when one seat remains under the pro plan's 150-seat cap", async () => {
     // 149/150 seats — room for 1 more
-    mockUserCount.mockResolvedValue(149);
+    mockOrganizationUserCount.mockResolvedValue(149);
     mockInviteCount.mockResolvedValue(0);
-    mockUserFindMany.mockResolvedValue([]);
+    mockOrganizationUserFindMany.mockResolvedValue([]);
     mockInviteFindMany.mockResolvedValue([]);
     mockInviteCreateMany.mockResolvedValue({ count: 1 });
     mockSendInviteEmail.mockResolvedValue(undefined);
@@ -498,8 +580,8 @@ describe('createInvites() — existing member and pending-invite rows', () => {
     stubOrgNoSubscription();
   });
 
-  it('flags an email that already belongs to a user in this org as "exists"', async () => {
-    mockUserFindMany.mockResolvedValue([{ email: 'member@acme.com', organizationId: 'org-1' }]);
+  it('flags an email that already has an ACTIVE membership in this org as "exists"', async () => {
+    mockOrganizationUserFindMany.mockResolvedValue([{ user: { email: 'member@acme.com' } }]);
 
     const result = await createInvites([item('member@acme.com', 'nurse')]);
 
@@ -510,36 +592,26 @@ describe('createInvites() — existing member and pending-invite rows', () => {
     expect(mockInviteCreateMany).not.toHaveBeenCalled();
   });
 
-  it('flags an email that belongs to a user in a DIFFERENT org as "exists" with a login hint', async () => {
-    mockUserFindMany.mockResolvedValue([
-      { email: 'other-org@acme.com', organizationId: 'org-other' },
-    ]);
+  // Multi-org membership is the point of this model: an identity that exists
+  // but has no ACTIVE membership in THIS organization (a member of a
+  // different org, or a previously removed staff member here) is invited
+  // normally rather than blocked — the query itself is already scoped to
+  // { organizationId, active: true }, so such an identity never appears in
+  // the "existing membership" result set.
+  it('invites normally (not "exists") an email whose identity exists but has no active membership in this org', async () => {
+    mockOrganizationUserFindMany.mockResolvedValue([]); // no active membership in org-1
 
-    const result = await createInvites([item('other-org@acme.com', 'nurse')]);
-
-    const row = result.results.find((r) => r.email === 'other-org@acme.com');
-    expect(row?.status).toBe('exists');
-    expect(row?.message).toMatch(/already has an account/i);
-  });
-
-  // Re-invite lifecycle: an org-less existing account (e.g. a removed staff
-  // member) must NOT be treated as "already has an account" — it falls
-  // through and is re-invited like a brand-new address, to be relinked on
-  // accept (src/app/api/invite/accept/route.ts).
-  it('re-invites an org-less existing account (removed user) instead of skipping it as "exists"', async () => {
-    mockUserFindMany.mockResolvedValue([{ email: 'removed@acme.com', organizationId: null }]);
-
-    const result = await createInvites([item('removed@acme.com', 'nurse')]);
+    const result = await createInvites([item('elsewhere-or-removed@acme.com', 'nurse')]);
 
     expect(result.success).toBe(true);
-    const row = result.results.find((r) => r.email === 'removed@acme.com');
+    const row = result.results.find((r) => r.email === 'elsewhere-or-removed@acme.com');
     expect(row?.status).toBe('sent');
     expect(mockInviteCreateMany).toHaveBeenCalledTimes(1);
     const inserted = mockInviteCreateMany.mock.calls[0][0].data[0];
-    expect(inserted.email).toBe('removed@acme.com');
+    expect(inserted.email).toBe('elsewhere-or-removed@acme.com');
     expect(inserted.role).toBe('nurse');
     expect(mockSendInviteEmail).toHaveBeenCalledWith(
-      'removed@acme.com',
+      'elsewhere-or-removed@acme.com',
       expect.stringContaining('/join/'),
       'Acme Corp',
       expect.any(String),
@@ -595,8 +667,8 @@ describe('createInvites() — mixed batch produces correct per-row statuses', ()
   });
 
   it('handles a batch of valid-manager, valid-worker, non-grantable, duplicate, and existing-member rows independently', async () => {
-    // 'member@acme.com' is already a member of this org.
-    mockUserFindMany.mockResolvedValue([{ email: 'member@acme.com', organizationId: 'org-1' }]);
+    // 'member@acme.com' already has an active membership in this org.
+    mockOrganizationUserFindMany.mockResolvedValue([{ user: { email: 'member@acme.com' } }]);
 
     const result = await createInvites([
       item('new-hr@acme.com', 'hr'), // valid manager
@@ -640,9 +712,9 @@ describe('createInvites() — seat cap counts only genuinely new seats in a mixe
 
   it('rejects the whole batch when new (non-duplicate, non-existing) seats would exceed the plan limit', async () => {
     // 9 active + 0 pending = 9/10 used. Two brand-new emails would need 2 more seats (11 > 10).
-    mockUserCount.mockResolvedValue(9);
+    mockOrganizationUserCount.mockResolvedValue(9);
     mockInviteCount.mockResolvedValue(0);
-    mockUserFindMany.mockResolvedValue([]);
+    mockOrganizationUserFindMany.mockResolvedValue([]);
     mockInviteFindMany.mockResolvedValue([]);
 
     const result = await createInvites([
@@ -658,9 +730,9 @@ describe('createInvites() — seat cap counts only genuinely new seats in a mixe
   it('does not count an already-known (existing member/invite) email against the new-seats total', async () => {
     // 9/10 used. One of the two requested emails is already a pending invite —
     // only 1 genuinely new seat is needed, which fits.
-    mockUserCount.mockResolvedValue(9);
+    mockOrganizationUserCount.mockResolvedValue(9);
     mockInviteCount.mockResolvedValue(0);
-    mockUserFindMany.mockResolvedValue([]);
+    mockOrganizationUserFindMany.mockResolvedValue([]);
     mockInviteFindMany
       .mockResolvedValueOnce([{ email: 'already-pending@acme.com' }]) // dedupe lookup
       .mockResolvedValueOnce([{ email: 'already-pending@acme.com', token: 'tok-1' }]); // batch lookup
@@ -681,9 +753,9 @@ describe('createInvites() — seat cap counts only genuinely new seats in a mixe
     // 10/10 used — no seats left at all. A forbidden-role row must still be
     // rejected for its role, not for the seat limit, and must not block it from
     // being flagged 'forbidden' rather than silently dropped.
-    mockUserCount.mockResolvedValue(10);
+    mockOrganizationUserCount.mockResolvedValue(10);
     mockInviteCount.mockResolvedValue(0);
-    mockUserFindMany.mockResolvedValue([]);
+    mockOrganizationUserFindMany.mockResolvedValue([]);
     mockInviteFindMany.mockResolvedValue([]);
 
     const result = await createInvites([item('no-seat@acme.com', 'owner')]);

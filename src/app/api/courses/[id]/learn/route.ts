@@ -56,14 +56,16 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
       return NextResponse.json({ error: 'Course not found' }, { status: 404 });
     }
 
-    // Check both potential user IDs for an enrollment to resolve cookie collision
-    let activeUserId = session?.user?.id;
+    // Check both potential sessions for an enrollment to resolve cookie collision.
+    // Enrollments hang off the ACTIVE membership, not the identity, so the
+    // relevant id here is organizationUserId, not session.user.id.
+    let activeOrganizationUserId = session?.user?.organizationUserId;
     let activeRole = session?.user?.role;
     let enrollment = null;
 
-    if (activeUserId) {
+    if (activeOrganizationUserId) {
       enrollment = await prisma.enrollment.findFirst({
-        where: { courseId: courseId, userId: activeUserId },
+        where: { courseId: courseId, organizationUserId: activeOrganizationUserId },
         orderBy: { startedAt: 'desc' },
         include: { quizAttempts: true },
       });
@@ -71,32 +73,29 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
 
     // If no enrollment found for worker, and admin session exists, check admin
     if (!enrollment && adminSession?.user?.id) {
-      const adminUser = await prisma.user.findUnique({
-        where: { id: adminSession.user.id },
-        select: { id: true, role: true, organizationId: true },
-      });
+      const adminOrganizationUserId = adminSession.user.organizationUserId;
 
-      const adminEnroll = await prisma.enrollment.findFirst({
-        where: { courseId: courseId, userId: adminSession.user.id },
-        orderBy: { startedAt: 'desc' },
-        include: { quizAttempts: true },
-      });
+      const adminEnroll = adminOrganizationUserId
+        ? await prisma.enrollment.findFirst({
+            where: { courseId: courseId, organizationUserId: adminOrganizationUserId },
+            orderBy: { startedAt: 'desc' },
+            include: { quizAttempts: true },
+          })
+        : null;
 
       const isSameOrg = Boolean(
-        adminUser?.organizationId &&
+        adminSession.user.organizationId &&
         course.creator?.organizationId &&
-        adminUser.organizationId === course.creator.organizationId,
+        adminSession.user.organizationId === course.creator.organizationId,
       );
 
       // Global published courses are a shared catalog any org admin may open
       // (read-only review before assigning).
       const isGlobalCatalog = course.isGlobal && course.status === 'published';
 
-      if (adminEnroll || (isAdminRole(adminUser?.role) && (isSameOrg || isGlobalCatalog))) {
-        activeUserId = adminSession.user.id;
-        // Cast the role to 'admin' | 'worker' | undefined based on session type if necessary
-        // Or cast as `any` or exactly `typeof session.user.role`
-        activeRole = (adminUser?.role as typeof activeRole) || adminSession.user.role;
+      if (adminEnroll || (isAdminRole(adminSession.user.role) && (isSameOrg || isGlobalCatalog))) {
+        activeOrganizationUserId = adminOrganizationUserId ?? activeOrganizationUserId;
+        activeRole = adminSession.user.role;
         enrollment = adminEnroll;
       }
     }
@@ -156,11 +155,11 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
         }
       : null;
 
-    // Get user details for attestation
-    const user = activeUserId
-      ? await prisma.user.findUnique({
-          where: { id: activeUserId },
-          include: { profile: true, organization: true },
+    // Get membership details for attestation
+    const activeMembership = activeOrganizationUserId
+      ? await prisma.organizationUser.findUnique({
+          where: { id: activeOrganizationUserId },
+          include: { user: true, organization: true },
         })
       : null;
 
@@ -282,11 +281,11 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
       },
       quizResultsData,
       user: {
-        name: user?.profile?.fullName || user?.email || '',
-        role: user?.role || 'worker',
-        organizationName: user?.organization?.name || undefined,
-        email: user?.email || '',
-        jobTitle: user?.profile?.jobTitle || '',
+        name: activeMembership?.user.fullName || activeMembership?.user.email || '',
+        role: activeMembership?.role || 'worker',
+        organizationName: activeMembership?.organization.name || undefined,
+        email: activeMembership?.user.email || '',
+        jobTitle: activeMembership?.jobTitle || '',
       },
     });
   } catch (error) {

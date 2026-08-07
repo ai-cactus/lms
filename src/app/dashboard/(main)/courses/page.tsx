@@ -20,34 +20,28 @@ export default async function CoursesPage() {
     redirect('/login');
   }
 
-  // Fetch user with org subscription to determine billing status
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: {
-      role: true,
-      organization: {
-        select: {
-          subscription: {
-            select: { status: true, pausedAt: true },
-          },
-        },
-      },
-    },
-  });
-
-  if (!user || !isAdminRole(user.role)) {
+  const { role, organizationId } = session.user;
+  if (!isAdminRole(role)) {
     redirect('/dashboard');
   }
 
+  // Fetch the org's subscription to determine billing status
+  const organization = organizationId
+    ? await prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: { subscription: { select: { status: true, pausedAt: true } } },
+      })
+    : null;
+
   // Billing is "enabled" when the org has an active or trialing subscription
   // that is not paused. past_due, canceled and paused are treated as inactive.
-  const hasBilling = hasActiveBilling(user.organization?.subscription);
+  const hasBilling = hasActiveBilling(organization?.subscription);
 
   const courses = await getCourses();
 
   return (
     <Suspense fallback={null}>
-      <CoursesListClient courses={courses} hasBilling={hasBilling} />
+      <CoursesListClient courses={courses} hasBilling={hasBilling} viewerRole={role} />
     </Suspense>
   );
 }

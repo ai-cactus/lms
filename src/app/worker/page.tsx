@@ -13,22 +13,25 @@ import { computeDisplayProgress } from '@/lib/enrollment-progress';
 export default async function LearnerDashboard() {
   const session = await auth();
   const userId = session?.user?.id;
+  const organizationUserId = session?.user?.organizationUserId;
 
   const [allEnrollments, user, allCertificates] = await Promise.all([
-    prisma.enrollment.findMany({
-      where: { userId },
-      include: {
-        course: { include: { quiz: { select: { passingScore: true } } } },
-        quizAttempts: {
-          orderBy: { completedAt: 'desc' },
-          take: 1,
-        },
-      },
-    }),
+    organizationUserId
+      ? prisma.enrollment.findMany({
+          where: { organizationUserId },
+          include: {
+            course: { include: { quiz: { select: { passingScore: true } } } },
+            quizAttempts: {
+              orderBy: { completedAt: 'desc' },
+              take: 1,
+            },
+          },
+        })
+      : [],
     userId
       ? prisma.user.findUnique({
           where: { id: userId },
-          include: { profile: true },
+          select: { firstName: true, lastName: true },
         })
       : null,
     // Fetch certs only when a valid session exists; fall back to [] if not authed
@@ -38,7 +41,7 @@ export default async function LearnerDashboard() {
   // 3 most recent certificates for the achievements widget
   const recentCertificates = allCertificates.slice(0, 3);
 
-  const profileIncomplete = !user?.profile?.firstName?.trim() || !user?.profile?.lastName?.trim();
+  const profileIncomplete = !user?.firstName?.trim() || !user?.lastName?.trim();
 
   // Deduplicate: one entry per course, preferring completed/attested, then latest enrollment
   const latestByCourse = new Map<string, (typeof allEnrollments)[number]>();

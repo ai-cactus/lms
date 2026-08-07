@@ -53,6 +53,7 @@ type UserRole = 'owner' | 'finance' | 'nurse';
 
 interface Seeded {
   userId: string;
+  orgUserId: string;
   orgId: string;
   facilityId: string;
 }
@@ -65,6 +66,7 @@ async function seedActiveUser(email: string, password: string, role: UserRole): 
     const orgId = crypto.randomUUID();
     const facilityId = crypto.randomUUID();
     const userId = crypto.randomUUID();
+    const orgUserId = crypto.randomUUID();
 
     await client.query(
       `INSERT INTO organizations (id, name, slug, primary_email, is_hipaa_compliant, created_at, updated_at)
@@ -77,14 +79,19 @@ async function seedActiveUser(email: string, password: string, role: UserRole): 
       [facilityId, orgId, `Dual-Cookie Test ${orgSlug}`],
     );
     await client.query(
-      `INSERT INTO users (id, email, password, role, email_verified, organization_id, facility_id, created_at, updated_at)
-       VALUES ($1, $2, $3, $4::\"UserRole\", true, $5, $6, NOW(), NOW())`,
-      [userId, email, hashed, role, orgId, facilityId],
+      `INSERT INTO users (id, email, password, email_verified, auth_provider, first_name, last_name, full_name, created_at, updated_at)
+       VALUES ($1, $2, $3, true, 'credentials', 'Dual', 'Cookie', 'Dual Cookie', NOW(), NOW())`,
+      [userId, email, hashed],
     );
     await client.query(
-      `INSERT INTO profiles (id, email, first_name, last_name, full_name, created_at, updated_at)
-       VALUES ($1, $2, 'Dual', 'Cookie', 'Dual Cookie', NOW(), NOW())`,
-      [userId, email],
+      `INSERT INTO organization_users (id, user_id, organization_id, role, active, joined_at, role_assigned_at, created_at, updated_at)
+       VALUES ($1, $2, $3, $4::"UserRole", true, NOW(), NOW(), NOW(), NOW())`,
+      [orgUserId, userId, orgId, role],
+    );
+    await client.query(
+      `INSERT INTO organization_user_facilities (id, organization_user_id, facility_id, active, joined_at)
+       VALUES ($1, $2, $3, true, NOW())`,
+      [crypto.randomUUID(), orgUserId, facilityId],
     );
     // An active subscription is required so a worker-role fixture here isn't
     // blocked by the worker billing gate (TC-041-B) — a missing subscription
@@ -110,7 +117,7 @@ async function seedActiveUser(email: string, password: string, role: UserRole): 
       ],
     );
 
-    return { userId, orgId, facilityId };
+    return { userId, orgUserId, orgId, facilityId };
   } finally {
     await client.end();
   }
@@ -120,7 +127,11 @@ async function cleanup(seeded: Seeded): Promise<void> {
   const client = await db();
   try {
     await client.query(`DELETE FROM subscriptions WHERE organization_id = $1`, [seeded.orgId]);
-    await client.query(`DELETE FROM profiles WHERE id = $1`, [seeded.userId]);
+    await client.query(
+      `DELETE FROM organization_user_facilities WHERE organization_user_id = $1`,
+      [seeded.orgUserId],
+    );
+    await client.query(`DELETE FROM organization_users WHERE id = $1`, [seeded.orgUserId]);
     await client.query(`DELETE FROM users WHERE id = $1`, [seeded.userId]);
     await client.query(`DELETE FROM facilities WHERE organization_id = $1`, [seeded.orgId]);
     await client.query(`DELETE FROM organizations WHERE id = $1`, [seeded.orgId]);
@@ -389,6 +400,7 @@ test.describe('Regression: MFA-enabled admin login stamps the ADMIN cookie even 
       const orgId = crypto.randomUUID();
       const facilityId = crypto.randomUUID();
       const userId = crypto.randomUUID();
+      const orgUserId = crypto.randomUUID();
 
       await client.query(
         `INSERT INTO organizations (id, name, slug, primary_email, is_hipaa_compliant, created_at, updated_at)
@@ -401,14 +413,19 @@ test.describe('Regression: MFA-enabled admin login stamps the ADMIN cookie even 
         [facilityId, orgId, `Dual-Cookie MFA Test ${orgSlug}`],
       );
       await client.query(
-        `INSERT INTO users (id, email, password, role, email_verified, mfa_enabled, organization_id, facility_id, created_at, updated_at)
-         VALUES ($1, $2, $3, 'owner'::"UserRole", true, true, $4, $5, NOW(), NOW())`,
-        [userId, email, hashed, orgId, facilityId],
+        `INSERT INTO users (id, email, password, email_verified, mfa_enabled, auth_provider, first_name, last_name, full_name, created_at, updated_at)
+         VALUES ($1, $2, $3, true, true, 'credentials', 'Dual', 'Cookie MFA', 'Dual Cookie MFA', NOW(), NOW())`,
+        [userId, email, hashed],
       );
       await client.query(
-        `INSERT INTO profiles (id, email, first_name, last_name, full_name, created_at, updated_at)
-         VALUES ($1, $2, 'Dual', 'Cookie MFA', 'Dual Cookie MFA', NOW(), NOW())`,
-        [userId, email],
+        `INSERT INTO organization_users (id, user_id, organization_id, role, active, joined_at, role_assigned_at, created_at, updated_at)
+         VALUES ($1, $2, $3, 'owner'::"UserRole", true, NOW(), NOW(), NOW(), NOW())`,
+        [orgUserId, userId, orgId],
+      );
+      await client.query(
+        `INSERT INTO organization_user_facilities (id, organization_user_id, facility_id, active, joined_at)
+         VALUES ($1, $2, $3, true, NOW())`,
+        [crypto.randomUUID(), orgUserId, facilityId],
       );
       await client.query(
         `INSERT INTO mfa_factors (id, user_id, type, secret, name, verified, created_at, updated_at)
@@ -416,7 +433,7 @@ test.describe('Regression: MFA-enabled admin login stamps the ADMIN cookie even 
         [crypto.randomUUID(), userId],
       );
 
-      return { userId, orgId, facilityId, email, password };
+      return { userId, orgUserId, orgId, facilityId, email, password };
     } finally {
       await client.end();
     }

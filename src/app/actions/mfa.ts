@@ -199,7 +199,7 @@ export async function verifyMfaSetup(code: string): Promise<MfaActionResult> {
   // Mark the current session as MFA-verified via Redis (per-session state).
   // This prevents the middleware from bouncing the user back to /login for a
   // fresh MFA challenge immediately after they just completed setup.
-  const sessionId = (session.user as Record<string, unknown>).sessionId as string | undefined;
+  const sessionId = (session.user as { sessionId?: string }).sessionId;
   if (sessionId) {
     await markSessionMfaVerified(session.user.id, sessionId);
   }

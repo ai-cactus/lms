@@ -160,7 +160,7 @@ export const DefaultDashboardNavBar: FC<DefaultDashboardNavBarProps> = ({
 
   return (
     <>
-      <header className="relative z-20 flex h-[60px] shrink-0 items-center justify-between border-b border-black/10 bg-white pl-6 pr-6 lg:h-[106px] lg:justify-end lg:pl-0 lg:pr-[46px]">
+      <header className="relative z-20 flex h-[60px] shrink-0 items-center justify-between border-b border-black/10 bg-white pl-6 pr-6 lg:h-20 lg:justify-end lg:pl-0 lg:pr-[46px]">
         <div className="flex items-center gap-3 lg:hidden">
           <button
             className="flex size-10 flex-shrink-0 cursor-pointer items-center justify-center rounded-lg border-none bg-[#f9fafb] text-[#0c111d] transition-colors hover:bg-[#edf2f7]"

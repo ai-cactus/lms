@@ -53,8 +53,8 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     }
 
     if (
-      attempt.enrollment.userId !== workerSession?.user?.id &&
-      attempt.enrollment.userId !== adminSession?.user?.id
+      attempt.enrollment.organizationUserId !== workerSession?.user?.organizationUserId &&
+      attempt.enrollment.organizationUserId !== adminSession?.user?.organizationUserId
     ) {
       return NextResponse.json(
         { error: 'Enrollment does not belong to active sessions' },

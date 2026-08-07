@@ -1,16 +1,24 @@
 ---
 name: rbac-matrix-realignment-role-change
-description: RBAC matrix realignment (Change 1) + in-place role change (Change 2) test suite — HR missing user.delete product bug, canChangeRole/updateStaffDetails unit patterns, role-change e2e flow
+description: RBAC matrix realignment (Change 1) + in-place role change (Change 2) test suite — HR user.delete bug now RESOLVED, canChangeRole/updateStaffDetails unit patterns, role-change e2e flow
 metadata:
   type: project
 ---
+
+**UPDATE 2026-08-03 (branch `multi-facility`): the HR `user.delete` bug below is RESOLVED.**
+`src/lib/rbac/permissions.ts`'s `hr` entry now explicitly lists `'user.delete'`
+alongside `user.create/read/edit`. Verified live via
+`tests/e2e/rbac-staff-view-only.spec.ts` → `hr: retains full staff CRUD
+affordances` (Remove Staff menuitem now visible, no failure). Removed the
+stale "expected to fail" comment from that spec. Kept the paragraph below only
+as historical record of what the bug looked like pre-fix — do not re-report it.
 
 Tested the RBAC matrix realignment (Finance/Clinical Director → view-only on
 staff; HR/Owner/Supervisor keep full staff CRUD) and in-place role change
 (`canChangeRole` in `src/lib/rbac/role-utils.ts`, wired into
 `updateStaffDetails` in `src/app/actions/staff.ts`) on branch `rbac`.
 
-**Confirmed product bug (reported, not fixed by me):** `hr`'s permission
+**Confirmed product bug — RESOLVED, see UPDATE above (was: reported, not fixed by me):** `hr`'s permission
 entry in `src/lib/rbac/permissions.ts` (~line 202-229) never includes
 `user.delete` — only `user.create/read/edit` plus invite/enrollment/etc.
 Before this change, `removeStaff`/the UI used the coarse `isAdminRole()`

@@ -5,7 +5,8 @@ import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
 import { Button } from '@/components/ui/button';
 import { BILLING_PLANS } from '@/lib/billing-plans';
-import { ADMIN_ROLES } from '@/lib/rbac/role-utils';
+import { ADMIN_ROLES, dbRoleToRoleKey } from '@/lib/rbac/role-utils';
+import { can } from '@/lib/rbac/permissions';
 import SettingsClient, {
   type SettingsTeamMember,
 } from '@/components/dashboard/settings/SettingsClient';
@@ -25,18 +26,14 @@ export default async function SettingsPageRoute() {
     redirect('/login');
   }
 
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { role: true, organizationId: true },
-  });
+  const { role, organizationId } = session.user;
 
-  if (!user) {
-    redirect('/login');
-  }
-
-  // Settings is owner-only. Other admins reaching this URL get a proper
-  // access-denied state (mirrors the Billing route's gate pattern).
-  if (user.role !== 'owner') {
+  // Facility + team-access settings are an org-level mutation, so this gate keys
+  // off `organization.edit` — Owner-equivalent seats only. Kept in lockstep with
+  // the Settings nav row in roles-matrix-config so the menu never offers a link
+  // this route then refuses. Other admins get a proper access-denied state
+  // (mirrors the Billing route's gate pattern).
+  if (!can(dbRoleToRoleKey(role), 'organization.edit')) {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center px-4 text-center">
         <div className="flex size-14 items-center justify-center rounded-full bg-error/10 text-error">
@@ -46,7 +43,8 @@ export default async function SettingsPageRoute() {
           You don&apos;t have access to Settings
         </h1>
         <p className="mt-2 max-w-md text-sm text-text-secondary">
-          Facility and team-access settings are limited to your organization&apos;s owner.
+          Facility and team-access settings are limited to your organization&apos;s owner and
+          admins.
         </p>
         <Button asChild className="mt-6">
           <Link href="/dashboard">Back to dashboard</Link>
@@ -54,8 +52,6 @@ export default async function SettingsPageRoute() {
       </div>
     );
   }
-
-  const organizationId = user.organizationId;
 
   if (!organizationId) {
     return (
@@ -84,18 +80,17 @@ export default async function SettingsPageRoute() {
     subscription,
     workerCount,
     pendingInviteCount,
-    allUsers,
+    allMembers,
     organization,
   ] = await Promise.all([
     // Admin-tier team members (owner + managers) shown on Users & Permissions.
-    prisma.user.findMany({
+    prisma.organizationUser.findMany({
       where: { organizationId, role: adminRoleFilter },
       select: {
         id: true,
-        email: true,
         role: true,
         lastLoginAt: true,
-        profile: { select: { fullName: true } },
+        user: { select: { email: true, fullName: true } },
       },
       orderBy: { createdAt: 'asc' },
     }),
@@ -119,7 +114,7 @@ export default async function SettingsPageRoute() {
       select: { plan: true, status: true },
     }),
     // Seat accounting for the invite modal — every role except owner consumes a seat.
-    prisma.user.count({ where: { organizationId, role: { not: 'owner' } } }),
+    prisma.organizationUser.count({ where: { organizationId, role: { not: 'owner' } } }),
     prisma.invite.count({
       where: {
         organizationId,
@@ -129,7 +124,10 @@ export default async function SettingsPageRoute() {
       },
     }),
     // Emails already present (members + pending invites) — flags CSV dupes.
-    prisma.user.findMany({ where: { organizationId }, select: { email: true } }),
+    prisma.organizationUser.findMany({
+      where: { organizationId },
+      select: { user: { select: { email: true } } },
+    }),
     prisma.organization.findUnique({
       where: { id: organizationId },
       select: { notificationDigestFrequency: true },
@@ -138,14 +136,14 @@ export default async function SettingsPageRoute() {
 
   const activeMembers: SettingsTeamMember[] = members.map((member) => ({
     id: member.id,
-    name: member.profile?.fullName || member.email.split('@')[0],
-    email: member.email,
+    name: member.user.fullName || member.user.email.split('@')[0],
+    email: member.user.email,
     role: member.role as Role,
     lastLoginAt: member.lastLoginAt ? member.lastLoginAt.toISOString() : null,
     isPending: false,
   }));
 
-  const memberEmails = new Set(members.map((member) => member.email.toLowerCase()));
+  const memberEmails = new Set(members.map((member) => member.user.email.toLowerCase()));
   const pendingMembers: SettingsTeamMember[] = adminInvites
     .filter((invite) => !memberEmails.has(invite.email.toLowerCase()))
     .map((invite) => ({
@@ -171,14 +169,14 @@ export default async function SettingsPageRoute() {
     planLimit !== null ? Math.max(0, planLimit - (workerCount + pendingInviteCount)) : null;
 
   const pendingInviteEmails = adminInvites.map((invite) => invite.email);
-  const existingEmails = [...allUsers.map((u) => u.email), ...pendingInviteEmails];
+  const existingEmails = [...allMembers.map((m) => m.user.email), ...pendingInviteEmails];
 
   return (
     <SettingsClient
       teamMembers={[...activeMembers, ...pendingMembers]}
       facility={facility}
       planName={planName}
-      inviterRole={user.role as Role}
+      inviterRole={role as Role}
       remainingSeats={remainingSeats}
       existingEmails={existingEmails}
       digestFrequency={organization?.notificationDigestFrequency ?? 'daily'}

@@ -9,23 +9,25 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// Post multi-org split: both the assignable roster and the role-holder tally
+// are per-organization memberships, so they read OrganizationUser, not User.
 const {
   mockAdminAuth,
   mockWorkerAuth,
-  mockUserFindMany,
-  mockUserGroupBy,
+  mockOrgUserFindMany,
+  mockOrgUserGroupBy,
   mockCourseAssignmentFindFirst,
 } = vi.hoisted(() => ({
   mockAdminAuth: vi.fn(),
   mockWorkerAuth: vi.fn(),
-  mockUserFindMany: vi.fn(),
-  mockUserGroupBy: vi.fn(),
+  mockOrgUserFindMany: vi.fn(),
+  mockOrgUserGroupBy: vi.fn(),
   mockCourseAssignmentFindFirst: vi.fn(),
 }));
 
 vi.mock('@/lib/prisma', () => {
   const prisma = {
-    user: { findMany: mockUserFindMany, groupBy: mockUserGroupBy },
+    organizationUser: { findMany: mockOrgUserFindMany, groupBy: mockOrgUserGroupBy },
     courseAssignment: { findFirst: mockCourseAssignmentFindFirst },
   };
   return { prisma, default: prisma };
@@ -47,22 +49,28 @@ describe('getAvailableUsers — org-scoping sourced from the session', () => {
   it('queries only users in the caller org (org-A), and only org-A', async () => {
     mockAdminAuth.mockResolvedValue({ user: { id: 'admin-1', organizationId: 'org-A' } });
     mockWorkerAuth.mockResolvedValue(null);
-    mockUserFindMany.mockResolvedValue([
-      { id: 'u1', email: 'a@org-a.com', role: 'nurse', profile: null },
+    mockOrgUserFindMany.mockResolvedValue([
+      {
+        id: 'ou1',
+        role: 'nurse',
+        user: { email: 'a@org-a.com', fullName: null, avatarUrl: null },
+      },
     ]);
 
     const result = await getAvailableUsers();
 
-    expect(mockUserFindMany).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ where: { organizationId: 'org-A' } }),
+    expect(mockOrgUserFindMany).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ where: { organizationId: 'org-A', active: true } }),
     );
+    // `id` is the organizationUserId — the membership every org-scoped artifact
+    // (enrollments included) is owned by, never the bare identity id.
     expect(result).toEqual([
       {
-        id: 'u1',
+        id: 'ou1',
         email: 'a@org-a.com',
         fullName: 'a@org-a.com',
         role: 'nurse',
-        avatarUrl: undefined,
+        avatarUrl: null,
       },
     ]);
   });
@@ -70,15 +78,15 @@ describe('getAvailableUsers — org-scoping sourced from the session', () => {
   it('a different org session (org-B) never sees org-A results and never issues an org-A-scoped query', async () => {
     mockAdminAuth.mockResolvedValue({ user: { id: 'admin-2', organizationId: 'org-B' } });
     mockWorkerAuth.mockResolvedValue(null);
-    mockUserFindMany.mockResolvedValue([]);
+    mockOrgUserFindMany.mockResolvedValue([]);
 
     await getAvailableUsers();
 
-    expect(mockUserFindMany).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ where: { organizationId: 'org-B' } }),
+    expect(mockOrgUserFindMany).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ where: { organizationId: 'org-B', active: true } }),
     );
-    expect(mockUserFindMany).not.toHaveBeenCalledWith(
-      expect.objectContaining({ where: { organizationId: 'org-A' } }),
+    expect(mockOrgUserFindMany).not.toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ organizationId: 'org-A' }) }),
     );
   });
 
@@ -89,7 +97,7 @@ describe('getAvailableUsers — org-scoping sourced from the session', () => {
     const result = await getAvailableUsers();
 
     expect(result).toEqual([]);
-    expect(mockUserFindMany).not.toHaveBeenCalled();
+    expect(mockOrgUserFindMany).not.toHaveBeenCalled();
   });
 
   it('throws Unauthorized with no session, never touching the DB', async () => {
@@ -97,7 +105,7 @@ describe('getAvailableUsers — org-scoping sourced from the session', () => {
     mockWorkerAuth.mockResolvedValue(null);
 
     await expect(getAvailableUsers()).rejects.toThrow('Unauthorized');
-    expect(mockUserFindMany).not.toHaveBeenCalled();
+    expect(mockOrgUserFindMany).not.toHaveBeenCalled();
   });
 });
 
@@ -150,7 +158,7 @@ describe('getRoleHolderCounts — admin-only + org-scoped, sourced from the sess
     mockWorkerAuth.mockResolvedValue(null);
 
     await expect(getRoleHolderCounts()).rejects.toThrow('Forbidden');
-    expect(mockUserGroupBy).not.toHaveBeenCalled();
+    expect(mockOrgUserGroupBy).not.toHaveBeenCalled();
   });
 
   it('groups strictly within the caller org — a session for org-B never triggers an org-A grouped count', async () => {
@@ -158,12 +166,12 @@ describe('getRoleHolderCounts — admin-only + org-scoped, sourced from the sess
       user: { id: 'admin-2', role: 'hr', organizationId: 'org-B' },
     });
     mockWorkerAuth.mockResolvedValue(null);
-    mockUserGroupBy.mockResolvedValue([{ role: 'nurse', _count: { _all: 3 } }]);
+    mockOrgUserGroupBy.mockResolvedValue([{ role: 'nurse', _count: { _all: 3 } }]);
 
     const result = await getRoleHolderCounts();
 
-    expect(mockUserGroupBy).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ where: { organizationId: 'org-B' } }),
+    expect(mockOrgUserGroupBy).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ where: { organizationId: 'org-B', active: true } }),
     );
     expect(result).toEqual({ nurse: 3 });
   });
@@ -177,6 +185,6 @@ describe('getRoleHolderCounts — admin-only + org-scoped, sourced from the sess
     const result = await getRoleHolderCounts();
 
     expect(result).toEqual({});
-    expect(mockUserGroupBy).not.toHaveBeenCalled();
+    expect(mockOrgUserGroupBy).not.toHaveBeenCalled();
   });
 });

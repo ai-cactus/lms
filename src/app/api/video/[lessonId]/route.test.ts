@@ -5,6 +5,7 @@ const {
   mockWorkerAuth,
   mockLessonFindUnique,
   mockLessonUpdateMany,
+  mockEnrollmentFindFirst,
   mockResolvePlaybackUrl,
   mockResolveVideoSource,
 } = vi.hoisted(() => {
@@ -14,6 +15,7 @@ const {
     mockWorkerAuth: vi.fn(),
     mockLessonFindUnique: vi.fn(),
     mockLessonUpdateMany: vi.fn(),
+    mockEnrollmentFindFirst: vi.fn(),
     mockResolvePlaybackUrl,
     mockResolveVideoSource: vi.fn<
       (provider: string) => { resolvePlaybackUrl: typeof mockResolvePlaybackUrl }
@@ -28,6 +30,9 @@ vi.mock('@/lib/prisma', () => {
     lesson: {
       findUnique: (...a: unknown[]) => mockLessonFindUnique(...a),
       updateMany: (...a: unknown[]) => mockLessonUpdateMany(...a),
+    },
+    enrollment: {
+      findFirst: (...a: unknown[]) => mockEnrollmentFindFirst(...a),
     },
   };
   return { prisma, default: prisma };
@@ -46,8 +51,7 @@ const makeReq = (range?: string) =>
 const params = Promise.resolve({ lessonId: 'lesson-1' });
 
 const makeLesson = (opts?: {
-  createdBy?: string;
-  enrollments?: { id: string }[];
+  createdByOrgUserId?: string;
   videoStorageUri?: string | null;
   videoProvider?: string | null;
 }) => ({
@@ -61,8 +65,10 @@ const makeLesson = (opts?: {
   videoDurationSeconds: 600,
   course: {
     id: 'course-1',
-    createdBy: opts?.createdBy ?? 'other-user',
-    enrollments: opts?.enrollments ?? [],
+    createdByOrgUserId: opts?.createdByOrgUserId ?? 'other-org-user',
+    isGlobal: false,
+    status: 'published',
+    type: 'video',
   },
 });
 
@@ -70,6 +76,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockAdminAuth.mockResolvedValue(null);
   mockWorkerAuth.mockResolvedValue(null);
+  mockEnrollmentFindFirst.mockResolvedValue(null);
   mockResolvePlaybackUrl.mockResolvedValue('http://minio:9000/lms-documents/system/videos/v.mp4');
   mockLessonUpdateMany.mockResolvedValue({ count: 1 });
 });
@@ -82,32 +89,35 @@ describe('GET /api/video/[lessonId]', () => {
   });
 
   it('404 when the lesson does not exist', async () => {
-    mockAdminAuth.mockResolvedValue({ user: { id: 'u1' } });
+    mockAdminAuth.mockResolvedValue({ user: { id: 'u1', organizationUserId: 'ou-1' } });
     mockLessonFindUnique.mockResolvedValue(null);
     const res = await GET(makeReq(), { params });
     expect(res.status).toBe(404);
   });
 
   it('403 when caller is neither creator nor enrolled', async () => {
-    mockAdminAuth.mockResolvedValue({ user: { id: 'outsider' } });
-    mockLessonFindUnique.mockResolvedValue(makeLesson({ createdBy: 'someone', enrollments: [] }));
+    mockAdminAuth.mockResolvedValue({
+      user: { id: 'outsider', organizationUserId: 'ou-outsider' },
+    });
+    mockLessonFindUnique.mockResolvedValue(makeLesson({ createdByOrgUserId: 'ou-someone' }));
+    mockEnrollmentFindFirst.mockResolvedValue(null);
     const res = await GET(makeReq(), { params });
     expect(res.status).toBe(403);
     expect(mockResolveVideoSource).not.toHaveBeenCalled();
   });
 
   it('404 when the lesson has no video', async () => {
-    mockAdminAuth.mockResolvedValue({ user: { id: 'u1' } });
-    mockLessonFindUnique.mockResolvedValue(
-      makeLesson({ enrollments: [{ id: 'e1' }], videoStorageUri: null }),
-    );
+    mockAdminAuth.mockResolvedValue({ user: { id: 'u1', organizationUserId: 'ou-1' } });
+    mockLessonFindUnique.mockResolvedValue(makeLesson({ videoStorageUri: null }));
+    mockEnrollmentFindFirst.mockResolvedValue({ id: 'e1' });
     const res = await GET(makeReq(), { params });
     expect(res.status).toBe(404);
   });
 
   it('proxies the stream, forwards Range, and passes through storage headers', async () => {
-    mockAdminAuth.mockResolvedValue({ user: { id: 'u1' } });
-    mockLessonFindUnique.mockResolvedValue(makeLesson({ enrollments: [{ id: 'e1' }] }));
+    mockAdminAuth.mockResolvedValue({ user: { id: 'u1', organizationUserId: 'ou-1' } });
+    mockLessonFindUnique.mockResolvedValue(makeLesson());
+    mockEnrollmentFindFirst.mockResolvedValue({ id: 'e1' });
 
     const fetchMock = vi.fn().mockResolvedValue(
       new Response('partial-bytes', {
@@ -140,10 +150,9 @@ describe('GET /api/video/[lessonId]', () => {
   });
 
   it('falls back to the "self" provider when videoProvider is null', async () => {
-    mockAdminAuth.mockResolvedValue({ user: { id: 'u1' } });
-    mockLessonFindUnique.mockResolvedValue(
-      makeLesson({ enrollments: [{ id: 'e1' }], videoProvider: null }),
-    );
+    mockAdminAuth.mockResolvedValue({ user: { id: 'u1', organizationUserId: 'ou-1' } });
+    mockLessonFindUnique.mockResolvedValue(makeLesson({ videoProvider: null }));
+    mockEnrollmentFindFirst.mockResolvedValue({ id: 'e1' });
     const fetchMock = vi.fn().mockResolvedValue(new Response('x', { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
 
@@ -156,8 +165,9 @@ describe('GET /api/video/[lessonId]', () => {
 
 describe('GET /api/video/[lessonId] — Issue #7/#9: honest mediaStatus on upstream storage errors', () => {
   beforeEach(() => {
-    mockAdminAuth.mockResolvedValue({ user: { id: 'u1' } });
-    mockLessonFindUnique.mockResolvedValue(makeLesson({ enrollments: [{ id: 'e1' }] }));
+    mockAdminAuth.mockResolvedValue({ user: { id: 'u1', organizationUserId: 'ou-1' } });
+    mockLessonFindUnique.mockResolvedValue(makeLesson());
+    mockEnrollmentFindFirst.mockResolvedValue({ id: 'e1' });
   });
 
   it('flips the lesson mediaStatus to failed on a definitive upstream 404', async () => {

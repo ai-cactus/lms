@@ -1,5 +1,6 @@
 import React from 'react';
-import { isAdminRole } from '@/lib/rbac/role-utils';
+import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
+import { can } from '@/lib/rbac/permissions';
 import { redirect } from 'next/navigation';
 import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
@@ -17,23 +18,22 @@ export default async function AssignCoursePage(props: PageProps) {
   const session = await auth();
   if (!session?.user?.id) redirect('/login');
 
-  const me = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: {
-      role: true,
-      organizationId: true,
-      organization: {
-        select: {
-          subscription: { select: { status: true, pausedAt: true } },
-        },
-      },
-    },
-  });
-  if (!me || !isAdminRole(me.role)) redirect('/dashboard');
+  const { role, organizationId, organizationUserId } = session.user;
+  // Gate the wizard on the same permission its submit actions require, so a
+  // read-only admin-tier role (Supervisor) or one with no training remit
+  // (Finance) is redirected here rather than reaching a page whose every
+  // action would deny.
+  if (!can(dbRoleToRoleKey(role), 'assignment.create')) redirect('/dashboard');
 
   // Block URL-bypass of the billing gate: assigning courses requires active
   // billing. Redirect to the courses list where the gate UI is shown.
-  if (!hasActiveBilling(me.organization?.subscription)) {
+  const organization = organizationId
+    ? await prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: { subscription: { select: { status: true, pausedAt: true } } },
+      })
+    : null;
+  if (!hasActiveBilling(organization?.subscription)) {
     redirect('/dashboard/courses');
   }
 
@@ -46,10 +46,8 @@ export default async function AssignCoursePage(props: PageProps) {
       id,
       OR: [
         { isGlobal: true, status: 'published' },
-        { createdBy: session.user.id },
-        ...(me.organizationId
-          ? [{ offerings: { some: { organizationId: me.organizationId } } }]
-          : []),
+        ...(organizationUserId ? [{ createdByOrgUserId: organizationUserId }] : []),
+        ...(organizationId ? [{ offerings: { some: { organizationId } } }] : []),
       ],
     },
     select: { id: true, title: true, status: true },
@@ -64,7 +62,7 @@ export default async function AssignCoursePage(props: PageProps) {
   // Surface emails that were assigned this course but haven't joined yet, so an
   // admin can see the assignment isn't lost. Scoped strictly to the caller's org
   // via the parked invite; expired/accepted invites are excluded.
-  const pendingInvitedEmails = me.organizationId
+  const pendingInvitedEmails = organizationId
     ? Array.from(
         new Set(
           (
@@ -72,7 +70,7 @@ export default async function AssignCoursePage(props: PageProps) {
               where: {
                 courseId: course.id,
                 invite: {
-                  organizationId: me.organizationId,
+                  organizationId,
                   status: 'pending',
                   expiresAt: { gt: new Date() },
                 },

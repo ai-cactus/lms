@@ -46,6 +46,7 @@ function renderList(inviterRole: Role) {
       currentWorkerCount={0}
       pendingInviteCount={0}
       inviterRole={inviterRole}
+      facilities={[]}
     />,
   );
 }
@@ -55,7 +56,8 @@ beforeEach(() => {
 });
 
 describe('StaffListClient — Add Staff visibility (invite.create gate)', () => {
-  it.each<Role>(['owner', 'supervisor', 'hr'])(
+  // admin is Owner-equivalent (`everything` permission set) per the RBAC ruling.
+  it.each<Role>(['owner', 'admin', 'hr'])(
     'shows Add Staff and mounts InviteStaffModal for %s',
     (role) => {
       renderList(role);
@@ -64,6 +66,16 @@ describe('StaffListClient — Add Staff visibility (invite.create gate)', () => 
       expect(screen.getByTestId('invite-staff-modal')).toBeInTheDocument();
     },
   );
+
+  // supervisor was demoted to read-only-plus-self-service under the RBAC
+  // ruling bundled with the multi-org refactor — it no longer holds
+  // `invite.create` (previously mirrored owner's grant set).
+  it('hides Add Staff for supervisor (demoted to read-only, no invite.create)', () => {
+    renderList('supervisor');
+
+    expect(screen.queryByRole('button', { name: /add staff/i })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('invite-staff-modal')).not.toBeInTheDocument();
+  });
 
   it('hides Add Staff for finance (no invite.create permission)', () => {
     renderList('finance');

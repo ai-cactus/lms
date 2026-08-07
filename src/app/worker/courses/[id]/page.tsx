@@ -22,24 +22,26 @@ export default async function WorkerCourseDetailsPage(props: PageProps) {
 
   const course = await getCourseById(params.id);
 
-  // Fetch latest enrollment for this user and course
-  const enrollment = await prisma.enrollment.findFirst({
-    where: {
-      userId: session.user.id,
-      courseId: params.id,
-    },
-    orderBy: {
-      startedAt: 'desc',
-    },
-    include: {
-      quizAttempts: true,
-      user: {
-        include: { profile: true, organization: true },
-      },
-      course: true,
-      certificate: true,
-    },
-  });
+  // Fetch latest enrollment for this membership and course
+  const enrollment = session.user.organizationUserId
+    ? await prisma.enrollment.findFirst({
+        where: {
+          organizationUserId: session.user.organizationUserId,
+          courseId: params.id,
+        },
+        orderBy: {
+          startedAt: 'desc',
+        },
+        include: {
+          quizAttempts: true,
+          organizationUser: {
+            include: { user: true, organization: true },
+          },
+          course: true,
+          certificate: true,
+        },
+      })
+    : null;
 
   // Sanitize course data to avoid leaking other users' enrollments to the client
   const sanitizedCourse = {

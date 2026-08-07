@@ -69,6 +69,17 @@ const fullAccessRoles = ALL_ROLES.filter((role) => {
     can(key, 'document.delete')
   );
 });
+// Clinical Director: CRU on documents but deletion deliberately withheld — a
+// distinct bucket from full CRUD, per the RBAC matrix (see permissions.ts).
+const cruNoDeleteRoles = ALL_ROLES.filter((role) => {
+  const key = dbRoleToRoleKey(role);
+  return (
+    can(key, 'document.read') &&
+    can(key, 'document.create') &&
+    can(key, 'document.edit') &&
+    !can(key, 'document.delete')
+  );
+});
 const readOnlyRoles = ALL_ROLES.filter((role) => {
   const key = dbRoleToRoleKey(role);
   return can(key, 'document.read') && !can(key, 'document.create');
@@ -77,14 +88,18 @@ const deniedRoles = ALL_ROLES.filter((role) => !can(dbRoleToRoleKey(role), 'docu
 
 describe('documents registry partition (guards against silent drift)', () => {
   it('accounts for every role in exactly one bucket', () => {
-    expect(fullAccessRoles.length + readOnlyRoles.length + deniedRoles.length).toBe(
-      ALL_ROLES.length,
-    );
+    expect(
+      fullAccessRoles.length + cruNoDeleteRoles.length + readOnlyRoles.length + deniedRoles.length,
+    ).toBe(ALL_ROLES.length);
   });
 
-  it('matches the current expected partition from the P1-001/P1-003 fix', () => {
-    expect(fullAccessRoles.sort()).toEqual(['clinical_director', 'owner', 'supervisor'].sort());
-    expect(readOnlyRoles.sort()).toEqual(['hr']);
+  // Partition updated for the RBAC ruling bundled with the multi-org refactor:
+  // hr gained full document CRUD, clinical_director gained CRU-no-delete (new
+  // bucket), and supervisor was demoted to read-only.
+  it('matches the current expected partition from the RBAC ruling', () => {
+    expect(fullAccessRoles.sort()).toEqual(['admin', 'hr', 'owner'].sort());
+    expect(cruNoDeleteRoles).toEqual(['clinical_director']);
+    expect(readOnlyRoles.sort()).toEqual(['supervisor']);
     expect(deniedRoles).toContain('finance');
     expect(deniedRoles).toContain('psychiatrist_prescriber');
     expect(deniedRoles.length).toBe(9); // finance + 8 worker roles
@@ -109,6 +124,22 @@ describe('DocumentsPageRoute — document.read gate', () => {
     );
     expect(screen.queryByText(/don.t have access to documents/i)).not.toBeInTheDocument();
   });
+
+  it.each(cruNoDeleteRoles)(
+    'renders the hub with Upload but canDelete false for %s',
+    async (role) => {
+      mockAuth.mockResolvedValueOnce({ user: { id: 'user-1', role, organizationId: 'org-1' } });
+
+      const element = await DocumentsPageRoute();
+      render(element);
+
+      expect(screen.getByTestId('upload-section')).toBeInTheDocument();
+      expect(screen.getByTestId('document-list-client')).toHaveTextContent(
+        'canUpload true / canEdit true / canDelete false',
+      );
+      expect(screen.queryByText(/don.t have access to documents/i)).not.toBeInTheDocument();
+    },
+  );
 
   it.each(readOnlyRoles)('renders the read-only hub (no Upload) for %s', async (role) => {
     mockAuth.mockResolvedValueOnce({ user: { id: 'user-1', role, organizationId: 'org-1' } });
@@ -168,7 +199,7 @@ describe('DocumentsPageRoute — document.read gate', () => {
     render(element);
 
     expect(prismaMock.document.findMany).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ where: { user: { organizationId: 'org-1' } } }),
+      expect.objectContaining({ where: { organizationUser: { organizationId: 'org-1' } } }),
     );
     expect(screen.getByTestId('document-list-client')).toHaveTextContent('docs 2');
   });

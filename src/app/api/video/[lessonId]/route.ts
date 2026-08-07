@@ -20,9 +20,12 @@ export const dynamic = 'force-dynamic';
  * forwarded both ways so the <video> element can seek/stream (206 Partial).
  */
 
-async function currentUserId(): Promise<string | null> {
+/** Resolves null only when neither session is authenticated. */
+async function currentOrganizationUserId(): Promise<{ organizationUserId: string | null } | null> {
   const [a, w] = await Promise.all([adminAuth(), workerAuth()]);
-  return a?.user?.id ?? w?.user?.id ?? null;
+  const session = a?.user?.id ? a : w?.user?.id ? w : null;
+  if (!session?.user?.id) return null;
+  return { organizationUserId: session.user.organizationUserId };
 }
 
 /**
@@ -54,8 +57,8 @@ const PASSTHROUGH_HEADERS = [
 ] as const;
 
 export async function GET(request: Request, { params }: { params: Promise<{ lessonId: string }> }) {
-  const uid = await currentUserId();
-  if (!uid) return new Response('Unauthorized', { status: 401 });
+  const current = await currentOrganizationUserId();
+  if (!current) return new Response('Unauthorized', { status: 401 });
 
   const { lessonId } = await params;
 
@@ -63,11 +66,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ less
   // getVideoPlaybackUrl in actions/video-progress.ts).
   const lesson = await prisma.lesson.findUnique({
     where: { id: lessonId },
-    include: {
-      course: {
-        include: { enrollments: { where: { userId: uid }, select: { id: true } } },
-      },
-    },
+    include: { course: true },
   });
 
   if (!lesson) return new Response('Not found', { status: 404 });
@@ -76,7 +75,20 @@ export async function GET(request: Request, { params }: { params: Promise<{ less
   // watch (e.g. an org admin previewing before assigning).
   const c = lesson.course;
   const isGlobalCatalog = c.isGlobal && c.status === 'published' && c.type === 'video';
-  const allowed = c.createdBy === uid || c.enrollments.length > 0 || isGlobalCatalog;
+  const isCreator = current.organizationUserId
+    ? c.createdByOrgUserId === current.organizationUserId
+    : false;
+
+  let isEnrolled = false;
+  if (!isGlobalCatalog && !isCreator && current.organizationUserId) {
+    const enrollment = await prisma.enrollment.findFirst({
+      where: { courseId: c.id, organizationUserId: current.organizationUserId },
+      select: { id: true },
+    });
+    isEnrolled = !!enrollment;
+  }
+
+  const allowed = isCreator || isEnrolled || isGlobalCatalog;
   if (!allowed) return new Response('Forbidden', { status: 403 });
 
   if (!lesson.videoStorageUri) return new Response('No video for this lesson', { status: 404 });

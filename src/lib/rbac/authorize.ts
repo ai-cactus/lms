@@ -21,7 +21,14 @@ export interface AuthorizedContext {
   email: string;
   role: Role;
   roleKey: RoleKey;
+  /** The ACTIVE organization this request is scoped to. */
   organizationId: string | null;
+  /**
+   * The `OrganizationUser` membership acting in this request. Every org-scoped
+   * artifact the request creates must be owned by this id, never by `userId` —
+   * that is what keeps one identity's work in two organizations separate.
+   */
+  organizationUserId: string | null;
 }
 
 export type AuthResult =
@@ -72,6 +79,7 @@ export async function authorize(permission: Permission): Promise<AuthResult> {
       role,
       roleKey,
       organizationId: session.user.organizationId,
+      organizationUserId: session.user.organizationUserId,
     },
   };
 }

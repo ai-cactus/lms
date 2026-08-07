@@ -110,7 +110,7 @@ describe('getRoleDisplayName', () => {
     expect(getRoleDisplayName('clinical_director')).toContain('Clinical Director');
   });
 
-  it('returns a non-empty string for all 13 roles', () => {
+  it('returns a non-empty string for all 14 roles', () => {
     for (const r of ALL_ROLES) {
       const name = getRoleDisplayName(r);
       expect(name.length, `Display name for ${r} should be non-empty`).toBeGreaterThan(0);
@@ -128,9 +128,9 @@ describe('getRoleDisplayName', () => {
 });
 
 describe('ADMIN_ROLES', () => {
-  it('contains exactly the five manager (non-worker) roles', () => {
+  it('contains exactly the six manager (non-worker) roles', () => {
     expect([...ADMIN_ROLES].sort()).toEqual(
-      ['clinical_director', 'finance', 'hr', 'owner', 'supervisor'].sort(),
+      ['admin', 'clinical_director', 'finance', 'hr', 'owner', 'supervisor'].sort(),
     );
   });
 
@@ -162,8 +162,8 @@ describe('DEFAULT_SELF_SERVE_WORKER_ROLE', () => {
 });
 
 describe('ALL_ROLES', () => {
-  it('contains all 13 roles', () => {
-    expect(ALL_ROLES).toHaveLength(13);
+  it('contains all 14 roles', () => {
+    expect(ALL_ROLES).toHaveLength(14);
   });
 
   it('is the union of ADMIN_ROLES and WORKER_ROLES', () => {
@@ -181,6 +181,7 @@ describe('GRANTABLE_ROLES — owner is never grantable', () => {
 });
 
 describe('GRANTABLE_ROLES — owner can grant all non-owner roles', () => {
+  it('owner can grant admin', () => expect(GRANTABLE_ROLES['owner']).toContain('admin'));
   it('owner can grant supervisor', () => expect(GRANTABLE_ROLES['owner']).toContain('supervisor'));
   it('owner can grant hr', () => expect(GRANTABLE_ROLES['owner']).toContain('hr'));
   it('owner can grant clinical_director', () =>
@@ -191,10 +192,19 @@ describe('GRANTABLE_ROLES — owner can grant all non-owner roles', () => {
   });
 });
 
-describe('GRANTABLE_ROLES — supervisor mirrors owner grantable set', () => {
-  it('supervisor grantable set equals owner grantable set', () => {
-    expect([...GRANTABLE_ROLES['supervisor']].sort()).toEqual([...GRANTABLE_ROLES['owner']].sort());
+describe('GRANTABLE_ROLES — Admin grant matrix (Owner-equivalent, minus owner/admin)', () => {
+  it('admin can grant supervisor', () => expect(GRANTABLE_ROLES['admin']).toContain('supervisor'));
+  it('admin can grant hr', () => expect(GRANTABLE_ROLES['admin']).toContain('hr'));
+  it('admin can grant clinical_director', () =>
+    expect(GRANTABLE_ROLES['admin']).toContain('clinical_director'));
+  it('admin can grant finance', () => expect(GRANTABLE_ROLES['admin']).toContain('finance'));
+  it.each(WORKER_DB_ROLES)('admin can grant worker role %s', (workerRole) => {
+    expect(GRANTABLE_ROLES['admin']).toContain(workerRole);
   });
+  it('admin CANNOT grant owner (established only at org creation)', () =>
+    expect(GRANTABLE_ROLES['admin']).not.toContain('owner'));
+  it('admin CANNOT grant admin (cannot clone its own Owner-equivalent seat)', () =>
+    expect(GRANTABLE_ROLES['admin']).not.toContain('admin'));
 });
 
 describe('GRANTABLE_ROLES — HR grant matrix (D1)', () => {
@@ -207,10 +217,16 @@ describe('GRANTABLE_ROLES — HR grant matrix (D1)', () => {
   });
   it('hr CANNOT grant supervisor (D1)', () =>
     expect(GRANTABLE_ROLES['hr']).not.toContain('supervisor'));
+  it('hr CANNOT grant admin', () => expect(GRANTABLE_ROLES['hr']).not.toContain('admin'));
   it('hr CANNOT grant owner', () => expect(GRANTABLE_ROLES['hr']).not.toContain('owner'));
 });
 
 describe('GRANTABLE_ROLES — no-grant roles have empty arrays', () => {
+  // Supervisor was demoted to READ-ONLY per the RBAC matrix — it now grants
+  // nothing, unlike its previous "mirrors owner" grant set.
+  it('supervisor cannot grant any role (demoted to read-only)', () => {
+    expect(GRANTABLE_ROLES['supervisor']).toHaveLength(0);
+  });
   it('clinical_director cannot grant any role', () => {
     expect(GRANTABLE_ROLES['clinical_director']).toHaveLength(0);
   });
@@ -224,6 +240,9 @@ describe('GRANTABLE_ROLES — no-grant roles have empty arrays', () => {
 
 describe('isAdminRole', () => {
   it('returns true for owner', () => expect(isAdminRole('owner')).toBe(true));
+  // `admin` is now a real, granted manager role (Owner-equivalent) — no longer
+  // the retired/reserved string it was before this refactor.
+  it('returns true for admin', () => expect(isAdminRole('admin')).toBe(true));
   it('returns true for supervisor', () => expect(isAdminRole('supervisor')).toBe(true));
   it('returns true for hr', () => expect(isAdminRole('hr')).toBe(true));
   it('returns true for clinical_director', () =>
@@ -237,8 +256,6 @@ describe('isAdminRole', () => {
   it('returns false for empty string', () => expect(isAdminRole('')).toBe(false));
   it('returns false for the retired worker role string', () =>
     expect(isAdminRole('worker')).toBe(false));
-  it('returns false for the retired admin role string', () =>
-    expect(isAdminRole('admin')).toBe(false));
 });
 
 /**
@@ -276,6 +293,13 @@ describe('canChangeRole', () => {
       expect(result).toEqual({ allowed: false, reason: 'actor_not_permitted' });
     });
 
+    // Supervisor was demoted to READ-ONLY and removed from ROLE_CHANGE_ACTOR_ROLES
+    // (now ['owner', 'admin']) — it can no longer re-role anyone at all.
+    it('denies a supervisor actor (demoted to read-only, no longer a role-change actor)', () => {
+      const result = canChangeRole('supervisor', 'sup-1', 'target-1', 'nurse', 'hr');
+      expect(result).toEqual({ allowed: false, reason: 'actor_not_permitted' });
+    });
+
     it('checks actor permission BEFORE self-change — an unpermitted actor changing themselves still gets actor_not_permitted', () => {
       const result = canChangeRole('hr', 'same-1', 'same-1', 'hr', 'nurse');
       expect(result).toEqual({ allowed: false, reason: 'actor_not_permitted' });
@@ -288,8 +312,8 @@ describe('canChangeRole', () => {
       expect(result).toEqual({ allowed: false, reason: 'self_change' });
     });
 
-    it('denies a supervisor attempting to change their own role', () => {
-      const result = canChangeRole('supervisor', 'sup-1', 'sup-1', 'supervisor', 'hr');
+    it('denies an admin attempting to change their own role', () => {
+      const result = canChangeRole('admin', 'adm-1', 'adm-1', 'admin', 'hr');
       expect(result).toEqual({ allowed: false, reason: 'self_change' });
     });
   });
@@ -300,8 +324,8 @@ describe('canChangeRole', () => {
       expect(result).toEqual({ allowed: false, reason: 'target_not_reachable' });
     });
 
-    it('denies a supervisor attempting to change an owner', () => {
-      const result = canChangeRole('supervisor', 'sup-1', 'owner-1', 'owner', 'hr');
+    it('denies an admin attempting to change an owner (owner is in no grant list)', () => {
+      const result = canChangeRole('admin', 'adm-1', 'owner-1', 'owner', 'hr');
       expect(result).toEqual({ allowed: false, reason: 'target_not_reachable' });
     });
   });
@@ -312,8 +336,13 @@ describe('canChangeRole', () => {
       expect(result).toEqual({ allowed: false, reason: 'role_not_grantable' });
     });
 
-    it('denies a supervisor attempting to promote a reachable target to owner', () => {
-      const result = canChangeRole('supervisor', 'sup-1', 'target-1', 'hr', 'owner');
+    it('denies an admin attempting to promote a reachable target to owner', () => {
+      const result = canChangeRole('admin', 'adm-1', 'target-1', 'hr', 'owner');
+      expect(result).toEqual({ allowed: false, reason: 'role_not_grantable' });
+    });
+
+    it('denies an admin attempting to promote a reachable target to admin (only Owner may mint Owner-equivalent seats)', () => {
+      const result = canChangeRole('admin', 'adm-1', 'target-1', 'hr', 'admin');
       expect(result).toEqual({ allowed: false, reason: 'role_not_grantable' });
     });
   });
@@ -329,24 +358,33 @@ describe('canChangeRole', () => {
       expect(result).toEqual({ allowed: true });
     });
 
-    it('supervisor may change another supervisor (same trust boundary as invite)', () => {
-      const result = canChangeRole('supervisor', 'sup-1', 'sup-2', 'supervisor', 'hr');
+    it('owner may promote a reachable target to admin', () => {
+      const result = canChangeRole('owner', 'owner-1', 'target-1', 'hr', 'admin');
       expect(result).toEqual({ allowed: true });
     });
 
-    it('supervisor may promote a worker to hr', () => {
-      const result = canChangeRole('supervisor', 'sup-1', 'target-1', 'nurse', 'hr');
+    it('admin may change a supervisor to hr (same trust boundary as invite)', () => {
+      const result = canChangeRole('admin', 'adm-1', 'sup-2', 'supervisor', 'hr');
+      expect(result).toEqual({ allowed: true });
+    });
+
+    it('admin may promote a worker to hr', () => {
+      const result = canChangeRole('admin', 'adm-1', 'target-1', 'nurse', 'hr');
       expect(result).toEqual({ allowed: true });
     });
   });
 
   describe('ROLE_CHANGE_ACTOR_ROLES', () => {
-    it('contains exactly owner and supervisor', () => {
-      expect([...ROLE_CHANGE_ACTOR_ROLES].sort()).toEqual(['owner', 'supervisor']);
+    it('contains exactly owner and admin', () => {
+      expect([...ROLE_CHANGE_ACTOR_ROLES].sort()).toEqual(['admin', 'owner']);
     });
 
     it('does not include hr, despite hr holding broad invite-grant rights', () => {
       expect(ROLE_CHANGE_ACTOR_ROLES).not.toContain('hr');
+    });
+
+    it('does not include supervisor (demoted to read-only)', () => {
+      expect(ROLE_CHANGE_ACTOR_ROLES).not.toContain('supervisor');
     });
   });
 });

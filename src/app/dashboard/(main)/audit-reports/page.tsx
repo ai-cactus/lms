@@ -26,28 +26,33 @@ export default async function AuditorPackPage() {
     redirect('/login');
   }
 
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: {
-      role: true,
-      organizationId: true,
-      profile: { select: { firstName: true, fullName: true, hasSeenAuditorWelcome: true } },
-      organization: { select: { hasAuditorAccess: true } },
-    },
-  });
+  const { role, organizationId } = session.user;
 
   // Only admin users may access this page
-  if (!user || !isAdminRole(user.role)) {
+  if (!isAdminRole(role)) {
     redirect('/dashboard');
   }
 
-  const firstName = user.profile?.firstName ?? 'there';
-  const hasAccess = user.organization?.hasAuditorAccess ?? false;
-  const showBanner = hasAccess && !user.profile?.hasSeenAuditorWelcome;
+  const [user, organization] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { firstName: true, hasSeenAuditorWelcome: true },
+    }),
+    organizationId
+      ? prisma.organization.findUnique({
+          where: { id: organizationId },
+          select: { hasAuditorAccess: true },
+        })
+      : null,
+  ]);
+
+  const firstName = user?.firstName ?? 'there';
+  const hasAccess = organization?.hasAuditorAccess ?? false;
+  const showBanner = hasAccess && !user?.hasSeenAuditorWelcome;
 
   if (showBanner) {
     // Mark as seen for future visits
-    prisma.profile
+    prisma.user
       .update({
         where: { id: session.user.id },
         data: { hasSeenAuditorWelcome: true },

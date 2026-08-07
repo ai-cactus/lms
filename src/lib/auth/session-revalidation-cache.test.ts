@@ -34,15 +34,16 @@ import {
 
 const ORIGINAL_TTL_ENV = process.env.AUTH_REVALIDATE_TTL_SECONDS;
 
+// Identity-only by design: role/organizationId live on the per-org
+// OrganizationUser membership and are deliberately never cached here (the JWT
+// callback re-reads the membership live on every decode).
 const snapshot: RevalidationSnapshot = {
   id: 'user-1',
-  role: 'owner',
-  organizationId: 'org-1',
+  fullName: 'Jane Doe',
   mfaEnabled: false,
   passwordResetRequired: false,
   sessionVersion: 1,
   authProvider: 'credentials',
-  profileFullName: 'Jane Doe',
 };
 
 beforeEach(() => {
@@ -191,13 +192,11 @@ describe('claim 7: no sensitive material is ever cached', () => {
     expect(Object.keys(persisted).sort()).toEqual(
       [
         'id',
-        'role',
-        'organizationId',
+        'fullName',
         'mfaEnabled',
         'passwordResetRequired',
         'sessionVersion',
         'authProvider',
-        'profileFullName',
       ].sort(),
     );
   });
@@ -206,7 +205,7 @@ describe('claim 7: no sensitive material is ever cached', () => {
   // setCachedRevalidation() does a bare JSON.stringify(snapshot) with no
   // runtime field allowlist. It relies entirely on (a) TypeScript's
   // excess-property check at the one current call site in
-  // create-auth-instance.ts, which passes an 8-key object LITERAL, and (b)
+  // create-auth-instance.ts, which passes a 6-key object LITERAL, and (b)
   // that literal's fields being sourced from a `prisma.user.findUnique`
   // `select` that never fetches `password` in the first place — so there is
   // no live path today that can smuggle a secret into the cache. But the

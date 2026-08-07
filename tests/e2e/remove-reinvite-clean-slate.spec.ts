@@ -42,9 +42,11 @@ interface Seeded {
   orgId: string;
   facilityId: string;
   ownerId: string;
+  ownerOrgUserId: string;
   ownerEmail: string;
   ownerPassword: string;
   workerId: string;
+  workerOrgUserId: string;
   workerEmail: string;
   inFlightCourseId: string;
   inFlightCourseTitle: string;
@@ -68,7 +70,9 @@ async function seedOrgOwnerWorkerAndEnrollments(): Promise<Seeded> {
     const orgId = crypto.randomUUID();
     const facilityId = crypto.randomUUID();
     const ownerId = crypto.randomUUID();
+    const ownerOrgUserId = crypto.randomUUID();
     const workerId = crypto.randomUUID();
+    const workerOrgUserId = crypto.randomUUID();
     const inFlightCourseId = crypto.randomUUID();
     const completedCourseId = crypto.randomUUID();
     const inFlightEnrollmentId = crypto.randomUUID();
@@ -87,24 +91,41 @@ async function seedOrgOwnerWorkerAndEnrollments(): Promise<Seeded> {
       [facilityId, orgId, `Remove Reinvite E2E Facility ${slug}`],
     );
     await client.query(
-      `INSERT INTO users (id, email, password, role, email_verified, organization_id, facility_id, created_at, updated_at)
-       VALUES ($1, $2, $3, 'owner'::"UserRole", true, $4, $5, NOW(), NOW())`,
-      [ownerId, ownerEmail, await bcrypt.hash(ownerPassword, 10), orgId, facilityId],
+      `INSERT INTO users (id, email, password, email_verified, auth_provider, first_name, last_name, full_name, created_at, updated_at)
+       VALUES ($1, $2, $3, true, 'credentials', $4, $5, $6, NOW(), NOW())`,
+      [ownerId, ownerEmail, await bcrypt.hash(ownerPassword, 10), 'Remove', 'Owner', 'Remove Owner'],
     );
     await client.query(
-      `INSERT INTO users (id, email, password, role, email_verified, organization_id, facility_id, created_at, updated_at)
-       VALUES ($1, $2, $3, 'nurse'::"UserRole", true, $4, $5, NOW(), NOW())`,
-      [workerId, workerEmail, await bcrypt.hash('OriginalWorkerPass!9', 10), orgId, facilityId],
+      `INSERT INTO users (id, email, password, email_verified, auth_provider, first_name, last_name, full_name, created_at, updated_at)
+       VALUES ($1, $2, $3, true, 'credentials', $4, $5, $6, NOW(), NOW())`,
+      [
+        workerId,
+        workerEmail,
+        await bcrypt.hash('OriginalWorkerPass!9', 10),
+        'Original',
+        'Worker',
+        'Original Worker',
+      ],
     );
     await client.query(
-      `INSERT INTO profiles (id, email, first_name, last_name, full_name, created_at, updated_at)
-       VALUES ($1, $2, 'Remove', 'Owner', 'Remove Owner', NOW(), NOW())`,
-      [ownerId, ownerEmail],
+      `INSERT INTO organization_users (id, user_id, organization_id, role, active, joined_at, role_assigned_at, created_at, updated_at)
+       VALUES ($1, $2, $3, 'owner'::"UserRole", true, NOW(), NOW(), NOW(), NOW())`,
+      [ownerOrgUserId, ownerId, orgId],
     );
     await client.query(
-      `INSERT INTO profiles (id, email, first_name, last_name, full_name, created_at, updated_at)
-       VALUES ($1, $2, 'Original', 'Worker', 'Original Worker', NOW(), NOW())`,
-      [workerId, workerEmail],
+      `INSERT INTO organization_users (id, user_id, organization_id, role, active, joined_at, role_assigned_at, created_at, updated_at)
+       VALUES ($1, $2, $3, 'nurse'::"UserRole", true, NOW(), NOW(), NOW(), NOW())`,
+      [workerOrgUserId, workerId, orgId],
+    );
+    await client.query(
+      `INSERT INTO organization_user_facilities (id, organization_user_id, facility_id, active, joined_at)
+       VALUES ($1, $2, $3, true, NOW())`,
+      [crypto.randomUUID(), ownerOrgUserId, facilityId],
+    );
+    await client.query(
+      `INSERT INTO organization_user_facilities (id, organization_user_id, facility_id, active, joined_at)
+       VALUES ($1, $2, $3, true, NOW())`,
+      [crypto.randomUUID(), workerOrgUserId, facilityId],
     );
 
     const subNow = new Date();
@@ -128,36 +149,38 @@ async function seedOrgOwnerWorkerAndEnrollments(): Promise<Seeded> {
     );
 
     await client.query(
-      `INSERT INTO courses (id, title, status, created_by, type, is_global, created_at, updated_at)
+      `INSERT INTO courses (id, title, status, created_by_org_user_id, type, is_global, created_at, updated_at)
        VALUES ($1, $2, 'published'::"CourseStatus", $3, 'text'::"CourseType", false, NOW(), NOW())`,
-      [inFlightCourseId, inFlightCourseTitle, ownerId],
+      [inFlightCourseId, inFlightCourseTitle, ownerOrgUserId],
     );
     await client.query(
-      `INSERT INTO courses (id, title, status, created_by, type, is_global, created_at, updated_at)
+      `INSERT INTO courses (id, title, status, created_by_org_user_id, type, is_global, created_at, updated_at)
        VALUES ($1, $2, 'published'::"CourseStatus", $3, 'text'::"CourseType", false, NOW(), NOW())`,
-      [completedCourseId, completedCourseTitle, ownerId],
+      [completedCourseId, completedCourseTitle, ownerOrgUserId],
     );
 
     // In-flight enrollment: the "active" status set removeStaff() must drop.
     await client.query(
-      `INSERT INTO enrollments (id, user_id, course_id, status, progress, started_at)
+      `INSERT INTO enrollments (id, organization_user_id, course_id, status, progress, started_at)
        VALUES ($1, $2, $3, 'in_progress'::"EnrollmentStatus", 40, NOW())`,
-      [inFlightEnrollmentId, workerId, inFlightCourseId],
+      [inFlightEnrollmentId, workerOrgUserId, inFlightCourseId],
     );
     // Completed enrollment: a terminal status removeStaff() must retain.
     await client.query(
-      `INSERT INTO enrollments (id, user_id, course_id, status, progress, score, started_at, completed_at)
+      `INSERT INTO enrollments (id, organization_user_id, course_id, status, progress, score, started_at, completed_at)
        VALUES ($1, $2, $3, 'completed'::"EnrollmentStatus", 100, 95, NOW() - interval '10 days', NOW())`,
-      [completedEnrollmentId, workerId, completedCourseId],
+      [completedEnrollmentId, workerOrgUserId, completedCourseId],
     );
 
     return {
       orgId,
       facilityId,
       ownerId,
+      ownerOrgUserId,
       ownerEmail,
       ownerPassword,
       workerId,
+      workerOrgUserId,
       workerEmail,
       inFlightCourseId,
       inFlightCourseTitle,
@@ -174,18 +197,24 @@ async function seedOrgOwnerWorkerAndEnrollments(): Promise<Seeded> {
 async function cleanup(seeded: Seeded): Promise<void> {
   const client = await db();
   try {
+    await client.query(`DELETE FROM organization_user_facilities WHERE organization_user_id IN ($1, $2)`, [
+      seeded.ownerOrgUserId,
+      seeded.workerOrgUserId,
+    ]);
     await client.query(`DELETE FROM invites WHERE organization_id = $1`, [seeded.orgId]);
     await client.query(`DELETE FROM enrollments WHERE course_id IN ($1, $2)`, [
       seeded.inFlightCourseId,
       seeded.completedCourseId,
     ]);
+    // Delete courses before organization_users — courses.created_by_org_user_id
+    // is ON DELETE RESTRICT.
     await client.query(`DELETE FROM courses WHERE id IN ($1, $2)`, [
       seeded.inFlightCourseId,
       seeded.completedCourseId,
     ]);
-    await client.query(`DELETE FROM profiles WHERE id IN ($1, $2)`, [
-      seeded.ownerId,
-      seeded.workerId,
+    await client.query(`DELETE FROM organization_users WHERE id IN ($1, $2)`, [
+      seeded.ownerOrgUserId,
+      seeded.workerOrgUserId,
     ]);
     await client.query(`DELETE FROM users WHERE id = $1`, [seeded.ownerId]);
     await client.query(`DELETE FROM users WHERE email = $1`, [seeded.workerEmail]);
@@ -231,11 +260,15 @@ test.describe('Remove staffer with in-flight training, then re-invite — clean 
       // ── DB confirmation: in-flight enrollment gone, completed one retained ──
       const dbAfterRemoval = await db();
       try {
-        const userRes = await dbAfterRemoval.query(
-          `SELECT organization_id FROM users WHERE id = $1`,
-          [seeded.workerId],
+        // removeStaff() deactivates the organization_users membership row — it
+        // does NOT delete the users row or null out any column on it (users no
+        // longer carries org-scoped columns at all post-refactor).
+        const orgUserRes = await dbAfterRemoval.query(
+          `SELECT active, deactivated_at FROM organization_users WHERE id = $1`,
+          [seeded.workerOrgUserId],
         );
-        expect(userRes.rows[0].organization_id).toBeNull();
+        expect(orgUserRes.rows[0].active).toBe(false);
+        expect(orgUserRes.rows[0].deactivated_at).not.toBeNull();
 
         const inFlightRes = await dbAfterRemoval.query(
           `SELECT id FROM enrollments WHERE id = $1`,
@@ -337,16 +370,24 @@ test.describe('Remove staffer with in-flight training, then re-invite — clean 
       const dbAfterAccept = await db();
       try {
         const res = await dbAfterAccept.query(
-          `SELECT id, organization_id, role FROM users WHERE email = $1`,
-          [seeded.workerEmail],
+          `SELECT u.id AS user_id, ou.id AS org_user_id, ou.organization_id, ou.active
+             FROM users u
+             JOIN organization_users ou ON ou.user_id = u.id AND ou.organization_id = $2
+            WHERE u.email = $1`,
+          [seeded.workerEmail, seeded.orgId],
         );
         expect(res.rows).toHaveLength(1);
-        expect(res.rows[0].id).toBe(seeded.workerId);
+        expect(res.rows[0].user_id).toBe(seeded.workerId);
+        // createMembership() upserts on (userId, organizationId) — the accept
+        // reactivates the SAME organization_users row rather than creating a
+        // fresh one.
+        expect(res.rows[0].org_user_id).toBe(seeded.workerOrgUserId);
         expect(res.rows[0].organization_id).toBe(seeded.orgId);
+        expect(res.rows[0].active).toBe(true);
 
         const enrollmentsRes = await dbAfterAccept.query(
-          `SELECT course_id, status FROM enrollments WHERE user_id = $1`,
-          [seeded.workerId],
+          `SELECT course_id, status FROM enrollments WHERE organization_user_id = $1`,
+          [seeded.workerOrgUserId],
         );
         expect(enrollmentsRes.rows).toHaveLength(1);
         expect(enrollmentsRes.rows[0]).toMatchObject({

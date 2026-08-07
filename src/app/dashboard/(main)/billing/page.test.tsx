@@ -10,13 +10,24 @@
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockAuth, prismaMock, mockRedirect, mockGetPlanPrices } = vi.hoisted(() => ({
+const { mockAuth, prismaMock, mockRedirect, mockGetPlanPrices, makeSession } = vi.hoisted(() => ({
   mockAuth: vi.fn(),
-  prismaMock: { user: { findUnique: vi.fn() }, organization: { findUnique: vi.fn() } },
+  prismaMock: { organization: { findUnique: vi.fn() } },
   mockRedirect: vi.fn(() => {
     throw new Error('NEXT_REDIRECT');
   }),
   mockGetPlanPrices: vi.fn(),
+  makeSession: (role: string, extras: Record<string, unknown> = {}) => ({
+    user: {
+      id: 'user-1',
+      organizationUserId: 'ou-1',
+      organizationId: 'org-1',
+      role,
+      email: 'x@acme.com',
+      name: 'Test User',
+      ...extras,
+    },
+  }),
 }));
 
 vi.mock('@/auth', () => ({ auth: mockAuth }));
@@ -51,7 +62,7 @@ import BillingPageRoute from './page';
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockAuth.mockResolvedValue({ user: { id: 'user-1' } });
+  mockAuth.mockResolvedValue(makeSession('owner'));
   prismaMock.organization.findUnique.mockResolvedValue({
     facilities: [{ staffCount: 5 }],
     subscription: { plan: 'growth', status: 'active', pausedAt: null, pauseEndsAt: null },
@@ -60,8 +71,9 @@ beforeEach(() => {
 });
 
 describe('BillingPageRoute — billing.read gate', () => {
-  it.each(['owner', 'finance'])('renders the real billing UI for %s', async (role) => {
-    prismaMock.user.findUnique.mockResolvedValueOnce({ role, organizationId: 'org-1' });
+  // owner/admin (everything) and finance (explicit billing CRUD) hold billing.read.
+  it.each(['owner', 'admin', 'finance'])('renders the real billing UI for %s', async (role) => {
+    mockAuth.mockResolvedValueOnce(makeSession(role));
 
     const element = await BillingPageRoute();
     render(element);
@@ -70,10 +82,11 @@ describe('BillingPageRoute — billing.read gate', () => {
     expect(screen.queryByText(/don.t have access to billing/i)).not.toBeInTheDocument();
   });
 
+  // supervisor was demoted to read-only-minus-billing; hr never had billing access.
   it.each(['supervisor', 'hr'])(
     'renders the access-denied card instead of billing for %s',
     async (role) => {
-      prismaMock.user.findUnique.mockResolvedValueOnce({ role, organizationId: 'org-1' });
+      mockAuth.mockResolvedValueOnce(makeSession(role));
 
       const element = await BillingPageRoute();
       render(element);
@@ -93,11 +106,11 @@ describe('BillingPageRoute — billing.read gate', () => {
     await expect(BillingPageRoute()).rejects.toThrow('NEXT_REDIRECT');
 
     expect(mockRedirect).toHaveBeenCalledExactlyOnceWith('/login');
-    expect(prismaMock.user.findUnique).not.toHaveBeenCalled();
+    expect(prismaMock.organization.findUnique).not.toHaveBeenCalled();
   });
 
   it('fetches live Stripe plan prices and passes them through to BillingPage', async () => {
-    prismaMock.user.findUnique.mockResolvedValueOnce({ role: 'owner', organizationId: 'org-1' });
+    mockAuth.mockResolvedValueOnce(makeSession('owner'));
 
     const element = await BillingPageRoute();
     render(element);
@@ -107,10 +120,7 @@ describe('BillingPageRoute — billing.read gate', () => {
   });
 
   it('does not call getPlanPrices for a role denied billing access', async () => {
-    prismaMock.user.findUnique.mockResolvedValueOnce({
-      role: 'supervisor',
-      organizationId: 'org-1',
-    });
+    mockAuth.mockResolvedValueOnce(makeSession('supervisor'));
 
     const element = await BillingPageRoute();
     render(element);
@@ -130,7 +140,7 @@ describe('BillingPageRoute — billing.read gate', () => {
  */
 describe('BillingPageRoute — hasLiveSubscription computation', () => {
   beforeEach(() => {
-    prismaMock.user.findUnique.mockResolvedValueOnce({ role: 'owner', organizationId: 'org-1' });
+    mockAuth.mockResolvedValueOnce(makeSession('owner'));
   });
 
   it('is true for an active subscription with a live Stripe subscription id', async () => {
@@ -200,10 +210,7 @@ describe('BillingPageRoute — hasLiveSubscription computation', () => {
   });
 
   it('is false when the caller has no organization at all', async () => {
-    prismaMock.user.findUnique.mockReset().mockResolvedValueOnce({
-      role: 'owner',
-      organizationId: null,
-    });
+    mockAuth.mockReset().mockResolvedValueOnce(makeSession('owner', { organizationId: null }));
 
     const element = await BillingPageRoute();
     render(element);

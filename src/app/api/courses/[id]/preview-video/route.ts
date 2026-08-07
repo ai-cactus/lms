@@ -19,9 +19,12 @@ export const dynamic = 'force-dynamic';
  * they're enrolled in it. The course must actually have a preview video.
  */
 
-async function currentUserId(): Promise<string | null> {
+/** Resolves null only when neither session is authenticated. */
+async function currentOrganizationUserId(): Promise<{ organizationUserId: string | null } | null> {
   const [a, w] = await Promise.all([adminAuth(), workerAuth()]);
-  return a?.user?.id ?? w?.user?.id ?? null;
+  const session = a?.user?.id ? a : w?.user?.id ? w : null;
+  if (!session?.user?.id) return null;
+  return { organizationUserId: session.user.organizationUserId };
 }
 
 const PASSTHROUGH_HEADERS = [
@@ -34,8 +37,8 @@ const PASSTHROUGH_HEADERS = [
 ] as const;
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const uid = await currentUserId();
-  if (!uid) return new Response('Unauthorized', { status: 401 });
+  const current = await currentOrganizationUserId();
+  if (!current) return new Response('Unauthorized', { status: 401 });
 
   const { id: courseId } = await params;
 
@@ -46,8 +49,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       isGlobal: true,
       status: true,
       type: true,
-      createdBy: true,
-      enrollments: { where: { userId: uid }, select: { id: true } },
+      createdByOrgUserId: true,
     },
   });
 
@@ -55,7 +57,20 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
   const isGlobalCatalog =
     course.isGlobal && course.status === 'published' && course.type === 'video';
-  const allowed = isGlobalCatalog || course.createdBy === uid || course.enrollments.length > 0;
+  const isCreator = current.organizationUserId
+    ? course.createdByOrgUserId === current.organizationUserId
+    : false;
+
+  let isEnrolled = false;
+  if (!isGlobalCatalog && !isCreator && current.organizationUserId) {
+    const enrollment = await prisma.enrollment.findFirst({
+      where: { courseId, organizationUserId: current.organizationUserId },
+      select: { id: true },
+    });
+    isEnrolled = !!enrollment;
+  }
+
+  const allowed = isGlobalCatalog || isCreator || isEnrolled;
   if (!allowed) return new Response('Forbidden', { status: 403 });
 
   if (!course.previewVideoStorageUri) {

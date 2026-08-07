@@ -21,10 +21,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ jobI
 
     // Ensure they only poll their own org's jobs (though job IDs are UUIDs)
     if (job.userId !== session.user.id) {
-      // Ideally we check if job belongs to same org, but job has userId
-      const user = await prisma.user.findUnique({ where: { id: session.user.id } });
-      const jobOwner = await prisma.user.findUnique({ where: { id: job.userId! } });
-      if (user?.organizationId !== jobOwner?.organizationId) {
+      const { organizationId } = session.user;
+      const jobOwnerMembership =
+        organizationId && job.userId
+          ? await prisma.organizationUser.findFirst({
+              where: { userId: job.userId, organizationId },
+              select: { id: true },
+            })
+          : null;
+      if (!jobOwnerMembership) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
       }
     }

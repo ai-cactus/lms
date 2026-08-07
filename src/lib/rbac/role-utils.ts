@@ -2,8 +2,8 @@
  * RBAC role utilities — the single home for DB-enum ⇄ RoleKey conversion and
  * for the role-set / grant-matrix helpers used across auth, API routes and UI.
  *
- * DB enum values (`UserRole`) are snake_case: five manager roles (`owner`,
- * `supervisor`, `hr`, `clinical_director`, `finance`) plus eight job-specific
+ * DB enum values (`UserRole`) are snake_case: six manager roles (`owner`,
+ * `admin`, `supervisor`, `hr`, `clinical_director`, `finance`) plus eight job-specific
  * worker roles (`psychiatrist_prescriber`, `nurse`, `therapist_clinician`,
  * `case_manager`, `behavioral_health_technician`, `peer_support_specialist`,
  * `front_desk_admin`, `facilities_support`). The `permissions.ts` registry keys
@@ -22,6 +22,7 @@ import type { Role } from '@/types/next-auth';
 /** Every administrative (non-worker) role. */
 export const ADMIN_ROLES: readonly Role[] = [
   'owner',
+  'admin',
   'supervisor',
   'hr',
   'clinical_director',
@@ -49,6 +50,7 @@ export const ALL_ROLES: readonly Role[] = [...ADMIN_ROLES, ...WORKER_ROLES];
  * worker role (those are invited as workers, never as managers).
  */
 export const MANAGER_INVITE_ROLES: readonly Role[] = [
+  'admin',
   'supervisor',
   'hr',
   'clinical_director',
@@ -68,6 +70,7 @@ export const DEFAULT_SELF_SERVE_WORKER_ROLE: Role = 'front_desk_admin';
 
 const DB_ROLE_TO_ROLE_KEY: Record<Role, RoleKey> = {
   owner: 'owner',
+  admin: 'admin',
   supervisor: 'supervisor',
   hr: 'hr',
   clinical_director: 'clinicalDirector',
@@ -103,9 +106,14 @@ export function getRoleDisplayName(role: Role): string {
 // Owner is NON-grantable — it is established only at org creation, so it never
 // appears in any grant list (one-owner-per-org).
 export const GRANTABLE_ROLES: Record<Role, readonly Role[]> = {
-  owner: ['supervisor', 'hr', 'clinical_director', 'finance', ...WORKER_ROLES],
-  supervisor: ['supervisor', 'hr', 'clinical_director', 'finance', ...WORKER_ROLES],
-  // D1 — HR may grant any role EXCEPT supervisor and owner.
+  owner: ['admin', 'supervisor', 'hr', 'clinical_director', 'finance', ...WORKER_ROLES],
+  // Owner-equivalent, minus the two seats it must not be able to mint: `owner`
+  // (one per org, established at creation) and `admin` (only an Owner may
+  // delegate Owner-equivalent access, so admins cannot clone themselves).
+  admin: ['supervisor', 'hr', 'clinical_director', 'finance', ...WORKER_ROLES],
+  // Read-only per the RBAC matrix — a supervisor grants nothing.
+  supervisor: [],
+  // D1 — HR may grant any role EXCEPT supervisor, admin and owner.
   hr: ['hr', 'clinical_director', 'finance', ...WORKER_ROLES],
   clinical_director: [],
   finance: [],
@@ -121,13 +129,13 @@ export const GRANTABLE_ROLES: Record<Role, readonly Role[]> = {
 
 /**
  * Roles permitted to change another staff member's role in place. Deliberately
- * narrower than the invite-grant matrix: only an organisation Owner or a
- * facility Supervisor may re-role an existing account (HR can invite/edit staff
- * but not re-role them). Owner is intentionally excluded from every
- * {@link GRANTABLE_ROLES} list, so promoting to — or changing — an owner is
- * rejected by {@link canChangeRole} without any special-case here.
+ * narrower than the invite-grant matrix: only an organisation Owner or Admin may
+ * re-role an existing account (HR can invite/edit staff but not re-role them;
+ * Supervisor is read-only per the RBAC matrix). Owner is intentionally excluded
+ * from every {@link GRANTABLE_ROLES} list, so promoting to — or changing — an
+ * owner is rejected by {@link canChangeRole} without any special-case here.
  */
-export const ROLE_CHANGE_ACTOR_ROLES: readonly Role[] = ['owner', 'supervisor'];
+export const ROLE_CHANGE_ACTOR_ROLES: readonly Role[] = ['owner', 'admin'];
 
 /** Why {@link canChangeRole} denied a role change (maps to caller-facing copy). */
 export type RoleChangeDenyReason =
@@ -143,12 +151,12 @@ export interface RoleChangeDecision {
 
 /**
  * Pure guard for an in-place staff role change. Evaluated in order:
- *   1. actor not an Owner/Supervisor        → `actor_not_permitted`
+ *   1. actor not an Owner/Admin             → `actor_not_permitted`
  *   2. actor is the target (self re-role)   → `self_change`
  *   3. target's CURRENT role not grantable  → `target_not_reachable`
  *      (e.g. an owner — owner is in no grant list)
  *   4. requested NEW role not grantable     → `role_not_grantable`
- *      (e.g. owner, or supervisor for an HR actor)
+ *      (e.g. owner, or admin for an Admin actor)
  * No I/O — the caller owns the DB writes, session-kill and audit.
  */
 export function canChangeRole(

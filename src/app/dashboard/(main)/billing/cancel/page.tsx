@@ -16,11 +16,14 @@ export default async function CancelSubscriptionPage() {
     redirect('/login');
   }
 
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: {
-      role: true,
-      organization: {
+  const { role, organizationId } = session.user;
+  if (!isAdminRole(role)) {
+    redirect('/dashboard');
+  }
+
+  const organization = organizationId
+    ? await prisma.organization.findUnique({
+        where: { id: organizationId },
         select: {
           subscription: {
             select: {
@@ -33,15 +36,10 @@ export default async function CancelSubscriptionPage() {
             },
           },
         },
-      },
-    },
-  });
+      })
+    : null;
 
-  if (!user || !isAdminRole(user.role)) {
-    redirect('/dashboard');
-  }
-
-  const sub = user.organization?.subscription;
+  const sub = organization?.subscription;
 
   // Cancelling requires a subscription that Stripe still considers billable
   // (paused subscriptions keep a status of `active`). Already-scheduled
