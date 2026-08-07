@@ -17,27 +17,21 @@ export default async function CreateCoursePage() {
     redirect('/login');
   }
 
-  // Confirm the user is an admin with an active subscription before allowing
-  // access to the wizard. This prevents URL-bypassing of the UI billing gate.
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: {
-      role: true,
-      organization: {
-        select: {
-          subscription: {
-            select: { status: true, pausedAt: true },
-          },
-        },
-      },
-    },
-  });
-
-  if (!user || !isAdminRole(user.role)) {
+  const { role, organizationId } = session.user;
+  if (!isAdminRole(role)) {
     redirect('/dashboard');
   }
 
-  const hasBilling = hasActiveBilling(user.organization?.subscription);
+  // Confirm the org has an active subscription before allowing access to the
+  // wizard. This prevents URL-bypassing of the UI billing gate.
+  const organization = organizationId
+    ? await prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: { subscription: { select: { status: true, pausedAt: true } } },
+      })
+    : null;
+
+  const hasBilling = hasActiveBilling(organization?.subscription);
 
   if (!hasBilling) {
     // Redirect to the courses list where the billing gate UI will be shown

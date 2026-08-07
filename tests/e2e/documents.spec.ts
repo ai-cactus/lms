@@ -36,7 +36,7 @@ test.describe('Document Hub — full org parity', () => {
     await expect(page.getByRole('row', { name: /e2e-admin2-policy\.pdf/i })).toBeVisible();
   });
 
-  test('deleting another admin\'s document shows the shadcn AlertDialog — never a native confirm()', async ({
+  test("deleting another admin's document shows the shadcn AlertDialog — never a native confirm()", async ({
     page,
   }) => {
     // Fail the test immediately if a native browser dialog (window.confirm)
@@ -105,8 +105,13 @@ test.describe('Document upload — client-side .doc rejection (Issue #13)', () =
     await loginAsAdmin(page, 'admin@test.com');
     await page.goto('/dashboard/documents');
 
-    await page.getByRole('button', { name: /upload/i }).first().click();
-    const dialog = page.getByRole('dialog', { name: 'Upload Document' });
+    await page
+      .getByRole('button', { name: /upload/i })
+      .first()
+      .click();
+    // multi-facility v3 rewrote the single-file "Upload Document" dialog into
+    // the multi-file "Upload documents" one — updated to match.
+    const dialog = page.getByRole('dialog', { name: 'Upload documents' });
     await expect(dialog).toBeVisible();
 
     await dialog.locator('input[type="file"]').setInputFiles({
@@ -115,7 +120,65 @@ test.describe('Document upload — client-side .doc rejection (Issue #13)', () =
       buffer: Buffer.from('not a real doc file, just bytes for the client-side check'),
     });
 
-    await expect(dialog.getByText('Only PDF and DOCX files are allowed.')).toBeVisible();
-    await expect(dialog.getByRole('button', { name: 'Upload' })).toBeDisabled();
+    // The multi-file modal's client-side rejection copy differs from the
+    // old single-file one — it names the file and the batch outcome.
+    await expect(
+      dialog.getByText('Skipped 1 file(s): legacy-policy.doc (only PDF and DOCX are allowed)'),
+    ).toBeVisible();
+    // A rejected file is never queued, so the button reads "Upload 0 files"
+    // (not the old bare "Upload") and stays disabled.
+    await expect(dialog.getByRole('button', { name: 'Upload 0 files' })).toBeDisabled();
+  });
+});
+
+test.describe('Document upload — multi-file batch selection (multi-facility v3)', () => {
+  // Actually SUBMITTING is out of scope here for the same reason documented at
+  // the top of this file: uploadDocuments' PHI gate calls a real Vertex AI
+  // scan that always fails closed without live credentials, so any submit
+  // attempt is blocked before persistence. This exercises the batch-selection
+  // UI mechanics (multiple files queued, per-file remove, shared category,
+  // button label/enablement) that ARE observable without a live scan.
+  test('selecting 2 valid files queues both, category applies to the batch, and Upload enables once attested', async ({
+    page,
+  }) => {
+    await loginAsAdmin(page, 'admin@test.com');
+    await page.goto('/dashboard/documents');
+
+    await page
+      .getByRole('button', { name: /upload/i })
+      .first()
+      .click();
+    const dialog = page.getByRole('dialog', { name: 'Upload documents' });
+    await expect(dialog).toBeVisible();
+
+    await dialog.locator('input[type="file"]').setInputFiles([
+      {
+        name: 'policy-one.pdf',
+        mimeType: 'application/pdf',
+        buffer: Buffer.from('%PDF-1.4 fake pdf bytes one'),
+      },
+      {
+        name: 'policy-two.pdf',
+        mimeType: 'application/pdf',
+        buffer: Buffer.from('%PDF-1.4 fake pdf bytes two'),
+      },
+    ]);
+
+    await expect(dialog.getByText('policy-one.pdf')).toBeVisible();
+    await expect(dialog.getByText('policy-two.pdf')).toBeVisible();
+    // Not attested yet — Upload stays disabled even with 2 valid files queued.
+    await expect(dialog.getByRole('button', { name: /upload 2 files/i })).toBeDisabled();
+
+    await dialog.getByRole('combobox', { name: 'Category' }).click();
+    await page.getByRole('option').first().click();
+
+    await dialog.getByLabel(/no personal health information/i).check();
+    await expect(dialog.getByRole('button', { name: /upload 2 files/i })).toBeEnabled();
+
+    // Removing one file drops the count and label to reflect the remaining file.
+    await dialog.getByRole('button', { name: 'Remove policy-one.pdf' }).click();
+    await expect(dialog.getByText('policy-one.pdf')).not.toBeVisible();
+    await expect(dialog.getByText('policy-two.pdf')).toBeVisible();
+    await expect(dialog.getByRole('button', { name: /upload 1 file$/i })).toBeVisible();
   });
 });

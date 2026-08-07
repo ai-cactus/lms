@@ -17,7 +17,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const { prismaMock, mockAdminAuth, mockWorkerAuth, mockRevalidatePath } = vi.hoisted(() => {
   const prismaMock = {
     course: { findUnique: vi.fn() },
-    user: { findUnique: vi.fn(), findMany: vi.fn() },
+    organization: { findUnique: vi.fn() },
+    organizationUser: { findMany: vi.fn() },
+    organizationUserFacility: { findMany: vi.fn() },
     enrollment: { createMany: vi.fn() },
   };
   return {
@@ -40,24 +42,31 @@ vi.mock('@/lib/reminders/sweep', () => ({ resolveOnCompletion: vi.fn() }));
 import { assignCourseToUsers } from './course';
 
 const ADMIN_ID = 'admin-001';
+const ADMIN_ORG_USER_ID = 'ou-admin-001';
 const ORG_ID = 'org-001';
 const COURSE_ID = 'course-001';
 
-const ownCourse = { createdBy: ADMIN_ID, title: 'My Training' };
+// Post User/OrganizationUser split: course ownership is keyed by the
+// creator's OrganizationUser id, not the raw User id.
+const ownCourse = { createdByOrgUserId: ADMIN_ORG_USER_ID, title: 'My Training' };
 
-function currentUserWithSubscription(subscription: unknown) {
-  return {
-    organizationId: ORG_ID,
-    organization: { subscription },
-  };
+function orgWithSubscription(subscription: unknown) {
+  return { subscription };
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockAdminAuth.mockResolvedValue({ user: { id: ADMIN_ID } });
+  // The session carries organizationUserId/organizationId directly — no
+  // separate `prisma.user` lookup enriches it post-refactor.
+  mockAdminAuth.mockResolvedValue({
+    user: { id: ADMIN_ID, organizationUserId: ADMIN_ORG_USER_ID, organizationId: ORG_ID },
+  });
   mockWorkerAuth.mockResolvedValue(null);
   prismaMock.course.findUnique.mockResolvedValue(ownCourse);
-  prismaMock.user.findMany.mockResolvedValue([{ id: 'staff-1', email: 'staff@acme.com' }]);
+  prismaMock.organizationUser.findMany.mockResolvedValue([
+    { id: 'ou-staff-1', user: { email: 'staff@acme.com' } },
+  ]);
+  prismaMock.organizationUserFacility.findMany.mockResolvedValue([]);
   prismaMock.enrollment.createMany.mockResolvedValue({ count: 1 });
 });
 
@@ -80,7 +89,9 @@ describe('assignCourseToUsers — auth / ownership guards', () => {
   });
 
   it('throws when the caller has no organization', async () => {
-    prismaMock.user.findUnique.mockResolvedValue({ organizationId: null, organization: null });
+    mockAdminAuth.mockResolvedValue({
+      user: { id: ADMIN_ID, organizationUserId: ADMIN_ORG_USER_ID, organizationId: null },
+    });
 
     await expect(assignCourseToUsers(COURSE_ID, ['staff@acme.com'])).rejects.toThrow(
       'You must belong to an organization to assign courses',
@@ -106,13 +117,13 @@ describe('assignCourseToUsers — billing gate (Defect B)', () => {
       { status: 'trialing', pausedAt: new Date('2026-01-01T00:00:00Z') },
     ],
   ])('rejects with the billing message for %s, before any enrollment write', async (_desc, sub) => {
-    prismaMock.user.findUnique.mockResolvedValue(currentUserWithSubscription(sub));
+    prismaMock.organization.findUnique.mockResolvedValue(orgWithSubscription(sub));
 
     await expect(assignCourseToUsers(COURSE_ID, ['staff@acme.com'])).rejects.toThrow(
       'Your organization needs an active subscription to assign courses.',
     );
 
-    expect(prismaMock.user.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.organizationUser.findMany).not.toHaveBeenCalled();
     expect(prismaMock.enrollment.createMany).not.toHaveBeenCalled();
   });
 
@@ -120,16 +131,52 @@ describe('assignCourseToUsers — billing gate (Defect B)', () => {
     ['active and unpaused', { status: 'active', pausedAt: null }],
     ['trialing and unpaused', { status: 'trialing', pausedAt: null }],
   ])('succeeds when the subscription is %s', async (_desc, sub) => {
-    prismaMock.user.findUnique.mockResolvedValue(currentUserWithSubscription(sub));
+    prismaMock.organization.findUnique.mockResolvedValue(orgWithSubscription(sub));
 
     const result = await assignCourseToUsers(COURSE_ID, ['staff@acme.com']);
 
     expect(prismaMock.enrollment.createMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: [expect.objectContaining({ userId: 'staff-1', courseId: COURSE_ID })],
+        data: [expect.objectContaining({ organizationUserId: 'ou-staff-1', courseId: COURSE_ID })],
         skipDuplicates: true,
       }),
     );
     expect(result).toEqual({ success: true, count: 1 });
+  });
+});
+
+describe('assignCourseToUsers — facility stamping', () => {
+  it("stamps each enrollment with its member's own active facility assignment", async () => {
+    prismaMock.organizationUser.findMany.mockResolvedValue([
+      { id: 'ou-staff-1', user: { email: 'staff1@acme.com' } },
+      { id: 'ou-staff-2', user: { email: 'staff2@acme.com' } },
+    ]);
+    prismaMock.organizationUserFacility.findMany.mockResolvedValue([
+      { organizationUserId: 'ou-staff-1', facilityId: 'fac-1' },
+      { organizationUserId: 'ou-staff-2', facilityId: 'fac-2' },
+    ]);
+
+    await assignCourseToUsers(COURSE_ID, ['staff1@acme.com', 'staff2@acme.com']);
+
+    expect(prismaMock.enrollment.createMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: [
+          expect.objectContaining({ organizationUserId: 'ou-staff-1', facilityId: 'fac-1' }),
+          expect.objectContaining({ organizationUserId: 'ou-staff-2', facilityId: 'fac-2' }),
+        ],
+      }),
+    );
+  });
+
+  it('stamps facilityId: null for a member with no active facility assignment', async () => {
+    prismaMock.organizationUserFacility.findMany.mockResolvedValue([]);
+
+    await assignCourseToUsers(COURSE_ID, ['staff@acme.com']);
+
+    expect(prismaMock.enrollment.createMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: [expect.objectContaining({ organizationUserId: 'ou-staff-1', facilityId: null })],
+      }),
+    );
   });
 });

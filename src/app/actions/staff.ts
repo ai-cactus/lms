@@ -15,7 +15,7 @@ import crypto from 'crypto';
 import type { EnrollmentStatus, UserRole } from '@/generated/prisma/enums';
 import { enrollUsers, type AssignmentSettingsInput } from '@/app/actions/enrollment';
 import { enrollUserForRoleTargets } from '@/lib/enrollment/role-targets';
-import { logger } from '@/lib/logger';
+import { logger, maskEmail } from '@/lib/logger';
 import { audit, getClientContext } from '@/lib/audit';
 import { headers } from 'next/headers';
 import { invalidateRevalidationCache } from '@/lib/auth/session-revalidation-cache';
@@ -33,23 +33,30 @@ const ROLE_CHANGE_DENIED_MESSAGES: Record<RoleChangeDenyReason, string> = {
     'The Owner role cannot be assigned. It is set only when an organization is created.',
 };
 
-export async function getStaffDetails(userId: string) {
+/**
+ * `organizationUserId` identifies the person's membership in the caller's org
+ * (per the multi-org model, "a person within an organization" is an
+ * OrganizationUser row, not a bare identity).
+ */
+export async function getStaffDetails(organizationUserId: string) {
   const session = await auth();
   if (!session?.user?.id || !isAdminRole(session.user.role) || !session.user.organizationId) {
     throw new Error('Unauthorized');
   }
 
   try {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
+    const orgUser = await prisma.organizationUser.findUnique({
+      where: { id: organizationUserId },
+      // Explicit projection — this DTO never needs the credential columns behind
+      // the joined User rows (password hash, MFA state, reset flags).
       select: {
         id: true,
-        email: true,
         role: true,
+        jobTitle: true,
         organizationId: true,
         managerId: true,
-        profile: { select: { fullName: true, avatarUrl: true, jobTitle: true } },
-        manager: { select: { email: true, profile: { select: { fullName: true } } } },
+        user: { select: { email: true, fullName: true, avatarUrl: true } },
+        manager: { select: { user: { select: { email: true, fullName: true } } } },
         enrollments: {
           orderBy: { startedAt: 'desc' },
           select: {
@@ -76,14 +83,14 @@ export async function getStaffDetails(userId: string) {
       },
     });
 
-    if (!user) return null;
+    if (!orgUser) return null;
 
     // Tenant isolation: an admin may only view users that belong to their own org.
-    if (user.organizationId !== session.user.organizationId) {
+    if (orgUser.organizationId !== session.user.organizationId) {
       logger.warn({
         msg: '[staff] Cross-tenant staff detail access blocked',
         userId: session.user.id,
-        targetUserId: userId,
+        targetOrgUserId: organizationUserId,
       });
       return null;
     }
@@ -95,13 +102,13 @@ export async function getStaffDetails(userId: string) {
       actorRole: session.user.role,
       organizationId: session.user.organizationId,
       targetType: 'user',
-      targetId: userId,
+      targetId: organizationUserId,
       ...getClientContext(await headers()),
     });
 
-    const totalCourses = user.enrollments.length || 0;
+    const totalCourses = orgUser.enrollments.length || 0;
     const completedCourses =
-      user.enrollments.filter((e) => {
+      orgUser.enrollments.filter((e) => {
         const passingScore = e.course.lessons.find((l) => l.quiz)?.quiz?.passingScore || 70;
         return (
           e.status === 'completed' ||
@@ -111,7 +118,7 @@ export async function getStaffDetails(userId: string) {
       }).length || 0;
 
     const failedCourses =
-      user.enrollments.filter((e) => {
+      orgUser.enrollments.filter((e) => {
         const isFinished = e.status === 'completed' || e.progress === 100;
         const hasScore = e.score !== null;
         const passingScore = e.course.lessons.find((l) => l.quiz)?.quiz?.passingScore || 70;
@@ -123,14 +130,16 @@ export async function getStaffDetails(userId: string) {
 
     return {
       user: {
-        id: user.id,
-        name: user.profile?.fullName || user.email.split('@')[0],
-        email: user.email,
-        avatarUrl: user.profile?.avatarUrl ?? null,
-        role: user.role,
-        jobTitle: user.profile?.jobTitle || 'Staff Member',
-        managerId: user.managerId ?? null,
-        managerName: user.manager ? (user.manager.profile?.fullName ?? user.manager.email) : null,
+        id: orgUser.id,
+        name: orgUser.user.fullName || orgUser.user.email.split('@')[0],
+        email: orgUser.user.email,
+        avatarUrl: orgUser.user.avatarUrl ?? null,
+        role: orgUser.role,
+        jobTitle: orgUser.jobTitle || 'Staff Member',
+        managerId: orgUser.managerId ?? null,
+        managerName: orgUser.manager
+          ? (orgUser.manager.user.fullName ?? orgUser.manager.user.email)
+          : null,
       },
       stats: {
         totalCourses,
@@ -138,7 +147,7 @@ export async function getStaffDetails(userId: string) {
         failedCourses,
         activeCourses,
       },
-      enrollments: user.enrollments.map((e) => ({
+      enrollments: orgUser.enrollments.map((e) => ({
         id: e.id,
         courseId: e.courseId,
         courseName: e.course.title,
@@ -161,7 +170,7 @@ export async function getStaffDetails(userId: string) {
 }
 
 export async function updateStaffDetails(
-  userId: string,
+  organizationUserId: string,
   data: {
     firstName: string;
     lastName: string;
@@ -179,9 +188,9 @@ export async function updateStaffDetails(
   }
 
   // Tenant isolation: an admin may only edit users that belong to their own org.
-  const target = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { organizationId: true, role: true },
+  const target = await prisma.organizationUser.findUnique({
+    where: { id: organizationUserId },
+    select: { userId: true, organizationId: true, role: true },
   });
   if (!target || target.organizationId !== session.user.organizationId) {
     return { success: false, error: 'Forbidden' };
@@ -195,7 +204,7 @@ export async function updateStaffDetails(
     const decision = canChangeRole(
       session.user.role,
       session.user.id,
-      userId,
+      target.userId,
       target.role,
       data.role,
     );
@@ -203,7 +212,7 @@ export async function updateStaffDetails(
       logger.warn({
         msg: '[staff] Role change denied',
         actorId: session.user.id,
-        targetUserId: userId,
+        targetOrgUserId: organizationUserId,
         reason: decision.reason,
       });
       return { success: false, error: ROLE_CHANGE_DENIED_MESSAGES[decision.reason!] };
@@ -211,23 +220,29 @@ export async function updateStaffDetails(
   }
 
   try {
-    const user = await prisma.user.update({
-      where: { id: userId },
-      // Bump sessionVersion on a role change so the target's live sessions are
-      // invalidated on their next JWT decode — their new permission ceiling
-      // takes effect immediately (F-059 kill-switch precedent).
+    await prisma.organizationUser.update({
+      where: { id: organizationUserId },
       data: {
         role: data.role,
+        jobTitle: data.jobTitle,
         // Stamp the role-join date so late-joiner deadline windows count from the
-        // change, and bump sessionVersion so the new ceiling takes effect at once.
-        ...(roleChanged ? { roleAssignedAt: new Date(), sessionVersion: { increment: 1 } } : {}),
+        // change.
+        ...(roleChanged ? { roleAssignedAt: new Date() } : {}),
       },
     });
 
     if (roleChanged) {
-      // The role change bumped sessionVersion; evict the cached revalidation
-      // snapshot so the target's next decode reads the new version immediately.
-      await invalidateRevalidationCache(userId);
+      // Bump sessionVersion on the identity so the target's live sessions are
+      // invalidated on their next JWT decode — their new permission ceiling
+      // takes effect immediately (F-059 kill-switch precedent).
+      await prisma.user.update({
+        where: { id: target.userId },
+        data: { sessionVersion: { increment: 1 } },
+      });
+
+      // Evict the cached revalidation snapshot so that next decode reads the
+      // new sessionVersion immediately rather than waiting out the Redis TTL.
+      await invalidateRevalidationCache(target.userId);
 
       await audit({
         action: 'staff.role.change',
@@ -235,42 +250,33 @@ export async function updateStaffDetails(
         actorRole: session.user.role,
         organizationId: session.user.organizationId,
         targetType: 'user',
-        targetId: userId,
+        targetId: organizationUserId,
         metadata: { fromRole: target.role, toRole: data.role },
         ...getClientContext(await headers()),
       });
       logger.info({
         msg: '[staff] Role changed',
         actorId: session.user.id,
-        targetUserId: userId,
+        targetOrgUserId: organizationUserId,
         fromRole: target.role,
         toRole: data.role,
       });
 
       // Live auto-enroll: the user now holds a new role, so enroll them in any
       // active role-target assignments for it. Never throws.
-      await enrollUserForRoleTargets(userId, session.user.organizationId);
+      await enrollUserForRoleTargets(organizationUserId, session.user.organizationId);
     }
 
-    await prisma.profile.upsert({
-      where: { id: userId },
-      update: {
+    await prisma.user.update({
+      where: { id: target.userId },
+      data: {
         firstName: data.firstName,
         lastName: data.lastName,
         fullName: `${data.firstName} ${data.lastName}`.trim(),
-        jobTitle: data.jobTitle,
-      },
-      create: {
-        id: userId,
-        email: user.email,
-        firstName: data.firstName,
-        lastName: data.lastName,
-        fullName: `${data.firstName} ${data.lastName}`.trim(),
-        jobTitle: data.jobTitle,
       },
     });
 
-    revalidatePath(`/dashboard/staff/${userId}`);
+    revalidatePath(`/dashboard/staff/${organizationUserId}`);
     revalidatePath('/dashboard/staff');
     return { success: true };
   } catch (error) {
@@ -294,23 +300,24 @@ export async function getAssignableManagers(): Promise<
   }
 
   // Restrict to the caller's own organization — never return users from other tenants.
-  const admins = await prisma.user.findMany({
+  const admins = await prisma.organizationUser.findMany({
     where: {
       organizationId: session.user.organizationId,
+      active: true,
       role: { in: [...ADMIN_ROLES] },
     },
     include: {
-      profile: true,
+      user: true,
     },
     orderBy: {
-      createdAt: 'desc',
+      joinedAt: 'desc',
     },
   });
 
   return admins.map((admin) => ({
     id: admin.id,
-    name: admin.profile?.fullName || admin.email,
-    email: admin.email,
+    name: admin.user.fullName || admin.user.email,
+    email: admin.user.email,
   }));
 }
 
@@ -318,10 +325,13 @@ export async function getAssignableManagers(): Promise<
  * Sets (or clears) the manager for a staff member. Enforces multi-tenant
  * isolation and the integrity rules: the manager must belong to the same
  * organization, must be admin-role, and cannot be the staff member themselves.
+ * `staffOrgUserId`/`managerOrgUserId` identify OrganizationUser memberships —
+ * `OrganizationUser.managerId` now references another membership, not a bare
+ * identity.
  */
 export async function setStaffManager(
-  staffId: string,
-  managerId: string | null,
+  staffOrgUserId: string,
+  managerOrgUserId: string | null,
 ): Promise<{ success: boolean; error?: string }> {
   const session = await auth();
   if (
@@ -333,21 +343,21 @@ export async function setStaffManager(
   }
 
   // Tenant isolation: an admin may only manage users that belong to their own org.
-  const staff = await prisma.user.findUnique({
-    where: { id: staffId },
+  const staff = await prisma.organizationUser.findUnique({
+    where: { id: staffOrgUserId },
     select: { organizationId: true },
   });
   if (!staff || staff.organizationId !== session.user.organizationId) {
     return { success: false, error: 'Forbidden' };
   }
 
-  if (managerId !== null) {
-    if (managerId === staffId) {
+  if (managerOrgUserId !== null) {
+    if (managerOrgUserId === staffOrgUserId) {
       return { success: false, error: 'A staff member cannot be their own manager' };
     }
 
-    const manager = await prisma.user.findUnique({
-      where: { id: managerId },
+    const manager = await prisma.organizationUser.findUnique({
+      where: { id: managerOrgUserId },
       select: { organizationId: true, role: true },
     });
     if (!manager || manager.organizationId !== session.user.organizationId) {
@@ -359,12 +369,17 @@ export async function setStaffManager(
   }
 
   try {
-    await prisma.user.update({
-      where: { id: staffId },
-      data: { managerId },
+    await prisma.organizationUser.update({
+      where: { id: staffOrgUserId },
+      data: { managerId: managerOrgUserId },
     });
 
-    logger.info({ msg: '[staff] Manager set', staffId, managerId, userId: session.user.id });
+    logger.info({
+      msg: '[staff] Manager set',
+      staffOrgUserId,
+      managerOrgUserId,
+      userId: session.user.id,
+    });
 
     // F-001: record the sensitive mutation on the authorized, successful path.
     await audit({
@@ -373,17 +388,117 @@ export async function setStaffManager(
       actorRole: session.user.role,
       organizationId: session.user.organizationId,
       targetType: 'user',
-      targetId: staffId,
-      metadata: { managerId },
+      targetId: staffOrgUserId,
+      metadata: { managerId: managerOrgUserId },
       ...getClientContext(await headers()),
     });
 
-    revalidatePath(`/dashboard/staff/${staffId}`);
+    revalidatePath(`/dashboard/staff/${staffOrgUserId}`);
     revalidatePath('/dashboard/staff');
     return { success: true };
   } catch (error) {
-    logger.error({ msg: '[staff] Failed to set manager', err: error, staffId });
+    logger.error({ msg: '[staff] Failed to set manager', err: error, staffOrgUserId });
     return { success: false, error: 'Failed to update manager' };
+  }
+}
+
+/**
+ * Replaces a staff member's facility assignments with exactly `facilityIds`.
+ *
+ * Powers both the single-select "change facility" move and multi-facility
+ * assignment: assignments not in the set are REVOKED (`active = false`) rather
+ * than deleted, and the ones in it are created or reactivated. Enrollments and
+ * certificates hang off the membership, not the facility, so training history is
+ * preserved by construction — which is what the modal's "records preserved" copy
+ * promises.
+ */
+export async function setStaffFacilities(
+  organizationUserId: string,
+  facilityIds: string[],
+): Promise<{ success: boolean; error?: string }> {
+  const session = await auth();
+  if (
+    !session?.user?.id ||
+    !session.user.organizationId ||
+    !can(dbRoleToRoleKey(session.user.role), 'user.edit')
+  ) {
+    return { success: false, error: 'Unauthorized' };
+  }
+
+  const targetFacilityIds = [...new Set(facilityIds)];
+  if (targetFacilityIds.length === 0) {
+    return { success: false, error: 'Select at least one facility.' };
+  }
+
+  // Tenant isolation: an admin may only reassign users that belong to their own org.
+  const target = await prisma.organizationUser.findUnique({
+    where: { id: organizationUserId },
+    select: { organizationId: true },
+  });
+  if (!target || target.organizationId !== session.user.organizationId) {
+    return { success: false, error: 'Forbidden' };
+  }
+
+  // ...and every requested facility must belong to that same org, so a crafted
+  // request can never place a staff member inside another tenant.
+  const ownedFacilities = await prisma.facility.findMany({
+    where: { id: { in: targetFacilityIds }, organizationId: session.user.organizationId },
+    select: { id: true },
+  });
+  if (ownedFacilities.length !== targetFacilityIds.length) {
+    logger.warn({
+      msg: '[staff] Facility assignment rejected — facility not in organization',
+      actorId: session.user.id,
+      targetOrgUserId: organizationUserId,
+    });
+    return { success: false, error: 'One or more facilities are not in your organization.' };
+  }
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.organizationUserFacility.updateMany({
+        where: { organizationUserId, active: true, facilityId: { notIn: targetFacilityIds } },
+        data: { active: false, deactivatedAt: new Date() },
+      });
+
+      for (const facilityId of targetFacilityIds) {
+        await tx.organizationUserFacility.upsert({
+          where: { organizationUserId_facilityId: { organizationUserId, facilityId } },
+          update: { active: true, deactivatedAt: null },
+          create: { organizationUserId, facilityId },
+        });
+      }
+    });
+
+    logger.info({
+      msg: '[staff] Facility assignments set',
+      actorId: session.user.id,
+      targetOrgUserId: organizationUserId,
+      facilityCount: targetFacilityIds.length,
+    });
+
+    // F-001: record the sensitive mutation on the authorized, successful path.
+    await audit({
+      action: 'staff.facilities.set',
+      actorId: session.user.id,
+      actorRole: session.user.role,
+      organizationId: session.user.organizationId,
+      targetType: 'user',
+      targetId: organizationUserId,
+      metadata: { facilityIds: targetFacilityIds },
+      ...getClientContext(await headers()),
+    });
+
+    revalidatePath(`/dashboard/staff/${organizationUserId}`);
+    revalidatePath('/dashboard/staff');
+    return { success: true };
+  } catch (error) {
+    logger.error({
+      msg: '[staff] Failed to set facility assignments',
+      err: error,
+      targetOrgUserId: organizationUserId,
+    });
+    return { success: false, error: 'Failed to update facility assignments' };
   }
 }
 
@@ -398,7 +513,7 @@ export async function setStaffManager(
  */
 export async function assignCourseToStaffMember(
   courseId: string,
-  staffUserId: string,
+  staffOrgUserId: string,
   assignmentSettings?: AssignmentSettingsInput,
 ): Promise<{
   success: string[];
@@ -417,9 +532,9 @@ export async function assignCourseToStaffMember(
   }
 
   // Tenant isolation: only assign to a staff member within the caller's own org.
-  const target = await prisma.user.findUnique({
-    where: { id: staffUserId },
-    select: { organizationId: true, email: true },
+  const target = await prisma.organizationUser.findUnique({
+    where: { id: staffOrgUserId },
+    select: { organizationId: true, user: { select: { email: true } } },
   });
   if (!target || target.organizationId !== session.user.organizationId) {
     return { success: [], alreadyEnrolled: [], newInvited: [], failed: [], error: 'Forbidden' };
@@ -429,13 +544,13 @@ export async function assignCourseToStaffMember(
   // that into this action's return shape so the calling modal surfaces the
   // specific message instead of falling back to a generic failed state.
   try {
-    return await enrollUsers(courseId, [{ email: target.email }], assignmentSettings);
+    return await enrollUsers(courseId, [{ email: target.user.email }], assignmentSettings);
   } catch (err) {
     return {
       success: [],
       alreadyEnrolled: [],
       newInvited: [],
-      failed: [staffUserId],
+      failed: [staffOrgUserId],
       error: err instanceof Error ? err.message : 'Failed to assign course',
     };
   }
@@ -451,9 +566,9 @@ export async function getEnrollmentQuizResult(enrollmentId: string) {
     const enrollment = await prisma.enrollment.findUnique({
       where: { id: enrollmentId },
       include: {
-        user: {
+        organizationUser: {
           include: {
-            profile: true,
+            user: true,
             organization: true,
           },
         },
@@ -479,7 +594,7 @@ export async function getEnrollmentQuizResult(enrollmentId: string) {
     // Tenant isolation: an admin may only view quiz results for enrollments that
     // belong to a user in their own organization — never expose correct answers
     // or worker identity across tenants.
-    if (enrollment.user.organizationId !== session.user.organizationId) {
+    if (enrollment.organizationUser.organizationId !== session.user.organizationId) {
       logger.warn({
         msg: '[staff] Cross-tenant quiz result access blocked',
         userId: session.user.id,
@@ -551,8 +666,8 @@ export async function getEnrollmentQuizResult(enrollmentId: string) {
       correct: correctCount,
       wrong: wrongCount,
       time: latestAttempt.timeTaken || 0,
-      userName: enrollment.user.profile?.fullName || enrollment.user.email,
-      organizationName: enrollment.user.organization?.name || undefined,
+      userName: enrollment.organizationUser.user.fullName || enrollment.organizationUser.user.email,
+      organizationName: enrollment.organizationUser.organization.name || undefined,
       questions: questions,
       attemptsUsed: latestAttempt.attemptCount,
       allowedAttempts: quiz.allowedAttempts,
@@ -564,50 +679,45 @@ export async function getEnrollmentQuizResult(enrollmentId: string) {
   }
 }
 
-export async function removeStaff(userId: string) {
+export async function removeStaff(organizationUserId: string) {
   try {
     const session = await auth();
-    if (!session?.user?.email || !session?.user?.id) {
+    if (!session?.user?.email || !session?.user?.id || !session.user.organizationUserId) {
       throw new Error('Unauthorized');
     }
 
-    const admin = await prisma.user.findUnique({
-      where: { id: session.user.id },
+    const admin = await prisma.organizationUser.findUnique({
+      where: { id: session.user.organizationUserId },
       select: {
         role: true,
         organizationId: true,
-        email: true,
+        user: { select: { email: true } },
         organization: { select: { name: true } },
       },
     });
 
-    if (
-      !admin ||
-      !can(dbRoleToRoleKey(admin.role), 'user.delete') ||
-      !admin.organizationId ||
-      !admin.organization
-    ) {
+    if (!admin || !can(dbRoleToRoleKey(admin.role), 'user.delete')) {
       throw new Error('Insufficient permissions or organization not found');
     }
 
-    const staffUser = await prisma.user.findUnique({
-      where: { id: userId },
+    const staffOrgUser = await prisma.organizationUser.findUnique({
+      where: { id: organizationUserId },
       select: {
         organizationId: true,
-        email: true,
-        profile: { select: { fullName: true } },
+        userId: true,
+        user: { select: { email: true, fullName: true } },
       },
     });
 
-    if (!staffUser) {
+    if (!staffOrgUser) {
       throw new Error('User not found');
     }
 
-    if (staffUser.organizationId !== admin.organizationId) {
+    if (staffOrgUser.organizationId !== admin.organizationId) {
       throw new Error('User does not belong to your organization');
     }
 
-    const staffName = staffUser.profile?.fullName || staffUser.email;
+    const staffName = staffOrgUser.user.fullName || staffOrgUser.user.email;
 
     // Drop in-flight training on removal so a re-invite yields a clean slate.
     // Only the "active" statuses (the F-053 partial-index set) are deleted —
@@ -621,36 +731,45 @@ export async function removeStaff(userId: string) {
       'lessons_complete',
     ];
 
-    // Single transaction: unlink the user (bumping sessionVersion so any live
-    // session is invalidated on its next JWT decode — F-059 kill-switch), drop
-    // the in-flight enrollments, and expire any pending invite for this email in
-    // the org so a live `/join` token can't immediately re-add the person.
+    // Single transaction: deactivate the membership, bump the identity's
+    // sessionVersion so any live session is invalidated on its next JWT decode
+    // (F-059 kill-switch), drop the in-flight enrollments, and expire any
+    // pending invite for this email in the org so a live `/join` token can't
+    // immediately re-add the person.
     const [droppedEnrollments] = await prisma.$transaction([
       prisma.enrollment.deleteMany({
-        where: { userId, status: { in: ACTIVE_ENROLLMENT_STATUSES } },
+        where: { organizationUserId, status: { in: ACTIVE_ENROLLMENT_STATUSES } },
+      }),
+      prisma.organizationUser.update({
+        where: { id: organizationUserId },
+        data: { active: false, deactivatedAt: new Date() },
       }),
       prisma.user.update({
-        where: { id: userId },
-        data: { organizationId: null, sessionVersion: { increment: 1 } },
+        where: { id: staffOrgUser.userId },
+        data: { sessionVersion: { increment: 1 } },
       }),
       prisma.invite.updateMany({
-        where: { email: staffUser.email, organizationId: admin.organizationId, status: 'pending' },
+        where: {
+          email: staffOrgUser.user.email,
+          organizationId: admin.organizationId,
+          status: 'pending',
+        },
         data: { status: 'expired' },
       }),
     ]);
 
     // The unlink bumped sessionVersion; evict the cached revalidation snapshot
     // so the removed user's next decode misses the cache and is invalidated.
-    await invalidateRevalidationCache(userId);
+    await invalidateRevalidationCache(staffOrgUser.userId);
 
     // F-001: record the sensitive mutation on the authorized, successful path.
     await audit({
       action: 'staff.remove',
       actorId: session.user.id,
       actorRole: admin.role,
-      organizationId: admin.organizationId ?? undefined,
+      organizationId: admin.organizationId,
       targetType: 'user',
-      targetId: userId,
+      targetId: organizationUserId,
       metadata: { droppedEnrollmentCount: droppedEnrollments.count },
       ...getClientContext(await headers()),
     });
@@ -663,10 +782,10 @@ export async function removeStaff(userId: string) {
         await import('@/lib/email');
 
       // Notify the worker
-      await sendStaffRemovedEmail(staffUser.email, admin.organization.name);
+      await sendStaffRemovedEmail(staffOrgUser.user.email, admin.organization.name);
 
       // Confirm to the admin
-      await sendStaffRemovalConfirmationEmail(admin.email, staffName, admin.organization.name);
+      await sendStaffRemovalConfirmationEmail(admin.user.email, staffName, admin.organization.name);
     } catch (emailError) {
       logger.error({
         msg: '[Email Error] Failed to send staff removal notifications:',
@@ -684,16 +803,11 @@ export async function removeStaff(userId: string) {
 
 export async function revokeInvite(inviteId: string) {
   const session = await auth();
-  if (!session?.user?.id) {
+  if (!session?.user?.id || !session.user.organizationId) {
     throw new Error('Unauthorized');
   }
 
-  const admin = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { role: true, organizationId: true },
-  });
-
-  if (!admin || !can(dbRoleToRoleKey(admin.role), 'invite.delete')) {
+  if (!can(dbRoleToRoleKey(session.user.role), 'invite.delete')) {
     throw new Error('Insufficient permissions');
   }
 
@@ -706,7 +820,7 @@ export async function revokeInvite(inviteId: string) {
     throw new Error('Invite not found');
   }
 
-  if (invite.organizationId !== admin.organizationId) {
+  if (invite.organizationId !== session.user.organizationId) {
     throw new Error('Invite does not belong to your organization');
   }
 
@@ -730,12 +844,7 @@ export async function resendInvite(
       throw new Error('Unauthorized');
     }
 
-    const admin = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { role: true, organizationId: true },
-    });
-
-    if (!admin || !can(dbRoleToRoleKey(admin.role), 'invite.edit') || !admin.organizationId) {
+    if (!session.user.organizationId || !can(dbRoleToRoleKey(session.user.role), 'invite.edit')) {
       throw new Error('Insufficient permissions');
     }
 
@@ -754,7 +863,7 @@ export async function resendInvite(
       throw new Error('Invite not found');
     }
 
-    if (invite.organizationId !== admin.organizationId) {
+    if (invite.organizationId !== session.user.organizationId) {
       throw new Error('Invite does not belong to your organization');
     }
 
@@ -775,14 +884,13 @@ export async function resendInvite(
 
     const inviteLink = `${process.env.NEXT_PUBLIC_APP_URL}/join/${token}`;
     const { sendInviteEmail } = await import('@/lib/email');
-    await sendInviteEmail(
-      invite.email,
-      inviteLink,
-      invite.organization?.name ?? 'your organization',
-      invite.role,
-    );
+    await sendInviteEmail(invite.email, inviteLink, invite.organization.name, invite.role);
 
-    logger.info({ msg: '[staff] Invite resent', inviteId, organizationId: admin.organizationId });
+    logger.info({
+      msg: '[staff] Invite resent',
+      inviteId,
+      organizationId: session.user.organizationId,
+    });
 
     revalidatePath('/dashboard/staff');
     return { success: true };
@@ -800,7 +908,7 @@ export async function resendInvite(
  * @param staffUserId - The ID of the worker whose report to generate.
  */
 export async function generateStaffActivityPdfAndEmail(
-  staffUserId: string,
+  staffOrgUserId: string,
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const session = await auth();
@@ -809,27 +917,16 @@ export async function generateStaffActivityPdfAndEmail(
     }
 
     // Verify caller is an admin with an organization
-    const admin = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: {
-        role: true,
-        email: true,
-        organizationId: true,
-        organization: { select: { name: true } },
-      },
-    });
-
-    if (!admin || !isAdminRole(admin.role) || !admin.organizationId) {
+    if (!isAdminRole(session.user.role) || !session.user.organizationId) {
       return { success: false, error: 'Forbidden' };
     }
 
     // Verify the target staff belongs to the same organization
-    const staffUser = await prisma.user.findUnique({
-      where: { id: staffUserId },
+    const staffOrgUser = await prisma.organizationUser.findUnique({
+      where: { id: staffOrgUserId },
       select: {
         organizationId: true,
-        email: true,
-        profile: { select: { fullName: true } },
+        user: { select: { email: true, fullName: true } },
         enrollments: {
           select: {
             id: true,
@@ -847,21 +944,26 @@ export async function generateStaffActivityPdfAndEmail(
       },
     });
 
-    if (!staffUser) {
+    if (!staffOrgUser) {
       return { success: false, error: 'Staff member not found' };
     }
 
-    if (staffUser.organizationId !== admin.organizationId) {
+    if (staffOrgUser.organizationId !== session.user.organizationId) {
       return { success: false, error: 'Forbidden — staff member not in your organization' };
     }
 
-    const staffName = staffUser.profile?.fullName ?? staffUser.email.split('@')[0];
-    const orgName = admin.organization?.name ?? 'Your Organization';
+    const org = await prisma.organization.findUnique({
+      where: { id: session.user.organizationId },
+      select: { name: true },
+    });
+
+    const staffName = staffOrgUser.user.fullName ?? staffOrgUser.user.email.split('@')[0];
+    const orgName = org?.name ?? 'Your Organization';
 
     // Build the report data
     const { generateUserActivityPdf } = await import('@/lib/pdf-reports');
 
-    const enrollments: ActivityReportEnrollment[] = staffUser.enrollments.map((e) => ({
+    const enrollments: ActivityReportEnrollment[] = staffOrgUser.enrollments.map((e) => ({
       courseId: e.course.id,
       courseTitle: e.course.title,
       type: 'Course',
@@ -881,7 +983,12 @@ export async function generateStaffActivityPdfAndEmail(
 
     // Send to admin
     const { sendUserActivityReportEmail } = await import('@/lib/email');
-    const result = await sendUserActivityReportEmail(admin.email, staffName, orgName, pdfBuffer);
+    const result = await sendUserActivityReportEmail(
+      session.user.email,
+      staffName,
+      orgName,
+      pdfBuffer,
+    );
 
     if (!result.success) {
       return {
@@ -892,8 +999,8 @@ export async function generateStaffActivityPdfAndEmail(
 
     logger.info({
       msg: '[staff] Activity PDF report sent',
-      staffUserId,
-      adminEmail: admin.email,
+      staffOrgUserId,
+      adminEmail: maskEmail(session.user.email),
     });
 
     return { success: true };

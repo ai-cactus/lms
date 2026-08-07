@@ -98,10 +98,12 @@ async function insertVerificationToken(opts: {
 async function getUserFromDb(email: string) {
   const db = await dbClient();
   try {
+    // `users` is now a pure global identity — no `role` column. `first_name`/
+    // `last_name` moved directly onto `users` (the old `profiles` table was
+    // dropped and merged in).
     const res = await db.query(
-      `SELECT u.id, u.email, u.role, u.email_verified, p.first_name, p.last_name
+      `SELECT u.id, u.email, u.email_verified, u.first_name, u.last_name
          FROM public.users u
-         LEFT JOIN public.profiles p ON p.id = u.id
         WHERE u.email = $1`,
       [email],
     );
@@ -385,16 +387,25 @@ test.describe('Signup: email-based user story', () => {
     const verifyBtn = page.getByRole('button', { name: /verify email address/i });
     await expect(verifyBtn).toBeVisible({ timeout: 10000 });
 
-    // Click to consume the token — POSTs to /api/auth/verify
+    // Click to consume the token — POSTs to /api/auth/verify. Role resolution
+    // is no longer persisted on `users` (that column moved to
+    // organization_users, which starts empty until the identity joins/founds
+    // an org via a separate onboarding step) — /api/auth/verify only echoes
+    // the resolved role back in its JSON response, so assert on that instead.
+    const verifyResponsePromise = page.waitForResponse(
+      (resp) => resp.url().includes('/api/auth/verify') && resp.request().method() === 'POST',
+    );
     await verifyBtn.click();
+    const verifyBody = await (await verifyResponsePromise).json();
+    expect(verifyBody.success).toBe(true);
+    expect(verifyBody.role).toBe('owner');
 
     // Should redirect to /login?verified=true
     await expect(page).toHaveURL(/login\?verified=true/, { timeout: 15000 });
 
-    // AC-5: Confirm user created in DB with role=owner
+    // AC-4: Confirm the global identity was created in DB.
     const user = await getUserFromDb(email);
     expect(user, 'User must exist in DB after verification').not.toBeNull();
-    expect(user.role).toBe('owner');
     expect(user.email_verified).toBe(true);
     expect(user.first_name).toBe('QaAdmin');
     expect(user.last_name).toBe('Direct');
@@ -404,14 +415,20 @@ test.describe('Signup: email-based user story', () => {
     expect(tokenRecord, 'Verification token must be deleted after consumption').toBeNull();
   });
 
-  test('AC-5 (regression): a stale/retired token role (legacy "admin") falls back to DEFAULT_SELF_SERVE_WORKER_ROLE', async ({
+  test('AC-5 (regression): a stale/retired token role (legacy "worker") falls back to DEFAULT_SELF_SERVE_WORKER_ROLE', async ({
     page,
   }) => {
-    // A token minted before the RBAC migration may still carry the retired
-    // single "admin" role literal (pre-six-role-split) or "worker" literal
-    // (pre-eight-worker-role-split). /api/auth/verify must not persist an
-    // invalid UserRole enum value — it validates against ALL_ROLES and falls
-    // back to DEFAULT_SELF_SERVE_WORKER_ROLE ('front_desk_admin').
+    // A token minted before the eight-worker-role split may still carry the
+    // retired single "worker" role literal. /api/auth/verify must not persist
+    // an invalid UserRole enum value — it validates against ALL_ROLES and
+    // falls back to DEFAULT_SELF_SERVE_WORKER_ROLE ('front_desk_admin').
+    //
+    // NOTE: this used to test the legacy "admin" literal, but the multi-org
+    // schema migration RE-ADDED `admin` as a real, full-access org role (see
+    // prisma/migrations/20260803120000_multi_org_membership — "admin re-enters
+    // the role enum ... per the RBAC matrix"), so `admin` is now a genuinely
+    // valid role and no longer exercises the fallback path. "worker" remains
+    // retired (no such value exists in ALL_ROLES).
     await cleanupTestUser(email).catch(() => {});
 
     const token = crypto.randomUUID();
@@ -422,19 +439,26 @@ test.describe('Signup: email-based user story', () => {
       password: VALID_PASSWORD,
       firstName: 'QaLegacy',
       lastName: 'Role',
-      role: 'admin',
+      role: 'worker',
     });
 
     await page.goto(`/verify?token=${token}`);
     const verifyBtn = page.getByRole('button', { name: /verify email address/i });
     await expect(verifyBtn).toBeVisible({ timeout: 10000 });
+
+    // Role resolution is echoed in the /api/auth/verify JSON response, not
+    // persisted on `users` (see the AC-4/AC-5 test above for why).
+    const verifyResponsePromise = page.waitForResponse(
+      (resp) => resp.url().includes('/api/auth/verify') && resp.request().method() === 'POST',
+    );
     await verifyBtn.click();
+    const verifyBody = await (await verifyResponsePromise).json();
+    expect(verifyBody.role).toBe('front_desk_admin');
 
     await expect(page).toHaveURL(/login\?verified=true/, { timeout: 15000 });
 
     const user = await getUserFromDb(email);
     expect(user, 'User must exist in DB after verification').not.toBeNull();
-    expect(user.role).toBe('front_desk_admin');
   });
 
   // ── Token expiry (regression) ─────────────────────────────────────────────

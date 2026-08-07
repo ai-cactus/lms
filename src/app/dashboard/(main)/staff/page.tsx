@@ -5,6 +5,7 @@ import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
 import { BILLING_PLANS } from '@/lib/billing-plans';
 import { DEFAULT_SELF_SERVE_WORKER_ROLE } from '@/lib/rbac/role-utils';
+import { listAccessibleFacilities, type AccessibleFacility } from '@/lib/facility/scope';
 import type { Role } from '@/types/next-auth';
 
 export const dynamic = 'force-dynamic';
@@ -19,6 +20,11 @@ export default async function StaffPage() {
   // Only fetch users if org exists, otherwise return empty list
   const users = hasOrganization ? await getStaffUsers() : [];
 
+  // Facilities the viewer may move staff between — re-derived per request rather
+  // than read from the session, so scope can never go stale.
+  const facilities: AccessibleFacility[] =
+    session && hasOrganization ? await listAccessibleFacilities(session) : [];
+
   // Fetch plan quota info so the UI can show seat usage and block at-limit invites
   let planLimit: number | null = null;
   let planName: string = '';
@@ -32,7 +38,7 @@ export default async function StaffPage() {
         select: { plan: true, status: true },
       }),
       // D2: every role except `owner` consumes a plan seat.
-      prisma.user.count({
+      prisma.organizationUser.count({
         where: { organizationId, role: { not: 'owner' } },
       }),
       prisma.invite.count({
@@ -67,6 +73,7 @@ export default async function StaffPage() {
       currentWorkerCount={currentWorkerCount}
       pendingInviteCount={pendingInviteCount}
       inviterRole={inviterRole}
+      facilities={facilities}
     />
   );
 }

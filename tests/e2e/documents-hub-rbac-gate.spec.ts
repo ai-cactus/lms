@@ -31,6 +31,7 @@ const DB_URL =
 
 interface SeededFinance {
   userId: string;
+  orgUserId: string;
   orgId: string;
   facilityId: string;
   subscriptionId: string;
@@ -49,6 +50,7 @@ async function seedFinanceUser(email: string, password: string): Promise<SeededF
     const orgId = crypto.randomUUID();
     const facilityId = crypto.randomUUID();
     const userId = crypto.randomUUID();
+    const orgUserId = crypto.randomUUID();
     const subscriptionId = crypto.randomUUID();
 
     await client.query(
@@ -62,14 +64,19 @@ async function seedFinanceUser(email: string, password: string): Promise<SeededF
       [facilityId, orgId, `DocsTest ${slug}`],
     );
     await client.query(
-      `INSERT INTO users (id, email, password, role, email_verified, organization_id, facility_id, created_at, updated_at)
-       VALUES ($1, $2, $3, 'finance'::"UserRole", true, $4, $5, NOW(), NOW())`,
-      [userId, email, hashed, orgId, facilityId],
+      `INSERT INTO users (id, email, password, email_verified, auth_provider, first_name, last_name, full_name, created_at, updated_at)
+       VALUES ($1, $2, $3, true, 'credentials', $4, $5, $6, NOW(), NOW())`,
+      [userId, email, hashed, 'Finance', 'Test', 'Finance Test'],
     );
     await client.query(
-      `INSERT INTO profiles (id, email, first_name, last_name, full_name, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`,
-      [userId, email, 'Finance', 'Test', 'Finance Test'],
+      `INSERT INTO organization_users (id, user_id, organization_id, role, active, joined_at, role_assigned_at, created_at, updated_at)
+       VALUES ($1, $2, $3, 'finance'::"UserRole", true, NOW(), NOW(), NOW(), NOW())`,
+      [orgUserId, userId, orgId],
+    );
+    await client.query(
+      `INSERT INTO organization_user_facilities (id, organization_user_id, facility_id, active, joined_at)
+       VALUES ($1, $2, $3, true, NOW())`,
+      [crypto.randomUUID(), orgUserId, facilityId],
     );
     // Every future e2e spec that raw-seeds a fresh org must give it an active
     // subscription row — several admin-dashboard flows (billing-paused banner,
@@ -94,7 +101,7 @@ async function seedFinanceUser(email: string, password: string): Promise<SeededF
       ],
     );
 
-    return { userId, orgId, facilityId, subscriptionId };
+    return { userId, orgUserId, orgId, facilityId, subscriptionId };
   } finally {
     await client.end();
   }
@@ -105,7 +112,11 @@ async function cleanup(seeded: SeededFinance): Promise<void> {
   await client.connect();
   try {
     await client.query(`DELETE FROM subscriptions WHERE id = $1`, [seeded.subscriptionId]);
-    await client.query(`DELETE FROM profiles WHERE id = $1`, [seeded.userId]);
+    await client.query(
+      `DELETE FROM organization_user_facilities WHERE organization_user_id = $1`,
+      [seeded.orgUserId],
+    );
+    await client.query(`DELETE FROM organization_users WHERE id = $1`, [seeded.orgUserId]);
     await client.query(`DELETE FROM users WHERE id = $1`, [seeded.userId]);
     await client.query(`DELETE FROM facilities WHERE id = $1`, [seeded.facilityId]);
     await client.query(`DELETE FROM organizations WHERE id = $1`, [seeded.orgId]);

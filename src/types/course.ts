@@ -11,6 +11,12 @@ export type CourseWithStats = {
   lessonsCount: number;
   enrollmentsCount: number;
   completionRate: number;
+  /**
+   * Document the course was generated from, when the caller loaded that lineage.
+   * Null for forked courses (duplicates and adopted prebuilts carry no
+   * `CourseVersion` of their own), and absent from views that do not query it.
+   */
+  sourceDocumentId?: string | null;
 };
 
 export interface CourseWizardData {
@@ -99,7 +105,7 @@ export const courseDetailSelect = {
   objectives: true,
   skillLevel: true,
   previewVideoStorageUri: true,
-  createdBy: true,
+  createdByOrgUserId: true,
   modules: {
     orderBy: { order: 'asc' as const },
     select: {
@@ -133,15 +139,25 @@ export const courseDetailSelect = {
   enrollments: {
     select: {
       id: true,
-      userId: true,
+      organizationUserId: true,
       status: true,
       score: true,
       progress: true,
-      user: { select: { email: true, role: true, profile: { select: { fullName: true } } } },
+      // Role lives on the membership, and identity on the global User row, so
+      // the roster reaches through OrganizationUser rather than a `user` FK.
+      organizationUser: {
+        select: {
+          userId: true,
+          role: true,
+          user: { select: { email: true, fullName: true } },
+        },
+      },
       certificate: { select: { id: true, issuedAt: true } },
     },
   },
-  creator: { select: { email: true, profile: { select: { fullName: true } } } },
+  creator: {
+    select: { userId: true, user: { select: { email: true, fullName: true } } },
+  },
 } satisfies Prisma.CourseSelect;
 
 export type CourseWithRelations = Prisma.CourseGetPayload<{ select: typeof courseDetailSelect }>;
@@ -149,8 +165,8 @@ export type CourseWithRelations = Prisma.CourseGetPayload<{ select: typeof cours
 export type EnrollmentWithRelations = Prisma.EnrollmentGetPayload<{
   include: {
     quizAttempts: true;
-    user: {
-      include: { profile: true; organization: true };
+    organizationUser: {
+      include: { user: true; organization: true };
     };
     course: true;
     certificate: true;

@@ -1,19 +1,19 @@
 /**
  * Regression tests for the /dashboard/settings server gate.
  *
- * Settings is owner-only by product decision (facility + team-access
- * management). Any other admin role reaching this route (supervisor, hr,
- * clinical_director, finance) must see the styled access-denied card instead
- * of the real Settings UI — mirroring the Billing route's gate pattern
- * (see ./../billing/page.test.tsx).
+ * Settings is gated on the granular `organization.edit` permission — owner
+ * and admin (Owner-equivalent) hold it, every other admin role (supervisor,
+ * hr, clinical_director, finance) must see the styled access-denied card
+ * instead of the real Settings UI — mirroring the Billing route's gate
+ * pattern (see ./../billing/page.test.tsx).
  */
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockAuth, prismaMock, mockRedirect } = vi.hoisted(() => ({
+const { mockAuth, prismaMock, mockRedirect, makeSession } = vi.hoisted(() => ({
   mockAuth: vi.fn(),
   prismaMock: {
-    user: { findUnique: vi.fn(), findMany: vi.fn(), count: vi.fn() },
+    organizationUser: { findMany: vi.fn(), count: vi.fn() },
     invite: { findMany: vi.fn(), count: vi.fn() },
     facility: { findFirst: vi.fn() },
     subscription: { findUnique: vi.fn() },
@@ -21,6 +21,17 @@ const { mockAuth, prismaMock, mockRedirect } = vi.hoisted(() => ({
   },
   mockRedirect: vi.fn(() => {
     throw new Error('NEXT_REDIRECT');
+  }),
+  makeSession: (role: string, extras: Record<string, unknown> = {}) => ({
+    user: {
+      id: 'user-1',
+      organizationUserId: 'ou-1',
+      organizationId: 'org-1',
+      role,
+      email: 'x@acme.com',
+      name: 'Test User',
+      ...extras,
+    },
   }),
 }));
 
@@ -50,8 +61,11 @@ import SettingsPageRoute from './page';
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockAuth.mockResolvedValue({ user: { id: 'user-1' } });
-  prismaMock.user.findMany.mockResolvedValue([]);
+  mockAuth.mockResolvedValue(makeSession('owner'));
+  // Same mock backs both the admin-tier `members` query and the org-wide
+  // `allMembers` (dedup) query in the page's Promise.all — default empty for
+  // both; tests that care queue a `mockResolvedValueOnce` for the first call.
+  prismaMock.organizationUser.findMany.mockResolvedValue([]);
   prismaMock.invite.findMany.mockResolvedValue([]);
   prismaMock.facility.findFirst.mockResolvedValue({
     id: 'facility-1',
@@ -60,43 +74,35 @@ beforeEach(() => {
   });
   prismaMock.subscription.findUnique.mockResolvedValue({ plan: 'growth', status: 'active' });
   prismaMock.organization.findUnique.mockResolvedValue({ notificationDigestFrequency: 'daily' });
-  prismaMock.user.count.mockResolvedValue(3);
+  prismaMock.organizationUser.count.mockResolvedValue(3);
   prismaMock.invite.count.mockResolvedValue(0);
 });
 
-describe('SettingsPageRoute — owner-only gate', () => {
+describe('SettingsPageRoute — organization.edit gate', () => {
   it('redirects to /login when there is no session', async () => {
     mockAuth.mockResolvedValueOnce(null);
 
     await expect(SettingsPageRoute()).rejects.toThrow('NEXT_REDIRECT');
 
     expect(mockRedirect).toHaveBeenCalledExactlyOnceWith('/login');
-    expect(prismaMock.user.findUnique).not.toHaveBeenCalled();
+    expect(prismaMock.organizationUser.findMany).not.toHaveBeenCalled();
   });
 
-  it('redirects to /login when the session user no longer exists in the DB', async () => {
-    prismaMock.user.findUnique.mockResolvedValueOnce(null);
-
-    await expect(SettingsPageRoute()).rejects.toThrow('NEXT_REDIRECT');
-
-    expect(mockRedirect).toHaveBeenCalledExactlyOnceWith('/login');
-  });
-
-  it('renders the real Settings UI for owner', async () => {
-    prismaMock.user.findUnique.mockResolvedValueOnce({ role: 'owner', organizationId: 'org-1' });
+  it.each(['owner', 'admin'])('renders the real Settings UI for %s', async (role) => {
+    mockAuth.mockResolvedValueOnce(makeSession(role));
 
     const element = await SettingsPageRoute();
     render(element);
 
     expect(screen.getByTestId('settings-client')).toHaveTextContent('facility Acme Clinic');
-    expect(screen.getByTestId('settings-client')).toHaveTextContent('role owner');
+    expect(screen.getByTestId('settings-client')).toHaveTextContent(`role ${role}`);
     expect(screen.queryByText(/don.t have access to settings/i)).not.toBeInTheDocument();
   });
 
   it.each(['supervisor', 'hr', 'clinical_director', 'finance'])(
     'renders the access-denied card instead of Settings for %s',
     async (role) => {
-      prismaMock.user.findUnique.mockResolvedValueOnce({ role, organizationId: 'org-1' });
+      mockAuth.mockResolvedValueOnce(makeSession(role));
 
       const element = await SettingsPageRoute();
       render(element);
@@ -113,7 +119,7 @@ describe('SettingsPageRoute — owner-only gate', () => {
   );
 
   it('shows the "no organization" state for an owner with no organizationId', async () => {
-    prismaMock.user.findUnique.mockResolvedValueOnce({ role: 'owner', organizationId: null });
+    mockAuth.mockResolvedValueOnce(makeSession('owner', { organizationId: null }));
 
     const element = await SettingsPageRoute();
     render(element);
@@ -126,17 +132,16 @@ describe('SettingsPageRoute — owner-only gate', () => {
 
 describe('SettingsPageRoute — data shaping for the owner path', () => {
   beforeEach(() => {
-    prismaMock.user.findUnique.mockResolvedValue({ role: 'owner', organizationId: 'org-1' });
+    mockAuth.mockResolvedValue(makeSession('owner'));
   });
 
   it('merges active members and non-duplicate pending admin invites into teamMembers', async () => {
-    prismaMock.user.findMany.mockResolvedValueOnce([
+    prismaMock.organizationUser.findMany.mockResolvedValueOnce([
       {
-        id: 'u1',
-        email: 'owner@acme.com',
+        id: 'ou-owner-1',
         role: 'owner',
         lastLoginAt: null,
-        profile: { fullName: 'Owner Person' },
+        user: { email: 'owner@acme.com', fullName: 'Owner Person' },
       },
     ]);
     prismaMock.invite.findMany.mockResolvedValueOnce([

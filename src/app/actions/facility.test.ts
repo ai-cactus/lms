@@ -10,20 +10,27 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ── Hoisted mocks ─────────────────────────────────────────────────────────────
 
-const { mockAuth, mockUserFindUnique, mockFacilityUpdate, mockLoggerWarn, mockLoggerInfo } =
-  vi.hoisted(() => ({
-    mockAuth: vi.fn(),
-    mockUserFindUnique: vi.fn(),
-    mockFacilityUpdate: vi.fn(),
-    mockLoggerWarn: vi.fn(),
-    mockLoggerInfo: vi.fn(),
-  }));
+const {
+  mockAuth,
+  mockOrgUserFacilityFindFirst,
+  mockFacilityUpdate,
+  mockLoggerWarn,
+  mockLoggerInfo,
+} = vi.hoisted(() => ({
+  mockAuth: vi.fn(),
+  mockOrgUserFacilityFindFirst: vi.fn(),
+  mockFacilityUpdate: vi.fn(),
+  mockLoggerWarn: vi.fn(),
+  mockLoggerInfo: vi.fn(),
+}));
 
 vi.mock('@/auth', () => ({ auth: mockAuth }));
 
 vi.mock('@/lib/prisma', () => ({
   default: {
-    user: { findUnique: mockUserFindUnique },
+    // Facility linkage is resolved via the caller's active OrganizationUserFacility
+    // row, not a flat User.facilityId.
+    organizationUserFacility: { findFirst: mockOrgUserFacilityFindFirst },
     facility: { update: mockFacilityUpdate },
     // Stub remaining methods to avoid unexpected call errors in other actions
     organization: { findUnique: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
@@ -47,7 +54,13 @@ import { updateFacility } from './organization';
 
 function makeSession(role: string) {
   return {
-    user: { id: 'user-1', email: 'u@acme.com', role, organizationId: 'org-1' },
+    user: {
+      id: 'user-1',
+      email: 'u@acme.com',
+      role,
+      organizationId: 'org-1',
+      organizationUserId: 'ou-1',
+    },
   };
 }
 
@@ -70,7 +83,10 @@ describe('updateFacility() — unauthenticated', () => {
 // ── Forbidden roles (no facility.edit) ───────────────────────────────────────
 
 describe('updateFacility() — permission denied (403)', () => {
-  it.each(['hr', 'clinical_director', 'finance', 'nurse'] as const)(
+  // RBAC ruling: supervisor was demoted to READ-ONLY on every resource — it no
+  // longer holds `facility.edit` (previously it did, alongside owner). Added
+  // here alongside the roles that never held it.
+  it.each(['hr', 'clinical_director', 'finance', 'nurse', 'supervisor'] as const)(
     '%s is forbidden from updating the facility',
     async (role) => {
       mockAuth.mockResolvedValue(makeSession(role));
@@ -88,7 +104,7 @@ describe('updateFacility() — permission denied (403)', () => {
 describe('updateFacility() — owner is allowed', () => {
   it('succeeds and calls facility.update with the correct facilityId', async () => {
     mockAuth.mockResolvedValue(makeSession('owner'));
-    mockUserFindUnique.mockResolvedValue({ facilityId: 'fac-42' });
+    mockOrgUserFacilityFindFirst.mockResolvedValue({ facilityId: 'fac-42' });
 
     const result = await updateFacility({ phone: '555-9000', address: '1 Main St' });
 
@@ -99,10 +115,10 @@ describe('updateFacility() — owner is allowed', () => {
   });
 });
 
-describe('updateFacility() — supervisor is allowed', () => {
+describe('updateFacility() — admin (Owner-equivalent) is allowed', () => {
   it('succeeds and calls facility.update with the correct facilityId', async () => {
-    mockAuth.mockResolvedValue(makeSession('supervisor'));
-    mockUserFindUnique.mockResolvedValue({ facilityId: 'fac-7' });
+    mockAuth.mockResolvedValue(makeSession('admin'));
+    mockOrgUserFacilityFindFirst.mockResolvedValue({ facilityId: 'fac-7' });
 
     const result = await updateFacility({ city: 'Denver', state: 'CO' });
 
@@ -117,7 +133,7 @@ describe('updateFacility() — supervisor is allowed', () => {
 describe('updateFacility() — name/type fields (Settings Facility tab)', () => {
   it('persists name and type alongside the existing location fields', async () => {
     mockAuth.mockResolvedValue(makeSession('owner'));
-    mockUserFindUnique.mockResolvedValue({ facilityId: 'fac-42' });
+    mockOrgUserFacilityFindFirst.mockResolvedValue({ facilityId: 'fac-42' });
 
     const result = await updateFacility({ name: 'Acme Downtown Clinic', type: 'clinic' });
 
@@ -129,7 +145,7 @@ describe('updateFacility() — name/type fields (Settings Facility tab)', () => 
 
   it('leaves name/type as undefined (no-op update) when not supplied', async () => {
     mockAuth.mockResolvedValue(makeSession('owner'));
-    mockUserFindUnique.mockResolvedValue({ facilityId: 'fac-42' });
+    mockOrgUserFacilityFindFirst.mockResolvedValue({ facilityId: 'fac-42' });
 
     await updateFacility({ phone: '555-2222' });
 
@@ -144,7 +160,7 @@ describe('updateFacility() — name/type fields (Settings Facility tab)', () => 
 describe('updateFacility() — user has no facility', () => {
   it('returns No facility found when facilityId is null', async () => {
     mockAuth.mockResolvedValue(makeSession('owner'));
-    mockUserFindUnique.mockResolvedValue({ facilityId: null });
+    mockOrgUserFacilityFindFirst.mockResolvedValue(null);
 
     const result = await updateFacility({ phone: '555-0001' });
 

@@ -168,7 +168,7 @@ export default function CoursePreview({
       ? Math.max(1, Math.round(videoSeconds / 60))
       : (course.duration ?? null);
 
-  const approver = course.creator?.profile?.fullName ?? course.creator?.email ?? null;
+  const approver = course.creator?.user?.fullName ?? course.creator?.user?.email ?? null;
   const passingScore = course.quiz?.passingScore ?? null;
   const skillLevel = course.skillLevel ?? null;
   const objectives = course.objectives ?? [];

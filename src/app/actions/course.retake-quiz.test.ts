@@ -56,7 +56,9 @@ const COURSE_QUIZ_ID = 'quiz-course';
 function makeEnrollment(overrides: Record<string, unknown> = {}) {
   return {
     id: ENROLLMENT_ID,
-    userId: WORKER_ID,
+    // Post User/OrganizationUser split: ownership is resolved through the
+    // enrollment's `organizationUser` relation, not a direct `userId` column.
+    organizationUser: { userId: WORKER_ID },
     courseId: COURSE_ID,
     course: {
       lessons: [{ id: 'lesson-1', quiz: { id: LESSON_QUIZ_ID, allowedAttempts: 3 } }],
@@ -90,7 +92,9 @@ describe('retakeQuiz — auth and ownership', () => {
   });
 
   it('throws when the enrollment belongs to a different user (foreign enrollment)', async () => {
-    prismaMock.enrollment.findUnique.mockResolvedValue(makeEnrollment({ userId: 'other-user' }));
+    prismaMock.enrollment.findUnique.mockResolvedValue(
+      makeEnrollment({ organizationUser: { userId: 'other-user' } }),
+    );
 
     await expect(retakeQuiz(ENROLLMENT_ID)).rejects.toThrow('Enrollment not found or unauthorized');
     expect(prismaMock.enrollment.update).not.toHaveBeenCalled();
@@ -100,7 +104,9 @@ describe('retakeQuiz — auth and ownership', () => {
   it('allows an admin session that owns the enrollment (adminId matches userId)', async () => {
     mockAdminAuth.mockResolvedValue({ user: { id: 'admin-1' } });
     mockWorkerAuth.mockResolvedValue(null);
-    prismaMock.enrollment.findUnique.mockResolvedValue(makeEnrollment({ userId: 'admin-1' }));
+    prismaMock.enrollment.findUnique.mockResolvedValue(
+      makeEnrollment({ organizationUser: { userId: 'admin-1' } }),
+    );
 
     await expect(retakeQuiz(ENROLLMENT_ID)).resolves.toEqual({ success: true });
   });

@@ -82,6 +82,11 @@ async function pickFutureDate(
 
 // ─── Test suite ───────────────────────────────────────────────────────────────
 
+// TC-015 and TC-018 mutate the same seeded CourseAssignment row (TC-018 re-submits
+// it with a different due date and assumes TC-015 ran first), so this file must
+// opt out of fullyParallel to run in seeded order within one worker.
+test.describe.configure({ mode: 'default' });
+
 test.describe('Reminders & Escalations', () => {
   // ---------------------------------------------------------------------------
   // Flow 1: Admin assigns a course to a new assignee via the course "Assign"
@@ -102,7 +107,10 @@ test.describe('Reminders & Escalations', () => {
     const assignInput = page.locator('#assign-input');
     await assignInput.fill('rem001.newhire@example.com');
     await assignInput.press('Enter');
-    await expect(page.getByText('rem001.newhire@example.com')).toBeVisible();
+    // The added recipient now renders in two places (an input chip and a
+    // separate "selected recipients" summary) — scope to the first match,
+    // this test only cares that the email was accepted as a recipient.
+    await expect(page.getByText('rem001.newhire@example.com').first()).toBeVisible();
 
     // The Due Date control is part of this surface. Scope to the section
     // heading — the surface also has a "Select due date" button, so a plain
@@ -201,6 +209,20 @@ test.describe('Reminders & Escalations', () => {
   }) => {
     await loginAsAdmin(page);
 
+    // Multi-facility dashboards (DashboardPage) land any roster-visible role on
+    // the Global (Enterprise) View by default — it renders whenever the org has
+    // at least one facility and no `?facility=` scope was requested, per
+    // `src/app/dashboard/(main)/page.tsx`. The compact "Status Tracker" widget
+    // this test targets only exists on the single-facility scoped dashboard, so
+    // drill into the seeded org's one facility first, same as a real admin
+    // would via "Facilities Overview" → "View dashboard" (see
+    // facility-dashboard.spec.ts's "drills into a facility" flow).
+    const overviewSection = page
+      .locator('section')
+      .filter({ has: page.getByRole('heading', { name: 'Facilities Overview' }) });
+    await overviewSection.getByRole('link', { name: 'View dashboard' }).click();
+    await page.waitForURL('**/dashboard?facility=**');
+
     const section = page.locator('section', {
       has: page.getByRole('heading', { name: 'Status Tracker', level: 3 }),
     });
@@ -253,7 +275,7 @@ test.describe('Reminders & Escalations', () => {
   // for), so this drives the assign page directly — the same server action the
   // wizard delegates to.
   // ---------------------------------------------------------------------------
-  test('TC-015: a due date set on assignment shows up on the assigned worker\'s training list', async ({
+  test("TC-015: a due date set on assignment shows up on the assigned worker's training list", async ({
     page,
   }) => {
     await loginAsAdmin(page);
@@ -312,9 +334,7 @@ test.describe('Reminders & Escalations', () => {
     // factory-default form.
     await page.getByRole('button', { name: 'Assign', exact: true }).click();
     await page.waitForURL('**/assign');
-    await expect(
-      page.getByText(/this course has an existing assignment/i),
-    ).toBeVisible();
+    await expect(page.getByText(/this course has an existing assignment/i)).toBeVisible();
 
     // The saved schedule/deadline/renewal/reminder SETTINGS are prefilled from
     // the existing CourseAssignment, but the assignee list is not (it isn't

@@ -12,6 +12,16 @@ async function resolveSession() {
   return admin?.user?.id ? admin : worker?.user?.id ? worker : null;
 }
 
+/**
+ * The membership whose inbox the current session reads. Notifications belong to
+ * an OrganizationUser, not an identity, so a user in two orgs has two separate
+ * inboxes and never sees the other org's items.
+ */
+async function resolveOrganizationUserId(): Promise<string | null> {
+  const session = await resolveSession();
+  return session?.user?.organizationUserId ?? null;
+}
+
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 50;
 
@@ -20,13 +30,13 @@ const MAX_PAGE_SIZE = 50;
  * correct even when there are more unread notifications than a single page.
  */
 export async function getUnreadCount() {
-  const session = await resolveSession();
-  if (!session?.user?.id) {
+  const organizationUserId = await resolveOrganizationUserId();
+  if (!organizationUserId) {
     return { success: false as const, error: 'Unauthorized' };
   }
   try {
     const unreadCount = await prisma.notification.count({
-      where: { userId: session.user.id, isRead: false },
+      where: { organizationUserId, isRead: false },
     });
     return { success: true as const, unreadCount };
   } catch (error) {
@@ -45,8 +55,8 @@ export async function getNotifications(options?: {
   limit?: number;
   type?: string | null;
 }) {
-  const session = await resolveSession();
-  if (!session?.user?.id) {
+  const organizationUserId = await resolveOrganizationUserId();
+  if (!organizationUserId) {
     return { success: false as const, error: 'Unauthorized' };
   }
 
@@ -56,7 +66,7 @@ export async function getNotifications(options?: {
 
   try {
     const rows = await prisma.notification.findMany({
-      where: { userId: session.user.id, ...(type ? { type } : {}) },
+      where: { organizationUserId, ...(type ? { type } : {}) },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: limit + 1, // fetch one extra to detect whether more remain
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
@@ -67,7 +77,7 @@ export async function getNotifications(options?: {
     const nextCursor = hasMore ? notifications[notifications.length - 1].id : null;
 
     const unreadCount = await prisma.notification.count({
-      where: { userId: session.user.id, isRead: false },
+      where: { organizationUserId, isRead: false },
     });
 
     return { success: true as const, notifications, nextCursor, hasMore, unreadCount };
@@ -81,8 +91,8 @@ export async function getNotifications(options?: {
  * Mark a specific notification as read.
  */
 export async function markAsRead(notificationId: string) {
-  const session = await resolveSession();
-  if (!session?.user?.id) {
+  const organizationUserId = await resolveOrganizationUserId();
+  if (!organizationUserId) {
     return { success: false, error: 'Unauthorized' };
   }
 
@@ -90,7 +100,7 @@ export async function markAsRead(notificationId: string) {
     await prisma.notification.updateMany({
       where: {
         id: notificationId,
-        userId: session.user.id, // Ensure they own it
+        organizationUserId, // Ensure they own it
       },
       data: { isRead: true },
     });
@@ -106,15 +116,15 @@ export async function markAsRead(notificationId: string) {
  * Mark all unread notifications for the user as read.
  */
 export async function markAllAsRead() {
-  const session = await resolveSession();
-  if (!session?.user?.id) {
+  const organizationUserId = await resolveOrganizationUserId();
+  if (!organizationUserId) {
     return { success: false, error: 'Unauthorized' };
   }
 
   try {
     await prisma.notification.updateMany({
       where: {
-        userId: session.user.id,
+        organizationUserId,
         isRead: false,
       },
       data: { isRead: true },
@@ -131,14 +141,14 @@ export async function markAllAsRead() {
  * Delete a single notification owned by the current user.
  */
 export async function deleteNotification(notificationId: string) {
-  const session = await resolveSession();
-  if (!session?.user?.id) {
+  const organizationUserId = await resolveOrganizationUserId();
+  if (!organizationUserId) {
     return { success: false, error: 'Unauthorized' };
   }
 
   try {
     await prisma.notification.deleteMany({
-      where: { id: notificationId, userId: session.user.id },
+      where: { id: notificationId, organizationUserId },
     });
     return { success: true };
   } catch (error) {
@@ -151,13 +161,13 @@ export async function deleteNotification(notificationId: string) {
  * Delete all notifications for the current user.
  */
 export async function clearAllNotifications() {
-  const session = await resolveSession();
-  if (!session?.user?.id) {
+  const organizationUserId = await resolveOrganizationUserId();
+  if (!organizationUserId) {
     return { success: false, error: 'Unauthorized' };
   }
 
   try {
-    await prisma.notification.deleteMany({ where: { userId: session.user.id } });
+    await prisma.notification.deleteMany({ where: { organizationUserId } });
     return { success: true };
   } catch (error) {
     logger.error({ msg: 'Failed to clear notifications:', err: error });
@@ -171,13 +181,13 @@ export async function clearAllNotifications() {
  * any explicit `true` rows.
  */
 export async function getNotificationPreferences() {
-  const session = await resolveSession();
-  if (!session?.user?.id) {
+  const organizationUserId = await resolveOrganizationUserId();
+  if (!organizationUserId) {
     return { success: false as const, error: 'Unauthorized' };
   }
   try {
     const rows = await prisma.notificationPreference.findMany({
-      where: { userId: session.user.id },
+      where: { organizationUserId },
       select: { type: true, enabled: true },
     });
     const preferences: Record<string, boolean> = {};
@@ -193,14 +203,14 @@ export async function getNotificationPreferences() {
  * Enable or disable a notification type for the current user.
  */
 export async function setNotificationPreference(type: string, enabled: boolean) {
-  const session = await resolveSession();
-  if (!session?.user?.id) {
+  const organizationUserId = await resolveOrganizationUserId();
+  if (!organizationUserId) {
     return { success: false, error: 'Unauthorized' };
   }
   try {
     await prisma.notificationPreference.upsert({
-      where: { userId_type: { userId: session.user.id, type } },
-      create: { userId: session.user.id, type, enabled },
+      where: { organizationUserId_type: { organizationUserId, type } },
+      create: { organizationUserId, type, enabled },
       update: { enabled },
     });
     return { success: true };
@@ -210,10 +220,10 @@ export async function setNotificationPreference(type: string, enabled: boolean) 
   }
 }
 
-/** True unless the user has an explicit opt-out row for this type. */
-async function isTypeEnabled(userId: string, type: string) {
+/** True unless the membership has an explicit opt-out row for this type. */
+async function isTypeEnabled(organizationUserId: string, type: string) {
   const pref = await prisma.notificationPreference.findUnique({
-    where: { userId_type: { userId, type } },
+    where: { organizationUserId_type: { organizationUserId, type } },
     select: { enabled: true },
   });
   return pref ? pref.enabled : true;
@@ -224,7 +234,8 @@ async function isTypeEnabled(userId: string, type: string) {
  * Respects the recipient's per-type opt-out preference.
  */
 export async function createNotification(data: {
-  userId: string;
+  /** The membership that receives it — notifications are per-org, not per-identity. */
+  organizationUserId: string;
   type: string;
   title: string;
   message: string;
@@ -232,11 +243,11 @@ export async function createNotification(data: {
   metadata?: Record<string, unknown>;
 }) {
   try {
-    if (!(await isTypeEnabled(data.userId, data.type))) return;
+    if (!(await isTypeEnabled(data.organizationUserId, data.type))) return;
 
     await prisma.notification.create({
       data: {
-        userId: data.userId,
+        organizationUserId: data.organizationUserId,
         type: data.type,
         title: data.title,
         message: data.message,
@@ -265,9 +276,10 @@ export async function notifyOrganizationAdmins(
   },
 ) {
   try {
-    const admins = await prisma.user.findMany({
+    const admins = await prisma.organizationUser.findMany({
       where: {
-        organizationId: organizationId,
+        organizationId,
+        active: true,
         role: { in: [...ADMIN_ROLES] },
       },
       select: { id: true },
@@ -278,20 +290,20 @@ export async function notifyOrganizationAdmins(
     // Exclude admins who have explicitly opted out of this type.
     const optedOut = await prisma.notificationPreference.findMany({
       where: {
-        userId: { in: admins.map((a) => a.id) },
+        organizationUserId: { in: admins.map((a) => a.id) },
         type: data.type,
         enabled: false,
       },
-      select: { userId: true },
+      select: { organizationUserId: true },
     });
-    const optedOutIds = new Set(optedOut.map((p) => p.userId));
+    const optedOutIds = new Set(optedOut.map((p) => p.organizationUserId));
     const recipients = admins.filter((a) => !optedOutIds.has(a.id));
 
     if (recipients.length === 0) return;
 
     await prisma.notification.createMany({
       data: recipients.map((admin) => ({
-        userId: admin.id,
+        organizationUserId: admin.id,
         type: data.type,
         title: data.title,
         message: data.message,

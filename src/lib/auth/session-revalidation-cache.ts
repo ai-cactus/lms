@@ -2,17 +2,18 @@
  * Short-TTL Redis cache for the JWT decode-time DB re-validation.
  *
  * On every `auth()` call the JWT callback (see `create-auth-instance.ts`)
- * re-reads the user row from Postgres to catch revocation events (deletion,
- * role change, org removal, password-reset `sessionVersion` bump). Under load
- * this is one `user.findUnique` per authenticated request, per NextAuth
+ * re-reads the identity row from Postgres to catch revocation events (deletion,
+ * password-reset / role-change / staff-removal `sessionVersion` bump). Under
+ * load this is one `user.findUnique` per authenticated request, per NextAuth
  * instance. This cache lets repeated decodes within a short window reuse the
  * last snapshot and skip the DB round-trip.
  *
  * IMPORTANT — this is a *revocation-latency* trade, not a correctness change:
  * a cache hit means a revocation can lag up to the TTL (default 30s). That
  * window is deliberate and bounded (see the tradeoff note in
- * `docs/perf/tier3-implementation-plan.md` §6). It is invalidated by TTL
- * expiry only — there is intentionally no active bust here.
+ * `docs/perf/tier3-implementation-plan.md` §6), and every `sessionVersion` bump
+ * additionally busts the key eagerly via {@link invalidateRevalidationCache}, so
+ * in practice the TTL is only the backstop.
  *
  * Fail-safe by construction:
  *  - A Redis read error returns `null` (a cache miss) so the caller falls back
@@ -27,27 +28,29 @@
 
 import { rateLimiterRedis } from '@/lib/rate-limit';
 import { logger } from '@/lib/logger';
-import type { Role } from '@/types/next-auth';
 
 const REVALIDATE_PREFIX = 'session-revalidate:';
 const DEFAULT_TTL_SECONDS = 30;
 
 /**
- * The minimal, non-sensitive snapshot the JWT callback needs to re-run its
- * revocation checks. Mirrors the fields the `prisma.user.findUnique` select in
- * `create-auth-instance.ts` actually consumes (the unused `mfaVerifiedAt`
+ * The minimal, non-sensitive IDENTITY snapshot the JWT callback needs to re-run
+ * its revocation checks. Mirrors the fields the `prisma.user.findUnique` select
+ * in `create-auth-instance.ts` actually consumes (the unused `mfaVerifiedAt`
  * column is intentionally omitted — per-session MFA state is read separately
  * from the `session-mfa:` keys and is never cached here).
+ *
+ * Deliberately identity-only: role and organization live on the per-org
+ * OrganizationUser membership, and this cache is keyed by user id, so caching
+ * them would be ambiguous for a multi-org user. The JWT callback always re-reads
+ * the membership live — see the MEMBERSHIP IS NEVER CACHED note there.
  */
 export interface RevalidationSnapshot {
   id: string;
-  role: Role;
-  organizationId: string | null;
+  fullName: string | null;
   mfaEnabled: boolean;
   passwordResetRequired: boolean;
   sessionVersion: number;
   authProvider: string | null;
-  profileFullName: string | null;
 }
 
 /**

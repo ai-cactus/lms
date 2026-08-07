@@ -1,11 +1,13 @@
 'use client';
 
-import { useActionState, useState, useEffect, useRef } from 'react';
-import { FileText } from 'lucide-react';
-import { uploadDocument } from '@/app/actions/documents';
+import { useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
+import { CheckCircle2, FileText, X, XCircle } from 'lucide-react';
+import { uploadDocuments, type DocumentUploadResult } from '@/app/actions/documents';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -13,57 +15,112 @@ import {
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Alert } from '@/components/ui/alert';
+import { Field } from '@/components/ui/field';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import FileUpload from '@/components/ui/FileUpload';
+import { DOCUMENT_CATEGORIES } from '@/lib/documents/document-categories';
+import { formatFileSize } from '@/lib/utils';
+
+// Client-side guard only — `uploadDocuments` re-validates size and type, and its
+// cap is env-configurable server-side. This mirrors the limit stated in the UI.
+const MAX_FILE_BYTES = 10 * 1024 * 1024;
+const ACCEPTED_EXTENSIONS = /\.(pdf|docx)$/i;
+const ACCEPTED_MIME_TYPES = [
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+];
+
+function isAcceptedType(file: File): boolean {
+  return ACCEPTED_MIME_TYPES.includes(file.type) || ACCEPTED_EXTENSIONS.test(file.name);
+}
 
 export default function UploadModal({ onClose }: { onClose: () => void }) {
-  const [state, action, isPending] = useActionState(uploadDocument, null);
-  const [file, setFile] = useState<File | null>(null);
-  const [validationError, setValidationError] = useState<string | null>(null);
+  const router = useRouter();
+  const [files, setFiles] = useState<File[]>([]);
+  const [category, setCategory] = useState('');
   const [agreed, setAgreed] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [results, setResults] = useState<DocumentUploadResult[]>([]);
+  const [isPending, startTransition] = useTransition();
 
-  useEffect(() => {
-    if (state?.success) {
-      // Optional: reset file immediately so user sees it's gone
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- Reset local state after successful form action
-      setFile(null);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-
-      const timer = setTimeout(() => {
-        onClose();
-      }, 1500);
-      return () => clearTimeout(timer);
-    }
-  }, [state, onClose]);
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selected = e.target.files?.[0];
+  const handleFilesSelected = (selected: File[]) => {
     setValidationError(null);
-    setFile(null);
+    setFormError(null);
 
-    if (!selected) return;
+    const rejected: string[] = [];
+    const accepted = selected.filter((file) => {
+      if (!isAcceptedType(file)) {
+        rejected.push(`${file.name} (only PDF and DOCX are allowed)`);
+        return false;
+      }
+      if (file.size > MAX_FILE_BYTES) {
+        rejected.push(`${file.name} (exceeds 10MB)`);
+        return false;
+      }
+      return true;
+    });
 
-    // Validate Size (10MB)
-    if (selected.size > 10 * 1024 * 1024) {
-      setValidationError('File exceeds 10MB limit.');
-      e.target.value = ''; // Clear input
-      return;
+    if (rejected.length > 0) {
+      setValidationError(`Skipped ${rejected.length} file(s): ${rejected.join(', ')}`);
     }
 
-    const allowedTypes = [
-      'application/pdf',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    ];
-    // Also check extension as backup
-    const validExtension = /\.(pdf|docx)$/i.test(selected.name);
-
-    if (!allowedTypes.includes(selected.type) && !validExtension) {
-      setValidationError('Only PDF and DOCX files are allowed.');
-      e.target.value = '';
-      return;
-    }
-
-    setFile(selected);
+    setFiles((prev) => {
+      // Re-picking the same file (name + size) must not queue it twice.
+      const seen = new Set(prev.map((file) => `${file.name}:${file.size}`));
+      return [...prev, ...accepted.filter((file) => !seen.has(`${file.name}:${file.size}`))];
+    });
   };
+
+  const removeFile = (name: string, size: number) => {
+    setFiles((prev) => prev.filter((file) => !(file.name === name && file.size === size)));
+  };
+
+  const handleSubmit = () => {
+    if (files.length === 0) return;
+
+    setFormError(null);
+    setResults([]);
+
+    const formData = new FormData();
+    for (const file of files) formData.append('files', file);
+    formData.append('phiAttested', agreed ? 'true' : 'false');
+    if (category) formData.append('category', category);
+
+    startTransition(async () => {
+      const outcome = await uploadDocuments(formData);
+
+      if (outcome.error) {
+        setFormError(outcome.error);
+        return;
+      }
+
+      setResults(outcome.results);
+
+      // Successful files leave the queue; failures stay listed so the user can
+      // fix the cause and retry only those.
+      const failedNames = new Set(
+        outcome.results.filter((result) => !result.ok).map((result) => result.name),
+      );
+      setFiles((prev) => prev.filter((file) => failedNames.has(file.name)));
+
+      if (failedNames.size === 0) {
+        router.refresh();
+        onClose();
+      }
+    });
+  };
+
+  const succeeded = results.filter((result) => result.ok);
+  const failed = results.filter((result) => !result.ok);
+  const isRetry = failed.length > 0 && files.length > 0;
+  const fileCount = files.length;
 
   return (
     <Dialog
@@ -72,32 +129,63 @@ export default function UploadModal({ onClose }: { onClose: () => void }) {
         if (!open) onClose();
       }}
     >
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Upload Document</DialogTitle>
+          <DialogTitle>Upload documents</DialogTitle>
+          <DialogDescription>Supports PDF and Word documents up to 10MB each.</DialogDescription>
         </DialogHeader>
 
-        <form action={action} className="flex flex-col gap-6">
-          <input type="hidden" name="phiAttested" value={agreed ? 'true' : 'false'} />
-          <div className="relative rounded-[10px] border-2 border-dashed border-border p-8 text-center">
-            <input
-              ref={fileInputRef}
-              type="file"
-              name="file"
-              onChange={handleFileChange}
-              accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-              required
-              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-            />
-            {file ? (
-              <div className="flex items-center justify-center gap-2.5">
-                <FileText className="size-6 text-primary" aria-hidden="true" />
-                <p className="m-0">{file.name}</p>
-              </div>
-            ) : (
-              <p>Drag &amp; drop or Click to Select (PDF, DOCX - Max 10MB)</p>
-            )}
-          </div>
+        <div className="flex flex-col gap-5">
+          <FileUpload
+            multiple
+            onFilesSelected={handleFilesSelected}
+            accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            description="PDF or DOCX, up to 10MB each. You may upload multiple files."
+          />
+
+          {fileCount > 0 && (
+            <ul className="flex flex-col gap-2">
+              {files.map((file) => (
+                <li
+                  key={`${file.name}:${file.size}`}
+                  className="flex items-center gap-3 rounded-xl border border-border px-3 py-2.5"
+                >
+                  <FileText className="size-5 shrink-0 text-primary" aria-hidden="true" />
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <span className="truncate text-sm font-medium text-foreground">
+                      {file.name}
+                    </span>
+                    <span className="text-xs text-text-secondary">{formatFileSize(file.size)}</span>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`Remove ${file.name}`}
+                    disabled={isPending}
+                    onClick={() => removeFile(file.name, file.size)}
+                  >
+                    <X className="size-4" aria-hidden="true" />
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <Field label="Category" helperText="Applied to every file in this upload.">
+            <Select value={category} onValueChange={setCategory}>
+              <SelectTrigger className="h-11 w-full" aria-label="Category">
+                <SelectValue placeholder="Select a category (optional)" />
+              </SelectTrigger>
+              <SelectContent>
+                {DOCUMENT_CATEGORIES.map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {option}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
 
           <div className="flex items-start gap-2 text-sm text-text-secondary">
             <Checkbox
@@ -112,32 +200,55 @@ export default function UploadModal({ onClose }: { onClose: () => void }) {
           </div>
 
           {validationError && <Alert variant="error">{validationError}</Alert>}
-          {state?.error && (
-            <Alert variant="error" title={state.phiDetected ? 'PHI Detected' : undefined}>
-              {state.error}
-            </Alert>
-          )}
+          {formError && <Alert variant="error">{formError}</Alert>}
 
-          {state?.success && !state.phiDetected && (
-            <Alert variant="success" title="Success">
-              <strong>SUCCESS:</strong> No Protected Health Information (PHI) detected. Uploads are
-              not subject to HIPAA restrictions. Authorized sharing is permitted.
-            </Alert>
+          {results.length > 0 && (
+            <ul className="flex flex-col gap-2" aria-label="Upload results">
+              {succeeded.map((result) => (
+                <li
+                  key={`ok-${result.name}`}
+                  className="flex items-center gap-2.5 rounded-xl border border-success/30 bg-success/10 px-3 py-2.5 text-sm"
+                >
+                  <CheckCircle2 className="size-4 shrink-0 text-success" aria-hidden="true" />
+                  <span className="min-w-0 flex-1 truncate font-medium text-foreground">
+                    {result.name}
+                  </span>
+                  <span className="shrink-0 text-xs font-semibold text-success">Uploaded</span>
+                </li>
+              ))}
+              {failed.map((result) => (
+                <li
+                  key={`failed-${result.name}`}
+                  className="flex items-start gap-2.5 rounded-xl border border-error/30 bg-error/10 px-3 py-2.5 text-sm"
+                >
+                  <XCircle className="mt-0.5 size-4 shrink-0 text-error" aria-hidden="true" />
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <span className="truncate font-medium text-foreground">{result.name}</span>
+                    <span className="text-xs text-error">
+                      {result.error ?? 'Upload failed. Please try again.'}
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ul>
           )}
+        </div>
 
-          <DialogFooter>
-            <Button variant="ghost" type="button" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              loading={isPending}
-              disabled={!file || isPending || !!validationError || !agreed}
-            >
-              {isPending ? 'Scanning for PHI…' : 'Upload'}
-            </Button>
-          </DialogFooter>
-        </form>
+        <DialogFooter>
+          <Button variant="ghost" type="button" onClick={onClose} disabled={isPending}>
+            {succeeded.length > 0 && files.length === 0 ? 'Close' : 'Cancel'}
+          </Button>
+          <Button
+            type="button"
+            onClick={handleSubmit}
+            loading={isPending}
+            disabled={fileCount === 0 || isPending || !agreed}
+          >
+            {isPending
+              ? 'Scanning for PHI…'
+              : `${isRetry ? 'Retry' : 'Upload'} ${fileCount} file${fileCount === 1 ? '' : 's'}`}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

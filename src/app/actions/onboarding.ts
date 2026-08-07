@@ -5,6 +5,7 @@ import prisma from '@/lib/prisma';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { logger } from '@/lib/logger';
+import { createMembership } from '@/lib/auth/membership';
 
 const createOrgSchema = z.object({
   name: z.string().min(2, 'Organization name must be at least 2 characters'),
@@ -22,11 +23,11 @@ export async function createOrganization(prevState: State, formData: FormData): 
   }
 
   // One organisation per user — a user already in an org cannot create another.
-  const existingMembership = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { organizationId: true },
+  const existingMembership = await prisma.organizationUser.findFirst({
+    where: { userId: session.user.id, active: true },
+    select: { id: true },
   });
-  if (existingMembership?.organizationId) {
+  if (existingMembership) {
     return { error: 'You already belong to an organization and cannot create another.' };
   }
 
@@ -48,7 +49,7 @@ export async function createOrganization(prevState: State, formData: FormData): 
     Math.random().toString(36).substring(2, 7);
 
   try {
-    await prisma.$transaction(async (tx) => {
+    const { orgId, facilityId } = await prisma.$transaction(async (tx) => {
       const existingOrg = await tx.organization.findFirst({
         where: {
           name: {
@@ -65,12 +66,7 @@ export async function createOrganization(prevState: State, formData: FormData): 
       }
 
       const org = await tx.organization.create({
-        data: {
-          name,
-          slug,
-          // Connect the user implicitly via the relation update below?
-          // No, organization.users is a relation. We update the user side.
-        },
+        data: { name, slug },
       });
 
       // Every organisation starts with one facility; the founder is attached to it.
@@ -81,16 +77,15 @@ export async function createOrganization(prevState: State, formData: FormData): 
         },
       });
 
-      // Update User — the founder of a new organisation becomes its `owner`.
-      await tx.user.update({
-        where: { id: session.user.id },
-        data: {
-          organizationId: org.id,
-          facilityId: facility.id,
-          role: 'owner',
-          roleAssignedAt: new Date(),
-        },
-      });
+      return { orgId: org.id, facilityId: facility.id };
+    });
+
+    // The founder of a new organisation becomes its `owner`.
+    await createMembership({
+      userId: session.user.id,
+      organizationId: orgId,
+      facilityId,
+      role: 'owner',
     });
   } catch (error) {
     logger.error({ msg: 'Failed to create organization:', err: error });

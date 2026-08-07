@@ -26,39 +26,45 @@ enum RenewalCycle {
 }
 
 model Course {
-  id                          String              @id @default(uuid())
+  id                          String                   @id @default(uuid())
   title                       String
   description                 String?
   thumbnail                   String?
-  status                      CourseStatus        @default(draft)
+  status                      CourseStatus             @default(draft)
   category                    String?
-  categoryId                  String?             @map("category_id")
+  categoryId                  String?                  @map("category_id")
   duration                    Int?
-  createdBy                   String              @map("created_by")
-  objectives                  String[]            @default([])
+  createdByOrgUserId          String                   @map("created_by_org_user_id")
+  objectives                  String[]                 @default([])
   overview                    String?
-  skillLevel                  SkillLevel?         @map("skill_level")
-  previewVideoStorageUri      String?             @map("preview_video_storage_uri")
-  previewVideoDurationSeconds Int?                @map("preview_video_duration_seconds")
-  previewMediaStatus          MediaStatus?        @map("preview_media_status")
-  createdAt                   DateTime            @default(now()) @map("created_at")
-  updatedAt                   DateTime            @updatedAt @map("updated_at")
-  promptVersion               String?             @map("prompt_version")
-  rawCourseJson               Json?               @map("raw_course_json")
-  rawQuizJson                 Json?               @map("raw_quiz_json")
-  rawArticleMarkdown          String?             @map("raw_article_markdown")
-  rawArticleMeta              Json?               @map("raw_article_meta")
-  rawJudgeJson                Json?               @map("raw_judge_json")
-  rawSlidesJson               Json?               @map("raw_slides_json")
-  approvedByUserId            String?             @map("approved_by_user_id")
-  approvedAt                  DateTime?           @map("approved_at")
-  type                        CourseType          @default(text)
-  isGlobal                    Boolean             @default(false) @map("is_global")
-  reviewRequired              Boolean             @default(false) @map("review_required")
-  qualityWarnings             String[]            @default([]) @map("quality_warnings")
-  courseCategory              CourseCategory?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  approvedBy                  User?               @relation("CourseApprover", fields: [approvedByUserId], references: [id], onDelete: SetNull)
-  creator                     User                @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+  skillLevel                  SkillLevel?              @map("skill_level")
+  previewVideoStorageUri      String?                  @map("preview_video_storage_uri")
+  previewVideoDurationSeconds Int?                     @map("preview_video_duration_seconds")
+  previewMediaStatus          MediaStatus?             @map("preview_media_status")
+  createdAt                   DateTime                 @default(now()) @map("created_at")
+  updatedAt                   DateTime                 @updatedAt @map("updated_at")
+  promptVersion               String?                  @map("prompt_version")
+  rawCourseJson               Json?                    @map("raw_course_json")
+  rawQuizJson                 Json?                    @map("raw_quiz_json")
+  rawArticleMarkdown          String?                  @map("raw_article_markdown")
+  rawArticleMeta              Json?                    @map("raw_article_meta")
+  rawJudgeJson                Json?                    @map("raw_judge_json")
+  rawSlidesJson               Json?                    @map("raw_slides_json")
+  approvedByOrgUserId         String?                  @map("approved_by_org_user_id")
+  approvedAt                  DateTime?                @map("approved_at")
+  type                        CourseType               @default(text)
+  isGlobal                    Boolean                  @default(false) @map("is_global")
+  reviewRequired              Boolean                  @default(false) @map("review_required")
+  qualityWarnings             String[]                 @default([]) @map("quality_warnings")
+  /// Lineage pointer set when this course was deep-copied from another (org
+  /// duplicate, or a platform prebuilt course adopted into an org). Nulled rather
+  /// than cascading if the source is deleted — a fork is an independent course.
+  forkedFromCourseId          String?                  @map("forked_from_course_id")
+  courseCategory              CourseCategory?          @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  approvedBy                  OrganizationUser?        @relation("CourseApprover", fields: [approvedByOrgUserId], references: [id], onDelete: SetNull)
+  creator                     OrganizationUser         @relation("CourseCreator", fields: [createdByOrgUserId], references: [id], onDelete: Restrict)
+  forkedFrom                  Course?                  @relation("CourseFork", fields: [forkedFromCourseId], references: [id], onDelete: SetNull)
+  forks                       Course[]                 @relation("CourseFork")
   versions                    CourseVersion[]
   enrollments                 Enrollment[]
   lessons                     Lesson[]
@@ -70,11 +76,12 @@ model Course {
   assignments                 CourseAssignment[]
   inviteCourseAssignments     InviteCourseAssignment[]
 
-  @@index([createdBy])
+  @@index([createdByOrgUserId])
   @@index([status])
   @@index([categoryId])
   @@index([type])
   @@index([isGlobal])
+  @@index([forkedFromCourseId])
   @@map("courses")
 }
 

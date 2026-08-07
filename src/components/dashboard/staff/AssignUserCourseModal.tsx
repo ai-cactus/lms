@@ -25,7 +25,8 @@ import { logger } from '@/lib/logger';
 interface AssignUserCourseModalProps {
   isOpen: boolean;
   onClose: () => void;
-  staffUserId: string;
+  /** OrganizationUser (membership) id — NOT the global identity id. */
+  staffOrgUserId: string;
   userName: string;
   enrolledCourseIds: string[];
   onSuccess?: () => void;
@@ -34,7 +35,7 @@ interface AssignUserCourseModalProps {
 export default function AssignUserCourseModal({
   isOpen,
   onClose,
-  staffUserId,
+  staffOrgUserId,
   userName,
   enrolledCourseIds,
   onSuccess,
@@ -79,7 +80,7 @@ export default function AssignUserCourseModal({
     setResult(null);
 
     try {
-      const res = await assignCourseToStaffMember(selectedCourseId, staffUserId);
+      const res = await assignCourseToStaffMember(selectedCourseId, staffOrgUserId);
       setResult({
         success: res.success,
         alreadyEnrolled: res.alreadyEnrolled,
@@ -96,7 +97,7 @@ export default function AssignUserCourseModal({
       }
     } catch (error) {
       logger.error({ msg: 'Failed to assign course:', err: error });
-      setResult({ success: [], alreadyEnrolled: [], failed: [staffUserId] });
+      setResult({ success: [], alreadyEnrolled: [], failed: [staffOrgUserId] });
     } finally {
       setIsLoading(false);
     }

@@ -2,6 +2,7 @@
 
 import { signIn } from '@/auth.worker';
 import { isAdminRole } from '@/lib/rbac/role-utils';
+import { resolveActiveMembership } from '@/lib/auth/membership';
 import { AuthError } from 'next-auth';
 import prisma from '@/lib/prisma';
 
@@ -18,9 +19,21 @@ export async function authenticateWorker(
   try {
     const email = formData.get('email') as string;
     if (email) {
-      const user = await prisma.user.findUnique({ where: { email }, select: { role: true } });
-      if (user && isAdminRole(user.role)) {
-        return { redirect: '/login' };
+      const user = await prisma.user.findUnique({ where: { email }, select: { id: true } });
+      if (user) {
+        // Same active-membership resolution the credentials provider uses to
+        // gate sign-in — an admin-tier account is redirected to the admin
+        // login before the worker form even submits.
+        const resolution = await resolveActiveMembership(user.id);
+        const activeRole =
+          resolution.kind === 'resolved'
+            ? resolution.membership.role
+            : resolution.kind === 'choice'
+              ? resolution.memberships[0].role
+              : null;
+        if (activeRole && isAdminRole(activeRole)) {
+          return { redirect: '/login' };
+        }
       }
     }
 

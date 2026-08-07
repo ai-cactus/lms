@@ -14,23 +14,34 @@ export default async function WorkerProfilePage() {
   }
 
   logger.info({ msg: '[WorkerProfilePage] Rendering for user:', data: session.user.id });
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    include: {
-      profile: true,
-      organization: true,
-      facility: true,
-    },
-  });
+  const { organizationUserId } = session.user;
+
+  const [user, membership] = await Promise.all([
+    prisma.user.findUnique({ where: { id: session.user.id } }),
+    organizationUserId
+      ? prisma.organizationUser.findUnique({
+          where: { id: organizationUserId },
+          select: {
+            jobTitle: true,
+            organization: true,
+            facilities: {
+              where: { active: true },
+              take: 1,
+              select: { facility: true },
+            },
+          },
+        })
+      : null,
+  ]);
 
   if (!user) {
     redirect('/login');
   }
 
   let avatarDisplayUrl: string | null = null;
-  if (user.profile?.avatarUrl) {
+  if (user.avatarUrl) {
     try {
-      avatarDisplayUrl = await getSignedUrl(user.profile.avatarUrl);
+      avatarDisplayUrl = await getSignedUrl(user.avatarUrl);
     } catch (error) {
       logger.error({ msg: 'Failed to get signed URL for avatar:', err: error });
     }
@@ -38,24 +49,25 @@ export default async function WorkerProfilePage() {
 
   const userData = {
     id: user.id,
-    first_name: user.profile?.firstName || '',
-    last_name: user.profile?.lastName || '',
-    jobTitle: user.profile?.jobTitle || '',
+    first_name: user.firstName || '',
+    last_name: user.lastName || '',
+    jobTitle: membership?.jobTitle || '',
     email: user.email,
-    role: user.role,
-    avatarUrl: user.profile?.avatarUrl,
+    role: session.user.role,
+    avatarUrl: user.avatarUrl,
     avatarDisplayUrl,
     authProvider: user.authProvider,
   };
 
   // Name is org-level; location fields now live on the facility.
-  const organizationData = user.organization
+  const facility = membership?.facilities[0]?.facility;
+  const organizationData = membership?.organization
     ? {
-        name: user.organization.name,
-        address: user.facility?.address ?? null,
-        city: user.facility?.city ?? null,
-        state: user.facility?.state ?? null,
-        zipCode: user.facility?.zipCode ?? null,
+        name: membership.organization.name,
+        address: facility?.address ?? null,
+        city: facility?.city ?? null,
+        state: facility?.state ?? null,
+        zipCode: facility?.zipCode ?? null,
       }
     : null;
 

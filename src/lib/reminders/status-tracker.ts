@@ -42,7 +42,7 @@ export const AT_RISK_WINDOW_DAYS = 7;
  */
 const enrollmentRowSelect = {
   id: true,
-  userId: true,
+  organizationUserId: true,
   courseId: true,
   dueAt: true,
   status: true,
@@ -52,12 +52,15 @@ const enrollmentRowSelect = {
     },
   },
   course: { select: { title: true } },
-  user: {
+  organizationUser: {
     select: {
-      email: true,
-      profile: { select: { fullName: true } },
-      manager: { select: { profile: { select: { fullName: true } } } },
-      facility: { select: { timezone: true } },
+      user: { select: { email: true, fullName: true } },
+      manager: { select: { user: { select: { fullName: true } } } },
+      facilities: {
+        where: { active: true },
+        take: 1,
+        select: { facility: { select: { timezone: true } } },
+      },
     },
   },
 } satisfies Prisma.EnrollmentSelect;
@@ -66,6 +69,7 @@ type EnrollmentRow = Prisma.EnrollmentGetPayload<{ select: typeof enrollmentRowS
 
 export interface StatusTrackerRow {
   enrollmentId: string;
+  /** `OrganizationUser.id` — the membership this row is about. */
   userId: string;
   workerName: string;
   workerEmail: string;
@@ -81,6 +85,7 @@ export interface StatusTrackerRow {
 
 export interface NearDeadlineRow {
   enrollmentId: string;
+  /** `OrganizationUser.id` — the membership this row is about. */
   userId: string;
   workerName: string;
   workerEmail: string;
@@ -118,7 +123,7 @@ function resolveHardEscalationThreshold(enrollment: EnrollmentRow): number | nul
 }
 
 function displayName(enrollment: EnrollmentRow): string {
-  return enrollment.user.profile?.fullName ?? enrollment.user.email;
+  return enrollment.organizationUser.user.fullName ?? enrollment.organizationUser.user.email;
 }
 
 /**
@@ -132,17 +137,25 @@ function displayName(enrollment: EnrollmentRow): string {
  *
  * `now` is injectable (defaulting to the current instant) so callers/tests can
  * pin the clock — mirroring `runReminderSweep`'s explicit `now`.
+ *
+ * `facilityId` narrows the picture to the enrollments stamped with that facility,
+ * for the facility-scoped dashboard. Callers must have already authorised the id
+ * (see `resolveFacilityScope`); omit it for the organisation-wide view.
  */
 export async function getStatusTrackerSummaryForOrg(
   orgId: string,
   now: Date = new Date(),
+  facilityId?: string | null,
 ): Promise<StatusTrackerSummary> {
+  const facilityFilter = facilityId ? { facilityId } : {};
+
   const [overdueEnrollments, nearDeadlineEnrollments] = await Promise.all([
     prisma.enrollment.findMany({
       where: {
         dueAt: { not: null, lt: now },
         status: { notIn: [...TERMINAL_STATUSES] },
-        user: { is: { organizationId: orgId } },
+        organizationUser: { is: { organizationId: orgId, active: true } },
+        ...facilityFilter,
       },
       select: enrollmentRowSelect,
     }),
@@ -150,7 +163,8 @@ export async function getStatusTrackerSummaryForOrg(
       where: {
         dueAt: { gte: now, lte: addDays(now, AT_RISK_WINDOW_DAYS) },
         status: { notIn: [...TERMINAL_STATUSES] },
-        user: { is: { organizationId: orgId } },
+        organizationUser: { is: { organizationId: orgId, active: true } },
+        ...facilityFilter,
       },
       select: enrollmentRowSelect,
     }),
@@ -159,21 +173,21 @@ export async function getStatusTrackerSummaryForOrg(
   const rows: StatusTrackerRow[] = overdueEnrollments.map((enrollment) => {
     // `dueAt` is guaranteed non-null by the query filter; assert for the type.
     const dueAt = enrollment.dueAt as Date;
-    const tz = enrollment.user.facility?.timezone ?? DEFAULT_TZ;
+    const tz = enrollment.organizationUser.facilities[0]?.facility.timezone ?? DEFAULT_TZ;
     const daysOverdue = diffInDaysInTz(now, dueAt, tz);
     const threshold = resolveHardEscalationThreshold(enrollment);
 
     return {
       enrollmentId: enrollment.id,
-      userId: enrollment.userId,
+      userId: enrollment.organizationUserId,
       workerName: displayName(enrollment),
-      workerEmail: enrollment.user.email,
+      workerEmail: enrollment.organizationUser.user.email,
       courseId: enrollment.courseId,
       courseTitle: enrollment.course.title,
       dueAt,
       daysOverdue,
       status: enrollment.status,
-      managerName: enrollment.user.manager?.profile?.fullName ?? null,
+      managerName: enrollment.organizationUser.manager?.user.fullName ?? null,
       isHardEscalation: threshold !== null && daysOverdue >= threshold,
     };
   });
@@ -182,19 +196,19 @@ export async function getStatusTrackerSummaryForOrg(
 
   const nearDeadlineRows: NearDeadlineRow[] = nearDeadlineEnrollments.map((enrollment) => {
     const dueAt = enrollment.dueAt as Date;
-    const tz = enrollment.user.facility?.timezone ?? DEFAULT_TZ;
+    const tz = enrollment.organizationUser.facilities[0]?.facility.timezone ?? DEFAULT_TZ;
 
     return {
       enrollmentId: enrollment.id,
-      userId: enrollment.userId,
+      userId: enrollment.organizationUserId,
       workerName: displayName(enrollment),
-      workerEmail: enrollment.user.email,
+      workerEmail: enrollment.organizationUser.user.email,
       courseId: enrollment.courseId,
       courseTitle: enrollment.course.title,
       dueAt,
       daysUntilDue: diffInDaysInTz(dueAt, now, tz),
       status: enrollment.status,
-      managerName: enrollment.user.manager?.profile?.fullName ?? null,
+      managerName: enrollment.organizationUser.manager?.user.fullName ?? null,
     };
   });
 

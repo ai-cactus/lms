@@ -14,8 +14,8 @@ const {
   mockAdminAuth,
   mockWorkerAuth,
   mockCourseFindUnique,
-  mockUserFindUnique,
-  mockUserFindMany,
+  mockOrganizationFindUnique,
+  mockOrgUserFindMany,
   mockOfferingFindUnique,
   mockOfferingUpsert,
   mockAssignmentFindFirst,
@@ -28,8 +28,8 @@ const {
   mockAdminAuth: vi.fn(),
   mockWorkerAuth: vi.fn(),
   mockCourseFindUnique: vi.fn(),
-  mockUserFindUnique: vi.fn(),
-  mockUserFindMany: vi.fn(),
+  mockOrganizationFindUnique: vi.fn(),
+  mockOrgUserFindMany: vi.fn(),
   mockOfferingFindUnique: vi.fn(),
   mockOfferingUpsert: vi.fn(),
   mockAssignmentFindFirst: vi.fn(),
@@ -43,7 +43,9 @@ const {
 vi.mock('@/lib/prisma', () => {
   const prisma = {
     course: { findUnique: mockCourseFindUnique },
-    user: { findUnique: mockUserFindUnique, findMany: mockUserFindMany },
+    organization: { findUnique: mockOrganizationFindUnique },
+    // Role holders are looked up on the OrganizationUser membership row, not User.
+    organizationUser: { findMany: mockOrgUserFindMany },
     orgCourseOffering: { findUnique: mockOfferingFindUnique, upsert: mockOfferingUpsert },
     courseAssignment: {
       findFirst: mockAssignmentFindFirst,
@@ -71,35 +73,36 @@ import { assignCourseToRole } from './enrollment';
 
 const ORG_ID = 'org-1';
 const ADMIN_ID = 'admin-1';
+const ADMIN_ORG_USER_ID = 'ou-admin-1';
 
 const ownCourse = {
   id: 'course-1',
   title: 'Infection Control',
-  createdBy: ADMIN_ID,
+  createdByOrgUserId: ADMIN_ORG_USER_ID,
   isGlobal: false,
   type: 'document',
 };
 
-const adminUser = {
-  id: ADMIN_ID,
-  role: 'owner',
-  organizationId: ORG_ID,
-  organization: {
-    id: ORG_ID,
-    name: 'Acme Corp',
-    subscription: { status: 'active', pausedAt: null },
-  },
-};
+// Post User/OrganizationUser split: the session itself carries role/org
+// context directly — there is no separate `prisma.user` "current user" fetch.
+function adminSession(role = 'owner') {
+  return {
+    user: { id: ADMIN_ID, organizationUserId: ADMIN_ORG_USER_ID, organizationId: ORG_ID, role },
+  };
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockAdminAuth.mockResolvedValue({ user: { id: ADMIN_ID } });
+  mockAdminAuth.mockResolvedValue(adminSession());
   mockWorkerAuth.mockResolvedValue(null);
   mockCourseFindUnique.mockResolvedValue(ownCourse);
-  mockUserFindUnique.mockResolvedValue(adminUser);
+  mockOrganizationFindUnique.mockResolvedValue({
+    name: 'Acme Corp',
+    subscription: { status: 'active', pausedAt: null },
+  });
   mockAssignmentFindFirst.mockResolvedValue(null);
   mockAssignmentCreate.mockResolvedValue({ id: 'assignment-role-1' });
-  mockUserFindMany.mockResolvedValue([]);
+  mockOrgUserFindMany.mockResolvedValue([]);
   mockCreateEnrollmentForUser.mockResolvedValue({
     status: 'enrolled',
     email: 'nurse@test.com',
@@ -110,15 +113,17 @@ beforeEach(() => {
 
 describe('assignCourseToRole — enrolls only current holders of the role, in the caller org', () => {
   it('enrolls every current holder of the targeted role', async () => {
-    mockUserFindMany.mockResolvedValue([
-      { id: 'nurse-1', email: 'nurse1@test.com' },
-      { id: 'nurse-2', email: 'nurse2@test.com' },
+    mockOrgUserFindMany.mockResolvedValue([
+      { id: 'ou-nurse-1', user: { email: 'nurse1@test.com' } },
+      { id: 'ou-nurse-2', user: { email: 'nurse2@test.com' } },
     ]);
 
     const result = await assignCourseToRole('course-1', 'nurse');
 
-    expect(mockUserFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { organizationId: ORG_ID, role: 'nurse' } }),
+    expect(mockOrgUserFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { organizationId: ORG_ID, role: 'nurse', active: true },
+      }),
     );
     expect(mockCreateEnrollmentForUser).toHaveBeenCalledTimes(2);
     expect(mockCreateEnrollmentForUser).toHaveBeenCalledWith(
@@ -131,7 +136,7 @@ describe('assignCourseToRole — enrolls only current holders of the role, in th
   it('scopes the holder query to the caller organizationId — never cross-org', async () => {
     await assignCourseToRole('course-1', 'nurse');
 
-    const call = mockUserFindMany.mock.calls[0][0];
+    const call = mockOrgUserFindMany.mock.calls[0][0];
     expect(call.where.organizationId).toBe(ORG_ID);
   });
 
@@ -139,11 +144,11 @@ describe('assignCourseToRole — enrolls only current holders of the role, in th
     await expect(assignCourseToRole('course-1', 'not-a-real-role' as never)).rejects.toThrow(
       'Invalid role',
     );
-    expect(mockUserFindMany).not.toHaveBeenCalled();
+    expect(mockOrgUserFindMany).not.toHaveBeenCalled();
   });
 
   it('rejects a non-admin caller', async () => {
-    mockUserFindUnique.mockResolvedValue({ ...adminUser, role: 'nurse' });
+    mockAdminAuth.mockResolvedValue(adminSession('nurse'));
 
     await expect(assignCourseToRole('course-1', 'nurse')).rejects.toThrow('Forbidden');
     expect(mockAssignmentCreate).not.toHaveBeenCalled();
@@ -164,7 +169,9 @@ describe('assignCourseToRole — role-target assignments never carry an absolute
   });
 
   it('computes each holder deadline from dueWindowDays via createEnrollmentForUser, never an absolute dueAt', async () => {
-    mockUserFindMany.mockResolvedValue([{ id: 'nurse-1', email: 'nurse1@test.com' }]);
+    mockOrgUserFindMany.mockResolvedValue([
+      { id: 'ou-nurse-1', user: { email: 'nurse1@test.com' } },
+    ]);
 
     await assignCourseToRole('course-1', 'nurse', { dueWindowDays: 14 });
 

@@ -10,13 +10,20 @@ async function main() {
   const org = await prisma.organization.create({
     data: { name: 'Test Org', slug: `test-org-${Date.now()}` },
   });
+  const facility = await prisma.facility.create({
+    data: { organizationId: org.id, name: 'Test Facility' },
+  });
   const user = await prisma.user.create({
     data: {
       email: `test-${Date.now()}@example.com`,
       password: 'hashed_password',
-      organizationId: org.id,
-      role: 'supervisor',
     },
+  });
+  const orgUser = await prisma.organizationUser.create({
+    data: { userId: user.id, organizationId: org.id, role: 'supervisor' },
+  });
+  await prisma.organizationUserFacility.create({
+    data: { organizationUserId: orgUser.id, facilityId: facility.id },
   });
   console.log(`   User created: ${user.email} (${user.id})`);
 
@@ -27,7 +34,7 @@ async function main() {
 
   const doc = await prisma.document.create({
     data: {
-      userId: user.id,
+      organizationUserId: orgUser.id,
       filename: 'policy.txt',
       originalName: 'policy.txt',
       mimeType: 'text/plain',
@@ -63,7 +70,7 @@ async function main() {
   const updatedJob = await prisma.job.findUnique({ where: { id: job.id } });
   console.log(`   Job Status: ${updatedJob?.status}`);
 
-  const course = await prisma.course.findFirst({ where: { createdBy: user.id } });
+  const course = await prisma.course.findFirst({ where: { createdByOrgUserId: orgUser.id } });
   if (course) {
     console.log(`   SUCCESS: Course Created: "${course.title}"`);
   } else {

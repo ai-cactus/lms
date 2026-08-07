@@ -12,9 +12,9 @@ import type { UserRole } from '@/generated/prisma/enums';
  * user with — or changes an existing user to — a role, so the enrollment happens
  * the moment the role is assigned (not only on the nightly reconciliation sweep).
  *
- * The per-user deadline counts from the user's role-join date: role-target
+ * The per-user deadline counts from the membership's role-join date: role-target
  * assignments never carry an absolute `dueAt` (enforced in {@link assignCourseToRole}),
- * so the effective deadline is `roleAssignedAt + assignment.dueWindowDays`
+ * so the effective deadline is `OrganizationUser.roleAssignedAt + assignment.dueWindowDays`
  * (falling through to the system default when the window is unset). Idempotent —
  * an already-enrolled user is a no-op via {@link createEnrollmentForUser}'s
  * existence check. Never throws: an auto-enroll failure must not abort the caller
@@ -22,29 +22,28 @@ import type { UserRole } from '@/generated/prisma/enums';
  * missed here.
  */
 export async function enrollUserForRoleTargets(
-  userId: string,
+  organizationUserId: string,
   organizationId: string,
 ): Promise<void> {
   try {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
+    // Only enroll for the caller's own org — never cross-tenant. Scoping the
+    // lookup by organizationId makes a mismatched membership simply not found.
+    const membership = await prisma.organizationUser.findFirst({
+      where: { id: organizationUserId, organizationId, active: true },
       select: {
-        email: true,
         role: true,
         roleAssignedAt: true,
-        organizationId: true,
+        user: { select: { email: true } },
         organization: { select: { name: true } },
       },
     });
 
-    // Only enroll for the caller's own org — never cross-tenant. A user with no
-    // org (or a mismatched one) has no role-target assignments to satisfy.
-    if (!user || user.organizationId !== organizationId) {
+    if (!membership) {
       return;
     }
 
     const assignments = await prisma.courseAssignment.findMany({
-      where: { organizationId, targetRole: user.role as UserRole },
+      where: { organizationId, targetRole: membership.role as UserRole },
       select: {
         id: true,
         courseId: true,
@@ -64,22 +63,22 @@ export async function enrollUserForRoleTargets(
         courseId: assignment.courseId,
         courseTitle: assignment.course.title,
         organizationId,
-        organizationName: user.organization?.name || 'Your Organization',
+        organizationName: membership.organization?.name || 'Your Organization',
         facilityId: null,
         assignmentId: assignment.id,
-        scheduleAt: user.roleAssignedAt,
+        scheduleAt: membership.roleAssignedAt,
         assignmentDueAt: null,
         assignmentWindowDays: assignment.dueWindowDays,
-        enrolledByUserId: userId,
+        enrolledByUserId: organizationUserId,
       };
 
-      const outcome = await createEnrollmentForUser({ email: user.email }, ctx);
+      const outcome = await createEnrollmentForUser({ email: membership.user.email }, ctx);
 
       if (outcome.status === 'enrolled') {
         logger.info({
           msg: '[enrollment] Role-target auto-enroll',
-          userId,
-          role: user.role,
+          organizationUserId,
+          role: membership.role,
           courseId: assignment.courseId,
           assignmentId: assignment.id,
         });
@@ -88,7 +87,7 @@ export async function enrollUserForRoleTargets(
   } catch (err) {
     logger.error({
       msg: '[enrollment] Role-target auto-enroll failed',
-      userId,
+      organizationUserId,
       organizationId,
       err,
     });

@@ -10,39 +10,28 @@ async function main() {
 
   const user = await prisma.user.findUnique({
     where: { email },
+    include: { organizationMemberships: { select: { id: true } } },
   });
 
   if (user) {
-    // Delete relations that might be connected via cascading.
-    // Prisma schema shows that Document.userId doesn't have onCascade: Delete.
-    // Course.createdBy doesn't have onCascade: Delete.
-    // Enrollment.userId no cascade
-    // Profile.id has onDelete: Cascade but let's delete explicitly if needed or let prisma handle it.
+    const organizationUserIds = user.organizationMemberships.map((m) => m.id);
 
-    await prisma.enrollment.deleteMany({
-      where: { userId: user.id },
-    });
-    console.log(`Deleted enrollments for ${email}`);
-
-    await prisma.document.deleteMany({
-      where: { userId: user.id },
-    });
-    console.log(`Deleted documents for ${email}`);
-
+    // Course.creator is onDelete: Restrict, so authored courses must be
+    // deleted explicitly before the membership (and the user) can be removed.
+    // Enrollments, documents, certificates and notifications all cascade off
+    // OrganizationUser, and every OrganizationUser cascades off User, so
+    // deleting the user below removes all of that automatically.
     await prisma.course.deleteMany({
-      where: { createdBy: user.id },
+      where: { createdByOrgUserId: { in: organizationUserIds } },
     });
     console.log(`Deleted courses for ${email}`);
-
-    await prisma.profile.deleteMany({
-      where: { id: user.id },
-    });
-    console.log(`Deleted profile for ${email}`);
 
     await prisma.user.delete({
       where: { email },
     });
-    console.log(`Deleted user ${email}`);
+    console.log(
+      `Deleted user ${email} (cascaded ${organizationUserIds.length} membership(s), enrollments, and documents)`,
+    );
   } else {
     console.log(`User ${email} not found`);
   }

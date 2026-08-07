@@ -81,16 +81,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ jobI
 
     // ── Authorization: caller must be an admin of an org with the paid auditor
     //    feature enabled (mirrors POST /api/auditor/export).
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { role: true, organizationId: true },
-    });
-    if (!user || !isAdminRole(user.role) || !user.organizationId) {
+    const { role, organizationId } = session.user;
+    if (!isAdminRole(role) || !organizationId) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const org = await prisma.organization.findUnique({
-      where: { id: user.organizationId },
+      where: { id: organizationId },
       select: { name: true, hasAuditorAccess: true },
     });
     if (!org?.hasAuditorAccess) {
@@ -102,13 +99,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ jobI
       return NextResponse.json({ error: 'Job not ready or not found' }, { status: 404 });
     }
 
-    // Tenant isolation: the job must belong to a user in the caller's org.
+    // Tenant isolation: the job must belong to a member of the caller's org.
     if (job.userId) {
-      const jobOwner = await prisma.user.findUnique({
-        where: { id: job.userId },
-        select: { organizationId: true },
+      const jobOwnerMembership = await prisma.organizationUser.findFirst({
+        where: { userId: job.userId, organizationId },
+        select: { id: true },
       });
-      if (jobOwner?.organizationId !== user.organizationId) {
+      if (!jobOwnerMembership) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
       }
     } else {
@@ -125,8 +122,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ jobI
     await audit({
       action: 'export.download',
       actorId: session.user.id,
-      actorRole: user.role,
-      organizationId: user.organizationId,
+      actorRole: role,
+      organizationId,
       targetType: 'job',
       targetId: jobId,
       metadata: { scope: result.scope, format, rowCount: flattenResult(result).length },

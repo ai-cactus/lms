@@ -23,19 +23,12 @@ export default async function BillingPageRoute() {
     redirect('/login');
   }
 
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { role: true, organizationId: true },
-  });
-
-  if (!user) {
-    redirect('/login');
-  }
+  const { role, organizationId } = session.user;
 
   // Billing is reserved for roles holding `billing.read` (owner, finance).
   // Other admins (e.g. supervisor) reaching this URL get a proper access-denied
   // state instead of the raw "Forbidden" the billing APIs would otherwise return.
-  if (!can(dbRoleToRoleKey(user.role as Role), 'billing.read')) {
+  if (!can(dbRoleToRoleKey(role as Role), 'billing.read')) {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center px-4 text-center">
         <div className="flex size-14 items-center justify-center rounded-full bg-error/10 text-error">
@@ -58,9 +51,9 @@ export default async function BillingPageRoute() {
   // Fetch org staff count + active subscription plan for the UI, plus live
   // Stripe plan prices — independent reads, so run them concurrently.
   const [organization, planPrices] = await Promise.all([
-    user.organizationId
+    organizationId
       ? prisma.organization.findUnique({
-          where: { id: user.organizationId },
+          where: { id: organizationId },
           select: {
             facilities: { select: { staffCount: true }, take: 1 },
             subscription: {

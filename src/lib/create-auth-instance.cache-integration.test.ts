@@ -20,7 +20,7 @@
  *    reads the DB, and revocation is instant.
  *  - Claim 4: a Redis outage (get/set both throwing) falls back to the direct
  *    DB read and preserves the pre-existing DB-error fail-open behavior.
- *  - Claim 6: the retired-`admin`-role guard fires before ANY cache lookup.
+ *  - Claim 6: `admin` is a live role — no pre-cache guard short-circuits it.
  *  - TTL backstop: an out-of-band `sessionVersion` bump that never calls
  *    `invalidateRevalidationCache()` (e.g. a raw-SQL write bypassing every
  *    server action) is masked until the cache entry's real EX expires, then
@@ -29,7 +29,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const { mockFindUnique, mockCookies, fakeRedis } = vi.hoisted(() => {
+const { mockFindUnique, mockCookies, mockGetActiveMembership, fakeRedis } = vi.hoisted(() => {
   const mockCookieStore = { has: vi.fn().mockReturnValue(false), delete: vi.fn(), set: vi.fn() };
 
   // In-memory fake standing in for ioredis — tracks a real per-key expiry
@@ -77,6 +77,7 @@ const { mockFindUnique, mockCookies, fakeRedis } = vi.hoisted(() => {
   return {
     mockFindUnique: vi.fn(),
     mockCookies: vi.fn(() => Promise.resolve(mockCookieStore)),
+    mockGetActiveMembership: vi.fn(),
     fakeRedis,
   };
 });
@@ -103,6 +104,14 @@ vi.mock('bcryptjs', () => ({
 }));
 vi.mock('@/lib/enrollment/role-targets', () => ({ enrollUserForRoleTargets: vi.fn() }));
 vi.mock('@/lib/enrollment/invite-courses', () => ({ enrollInviteCourses: vi.fn() }));
+// The membership is deliberately NOT part of the cached snapshot — it is re-read
+// on every decode — so it is mocked here to make that live read observable.
+vi.mock('@/lib/auth/membership', () => ({
+  getActiveMembership: mockGetActiveMembership,
+  resolveActiveMembership: vi.fn(),
+  createMembership: vi.fn(),
+  recordMembershipLogin: vi.fn(),
+}));
 
 import { adminConfig } from '@/auth';
 import { invalidateRevalidationCache } from '@/lib/auth/session-revalidation-cache';
@@ -115,16 +124,22 @@ async function decode(token: any) {
   return (adminConfig.callbacks!.jwt as any)({ token });
 }
 
+/** The identity row the jwt callback selects — no role/organizationId on it. */
 const dbUser = (overrides: Record<string, unknown> = {}) => ({
   id: 'user-1',
-  role: 'owner',
-  organizationId: 'org-1',
+  fullName: 'Owner Person',
   mfaEnabled: false,
   mfaVerifiedAt: null,
   passwordResetRequired: false,
   sessionVersion: 1,
   authProvider: 'credentials',
-  profile: { fullName: 'Owner Person' },
+  ...overrides,
+});
+
+const membership = (overrides: Record<string, unknown> = {}) => ({
+  organizationUserId: 'ou-1',
+  organizationId: 'org-1',
+  role: 'owner',
   ...overrides,
 });
 
@@ -132,6 +147,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   fakeRedis.clearAll();
   fakeRedis.setFailing(false);
+  mockGetActiveMembership.mockResolvedValue(membership());
   process.env.AUTH_REVALIDATE_TTL_SECONDS = '30';
 });
 
@@ -190,33 +206,33 @@ describe('claim 1 — sessionVersion-based revocation lags at most the cache TTL
     expect(afterExpiry).toBeNull();
   });
 
-  it('org-unlink defense-in-depth guard: a removed non-owner admin (org nulled) is masked by a stale cache entry within the TTL, then caught on expiry even though sessionVersion is also stale in the cache', async () => {
-    mockFindUnique.mockResolvedValue(
-      dbUser({ role: 'hr', organizationId: 'org-1', sessionVersion: 1 }),
-    );
-    const token = { id: 'user-1', role: 'hr', sessionVersion: 1 };
+  it('membership revocation is NOT masked by the cache: the identity snapshot is served from cache, but the membership is re-read live and kills the session immediately', async () => {
+    mockFindUnique.mockResolvedValue(dbUser({ sessionVersion: 1 }));
+    mockGetActiveMembership.mockResolvedValue(membership({ role: 'hr' }));
+    const token = { id: 'user-1', organizationId: 'org-1', role: 'hr', sessionVersion: 1 };
     const warmed = await decode(token);
     expect(warmed).not.toBeNull();
     expect(warmed.organizationId).toBe('org-1');
 
-    // Staff removal in the DB: organizationId nulled AND sessionVersion bumped
-    // in the same write (see removeStaff in staff.ts) — but the stale cache
-    // entry still reports the OLD org and OLD version, so within the TTL the
-    // removed admin's session (and the org-scoping it feeds into downstream
-    // actions) is still treated as live and still org-1-scoped.
-    mockFindUnique.mockResolvedValue(
-      dbUser({ role: 'hr', organizationId: null, sessionVersion: 2 }),
-    );
+    // Staff removal in the DB deactivates the membership AND bumps
+    // sessionVersion. The identity half is still masked by the warm cache
+    // entry, but role/organization are never cached — the membership re-read
+    // sees the deactivation on the very next decode, so the session dies at
+    // once rather than lagging the TTL.
+    mockFindUnique.mockResolvedValue(dbUser({ sessionVersion: 2 }));
+    mockGetActiveMembership.mockResolvedValue(null);
     mockFindUnique.mockClear();
-    const stillMaskedByCache = await decode({ id: 'user-1', role: 'hr', sessionVersion: 1 });
-    expect(mockFindUnique).not.toHaveBeenCalled();
-    expect(stillMaskedByCache).not.toBeNull();
-    expect(stillMaskedByCache.organizationId).toBe('org-1');
 
-    // On cache expiry, the org-removal defense-in-depth guard fires.
-    fakeRedis.store.clear();
-    const afterExpiry = await decode({ id: 'user-1', role: 'hr', sessionVersion: 1 });
-    expect(afterExpiry).toBeNull();
+    const afterRemoval = await decode({
+      id: 'user-1',
+      organizationId: 'org-1',
+      role: 'hr',
+      sessionVersion: 1,
+    });
+
+    expect(mockFindUnique).not.toHaveBeenCalled(); // identity served from cache
+    expect(mockGetActiveMembership).toHaveBeenCalledWith('user-1', 'org-1'); // membership was not
+    expect(afterRemoval).toBeNull();
   });
 });
 
@@ -269,7 +285,12 @@ describe('claim 4 — Redis outage falls back to the direct DB read (never fail-
     fakeRedis.setFailing(true);
     mockFindUnique.mockResolvedValue(dbUser({ sessionVersion: 1 }));
 
-    const result = await decode({ id: 'user-1', role: 'owner', sessionVersion: 1 });
+    const result = await decode({
+      id: 'user-1',
+      organizationId: 'org-1',
+      role: 'owner',
+      sessionVersion: 1,
+    });
 
     expect(mockFindUnique).toHaveBeenCalledTimes(1);
     expect(result).not.toBeNull();
@@ -304,28 +325,41 @@ describe('claim 4 — Redis outage falls back to the direct DB read (never fail-
   });
 });
 
-describe('claim 6 — the retired-admin guard and cache lookup ordering', () => {
-  it('a stale JWT carrying the retired "admin" role is rejected WITHOUT ever consulting the cache or the DB', async () => {
-    const token = { id: 'user-1', role: 'admin', sessionVersion: 1 };
+describe('claim 6 — `admin` is a live role, so no pre-cache guard short-circuits it', () => {
+  it('an `admin` token revalidates through the normal cache path instead of being hard-rejected', async () => {
+    // The dev branch rejected `role: 'admin'` before any cache lookup as a
+    // stale pre-RBAC token. The multi-org auth rework un-retired `admin` as a
+    // delegated Owner-equivalent seat and dropped that guard.
+    mockFindUnique.mockResolvedValue(dbUser());
+    mockGetActiveMembership.mockResolvedValue(membership({ role: 'admin' }));
 
-    const result = await decode(token);
+    const result = await decode({
+      id: 'user-1',
+      organizationId: 'org-1',
+      role: 'admin',
+      sessionVersion: 1,
+    });
 
-    expect(result).toBeNull();
-    expect(fakeRedis.get).not.toHaveBeenCalled();
-    expect(mockFindUnique).not.toHaveBeenCalled();
+    expect(result).not.toBeNull();
+    expect(result.role).toBe('admin');
+    expect(fakeRedis.get).toHaveBeenCalled();
   });
 
-  it('the guard fires even when a fully valid, non-admin cache entry exists for the same userId (proves ordering, not just absence of data)', async () => {
-    mockFindUnique.mockResolvedValue(dbUser({ role: 'owner', sessionVersion: 1 }));
-    await decode({ id: 'user-1', role: 'owner', sessionVersion: 1 });
+  it('a warm cache entry for the same identity is reused for an `admin` decode rather than bypassed', async () => {
+    mockFindUnique.mockResolvedValue(dbUser({ sessionVersion: 1 }));
+    await decode({ id: 'user-1', organizationId: 'org-1', role: 'owner', sessionVersion: 1 });
     expect(fakeRedis.store.has('session-revalidate:user-1')).toBe(true);
 
     mockFindUnique.mockClear();
-    fakeRedis.get.mockClear();
-    const result = await decode({ id: 'user-1', role: 'admin', sessionVersion: 1 });
+    mockGetActiveMembership.mockResolvedValue(membership({ role: 'admin' }));
+    const result = await decode({
+      id: 'user-1',
+      organizationId: 'org-1',
+      role: 'admin',
+      sessionVersion: 1,
+    });
 
-    expect(result).toBeNull();
-    expect(fakeRedis.get).not.toHaveBeenCalled();
+    expect(result).not.toBeNull();
     expect(mockFindUnique).not.toHaveBeenCalled();
   });
 });

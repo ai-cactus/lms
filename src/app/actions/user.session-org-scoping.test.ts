@@ -2,24 +2,27 @@
  * Adversarial tenant-isolation regression tests for Tier 3 5.2 (PR-5):
  * getStaffUsers and searchStaffUsers in user.ts now read organizationId
  * straight off the DB-revalidated session instead of re-querying
- * prisma.user.findUnique. Neither had a pre-existing test (user.test.ts only
+ * prisma.user.findUnique. Post multi-org split they enumerate
+ * OrganizationUser memberships rather than raw users. Neither had a pre-existing test (user.test.ts only
  * covers updateProfile) — this closes that gap and specifically probes
  * cross-tenant leakage.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockAdminAuth, mockWorkerAuth, mockHeaders, mockUserFindMany, mockInviteFindMany } =
+// Post multi-org split: the roster is a list of OrganizationUser memberships,
+// so the org-scoped query is organizationUser.findMany, not user.findMany.
+const { mockAdminAuth, mockWorkerAuth, mockHeaders, mockOrgUserFindMany, mockInviteFindMany } =
   vi.hoisted(() => ({
     mockAdminAuth: vi.fn(),
     mockWorkerAuth: vi.fn(),
     mockHeaders: vi.fn(),
-    mockUserFindMany: vi.fn(),
+    mockOrgUserFindMany: vi.fn(),
     mockInviteFindMany: vi.fn(),
   }));
 
 vi.mock('@/lib/prisma', () => {
   const prisma = {
-    user: { findMany: mockUserFindMany },
+    organizationUser: { findMany: mockOrgUserFindMany },
     invite: { findMany: mockInviteFindMany },
   };
   return { prisma, default: prisma };
@@ -38,7 +41,7 @@ import { getStaffUsers, searchStaffUsers } from './user';
 beforeEach(() => {
   vi.clearAllMocks();
   mockHeaders.mockResolvedValue({ get: () => null }); // non-worker referer → resolveSession uses adminAuth
-  mockUserFindMany.mockResolvedValue([]);
+  mockOrgUserFindMany.mockResolvedValue([]);
   mockInviteFindMany.mockResolvedValue([]);
 });
 
@@ -49,7 +52,7 @@ describe('getStaffUsers — org-scoping sourced from the session', () => {
 
     await getStaffUsers();
 
-    expect(mockUserFindMany).toHaveBeenCalledExactlyOnceWith(
+    expect(mockOrgUserFindMany).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ where: expect.objectContaining({ organizationId: 'org-A' }) }),
     );
     expect(mockInviteFindMany).toHaveBeenCalledExactlyOnceWith(
@@ -63,10 +66,10 @@ describe('getStaffUsers — org-scoping sourced from the session', () => {
 
     await getStaffUsers();
 
-    expect(mockUserFindMany).toHaveBeenCalledExactlyOnceWith(
+    expect(mockOrgUserFindMany).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ where: expect.objectContaining({ organizationId: 'org-B' }) }),
     );
-    expect(mockUserFindMany).not.toHaveBeenCalledWith(
+    expect(mockOrgUserFindMany).not.toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ organizationId: 'org-A' }) }),
     );
   });
@@ -78,7 +81,7 @@ describe('getStaffUsers — org-scoping sourced from the session', () => {
     const result = await getStaffUsers();
 
     expect(result).toEqual([]);
-    expect(mockUserFindMany).not.toHaveBeenCalled();
+    expect(mockOrgUserFindMany).not.toHaveBeenCalled();
     expect(mockInviteFindMany).not.toHaveBeenCalled();
   });
 
@@ -97,7 +100,7 @@ describe('searchStaffUsers — org-scoping sourced from the session', () => {
 
     await searchStaffUsers('jane');
 
-    expect(mockUserFindMany).toHaveBeenCalledExactlyOnceWith(
+    expect(mockOrgUserFindMany).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ where: expect.objectContaining({ organizationId: 'org-A' }) }),
     );
   });
@@ -108,7 +111,7 @@ describe('searchStaffUsers — org-scoping sourced from the session', () => {
 
     await searchStaffUsers('jane');
 
-    expect(mockUserFindMany).not.toHaveBeenCalledWith(
+    expect(mockOrgUserFindMany).not.toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ organizationId: 'org-A' }) }),
     );
   });
@@ -120,7 +123,7 @@ describe('searchStaffUsers — org-scoping sourced from the session', () => {
     const result = await searchStaffUsers('jane');
 
     expect(result).toEqual([]);
-    expect(mockUserFindMany).not.toHaveBeenCalled();
+    expect(mockOrgUserFindMany).not.toHaveBeenCalled();
   });
 
   it('returns [] for no session at all, without throwing', async () => {

@@ -1,6 +1,6 @@
 ---
 name: gotcha-secure-cookie-delete-and-prod-e2e
-description: __Secure- cookie deletions need the Secure attr (cookies().delete omits it); next dev masks prod-only cookie/image bugs that next start exposes in CI e2e.
+description: __Secure- cookie deletions need the Secure attr (cookies().delete omits it); next dev masks prod-only cookie/image bugs that next start exposes in CI e2e; NEXT_PUBLIC_APP_URL is baked at build time.
 metadata:
   type: project
 ---
@@ -15,5 +15,10 @@ Two prod-only (`next start`) gotchas that `next dev` hides — the CI "E2E (Play
 
 **2. `next start` image-optimizer coalescing deadlock.**
 - `/onboarding-worker` (`src/app/onboarding-worker/page.tsx`) renders `<Image src="/images/login-bg.png" priority quality={100} fill>` on a 6.5MB PNG. When the org-less-worker login redirect (`/worker` → `/onboarding-worker`) aborts the in-flight `/_next/image?...w=1920&q=100` optimization, the page's duplicate request for the same cache key coalesces onto the aborted generation and **hangs forever** (reproduced: a 2nd request for the same uncached image after aborting the 1st returns `http=000` at 30s; curl warm/cold alone = 1.4s). This makes `page.goto(..., {waitUntil:'load'})` time out. Framework-level, unrelated to auth. Remediations: drop `quality={100}` / use a smaller optimized asset / don't mark it `priority`, or have the e2e use `waitUntil:'domcontentloaded'`.
+
+**3. `NEXT_PUBLIC_APP_URL` is baked into client bundles at BUILD time.**
+- Logout uses `signOut({ callbackUrl: `${process.env.NEXT_PUBLIC_APP_URL}/login` })` (`NavBar.tsx`, `WorkerHeader.tsx`). Under a `next start` e2e server the value comes from whatever env `npm run build` ran with — `playwright.config.ts`'s `webServer.env` override only reaches the *server* process, not an already-built bundle.
+- Build with `.env`'s default `http://localhost:3000` and NextAuth treats the callbackUrl as a foreign origin and silently falls back to `/`, so every spec whose logout helper waits for `**/login**` fails on the marketing landing page. Looks like a logout regression; it is not.
+- **How to apply:** when rebuilding the :3005 e2e server, pass `NEXT_PUBLIC_APP_URL=http://localhost:3005 APP_URL=http://localhost:3005` to `npm run build`, not just to `next start`. Related: a `next start` server never picks up source edits — rebuild + restart before trusting any e2e verdict (a stale build silently "reproduces" a bug you already fixed).
 
 **CI env quirks to mirror when reproducing prod e2e locally** (from `.github/workflows/ci.yml` e2e job): sets `AUTH_URL`/`NEXTAUTH_URL=http://localhost:3005` (activates `reqWithEnvURL`), `E2E_TEST_BYPASS_RATE_LIMIT=true`, dummy `AUTH_MICROSOFT_ENTRA_ID_*`. The dummy Entra creds cause a harmless, caught `[auth][error] TypeError: ...reading 'replace'` from `@auth/core/providers/microsoft-entra-id.js` (`json.issuer.replace` when OIDC discovery of the bogus tenant returns no `issuer`) — third-party, OAuth-path only, not the credentials login path.

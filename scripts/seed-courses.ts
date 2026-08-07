@@ -32,26 +32,35 @@ async function main() {
   console.log('Starting improved seed with quiz data...');
 
   // Legacy `admin` role was retired by the RBAC rollout; the founding/primary
-  // admin of an org is now the `owner`. Seed courses under that user.
-  const admin = await prisma.user.findFirst({
+  // admin of an org is now the `owner`. Seed courses under that membership.
+  const admin = await prisma.organizationUser.findFirst({
     where: { role: UserRole.owner },
-    include: { profile: true },
+    include: { user: true },
   });
 
   if (!admin) {
-    console.log('No owner user found! Please sign up via the app first.');
+    console.log('No owner membership found! Please sign up via the app first.');
     return;
   }
 
-  console.log(`Seeding for admin: ${admin.email}`);
+  console.log(`Seeding for admin: ${admin.user.email}`);
+
+  const facility = await prisma.facility.findFirst({
+    where: { organizationId: admin.organizationId },
+  });
+
+  if (!facility) {
+    console.log('No facility found for the owner\'s organization! Please complete onboarding first.');
+    return;
+  }
 
   console.log('Cleaning up old seed data...');
   await prisma.quizAttempt.deleteMany({});
   await prisma.enrollment.deleteMany({
-    where: { user: { email: { contains: '@company.com' } } },
+    where: { organizationUser: { user: { email: { contains: '@company.com' } } } },
   });
   await prisma.enrollment.deleteMany({
-    where: { user: { email: 'dummy_staff_01@example.com' } },
+    where: { organizationUser: { user: { email: 'dummy_staff_01@example.com' } } },
   });
   await prisma.user.deleteMany({
     where: {
@@ -85,18 +94,22 @@ async function main() {
       data: {
         email: s.email,
         password: hashedPassword,
-        role: UserRole.therapist_clinician,
-        profile: {
-          create: {
-            email: s.email,
-            firstName: s.firstName,
-            lastName: s.lastName,
-            fullName: `${s.firstName} ${s.lastName}`,
-          },
-        },
+        firstName: s.firstName,
+        lastName: s.lastName,
+        fullName: `${s.firstName} ${s.lastName}`,
       },
     });
-    staffUsers.push(user);
+    const membership = await prisma.organizationUser.create({
+      data: {
+        userId: user.id,
+        organizationId: admin.organizationId,
+        role: UserRole.therapist_clinician,
+      },
+    });
+    await prisma.organizationUserFacility.create({
+      data: { organizationUserId: membership.id, facilityId: facility.id },
+    });
+    staffUsers.push(membership);
   }
 
   const quizQuestions: Record<string, QuizQuestion[]> = {
@@ -354,7 +367,7 @@ async function main() {
   const existingCourses = await prisma.course.findMany({
     where: {
       title: { in: coursesData.map((c) => c.title) },
-      createdBy: admin.id,
+      createdByOrgUserId: admin.id,
     },
     include: { lessons: { include: { quiz: { include: { questions: true } } } } },
   });
@@ -371,7 +384,7 @@ async function main() {
         return prisma.course.create({
           data: {
             title: c.title,
-            createdBy: admin.id,
+            createdByOrgUserId: admin.id,
             status: 'published',
             description: `Comprehensive training on ${c.title.toLowerCase()}.`,
             thumbnail: `/images/icon-course-${c.difficulty === 'beginner' ? 'blue' : 'dark'}.svg`,
@@ -439,13 +452,15 @@ async function main() {
   // Fetch all existing enrollments to avoid N+1 queries in the loop
   const existingEnrollments = await prisma.enrollment.findMany({
     where: {
-      userId: { in: staffUsers.map((u) => u.id) },
+      organizationUserId: { in: staffUsers.map((u) => u.id) },
       courseId: { in: courses.map((c) => c.id) },
     },
-    select: { userId: true, courseId: true },
+    select: { organizationUserId: true, courseId: true },
   });
 
-  const enrollmentSet = new Set(existingEnrollments.map((e) => `${e.userId}:${e.courseId}`));
+  const enrollmentSet = new Set(
+    existingEnrollments.map((e) => `${e.organizationUserId}:${e.courseId}`),
+  );
 
   console.log('Creating enrollments with quiz attempts...');
   for (const pattern of enrollmentPatterns) {
@@ -462,7 +477,7 @@ async function main() {
 
       const enrollment = await prisma.enrollment.create({
         data: {
-          userId: staff.id,
+          organizationUserId: staff.id,
           courseId: course.id,
           status: pattern.status,
           progress:
@@ -514,16 +529,16 @@ async function main() {
   }
 
   const totalEnrollments = await prisma.enrollment.count({
-    where: { course: { createdBy: admin.id } },
+    where: { course: { createdByOrgUserId: admin.id } },
   });
   const completedCount = await prisma.enrollment.count({
-    where: { course: { createdBy: admin.id }, status: 'completed' },
+    where: { course: { createdByOrgUserId: admin.id }, status: 'completed' },
   });
   const inProgressCount = await prisma.enrollment.count({
-    where: { course: { createdBy: admin.id }, status: 'in_progress' },
+    where: { course: { createdByOrgUserId: admin.id }, status: 'in_progress' },
   });
   const enrolledCount = await prisma.enrollment.count({
-    where: { course: { createdBy: admin.id }, status: 'enrolled' },
+    where: { course: { createdByOrgUserId: admin.id }, status: 'enrolled' },
   });
   const quizAttemptCount = await prisma.quizAttempt.count();
 

@@ -17,6 +17,7 @@ import { emitNotificationEvent } from '@/lib/notifications/emit';
 import { headers } from 'next/headers';
 import { revalidatePath } from 'next/cache';
 import { Prisma } from '@/generated/prisma/client';
+import type { AuthSession } from '@/types/next-auth';
 
 // Spec: only .pdf and .docx are accepted. The upload modal enforces this
 // client-side; these mirror that server-side so a crafted request can't slip
@@ -27,12 +28,39 @@ const ALLOWED_DOCUMENT_MIME_TYPES = [
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 ];
 
+/** The session fields the upload pipeline reads. */
+type UploadSession = {
+  user: Pick<
+    AuthSession['user'],
+    'id' | 'email' | 'role' | 'organizationId' | 'organizationUserId'
+  >;
+};
+
+/** Outcome of one file — the shape the single-file action has always returned. */
+interface SingleUploadResult {
+  success?: boolean;
+  error?: string;
+  phiDetected?: boolean;
+}
+
+/** Per-file outcome of a batch upload. */
+export interface DocumentUploadResult {
+  name: string;
+  ok: boolean;
+  error?: string;
+}
+
+function readCategory(formData: FormData): string | undefined {
+  const value = formData.get('category');
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
 export async function uploadDocument(
   _prevState: { success?: boolean; error?: string; phiDetected?: boolean } | null,
   formData: FormData,
 ) {
   const session = await auth();
-  if (!session?.user?.id || !session.user.organizationId) {
+  if (!session?.user?.id || !session.user.organizationId || !session.user.organizationUserId) {
     return { error: 'Not authenticated or not in an organization' };
   }
 
@@ -62,6 +90,96 @@ export async function uploadDocument(
     return {
       error: 'You must confirm this document contains no PHI (Personal Health Information).',
     };
+  }
+
+  const result = await processSingleUpload(file, session, readCategory(formData));
+  if (result.success) {
+    revalidatePath('/dashboard/documents');
+  }
+
+  return result;
+}
+
+/**
+ * Upload several documents in one submission, sharing a single category.
+ *
+ * Files are processed SEQUENTIALLY: each one spends a token of the per-user
+ * PHI-scan rate limit and is buffered whole in memory, so running the AI-backed
+ * scans concurrently would both exhaust that budget and spike memory. A file
+ * that fails is reported in its own row and never aborts the rest of the batch.
+ */
+export async function uploadDocuments(
+  formData: FormData,
+): Promise<{ results: DocumentUploadResult[]; error?: string }> {
+  const session = await auth();
+  if (!session?.user?.id || !session.user.organizationId || !session.user.organizationUserId) {
+    return { results: [], error: 'Not authenticated or not in an organization' };
+  }
+
+  const userId = session.user.id;
+
+  if (!can(dbRoleToRoleKey(session.user.role), 'document.create')) {
+    logger.warn({
+      msg: '[doc] Batch upload denied — missing document.create',
+      userId,
+      role: session.user.role,
+    });
+    return { results: [], error: 'You do not have permission to upload documents.' };
+  }
+
+  const files = formData.getAll('files').filter((entry): entry is File => entry instanceof File);
+  if (files.length === 0) {
+    return { results: [], error: 'No files provided' };
+  }
+
+  // Same authoritative attestation gate as the single-file path — a new upload
+  // surface must not become a way around it.
+  if (formData.get('phiAttested') !== 'true') {
+    logger.warn({ msg: '[doc] Batch upload rejected — PHI attestation missing', userId });
+    return {
+      results: [],
+      error: 'You must confirm these documents contain no PHI (Personal Health Information).',
+    };
+  }
+
+  const category = readCategory(formData);
+  const results: DocumentUploadResult[] = [];
+
+  for (const file of files) {
+    const outcome = await processSingleUpload(file, session, category);
+    results.push({ name: file.name, ok: outcome.success === true, error: outcome.error });
+  }
+
+  const succeeded = results.filter((r) => r.ok).length;
+  logger.info({
+    msg: '[doc] Batch document upload processed',
+    userId,
+    total: files.length,
+    succeeded,
+  });
+
+  if (succeeded > 0) {
+    revalidatePath('/dashboard/documents');
+  }
+
+  return { results };
+}
+
+/**
+ * Validate → extract → PHI-scan → store → persist ONE file, then notify.
+ *
+ * Shared by the single-file and batch actions so both run the identical
+ * compliance pipeline. The caller owns authentication, the `document.create`
+ * gate, the PHI attestation and cache revalidation.
+ */
+async function processSingleUpload(
+  file: File,
+  session: UploadSession,
+  category?: string,
+): Promise<SingleUploadResult> {
+  const { id: userId, organizationId, organizationUserId } = session.user;
+  if (!organizationId || !organizationUserId) {
+    return { error: 'Not authenticated or not in an organization' };
   }
 
   // Server-side format guard: client validation is not a security boundary.
@@ -159,7 +277,7 @@ export async function uploadDocument(
   try {
     const uploadedDocumentId = await prisma.$transaction(async (tx) => {
       const existingDoc = await tx.document.findFirst({
-        where: { userId, filename: file.name },
+        where: { organizationUserId, filename: file.name },
       });
 
       let docId = existingDoc?.id;
@@ -174,11 +292,12 @@ export async function uploadDocument(
       } else {
         const newDoc = await tx.document.create({
           data: {
-            userId,
+            organizationUserId,
             filename: file.name,
             originalName: file.name,
             mimeType: file.type,
             size: file.size,
+            category: category ?? null,
           },
         });
         docId = newDoc.id;
@@ -221,14 +340,12 @@ export async function uploadDocument(
       action: 'document.upload',
       actorId: userId,
       actorRole: session.user.role,
-      organizationId: session.user.organizationId,
+      organizationId,
       targetType: 'document',
       targetId: uploadedDocumentId,
-      metadata: { size: file.size, mimeType: file.type },
+      metadata: { size: file.size, mimeType: file.type, category },
       ...getClientContext(await headers()),
     });
-
-    revalidatePath('/dashboard/documents');
   } catch (err: unknown) {
     const e = err as Error;
     logger.error({
@@ -250,24 +367,27 @@ export async function uploadDocument(
   // Notify the clinical/quality director (falling back to the owner). Kept
   // outside the block above so a notification-side failure can never trigger the
   // orphan cleanup and delete a document that was stored successfully.
-  const uploader = await prisma.user
+  const uploader = await prisma.organizationUser
     .findUnique({
-      where: { id: userId },
-      select: { facilityId: true, profile: { select: { fullName: true } } },
+      where: { id: organizationUserId },
+      select: {
+        user: { select: { fullName: true } },
+        facilities: { where: { active: true }, select: { facilityId: true }, take: 1 },
+      },
     })
     .catch((err: unknown) => {
       logger.error({ msg: '[doc] Could not load uploader for upload notification', err, userId });
       return null;
     });
-  const uploaderName = uploader?.profile?.fullName || session.user.email.split('@')[0];
+  const uploaderName = uploader?.user.fullName || session.user.email.split('@')[0];
 
   await emitNotificationEvent({
-    organizationId: session.user.organizationId,
+    organizationId,
     type: 'DOCUMENT_UPLOADED',
     title: 'New document uploaded',
     message: `${uploaderName} uploaded '${file.name}'.`,
     actor: { userId, role: session.user.role },
-    facilityId: uploader?.facilityId ?? null,
+    facilityId: uploader?.facilities[0]?.facilityId ?? null,
     linkUrl: '/dashboard/documents',
     context: { documentTitle: file.name, uploaderName },
   });
@@ -289,10 +409,10 @@ export async function getDocuments() {
   }
 
   const docs = await prisma.document.findMany({
-    where: { user: { organizationId: session.user.organizationId } },
+    where: { organizationUser: { organizationId: session.user.organizationId } },
     include: {
-      user: {
-        select: { email: true, profile: { select: { firstName: true, lastName: true } } },
+      organizationUser: {
+        select: { user: { select: { email: true, firstName: true, lastName: true } } },
       },
       versions: {
         orderBy: { version: 'desc' },
@@ -331,12 +451,12 @@ export async function deleteDocument(
   const doc = await prisma.document.findUnique({
     where: { id: documentId },
     include: {
-      user: { select: { organizationId: true } },
+      organizationUser: { select: { organizationId: true } },
       versions: { select: { id: true, storagePath: true } },
     },
   });
 
-  if (!doc || doc.user.organizationId !== session.user.organizationId) {
+  if (!doc || doc.organizationUser.organizationId !== session.user.organizationId) {
     return { error: 'Document not found' };
   }
 
@@ -414,10 +534,10 @@ export async function renameDocument(
   // document is reported as not found so its existence is never leaked.
   const doc = await prisma.document.findUnique({
     where: { id: documentId },
-    select: { user: { select: { organizationId: true } } },
+    select: { organizationUser: { select: { organizationId: true } } },
   });
 
-  if (!doc || doc.user.organizationId !== session.user.organizationId) {
+  if (!doc || doc.organizationUser.organizationId !== session.user.organizationId) {
     return { error: 'Document not found' };
   }
 

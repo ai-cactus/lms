@@ -29,6 +29,7 @@ interface Seeded {
   userId: string;
   orgId: string;
   facilityId: string;
+  orgUserId: string;
 }
 
 async function seedWithRole(role: Role, email: string, password: string): Promise<Seeded> {
@@ -40,6 +41,7 @@ async function seedWithRole(role: Role, email: string, password: string): Promis
     const orgId = crypto.randomUUID();
     const facilityId = crypto.randomUUID();
     const userId = crypto.randomUUID();
+    const orgUserId = crypto.randomUUID();
 
     await client.query(
       `INSERT INTO organizations (id, name, slug, primary_email, is_hipaa_compliant, created_at, updated_at)
@@ -52,16 +54,21 @@ async function seedWithRole(role: Role, email: string, password: string): Promis
       [facilityId, orgId, `Settings Test Facility ${slug}`],
     );
     await client.query(
-      `INSERT INTO users (id, email, password, role, email_verified, organization_id, facility_id, created_at, updated_at)
-       VALUES ($1, $2, $3, $4::"UserRole", true, $5, $6, NOW(), NOW())`,
-      [userId, email, hashed, role, orgId, facilityId],
+      `INSERT INTO users (id, email, password, email_verified, auth_provider, first_name, last_name, full_name, created_at, updated_at)
+       VALUES ($1, $2, $3, true, 'credentials', $4, $5, $6, NOW(), NOW())`,
+      [userId, email, hashed, 'Settings', 'Test', 'Settings Test'],
     );
     await client.query(
-      `INSERT INTO profiles (id, email, first_name, last_name, full_name, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`,
-      [userId, email, 'Settings', 'Test', 'Settings Test'],
+      `INSERT INTO organization_users (id, user_id, organization_id, role, active, joined_at, role_assigned_at, created_at, updated_at)
+       VALUES ($1, $2, $3, $4::"UserRole", true, NOW(), NOW(), NOW(), NOW())`,
+      [orgUserId, userId, orgId, role],
     );
-    return { userId, orgId, facilityId };
+    await client.query(
+      `INSERT INTO organization_user_facilities (id, organization_user_id, facility_id, active, joined_at)
+       VALUES ($1, $2, $3, true, NOW())`,
+      [crypto.randomUUID(), orgUserId, facilityId],
+    );
+    return { userId, orgId, facilityId, orgUserId };
   } finally {
     await client.end();
   }
@@ -71,7 +78,10 @@ async function cleanup(seeded: Seeded): Promise<void> {
   const client = new Client({ connectionString: DB_URL });
   await client.connect();
   try {
-    await client.query(`DELETE FROM profiles WHERE id = $1`, [seeded.userId]);
+    await client.query(`DELETE FROM organization_user_facilities WHERE organization_user_id = $1`, [
+      seeded.orgUserId,
+    ]);
+    await client.query(`DELETE FROM organization_users WHERE id = $1`, [seeded.orgUserId]);
     await client.query(`DELETE FROM users WHERE id = $1`, [seeded.userId]);
     await client.query(`DELETE FROM facilities WHERE id = $1`, [seeded.facilityId]);
     await client.query(`DELETE FROM organizations WHERE id = $1`, [seeded.orgId]);
@@ -163,7 +173,11 @@ test.describe('Settings page — Facility tab persistence', () => {
       await nameInput.fill(newName);
 
       await page.getByRole('combobox').click();
-      await page.getByRole('option', { name: 'Outpatient clinic' }).click();
+      // multi-facility v3 replaced this tab's locally-defined type list (which
+      // included "Outpatient clinic") with the shared, curated
+      // FACILITY_TYPE_OPTIONS list used by both this form and AddFacilityModal
+      // — pick a value that's actually on the new list.
+      await page.getByRole('option', { name: 'Private Practice / Group Practice' }).click();
 
       const responsePromise = page.waitForResponse(
         (resp) => resp.url().includes('/dashboard/settings') && resp.status() === 200,
@@ -180,10 +194,82 @@ test.describe('Settings page — Facility tab persistence', () => {
         const res = await client.query(`SELECT name, type FROM facilities WHERE id = $1`, [
           seeded.facilityId,
         ]);
-        expect(res.rows[0]).toMatchObject({ name: newName, type: 'Outpatient clinic' });
+        expect(res.rows[0]).toMatchObject({
+          name: newName,
+          type: 'Private Practice / Group Practice',
+        });
       } finally {
         await client.end();
       }
+    } finally {
+      await cleanup(seeded);
+    }
+  });
+});
+
+test.describe('Settings page — Add Facility (multi-facility v3)', () => {
+  test('owner adds a facility with no supervisor email; it is created and persisted', async ({
+    page,
+  }) => {
+    const email = uid('owner-addfac');
+    const seeded = await seedWithRole('owner', email, 'AddFacOwn3r!9');
+    const newFacilityName = `New Site ${crypto.randomBytes(3).toString('hex')}`;
+    try {
+      await login(page, email, 'AddFacOwn3r!9');
+      await page.goto('/dashboard/settings');
+      await page.waitForLoadState('networkidle');
+      await page.getByRole('tab', { name: /^facility$/i }).click();
+
+      await page.getByRole('button', { name: 'Add Facility' }).click();
+      // Scope to the dialog: the underlying Facility tab's own "Facility name"
+      // input shares the same placeholder text as the modal's.
+      const addFacilityDialog = page.getByRole('dialog', { name: /add facility/i });
+      await expect(addFacilityDialog).toBeVisible();
+
+      await addFacilityDialog.getByPlaceholder('Enter facility name').fill(newFacilityName);
+      await addFacilityDialog
+        .getByRole('radio', { name: 'Private Practice / Group Practice' })
+        .click();
+
+      const responsePromise = page.waitForResponse(
+        (resp) => resp.url().includes('/dashboard/settings') && resp.status() === 200,
+      );
+      await addFacilityDialog.getByRole('button', { name: 'Create facility' }).click();
+      await responsePromise;
+
+      await expect(page.getByText('Facility created.')).toBeVisible({ timeout: 10000 });
+
+      const client = new Client({ connectionString: DB_URL });
+      await client.connect();
+      try {
+        const res = await client.query(
+          `SELECT id FROM facilities WHERE organization_id = $1 AND name = $2`,
+          [seeded.orgId, newFacilityName],
+        );
+        expect(res.rows).toHaveLength(1);
+        await client.query(`DELETE FROM facilities WHERE id = $1`, [res.rows[0].id]);
+      } finally {
+        await client.end();
+      }
+    } finally {
+      await cleanup(seeded);
+    }
+  });
+
+  test('a non-owner admin (hr) has no Add Facility button — lacks facility.create', async ({
+    page,
+  }) => {
+    const email = uid('hr-addfac');
+    const seeded = await seedWithRole('hr', email, 'AddFacHr!99x');
+    try {
+      await login(page, email, 'AddFacHr!99x');
+
+      // hr is denied the whole settings page (owner-only per the earlier
+      // access-control suite), so the Add Facility button is unreachable —
+      // confirms the deeper gate rather than merely the button's own check.
+      await page.goto('/dashboard/settings');
+      await page.waitForLoadState('networkidle');
+      await expect(page.getByRole('button', { name: 'Add Facility' })).not.toBeVisible();
     } finally {
       await cleanup(seeded);
     }

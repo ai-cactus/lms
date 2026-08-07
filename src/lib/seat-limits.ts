@@ -20,7 +20,7 @@ import { BILLING_PLANS } from '@/lib/billing-plans';
  * transaction client (`Prisma.TransactionClient`) satisfy this, so callers can
  * run the check inside an existing `$transaction` for race safety.
  */
-type SeatDbClient = Pick<typeof prisma, 'organization' | 'user' | 'invite'>;
+type SeatDbClient = Pick<typeof prisma, 'organization' | 'organizationUser' | 'invite'>;
 
 export interface SeatUsage {
   /** Max staff seats for the org's active plan; `null` when unlimited or unenforced. */
@@ -89,7 +89,9 @@ export async function getSeatUsage(
 
   // D2: every role EXCEPT `owner` consumes a plan seat.
   const [workerCount, pendingInviteCount] = await Promise.all([
-    client.user.count({ where: { organizationId, role: { not: 'owner' } } }),
+    client.organizationUser.count({
+      where: { organizationId, role: { not: 'owner' }, active: true },
+    }),
     includePendingInvites
       ? client.invite.count({
           where: {

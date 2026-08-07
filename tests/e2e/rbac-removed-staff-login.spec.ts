@@ -62,21 +62,31 @@ type UserRole =
 
 interface Seeded {
   userId: string;
+  orgUserId: string | null;
   orgId: string | null;
   facilityId: string | null;
 }
 
 /**
- * Seed a single user. `withOrg: false` creates the row with a NULL
- * organization_id even for an admin-tier role — simulating either a removed
- * staff member or the legitimate pre-onboarding owner state, depending on
- * which role is passed.
+ * Seed a single user (global identity).
+ *
+ * `membership` controls what OrganizationUser state — if any — is attached:
+ *   - 'none'    — no organization_users row at all. resolveActiveMembership()
+ *                 returns { kind: 'none' } — the legitimate pre-onboarding
+ *                 state (a founder who never created an org, or a self-serve
+ *                 worker who never joined one).
+ *   - 'active'  — a normal, active membership.
+ *   - 'revoked' — an org + facility + an organization_users row that IS
+ *                 deactivated (active=false, deactivated_at set) — this is
+ *                 what "removed staff" actually looks like under the
+ *                 multi-org schema: resolveActiveMembership() returns
+ *                 { kind: 'revoked' }, not 'none'. See src/lib/auth/membership.ts.
  */
 async function seedUser(opts: {
   email: string;
   password: string;
   role: UserRole;
-  withOrg: boolean;
+  membership: 'none' | 'active' | 'revoked';
 }): Promise<Seeded> {
   const client = await db();
   try {
@@ -85,11 +95,19 @@ async function seedUser(opts: {
     const orgId = crypto.randomUUID();
     const facilityId = crypto.randomUUID();
     const userId = crypto.randomUUID();
+    const orgUserId = crypto.randomUUID();
 
     let resolvedOrgId: string | null = null;
     let resolvedFacilityId: string | null = null;
+    let resolvedOrgUserId: string | null = null;
 
-    if (opts.withOrg) {
+    await client.query(
+      `INSERT INTO users (id, email, password, email_verified, auth_provider, first_name, last_name, full_name, created_at, updated_at)
+       VALUES ($1, $2, $3, true, 'credentials', 'Test', 'User', 'Test User', NOW(), NOW())`,
+      [userId, opts.email, hashed],
+    );
+
+    if (opts.membership !== 'none') {
       await client.query(
         `INSERT INTO organizations (id, name, slug, primary_email, is_hipaa_compliant, created_at, updated_at)
          VALUES ($1, $2, $3, $4, false, NOW(), NOW())`,
@@ -100,22 +118,30 @@ async function seedUser(opts: {
          VALUES ($1, $2, $3, '{}', NOW(), NOW())`,
         [facilityId, orgId, `Removed-Staff Test ${orgSlug}`],
       );
+
+      const active = opts.membership === 'active';
+      await client.query(
+        `INSERT INTO organization_users (id, user_id, organization_id, role, active, deactivated_at, joined_at, role_assigned_at, created_at, updated_at)
+         VALUES ($1, $2, $3, $4::\"UserRole\", $5, $6, NOW(), NOW(), NOW(), NOW())`,
+        [orgUserId, userId, orgId, opts.role, active, active ? null : new Date()],
+      );
+      await client.query(
+        `INSERT INTO organization_user_facilities (id, organization_user_id, facility_id, active, joined_at)
+         VALUES ($1, $2, $3, true, NOW())`,
+        [crypto.randomUUID(), orgUserId, facilityId],
+      );
+
       resolvedOrgId = orgId;
       resolvedFacilityId = facilityId;
+      resolvedOrgUserId = orgUserId;
     }
 
-    await client.query(
-      `INSERT INTO users (id, email, password, role, email_verified, organization_id, facility_id, created_at, updated_at)
-       VALUES ($1, $2, $3, $4::\"UserRole\", true, $5, $6, NOW(), NOW())`,
-      [userId, opts.email, hashed, opts.role, resolvedOrgId, resolvedFacilityId],
-    );
-    await client.query(
-      `INSERT INTO profiles (id, email, first_name, last_name, full_name, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`,
-      [userId, opts.email, 'Test', 'User', 'Test User'],
-    );
-
-    return { userId, orgId: resolvedOrgId, facilityId: resolvedFacilityId };
+    return {
+      userId,
+      orgUserId: resolvedOrgUserId,
+      orgId: resolvedOrgId,
+      facilityId: resolvedFacilityId,
+    };
   } finally {
     await client.end();
   }
@@ -127,7 +153,14 @@ async function seedOrgWithOwnerAndHr(
   ownerPassword: string,
   hrEmail: string,
   hrPassword: string,
-): Promise<{ ownerId: string; hrId: string; orgId: string; facilityId: string }> {
+): Promise<{
+  ownerId: string;
+  ownerOrgUserId: string;
+  hrId: string;
+  hrOrgUserId: string;
+  orgId: string;
+  facilityId: string;
+}> {
   const client = await db();
   try {
     const ownerHashed = await bcrypt.hash(ownerPassword, 10);
@@ -137,6 +170,8 @@ async function seedOrgWithOwnerAndHr(
     const facilityId = crypto.randomUUID();
     const ownerId = crypto.randomUUID();
     const hrId = crypto.randomUUID();
+    const ownerOrgUserId = crypto.randomUUID();
+    const hrOrgUserId = crypto.randomUUID();
 
     await client.query(
       `INSERT INTO organizations (id, name, slug, primary_email, is_hipaa_compliant, created_at, updated_at)
@@ -149,36 +184,56 @@ async function seedOrgWithOwnerAndHr(
       [facilityId, orgId, `Removed-Staff UI Test ${orgSlug}`],
     );
     await client.query(
-      `INSERT INTO users (id, email, password, role, email_verified, organization_id, facility_id, created_at, updated_at)
-       VALUES ($1, $2, $3, 'owner'::\"UserRole\", true, $4, $5, NOW(), NOW())`,
-      [ownerId, ownerEmail, ownerHashed, orgId, facilityId],
+      `INSERT INTO users (id, email, password, email_verified, auth_provider, first_name, last_name, full_name, created_at, updated_at)
+       VALUES ($1, $2, $3, true, 'credentials', 'Owner', 'Test', 'Owner Test', NOW(), NOW())`,
+      [ownerId, ownerEmail, ownerHashed],
     );
     await client.query(
-      `INSERT INTO users (id, email, password, role, email_verified, organization_id, facility_id, created_at, updated_at)
-       VALUES ($1, $2, $3, 'hr'::\"UserRole\", true, $4, $5, NOW(), NOW())`,
-      [hrId, hrEmail, hrHashed, orgId, facilityId],
+      `INSERT INTO organization_users (id, user_id, organization_id, role, active, joined_at, role_assigned_at, created_at, updated_at)
+       VALUES ($1, $2, $3, 'owner'::\"UserRole\", true, NOW(), NOW(), NOW(), NOW())`,
+      [ownerOrgUserId, ownerId, orgId],
     );
     await client.query(
-      `INSERT INTO profiles (id, email, first_name, last_name, full_name, created_at, updated_at)
-       VALUES ($1, $2, 'Owner', 'Test', 'Owner Test', NOW(), NOW())`,
-      [ownerId, ownerEmail],
+      `INSERT INTO organization_user_facilities (id, organization_user_id, facility_id, active, joined_at)
+       VALUES ($1, $2, $3, true, NOW())`,
+      [crypto.randomUUID(), ownerOrgUserId, facilityId],
     );
     await client.query(
-      `INSERT INTO profiles (id, email, first_name, last_name, full_name, created_at, updated_at)
-       VALUES ($1, $2, 'HrStaffer', 'Test', 'HrStaffer Test', NOW(), NOW())`,
-      [hrId, hrEmail],
+      `INSERT INTO users (id, email, password, email_verified, auth_provider, first_name, last_name, full_name, created_at, updated_at)
+       VALUES ($1, $2, $3, true, 'credentials', 'HrStaffer', 'Test', 'HrStaffer Test', NOW(), NOW())`,
+      [hrId, hrEmail, hrHashed],
+    );
+    await client.query(
+      `INSERT INTO organization_users (id, user_id, organization_id, role, active, joined_at, role_assigned_at, created_at, updated_at)
+       VALUES ($1, $2, $3, 'hr'::\"UserRole\", true, NOW(), NOW(), NOW(), NOW())`,
+      [hrOrgUserId, hrId, orgId],
+    );
+    await client.query(
+      `INSERT INTO organization_user_facilities (id, organization_user_id, facility_id, active, joined_at)
+       VALUES ($1, $2, $3, true, NOW())`,
+      [crypto.randomUUID(), hrOrgUserId, facilityId],
     );
 
-    return { ownerId, hrId, orgId, facilityId };
+    return { ownerId, ownerOrgUserId, hrId, hrOrgUserId, orgId, facilityId };
   } finally {
     await client.end();
   }
 }
 
-async function cleanupUser(userId: string, orgId?: string | null): Promise<void> {
+async function cleanupUser(
+  userId: string,
+  orgId?: string | null,
+  orgUserId?: string | null,
+): Promise<void> {
   const client = await db();
   try {
-    await client.query(`DELETE FROM profiles WHERE id = $1`, [userId]);
+    if (orgUserId) {
+      await client.query(
+        `DELETE FROM organization_user_facilities WHERE organization_user_id = $1`,
+        [orgUserId],
+      );
+      await client.query(`DELETE FROM organization_users WHERE id = $1`, [orgUserId]);
+    }
     await client.query(`DELETE FROM users WHERE id = $1`, [userId]);
     if (orgId) {
       await client.query(`DELETE FROM facilities WHERE organization_id = $1`, [orgId]);
@@ -189,11 +244,19 @@ async function cleanupUser(userId: string, orgId?: string | null): Promise<void>
   }
 }
 
-async function cleanupOrgAndUsers(userIds: string[], orgId: string): Promise<void> {
+async function cleanupOrgAndUsers(
+  userIds: string[],
+  orgId: string,
+  orgUserIds: string[],
+): Promise<void> {
   const client = await db();
   try {
+    await client.query(
+      `DELETE FROM organization_user_facilities WHERE organization_user_id = ANY($1)`,
+      [orgUserIds],
+    );
+    await client.query(`DELETE FROM organization_users WHERE id = ANY($1)`, [orgUserIds]);
     for (const id of userIds) {
-      await client.query(`DELETE FROM profiles WHERE id = $1`, [id]);
       await client.query(`DELETE FROM users WHERE id = $1`, [id]);
     }
     await client.query(`DELETE FROM facilities WHERE organization_id = $1`, [orgId]);
@@ -204,20 +267,35 @@ async function cleanupOrgAndUsers(userIds: string[], orgId: string): Promise<voi
 }
 
 /**
- * Mirrors ONLY the raw DB write removeStaff() performs (src/app/actions/staff.ts)
- * — deliberately an OUT-OF-BAND mutation. It does NOT call
- * `invalidateRevalidationCache()` the way the real server action does, so it's
- * used to exercise the TTL-backstop path (a write that never goes through any
- * server action), not the "killed on next navigation" guarantee — that is now
- * covered by driving the real `removeStaff()` action below.
+ * Mirrors ONLY the raw DB writes removeStaff() performs (src/app/actions/staff.ts):
+ * deactivate the membership (active=false, deactivated_at set) and bump the
+ * identity's sessionVersion. Scoped by user_id since each test using this only
+ * has one org. Deliberately an OUT-OF-BAND mutation: it does NOT call
+ * `invalidateRevalidationCache()` the way the real server action does.
+ *
+ * This does NOT land in the TTL-backstop path, because the JWT callback's
+ * membership re-check is unconditional — see the "MEMBERSHIP IS NEVER CACHED"
+ * comment in `create-auth-instance.ts`. Only the *identity* snapshot
+ * (sessionVersion, mfaEnabled, etc.) goes through the short-TTL cache; role
+ * and membership always come from a live DB read, keyed by org, on every
+ * decode. So flipping `active=false` here is caught on the very next
+ * navigation regardless of the cache or of `invalidateRevalidationCache()`
+ * ever being called — see the test below. A pure identity-only out-of-band
+ * bump (no membership write) genuinely is masked until the TTL elapses; that
+ * case is covered deterministically, without a real sleep, in
+ * `src/lib/create-auth-instance.cache-integration.test.ts` ("TTL backstop vs.
+ * active invalidation for a sessionVersion bump").
  */
 async function simulateRemoveStaff(userId: string): Promise<void> {
   const client = await db();
   try {
     await client.query(
-      `UPDATE users SET organization_id = NULL, session_version = session_version + 1 WHERE id = $1`,
+      `UPDATE organization_users SET active = false, deactivated_at = NOW(), updated_at = NOW() WHERE user_id = $1`,
       [userId],
     );
+    await client.query(`UPDATE users SET session_version = session_version + 1 WHERE id = $1`, [
+      userId,
+    ]);
   } finally {
     await client.end();
   }
@@ -248,7 +326,14 @@ test.describe('QA ISSUE 2 — removed staff member cannot log in or keep a live 
   }) => {
     const email = uniqueEmail('removed-hr');
     const password = 'R3moved!HrPwd9';
-    const { userId } = await seedUser({ email, password, role: 'hr', withOrg: false });
+    // "Removed" = a deactivated organization_users row, which resolves to
+    // { kind: 'revoked' } — not the no-membership-at-all 'none' state.
+    const { userId, orgId, orgUserId } = await seedUser({
+      email,
+      password,
+      role: 'hr',
+      membership: 'revoked',
+    });
 
     try {
       await loginAs(page, email, password);
@@ -258,7 +343,7 @@ test.describe('QA ISSUE 2 — removed staff member cannot log in or keep a live 
       ).toBeVisible({ timeout: 10000 });
       expect(page.url()).not.toContain('/dashboard');
     } finally {
-      await cleanupUser(userId, null);
+      await cleanupUser(userId, orgId, orgUserId);
     }
   });
 
@@ -278,7 +363,7 @@ test.describe('QA ISSUE 2 — removed staff member cannot log in or keep a live 
     const hrEmail = uniqueEmail('live-hr');
     const hrPassword = 'LiveHr!Pwd992';
 
-    const { ownerId, hrId, orgId } = await seedOrgWithOwnerAndHr(
+    const { ownerId, ownerOrgUserId, hrId, hrOrgUserId, orgId } = await seedOrgWithOwnerAndHr(
       ownerEmail,
       ownerPassword,
       hrEmail,
@@ -320,25 +405,34 @@ test.describe('QA ISSUE 2 — removed staff member cannot log in or keep a live 
     } finally {
       await ownerContext.close();
       await hrContext.close();
-      await cleanupOrgAndUsers([ownerId, hrId], orgId);
+      await cleanupOrgAndUsers([ownerId, hrId], orgId, [ownerOrgUserId, hrOrgUserId]);
     }
   });
 
-  test('an out-of-band sessionVersion bump (bypassing every server action) does NOT kill a live session immediately — it is bounded by the TTL backstop only', async ({
+  test('an out-of-band membership deactivation (bypassing invalidateRevalidationCache) is STILL caught on the very next navigation — membership is always live-read, never cached', async ({
     page,
   }) => {
     // Contrast with the test above: a raw DB write that skips removeStaff()
     // entirely (e.g. a manual data fix, a script, a different code path that
-    // forgets to call invalidateRevalidationCache()) never busts the cache, so
-    // within the TTL window the session stays alive — exactly the pre-66aa961
-    // behavior. The deterministic, fast proof that this same bump IS still
-    // caught once the TTL elapses lives in
+    // forgets to call invalidateRevalidationCache()) never busts the identity
+    // cache. That used to leave a TTL-bounded window where the session stayed
+    // alive. It no longer does: the JWT callback's membership re-check is
+    // unconditional (see "MEMBERSHIP IS NEVER CACHED" in
+    // create-auth-instance.ts), so an `active=false` write is effective on the
+    // very next decode no matter how it got there. The TTL cache only ever
+    // covered identity fields (sessionVersion, mfaEnabled, ...); the
+    // deterministic, fast proof that a PURE identity-only bump (no membership
+    // write) is what's actually masked until the TTL elapses lives in
     // src/lib/create-auth-instance.cache-integration.test.ts ("TTL backstop vs.
-    // active invalidation for a sessionVersion bump"), since this shared
-    // webServer's TTL isn't overridable per-test.
+    // active invalidation for a sessionVersion bump").
     const email = uniqueEmail('oob-hr');
     const password = 'OobHr!Pwd9921';
-    const { userId, orgId } = await seedUser({ email, password, role: 'hr', withOrg: true });
+    const { userId, orgId, orgUserId } = await seedUser({
+      email,
+      password,
+      role: 'hr',
+      membership: 'active',
+    });
 
     try {
       await loginAs(page, email, password);
@@ -348,11 +442,13 @@ test.describe('QA ISSUE 2 — removed staff member cannot log in or keep a live 
       await simulateRemoveStaff(userId);
 
       await page.goto('/dashboard');
-      // No active bust fired for this write, so the still-cached snapshot
-      // keeps the session alive — the removal has NOT taken effect yet.
-      expect(page.url()).toContain('/dashboard');
+      // No active bust fired for this write, but membership is read live on
+      // every decode regardless of the cache — the deactivation still takes
+      // effect immediately.
+      await page.waitForURL('**/login**', { timeout: 15000 });
+      expect(page.url()).toContain('/login');
     } finally {
-      await cleanupUser(userId, orgId);
+      await cleanupUser(userId, orgId, orgUserId);
     }
   });
 
@@ -369,7 +465,10 @@ test.describe('QA ISSUE 2 — removed staff member cannot log in or keep a live 
     // mistake this legitimate state for a removed account.
     const email = uniqueEmail('preboard-owner');
     const password = 'PreB0ardOwn!9';
-    const { userId } = await seedUser({ email, password, role: 'owner', withOrg: false });
+    // No organization_users row at all — resolveActiveMembership() returns
+    // { kind: 'none' }, the legitimate pre-onboarding state (distinct from
+    // 'revoked', which is what an actually-removed account looks like).
+    const { userId } = await seedUser({ email, password, role: 'owner', membership: 'none' });
 
     try {
       await loginAs(page, email, password);
@@ -386,44 +485,48 @@ test.describe('QA ISSUE 2 — removed staff member cannot log in or keep a live 
       expect(page.url()).toContain('/onboarding');
       expect(page.url()).not.toContain('/onboarding-worker');
     } finally {
-      await cleanupUser(userId, null);
+      await cleanupUser(userId, null, null);
     }
   });
 
-  test('org-less WORKER (nurse) login still reaches /onboarding-worker (unrelated, unaffected state)', async ({
+  // RBAC-schema-driven behavior change (not a fixture-only fix): under the old
+  // model a "self-serve, org-less worker" was a real, reachable state — role
+  // lived directly on `users` even with organization_id NULL, so authenticate()
+  // could resolve `role: 'nurse'` and route to the worker portal. Under the
+  // multi-org schema, role only exists on an OrganizationUser row; a worker
+  // account is now created ONLY via invite/join (which attaches a membership
+  // in the same step — see src/app/actions/auth.ts#signup and
+  // src/app/api/auth/verify/route.ts's comment: "the role is assumed on an
+  // OrganizationUser membership once the account joins/founds an organisation,
+  // never persisted on the global User identity created here"). A truly
+  // memberless identity (resolveActiveMembership() -> {kind:'none'}) therefore
+  // has no signal anywhere that it was ever "meant" to be a worker: `authenticate()`
+  // (src/app/actions/auth.ts) only routes to the worker portal when an ACTIVE
+  // membership resolves to a worker role, which a `none` resolution never does
+  // — every memberless identity, "nurse"-seeded or not, resolves through the
+  // admin portal and lands on /dashboard's founder-activation modal, exactly
+  // like the org-less OWNER case above. Confirmed empirically: this identity
+  // reaches /dashboard, never /worker or /onboarding-worker.
+  test('a genuinely memberless identity is NOT blocked either — it resolves through the admin portal like the org-less owner, not /worker (self-serve worker pre-onboarding no longer exists)', async ({
     page,
   }) => {
     const email = uniqueEmail('preboard-worker');
     const password = 'PreB0ardWrk!9';
-    const { userId } = await seedUser({ email, password, role: 'nurse', withOrg: false });
+    const { userId } = await seedUser({ email, password, role: 'nurse', membership: 'none' });
 
     try {
       await loginAs(page, email, password);
-      // The Server Action's signIn(..., { redirectTo: '/worker' }) drives an
-      // initial CLIENT-SIDE (soft) navigation to /worker that does not always
-      // re-run edge middleware the same way a hard navigation does. Confirmed
-      // directly against the raw HTTP layer (curl with a real org-less worker
-      // session cookie): GET /worker → 307 → /onboarding-worker, unconditionally.
-      // Force a hard top-level navigation to /worker here so the redirect is
-      // exercised the same way; a stray, un-redirected soft landing on /worker
-      // is a client-navigation nuance, not the behavior this test guards.
-      await page.waitForURL(/\/(worker|onboarding-worker)/, {
-        timeout: 20000,
-        waitUntil: 'domcontentloaded',
-      });
-      // domcontentloaded everywhere below: the assertion is the redirect URL,
-      // and the default 'load' state can hang on the page's background-image
-      // optimization when a redirect aborts the first /_next/image request
-      // under `next start` (CI). Confirmed via CI trace: the URL had already
-      // reached /onboarding-worker while "Wait for load state" timed out.
-      await page.goto('/worker', { waitUntil: 'domcontentloaded' });
-      await page.waitForURL('**/onboarding-worker**', {
-        timeout: 20000,
-        waitUntil: 'domcontentloaded',
-      });
-      expect(page.url()).toContain('/onboarding-worker');
+      await page.waitForURL('**/dashboard**', { timeout: 15000 });
+      expect(page.url()).toContain('/dashboard');
+      expect(page.url()).not.toContain('/worker');
+
+      // Same ISSUE-2 guard as the owner case: a `none` resolution must never be
+      // mistaken for a removed ('revoked') account.
+      expect(
+        await page.getByText(/your access to this organization has been removed/i).count(),
+      ).toBe(0);
     } finally {
-      await cleanupUser(userId, null);
+      await cleanupUser(userId, null, null);
     }
   });
 
@@ -436,7 +539,7 @@ test.describe('QA ISSUE 2 — removed staff member cannot log in or keep a live 
     const hrEmail = uniqueEmail('ui-hr');
     const hrPassword = 'UiHrStaff!Pwd9';
 
-    const { ownerId, hrId, orgId } = await seedOrgWithOwnerAndHr(
+    const { ownerId, ownerOrgUserId, hrId, hrOrgUserId, orgId } = await seedOrgWithOwnerAndHr(
       ownerEmail,
       ownerPassword,
       hrEmail,
@@ -478,7 +581,7 @@ test.describe('QA ISSUE 2 — removed staff member cannot log in or keep a live 
         await hrContext.close();
       }
     } finally {
-      await cleanupOrgAndUsers([ownerId, hrId], orgId);
+      await cleanupOrgAndUsers([ownerId, hrId], orgId, [ownerOrgUserId, hrOrgUserId]);
     }
   });
 });

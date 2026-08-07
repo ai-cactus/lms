@@ -21,32 +21,43 @@ async function main() {
   });
   console.log('Org:', org.id, '|', org.name, '| hasAuditorAccess:', org.hasAuditorAccess);
 
+  const facility = await prisma.facility.upsert({
+    where: { id: 'test-facility-id-01' },
+    update: { organizationId: org.id },
+    create: {
+      id: 'test-facility-id-01',
+      organizationId: org.id,
+      name: 'Test Facility',
+    },
+  });
+
   // Create admin user — the founding/primary admin of the org is the `owner`.
   const hashed = await bcrypt.hash('Admin123!', 10);
   const admin = await prisma.user.upsert({
     where: { email: 'admin@test.com' },
-    update: { password: hashed, organizationId: org.id, role: UserRole.owner, emailVerified: true },
+    update: { password: hashed, emailVerified: true, firstName: 'Jane', lastName: 'Doe', fullName: 'Jane Doe' },
     create: {
       email: 'admin@test.com',
       password: hashed,
-      role: UserRole.owner,
       emailVerified: true,
-      organizationId: org.id,
-    },
-  });
-  console.log('Admin:', admin.email, '| role:', admin.role);
-
-  await prisma.profile.upsert({
-    where: { id: admin.id },
-    update: { firstName: 'Jane', lastName: 'Doe', fullName: 'Jane Doe', email: admin.email },
-    create: {
-      id: admin.id,
-      email: admin.email,
       firstName: 'Jane',
       lastName: 'Doe',
       fullName: 'Jane Doe',
     },
   });
+  const adminMembership = await prisma.organizationUser.upsert({
+    where: { userId_organizationId: { userId: admin.id, organizationId: org.id } },
+    update: { role: UserRole.owner, active: true, deactivatedAt: null },
+    create: { userId: admin.id, organizationId: org.id, role: UserRole.owner },
+  });
+  await prisma.organizationUserFacility.upsert({
+    where: {
+      organizationUserId_facilityId: { organizationUserId: adminMembership.id, facilityId: facility.id },
+    },
+    update: { active: true, deactivatedAt: null },
+    create: { organizationUserId: adminMembership.id, facilityId: facility.id },
+  });
+  console.log('Admin:', admin.email, '| role:', adminMembership.role);
 
   const workerHash = await bcrypt.hash('Worker123!', 10);
   // Seed a spread of worker-category roles for fixture variety.
@@ -62,21 +73,23 @@ async function main() {
       create: {
         email: `worker${i}@test.com`,
         password: workerHash,
-        role: workerRoles[i - 1],
         emailVerified: true,
-        organizationId: org.id,
-      },
-    });
-    await prisma.profile.upsert({
-      where: { id: w.id },
-      update: {},
-      create: {
-        id: w.id,
-        email: w.email,
         firstName: 'Worker',
         lastName: `${i}`,
         fullName: `Worker ${i}`,
       },
+    });
+    const membership = await prisma.organizationUser.upsert({
+      where: { userId_organizationId: { userId: w.id, organizationId: org.id } },
+      update: {},
+      create: { userId: w.id, organizationId: org.id, role: workerRoles[i - 1] },
+    });
+    await prisma.organizationUserFacility.upsert({
+      where: {
+        organizationUserId_facilityId: { organizationUserId: membership.id, facilityId: facility.id },
+      },
+      update: {},
+      create: { organizationUserId: membership.id, facilityId: facility.id },
     });
   }
   // Create a document and version for the admin to use in the wizard
@@ -86,7 +99,7 @@ async function main() {
     update: {},
     create: {
       id: 'test-doc-id-01',
-      userId: admin.id,
+      organizationUserId: adminMembership.id,
       filename: 'HIPAA_Compliance_Guide.pdf',
       originalName: 'HIPAA_Compliance_Guide.pdf',
       mimeType: 'application/pdf',

@@ -138,7 +138,7 @@ export async function analyzeDocument(formData: FormData): Promise<AnalyzedMetad
  */
 export async function analyzeStoredDocument(documentId: string): Promise<AnalyzedMetadata> {
   const session = await auth();
-  if (!session?.user?.id)
+  if (!session?.user?.id || !session.user.organizationUserId)
     return {
       title: '',
       description: '',
@@ -150,7 +150,7 @@ export async function analyzeStoredDocument(documentId: string): Promise<Analyze
 
   try {
     const doc = await prisma.document.findUnique({
-      where: { id: documentId, userId: session.user.id },
+      where: { id: documentId, organizationUserId: session.user.organizationUserId },
       include: { versions: { orderBy: { version: 'desc' }, take: 1 } },
     });
 

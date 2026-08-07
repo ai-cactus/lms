@@ -51,9 +51,13 @@ const STAFF_PASSWORD = 'QaStaffMember123!';
 const PAGINATION_ORG_SLUG = 'qa-pagination-org';
 const EMPTY_ORG_SLUG = 'qa-empty-org';
 
-// The platform user that owns every global video course (mirrors
-// src/lib/video/system-user.ts, which this script cannot import via `@/`).
+// The platform identity that owns every global video course, and its
+// dedicated home organization (mirrors src/lib/video/system-user.ts, which
+// this script cannot import via `@/`). `Course.creator` is an
+// `OrganizationUser`, so the system identity needs an org to belong to.
 const SYSTEM_USER_EMAIL = 'system@theraptly.internal';
+const SYSTEM_ORG_SLUG = 'system';
+const SYSTEM_ORG_NAME = 'System';
 
 // ── Video sample ─────────────────────────────────────────────────────────────
 const VIDEO_SOURCE_URL =
@@ -124,6 +128,119 @@ const MS_PER_DAY = 86_400_000;
 
 function daysFromNow(now: Date, days: number): Date {
   return new Date(now.getTime() + days * MS_PER_DAY);
+}
+
+interface SeedMembershipInput {
+  id: string;
+  email: string;
+  password: string;
+  firstName: string;
+  lastName: string;
+  role: UserRole;
+  jobTitle?: string;
+  managerId?: string | null;
+  /** Backdates both User.createdAt and OrganizationUser.joinedAt on first create only. */
+  createdAt?: Date;
+  /** Set on first create only — mirrors the original script never resetting it on re-run. */
+  lastLoginAt?: Date | null;
+}
+
+/**
+ * Upserts the global `User` identity, its `OrganizationUser` membership, and
+ * that membership's `OrganizationUserFacility` row — the three rows every
+ * seeded staff member needs under the multi-org model.
+ */
+async function upsertOrgUser(
+  input: SeedMembershipInput,
+  organizationId: string,
+  facilityId: string,
+) {
+  const fullName = `${input.firstName} ${input.lastName}`;
+  const user = await prisma.user.upsert({
+    where: { email: input.email },
+    update: {
+      password: input.password,
+      emailVerified: true,
+      mfaEnabled: false,
+      passwordResetRequired: false,
+      firstName: input.firstName,
+      lastName: input.lastName,
+      fullName,
+    },
+    create: {
+      id: input.id,
+      email: input.email,
+      password: input.password,
+      emailVerified: true,
+      mfaEnabled: false,
+      authProvider: 'credentials',
+      firstName: input.firstName,
+      lastName: input.lastName,
+      fullName,
+      ...(input.createdAt ? { createdAt: input.createdAt } : {}),
+    },
+  });
+
+  const membership = await prisma.organizationUser.upsert({
+    where: { userId_organizationId: { userId: user.id, organizationId } },
+    update: {
+      role: input.role,
+      active: true,
+      deactivatedAt: null,
+      ...(input.jobTitle !== undefined ? { jobTitle: input.jobTitle } : {}),
+      ...(input.managerId !== undefined ? { managerId: input.managerId } : {}),
+    },
+    create: {
+      userId: user.id,
+      organizationId,
+      role: input.role,
+      jobTitle: input.jobTitle ?? null,
+      managerId: input.managerId ?? null,
+      lastLoginAt: input.lastLoginAt ?? null,
+      ...(input.createdAt ? { joinedAt: input.createdAt } : {}),
+    },
+  });
+
+  await prisma.organizationUserFacility.upsert({
+    where: { organizationUserId_facilityId: { organizationUserId: membership.id, facilityId } },
+    update: { active: true, deactivatedAt: null },
+    create: { organizationUserId: membership.id, facilityId },
+  });
+
+  return { user, membership };
+}
+
+/**
+ * Idempotently returns the `OrganizationUser` membership for the platform's
+ * internal "System" identity, which authors all global (`isGlobal`) video
+ * courses. Mirrors `getOrCreateSystemUser` in src/lib/video/system-user.ts,
+ * which this script cannot import via `@/`.
+ */
+async function getOrCreateSystemMembership() {
+  const user = await prisma.user.upsert({
+    where: { email: SYSTEM_USER_EMAIL },
+    update: {},
+    create: {
+      email: SYSTEM_USER_EMAIL,
+      // Never logs in: a non-bcrypt string can never match bcrypt.compare.
+      password: 'qa-seed-system-user-never-logs-in',
+      emailVerified: true,
+    },
+  });
+
+  const organization = await prisma.organization.upsert({
+    where: { slug: SYSTEM_ORG_SLUG },
+    update: {},
+    create: { name: SYSTEM_ORG_NAME, slug: SYSTEM_ORG_SLUG },
+  });
+
+  // No facility row: this membership authors global courses and never
+  // carries facility scope.
+  return prisma.organizationUser.upsert({
+    where: { userId_organizationId: { userId: user.id, organizationId: organization.id } },
+    update: {},
+    create: { userId: user.id, organizationId: organization.id, role: 'admin' },
+  });
 }
 
 // ── Fixture data ─────────────────────────────────────────────────────────────
@@ -775,91 +892,43 @@ async function seedPaginationOrg(now: Date, adminPasswordHash: string, staffPass
     },
   });
 
-  const admin = await prisma.user.upsert({
-    where: { email: PAGINATION_ADMIN_EMAIL },
-    update: {
-      password: adminPasswordHash,
-      role: 'owner',
-      emailVerified: true,
-      mfaEnabled: false,
-      organizationId: org.id,
-      facilityId: uid(G.facility, 1),
-      passwordResetRequired: false,
-    },
-    create: {
+  const { membership: admin } = await upsertOrgUser(
+    {
       id: PAGINATION_ADMIN_ID,
       email: PAGINATION_ADMIN_EMAIL,
       password: adminPasswordHash,
-      role: 'owner',
-      emailVerified: true,
-      mfaEnabled: false,
-      organizationId: org.id,
-      facilityId: uid(G.facility, 1),
-      authProvider: 'credentials',
-    },
-  });
-  await prisma.profile.upsert({
-    where: { id: admin.id },
-    update: { fullName: 'Quinn Paige', firstName: 'Quinn', lastName: 'Paige' },
-    create: {
-      id: admin.id,
-      email: PAGINATION_ADMIN_EMAIL,
       firstName: 'Quinn',
       lastName: 'Paige',
-      fullName: 'Quinn Paige',
+      role: 'owner',
       jobTitle: 'Executive Director',
-      companyName: 'QA Pagination Org',
     },
-  });
+    org.id,
+    uid(G.facility, 1),
+  );
 
   const staffIds: string[] = [];
   for (const [index, member] of STAFF.entries()) {
     const id = uid(G.user, index + 1);
     const email = `${member.firstName}.${member.lastName}`.toLowerCase() + '@paginationqa.test';
-    const fullName = `${member.firstName} ${member.lastName}`;
     const createdAt = daysFromNow(now, -(20 + index * 11));
 
-    const user = await prisma.user.upsert({
-      where: { email },
-      update: {
-        password: staffPasswordHash,
-        role: member.role,
-        emailVerified: true,
-        mfaEnabled: false,
-        organizationId: org.id,
-        facilityId: uid(G.facility, 1),
-        managerId: admin.id,
-        passwordResetRequired: false,
-      },
-      create: {
+    const { membership: staff } = await upsertOrgUser(
+      {
         id,
         email,
         password: staffPasswordHash,
+        firstName: member.firstName,
+        lastName: member.lastName,
         role: member.role,
-        emailVerified: true,
-        mfaEnabled: false,
-        organizationId: org.id,
-        facilityId: uid(G.facility, 1),
+        jobTitle: member.jobTitle,
         managerId: admin.id,
-        authProvider: 'credentials',
         createdAt,
         lastLoginAt: index % 4 === 0 ? null : daysFromNow(now, -(index % 14)),
       },
-    });
-    await prisma.profile.upsert({
-      where: { id: user.id },
-      update: { fullName, firstName: member.firstName, lastName: member.lastName },
-      create: {
-        id: user.id,
-        email,
-        firstName: member.firstName,
-        lastName: member.lastName,
-        fullName,
-        jobTitle: member.jobTitle,
-        companyName: 'QA Pagination Org',
-      },
-    });
-    staffIds.push(user.id);
+      org.id,
+      uid(G.facility, 1),
+    );
+    staffIds.push(staff.id);
   }
 
   for (const [index, invite] of INVITES.entries()) {
@@ -875,6 +944,7 @@ async function seedPaginationOrg(now: Date, adminPasswordHash: string, staffPass
         email: invite.email,
         token: `qa-seed-invite-${index + 1}`,
         organizationId: org.id,
+        facilityId: uid(G.facility, 1),
         role: invite.role,
         status: 'pending',
         expiresAt: daysFromNow(now, invite.expiresInDays),
@@ -902,7 +972,7 @@ async function seedDocuments(adminId: string, staffIds: string[], now: Date) {
     await prisma.document.upsert({
       where: { id },
       update: {
-        userId: ownerId,
+        organizationUserId: ownerId,
         filename: doc.filename,
         originalName: doc.originalName,
         mimeType: doc.mimeType,
@@ -912,7 +982,7 @@ async function seedDocuments(adminId: string, staffIds: string[], now: Date) {
       },
       create: {
         id,
-        userId: ownerId,
+        organizationUserId: ownerId,
         filename: doc.filename,
         originalName: doc.originalName,
         mimeType: doc.mimeType,
@@ -960,7 +1030,7 @@ async function seedTextCourses(adminId: string, now: Date) {
       update: {
         title: course.title,
         status: course.status,
-        createdBy: adminId,
+        createdByOrgUserId: adminId,
         categoryId: categoryIdBySlug.get(course.categorySlug) ?? null,
         createdAt,
       },
@@ -981,7 +1051,7 @@ async function seedTextCourses(adminId: string, now: Date) {
         categoryId: categoryIdBySlug.get(course.categorySlug) ?? null,
         skillLevel: course.skillLevel,
         duration: course.duration,
-        createdBy: adminId,
+        createdByOrgUserId: adminId,
         createdAt,
         updatedAt: createdAt,
       },
@@ -1061,18 +1131,7 @@ async function seedTextCourses(adminId: string, now: Date) {
 }
 
 async function seedVideoCourses(now: Date) {
-  const systemUser = await prisma.user.upsert({
-    where: { email: SYSTEM_USER_EMAIL },
-    update: {},
-    create: {
-      email: SYSTEM_USER_EMAIL,
-      // Never logs in: a non-bcrypt string can never match bcrypt.compare.
-      password: 'qa-seed-system-user-never-logs-in',
-      role: 'supervisor',
-      organizationId: null,
-      emailVerified: true,
-    },
-  });
+  const systemMembership = await getOrCreateSystemMembership();
 
   const courseIds: string[] = [];
 
@@ -1087,7 +1146,7 @@ async function seedVideoCourses(now: Date) {
         status: 'published',
         type: 'video',
         isGlobal: true,
-        createdBy: systemUser.id,
+        createdByOrgUserId: systemMembership.id,
         previewVideoStorageUri: VIDEO_STORAGE_URI,
         previewVideoDurationSeconds: VIDEO_DURATION_SECONDS,
         previewMediaStatus: 'ready',
@@ -1105,7 +1164,7 @@ async function seedVideoCourses(now: Date) {
         category: course.category,
         skillLevel: 'beginner',
         duration: 1,
-        createdBy: systemUser.id,
+        createdByOrgUserId: systemMembership.id,
         previewVideoStorageUri: VIDEO_STORAGE_URI,
         previewVideoDurationSeconds: VIDEO_DURATION_SECONDS,
         previewMediaStatus: 'ready',
@@ -1245,7 +1304,7 @@ async function seedAssignmentsAndEnrollments(
   let enrollmentIndex = 0;
   const counts: Record<string, number> = {};
 
-  for (const [staffIndex, userId] of staffIds.entries()) {
+  for (const [staffIndex, organizationUserId] of staffIds.entries()) {
     // Two distinct courses per staff member — the pair is unique per user, so
     // the partial unique index on (user_id, course_id) for active statuses is
     // never violated.
@@ -1328,7 +1387,7 @@ async function seedAssignmentsAndEnrollments(
         update: enrollmentData,
         create: {
           id,
-          userId,
+          organizationUserId,
           courseId,
           startedAt: daysFromNow(now, -(10 + (enrollmentIndex % 90))),
           ...enrollmentData,
@@ -1342,7 +1401,7 @@ async function seedAssignmentsAndEnrollments(
           create: {
             id: uid(G.certificate, enrollmentIndex),
             enrollmentId: id,
-            userId,
+            organizationUserId,
             courseId,
             score: score ?? 0,
             issuedAt: completedAt,
@@ -1380,7 +1439,7 @@ async function seedShowcaseCertificates(
   publishedCourseIds: string[],
   now: Date,
 ): Promise<void> {
-  const userId = staffIds[0];
+  const organizationUserId = staffIds[0];
   const courses = publishedCourseIds.slice(0, 8);
 
   for (const [index, courseId] of courses.entries()) {
@@ -1410,7 +1469,7 @@ async function seedShowcaseCertificates(
       update: enrollmentData,
       create: {
         id: enrollmentId,
-        userId,
+        organizationUserId,
         courseId,
         startedAt: daysFromNow(now, -(30 + index * 19)),
         ...enrollmentData,
@@ -1423,7 +1482,7 @@ async function seedShowcaseCertificates(
       create: {
         id: uid(G.showcaseCertificate, index + 1),
         enrollmentId,
-        userId,
+        organizationUserId,
         courseId,
         score,
         issuedAt: completedAt,
@@ -1552,7 +1611,7 @@ async function seedNotifications(adminId: string, staffIds: string[], now: Date)
       },
       create: {
         id,
-        userId: adminId,
+        organizationUserId: adminId,
         type: item.type,
         title: item.title,
         message: item.message,
@@ -1618,42 +1677,19 @@ async function seedEmptyOrg(now: Date, adminPasswordHash: string) {
     },
   });
 
-  const admin = await prisma.user.upsert({
-    where: { email: EMPTY_ADMIN_EMAIL },
-    update: {
-      password: adminPasswordHash,
-      role: 'owner',
-      emailVerified: true,
-      mfaEnabled: false,
-      organizationId: org.id,
-      facilityId: uid(G.facility, 2),
-      passwordResetRequired: false,
-    },
-    create: {
+  await upsertOrgUser(
+    {
       id: EMPTY_ADMIN_ID,
       email: EMPTY_ADMIN_EMAIL,
       password: adminPasswordHash,
-      role: 'owner',
-      emailVerified: true,
-      mfaEnabled: false,
-      organizationId: org.id,
-      facilityId: uid(G.facility, 2),
-      authProvider: 'credentials',
-    },
-  });
-  await prisma.profile.upsert({
-    where: { id: admin.id },
-    update: { fullName: 'Evan Blank', firstName: 'Evan', lastName: 'Blank' },
-    create: {
-      id: admin.id,
-      email: EMPTY_ADMIN_EMAIL,
       firstName: 'Evan',
       lastName: 'Blank',
-      fullName: 'Evan Blank',
+      role: 'owner',
       jobTitle: 'Executive Director',
-      companyName: 'QA Empty Org',
     },
-  });
+    org.id,
+    uid(G.facility, 2),
+  );
 
   log(`org "${org.name}": admin only, no courses/documents/staff/enrollments`);
 }
