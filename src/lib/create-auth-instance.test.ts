@@ -402,6 +402,81 @@ describe('ISSUE 2 — removed non-owner admin: jwt() defense-in-depth', () => {
 });
 
 /**
+ * An org-less session must pick up a membership created AFTER the token was
+ * minted — the founder who completes onboarding, or an identity that accepts an
+ * invite, otherwise stays org-less until their next login and is denied by every
+ * org-scoped page.
+ */
+describe('jwt() adopts a membership created after an org-less token was minted', () => {
+  it('adopts the resolved membership into an org-less admin token and records the login', async () => {
+    mockFindUnique.mockResolvedValue(freshUserBase);
+    mockResolveActiveMembership.mockResolvedValue({
+      kind: 'resolved',
+      membership: makeMembership({ organizationUserId: 'ou-9', role: 'owner' }),
+    });
+    const token = { id: 'user-1', role: 'owner', sessionVersion: 1 };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await (adminConfig.callbacks!.jwt as any)({ token });
+
+    expect(result).toMatchObject({
+      organizationId: 'org-1',
+      organizationUserId: 'ou-9',
+      role: 'owner',
+    });
+    expect(mockRecordMembershipLogin).toHaveBeenCalledWith(
+      'user-1',
+      expect.objectContaining({ organizationUserId: 'ou-9' }),
+    );
+  });
+
+  it('keeps the session org-less (never invalidates) when the membership role is not allowed on this instance', async () => {
+    mockFindUnique.mockResolvedValue(freshUserBase);
+    mockResolveActiveMembership.mockResolvedValue({
+      kind: 'resolved',
+      membership: makeMembership({ role: 'nurse' }),
+    });
+    const token = { id: 'user-1', role: 'owner', sessionVersion: 1 };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await (adminConfig.callbacks!.jwt as any)({ token });
+
+    expect(result).not.toBeNull();
+    expect(result.organizationId).toBeNull();
+    expect(mockRecordMembershipLogin).not.toHaveBeenCalled();
+  });
+
+  it('does not remember the org for a `choice` resolution, matching the sign-in rule', async () => {
+    mockFindUnique.mockResolvedValue(freshUserBase);
+    mockResolveActiveMembership.mockResolvedValue({
+      kind: 'choice',
+      memberships: [
+        makeMembership({ organizationUserId: 'ou-a', organizationId: 'org-a', role: 'owner' }),
+        makeMembership({ organizationUserId: 'ou-b', organizationId: 'org-b', role: 'owner' }),
+      ],
+    });
+    const token = { id: 'user-1', role: 'owner', sessionVersion: 1 };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await (adminConfig.callbacks!.jwt as any)({ token });
+
+    expect(result.organizationId).toBe('org-a');
+    expect(mockRecordMembershipLogin).not.toHaveBeenCalled();
+  });
+
+  it('leaves a token that already carries an organizationId on the existing membership path', async () => {
+    mockFindUnique.mockResolvedValue(freshUserBase);
+    mockGetActiveMembership.mockResolvedValue(makeMembership({ role: 'owner' }));
+    const token = { id: 'user-1', organizationId: 'org-1', role: 'owner', sessionVersion: 1 };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (adminConfig.callbacks!.jwt as any)({ token });
+
+    expect(mockResolveActiveMembership).not.toHaveBeenCalled();
+  });
+});
+
+/**
  * F-059 regression: unrelated to ISSUE 2, but the org-less-admin guard sits
  * directly below the sessionVersion check in jwt() — a prior edit accidentally
  * short-circuiting this would silently disable the password-reset /

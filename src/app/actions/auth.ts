@@ -136,12 +136,26 @@ export async function authenticate(
 
     // Two or more active memberships and no remembered org — land on the picker
     // instead of silently committing to one of them.
+    //
+    // A membership-less identity is heading into onboarding, so it is routed
+    // there directly rather than to the portal home, which the proxy's
+    // onboarding gate (src/proxy.ts) would only bounce away again.
+    //
+    // A Server Action's redirectTo MUST name a route that RENDERS. If the
+    // target answers with another redirect — from middleware, or from a server
+    // component like /onboarding's redirect() to its first step — the browser
+    // follows it and hands the client an HTML document where it expected the
+    // action's flight payload, which throws instead of navigating (Next.js
+    // E394, "An unexpected response was received from the server"). Hence the
+    // wizard's first step here rather than the /onboarding entry point.
+    const onboardingPath = role === 'worker' ? '/onboarding-worker' : '/onboarding/step1';
+    const portalHome = role === 'worker' ? '/worker' : '/dashboard';
     const homePath =
       resolution.kind === 'choice'
         ? '/select-organization'
-        : role === 'worker'
-          ? '/worker'
-          : '/dashboard';
+        : resolution.kind === 'none'
+          ? onboardingPath
+          : portalHome;
 
     if (role === 'worker') {
       await signInWorker('credentials', {

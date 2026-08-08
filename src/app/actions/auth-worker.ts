@@ -18,6 +18,8 @@ export async function authenticateWorker(
 ): Promise<AuthState> {
   try {
     const email = formData.get('email') as string;
+    let redirectTo = '/worker';
+
     if (email) {
       const user = await prisma.user.findUnique({ where: { email }, select: { id: true } });
       if (user) {
@@ -34,12 +36,19 @@ export async function authenticateWorker(
         if (activeRole && isAdminRole(activeRole)) {
           return { redirect: '/login' };
         }
+        // A membership-less identity belongs in join-by-code onboarding. Landing
+        // it on /worker would leave the proxy's onboarding gate (src/proxy.ts)
+        // to re-route this server action's own navigation, which stalls or
+        // crashes the client (Next.js E394) — so route there at the source.
+        if (resolution.kind === 'none') {
+          redirectTo = '/onboarding-worker';
+        }
       }
     }
 
     await signIn('credentials', {
       ...Object.fromEntries(formData),
-      redirectTo: '/worker',
+      redirectTo,
     });
     return { success: true };
   } catch (error) {

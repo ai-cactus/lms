@@ -405,6 +405,116 @@ describe('authenticate — removed staff member (QA ISSUE 2)', () => {
 });
 
 // ---------------------------------------------------------------------------
+// authenticate() — post-login destination. A membership-less identity must be
+// routed into onboarding by the ACTION, and at a route that RENDERS: any
+// further redirect on the target (the proxy's onboarding gate, or /onboarding's
+// own redirect to its first step) crashes the client with Next.js E394.
+// ---------------------------------------------------------------------------
+
+describe('authenticate — post-login redirect target', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    stubHeadersIp();
+    mockCheckRateLimit.mockResolvedValue({ allowed: true, remaining: 9, resetInSeconds: 900 });
+    prismaMock.user.findUnique.mockResolvedValue({ id: 'user-1', mfaEnabled: false });
+  });
+
+  it('sends a membership-less identity straight to the onboarding wizard, never /dashboard', async () => {
+    prismaMock.organizationUser.findMany.mockResolvedValue([]);
+    prismaMock.organizationUser.count.mockResolvedValue(0);
+    const { signIn } = await import('@/auth');
+
+    await authenticate(undefined, makeLoginFormData('new-owner@example.com'));
+
+    // /onboarding/step1, not /onboarding — the latter answers with its own
+    // redirect, which a Server Action's redirectTo cannot survive.
+    expect(signIn).toHaveBeenCalledWith(
+      'credentials',
+      expect.objectContaining({ redirectTo: '/onboarding/step1' }),
+    );
+  });
+
+  it('still sends an onboarded admin-tier membership to /dashboard', async () => {
+    prismaMock.organizationUser.findMany.mockResolvedValue([
+      {
+        id: 'ou-1',
+        role: 'hr',
+        organizationId: 'org-1',
+        organization: { name: 'Acme', slug: 'acme' },
+      },
+    ]);
+    const { signIn } = await import('@/auth');
+
+    await authenticate(undefined, makeLoginFormData('active-hr@example.com'));
+
+    expect(signIn).toHaveBeenCalledWith(
+      'credentials',
+      expect.objectContaining({ redirectTo: '/dashboard' }),
+    );
+  });
+
+  it('still sends an onboarded worker membership to /worker', async () => {
+    prismaMock.organizationUser.findMany.mockResolvedValue([
+      {
+        id: 'ou-2',
+        role: 'nurse',
+        organizationId: 'org-1',
+        organization: { name: 'Acme', slug: 'acme' },
+      },
+    ]);
+    const { signIn: signInWorker } = await import('@/auth.worker');
+
+    await authenticate(undefined, makeLoginFormData('nurse@example.com'));
+
+    expect(signInWorker).toHaveBeenCalledWith(
+      'credentials',
+      expect.objectContaining({ redirectTo: '/worker' }),
+    );
+  });
+
+  it('still sends a multi-membership identity with no remembered org to the picker', async () => {
+    prismaMock.organizationUser.findMany.mockResolvedValue([
+      {
+        id: 'ou-1',
+        role: 'hr',
+        organizationId: 'org-1',
+        organization: { name: 'Acme', slug: 'acme' },
+      },
+      {
+        id: 'ou-3',
+        role: 'hr',
+        organizationId: 'org-2',
+        organization: { name: 'Globex', slug: 'globex' },
+      },
+    ]);
+    const { signIn } = await import('@/auth');
+
+    await authenticate(undefined, makeLoginFormData('multi-org@example.com'));
+
+    expect(signIn).toHaveBeenCalledWith(
+      'credentials',
+      expect.objectContaining({ redirectTo: '/select-organization' }),
+    );
+  });
+
+  it('still prefers the MFA challenge over the onboarding destination', async () => {
+    prismaMock.user.findUnique.mockResolvedValue({ id: 'user-1', mfaEnabled: true });
+    prismaMock.organizationUser.findMany.mockResolvedValue([]);
+    prismaMock.organizationUser.count.mockResolvedValue(0);
+    const { createMfaChallenge } = await import('@/lib/mfa-challenge');
+    (createMfaChallenge as ReturnType<typeof vi.fn>).mockResolvedValue('challenge-token');
+    const { signIn } = await import('@/auth');
+
+    await authenticate(undefined, makeLoginFormData('mfa-owner@example.com'));
+
+    expect(signIn).toHaveBeenCalledWith(
+      'credentials',
+      expect.objectContaining({ redirectTo: '/mfa/verify?challenge=challenge-token' }),
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
 // F-057: forceResetPassword(currentPassword, newPassword) — email now derived
 // from the authenticated session instead of being passed in by the caller.
 // ---------------------------------------------------------------------------
