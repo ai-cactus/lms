@@ -433,10 +433,16 @@ export async function setStaffFacilities(
   // Tenant isolation: an admin may only reassign users that belong to their own org.
   const target = await prisma.organizationUser.findUnique({
     where: { id: organizationUserId },
-    select: { organizationId: true },
+    select: { organizationId: true, role: true },
   });
   if (!target || target.organizationId !== session.user.organizationId) {
     return { success: false, error: 'Forbidden' };
+  }
+
+  // The owner spans the whole organization — their facility scope is not
+  // reassignable by anyone.
+  if (target.role === 'owner') {
+    return { success: false, error: "The organization owner's facilities cannot be changed." };
   }
 
   // ...and every requested facility must belong to that same org, so a crafted
@@ -686,6 +692,12 @@ export async function removeStaff(organizationUserId: string) {
       throw new Error('Unauthorized');
     }
 
+    // Self-removal would deactivate the caller's own membership mid-session and
+    // can orphan the organization — removal must always be done by someone else.
+    if (organizationUserId === session.user.organizationUserId) {
+      throw new Error('You cannot remove your own account from the organization.');
+    }
+
     const admin = await prisma.organizationUser.findUnique({
       where: { id: session.user.organizationUserId },
       select: {
@@ -705,6 +717,7 @@ export async function removeStaff(organizationUserId: string) {
       select: {
         organizationId: true,
         userId: true,
+        role: true,
         user: { select: { email: true, fullName: true } },
       },
     });
@@ -715,6 +728,12 @@ export async function removeStaff(organizationUserId: string) {
 
     if (staffOrgUser.organizationId !== admin.organizationId) {
       throw new Error('User does not belong to your organization');
+    }
+
+    // The owner seat is established at org creation and can never be revoked —
+    // not even by an admin holding user.delete.
+    if (staffOrgUser.role === 'owner') {
+      throw new Error('The organization owner cannot be removed.');
     }
 
     const staffName = staffOrgUser.user.fullName || staffOrgUser.user.email;
