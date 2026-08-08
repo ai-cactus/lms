@@ -14,4 +14,6 @@ metadata:
 2. Reconcile Prisma's stored checksum: it is `sha256hex(migration.sql file bytes)` — `UPDATE _prisma_migrations SET checksum = <sha> WHERE migration_name = '<name>'`, else `migrate dev`/`deploy` errors "modified after applied".
 3. `npx prisma migrate status` should then report "up to date".
 
+**Best avoidance: never let the live DB be one side of the diff.** The drift only appears when Prisma compares the datamodel against the DB. A schema→schema diff (`migrate diff --from-schema <HEAD copy> --to-schema <working copy> --script`, per [[offline-migrations]]) emits ONLY the intended DDL — no `DROP INDEX`, no `DROP COLUMN embedding`, no facility-default drops. Confirmed 2026-08-08 adding `video_encoding_version`: output was the two `ADD COLUMN`s and nothing else. Hand-author the migration folder from that output.
+
 DB is at `DATABASE_URL` (localhost:5433); load it in node scripts with `require('dotenv').config()` first (see [[offline-migrations]]).

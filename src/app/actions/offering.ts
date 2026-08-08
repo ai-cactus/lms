@@ -40,7 +40,7 @@ export interface VideoCourseAvailabilityRow {
   category: string | null;
   durationSeconds: number | null;
   questionCount: number;
-  hasPreview: boolean; // true when a preview video exists (drives the card thumbnail)
+  hasPoster: boolean; // true when a preview poster exists (drives the card thumbnail)
   isOffered: boolean;
   offeringId: string | null;
 }
@@ -54,6 +54,18 @@ export interface VideoCourseAvailabilityRow {
 //   and one invalidation refreshes every org at once. Invalidate via
 //   revalidateTag('video-catalog') at every global-video create / edit /
 //   status-change site (see video-course.ts).
+//
+//   `hasPoster` is the one field NOT written by a server action: the poster is
+//   produced by scripts/transcode-worker.ts, a detached child process with no
+//   access to the Next cache, so it cannot revalidate the tag when it lands.
+//   A course therefore stays `hasPoster: false` here for up to the 1h
+//   `revalidate` after its transcode finishes. That is deliberate and safe —
+//   the card falls back to its gradient, which is exactly what it shows for a
+//   posterless course anyway, and suppressing the request is the whole point of
+//   carrying the flag. Adding the field needs no cache-key change (the key is
+//   the static ['global-video-catalog'] with no arguments) and no new
+//   invalidation site: every existing revalidateTag('video-catalog') call
+//   rebuilds the whole row including this field.
 // ---------------------------------------------------------------------------
 interface GlobalVideoCatalogRow {
   id: string;
@@ -62,7 +74,7 @@ interface GlobalVideoCatalogRow {
   category: string | null;
   durationSeconds: number | null;
   questionCount: number;
-  hasPreview: boolean;
+  hasPoster: boolean;
 }
 
 const getGlobalVideoCatalog = unstable_cache(
@@ -76,7 +88,7 @@ const getGlobalVideoCatalog = unstable_cache(
         title: true,
         description: true,
         category: true,
-        previewVideoStorageUri: true,
+        previewPosterStorageUri: true,
         lessons: {
           select: {
             videoDurationSeconds: true,
@@ -95,7 +107,7 @@ const getGlobalVideoCatalog = unstable_cache(
         category: course.category,
         durationSeconds: firstLesson?.videoDurationSeconds ?? null,
         questionCount: firstLesson?.quiz?._count?.questions ?? 0,
-        hasPreview: Boolean(course.previewVideoStorageUri),
+        hasPoster: Boolean(course.previewPosterStorageUri),
       };
     });
   },
