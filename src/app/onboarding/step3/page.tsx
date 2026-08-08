@@ -102,7 +102,10 @@ function OptionCheckboxGrid({
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2 sm:gap-x-[130px] sm:gap-y-[37px] sm:px-[30px]">
+      {/* The design's 130px gutter only fits once the container reaches its
+          1080px cap; below that it eats the columns and wraps every long option
+          onto two or three lines, so it is held back to xl. */}
+      <div className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2 sm:gap-x-12 sm:gap-y-[37px] sm:px-[30px] xl:gap-x-[130px]">
         {options.map((option) =>
           option.id === OTHER_OPTION_ID ? (
             <button
@@ -110,19 +113,19 @@ function OptionCheckboxGrid({
               type="button"
               aria-pressed={otherActive}
               onClick={() => onToggle(option.id, !otherActive)}
-              className="flex cursor-pointer items-center gap-3 text-left"
+              className="flex min-w-0 cursor-pointer items-center gap-3 text-left"
             >
               <PlusCircle className="size-7 shrink-0 text-primary" aria-hidden="true" />
-              <span className="text-lg text-primary">{option.label}</span>
+              <span className="min-w-0 text-lg break-words text-primary">{option.label}</span>
             </button>
           ) : (
-            <label key={option.id} className="flex cursor-pointer items-center gap-3">
+            <label key={option.id} className="flex min-w-0 cursor-pointer items-center gap-3">
               <Checkbox
                 className="size-7 rounded-[4px]"
                 checked={selected.includes(option.id)}
                 onCheckedChange={(checked) => onToggle(option.id, checked === true)}
               />
-              <span className="text-lg text-foreground">{option.label}</span>
+              <span className="min-w-0 text-lg break-words text-foreground">{option.label}</span>
             </label>
           ),
         )}
