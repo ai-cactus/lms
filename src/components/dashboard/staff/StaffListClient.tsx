@@ -73,6 +73,8 @@ interface StaffListClientProps {
   currentWorkerCount: number;
   pendingInviteCount: number;
   inviterRole: Role;
+  /** The viewer's own membership id — their row never offers Remove Staff. */
+  viewerOrganizationUserId: string | null;
   /** Facilities the viewer may move staff into; empty for single-site orgs. */
   facilities: AccessibleFacility[];
 }
@@ -89,6 +91,7 @@ export default function StaffListClient({
   currentWorkerCount,
   pendingInviteCount,
   inviterRole,
+  viewerOrganizationUserId,
   facilities,
 }: StaffListClientProps) {
   // Only roles that actually hold the relevant permission see each affordance;
@@ -607,7 +610,10 @@ export default function StaffListClient({
                                 disabled: exportingUserId === user.id,
                                 onSelect: () => handleExportPdf(user.id),
                               },
-                              ...(canChangeFacility
+                              // The owner row is immutable for everyone: no
+                              // facility reassignment and no removal (the
+                              // server rejects both independently).
+                              ...(canChangeFacility && user.role !== 'owner'
                                 ? [
                                     {
                                       label: 'Change Facility',
@@ -623,7 +629,9 @@ export default function StaffListClient({
                                     },
                                   ]
                                 : []),
-                              ...(canRemoveStaff
+                              ...(canRemoveStaff &&
+                              user.id !== viewerOrganizationUserId &&
+                              user.role !== 'owner'
                                 ? [
                                     {
                                       label: 'Remove Staff',

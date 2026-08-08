@@ -1,12 +1,30 @@
+/*
+ * delete-user.ts — hard-deletes one identity and everything that cascades off
+ * it (memberships, enrollments, documents, certificates, notifications), plus
+ * its invites, authored courses and verification tokens.
+ *
+ * Usage:
+ *   npx tsx scripts/delete-user.ts --dry-run   # report only
+ *   npx tsx scripts/delete-user.ts             # delete
+ *
+ * Flags:
+ *   --dry-run   Report what would be deleted, write nothing.
+ */
 import { prisma } from '@/db/index';
+
+const DRY_RUN = process.argv.includes('--dry-run');
 
 async function main() {
   const email = 'vauntedgiant@zohomail.com';
+  const prefix = DRY_RUN ? '[DRY RUN] Would delete' : 'Deleted';
 
-  await prisma.invite.deleteMany({
-    where: { email },
-  });
-  console.log(`Deleted invites for ${email}`);
+  const inviteCount = await prisma.invite.count({ where: { email } });
+  if (!DRY_RUN) {
+    await prisma.invite.deleteMany({
+      where: { email },
+    });
+  }
+  console.log(`${prefix} ${inviteCount} invite(s) for ${email}`);
 
   const user = await prisma.user.findUnique({
     where: { email },
@@ -21,25 +39,35 @@ async function main() {
     // Enrollments, documents, certificates and notifications all cascade off
     // OrganizationUser, and every OrganizationUser cascades off User, so
     // deleting the user below removes all of that automatically.
-    await prisma.course.deleteMany({
+    const courseCount = await prisma.course.count({
       where: { createdByOrgUserId: { in: organizationUserIds } },
     });
-    console.log(`Deleted courses for ${email}`);
+    if (!DRY_RUN) {
+      await prisma.course.deleteMany({
+        where: { createdByOrgUserId: { in: organizationUserIds } },
+      });
+    }
+    console.log(`${prefix} ${courseCount} course(s) for ${email}`);
 
-    await prisma.user.delete({
-      where: { email },
-    });
+    if (!DRY_RUN) {
+      await prisma.user.delete({
+        where: { email },
+      });
+    }
     console.log(
-      `Deleted user ${email} (cascaded ${organizationUserIds.length} membership(s), enrollments, and documents)`,
+      `${prefix} user ${email} (cascading ${organizationUserIds.length} membership(s), enrollments, and documents)`,
     );
   } else {
     console.log(`User ${email} not found`);
   }
 
-  await prisma.verificationToken.deleteMany({
-    where: { identifier: email },
-  });
-  console.log(`Deleted verification tokens for ${email}`);
+  const tokenCount = await prisma.verificationToken.count({ where: { identifier: email } });
+  if (!DRY_RUN) {
+    await prisma.verificationToken.deleteMany({
+      where: { identifier: email },
+    });
+  }
+  console.log(`${prefix} ${tokenCount} verification token(s) for ${email}`);
 }
 
 main()

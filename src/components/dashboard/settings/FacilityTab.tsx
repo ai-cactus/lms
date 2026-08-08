@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Controller, useForm } from 'react-hook-form';
@@ -9,20 +9,19 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Field } from '@/components/ui/field';
 import { Alert } from '@/components/ui';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { updateFacility } from '@/app/actions/organization';
 import { cn } from '@/lib/utils';
 import { can } from '@/lib/rbac/permissions';
 import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
-import { FACILITY_TYPE_OPTIONS, OTHER_FACILITY_TYPE } from '@/lib/facility/facility-type-options';
+import { OTHER_FACILITY_TYPE } from '@/lib/facility/facility-type-options';
 import type { Role } from '@/types/next-auth';
 import AddFacilityModal from './AddFacilityModal';
+import {
+  FacilityTypeMultiSelect,
+  joinFacilityTypes,
+  parseFacilityTypes,
+  type FacilityTypeValue,
+} from './FacilityTypeMultiSelect';
 import type { SettingsFacility } from './SettingsClient';
 
 interface FacilityTabProps {
@@ -33,7 +32,7 @@ interface FacilityTabProps {
 
 interface FacilityFormValues {
   name: string;
-  type: string;
+  facilityTypes: FacilityTypeValue;
 }
 
 const FACILITY_CONTROL_CLASS = 'h-12 rounded-xl border-[1.5px] border-[#e5e7ea] px-4 text-[15px]';
@@ -53,14 +52,6 @@ export default function FacilityTab({ facility, planName, viewerRole }: Facility
 
   const canCreateFacility = can(dbRoleToRoleKey(viewerRole), 'facility.create');
 
-  // A facility saved before this list existed (or via "Other") would otherwise
-  // render as an empty select — keep its stored value selectable.
-  const typeOptions = useMemo(() => {
-    const options: string[] = [...FACILITY_TYPE_OPTIONS, OTHER_FACILITY_TYPE];
-    const stored = facility?.type;
-    return stored && !options.includes(stored) ? [...options, stored] : options;
-  }, [facility?.type]);
-
   const {
     control,
     register,
@@ -68,7 +59,10 @@ export default function FacilityTab({ facility, planName, viewerRole }: Facility
     reset,
     formState: { errors, isDirty, isSubmitting },
   } = useForm<FacilityFormValues>({
-    defaultValues: { name: facility?.name ?? '', type: facility?.type ?? '' },
+    defaultValues: {
+      name: facility?.name ?? '',
+      facilityTypes: parseFacilityTypes(facility?.type),
+    },
   });
 
   const header = (
@@ -123,7 +117,7 @@ export default function FacilityTab({ facility, planName, viewerRole }: Facility
     setMessage(null);
     const result = await updateFacility({
       name: values.name.trim(),
-      type: values.type || undefined,
+      type: joinFacilityTypes(values.facilityTypes) || undefined,
     });
 
     if (result.success) {
@@ -171,25 +165,26 @@ export default function FacilityTab({ facility, planName, viewerRole }: Facility
             />
           </Field>
 
-          <Field label="Facility type" className={FACILITY_FIELD_CLASS}>
+          <Field
+            label="Facility type"
+            error={errors.facilityTypes?.message}
+            className={FACILITY_FIELD_CLASS}
+          >
             <Controller
-              name="type"
+              name="facilityTypes"
               control={control}
+              rules={{
+                validate: (value) =>
+                  !value.types.includes(OTHER_FACILITY_TYPE) ||
+                  value.otherText.trim().length > 0 ||
+                  'Describe the facility type',
+              }}
               render={({ field }) => (
-                <Select value={field.value || undefined} onValueChange={field.onChange}>
-                  <SelectTrigger
-                    className={cn(FACILITY_CONTROL_CLASS, 'w-full justify-between [&_svg]:size-5')}
-                  >
-                    <SelectValue placeholder="Select facility type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {typeOptions.map((option) => (
-                      <SelectItem key={option} value={option}>
-                        {option}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <FacilityTypeMultiSelect
+                  value={field.value}
+                  onChange={field.onChange}
+                  className={cn(FACILITY_CONTROL_CLASS, 'py-0')}
+                />
               )}
             />
           </Field>

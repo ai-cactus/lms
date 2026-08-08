@@ -4,9 +4,9 @@
  * Acceptance criteria:
  *   - A freshly-authenticated owner with no organization can walk step1..step5
  *     and land on /onboarding/complete.
- *   - Step1: legal name, staff count, contact fields, phone, and country (US,
- *     defaulted) are required; street/zip/city/state are optional and left
- *     blank here.
+ *   - Step1: EVERY field is required — legal name, DBA, EIN, staff count,
+ *     contact fields, phone, country (US, defaulted) and the full address
+ *     (street/zip/city/state). The step has no "Skip for now" affordance.
  *   - Step3 (Figma redesign): a primary business type (shadcn Select, 9 options)
  *     + at least one additional business type (inline 2-col checkbox grid, 8
  *     options incl. an "Other (specify)" toggle-button row) are required.
@@ -133,7 +133,53 @@ async function login(page: import('@playwright/test').Page, email: string, passw
   // given route/server-action across all parallel workers pays an on-demand
   // compile cost that can exceed several seconds under worker contention —
   // this is dev-only overhead (production is pre-compiled), not app latency.
-  await page.waitForURL('**/dashboard**', { timeout: 45000 });
+  //
+  // These seeded owners have no organization, so the proxy's onboarding gate
+  // forwards /dashboard to /onboarding — accept either landing.
+  await page.waitForURL(/\/(dashboard|onboarding)/, { timeout: 45000 });
+}
+
+interface Step1Input {
+  orgName: string;
+  dba: string;
+  contactEmail: string;
+  /** Visible option label in the "Number of Staff" select. */
+  staffCount: string;
+  phone: string;
+}
+
+/**
+ * Fill every field on step 1 and advance to step 2. All of them are mandatory,
+ * so a partial fill blocks the wizard.
+ *
+ * Selectors are positional for the Selects (see the file header): "Number of
+ * Staff" is the first combobox, "Country" the second (US pre-selected) and
+ * "State" the third.
+ */
+async function fillStep1(page: import('@playwright/test').Page, input: Step1Input) {
+  await page.getByPlaceholder('e.g. Acme Healthcare Ltd').fill(input.orgName);
+  await page.getByPlaceholder('Enter business name (if applicable)').fill(input.dba);
+  await page.getByPlaceholder('XX-XXXXXXX').fill('123456789');
+  await page.getByPlaceholder('Enter the full name of the main contact').fill('Jane Founder');
+  await page
+    .getByPlaceholder('Enter the email address of the main contact')
+    .fill(input.contactEmail);
+
+  await page.getByRole('combobox').first().click();
+  await page.getByRole('option', { name: input.staffCount, exact: true }).click();
+
+  // Phone: real <input type="tel">, not label-linked (plain <label>).
+  await page.locator('input[type="tel"]').fill(input.phone);
+
+  await page.getByPlaceholder('Enter business street address').fill('123 Main St');
+  await page.getByPlaceholder('e.g. 27601').fill('27601');
+  await page.getByPlaceholder('Enter city').fill('Raleigh');
+
+  await page.getByRole('combobox').nth(2).click();
+  await page.getByRole('option', { name: 'North Carolina' }).click();
+
+  await page.getByRole('button', { name: /^next$/i }).click();
+  await page.waitForURL('**/onboarding/step2**', { timeout: 25000 });
 }
 
 test.describe('Onboarding wizard — 5-step happy path', () => {
@@ -155,22 +201,13 @@ test.describe('Onboarding wizard — 5-step happy path', () => {
       await page.waitForLoadState('networkidle');
 
       // ── Step 1 ──────────────────────────────────────────────────────────────
-      await page.getByPlaceholder('e.g. Acme Healthcare Ltd').fill(orgName);
-      await page.getByPlaceholder('Enter business name (if applicable)').fill('Onb Wizard DBA');
-      await page.getByPlaceholder('Enter the full name of the main contact').fill('Jane Founder');
-      await page.getByPlaceholder('Enter the email address of the main contact').fill(seeded.email);
-
-      // "Number of Staff" is the first combobox on this page (Country defaults
-      // to "United States" already selected; State/Country/Staff are the only
-      // other Selects and neither needs interaction here).
-      await page.getByRole('combobox').first().click();
-      await page.getByRole('option', { name: '1-10' }).click();
-
-      // Phone: real <input type="tel">, not label-linked (plain <label>).
-      await page.locator('input[type="tel"]').fill('5551234567');
-
-      await page.getByRole('button', { name: /^next$/i }).click();
-      await page.waitForURL('**/onboarding/step2**', { timeout: 25000 });
+      await fillStep1(page, {
+        orgName,
+        dba: 'Onb Wizard DBA',
+        contactEmail: seeded.email,
+        staffCount: '1-10',
+        phone: '5551234567',
+      });
 
       // ── Step 2 ──────────────────────────────────────────────────────────────
       // Only one combobox on this page (HIPAA compliance). Uploads are optional
@@ -220,6 +257,18 @@ test.describe('Onboarding wizard — 5-step happy path', () => {
       // completeOnboarding runs, then redirects to /onboarding/complete.
       await page.waitForURL('**/onboarding/complete**', { timeout: 30000 });
       await expect(page.getByText(/all set/i)).toBeVisible();
+
+      // The completion screen re-mints the session (organizationId adopted)
+      // before handing off — "Go to Dashboard" must land on a WORKING
+      // dashboard, not bounce back to onboarding and not render the courses
+      // page's org-less empty state.
+      await page.getByRole('button', { name: /go to dashboard/i }).click();
+      await page.waitForURL('**/dashboard', { timeout: 15000 });
+      await expect(page).not.toHaveURL(/\/onboarding/);
+
+      await page.goto('/dashboard/courses');
+      await expect(page.getByRole('heading', { name: /^courses$/i })).toBeVisible();
+      await expect(page.getByText(/no organization found/i)).not.toBeVisible();
     } finally {
       await cleanup(seeded, orgName);
     }
@@ -239,15 +288,13 @@ test.describe('Onboarding wizard — 5-step happy path', () => {
       await page.goto('/onboarding/step1');
       await page.waitForLoadState('networkidle');
 
-      await page.getByPlaceholder('e.g. Acme Healthcare Ltd').fill(orgName);
-      await page.getByPlaceholder('Enter business name (if applicable)').fill('DB Assert DBA');
-      await page.getByPlaceholder('Enter the full name of the main contact').fill('Jane Founder');
-      await page.getByPlaceholder('Enter the email address of the main contact').fill(seeded.email);
-      await page.getByRole('combobox').first().click();
-      await page.getByRole('option', { name: '11-49' }).click();
-      await page.locator('input[type="tel"]').fill('5559876543');
-      await page.getByRole('button', { name: /^next$/i }).click();
-      await page.waitForURL('**/onboarding/step2**', { timeout: 25000 });
+      await fillStep1(page, {
+        orgName,
+        dba: 'DB Assert DBA',
+        contactEmail: seeded.email,
+        staffCount: '11-49',
+        phone: '5559876543',
+      });
 
       await page.getByRole('combobox').click();
       await page.getByRole('option', { name: /^yes$/i }).click();
@@ -349,15 +396,13 @@ test.describe('Onboarding wizard — 5-step happy path', () => {
       await page.goto('/onboarding/step1');
       await page.waitForLoadState('networkidle');
 
-      await page.getByPlaceholder('e.g. Acme Healthcare Ltd').fill(orgName);
-      await page.getByPlaceholder('Enter business name (if applicable)').fill('Other Specify DBA');
-      await page.getByPlaceholder('Enter the full name of the main contact').fill('Jane Founder');
-      await page.getByPlaceholder('Enter the email address of the main contact').fill(seeded.email);
-      await page.getByRole('combobox').first().click();
-      await page.getByRole('option', { name: '1-10' }).click();
-      await page.locator('input[type="tel"]').fill('5552223333');
-      await page.getByRole('button', { name: /^next$/i }).click();
-      await page.waitForURL('**/onboarding/step2**', { timeout: 25000 });
+      await fillStep1(page, {
+        orgName,
+        dba: 'Other Specify DBA',
+        contactEmail: seeded.email,
+        staffCount: '1-10',
+        phone: '5552223333',
+      });
 
       await page.getByRole('combobox').click();
       await page.getByRole('option', { name: /^yes$/i }).click();
@@ -419,15 +464,13 @@ test.describe('Onboarding wizard — 5-step happy path', () => {
       await page.goto('/onboarding/step1');
       await page.waitForLoadState('networkidle');
 
-      await page.getByPlaceholder('e.g. Acme Healthcare Ltd').fill('Rehydration Regression Co');
-      await page.getByPlaceholder('Enter business name (if applicable)').fill('Rehydration DBA');
-      await page.getByPlaceholder('Enter the full name of the main contact').fill('Jane Founder');
-      await page.getByPlaceholder('Enter the email address of the main contact').fill(seeded.email);
-      await page.getByRole('combobox').first().click();
-      await page.getByRole('option', { name: '1-10' }).click();
-      await page.locator('input[type="tel"]').fill('5554445555');
-      await page.getByRole('button', { name: /^next$/i }).click();
-      await page.waitForURL('**/onboarding/step2**', { timeout: 25000 });
+      await fillStep1(page, {
+        orgName: 'Rehydration Regression Co',
+        dba: 'Rehydration DBA',
+        contactEmail: seeded.email,
+        staffCount: '1-10',
+        phone: '5554445555',
+      });
 
       await page.getByRole('combobox').click();
       await page.getByRole('option', { name: /^yes$/i }).click();
@@ -487,15 +530,13 @@ test.describe('Onboarding wizard — 5-step happy path', () => {
       await page.goto('/onboarding/step1');
       await page.waitForLoadState('networkidle');
 
-      await page.getByPlaceholder('e.g. Acme Healthcare Ltd').fill(orgName);
-      await page.getByPlaceholder('Enter business name (if applicable)').fill('Skip Worker DBA');
-      await page.getByPlaceholder('Enter the full name of the main contact').fill('Jane Founder');
-      await page.getByPlaceholder('Enter the email address of the main contact').fill(seeded.email);
-      await page.getByRole('combobox').first().click();
-      await page.getByRole('option', { name: '1-10' }).click();
-      await page.locator('input[type="tel"]').fill('5551110000');
-      await page.getByRole('button', { name: /^next$/i }).click();
-      await page.waitForURL('**/onboarding/step2**', { timeout: 25000 });
+      await fillStep1(page, {
+        orgName,
+        dba: 'Skip Worker DBA',
+        contactEmail: seeded.email,
+        staffCount: '1-10',
+        phone: '5551110000',
+      });
 
       await page.getByRole('combobox').click();
       await page.getByRole('option', { name: /^yes$/i }).click();
@@ -606,6 +647,47 @@ test.describe('Onboarding wizard — 5-step happy path', () => {
       } finally {
         await client.end();
       }
+    } finally {
+      await cleanup(seeded, `__no-org-created-by-${seeded.email}__`);
+    }
+  });
+
+  // ── proxy gate: org-less admin hitting a protected /dashboard/* page ────────
+
+  test('an org-less admin session navigating directly to /dashboard/courses is redirected to /onboarding, not the error boundary', async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    const seeded = await seedUnboardedOwner();
+
+    try {
+      // Mint the session directly via the credentials callback (bypassing the
+      // login FORM's Server-Action submit) so this test isolates the proxy
+      // gate itself from the separate client-side navigation issue the login()
+      // helper's own tests are hitting on this build (see bug report). This
+      // still exercises the real cookie the proxy decodes — same auth
+      // instance, same NextAuth callback the UI form posts to.
+      const csrfRes = await page.request.get('/api/auth/csrf');
+      const { csrfToken } = await csrfRes.json();
+      await page.request.post('/api/auth/callback/credentials', {
+        form: {
+          email: seeded.email,
+          password: seeded.password,
+          csrfToken,
+          callbackUrl: '/dashboard',
+          json: 'true',
+        },
+      });
+
+      // A plain top-level navigation (not a client-side Server Action redirect)
+      // to a protected admin route — the proxy's org-less admin gate must send
+      // this straight to /onboarding, never let it reach the courses page (or
+      // its generic error boundary) with no organizationId.
+      await page.goto('/dashboard/courses');
+      await page.waitForURL('**/onboarding**', { timeout: 15000 });
+
+      await expect(page.getByText(/something went wrong/i)).not.toBeVisible();
+      await expect(page.getByText(/no organization found/i)).not.toBeVisible();
     } finally {
       await cleanup(seeded, `__no-org-created-by-${seeded.email}__`);
     }

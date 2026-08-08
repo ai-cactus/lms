@@ -1,12 +1,40 @@
 'use client';
 
-import React from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import { Check, Sparkle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { logger } from '@/lib/logger';
 
 export default function OnboardingComplete() {
   const router = useRouter();
+  const { update } = useSession();
+  const [isNavigating, setIsNavigating] = useState(false);
+  const refresh = useRef<Promise<unknown> | null>(null);
+
+  // The session cookie was minted before this user had a membership, so it is
+  // still org-less. update() re-runs the jwt callback, which adopts the freshly
+  // created owner membership into the cookie — without it every /dashboard page
+  // would render as "no organization" until the next login.
+  const refreshSession = useCallback(() => {
+    refresh.current ??= update().catch((err) => {
+      logger.error({ msg: '[onboarding] Failed to refresh session after onboarding', err });
+      // Let the Dashboard button retry the re-mint rather than caching a failure.
+      refresh.current = null;
+    });
+    return refresh.current;
+  }, [update]);
+
+  useEffect(() => {
+    void refreshSession();
+  }, [refreshSession]);
+
+  const goToDashboard = async () => {
+    setIsNavigating(true);
+    await refreshSession();
+    router.push('/dashboard');
+  };
 
   return (
     <div className="flex min-h-[60vh] flex-col items-center justify-center gap-6 text-center">
@@ -42,7 +70,7 @@ export default function OnboardingComplete() {
       </div>
 
       <div className="mt-6">
-        <Button onClick={() => router.push('/dashboard')} className="px-8 py-3">
+        <Button onClick={goToDashboard} loading={isNavigating} className="px-8 py-3">
           Go to Dashboard
         </Button>
       </div>

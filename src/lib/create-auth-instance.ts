@@ -649,6 +649,32 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
             // must take effect on the next decode.
             if (freshUser && token.organizationId) {
               membership = await getActiveMembership(freshUser.id, token.organizationId as string);
+            } else if (freshUser) {
+              // An org-less token whose owner has since JOINED an organization
+              // (completed onboarding, accepted an invite) must adopt that
+              // membership here — otherwise the session stays org-less until the
+              // user logs in again, and every org-scoped page denies access.
+              //
+              // The extra lookup costs nothing in steady state: it only runs for
+              // tokens with no organizationId, which is a rare, transient state
+              // (pre-onboarding / pre-join) that ends the moment a membership is
+              // adopted.
+              const resolution = await resolveActiveMembership(freshUser.id);
+              const adopted = activeMembershipOf(resolution);
+
+              // A membership this instance may not carry (e.g. the worker portal
+              // seeing an `owner`-only identity) is simply not adopted: the
+              // session keeps its provisional org-less claims rather than being
+              // invalidated, which would log the user out of a valid session.
+              if (adopted && sessionAllowedRoles.includes(adopted.role)) {
+                membership = adopted;
+                // Same rule as sign-in: only a definite activation is remembered.
+                // A `choice` resolution's provisional pick must not become the
+                // user's remembered org (see the credentials provider above).
+                if (resolution.kind === 'resolved') {
+                  recordMembershipLogin(freshUser.id, adopted);
+                }
+              }
             }
           } catch (dbError) {
             // F-036 (deliberate, do not change): this path is fail-OPEN. A DB
