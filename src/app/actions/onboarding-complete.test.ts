@@ -66,6 +66,8 @@ import prisma from '@/lib/prisma';
 const BASE_DATA: OnboardingData = {
   step1: {
     legalName: 'Acme Health',
+    dba: 'Acme',
+    ein: '12-3456789',
     primaryContactEmail: 'owner@acme.com',
     primaryContactName: 'Jane Owner',
     state: 'CA',
@@ -154,14 +156,29 @@ describe('completeOnboarding — Organization/Facility split', () => {
     ]);
   });
 
-  it('falls back to DEFAULT_TZ (America/New_York) when step1.state is omitted', async () => {
+  it('falls back to DEFAULT_TZ (America/New_York) for an unrecognised step1.state', async () => {
     await completeOnboarding({
       ...BASE_DATA,
-      step1: { ...BASE_DATA.step1, state: undefined },
+      step1: { ...BASE_DATA.step1, state: 'ZZ' },
     });
 
     const facilityData = txMock.facility.create.mock.calls[0][0].data;
     expect(facilityData.timezone).toBe('America/New_York');
+  });
+
+  it('rejects an incomplete step1 (every Org Details field is mandatory) naming the missing fields', async () => {
+    const result = await completeOnboarding({
+      ...BASE_DATA,
+      step1: { ...BASE_DATA.step1, ein: undefined, city: '   ' },
+    });
+
+    expect(result).toMatchObject({ success: false, code: 'MISSING_STEP1' });
+    expect(result.success === false && result.error).toContain(
+      'Employer Identification Number (EIN)',
+    );
+    expect(result.success === false && result.error).toContain('City');
+    expect(txMock.organization.create).not.toHaveBeenCalled();
+    expect(txMock.facility.create).not.toHaveBeenCalled();
   });
 
   it('links the founding user via createMembership with organizationId, facilityId, and role "owner"', async () => {
@@ -317,6 +334,30 @@ describe('completeOnboarding — step4 manager invite role validation (privilege
 
     expect(result.success).toBe(true);
     expect(txMock.invite.create).not.toHaveBeenCalled();
+  });
+
+  // Regression: the invite used to be dropped whenever the email already had a
+  // User row, which silently excluded every existing identity from a new org.
+  it('invites an email that already has a User row (existing identities are invitable)', async () => {
+    txMock.user.findUnique.mockResolvedValue({ id: 'user-existing' });
+
+    const result = await completeOnboarding({
+      ...BASE_DATA,
+      step4: { managerInvites: [{ email: 'existing@acme.com', role: 'hr' }] },
+    });
+
+    expect(result.success).toBe(true);
+    expect(txMock.invite.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ email: 'existing@acme.com', role: 'hr' }),
+      }),
+    );
+    expect(mockSendInviteEmail).toHaveBeenCalledWith(
+      'existing@acme.com',
+      expect.stringContaining('/join/'),
+      'Acme Health',
+      'hr',
+    );
   });
 });
 

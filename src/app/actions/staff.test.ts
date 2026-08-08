@@ -1150,6 +1150,33 @@ describe('removeStaff() — org disconnect + sessionVersion bump (QA ISSUE 2)', 
     );
   });
 
+  it('rejects removing the organization owner — the owner seat is irrevocable', async () => {
+    mockOrgUserFindUnique.mockReset();
+    mockOrgUserFindUnique
+      .mockResolvedValueOnce(ADMIN_ORG_USER)
+      .mockResolvedValueOnce({ ...TARGET_ORG_USER, role: 'owner' });
+
+    const result = await removeStaff('target-1');
+
+    expect(result).toEqual({
+      success: false,
+      error: 'The organization owner cannot be removed.',
+    });
+    expect(mockTransaction).not.toHaveBeenCalled();
+  });
+
+  it('rejects self-removal — the caller cannot remove their own membership', async () => {
+    // 'ou-admin-1' is the caller's own organizationUserId from makeAdminSession.
+    const result = await removeStaff('ou-admin-1');
+
+    expect(result).toEqual({
+      success: false,
+      error: 'You cannot remove your own account from the organization.',
+    });
+    expect(mockTransaction).not.toHaveBeenCalled();
+    expect(mockOrgUserUpdate).not.toHaveBeenCalled();
+  });
+
   it('rejects when the caller has no session', async () => {
     mockAuth.mockResolvedValue(null);
 
@@ -1444,6 +1471,16 @@ describe('setStaffFacilities', () => {
     const result = await setStaffFacilities('target-1', ['fac-1']);
 
     expect(result).toEqual({ success: true });
+  });
+
+  it("rejects reassigning the owner's facilities — owner scope is org-wide", async () => {
+    mockOrgUserFindUnique.mockResolvedValue({ organizationId: 'org-1', role: 'owner' });
+
+    const result = await setStaffFacilities('target-owner', ['fac-1']);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/owner's facilities cannot be changed/i);
+    expect(mockOrgUserFacilityUpdateMany).not.toHaveBeenCalled();
   });
 
   it('rejects an empty facility list rather than clearing every assignment', async () => {

@@ -49,8 +49,9 @@ export async function getStaffUsers() {
         where: {
           organizationId,
           active: true,
-          // Show every seat-consuming staff member (all roles except owner).
-          role: { not: 'owner' },
+          // Every active member including the owner — the owner doesn't consume
+          // a plan seat (seat counts query separately) but must appear in the
+          // roster. Their row is immutable: no facility change, no removal.
         },
         include: {
           user: true,

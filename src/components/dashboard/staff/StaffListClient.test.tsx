@@ -12,6 +12,7 @@
  * test here.
  */
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Role } from '@/types/next-auth';
 
@@ -46,9 +47,26 @@ function renderList(inviterRole: Role) {
       currentWorkerCount={0}
       pendingInviteCount={0}
       inviterRole={inviterRole}
+      viewerOrganizationUserId="ou-viewer"
       facilities={[]}
     />,
   );
+}
+
+function memberEntry(id: string, name: string, role = 'hr') {
+  return {
+    id,
+    name,
+    email: `${id}@acme.test`,
+    avatarUrl: null,
+    role,
+    jobTitle: 'Coordinator',
+    dateInvited: new Date('2026-01-01'),
+    isPending: false,
+    isExpired: false,
+    token: null,
+    facilities: [],
+  };
 }
 
 beforeEach(() => {
@@ -95,5 +113,67 @@ describe('StaffListClient — Add Staff visibility (invite.create gate)', () => 
     renderList('clinical_director');
 
     expect(screen.queryByRole('button', { name: /add staff/i })).not.toBeInTheDocument();
+  });
+});
+
+describe('StaffListClient — Remove Staff never offered on the viewer’s own row', () => {
+  it('offers Remove Staff for other members but not for the viewer themselves', async () => {
+    const user = userEvent.setup();
+    render(
+      <StaffListClient
+        users={[memberEntry('ou-viewer', 'Self Admin'), memberEntry('ou-other', 'Other Member')]}
+        hasOrganization={true}
+        organizationId="org-1"
+        planLimit={null}
+        planName="Professional"
+        currentWorkerCount={2}
+        pendingInviteCount={0}
+        inviterRole="owner"
+        viewerOrganizationUserId="ou-viewer"
+        facilities={[]}
+      />,
+    );
+
+    const menus = screen.getAllByRole('button', { name: 'Row actions' });
+    expect(menus).toHaveLength(2);
+
+    // Row order matches the users prop: index 0 is the viewer's own row.
+    await user.click(menus[0]);
+    expect(screen.queryByRole('menuitem', { name: /remove staff/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /view profile/i })).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+
+    await user.click(menus[1]);
+    expect(screen.getByRole('menuitem', { name: /remove staff/i })).toBeInTheDocument();
+  });
+
+  it('never offers Remove Staff or Change Facility on the owner row', async () => {
+    const user = userEvent.setup();
+    render(
+      <StaffListClient
+        users={[memberEntry('ou-owner', 'The Owner', 'owner'), memberEntry('ou-hr', 'HR Person')]}
+        hasOrganization={true}
+        organizationId="org-1"
+        planLimit={null}
+        planName="Professional"
+        currentWorkerCount={2}
+        pendingInviteCount={0}
+        inviterRole="admin"
+        viewerOrganizationUserId="ou-admin-viewer"
+        facilities={[{ id: 'fac-1', name: 'Main Site', type: null, city: null }]}
+      />,
+    );
+
+    const menus = screen.getAllByRole('button', { name: 'Row actions' });
+
+    await user.click(menus[0]);
+    expect(screen.queryByRole('menuitem', { name: /remove staff/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: /change facility/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /view profile/i })).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+
+    await user.click(menus[1]);
+    expect(screen.getByRole('menuitem', { name: /remove staff/i })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /change facility/i })).toBeInTheDocument();
   });
 });

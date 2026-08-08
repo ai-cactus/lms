@@ -159,10 +159,15 @@ export default function OnboardingStep1() {
 
         <div className="flex flex-col gap-4 md:flex-row md:gap-6">
           <div className="flex flex-1 flex-col gap-1.5">
-            <Field label="Employer Identification Number (EIN)" helperText="(optional)">
+            <Field label="Employer Identification Number (EIN)" required error={getError('ein')}>
               <Controller
                 name="ein"
                 control={control}
+                rules={{
+                  required: 'EIN is required',
+                  validate: (value) =>
+                    value.replace(/\D/g, '').length === 9 || 'EIN must be 9 digits',
+                }}
                 render={({ field }) => (
                   <Input
                     value={field.value || ''}
@@ -294,64 +299,58 @@ export default function OnboardingStep1() {
 
         <div className="flex flex-col gap-4 md:flex-row md:gap-6">
           <div className="flex flex-1 flex-col gap-1.5">
-            <label htmlFor="streetAddress" className="text-sm font-semibold text-foreground">
-              Street Address <span className="font-normal text-primary">(optional)</span>
-            </label>
-            <Input
-              id="streetAddress"
-              {...register('streetAddress')}
-              placeholder="Enter business street address"
-            />
+            <Field label="Street Address" required error={getError('streetAddress')}>
+              <Input
+                {...register('streetAddress', { required: 'Street Address is required' })}
+                placeholder="Enter business street address"
+              />
+            </Field>
           </div>
           <div className="flex flex-1 flex-col gap-1.5">
-            <label htmlFor="zipCode" className="text-sm font-semibold text-foreground">
-              Zip Code <span className="font-normal text-primary">(optional)</span>
-            </label>
-            <Input id="zipCode" {...register('zipCode')} placeholder="e.g. 27601" />
+            <Field label="Zip Code" required error={getError('zipCode')}>
+              <Input
+                {...register('zipCode', { required: 'Zip Code is required' })}
+                placeholder="e.g. 27601"
+              />
+            </Field>
           </div>
         </div>
 
         <div className="flex flex-col gap-4 md:flex-row md:gap-6">
           <div className="flex flex-1 flex-col gap-1.5">
-            <label htmlFor="city" className="text-sm font-semibold text-foreground">
-              City <span className="font-normal text-primary">(optional)</span>
-            </label>
-            <Input id="city" {...register('city')} placeholder="Enter city" />
+            <Field label="City" required error={getError('city')}>
+              <Input
+                {...register('city', { required: 'City is required' })}
+                placeholder="Enter city"
+              />
+            </Field>
           </div>
           <div className="flex flex-1 flex-col gap-1.5">
-            <label className="text-sm font-semibold text-foreground">
-              State <span className="font-normal text-primary">(optional)</span>
-            </label>
             <Controller
               name="state"
               control={control}
+              rules={{ required: 'State is required' }}
               render={({ field }) => (
-                <Select value={field.value} onValueChange={field.onChange}>
-                  <SelectTrigger className="h-14 w-full rounded-[10px] px-3 py-2">
-                    <SelectValue placeholder="Select an option" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {US_STATES.map((s) => (
-                      <SelectItem key={s.value} value={s.value}>
-                        {s.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Field label="State" required error={getError('state')}>
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <SelectTrigger className="h-14 w-full rounded-[10px] px-3 py-2">
+                      <SelectValue placeholder="Select an option" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {US_STATES.map((s) => (
+                        <SelectItem key={s.value} value={s.value}>
+                          {s.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
               )}
             />
           </div>
         </div>
 
         <div className="mt-6 flex flex-col-reverse gap-3 md:flex-row md:justify-end md:gap-4">
-          <Button
-            variant="outline"
-            type="button"
-            onClick={() => router.push('/dashboard')}
-            className="w-full md:w-auto"
-          >
-            Skip for now
-          </Button>
           <Button type="submit" className="w-full md:w-auto">
             Next
           </Button>

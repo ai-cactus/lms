@@ -1,5 +1,19 @@
+/*
+ * delete-workers.ts — hard-deletes every identity holding a worker-category
+ * membership, together with their quiz attempts, enrollments and authored
+ * courses.
+ *
+ * Usage:
+ *   npx tsx scripts/delete-workers.ts --dry-run   # report only
+ *   npx tsx scripts/delete-workers.ts             # delete
+ *
+ * Flags:
+ *   --dry-run   Report what would be deleted, write nothing.
+ */
 import { prisma } from '@/db/index';
 import { WORKER_ROLES } from '@/lib/rbac/role-utils';
+
+const DRY_RUN = process.argv.includes('--dry-run');
 
 async function main() {
   const orgs = await prisma.organization.findMany({
@@ -31,6 +45,25 @@ async function main() {
   // assumption, but for a genuinely multi-org user it would also remove their
   // other, non-worker memberships.
   const workerUserIds = [...new Set(allWorkerMemberships.map((m) => m.userId))];
+
+  if (DRY_RUN) {
+    const [attempts, enrollments, courses] = await Promise.all([
+      prisma.quizAttempt.count({
+        where: { enrollment: { organizationUser: { userId: { in: workerUserIds } } } },
+      }),
+      prisma.enrollment.count({
+        where: { organizationUser: { userId: { in: workerUserIds } } },
+      }),
+      prisma.course.count({ where: { creator: { userId: { in: workerUserIds } } } }),
+    ]);
+    console.log('\n[DRY RUN] Would delete:');
+    console.log(`  quiz attempts:  ${attempts}`);
+    console.log(`  enrollments:    ${enrollments}`);
+    console.log(`  courses:        ${courses}`);
+    console.log(`  workers:        ${workerUserIds.length}`);
+    console.log('\n[DRY RUN] Nothing was deleted. Re-run without --dry-run to execute.');
+    return;
+  }
 
   console.log('\nDeleting quiz attempts...');
   const deletedAttempts = await prisma.quizAttempt.deleteMany({

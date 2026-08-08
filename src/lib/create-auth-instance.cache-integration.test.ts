@@ -108,7 +108,10 @@ vi.mock('@/lib/enrollment/invite-courses', () => ({ enrollInviteCourses: vi.fn()
 // on every decode — so it is mocked here to make that live read observable.
 vi.mock('@/lib/auth/membership', () => ({
   getActiveMembership: mockGetActiveMembership,
-  resolveActiveMembership: vi.fn(),
+  // Every token here is org-less, which is the branch that looks for a
+  // membership joined since the token was minted; `none` keeps these tests on
+  // the identity/sessionVersion behavior they are about.
+  resolveActiveMembership: vi.fn().mockResolvedValue({ kind: 'none' }),
   createMembership: vi.fn(),
   recordMembershipLogin: vi.fn(),
 }));

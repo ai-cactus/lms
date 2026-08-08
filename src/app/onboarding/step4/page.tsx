@@ -34,6 +34,11 @@ interface Step4FormData {
 }
 
 const MANAGER_ROLE_OPTIONS: { value: string; name: string; description: string }[] = [
+  {
+    value: 'admin',
+    name: 'Admin',
+    description: 'Owner-equivalent: full access to everything, including billing.',
+  },
   { value: 'supervisor', name: 'Supervisor', description: 'Full facility access except billing.' },
   {
     value: 'hr',

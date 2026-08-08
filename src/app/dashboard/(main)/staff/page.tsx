@@ -12,7 +12,9 @@ export const dynamic = 'force-dynamic';
 
 export default async function StaffPage() {
   const session = await auth();
-  const sessionUser = session?.user as { organizationId?: string; role?: Role } | undefined;
+  const sessionUser = session?.user as
+    | { organizationId?: string; organizationUserId?: string | null; role?: Role }
+    | undefined;
   const hasOrganization = !!sessionUser?.organizationId;
   const organizationId = sessionUser?.organizationId;
   const inviterRole: Role = sessionUser?.role ?? DEFAULT_SELF_SERVE_WORKER_ROLE;
@@ -73,6 +75,7 @@ export default async function StaffPage() {
       currentWorkerCount={currentWorkerCount}
       pendingInviteCount={pendingInviteCount}
       inviterRole={inviterRole}
+      viewerOrganizationUserId={sessionUser?.organizationUserId ?? null}
       facilities={facilities}
     />
   );
