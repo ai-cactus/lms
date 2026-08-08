@@ -22,7 +22,11 @@ screenshot captures their page. Log in once via MCP, save `storageState` (it mus
 under the repo root, e.g. `.playwright-mcp/state.json`), then drive your own
 `chromium.launch()` script with that state file. See [[figma-to-css-scale]].
 
+`npm run dev` binds **3000** by default — start it as `PORT=3005 npm run dev` for the port everything else assumes. Next 16 enforces **one dev server per project dir**: if someone (the user, or a sibling agent) already has one up, your `PORT=3005 npm run dev` exits immediately with "Another next dev server is already running" and prints the live port + PID. Do NOT kill it — point your Playwright script at the port it reports instead. A one-off `npx tsx` script that imports `@/db/index` must be **inside the repo root** (tsconfig path aliases) and needs the env sourced first: `set -a && source .env && source .env.local; set +a` — otherwise Prisma fails with `SASL: client password must be a string`.
+
 **Script gotchas:**
+- The login form needs ~2s after `waitForSelector('form')` before typing: during hydration the page briefly renders TWO email/password inputs, `.first()` hits the pre-hydration one, and the submit button never enables.
+- `getByRole('button', {name: /log in/i})` is ambiguous (the Microsoft SSO button matches too) — use `button[type=submit]`.
 - Put the script in the scratchpad with a **`.mts`** extension (tsx compiles `.ts` as CJS → "Top-level await is not supported") and symlink the repo's `node_modules` into the scratchpad dir so `playwright` resolves.
 - `page.evaluate(fn)` fails with `ReferenceError: __name is not defined` under tsx — pass the body as a **string** instead.
 - `page.fill()` on the login form does not enable the submit button; use `locator.pressSequentially()`.
