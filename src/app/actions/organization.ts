@@ -3,7 +3,7 @@
 import crypto from 'crypto';
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
-import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
+import { dbRoleToRoleKey, getRoleDisplayName } from '@/lib/rbac/role-utils';
 import { can } from '@/lib/rbac/permissions';
 import prisma from '@/lib/prisma';
 import { auth } from '@/auth';
@@ -260,9 +260,76 @@ export async function updateFacility(data: FacilityUpdateData) {
   }
 }
 
+export interface SupervisorOption {
+  organizationUserId: string;
+  fullName: string | null;
+  email: string;
+}
+
+/**
+ * The organization's existing supervisors, offered as autocomplete options when
+ * picking who will run a new facility. Gated on `facility.create` so the roster
+ * (which carries staff emails) is only readable by the audience that already
+ * sees the create-facility form.
+ */
+export async function getSupervisorOptions(): Promise<{
+  success: boolean;
+  error?: string;
+  options: SupervisorOption[];
+}> {
+  try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return { success: false, error: 'Not authenticated', options: [] };
+    }
+
+    const organizationId = session.user.organizationId;
+    if (!organizationId) {
+      return { success: false, error: 'No organization found', options: [] };
+    }
+
+    if (!can(dbRoleToRoleKey(session.user.role), 'facility.create')) {
+      logger.warn({
+        msg: '[org] getSupervisorOptions: permission denied',
+        userId: session.user.id,
+        role: session.user.role,
+      });
+      return {
+        success: false,
+        error: 'You do not have permission to view supervisors.',
+        options: [],
+      };
+    }
+
+    const rows = await prisma.organizationUser.findMany({
+      where: { organizationId, active: true, role: 'supervisor' },
+      select: { id: true, user: { select: { fullName: true, email: true } } },
+      orderBy: { joinedAt: 'asc' },
+    });
+
+    return {
+      success: true,
+      options: rows.map((row) => ({
+        organizationUserId: row.id,
+        fullName: row.user.fullName,
+        email: row.user.email,
+      })),
+    };
+  } catch (error) {
+    logger.error({ msg: '[org] Failed to load supervisor options', err: error });
+    return { success: false, error: 'Failed to load supervisors', options: [] };
+  }
+}
+
 const createFacilitySchema = z.object({
   name: z.string().trim().min(1, 'Facility name is required').max(200),
-  type: z.string().trim().min(1, 'Facility type is required').max(200),
+  // A facility may serve several programmes, but `Facility.type` is a single
+  // free-form column: the selected labels (plus any "Other" free text) are
+  // joined here rather than modelled as a relation.
+  types: z
+    .array(z.string().trim().min(1).max(200))
+    .min(1, 'Select at least one facility type')
+    .max(12, 'Select at most 12 facility types'),
   address: z.string().trim().max(500).optional(),
   // Blank is a first-class choice — the modal's copy is "leave empty if you'll
   // manage it yourself" — so an empty string must not fail email validation.
@@ -274,16 +341,26 @@ const createFacilitySchema = z.object({
 export type CreateFacilityInput = z.infer<typeof createFacilitySchema>;
 
 /**
- * Add a facility to the caller's organization, optionally inviting a supervisor
- * to run it. Gated on `facility.create` (Owner/Admin only per the RBAC matrix).
+ * Add a facility to the caller's organization, optionally handing it to a
+ * supervisor. Gated on `facility.create` (Owner/Admin only per the RBAC matrix).
+ *
+ * The supervisor may already be a member — then they are assigned to the new
+ * facility outright — or a stranger, who is invited. A member holding a
+ * different role is rejected before anything is written, because silently
+ * re-roling someone from a facility form would be a privilege change made
+ * outside Staff Management.
  *
  * The invite is best-effort: a facility that exists without its supervisor
  * invite is recoverable from the staff screen, whereas failing the whole action
  * would leave the admin unable to tell whether the facility was created.
  */
-export async function createFacility(
-  input: CreateFacilityInput,
-): Promise<{ success: boolean; error?: string; facilityId?: string; supervisorInvited?: boolean }> {
+export async function createFacility(input: CreateFacilityInput): Promise<{
+  success: boolean;
+  error?: string;
+  facilityId?: string;
+  supervisorInvited?: boolean;
+  supervisorAssigned?: boolean;
+}> {
   try {
     const session = await auth();
     if (!session?.user?.id) {
@@ -312,8 +389,34 @@ export async function createFacility(
       };
     }
 
-    const { name, type, address } = parsed.data;
+    const { name, types, address } = parsed.data;
+    const type = types.join(', ');
     const supervisorEmail = parsed.data.supervisorEmail?.trim().toLowerCase() || undefined;
+
+    // Resolved before the facility is written so a role conflict fails fast
+    // rather than leaving an orphaned facility behind an error message.
+    const supervisorMembership = supervisorEmail
+      ? await prisma.organizationUser.findFirst({
+          where: { organizationId, active: true, user: { email: supervisorEmail } },
+          select: { id: true, role: true },
+        })
+      : null;
+
+    if (supervisorMembership && supervisorMembership.role !== 'supervisor') {
+      logger.warn({
+        msg: '[org] createFacility: supervisor candidate holds another role',
+        orgId: organizationId,
+        userId: session.user.id,
+        role: supervisorMembership.role,
+      });
+      return {
+        success: false,
+        error:
+          `That person is already a member of this organization as ` +
+          `${getRoleDisplayName(supervisorMembership.role)}. Change their role in Staff ` +
+          `Management before assigning them as a facility supervisor.`,
+      };
+    }
 
     const facility = await prisma.facility.create({
       data: { organizationId, name, type, address },
@@ -338,7 +441,41 @@ export async function createFacility(
     });
 
     let supervisorInvited = false;
-    if (supervisorEmail) {
+    let supervisorAssigned = false;
+
+    if (supervisorMembership) {
+      // Mirrors createMembership's facility upsert: re-assigning a previously
+      // removed supervisor reactivates the row instead of duplicating it.
+      await prisma.organizationUserFacility.upsert({
+        where: {
+          organizationUserId_facilityId: {
+            organizationUserId: supervisorMembership.id,
+            facilityId: facility.id,
+          },
+        },
+        create: { organizationUserId: supervisorMembership.id, facilityId: facility.id },
+        update: { active: true, deactivatedAt: null },
+      });
+      supervisorAssigned = true;
+
+      logger.info({
+        msg: '[org] Facility supervisor assigned',
+        orgId: organizationId,
+        facilityId: facility.id,
+        userId: session.user.id,
+      });
+
+      await audit({
+        action: 'org.facility.supervisor.assign',
+        actorId: session.user.id,
+        actorRole: session.user.role,
+        organizationId,
+        targetType: 'facility',
+        targetId: facility.id,
+        metadata: { organizationUserId: supervisorMembership.id },
+        ...getClientContext(await headers()),
+      });
+    } else if (supervisorEmail) {
       const invite = await createInvites([{ email: supervisorEmail, role: 'supervisor' }], {
         facilityId: facility.id,
       });
@@ -354,7 +491,7 @@ export async function createFacility(
     }
 
     revalidatePath('/dashboard/settings');
-    return { success: true, facilityId: facility.id, supervisorInvited };
+    return { success: true, facilityId: facility.id, supervisorInvited, supervisorAssigned };
   } catch (error) {
     logger.error({ msg: '[org] Failed to create facility', err: error });
     return { success: false, error: 'Failed to create facility' };
