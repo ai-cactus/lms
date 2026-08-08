@@ -1,8 +1,7 @@
 'use server';
 
 import prisma from '@/lib/prisma';
-import { auth as adminAuth } from '@/auth';
-import { auth as workerAuth } from '@/auth.worker';
+import { getPortalSessions } from '@/lib/auth/portal-sessions';
 import { isQuizUnlocked } from '@/lib/video/gating';
 
 /**
@@ -13,7 +12,7 @@ import { isQuizUnlocked } from '@/lib/video/gating';
  * (or the active session has no membership).
  */
 async function currentOrganizationUserId(): Promise<string | null> {
-  const [a, w] = await Promise.all([adminAuth(), workerAuth()]);
+  const { admin: a, worker: w } = await getPortalSessions();
   return a?.user?.organizationUserId ?? w?.user?.organizationUserId ?? null;
 }
 

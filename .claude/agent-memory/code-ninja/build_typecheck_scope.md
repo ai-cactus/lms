@@ -9,4 +9,8 @@ metadata:
 
 **Why:** This means `npm run build` runs a full type-check across the WHOLE repo — including `scripts/*.ts` and every `*.test.ts`/`*.test.tsx`. A type error in a dev/ops script or a test file will fail the production build, even though `npm run lint` (which is just `eslint src/`) would never surface it.
 
+**Run `npx prisma generate` FIRST.** The checked-out `generated/prisma` client goes stale relative to `prisma/*.prisma` (it is gitignored/regenerated), and a stale client makes `tsc --noEmit` erupt with ~40 bogus errors in `prisma/seed.ts` and `scripts/` (missing `organizationUser`, `createdByOrgUserId`, …). Those are NOT your change — regenerate, then re-run.
+
 **How to apply:** When a change alters a shared type (e.g. a Prisma enum), fix the fallout in `scripts/` too, not just `src/`. Use `npx tsc --noEmit -p tsconfig.json` to enumerate the full blast radius fast before running the slower `npm run build`. Test-file type errors also block the build, so they can't always be deferred to bug-hunter. Prettier is enforced separately (`npm run format:check` over `src/**`); perl/sed bulk edits often need a follow-up `prettier --write`.
+
+⚠️ **Never run `prettier --write` over a broad glob outside `src/`.** Because only `src/**` is enforced, most of `scripts/` is NOT prettier-clean — a `prettier --write "scripts/**/*.ts"` silently reformats ~7 unrelated seed/ops scripts and drags them into your diff. Format only the specific files you authored (`prettier --write scripts/<your-file>.ts`), and check `git status` afterwards. Note also that `prisma/*.prisma` has no prettier parser at all: hand-align the model you touched (see [[prisma-format-churn]]).

@@ -15,6 +15,7 @@
 - [Never run prisma format](gotcha_prisma_format_churn.md) — it rewrites every schema file; hand-align the one model you touched and validate instead.
 - [MinIO dev port mismatch](gotcha_minio_dev_port_mismatch.md) — compose publishes MinIO on 9005 but .env expects 9000; run it standalone for storage/video flows to work locally.
 - [Vitest @/generated alias](project_vitest_generated_alias.md) — vitest.config.mts must alias @/generated & @/db (most-specific first) or value-imports of generated Prisma fail in tests.
+- [vi.mock of node builtins needs `default`](gotcha_vitest_node_builtin_mock_default.md) — fs/promises & child_process mocks must also export default; plus how to test a script whose main() runs at import.
 - [Email delivery tracking](project_email_delivery_tracking.md) — EmailMessage has two disjoint recording paths (dispatch vs sendMailTracked); reminder senders bypass sendMailTracked to avoid double-record.
 - [E2E seed infra](project_e2e_seed_infra.md) — prisma/seed.ts (tsx, self-contained client), E2E rate-limit bypass, role-based login landings, quiz shape; assignRetake locked-only bug.
 - [Secure-cookie delete + prod e2e gotchas](gotcha_secure_cookie_delete_and_prod_e2e.md) — cookies().delete omits Secure so __Secure- deletions fail in prod (next dev masks it); CI/local e2e = next start, so rebuild (with NEXT_PUBLIC_APP_URL=3005) before trusting any e2e verdict.
@@ -39,3 +40,9 @@
 - [Radix Select in a form echoes ""](gotcha_radix_select_in_form_echoes_empty.md) — programmatic value set gets wiped by the hidden native select; guard `onValueChange`.
 - [Revalidation cache is identity-only](gotcha_revalidation_cache_is_identity_only.md) — never cache role/organizationId; membership is re-read live every decode.
 - [`admin` is un-retired](gotcha_admin_role_unretired.md) — drop dev's retired-admin JWT guard; gate roster PII on `user.read`, not `isAdminRole`.
+- [Deploy topology](deploy_topology.md) — Docker Compose, ONE app container per env, tunnel straight to the app port; pm2 + nginx are stale repo artifacts, not the live path.
+- [nginx add_header does not merge](gotcha_nginx_add_header_no_merge.md) — one add_header in a location silently strips all six server-level security headers.
+- [Video sweeper env interlock](gotcha_video_sweep_env_interlock.md) — env-file flags can't gate a sweeper because envs get copied; key destructive gates on APP_URL.
+- [Bare `auth()` drops Set-Cookie](gotcha_bare_auth_drops_set_cookie.md) — no-args next-auth v5 `auth()` never rotates the session cookie, which is what makes `Vary: Cookie` usable.
+- [Playback cache is in-process](gotcha_video_playback_cache_is_in_process.md) — one container, no Redis; spawned scripts/ can't evict it, so invalidate from the BullMQ handler.
+- [RSC vs JSON payload shapes](gotcha_rsc_vs_json_payload_shapes.md) — one builder for a route + a server page: normalise Dates to ISO, plus the wall-clock hydration trap and server-page auth conventions.

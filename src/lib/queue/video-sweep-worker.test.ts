@@ -23,8 +23,17 @@
  * getVideoSweepWorker() covered:
  *   - VIDEO_SWEEP_ENABLED unset/'false'/other → returns null, no Worker
  *     constructed, removeJobScheduler called (best-effort teardown)
- *   - VIDEO_SWEEP_ENABLED='true' → Worker constructed
+ *   - VIDEO_SWEEP_ENABLED='true' + owner URL matching APP_URL → Worker constructed
  *   - Singleton: second call returns same instance, Worker constructed only once
+ *   - Ownership interlock: owner URL mismatching APP_URL → refuses (no Worker, no
+ *     cron schedule registered), errors naming both URLs and the bucket
+ *   - Ownership interlock: owner URL unset while ENABLED='true' → refuses with a
+ *     distinct "not set" message
+ *
+ * Dry-run resolution (fail-safe default) covered:
+ *   - VIDEO_SWEEP_DRY_RUN unset → dry-run TRUE (worker start logs dryRun: true)
+ *   - VIDEO_SWEEP_DRY_RUN='false' → the only value that opts into real deletion,
+ *     and doing so emits a LIVE DELETES ARMED warning
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -137,6 +146,23 @@ function setupUnrelatedRef() {
   mockCourseArtifactFindMany.mockResolvedValue([]);
 }
 
+const OWNER_URL = 'https://training.example.com';
+
+/**
+ * Satisfies the environment-ownership interlock by pointing
+ * VIDEO_SWEEP_OWNER_APP_URL at this environment's own APP_URL. Every test that
+ * expects the worker to actually start must call this — an unset or mismatched
+ * owner URL is a refusal, by design.
+ */
+function armOwnership(appUrl = OWNER_URL) {
+  process.env.APP_URL = appUrl;
+  process.env.VIDEO_SWEEP_OWNER_APP_URL = OWNER_URL;
+}
+
+// Snapshot APP_URL so restoring it cannot clobber a value another suite sharing
+// this process set up.
+const originalAppUrl = process.env.APP_URL;
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.useFakeTimers();
@@ -152,6 +178,11 @@ afterEach(() => {
   delete (globalThis as unknown as { __videoSweepWorker?: Worker }).__videoSweepWorker;
   delete process.env.VIDEO_SWEEP_ENABLED;
   delete process.env.VIDEO_SWEEP_MAX_DELETES;
+  delete process.env.VIDEO_SWEEP_DRY_RUN;
+  delete process.env.VIDEO_SWEEP_OWNER_APP_URL;
+  delete process.env.GCP_BUCKET_NAME;
+  if (originalAppUrl === undefined) delete process.env.APP_URL;
+  else process.env.APP_URL = originalAppUrl;
 });
 
 describe('runVideoSweep', () => {
@@ -625,6 +656,7 @@ describe('getVideoSweepWorker', () => {
 
   it('constructs a Worker only when VIDEO_SWEEP_ENABLED is exactly "true"', () => {
     process.env.VIDEO_SWEEP_ENABLED = 'true';
+    armOwnership();
     const worker = getVideoSweepWorker();
     expect(worker).not.toBeNull();
     expect(MockWorker).toHaveBeenCalledOnce();
@@ -632,9 +664,180 @@ describe('getVideoSweepWorker', () => {
 
   it('returns the same singleton on repeated calls (Worker constructed only once)', () => {
     process.env.VIDEO_SWEEP_ENABLED = 'true';
+    armOwnership();
     const first = getVideoSweepWorker();
     const second = getVideoSweepWorker();
     expect(first).toBe(second);
     expect(MockWorker).toHaveBeenCalledOnce();
+  });
+});
+
+describe('getVideoSweepWorker — environment-ownership interlock', () => {
+  beforeEach(() => {
+    process.env.VIDEO_SWEEP_ENABLED = 'true';
+  });
+
+  it('starts the worker when VIDEO_SWEEP_OWNER_APP_URL exactly equals APP_URL', async () => {
+    armOwnership();
+
+    const worker = getVideoSweepWorker();
+
+    expect(worker).not.toBeNull();
+    expect(MockWorker).toHaveBeenCalledOnce();
+    // registerRepeatableJob is fire-and-forget and awaits inside — flush its
+    // microtasks before asserting the schedule was installed.
+    await vi.waitFor(() => expect(mockVideoSweepQueue.upsertJobScheduler).toHaveBeenCalled());
+  });
+
+  it('refuses and starts nothing when the owner URL does not match APP_URL', () => {
+    // The staging-holds-production-credentials shape: the arming flags came
+    // along in a copied env file, but APP_URL necessarily differs.
+    process.env.VIDEO_SWEEP_OWNER_APP_URL = 'https://training.example.com';
+    process.env.APP_URL = 'https://staging.example.com';
+
+    const worker = getVideoSweepWorker();
+
+    expect(worker).toBeNull();
+    expect(MockWorker).not.toHaveBeenCalled();
+    // A refusing environment must not register the cron schedule either.
+    expect(mockVideoSweepQueue.upsertJobScheduler).not.toHaveBeenCalled();
+    // ...and it tears down any schedule a previously-owning deploy left behind.
+    expect(mockVideoSweepQueue.removeJobScheduler).toHaveBeenCalledWith('system-video-sweep');
+  });
+
+  it('logs both URLs and the resolved bucket on a mismatch', () => {
+    process.env.VIDEO_SWEEP_OWNER_APP_URL = 'https://training.example.com';
+    process.env.APP_URL = 'https://staging.example.com';
+    process.env.GCP_BUCKET_NAME = 'theraptly-prod-media';
+
+    getVideoSweepWorker();
+
+    expect(mockLoggerError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        msg: expect.stringContaining('REFUSING to start'),
+        ownerAppUrl: 'https://training.example.com',
+        appUrl: 'https://staging.example.com',
+        bucket: 'theraptly-prod-media',
+      }),
+    );
+  });
+
+  it('refuses with a distinct message when the owner URL is unset while ENABLED="true"', () => {
+    delete process.env.VIDEO_SWEEP_OWNER_APP_URL;
+    process.env.APP_URL = 'https://training.example.com';
+
+    const worker = getVideoSweepWorker();
+
+    expect(worker).toBeNull();
+    expect(MockWorker).not.toHaveBeenCalled();
+    expect(mockVideoSweepQueue.upsertJobScheduler).not.toHaveBeenCalled();
+    expect(mockLoggerError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        msg: expect.stringContaining('VIDEO_SWEEP_OWNER_APP_URL is not set'),
+        ownerAppUrl: null,
+      }),
+    );
+  });
+
+  it('refuses when APP_URL is unset but the owner URL is configured', () => {
+    process.env.VIDEO_SWEEP_OWNER_APP_URL = 'https://training.example.com';
+    delete process.env.APP_URL;
+
+    const worker = getVideoSweepWorker();
+
+    expect(worker).toBeNull();
+    expect(MockWorker).not.toHaveBeenCalled();
+  });
+
+  it('requires an exact match — a trailing slash is a mismatch', () => {
+    process.env.VIDEO_SWEEP_OWNER_APP_URL = 'https://training.example.com';
+    process.env.APP_URL = 'https://training.example.com/';
+
+    const worker = getVideoSweepWorker();
+
+    expect(worker).toBeNull();
+    expect(MockWorker).not.toHaveBeenCalled();
+  });
+
+  it('VIDEO_SWEEP_ENABLED is still required — a matching owner URL alone starts nothing', () => {
+    process.env.VIDEO_SWEEP_ENABLED = 'false';
+    armOwnership();
+
+    const worker = getVideoSweepWorker();
+
+    expect(worker).toBeNull();
+    expect(MockWorker).not.toHaveBeenCalled();
+  });
+});
+
+describe('VIDEO_SWEEP_DRY_RUN fail-safe default', () => {
+  beforeEach(() => {
+    process.env.VIDEO_SWEEP_ENABLED = 'true';
+    armOwnership();
+  });
+
+  /** The dryRun value the worker resolved, as reported by its start log. */
+  function loggedDryRun(): unknown {
+    const startLog = mockLoggerInfo.mock.calls.find(
+      (call) => (call[0] as { msg?: string })?.msg === '[VideoSweep] Starting worker',
+    );
+    return (startLog?.[0] as { dryRun?: unknown })?.dryRun;
+  }
+
+  it('defaults to dry-run when VIDEO_SWEEP_DRY_RUN is unset', () => {
+    delete process.env.VIDEO_SWEEP_DRY_RUN;
+
+    getVideoSweepWorker();
+
+    expect(loggedDryRun()).toBe(true);
+  });
+
+  it('stays in dry-run for "true"', () => {
+    process.env.VIDEO_SWEEP_DRY_RUN = 'true';
+
+    getVideoSweepWorker();
+
+    expect(loggedDryRun()).toBe(true);
+  });
+
+  it('stays in dry-run for any unrecognised value (e.g. "FALSE", "0")', () => {
+    // Only the exact lowercase string opts out — a typo must not arm deletion.
+    process.env.VIDEO_SWEEP_DRY_RUN = 'FALSE';
+
+    getVideoSweepWorker();
+
+    expect(loggedDryRun()).toBe(true);
+  });
+
+  it('opts into real deletion only for the exact string "false"', () => {
+    process.env.VIDEO_SWEEP_DRY_RUN = 'false';
+
+    getVideoSweepWorker();
+
+    expect(loggedDryRun()).toBe(false);
+  });
+
+  it('warns loudly when live deletes are armed', () => {
+    process.env.VIDEO_SWEEP_DRY_RUN = 'false';
+    process.env.GCP_BUCKET_NAME = 'theraptly-prod-media';
+
+    getVideoSweepWorker();
+
+    expect(mockLoggerWarn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        msg: expect.stringContaining('LIVE DELETES ARMED'),
+        bucket: 'theraptly-prod-media',
+      }),
+    );
+  });
+
+  it('emits no live-delete warning while in dry-run', () => {
+    delete process.env.VIDEO_SWEEP_DRY_RUN;
+
+    getVideoSweepWorker();
+
+    expect(mockLoggerWarn).not.toHaveBeenCalledWith(
+      expect.objectContaining({ msg: expect.stringContaining('LIVE DELETES ARMED') }),
+    );
   });
 });

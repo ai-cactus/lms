@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import { ChevronRight, FileText, ShieldCheck } from 'lucide-react';
 import type { VideoCourseAvailabilityRow } from '@/app/actions/offering';
@@ -19,20 +19,26 @@ function formatCourseDuration(seconds: number | null): string | null {
   return `${hours} ${hours === 1 ? 'hour' : 'hours'}`;
 }
 
-function CourseThumbnail({ courseId, hasPreview }: { courseId: string; hasPreview: boolean }) {
+function CourseThumbnail({ courseId, hasPoster }: { courseId: string; hasPoster: boolean }) {
+  const [posterFailed, setPosterFailed] = useState(false);
+
   return (
+    // The gradient is the backdrop, not a placeholder to swap out: it shows
+    // through whenever there is no poster to paint over it — no poster on the
+    // row, or the image failed to load.
     <div className="relative aspect-[3/2] w-full shrink-0 overflow-hidden rounded-lg bg-gradient-to-br from-emerald-700 via-teal-600 to-amber-500 sm:w-[200px]">
-      {hasPreview && (
-        // Loading just the metadata renders the first frame as a still poster —
-        // no autoplay, no bytes streamed beyond the header. `#t=0.1` nudges past
-        // a possible black 0s frame.
-        <video
-          src={`/api/courses/${courseId}/preview-video#t=0.1`}
-          muted
-          playsInline
-          preload="metadata"
+      {hasPoster && !posterFailed && (
+        /* eslint-disable-next-line @next/next/no-img-element -- next/image is
+           unusable here: the optimizer refetches the source server-side without
+           the viewer's cookies, so it cannot authenticate against this route and
+           would render every thumbnail as a 401. */
+        <img
+          src={`/api/courses/${courseId}/preview-poster`}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          onError={() => setPosterFailed(true)}
           className="h-full w-full object-cover"
-          aria-hidden="true"
         />
       )}
     </div>
@@ -53,7 +59,7 @@ export default function VideoCourseCard({ course }: VideoCourseCardProps) {
       aria-label={`View ${course.title}`}
       className="group flex flex-col gap-4 rounded-xl border border-border bg-white p-4 transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 sm:flex-row"
     >
-      <CourseThumbnail courseId={course.id} hasPreview={course.hasPreview} />
+      <CourseThumbnail courseId={course.id} hasPoster={course.hasPoster} />
 
       <div className="flex min-w-0 flex-1 flex-col gap-2">
         <div className="flex items-start justify-between gap-4">
