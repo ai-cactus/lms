@@ -5,7 +5,7 @@
  * Incident 2026-07-21: a dev-machine video sweeper holding prod credentials
  * deleted every prod video as an "orphan" (its local DB had no references).
  * The bucket has a 7-day soft-delete policy, so recent deletions are
- * recoverable — this script lists them and (with --restore) restores each.
+ * recoverable — this script lists them and restores each.
  *
  * SELF-CONTAINED: imports only real node_modules (`@google-cloud/storage`) so
  * it runs from any checkout or container without app source. Credentials come
@@ -14,15 +14,18 @@
  * is unset. Loads .env/.env.local without overwriting real env vars.
  *
  * Usage:
- *   npx tsx scripts/restore-soft-deleted-videos.ts             # dry-run (default)
- *   npx tsx scripts/restore-soft-deleted-videos.ts --restore   # actually restore
+ *   npx tsx scripts/restore-soft-deleted-videos.ts --dry-run   # report only
+ *   npx tsx scripts/restore-soft-deleted-videos.ts             # restore
  *   npx tsx scripts/restore-soft-deleted-videos.ts --env-file=/path/to/.env
+ *
+ * Flags:
+ *   --dry-run           Print what would be restored, restore nothing.
+ *   --env-file=<path>   Load env vars from this file in addition to .env/.env.local.
  *
  * Behaviour:
  *   • Lists soft-deleted generations under the prefix.
  *   • Groups by object name, keeping only the LATEST generation of each.
  *   • Skips any name that already exists live (never overwrites).
- *   • Dry-run prints what would be restored; --restore performs it.
  */
 
 import fs from 'node:fs';
@@ -91,7 +94,7 @@ interface SoftDeletedEntry {
 async function main(): Promise<void> {
   loadEnv();
 
-  const doRestore = process.argv.includes('--restore');
+  const dryRun = process.argv.includes('--dry-run');
   const bucketName = process.env.GCP_BUCKET_NAME;
   if (!bucketName) {
     console.error('GCP_BUCKET_NAME is not set (env or .env file). Aborting.');
@@ -103,7 +106,7 @@ async function main(): Promise<void> {
 
   console.log(`Bucket: ${bucketName}`);
   console.log(`Prefix: ${PREFIX}`);
-  console.log(`Mode:   ${doRestore ? 'RESTORE' : 'dry-run (pass --restore to apply)'}\n`);
+  console.log(`Mode:   ${dryRun ? 'dry-run (omit --dry-run to apply)' : 'RESTORE'}\n`);
 
   const [liveFiles] = await bucket.getFiles({ prefix: PREFIX });
   const liveNames = new Set(liveFiles.map((f) => f.name));
@@ -154,8 +157,8 @@ async function main(): Promise<void> {
   console.log('');
   console.log(`Restorable: ${toRestore.length}   Skipped (already live): ${skippedLive}`);
 
-  if (!doRestore) {
-    console.log('\nDry-run complete. Re-run with --restore to restore the objects above.');
+  if (dryRun) {
+    console.log('\nDry-run complete. Re-run without --dry-run to restore the objects above.');
     return;
   }
 

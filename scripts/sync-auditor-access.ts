@@ -1,7 +1,21 @@
+/*
+ * sync-auditor-access.ts — reconciles `Organization.hasAuditorAccess` with each
+ * org's subscription status, granting it to active/trialing orgs and revoking it
+ * from the rest.
+ *
+ * Usage:
+ *   npx tsx scripts/sync-auditor-access.ts --dry-run   # report only
+ *   npx tsx scripts/sync-auditor-access.ts             # apply
+ *
+ * Flags:
+ *   --dry-run   Report the organizations that would change, write nothing.
+ */
 import { prisma } from '@/db/index';
 
+const DRY_RUN = process.argv.includes('--dry-run');
+
 async function main() {
-  console.log('Starting auditor access synchronization...');
+  console.log(`Starting auditor access synchronization...${DRY_RUN ? ' [DRY RUN]' : ''}`);
 
   // 1. Find organizations that SHOULD have access but don't
   const toGrant = await prisma.organization.findMany({
@@ -17,7 +31,10 @@ async function main() {
   console.log(`Found ${toGrant.length} organizations to grant access to.`);
 
   for (const org of toGrant) {
-    console.log(`Granting access to: ${org.name} (${org.id})`);
+    console.log(
+      `${DRY_RUN ? '[DRY RUN] Would grant' : 'Granting'} access to: ${org.name} (${org.id})`,
+    );
+    if (DRY_RUN) continue;
     await prisma.organization.update({
       where: { id: org.id },
       data: { hasAuditorAccess: true },
@@ -28,10 +45,7 @@ async function main() {
   const toRevoke = await prisma.organization.findMany({
     where: {
       hasAuditorAccess: true,
-      OR: [
-        { subscription: null },
-        { subscription: { status: { notIn: ['active', 'trialing'] } } },
-      ],
+      OR: [{ subscription: null }, { subscription: { status: { notIn: ['active', 'trialing'] } } }],
     },
     select: { id: true, name: true },
   });
@@ -39,14 +53,17 @@ async function main() {
   console.log(`Found ${toRevoke.length} organizations to revoke access from.`);
 
   for (const org of toRevoke) {
-    console.log(`Revoking access from: ${org.name} (${org.id})`);
+    console.log(
+      `${DRY_RUN ? '[DRY RUN] Would revoke' : 'Revoking'} access from: ${org.name} (${org.id})`,
+    );
+    if (DRY_RUN) continue;
     await prisma.organization.update({
       where: { id: org.id },
       data: { hasAuditorAccess: false },
     });
   }
 
-  console.log('Synchronization complete.');
+  console.log(DRY_RUN ? 'Dry run complete — nothing was written.' : 'Synchronization complete.');
 
   if (toGrant.length === 0) {
     console.log('\n--- Debug Info: All Organizations ---');
