@@ -13,11 +13,20 @@
  */
 
 import { join } from 'path';
-import { spawn } from 'child_process';
+import {
+  spawn,
+  type SpawnOptionsWithStdioTuple,
+  type StdioNull,
+  type StdioPipe,
+} from 'child_process';
 import { Worker } from 'bullmq';
 import { redis } from './redis';
 import prisma from '@/lib/prisma';
 import { logger } from '@/lib/logger';
+import {
+  invalidateCoursePreviewMeta,
+  invalidateLessonPlaybackMeta,
+} from '@/lib/video/playback-cache';
 import { VIDEO_TRANSCODE_QUEUE_NAME, type VideoTranscodeJobData } from './video-transcode-queue';
 
 declare global {
@@ -30,21 +39,32 @@ const WORKER_SCRIPT = join(process.cwd(), 'scripts', 'transcode-worker.ts');
  * Spawns scripts/transcode-worker.ts (via `node --import tsx`) and resolves
  * when it exits 0. stdout lines are JSON log objects re-emitted via the server
  * logger.
+ *
+ * The child is launched through `nice -n 19` so the ffmpeg encode it runs (a
+ * grandchild, which inherits the niceness) always yields CPU to the Next.js
+ * server it shares a container with — the app runs as a single container on a
+ * 2-vCPU VM under a 1 GB memory limit, so an un-niced encode starves SSR.
+ * `renice` is only false on the ENOENT retry below.
  */
-function runTranscodeProcess(data: VideoTranscodeJobData): Promise<void> {
+function runTranscodeProcess(data: VideoTranscodeJobData, renice = true): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn(
-      process.execPath,
-      [
-        '--import',
-        'tsx',
-        WORKER_SCRIPT,
-        `--target-type=${data.targetType}`,
-        `--target-id=${data.targetId}`,
-        `--storage-uri=${data.storageUri}`,
-      ],
-      { cwd: process.cwd(), env: process.env, stdio: ['ignore', 'pipe', 'pipe'] },
-    );
+    const nodeArgs = [
+      '--import',
+      'tsx',
+      WORKER_SCRIPT,
+      `--target-type=${data.targetType}`,
+      `--target-id=${data.targetId}`,
+      `--storage-uri=${data.storageUri}`,
+    ];
+    const spawnOptions: SpawnOptionsWithStdioTuple<StdioNull, StdioPipe, StdioPipe> = {
+      cwd: process.cwd(),
+      env: process.env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    };
+
+    const child = renice
+      ? spawn('nice', ['-n', '19', process.execPath, ...nodeArgs], spawnOptions)
+      : spawn(process.execPath, nodeArgs, spawnOptions);
 
     let stderr = '';
 
@@ -65,7 +85,18 @@ function runTranscodeProcess(data: VideoTranscodeJobData): Promise<void> {
       stderr += chunk.toString('utf8');
     });
 
-    child.on('error', reject);
+    child.on('error', (err) => {
+      // `nice` is coreutils, an Essential package on Debian and therefore always
+      // present in the node:20-slim image this ships in — so this should never
+      // fire. If a runtime image somehow lacks it, degrade to an un-niced encode
+      // rather than failing the job and flipping mediaStatus to failed.
+      if (renice && (err as NodeJS.ErrnoException).code === 'ENOENT') {
+        logger.warn({ msg: '[VideoTranscodeWorker] `nice` unavailable — encoding un-niced' });
+        runTranscodeProcess(data, false).then(resolve, reject);
+        return;
+      }
+      reject(err);
+    });
     child.on('close', (code) => {
       if (code === 0) resolve();
       else reject(new Error(`transcode-worker exited with code ${code}: ${stderr.slice(-2000)}`));
@@ -97,6 +128,16 @@ export function getVideoTranscodeWorker(): Worker {
 
       await job.updateProgress(5);
       await runTranscodeProcess(job.data);
+
+      // The child process repointed the row at the normalized object, so the
+      // proxy's cached meta now names the pre-transcode URI. Invalidate HERE
+      // rather than in scripts/transcode-worker.ts: the playback cache is
+      // in-process, and the script runs in a separate process where evicting
+      // would be a no-op. This job handler runs inside the web process, which
+      // is the one serving the proxy.
+      if (targetType === 'lesson') invalidateLessonPlaybackMeta(targetId);
+      else invalidateCoursePreviewMeta(targetId);
+
       await job.updateProgress(100);
 
       logger.info({ msg: '[VideoTranscodeWorker] Job completed', jobId: job.id, targetId });

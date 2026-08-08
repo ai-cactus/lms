@@ -4,6 +4,10 @@ import prisma from '@/lib/prisma';
 import { verifySystemAdminCookie } from '@/lib/system-auth';
 import { getOrCreateSystemUser } from '@/lib/video/system-user';
 import { objectExists } from '@/lib/storage';
+import {
+  invalidateCoursePreviewMeta,
+  invalidateLessonPlaybackMeta,
+} from '@/lib/video/playback-cache';
 import type { ParsedQuiz } from '@/lib/video/types';
 import { revalidatePath, revalidateTag } from 'next/cache';
 import { logger } from '@/lib/logger';
@@ -343,6 +347,14 @@ export async function updateVideoCourse(
       }
     }
   });
+
+  // Every entry here is a media repoint that just committed, so the video
+  // proxy's cached meta names the previous storage URI. Evict before the
+  // transcode is even enqueued so the very next Range request sees the new one.
+  for (const target of videoTargets) {
+    if (target.targetType === 'lesson') invalidateLessonPlaybackMeta(target.targetId);
+    else invalidateCoursePreviewMeta(target.targetId);
+  }
 
   for (const target of videoTargets) {
     try {
