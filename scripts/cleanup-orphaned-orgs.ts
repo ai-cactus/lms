@@ -22,17 +22,18 @@
  *
  * Flags:
  *   --dry-run   Report the organizations that would be deleted, write nothing.
+ *
+ * NOTE: this script must stay runnable inside the deployed app container
+ * (`npm run script <env> cleanup-orphaned-orgs.ts`), whose image carries `db/`
+ * but NOT `src/` — so only `@/db/*` imports are allowed here and output goes
+ * through console like the other container-run scripts (sync-auditor-access).
  */
-import { logger } from '@/lib/logger';
 import { prisma } from '@/db/index';
 
 const DRY_RUN = process.argv.includes('--dry-run');
 
 async function main() {
-  logger.info({
-    msg: '[cleanup-orgs] Scanning for organizations with no members',
-    dryRun: DRY_RUN,
-  });
+  console.log(`Scanning for organizations with no members...${DRY_RUN ? ' [DRY RUN]' : ''}`);
 
   // "Orphaned" means NO membership row at all — not merely no ACTIVE one. An org
   // whose members were all deactivated still has an owner who can be restored,
@@ -49,24 +50,17 @@ async function main() {
   });
 
   for (const org of orphans) {
-    logger.info({
-      msg: '[cleanup-orgs] Orphaned organization',
-      organizationId: org.id,
-      name: org.name,
-      facilityCount: org._count.facilities,
-      createdAt: org.createdAt.toISOString(),
-    });
+    console.log(
+      `  - ${org.id}  "${org.name}"  facilities=${org._count.facilities}  created=${org.createdAt.toISOString()}`,
+    );
   }
 
-  logger.info({ msg: '[cleanup-orgs] Orphaned organizations found', count: orphans.length });
+  console.log(`Orphaned organizations found: ${orphans.length}`);
 
   if (orphans.length === 0) return;
 
   if (DRY_RUN) {
-    logger.info({
-      msg: '[cleanup-orgs] Dry run — nothing deleted. Re-run without --dry-run to delete.',
-      count: orphans.length,
-    });
+    console.log('Dry run — nothing deleted. Re-run without --dry-run to delete.');
     return;
   }
 
@@ -74,12 +68,12 @@ async function main() {
     where: { id: { in: orphans.map((org) => org.id) } },
   });
 
-  logger.info({ msg: '[cleanup-orgs] Orphaned organizations deleted', count: deleted.count });
+  console.log(`Orphaned organizations deleted: ${deleted.count}`);
 }
 
 main()
   .catch((e) => {
-    logger.error({ msg: '[cleanup-orgs] Cleanup failed', err: e });
+    console.error('Cleanup failed:', e);
     process.exitCode = 1;
   })
   .finally(async () => {
