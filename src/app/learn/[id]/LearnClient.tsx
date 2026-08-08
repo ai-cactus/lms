@@ -18,12 +18,13 @@ import { VideoPlayer } from '@/components/video/VideoPlayer';
 import { isQuizUnlocked } from '@/lib/video/gating';
 import { sanitizeHtml } from '@/lib/sanitize';
 import { logger } from '@/lib/logger';
+import type { LearnPayload } from '@/lib/learn/get-learn-payload';
 
 interface Lesson {
   id: string;
   title: string;
   content: string;
-  slideContent?: string;
+  slideContent?: string | null;
   duration: number | null;
   order: number;
   moduleIndex: number;
@@ -54,7 +55,7 @@ interface Quiz {
 interface CourseData {
   id: string;
   title: string;
-  description: string;
+  description: string | null;
   duration: number | null;
   lessons: Lesson[];
   quiz?: Quiz;
@@ -64,13 +65,13 @@ interface EnrollmentData {
   id: string;
   progress: number;
   status: string;
-  score?: number;
+  score?: number | null;
   videoPositionSeconds?: number | null;
   quizAttempts?: {
     id: string;
     score: number;
     attemptCount: number;
-    completedAt: string | Date;
+    completedAt: string | null;
     timeTaken: number | null;
     answers?: { questionId: string; selectedAnswer: string; explanation?: string }[];
   }[];
@@ -107,32 +108,226 @@ interface UserData {
   jobTitle: string;
 }
 
-export default function LearnPage() {
+type QuizStep = 'intro' | 'active' | 'results' | 'review';
+
+/**
+ * Every piece of state the learn payload seeds. Both entry points derive it
+ * through `deriveSeed` — the server-rendered path as the `useState` initial
+ * values, the client-fetch fallback as a batch of setters — so the two can
+ * never drift apart.
+ */
+interface SeededState {
+  course: CourseData;
+  enrollment: EnrollmentData;
+  userData: UserData;
+  watchedPct: number;
+  quizUnlocked: boolean;
+  highestUnlockedIndex: number;
+  activeIndex: number;
+  isQuizActive: boolean;
+  quizStep: QuizStep;
+  quizAnswers: Record<string, string>;
+  timeLeft: number;
+  quizResults: QuizResultsData | null;
+}
+
+function toCourseData(payloadCourse: LearnPayload['course']): CourseData {
+  return {
+    id: payloadCourse.id,
+    title: payloadCourse.title,
+    description: payloadCourse.description,
+    duration: payloadCourse.duration,
+    lessons: (payloadCourse.lessons || []).map((lesson, index) => ({
+      ...lesson,
+      moduleIndex: index,
+    })),
+    quiz: payloadCourse.quiz
+      ? {
+          ...payloadCourse.quiz,
+          questions: payloadCourse.quiz.questions.map((q) => ({
+            ...q,
+            // The answer key is omitted for workers; only the admin views read it.
+            correctAnswer: q.correctAnswer ?? '',
+          })),
+        }
+      : undefined,
+  };
+}
+
+function deriveSeed(data: LearnPayload): SeededState {
+  const course = toCourseData(data.course);
+
+  const seed: SeededState = {
+    course,
+    enrollment: data.enrollment,
+    userData: data.user,
+    watchedPct: 0,
+    quizUnlocked: false,
+    highestUnlockedIndex: 0,
+    activeIndex: 0,
+    isQuizActive: false,
+    quizStep: 'intro',
+    quizAnswers: {},
+    timeLeft: 0,
+    quizResults: null,
+  };
+
+  // Seed the video watch-gate from the VIDEO's own authoritative signal
+  // (videoPositionSeconds / videoDurationSeconds), NOT enrollment.progress.
+  // enrollment.progress is also written by lesson-nav (updateProgress) and would
+  // otherwise unlock the gate after a reload even if the video was never watched.
+  const videoLesson = course.lessons.find((l) => l.videoStorageUri);
+  if (videoLesson) {
+    const durationSeconds = videoLesson.videoDurationSeconds ?? 0;
+    const positionSeconds = data.enrollment?.videoPositionSeconds ?? 0;
+    seed.watchedPct =
+      durationSeconds > 0
+        ? Math.min(100, Math.round((positionSeconds / durationSeconds) * 100))
+        : 0;
+  }
+
+  const lessonCount = course.lessons.length || 1;
+
+  // Restore state from backend progress
+  const activeAttempt = data.enrollment?.quizAttempts?.find((a) => a.timeTaken === null);
+
+  const hasQuizAttempt = (data.enrollment?.quizAttempts?.length ?? 0) > 0;
+  const isCompleted =
+    data.enrollment?.status === 'completed' || data.enrollment?.status === 'attested';
+
+  if (activeAttempt) {
+    // RESTORE ACTIVE SESSION
+    seed.quizUnlocked = true;
+    seed.highestUnlockedIndex = lessonCount - 1;
+    seed.activeIndex = lessonCount;
+    seed.isQuizActive = true;
+    seed.quizStep = 'active';
+
+    const savedAnswers: Record<string, string> = {};
+    if (Array.isArray(activeAttempt.answers)) {
+      activeAttempt.answers.forEach((ans) => {
+        savedAnswers[ans.questionId] = ans.selectedAnswer;
+      });
+    }
+    seed.quizAnswers = savedAnswers;
+
+    const startedAt = new Date(activeAttempt.completedAt ?? 0).getTime();
+    const now = new Date().getTime();
+    const elapsedSeconds = Math.floor((now - startedAt) / 1000);
+
+    const limit = course.quiz?.timeLimit
+      ? course.quiz.timeLimit * 60
+      : (course.quiz?.questions.length || 5) * 60;
+
+    seed.timeLeft = Math.max(0, limit - elapsedSeconds);
+  } else if (isCompleted) {
+    // Completed/attested: show course content by default, quiz results accessible via rail
+    seed.quizResults = data.quizResultsData || {
+      passed: (data.enrollment.score || 0) >= (course.quiz?.passingScore || 70),
+      score: data.enrollment.score || 0,
+      totalQuestions: 0,
+      correctCount: 0,
+      answered: 0,
+      correct: 0,
+      wrong: 0,
+      time: 0,
+      questions: [],
+    };
+    // Default to first lesson so workers can review course content
+    seed.activeIndex = 0;
+    seed.isQuizActive = false;
+    seed.quizUnlocked = true;
+    seed.highestUnlockedIndex = lessonCount - 1;
+  } else if (
+    data.enrollment?.status === 'locked' ||
+    (hasQuizAttempt && !activeAttempt && data.enrollment?.score != null)
+  ) {
+    // Locked or has a submitted (scored) quiz not yet completed/attested: show quiz review.
+    // Gate on score != null so a retaken enrollment (score reset to null) is NOT trapped
+    // here — the review screen is only for submitted attempts.
+    seed.quizResults = data.quizResultsData || {
+      passed: (data.enrollment.score || 0) >= (course.quiz?.passingScore || 70),
+      score: data.enrollment.score || 0,
+      totalQuestions: 0,
+      correctCount: 0,
+      answered: 0,
+      correct: 0,
+      wrong: 0,
+      time: 0,
+      questions: [],
+    };
+    seed.activeIndex = course.lessons.length;
+    seed.isQuizActive = true;
+    seed.quizStep = 'review';
+    seed.quizUnlocked = true;
+    seed.highestUnlockedIndex = lessonCount - 1;
+  } else if (hasQuizAttempt && !activeAttempt) {
+    // Retake pending: retakeQuiz() reset enrollment.score to null and left the completed
+    // attempts immutable, creating no draft. Land on the quiz START screen (intro) so the
+    // worker sees "Attempt N of M" + Start Quiz (which calls /start to append the new draft).
+    seed.quizUnlocked = true;
+    seed.highestUnlockedIndex = lessonCount - 1;
+    seed.activeIndex = lessonCount;
+    seed.isQuizActive = true;
+    seed.quizStep = 'intro';
+  } else if (data.enrollment?.progress > 0) {
+    const savedProgress = data.enrollment.progress;
+    const restoredIndex = Math.min(
+      Math.round((savedProgress / 100) * lessonCount) - 1,
+      lessonCount - 1,
+    );
+    const startIndex = Math.max(0, restoredIndex);
+    seed.activeIndex = startIndex;
+    seed.highestUnlockedIndex = startIndex;
+
+    if (savedProgress >= 100) {
+      seed.quizUnlocked = true;
+      seed.highestUnlockedIndex = lessonCount - 1;
+    }
+  } else {
+    seed.highestUnlockedIndex = 0;
+  }
+
+  return seed;
+}
+
+interface LearnClientProps {
+  /**
+   * Server-rendered payload. When present the mount fetch is skipped entirely
+   * and every seeded value is already in the first render — which is what puts
+   * the `<video>` src/poster into the initial HTML for the preload scanner.
+   */
+  initialData?: LearnPayload;
+}
+
+export default function LearnClient({ initialData }: LearnClientProps) {
   const params = useParams();
   const router = useRouter();
   const courseId = params.id as string;
 
+  const [seed] = useState<SeededState | null>(() => (initialData ? deriveSeed(initialData) : null));
+
   // Data State
-  const [course, setCourse] = useState<CourseData | null>(null);
-  const [enrollment, setEnrollment] = useState<EnrollmentData | null>(null);
-  const [userData, setUserData] = useState<UserData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [course, setCourse] = useState<CourseData | null>(seed?.course ?? null);
+  const [enrollment, setEnrollment] = useState<EnrollmentData | null>(seed?.enrollment ?? null);
+  const [userData, setUserData] = useState<UserData | null>(seed?.userData ?? null);
+  const [loading, setLoading] = useState(!initialData);
   const [error, setError] = useState('');
 
   // View State
   const [viewMode, setViewMode] = useState<'slides' | 'article'>('article');
-  const [activeIndex, setActiveIndex] = useState(0);
+  const [activeIndex, setActiveIndex] = useState(seed?.activeIndex ?? 0);
 
   // Linear progression
-  const [highestUnlockedIndex, setHighestUnlockedIndex] = useState(0);
+  const [highestUnlockedIndex, setHighestUnlockedIndex] = useState(seed?.highestUnlockedIndex ?? 0);
 
   // Quiz State
-  const [isQuizActive, setIsQuizActive] = useState(false);
-  const [quizStep, setQuizStep] = useState<'intro' | 'active' | 'results' | 'review'>('intro');
+  const [isQuizActive, setIsQuizActive] = useState(seed?.isQuizActive ?? false);
+  const [quizStep, setQuizStep] = useState<QuizStep>(seed?.quizStep ?? 'intro');
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [quizAnswers, setQuizAnswers] = useState<Record<string, string>>({});
-  const [timeLeft, setTimeLeft] = useState(0);
-  const [quizResults, setQuizResults] = useState<QuizResultsData | null>(null);
+  const [quizAnswers, setQuizAnswers] = useState<Record<string, string>>(seed?.quizAnswers ?? {});
+  const [timeLeft, setTimeLeft] = useState(seed?.timeLeft ?? 0);
+  const [quizResults, setQuizResults] = useState<QuizResultsData | null>(seed?.quizResults ?? null);
   const [submitting, setSubmitting] = useState(false);
 
   // Modal State
@@ -143,12 +338,12 @@ export default function LearnPage() {
   const [railOpen, setRailOpen] = useState(false);
 
   // Quiz unlocked flag
-  const [quizUnlocked, setQuizUnlocked] = useState(false);
+  const [quizUnlocked, setQuizUnlocked] = useState(seed?.quizUnlocked ?? false);
 
   // Video watch-gate progress (only relevant for VIDEO lessons).
-  // Seeded in the initial fetch from the video's own position
-  // (videoPositionSeconds / videoDurationSeconds), then updated live by VideoPlayer.
-  const [watchedPct, setWatchedPct] = useState(0);
+  // Seeded from the video's own position (videoPositionSeconds /
+  // videoDurationSeconds), then updated live by VideoPlayer.
+  const [watchedPct, setWatchedPct] = useState(seed?.watchedPct ?? 0);
 
   // Track if user just finished quiz in this session
   // (Removed unused justFinished state)
@@ -356,151 +551,30 @@ export default function LearnPage() {
     }
   };
 
-  // Initial Fetch
+  // Initial Fetch — fallback only. With `initialData` the payload already came
+  // down with the document, so there is nothing to fetch and no loading state.
   useEffect(() => {
+    if (initialData) return;
+
     const fetchCourseData = async () => {
       try {
         const res = await fetch(`/api/courses/${params.id}/learn`);
         if (!res.ok) throw new Error('Failed to load course');
-        const data = (await res.json()) as {
-          course: CourseData;
-          enrollment: EnrollmentData;
-          user: UserData & { organizationName?: string };
-          quizResultsData?: QuizResultsData;
-        };
+        const data = (await res.json()) as LearnPayload;
+        const fetched = deriveSeed(data);
 
-        if (data.course.lessons) {
-          data.course.lessons = data.course.lessons.map((l: Lesson, i: number) => ({
-            ...l,
-            moduleIndex: i,
-          }));
-        }
-
-        setCourse(data.course);
-        setEnrollment(data.enrollment);
-        setUserData(data.user);
-
-        // Seed the video watch-gate from the VIDEO's own authoritative signal
-        // (videoPositionSeconds / videoDurationSeconds), NOT enrollment.progress.
-        // enrollment.progress is also written by lesson-nav (updateProgress) and would
-        // otherwise unlock the gate after a reload even if the video was never watched.
-        const videoLesson = (data.course.lessons || []).find((l) => l.videoStorageUri);
-        if (videoLesson) {
-          const durationSeconds = videoLesson.videoDurationSeconds ?? 0;
-          const positionSeconds = data.enrollment?.videoPositionSeconds ?? 0;
-          const seededPct =
-            durationSeconds > 0
-              ? Math.min(100, Math.round((positionSeconds / durationSeconds) * 100))
-              : 0;
-          setWatchedPct(seededPct);
-        }
-
-        const lessonCount = data.course.lessons?.length || 1;
-
-        // Restore state from backend progress
-        const activeAttempt = data.enrollment?.quizAttempts?.find(
-          (a: { timeTaken: number | null }) => a.timeTaken === null,
-        );
-
-        const hasQuizAttempt = (data.enrollment?.quizAttempts?.length ?? 0) > 0;
-        const isCompleted =
-          data.enrollment?.status === 'completed' || data.enrollment?.status === 'attested';
-
-        if (activeAttempt) {
-          // RESTORE ACTIVE SESSION
-          setQuizUnlocked(true);
-          setHighestUnlockedIndex(lessonCount - 1);
-          setActiveIndex(lessonCount);
-          setIsQuizActive(true);
-          setQuizStep('active');
-
-          const savedAnswers: Record<string, string> = {};
-          if (Array.isArray(activeAttempt.answers)) {
-            activeAttempt.answers.forEach((ans: { questionId: string; selectedAnswer: string }) => {
-              savedAnswers[ans.questionId] = ans.selectedAnswer;
-            });
-          }
-          setQuizAnswers(savedAnswers);
-
-          const startedAt = new Date(activeAttempt.completedAt).getTime();
-          const now = new Date().getTime();
-          const elapsedSeconds = Math.floor((now - startedAt) / 1000);
-
-          const limit = data.course.quiz?.timeLimit
-            ? data.course.quiz.timeLimit * 60
-            : (data.course.quiz?.questions.length || 5) * 60;
-
-          const remaining = Math.max(0, limit - elapsedSeconds);
-          setTimeLeft(remaining);
-        } else if (isCompleted) {
-          // Completed/attested: show course content by default, quiz results accessible via rail
-          const resultsData: QuizResultsData = data.quizResultsData || {
-            passed: (data.enrollment.score || 0) >= (data.course.quiz?.passingScore || 70),
-            score: data.enrollment.score || 0,
-            totalQuestions: 0,
-            correctCount: 0,
-            answered: 0,
-            correct: 0,
-            wrong: 0,
-            time: 0,
-            questions: [],
-          };
-          setQuizResults(resultsData);
-          // Default to first lesson so workers can review course content
-          setActiveIndex(0);
-          setIsQuizActive(false);
-          setQuizUnlocked(true);
-          setHighestUnlockedIndex(lessonCount - 1);
-        } else if (
-          data.enrollment?.status === 'locked' ||
-          (hasQuizAttempt && !activeAttempt && data.enrollment?.score != null)
-        ) {
-          // Locked or has a submitted (scored) quiz not yet completed/attested: show quiz review.
-          // Gate on score != null so a retaken enrollment (score reset to null) is NOT trapped
-          // here — the review screen is only for submitted attempts.
-          const resultsData: QuizResultsData = data.quizResultsData || {
-            passed: (data.enrollment.score || 0) >= (data.course.quiz?.passingScore || 70),
-            score: data.enrollment.score || 0,
-            totalQuestions: 0,
-            correctCount: 0,
-            answered: 0,
-            correct: 0,
-            wrong: 0,
-            time: 0,
-            questions: [],
-          };
-          setQuizResults(resultsData);
-          if (data.course.lessons) setActiveIndex(data.course.lessons.length);
-          setIsQuizActive(true);
-          setQuizStep('review');
-          setQuizUnlocked(true);
-          setHighestUnlockedIndex(lessonCount - 1);
-        } else if (hasQuizAttempt && !activeAttempt) {
-          // Retake pending: retakeQuiz() reset enrollment.score to null and left the completed
-          // attempts immutable, creating no draft. Land on the quiz START screen (intro) so the
-          // worker sees "Attempt N of M" + Start Quiz (which calls /start to append the new draft).
-          setQuizUnlocked(true);
-          setHighestUnlockedIndex(lessonCount - 1);
-          setActiveIndex(lessonCount);
-          setIsQuizActive(true);
-          setQuizStep('intro');
-        } else if (data.enrollment?.progress > 0) {
-          const savedProgress = data.enrollment.progress;
-          const restoredIndex = Math.min(
-            Math.round((savedProgress / 100) * lessonCount) - 1,
-            lessonCount - 1,
-          );
-          const startIndex = Math.max(0, restoredIndex);
-          setActiveIndex(startIndex);
-          setHighestUnlockedIndex(startIndex);
-
-          if (savedProgress >= 100) {
-            setQuizUnlocked(true);
-            setHighestUnlockedIndex(lessonCount - 1);
-          }
-        } else {
-          setHighestUnlockedIndex(0);
-        }
+        setCourse(fetched.course);
+        setEnrollment(fetched.enrollment);
+        setUserData(fetched.userData);
+        setWatchedPct(fetched.watchedPct);
+        setQuizUnlocked(fetched.quizUnlocked);
+        setHighestUnlockedIndex(fetched.highestUnlockedIndex);
+        setActiveIndex(fetched.activeIndex);
+        setIsQuizActive(fetched.isQuizActive);
+        setQuizStep(fetched.quizStep);
+        setQuizAnswers(fetched.quizAnswers);
+        setTimeLeft(fetched.timeLeft);
+        setQuizResults(fetched.quizResults);
       } catch (err: unknown) {
         const error = err as Error;
         setError(error.message);
@@ -509,7 +583,7 @@ export default function LearnPage() {
       }
     };
     fetchCourseData();
-  }, [params.id, router]);
+  }, [params.id, router, initialData]);
 
   // Timer Effect
   useEffect(() => {
@@ -530,13 +604,13 @@ export default function LearnPage() {
 
   if (loading)
     return (
-      <div className="flex flex-row-reverse max-md:flex-col h-screen w-full overflow-hidden bg-background-secondary font-sans text-[#1a1a1a] justify-center items-center">
+      <div className="flex flex-row-reverse max-md:flex-col h-[100dvh] w-full overflow-hidden bg-background-secondary font-sans text-[#1a1a1a] justify-center items-center">
         Loading...
       </div>
     );
   if (error)
     return (
-      <div className="flex flex-row-reverse max-md:flex-col h-screen w-full overflow-hidden bg-background-secondary font-sans text-[#1a1a1a] justify-center items-center">
+      <div className="flex flex-row-reverse max-md:flex-col h-[100dvh] w-full overflow-hidden bg-background-secondary font-sans text-[#1a1a1a] justify-center items-center">
         Error: {error}
       </div>
     );
@@ -604,7 +678,7 @@ export default function LearnPage() {
   const activeDraftAttempt = enrollment?.quizAttempts?.find((a) => a.timeTaken === null);
 
   return (
-    <div className="flex flex-row-reverse max-md:flex-col h-screen w-full overflow-hidden bg-background-secondary font-sans text-[#1a1a1a]">
+    <div className="flex flex-row-reverse max-md:flex-col h-[100dvh] w-full overflow-hidden bg-background-secondary font-sans text-[#1a1a1a]">
       {showSharedLayout && (
         <CourseRail
           lessons={course.lessons}
@@ -846,7 +920,13 @@ export default function LearnPage() {
                               {course.quiz.allowedAttempts &&
                                 ` | Attempt ${activeDraftAttempt?.attemptCount ?? completedAttemptCount + 1} of ${course.quiz.allowedAttempts}`}
                             </span>
-                            <span className="text-[11px] font-semibold text-text-muted">
+                            {/* The restored countdown is derived from the wall clock,
+                                so the server-rendered value can be a second off the
+                                one hydration recomputes. */}
+                            <span
+                              className="text-[11px] font-semibold text-text-muted"
+                              suppressHydrationWarning
+                            >
                               {Math.floor(timeLeft / 60)}:
                               {(timeLeft % 60).toString().padStart(2, '0')}
                             </span>
@@ -1037,6 +1117,11 @@ export default function LearnPage() {
                               idx === activeIndex ? (enrollment?.videoPositionSeconds ?? 0) : 0
                             }
                             onWatchedPct={idx === activeIndex ? setWatchedPct : undefined}
+                            // Article view mounts EVERY lesson at once. Only the
+                            // active player may spend bandwidth or write to the
+                            // (single, shared) enrollment progress row.
+                            preload={idx === activeIndex ? 'metadata' : 'none'}
+                            trackProgress={idx === activeIndex}
                           />
                           {idx === activeIndex && isVideoGateBlocked && (
                             <p className="mt-3 text-sm text-text-muted">
