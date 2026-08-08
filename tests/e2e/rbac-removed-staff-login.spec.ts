@@ -452,15 +452,15 @@ test.describe('QA ISSUE 2 — removed staff member cannot log in or keep a live 
     }
   });
 
-  test('org-less OWNER login is NOT blocked — reaches /dashboard and is guided to onboarding via the activation modal', async ({
+  test('org-less OWNER login is NOT blocked — it lands directly on /onboarding', async ({
     page,
   }) => {
     // Owner is the one legitimate org-less admin-tier state (pre-onboarding).
-    // Unlike the worker portal, the admin portal does not route org-less users
-    // away from /dashboard at the proxy layer — OrganizationActivationModal
-    // (src/components/dashboard/OrganizationActivationModal.tsx) instead shows
-    // a welcome dialog on /dashboard itself, with an "Activate your account"
-    // button that navigates to /onboarding (or an unattended 60s auto-redirect).
+    // authenticate() (src/app/actions/auth.ts) routes a `none` resolution
+    // straight to /onboarding, so the login never lands on /dashboard and the
+    // proxy's org-less gate never has to re-route it. (It used to land on
+    // /dashboard and be greeted by OrganizationActivationModal; that welcome
+    // dialog is no longer on this path.)
     // The regression this guards: ISSUE 2's org-less-admin guard must NOT
     // mistake this legitimate state for a removed account.
     const email = uniqueEmail('preboard-owner');
@@ -472,18 +472,12 @@ test.describe('QA ISSUE 2 — removed staff member cannot log in or keep a live 
 
     try {
       await loginAs(page, email, password);
-      await page.waitForURL('**/dashboard**', { timeout: 15000 });
-      expect(
-        await page.getByText(/your access to this organization has been removed/i).count(),
-      ).toBe(0);
-
-      await expect(
-        page.getByText(/welcome to the compliance and training management portal/i),
-      ).toBeVisible({ timeout: 10000 });
-      await page.getByRole('button', { name: /activate your account/i }).click();
       await page.waitForURL('**/onboarding**', { timeout: 15000 });
       expect(page.url()).toContain('/onboarding');
       expect(page.url()).not.toContain('/onboarding-worker');
+      expect(
+        await page.getByText(/your access to this organization has been removed/i).count(),
+      ).toBe(0);
     } finally {
       await cleanupUser(userId, null, null);
     }
@@ -504,9 +498,8 @@ test.describe('QA ISSUE 2 — removed staff member cannot log in or keep a live 
   // (src/app/actions/auth.ts) only routes to the worker portal when an ACTIVE
   // membership resolves to a worker role, which a `none` resolution never does
   // — every memberless identity, "nurse"-seeded or not, resolves through the
-  // admin portal and lands on /dashboard's founder-activation modal, exactly
-  // like the org-less OWNER case above. Confirmed empirically: this identity
-  // reaches /dashboard, never /worker or /onboarding-worker.
+  // admin portal and lands on the admin /onboarding wizard, exactly like the
+  // org-less OWNER case above, never /worker or /onboarding-worker.
   test('a genuinely memberless identity is NOT blocked either — it resolves through the admin portal like the org-less owner, not /worker (self-serve worker pre-onboarding no longer exists)', async ({
     page,
   }) => {
@@ -516,8 +509,9 @@ test.describe('QA ISSUE 2 — removed staff member cannot log in or keep a live 
 
     try {
       await loginAs(page, email, password);
-      await page.waitForURL('**/dashboard**', { timeout: 15000 });
-      expect(page.url()).toContain('/dashboard');
+      await page.waitForURL('**/onboarding**', { timeout: 15000 });
+      expect(page.url()).toContain('/onboarding');
+      // Also excludes /onboarding-worker — the worker portal is never reached.
       expect(page.url()).not.toContain('/worker');
 
       // Same ISSUE-2 guard as the owner case: a `none` resolution must never be

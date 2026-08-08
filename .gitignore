@@ -94,3 +94,4 @@ multi-org-schema-upgrade-plan.md
 
 # Stray Chrome temp profiles from Lighthouse runs on Windows/WSL (literal "C:\..." dir names)
 /C:*
+v3_errors

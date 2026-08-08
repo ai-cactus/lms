@@ -23,8 +23,7 @@
  *   npx tsx scripts/delete-video-courses.ts <courseId> [courseId...] [flags]
  *
  * Flags:
- *   --yes               Actually perform the deletion. WITHOUT it the script is
- *                       a DRY RUN that only prints what would be removed.
+ *   --dry-run           Print what would be removed, delete nothing.
  *   --allow-non-video   Also delete provided IDs whose type is not 'video'.
  *   --keep-files        Delete DB rows only; leave object-storage blobs in place.
  *   --env-file=<path>   Load env vars from this file (in addition to the usual
@@ -34,9 +33,9 @@
  *
  * Examples:
  *   # See what would happen (safe):
- *   npx tsx scripts/delete-video-courses.ts 1a2b 3c4d
+ *   npx tsx scripts/delete-video-courses.ts 1a2b 3c4d --dry-run
  *   # Do it for real, including storage purge:
- *   npx tsx scripts/delete-video-courses.ts 1a2b 3c4d --yes
+ *   npx tsx scripts/delete-video-courses.ts 1a2b 3c4d
  */
 
 import fs from 'node:fs';
@@ -93,14 +92,14 @@ async function main() {
   const flags = new Set(argv.filter((a) => a.startsWith('--')));
   const ids = argv.filter((a) => !a.startsWith('--'));
 
-  const execute = flags.has('--yes');
+  const dryRun = flags.has('--dry-run');
   const allowNonVideo = flags.has('--allow-non-video');
   const keepFiles = flags.has('--keep-files');
 
   if (ids.length === 0) {
     console.error(
       'Usage: npx tsx scripts/delete-video-courses.ts <courseId> [courseId...] ' +
-        '[--yes] [--allow-non-video] [--keep-files] [--env-file=<path>]',
+        '[--dry-run] [--allow-non-video] [--keep-files] [--env-file=<path>]',
     );
     process.exit(1);
   }
@@ -108,8 +107,8 @@ async function main() {
   if (!process.env.DATABASE_URL) {
     console.error(
       'DATABASE_URL is not set. Provide it via your environment or --env-file. Examples:\n' +
-        '  DATABASE_URL="postgresql://…" npx tsx scripts/delete-video-courses.ts <id> --yes\n' +
-        '  npx tsx scripts/delete-video-courses.ts <id> --yes --env-file=.env.production',
+        '  DATABASE_URL="postgresql://…" npx tsx scripts/delete-video-courses.ts <id>\n' +
+        '  npx tsx scripts/delete-video-courses.ts <id> --env-file=.env.production',
     );
     process.exit(1);
   }
@@ -200,8 +199,8 @@ async function main() {
   console.log(`  assignments:    ${assignmentCount}`);
   console.log(`  storage blobs:  ${fileUris.length}${keepFiles ? ' (kept — --keep-files)' : ''}`);
 
-  if (!execute) {
-    console.log('\nDRY RUN — nothing was deleted. Re-run with --yes to execute.\n');
+  if (dryRun) {
+    console.log('\nDRY RUN — nothing was deleted. Re-run without --dry-run to execute.\n');
     return;
   }
 

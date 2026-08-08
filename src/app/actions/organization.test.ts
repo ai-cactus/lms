@@ -49,11 +49,15 @@ vi.mock('@/lib/prisma', () => {
     },
     // One-org-per-user guard reads OrganizationUser; moved location/compliance
     // fields resolve the caller's facility via OrganizationUserFacility.
+    // createFacility also resolves the supervisor candidate's membership here,
+    // and getSupervisorOptions lists the org's supervisors.
     organizationUser: {
       findFirst: vi.fn(),
+      findMany: vi.fn(),
     },
     organizationUserFacility: {
       findFirst: vi.fn(),
+      upsert: vi.fn(),
     },
     $transaction: vi.fn(async (cb: (tx: typeof txMock) => unknown) => cb(txMock)),
   };
@@ -76,6 +80,7 @@ import {
   updateOrganization,
   updateFacility,
   createFacility,
+  getSupervisorOptions,
 } from './organization';
 
 describe('checkOrganizationNameAvailable', () => {
@@ -463,12 +468,18 @@ describe('createFacility', () => {
     return { user: { id: 'user-1', organizationId: 'org-1', role, ...overrides } };
   }
 
-  const input = { name: 'Sunrise Behavioral', type: 'Behavioral health', address: '1 Main St' };
+  const input = {
+    name: 'Sunrise Behavioral',
+    types: ['Behavioral health'],
+    address: '1 Main St',
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
     mockAuth.mockResolvedValue(makeSession('owner'));
     vi.mocked(prisma.facility.create).mockResolvedValue({ id: 'facility-new' } as never);
+    // Default: the supervisor email belongs to nobody in this org (invite path).
+    vi.mocked(prisma.organizationUser.findFirst).mockResolvedValue(null as never);
     mockCreateInvites.mockResolvedValue({
       success: true,
       results: [{ email: 'sup@acme.com', status: 'sent' }],
@@ -529,6 +540,35 @@ describe('createFacility', () => {
     });
   });
 
+  it('joins multiple selected types into the single free-form `type` column', async () => {
+    await createFacility({
+      ...input,
+      types: [
+        'Community Mental Health Center',
+        'Private Practice / Group Practice',
+        'Mobile crisis unit',
+      ],
+    });
+
+    expect(prisma.facility.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          type: 'Community Mental Health Center, Private Practice / Group Practice, Mobile crisis unit',
+        }),
+      }),
+    );
+  });
+
+  it('trims each selected type before joining', async () => {
+    await createFacility({ ...input, types: ['  Detox centre  ', ' Sober living '] });
+
+    expect(prisma.facility.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ type: 'Detox centre, Sober living' }),
+      }),
+    );
+  });
+
   it('rejects an empty facility name', async () => {
     const result = await createFacility({ ...input, name: '   ' });
 
@@ -536,8 +576,26 @@ describe('createFacility', () => {
     expect(prisma.facility.create).not.toHaveBeenCalled();
   });
 
-  it('rejects an empty facility type', async () => {
-    const result = await createFacility({ ...input, type: '' });
+  it('rejects an empty facility type list', async () => {
+    const result = await createFacility({ ...input, types: [] });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('Select at least one facility type');
+    expect(prisma.facility.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects a blank entry inside the facility type list', async () => {
+    const result = await createFacility({ ...input, types: ['Valid', '   '] });
+
+    expect(result.success).toBe(false);
+    expect(prisma.facility.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects more than 12 facility types', async () => {
+    const result = await createFacility({
+      ...input,
+      types: Array.from({ length: 13 }, (_, i) => `Type ${i}`),
+    });
 
     expect(result.success).toBe(false);
     expect(prisma.facility.create).not.toHaveBeenCalled();
@@ -555,6 +613,7 @@ describe('createFacility', () => {
 
     expect(result.success).toBe(true);
     expect(mockCreateInvites).not.toHaveBeenCalled();
+    expect(prisma.organizationUser.findFirst).not.toHaveBeenCalled();
   });
 
   it('does not invite anyone when supervisorEmail is omitted — facility still created', async () => {
@@ -562,18 +621,68 @@ describe('createFacility', () => {
 
     expect(result.success).toBe(true);
     expect(result.supervisorInvited).toBe(false);
+    expect(result.supervisorAssigned).toBe(false);
     expect(mockCreateInvites).not.toHaveBeenCalled();
   });
 
-  it('invites the supervisor to the new facility when an email is given', async () => {
+  it('invites an email with no membership in this org — the stranger path', async () => {
     const result = await createFacility({ ...input, supervisorEmail: 'Sup@Acme.com' });
 
+    expect(prisma.organizationUser.findFirst).toHaveBeenCalledWith({
+      where: { organizationId: 'org-1', active: true, user: { email: 'sup@acme.com' } },
+      select: { id: true, role: true },
+    });
     expect(result.success).toBe(true);
     expect(result.supervisorInvited).toBe(true);
+    expect(result.supervisorAssigned).toBe(false);
     expect(mockCreateInvites).toHaveBeenCalledWith(
       [{ email: 'sup@acme.com', role: 'supervisor' }],
-      { facilityId: 'facility-new' },
+      {
+        facilityId: 'facility-new',
+      },
     );
+  });
+
+  it('assigns an existing supervisor to the new facility instead of inviting them', async () => {
+    vi.mocked(prisma.organizationUser.findFirst).mockResolvedValue({
+      id: 'orguser-9',
+      role: 'supervisor',
+    } as never);
+
+    const result = await createFacility({ ...input, supervisorEmail: 'sup@acme.com' });
+
+    expect(result.success).toBe(true);
+    expect(result.supervisorAssigned).toBe(true);
+    expect(result.supervisorInvited).toBe(false);
+    expect(mockCreateInvites).not.toHaveBeenCalled();
+    // Mirrors createMembership's upsert: reactivates rather than duplicating.
+    expect(prisma.organizationUserFacility.upsert).toHaveBeenCalledWith({
+      where: {
+        organizationUserId_facilityId: {
+          organizationUserId: 'orguser-9',
+          facilityId: 'facility-new',
+        },
+      },
+      create: { organizationUserId: 'orguser-9', facilityId: 'facility-new' },
+      update: { active: true, deactivatedAt: null },
+    });
+  });
+
+  it('refuses to re-role a member who already holds a different role — and creates nothing', async () => {
+    vi.mocked(prisma.organizationUser.findFirst).mockResolvedValue({
+      id: 'orguser-9',
+      role: 'hr',
+    } as never);
+
+    const result = await createFacility({ ...input, supervisorEmail: 'hr@acme.com' });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/already a member of this organization/i);
+    expect(result.error).toMatch(/Staff Management/);
+    // Fail-fast: no orphaned facility is left behind by the rejection.
+    expect(prisma.facility.create).not.toHaveBeenCalled();
+    expect(prisma.organizationUserFacility.upsert).not.toHaveBeenCalled();
+    expect(mockCreateInvites).not.toHaveBeenCalled();
   });
 
   it('still succeeds (facility created) when the supervisor invite fails — best-effort', async () => {
@@ -596,5 +705,72 @@ describe('createFacility', () => {
 
     expect(result.success).toBe(true);
     expect(result.supervisorInvited).toBe(false);
+  });
+});
+
+// ── getSupervisorOptions ──────────────────────────────────────────────────────
+
+describe('getSupervisorOptions', () => {
+  function makeSession(role: string, overrides: Record<string, unknown> = {}) {
+    return { user: { id: 'user-1', organizationId: 'org-1', role, ...overrides } };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockAuth.mockResolvedValue(makeSession('owner'));
+    vi.mocked(prisma.organizationUser.findMany).mockResolvedValue([
+      { id: 'orguser-1', user: { fullName: 'Ada Lovelace', email: 'ada@acme.com' } },
+      { id: 'orguser-2', user: { fullName: null, email: 'grace@acme.com' } },
+    ] as never);
+  });
+
+  it('rejects when not authenticated', async () => {
+    mockAuth.mockResolvedValue(null);
+
+    const result = await getSupervisorOptions();
+
+    expect(result).toEqual({ success: false, error: 'Not authenticated', options: [] });
+    expect(prisma.organizationUser.findMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects when the session carries no organization', async () => {
+    mockAuth.mockResolvedValue(makeSession('owner', { organizationId: undefined }));
+
+    const result = await getSupervisorOptions();
+
+    expect(result).toEqual({ success: false, error: 'No organization found', options: [] });
+    expect(prisma.organizationUser.findMany).not.toHaveBeenCalled();
+  });
+
+  it.each(['supervisor', 'hr', 'clinical_director', 'finance', 'nurse'])(
+    'denies role=%s — the roster is gated on facility.create, like the form it feeds',
+    async (role) => {
+      mockAuth.mockResolvedValue(makeSession(role));
+
+      const result = await getSupervisorOptions();
+
+      expect(result.success).toBe(false);
+      expect(result.options).toEqual([]);
+      expect(prisma.organizationUser.findMany).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['owner', 'admin'])("returns the org's active supervisors for role=%s", async (role) => {
+    mockAuth.mockResolvedValue(makeSession(role));
+
+    const result = await getSupervisorOptions();
+
+    expect(prisma.organizationUser.findMany).toHaveBeenCalledWith({
+      where: { organizationId: 'org-1', active: true, role: 'supervisor' },
+      select: { id: true, user: { select: { fullName: true, email: true } } },
+      orderBy: { joinedAt: 'asc' },
+    });
+    expect(result).toEqual({
+      success: true,
+      options: [
+        { organizationUserId: 'orguser-1', fullName: 'Ada Lovelace', email: 'ada@acme.com' },
+        { organizationUserId: 'orguser-2', fullName: null, email: 'grace@acme.com' },
+      ],
+    });
   });
 });

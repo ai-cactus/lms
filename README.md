@@ -83,11 +83,19 @@ execs the script inside the deployed app container
 is already loaded from the server's `.env.staging` / `.env.production`:
 
 ```bash
-npm run script <staging|production> <script-file> [-- args]
+npm run script <staging|production> <script-file> [args...]
 
-npm run script staging backfill-roles.ts
-npm run script -- staging backfill-roles.ts --dry-run   # extra flags need the --
+npm run script staging backfill-facility-timezones.ts
+npm run script -- staging backfill-facility-timezones.ts --dry-run   # flags need the --
 ```
+
+Everything after `<script-file>` is forwarded to the script verbatim.
+
+**Execution convention (uniform across `scripts/`):** a mutating script
+**applies its changes by default**, and `--dry-run` makes it report what it
+would do while writing nothing. There is no second gate — no `--apply`, no
+`--yes`, no `CONFIRM_*` environment variable. Always preview a destructive
+script with `--dry-run` first.
 
 This must run on the target server — the database hostname (`db`) only
 resolves inside that server's compose network. The container runs the deployed
