@@ -13,6 +13,7 @@ import BillingPausedBanner from '@/components/billing/BillingPausedBanner';
 import StatusTrackerAlertBanner from '@/components/dashboard/StatusTrackerAlertBanner';
 import { getPauseState } from '@/lib/billing';
 import { getStatusTrackerSummaryForOrg } from '@/lib/reminders/status-tracker';
+import { resolveActiveMembership } from '@/lib/auth/membership';
 import { WithChildren } from '@/types/react';
 
 const DashboardLayout: FC<WithChildren> = async ({ children }) => {
@@ -22,33 +23,30 @@ const DashboardLayout: FC<WithChildren> = async ({ children }) => {
     redirect('/login');
   }
 
-  // Fetch profile role. Note: We use findUnique on email since we added @unique to Profile.email
-  // Or we use id if we set user.id in session (which we did in auth.ts callbacks)
-  const profile = await prisma.profile.findUnique({
+  const user = await prisma.user.findUnique({
     where: { id: session.user.id },
     select: { fullName: true },
   });
 
-  // Fetch fresh user data from DB to get current organizationId (session may be stale after onboarding)
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: {
-      organizationId: true,
-      role: true,
-      organization: {
-        select: { subscription: { select: { pausedAt: true, pauseEndsAt: true } } },
-      },
-    },
-  });
+  // Re-resolve the active membership fresh from the DB — the session JWT stays
+  // org-less until the next full sign-in, so a user who just finished
+  // onboarding needs this to see their brand-new organization immediately.
+  const resolution = await resolveActiveMembership(session.user.id);
+  const membership = resolution.kind === 'resolved' ? resolution.membership : null;
+  const role = membership?.role ?? session.user.role;
+  const organizationId = membership?.organizationId;
 
-  const fullName = profile?.fullName || session.user.name || session.user.email || 'User';
-  // User role should be in session or fetched from User model if needed.
-  // For now we rely on session.
-  const role = user?.role || session.user.role;
-  const organizationId = user?.organizationId; // Fetch from DB for freshest data
+  const fullName = user?.fullName || session.user.name || session.user.email || 'User';
 
   // Surface a site-wide banner to admins while billing is paused.
-  const subscription = user?.organization?.subscription;
+  const subscription = organizationId
+    ? (
+        await prisma.organization.findUnique({
+          where: { id: organizationId },
+          select: { subscription: { select: { pausedAt: true, pauseEndsAt: true } } },
+        })
+      )?.subscription
+    : null;
   const pauseState = isAdminRole(role) ? getPauseState(subscription) : 'none';
 
   // Surface a site-wide status-tracker banner when training is overdue by the

@@ -152,6 +152,9 @@ const STAT_CARDS = [
 ] as const;
 
 export default function StaffProfileClient({ staff, viewerRole }: StaffProfileClientProps) {
+  // NOTE: `user.id` here is the OrganizationUser (membership) id, not the global
+  // identity id — getStaffDetails maps orgUser.id onto this field. Everything
+  // downstream of it is membership-scoped.
   const { user, stats, enrollments } = staff;
 
   // Assigning a course is a roster mutation: view-only roles (Finance, Clinical
@@ -657,7 +660,7 @@ export default function StaffProfileClient({ staff, viewerRole }: StaffProfileCl
       <AssignUserCourseModal
         isOpen={isAssignModalOpen}
         onClose={() => setIsAssignModalOpen(false)}
-        staffUserId={user.id}
+        staffOrgUserId={user.id}
         userName={user.name}
         enrolledCourseIds={enrollments.map((e) => e.courseId)}
         onSuccess={() => {

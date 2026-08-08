@@ -12,18 +12,14 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { role: true, organizationId: true },
-    });
-
-    if (!user || !isAdminRole(user.role) || !user.organizationId) {
+    const { role, organizationId } = session.user;
+    if (!isAdminRole(role) || !organizationId) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     // Check billing gate
     const org = await prisma.organization.findUnique({
-      where: { id: user.organizationId },
+      where: { id: organizationId },
       select: { hasAuditorAccess: true, name: true },
     });
 
@@ -39,7 +35,7 @@ export async function GET() {
 
     logger.info({
       msg: '[auditor] CSV export generated',
-      data: { organizationId: user.organizationId },
+      data: { organizationId },
     });
 
     return new NextResponse(csv, {

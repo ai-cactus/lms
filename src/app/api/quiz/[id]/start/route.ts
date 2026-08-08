@@ -37,7 +37,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     const enrollment = await prisma.enrollment.findUnique({
       where: { id: enrollmentId },
       include: {
-        user: {
+        organizationUser: {
           select: {
             organization: {
               select: { subscription: { select: { status: true, pausedAt: true } } },
@@ -52,8 +52,8 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     }
 
     if (
-      enrollment.userId !== workerSession?.user?.id &&
-      enrollment.userId !== adminSession?.user?.id
+      enrollment.organizationUserId !== workerSession?.user?.organizationUserId &&
+      enrollment.organizationUserId !== adminSession?.user?.organizationUserId
     ) {
       return NextResponse.json(
         { error: 'Enrollment does not belong to active sessions' },
@@ -63,7 +63,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
 
     // Billing gate (defense in depth): the layout blocks the portal when the org
     // lacks active billing; this stops a direct POST from starting an attempt.
-    if (!hasActiveBilling(enrollment.user?.organization?.subscription)) {
+    if (!hasActiveBilling(enrollment.organizationUser?.organization?.subscription)) {
       logger.warn({
         msg: '[quiz] Start blocked — organization lacks active billing',
         enrollmentId,

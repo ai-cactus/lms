@@ -79,7 +79,7 @@ export default async function QuizResultsPage({
           explanation: `The correct answer is ${correctLetter}. ${q.correctAnswer}`,
         };
       }),
-      userName: enrollment.user.profile?.fullName || enrollment.user.email,
+      userName: enrollment.organizationUser.user.fullName || enrollment.organizationUser.user.email,
     };
 
     return (
@@ -88,7 +88,7 @@ export default async function QuizResultsPage({
         enrollmentId={enrollmentId}
         data={resultsData}
         hideActions={true} // Hide redundant buttons in history view
-        organizationName={enrollment.user.organization?.name}
+        organizationName={enrollment.organizationUser.organization.name}
       />
     );
   } catch (error) {

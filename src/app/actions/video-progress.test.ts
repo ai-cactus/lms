@@ -42,7 +42,9 @@ import { getVideoPlaybackUrl, saveVideoProgress } from './video-progress';
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-const makeAdminSession = (uid = 'user-1') => ({ user: { id: uid } });
+const makeAdminSession = (organizationUserId = 'ou-1') => ({
+  user: { id: 'user-1', organizationUserId, organizationId: 'org-1' },
+});
 const makeLesson = (opts?: { createdBy?: string; enrollments?: { id: string }[] }) => ({
   id: 'lesson-1',
   videoProvider: 'self',
@@ -50,7 +52,10 @@ const makeLesson = (opts?: { createdBy?: string; enrollments?: { id: string }[] 
   videoDurationSeconds: 600,
   course: {
     id: 'course-1',
-    createdBy: opts?.createdBy ?? 'other-user',
+    createdByOrgUserId: opts?.createdBy ?? 'other-ou',
+    isGlobal: false,
+    status: 'published',
+    type: 'video',
     enrollments: opts?.enrollments ?? [],
   },
 });
@@ -71,7 +76,7 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 describe('getVideoPlaybackUrl', () => {
   it('returns the same-origin proxy URL when caller is enrolled in the course', async () => {
-    mockAdminAuth.mockResolvedValue(makeAdminSession('user-1'));
+    mockAdminAuth.mockResolvedValue(makeAdminSession('ou-1'));
     mockLessonFindUnique.mockResolvedValue(makeLesson({ enrollments: [{ id: 'enr-1' }] }));
 
     const url = await getVideoPlaybackUrl('lesson-1');
@@ -80,8 +85,10 @@ describe('getVideoPlaybackUrl', () => {
   });
 
   it('returns the proxy URL when caller is the course creator (no enrollment needed)', async () => {
-    mockAdminAuth.mockResolvedValue(makeAdminSession('creator-1'));
-    mockLessonFindUnique.mockResolvedValue(makeLesson({ createdBy: 'creator-1', enrollments: [] }));
+    mockAdminAuth.mockResolvedValue(makeAdminSession('ou-creator'));
+    mockLessonFindUnique.mockResolvedValue(
+      makeLesson({ createdBy: 'ou-creator', enrollments: [] }),
+    );
 
     const url = await getVideoPlaybackUrl('lesson-1');
     expect(url).toBe('/api/video/lesson-1');
@@ -89,19 +96,19 @@ describe('getVideoPlaybackUrl', () => {
 
   it('uses worker session when admin session is absent', async () => {
     mockAdminAuth.mockResolvedValue(null);
-    mockWorkerAuth.mockResolvedValue(makeAdminSession('worker-1'));
+    mockWorkerAuth.mockResolvedValue(makeAdminSession('ou-worker'));
     mockLessonFindUnique.mockResolvedValue(makeLesson({ enrollments: [{ id: 'enr-w' }] }));
 
     const url = await getVideoPlaybackUrl('lesson-1');
     expect(url).toBe('/api/video/lesson-1');
-    // prisma query must have been filtered by worker-1's uid
+    // prisma query must have been filtered by the worker session's active organizationUserId
     expect(mockLessonFindUnique).toHaveBeenCalledWith(
       expect.objectContaining({
         include: expect.objectContaining({
           course: expect.objectContaining({
             include: expect.objectContaining({
               enrollments: expect.objectContaining({
-                where: { userId: 'worker-1' },
+                where: { organizationUserId: 'ou-worker' },
               }),
             }),
           }),
@@ -117,7 +124,7 @@ describe('getVideoPlaybackUrl', () => {
   });
 
   it('throws "Forbidden" when caller is neither creator nor enrolled', async () => {
-    mockAdminAuth.mockResolvedValue(makeAdminSession('outsider'));
+    mockAdminAuth.mockResolvedValue(makeAdminSession('ou-outsider'));
     mockLessonFindUnique.mockResolvedValue(
       makeLesson({ createdBy: 'someone-else', enrollments: [] }),
     );
@@ -130,14 +137,14 @@ describe('getVideoPlaybackUrl', () => {
 // saveVideoProgress
 // ---------------------------------------------------------------------------
 describe('saveVideoProgress', () => {
-  const makeEnrollment = (userId = 'user-1', status = 'enrolled') => ({
-    userId,
+  const makeEnrollment = (organizationUserId = 'ou-1', status = 'enrolled') => ({
+    organizationUserId,
     status,
   });
 
   it('updates videoPositionSeconds and progress', async () => {
-    mockAdminAuth.mockResolvedValue(makeAdminSession('user-1'));
-    mockEnrollmentFindUnique.mockResolvedValue(makeEnrollment('user-1', 'enrolled'));
+    mockAdminAuth.mockResolvedValue(makeAdminSession('ou-1'));
+    mockEnrollmentFindUnique.mockResolvedValue(makeEnrollment('ou-1', 'enrolled'));
 
     await saveVideoProgress('enr-1', 120, 40);
 
@@ -153,8 +160,8 @@ describe('saveVideoProgress', () => {
   });
 
   it('bumps status to lessons_complete when pct >= 95 and prior status is "assigned"', async () => {
-    mockAdminAuth.mockResolvedValue(makeAdminSession('user-1'));
-    mockEnrollmentFindUnique.mockResolvedValue(makeEnrollment('user-1', 'assigned'));
+    mockAdminAuth.mockResolvedValue(makeAdminSession('ou-1'));
+    mockEnrollmentFindUnique.mockResolvedValue(makeEnrollment('ou-1', 'assigned'));
 
     const result = await saveVideoProgress('enr-1', 580, 96);
 
@@ -170,8 +177,8 @@ describe('saveVideoProgress', () => {
   });
 
   it('bumps status to lessons_complete when pct >= 95 and prior status is "enrolled"', async () => {
-    mockAdminAuth.mockResolvedValue(makeAdminSession('user-1'));
-    mockEnrollmentFindUnique.mockResolvedValue(makeEnrollment('user-1', 'enrolled'));
+    mockAdminAuth.mockResolvedValue(makeAdminSession('ou-1'));
+    mockEnrollmentFindUnique.mockResolvedValue(makeEnrollment('ou-1', 'enrolled'));
 
     const result = await saveVideoProgress('enr-1', 580, 95);
 
@@ -184,8 +191,8 @@ describe('saveVideoProgress', () => {
   });
 
   it('does NOT bump status when pct < 95', async () => {
-    mockAdminAuth.mockResolvedValue(makeAdminSession('user-1'));
-    mockEnrollmentFindUnique.mockResolvedValue(makeEnrollment('user-1', 'enrolled'));
+    mockAdminAuth.mockResolvedValue(makeAdminSession('ou-1'));
+    mockEnrollmentFindUnique.mockResolvedValue(makeEnrollment('ou-1', 'enrolled'));
 
     const result = await saveVideoProgress('enr-1', 300, 60);
 
@@ -195,8 +202,8 @@ describe('saveVideoProgress', () => {
   });
 
   it('does NOT bump status when pct >= 95 but status is already lessons_complete', async () => {
-    mockAdminAuth.mockResolvedValue(makeAdminSession('user-1'));
-    mockEnrollmentFindUnique.mockResolvedValue(makeEnrollment('user-1', 'lessons_complete'));
+    mockAdminAuth.mockResolvedValue(makeAdminSession('ou-1'));
+    mockEnrollmentFindUnique.mockResolvedValue(makeEnrollment('ou-1', 'lessons_complete'));
 
     await saveVideoProgress('enr-1', 580, 100);
 
@@ -205,8 +212,8 @@ describe('saveVideoProgress', () => {
   });
 
   it('clamps pct > 100 to 100', async () => {
-    mockAdminAuth.mockResolvedValue(makeAdminSession('user-1'));
-    mockEnrollmentFindUnique.mockResolvedValue(makeEnrollment('user-1', 'enrolled'));
+    mockAdminAuth.mockResolvedValue(makeAdminSession('ou-1'));
+    mockEnrollmentFindUnique.mockResolvedValue(makeEnrollment('ou-1', 'enrolled'));
 
     await saveVideoProgress('enr-1', 600, 150);
 
@@ -215,8 +222,8 @@ describe('saveVideoProgress', () => {
   });
 
   it('clamps pct < 0 to 0', async () => {
-    mockAdminAuth.mockResolvedValue(makeAdminSession('user-1'));
-    mockEnrollmentFindUnique.mockResolvedValue(makeEnrollment('user-1', 'enrolled'));
+    mockAdminAuth.mockResolvedValue(makeAdminSession('ou-1'));
+    mockEnrollmentFindUnique.mockResolvedValue(makeEnrollment('ou-1', 'enrolled'));
 
     await saveVideoProgress('enr-1', 0, -10);
 
@@ -225,15 +232,15 @@ describe('saveVideoProgress', () => {
   });
 
   it('throws "Enrollment not found" when the enrollment belongs to another user', async () => {
-    mockAdminAuth.mockResolvedValue(makeAdminSession('user-1'));
-    mockEnrollmentFindUnique.mockResolvedValue(makeEnrollment('other-user', 'enrolled'));
+    mockAdminAuth.mockResolvedValue(makeAdminSession('ou-1'));
+    mockEnrollmentFindUnique.mockResolvedValue(makeEnrollment('other-ou', 'enrolled'));
 
     await expect(saveVideoProgress('enr-1', 100, 50)).rejects.toThrow('Enrollment not found');
     expect(mockEnrollmentUpdate).not.toHaveBeenCalled();
   });
 
   it('throws "Enrollment not found" when enrollment does not exist (null)', async () => {
-    mockAdminAuth.mockResolvedValue(makeAdminSession('user-1'));
+    mockAdminAuth.mockResolvedValue(makeAdminSession('ou-1'));
     mockEnrollmentFindUnique.mockResolvedValue(null);
 
     await expect(saveVideoProgress('enr-1', 100, 50)).rejects.toThrow('Enrollment not found');

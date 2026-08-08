@@ -18,12 +18,16 @@ import { createEnrollmentForUser, type CreateEnrollmentContext } from './create'
  * helper's existing-enrollment check. Never throws — a failure here must not
  * abort the accept path.
  */
-export async function enrollInviteCourses(userId: string, inviteId: string): Promise<void> {
+export async function enrollInviteCourses(
+  organizationUserId: string,
+  inviteId: string,
+): Promise<void> {
   try {
     const invite = await prisma.invite.findUnique({
       where: { id: inviteId },
       select: {
         organizationId: true,
+        facilityId: true,
         courseAssignments: { select: { courseId: true } },
       },
     });
@@ -32,19 +36,18 @@ export async function enrollInviteCourses(userId: string, inviteId: string): Pro
       return;
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
+    // Only enroll for the invite's own org — never cross-tenant. The accept
+    // paths create this membership in that org just before calling us, so
+    // scoping the lookup by organizationId is the whole guard.
+    const membership = await prisma.organizationUser.findFirst({
+      where: { id: organizationUserId, organizationId: invite.organizationId, active: true },
       select: {
-        email: true,
-        facilityId: true,
-        organizationId: true,
+        user: { select: { email: true } },
         organization: { select: { name: true } },
       },
     });
 
-    // Only enroll for the invite's own org — never cross-tenant. The accept paths
-    // relink/create the user into this org just before calling us.
-    if (!user || user.organizationId !== invite.organizationId) {
+    if (!membership) {
       return;
     }
 
@@ -77,21 +80,21 @@ export async function enrollInviteCourses(userId: string, inviteId: string): Pro
         courseId,
         courseTitle,
         organizationId: invite.organizationId,
-        organizationName: user.organization?.name || 'Your Organization',
-        facilityId: user.facilityId,
+        organizationName: membership.organization?.name || 'Your Organization',
+        facilityId: invite.facilityId,
         assignmentId: assignment?.id ?? null,
         scheduleAt: assignment?.scheduleAt ?? null,
         assignmentDueAt: assignment?.dueAt ?? null,
         assignmentWindowDays: assignment?.dueWindowDays ?? null,
-        enrolledByUserId: userId,
+        enrolledByUserId: organizationUserId,
       };
 
-      const outcome = await createEnrollmentForUser({ email: user.email }, ctx);
+      const outcome = await createEnrollmentForUser({ email: membership.user.email }, ctx);
 
       if (outcome.status === 'enrolled') {
         logger.info({
           msg: '[enrollment] Invite-parked course enrolled on accept',
-          userId,
+          organizationUserId,
           courseId,
           inviteId,
         });
@@ -100,7 +103,7 @@ export async function enrollInviteCourses(userId: string, inviteId: string): Pro
   } catch (err) {
     logger.error({
       msg: '[enrollment] Invite-course enroll on accept failed',
-      userId,
+      organizationUserId,
       inviteId,
       err,
     });

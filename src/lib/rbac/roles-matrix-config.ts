@@ -24,19 +24,24 @@ export interface MatrixRow {
 }
 
 /**
- * Representative worker role for the single "Student" column. All eight
- * worker-category roles share one identical permission ceiling, so any of them
- * reflects the worker row accurately — we use the self-serve default.
+ * Representative worker role. All eight worker-category roles share one
+ * identical permission ceiling, so any of them reflects worker access
+ * accurately — we use the self-serve default. No longer a matrix column (the
+ * RBAC matrix covers admin-tier roles only) but still the canonical stand-in
+ * when worker access needs to be evaluated.
  */
 export const STUDENT_COLUMN_ROLE: RoleKey = 'frontDeskAdmin';
 
+// Column order mirrors the RBAC matrix (the single source of truth). Worker /
+// learner roles are deliberately absent: the matrix governs the admin tier only,
+// and every worker role shares one unchanged permission ceiling.
 export const MATRIX_COLUMNS: MatrixColumn[] = [
   { key: 'owner', label: 'Owner' },
-  { key: 'supervisor', label: 'Supervisor' },
+  { key: 'admin', label: 'Admin' },
   { key: 'hr', label: 'HR' },
-  { key: 'clinicalDirector', label: 'Clinical Director' },
   { key: 'finance', label: 'Finance' },
-  { key: STUDENT_COLUMN_ROLE, label: 'Student' },
+  { key: 'clinicalDirector', label: 'Clinical Director' },
+  { key: 'supervisor', label: 'Facility Supervisor' },
 ];
 
 const perm =
@@ -59,9 +64,11 @@ export const MATRIX_ROWS: MatrixRow[] = [
   // Staff roster section — gated by the same roster-read permission.
   { section: 'NAVIGATION', label: 'Staff Management', check: perm('user.read') },
   { section: 'NAVIGATION', label: 'Billing', check: perm('billing.read') },
-  // Settings has no dedicated permission in the registry; it is owner-only by
-  // product decision (only the org owner may manage facility + team access).
-  { section: 'NAVIGATION', label: 'Settings', check: (roleKey) => roleKey === 'owner' },
+  { section: 'NAVIGATION', label: 'Audits', check: perm('audit.read') },
+  // Facility + team-access settings are an org-level mutation, so Settings keys
+  // off `organization.edit` — which the registry grants only to the
+  // Owner-equivalent seats (Owner, Admin).
+  { section: 'NAVIGATION', label: 'Settings', check: perm('organization.edit') },
   // Help is available to every authenticated user.
   { section: 'NAVIGATION', label: 'Help Center', check: () => true },
 
@@ -73,6 +80,7 @@ export const MATRIX_ROWS: MatrixRow[] = [
   // The registry has no general-vs-clinical split for course assignment, so both
   // assignment rows resolve against the same `assignment.create` permission.
   { section: 'ACTIONS & DATA', label: 'Assign clinical paths', check: perm('assignment.create') },
+  { section: 'ACTIONS & DATA', label: 'Delete documents', check: perm('document.delete') },
   {
     section: 'ACTIONS & DATA',
     label: 'Author clinical assessments',

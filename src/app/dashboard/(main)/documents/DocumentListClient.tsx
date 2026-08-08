@@ -85,6 +85,8 @@ interface DocumentRow {
   filename: string;
   mimeType: string;
   size: number;
+  /** Null for documents uploaded before categories existed. */
+  category?: string | null;
   updatedAt: Date | string;
   user?: DocumentUploader | null;
   versions: DocumentVersionEntry[];
@@ -433,8 +435,15 @@ export default function DocumentListClient({
                       <div className="flex items-center gap-3 sm:gap-[18px]">
                         {getFileIcon(doc.mimeType, doc.filename)}
                         <div className="flex min-w-0 flex-col gap-1">
-                          <span className="truncate text-[14px] font-semibold tracking-[0.31px] text-[#0d0d12] sm:text-[15.5px]">
-                            {doc.filename}
+                          <span className="flex min-w-0 items-center gap-2">
+                            <span className="truncate text-[14px] font-semibold tracking-[0.31px] text-[#0d0d12] sm:text-[15.5px]">
+                              {doc.filename}
+                            </span>
+                            {doc.category && (
+                              <span className="shrink-0 rounded-full bg-[#f1f5f9] px-2 py-0.5 text-[11px] font-semibold text-[#475367]">
+                                {doc.category}
+                              </span>
+                            )}
                           </span>
                           <span className="truncate text-[12px] font-normal tracking-[0.27px] text-[#666d80] sm:text-[13.5px]">
                             {formatFileSize(doc.size)}

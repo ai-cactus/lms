@@ -47,7 +47,7 @@ function makeReq(body: unknown): NextRequest {
 }
 
 const ANSWERS = [{ questionId: 'q1', selectedAnswer: 'A' }];
-const WORKER_SESSION = { user: { id: 'user-1', role: 'worker' } };
+const WORKER_SESSION = { user: { id: 'user-1', organizationUserId: 'ou-1', role: 'worker' } };
 
 function makeAttempt(overrides: Record<string, unknown> = {}) {
   return {
@@ -55,7 +55,7 @@ function makeAttempt(overrides: Record<string, unknown> = {}) {
     enrollmentId: 'enr-1',
     quizId: 'quiz-1',
     timeTaken: null,
-    enrollment: { id: 'enr-1', userId: 'user-1' },
+    enrollment: { id: 'enr-1', organizationUserId: 'ou-1' },
     ...overrides,
   };
 }
@@ -92,7 +92,7 @@ describe('POST /api/quiz/[id]/save — auth', () => {
 
   it('403s when the latest attempt belongs to a different enrollment/user', async () => {
     prismaMock.quizAttempt.findFirst.mockResolvedValue(
-      makeAttempt({ enrollment: { id: 'enr-1', userId: 'someone-else' } }),
+      makeAttempt({ enrollment: { id: 'enr-1', organizationUserId: 'someone-else' } }),
     );
 
     const res = await POST(makeReq({ enrollmentId: 'enr-1', answers: ANSWERS }), { params });

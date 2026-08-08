@@ -60,7 +60,9 @@ type ViewerRole = 'owner' | 'supervisor' | 'hr';
 
 interface SeededScenario {
   viewerId: string;
+  viewerOrgUserId: string;
   targetId: string;
+  targetOrgUserId: string;
   orgId: string;
   facilityId: string;
 }
@@ -80,6 +82,8 @@ async function seedScenario(
     const facilityId = crypto.randomUUID();
     const viewerId = crypto.randomUUID();
     const targetId = crypto.randomUUID();
+    const viewerOrgUserId = crypto.randomUUID();
+    const targetOrgUserId = crypto.randomUUID();
 
     await client.query(
       `INSERT INTO organizations (id, name, slug, primary_email, is_hipaa_compliant, created_at, updated_at)
@@ -92,28 +96,38 @@ async function seedScenario(
       [facilityId, orgId, `Role Change Test ${slug}`],
     );
     await client.query(
-      `INSERT INTO users (id, email, password, role, email_verified, organization_id, facility_id, created_at, updated_at)
-       VALUES ($1, $2, $3, $4::"UserRole", true, $5, $6, NOW(), NOW())`,
-      [viewerId, viewerEmail, hashed, viewerRole, orgId, facilityId],
+      `INSERT INTO users (id, email, password, email_verified, auth_provider, first_name, last_name, full_name, created_at, updated_at)
+       VALUES ($1, $2, $3, true, 'credentials', 'Viewer', 'Test', 'Viewer Test', NOW(), NOW())`,
+      [viewerId, viewerEmail, hashed],
     );
     await client.query(
-      `INSERT INTO profiles (id, email, first_name, last_name, full_name, job_title, created_at, updated_at)
-       VALUES ($1, $2, 'Viewer', 'Test', 'Viewer Test', 'Viewer', NOW(), NOW())`,
-      [viewerId, viewerEmail],
+      `INSERT INTO organization_users (id, user_id, organization_id, role, job_title, active, joined_at, role_assigned_at, created_at, updated_at)
+       VALUES ($1, $2, $3, $4::"UserRole", 'Viewer', true, NOW(), NOW(), NOW(), NOW())`,
+      [viewerOrgUserId, viewerId, orgId, viewerRole],
+    );
+    await client.query(
+      `INSERT INTO organization_user_facilities (id, organization_user_id, facility_id, active, joined_at)
+       VALUES ($1, $2, $3, true, NOW())`,
+      [crypto.randomUUID(), viewerOrgUserId, facilityId],
     );
 
     await client.query(
-      `INSERT INTO users (id, email, password, role, email_verified, organization_id, facility_id, created_at, updated_at)
-       VALUES ($1, $2, $3, 'nurse'::"UserRole", true, $4, $5, NOW(), NOW())`,
-      [targetId, targetEmail, hashed, orgId, facilityId],
+      `INSERT INTO users (id, email, password, email_verified, auth_provider, first_name, last_name, full_name, created_at, updated_at)
+       VALUES ($1, $2, $3, true, 'credentials', 'Target', 'Nurse', 'Target Nurse', NOW(), NOW())`,
+      [targetId, targetEmail, hashed],
     );
     await client.query(
-      `INSERT INTO profiles (id, email, first_name, last_name, full_name, job_title, created_at, updated_at)
-       VALUES ($1, $2, 'Target', 'Nurse', 'Target Nurse', 'Staff Nurse', NOW(), NOW())`,
-      [targetId, targetEmail],
+      `INSERT INTO organization_users (id, user_id, organization_id, role, job_title, active, joined_at, role_assigned_at, created_at, updated_at)
+       VALUES ($1, $2, $3, 'nurse'::"UserRole", 'Staff Nurse', true, NOW(), NOW(), NOW(), NOW())`,
+      [targetOrgUserId, targetId, orgId],
+    );
+    await client.query(
+      `INSERT INTO organization_user_facilities (id, organization_user_id, facility_id, active, joined_at)
+       VALUES ($1, $2, $3, true, NOW())`,
+      [crypto.randomUUID(), targetOrgUserId, facilityId],
     );
 
-    return { viewerId, targetId, orgId, facilityId };
+    return { viewerId, viewerOrgUserId, targetId, targetOrgUserId, orgId, facilityId };
   } finally {
     await client.end();
   }
@@ -122,7 +136,13 @@ async function seedScenario(
 async function cleanupScenario(s: SeededScenario): Promise<void> {
   const client = await db();
   try {
-    await client.query(`DELETE FROM profiles WHERE id = ANY($1)`, [[s.viewerId, s.targetId]]);
+    await client.query(
+      `DELETE FROM organization_user_facilities WHERE organization_user_id = ANY($1)`,
+      [[s.viewerOrgUserId, s.targetOrgUserId]],
+    );
+    await client.query(`DELETE FROM organization_users WHERE id = ANY($1)`, [
+      [s.viewerOrgUserId, s.targetOrgUserId],
+    ]);
     await client.query(`DELETE FROM users WHERE id = ANY($1)`, [[s.viewerId, s.targetId]]);
     await client.query(`DELETE FROM facilities WHERE organization_id = $1`, [s.orgId]);
     await client.query(`DELETE FROM organizations WHERE id = $1`, [s.orgId]);
@@ -147,11 +167,20 @@ async function loginAs(page: Page, email: string, password: string): Promise<voi
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
+// RBAC ruling bundled with the multi-org schema refactor (src/lib/rbac/permissions.ts,
+// 427/427 passing, treated as ground truth): supervisor became READ-ONLY on every
+// resource (readEverythingExceptBilling + self-service perms only) — it no longer
+// holds `user.edit`, so it can no longer reach the "Assign Course" affordance that
+// updateStaffDetails/assignCourseToStaffMember gate on. Owner and hr are unaffected.
+const ASSIGN_COURSE_VISIBLE: Record<ViewerRole, boolean> = {
+  owner: true,
+  supervisor: false,
+  hr: true,
+};
+
 test.describe('Staff role change — no in-place UI path remains', () => {
   for (const role of ['owner', 'supervisor', 'hr'] as const) {
-    test(`${role}: staff profile shows no role-editing affordance (Assign Course only)`, async ({
-      page,
-    }) => {
+    test(`${role}: staff profile shows no role-editing affordance`, async ({ page }) => {
       test.setTimeout(90_000);
       const viewerEmail = uid(`viewer-${role}`);
       const viewerPassword = 'RoleChgView!9';
@@ -160,12 +189,19 @@ test.describe('Staff role change — no in-place UI path remains', () => {
       const seeded = await seedScenario(role, viewerEmail, viewerPassword, targetEmail);
       try {
         await loginAs(page, viewerEmail, viewerPassword);
-        await page.goto(`/dashboard/staff/${seeded.targetId}`);
+        await page.goto(`/dashboard/staff/${seeded.targetOrgUserId}`);
 
-        // Page renders normally and this viewer holds user.edit — "Assign
-        // Course" is the ONLY mutating affordance left on the profile.
         await expect(page.getByRole('heading', { name: 'Trainings' })).toBeVisible();
-        await expect(page.getByRole('button', { name: 'Assign Course' })).toBeVisible();
+
+        if (ASSIGN_COURSE_VISIBLE[role]) {
+          // This viewer holds user.edit — "Assign Course" is the ONLY mutating
+          // affordance left on the profile.
+          await expect(page.getByRole('button', { name: 'Assign Course' })).toBeVisible();
+        } else {
+          // supervisor lost user.edit under the RBAC ruling — no mutating
+          // affordance at all remains on the profile.
+          await expect(page.getByRole('button', { name: 'Assign Course' })).toHaveCount(0);
+        }
 
         // The deleted EditStaffModal's affordances must not exist anywhere.
         await expect(page.getByRole('button', { name: 'Edit Profile' })).toHaveCount(0);
@@ -187,7 +223,7 @@ test.describe('Staff role change — no in-place UI path remains', () => {
     const seeded = await seedScenario('owner', ownerEmail, ownerPassword, uid('unused-target'));
     try {
       await loginAs(page, ownerEmail, ownerPassword);
-      await page.goto(`/dashboard/staff/${seeded.viewerId}`);
+      await page.goto(`/dashboard/staff/${seeded.viewerOrgUserId}`);
 
       await expect(page.getByRole('heading', { name: 'Trainings' })).toBeVisible();
       await expect(page.getByRole('button', { name: 'Edit Profile' })).toHaveCount(0);
@@ -198,47 +234,80 @@ test.describe('Staff role change — no in-place UI path remains', () => {
     }
   });
 
-  for (const role of ['owner', 'supervisor'] as const) {
-    test(`${role}: can remove a staff member via the list kebab; the same menu offers no re-role option`, async ({
-      page,
-    }) => {
-      test.setTimeout(90_000);
-      const viewerEmail = uid(`viewer-${role}`);
-      const viewerPassword = 'RoleChgRemove!9';
-      const targetEmail = uid('target-nurse');
+  test('owner: can remove a staff member via the list kebab; the same menu offers no re-role option', async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    const viewerEmail = uid('viewer-owner');
+    const viewerPassword = 'RoleChgRemove!9';
+    const targetEmail = uid('target-nurse');
 
-      const seeded = await seedScenario(role, viewerEmail, viewerPassword, targetEmail);
-      try {
-        await loginAs(page, viewerEmail, viewerPassword);
-        await page.goto('/dashboard/staff');
-        await page.waitForLoadState('networkidle');
+    const seeded = await seedScenario('owner', viewerEmail, viewerPassword, targetEmail);
+    try {
+      await loginAs(page, viewerEmail, viewerPassword);
+      await page.goto('/dashboard/staff');
+      await page.waitForLoadState('networkidle');
 
-        const staffRow = page.locator('tr', { hasText: targetEmail });
-        await expect(staffRow).toBeVisible();
-        const staffRowMenuBtn = staffRow.getByRole('button', { name: 'Row actions' });
-        await staffRowMenuBtn.waitFor({ state: 'visible' });
-        await staffRowMenuBtn.click();
+      const staffRow = page.locator('tr', { hasText: targetEmail });
+      await expect(staffRow).toBeVisible();
+      const staffRowMenuBtn = staffRow.getByRole('button', { name: 'Row actions' });
+      await staffRowMenuBtn.waitFor({ state: 'visible' });
+      await staffRowMenuBtn.click();
 
-        // No re-role affordance anywhere in the row menu.
-        await expect(page.getByRole('menuitem', { name: /edit profile/i })).toHaveCount(0);
-        await expect(page.getByRole('menuitem', { name: /change role/i })).toHaveCount(0);
+      // No re-role affordance anywhere in the row menu.
+      await expect(page.getByRole('menuitem', { name: /edit profile/i })).toHaveCount(0);
+      await expect(page.getByRole('menuitem', { name: /change role/i })).toHaveCount(0);
 
-        const removeItem = page.getByRole('menuitem', { name: 'Remove Staff' });
-        await expect(removeItem).toBeVisible({ timeout: 15000 });
-        await removeItem.click();
+      const removeItem = page.getByRole('menuitem', { name: 'Remove Staff' });
+      await expect(removeItem).toBeVisible({ timeout: 15000 });
+      await removeItem.click();
 
-        const dialog = page.getByRole('dialog');
-        await expect(dialog).toBeVisible();
-        await dialog.getByRole('button', { name: 'Remove Staff' }).click();
-        await expect(dialog).toBeHidden({ timeout: 15000 });
+      const dialog = page.getByRole('dialog');
+      await expect(dialog).toBeVisible();
+      await dialog.getByRole('button', { name: 'Remove Staff' }).click();
+      await expect(dialog).toBeHidden({ timeout: 15000 });
 
-        // Removed staff no longer appear in the org roster.
-        await expect(page.locator('tr', { hasText: targetEmail })).toHaveCount(0, {
-          timeout: 15000,
-        });
-      } finally {
-        await cleanupScenario(seeded);
-      }
-    });
-  }
+      // Removed staff no longer appear in the org roster.
+      await expect(page.locator('tr', { hasText: targetEmail })).toHaveCount(0, {
+        timeout: 15000,
+      });
+    } finally {
+      await cleanupScenario(seeded);
+    }
+  });
+
+  // RBAC-ruling regression: supervisor lost user.delete (read-only tier), so the
+  // list kebab must offer neither removal nor any re-role affordance for it.
+  test('supervisor: list kebab offers no Remove Staff or re-role affordance', async ({ page }) => {
+    test.setTimeout(90_000);
+    const viewerEmail = uid('viewer-supervisor');
+    const viewerPassword = 'RoleChgRemove!9';
+    const targetEmail = uid('target-nurse');
+
+    const seeded = await seedScenario('supervisor', viewerEmail, viewerPassword, targetEmail);
+    try {
+      await loginAs(page, viewerEmail, viewerPassword);
+      await page.goto('/dashboard/staff');
+      await page.waitForLoadState('networkidle');
+
+      const staffRow = page.locator('tr', { hasText: targetEmail });
+      await expect(staffRow).toBeVisible();
+      const staffRowMenuBtn = staffRow.getByRole('button', { name: 'Row actions' });
+      await staffRowMenuBtn.waitFor({ state: 'visible' });
+      await staffRowMenuBtn.click();
+
+      await expect(page.getByRole('menuitem', { name: 'View Profile' })).toBeVisible({
+        timeout: 15000,
+      });
+      await expect(page.getByRole('menuitem', { name: /edit profile/i })).toHaveCount(0);
+      await expect(page.getByRole('menuitem', { name: /change role/i })).toHaveCount(0);
+      await expect(page.getByRole('menuitem', { name: 'Remove Staff' })).not.toBeVisible();
+      await page.keyboard.press('Escape');
+
+      // Staff member remains in the roster — no removal path was reachable.
+      await expect(page.locator('tr', { hasText: targetEmail })).toBeVisible();
+    } finally {
+      await cleanupScenario(seeded);
+    }
+  });
 });

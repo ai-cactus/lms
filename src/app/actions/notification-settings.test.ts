@@ -52,8 +52,11 @@ describe('updateDigestFrequency — authorization', () => {
     expect(prismaMock.organization.update).not.toHaveBeenCalled();
   });
 
+  // organization.edit resolves to Owner/Admin ONLY per the RBAC ruling — the
+  // error copy was also updated from "organization owner" (singular) to
+  // "organization owner or admin" to reflect the new Owner-equivalent seat.
   it.each(['supervisor', 'hr', 'clinical_director', 'finance'])(
-    'rejects a non-owner admin role (%s) with a distinct owner-only message',
+    'rejects a non-owner-equivalent admin role (%s) with a distinct owner/admin-only message',
     async (role) => {
       mockAuth.mockResolvedValue(sessionFor(role));
 
@@ -61,7 +64,7 @@ describe('updateDigestFrequency — authorization', () => {
 
       expect(result).toEqual({
         success: false,
-        error: 'Only the organization owner can change this setting.',
+        error: 'Only an organization owner or admin can change this setting.',
       });
       expect(prismaMock.organization.update).not.toHaveBeenCalled();
       expect(mockLogger.warn).toHaveBeenCalledWith(
@@ -75,6 +78,16 @@ describe('updateDigestFrequency — authorization', () => {
 
   it('allows the owner role through', async () => {
     mockAuth.mockResolvedValue(sessionFor('owner'));
+
+    const result = await updateDigestFrequency({ frequency: 'weekly' });
+
+    expect(result).toEqual({ success: true });
+  });
+
+  // RBAC ruling: `admin` is a new Owner-equivalent role (full CRUD incl.
+  // billing) and holds organization.edit alongside owner.
+  it('allows the admin role through (Owner-equivalent, new in this RBAC ruling)', async () => {
+    mockAuth.mockResolvedValue(sessionFor('admin'));
 
     const result = await updateDigestFrequency({ frequency: 'weekly' });
 

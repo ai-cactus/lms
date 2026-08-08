@@ -18,35 +18,47 @@ import type { Role } from '@/types/next-auth';
 export interface RoleRecipientOptions {
   /** Redirect to the organization owner when no user holds any target role. */
   fallbackToOwner?: boolean;
-  /** Users never to notify — typically the actor who caused the event. */
+  /** Identities never to notify — typically the actor who caused the event. */
   excludeUserIds?: (string | null | undefined)[];
 }
 
 export interface RoleRecipients {
-  /** In-app notification targets. */
-  userIds: string[];
+  /** In-app notification targets — `OrganizationUser.id` (createNotification's key). */
+  organizationUserIds: string[];
   /** Email targets, with display name when available. */
-  emails: { userId: string; email: string; name: string | null }[];
+  emails: {
+    /** The membership `createNotification` etc. key off. */
+    organizationUserId: string;
+    /** The underlying global identity — used to match against actor/subject ids. */
+    userId: string;
+    email: string;
+    name: string | null;
+  }[];
   /** True when the owner was substituted for an unassigned target role. */
   usedFallback: boolean;
   /** Target roles no user in the organization holds. */
   missingRoles: Role[];
 }
 
-const EMPTY: RoleRecipients = { userIds: [], emails: [], usedFallback: false, missingRoles: [] };
+const EMPTY: RoleRecipients = {
+  organizationUserIds: [],
+  emails: [],
+  usedFallback: false,
+  missingRoles: [],
+};
 
 interface RecipientRow {
   id: string;
-  email: string;
+  userId: string;
   role: Role;
-  profile: { fullName: string | null } | null;
+  user: { email: string; fullName: string | null };
 }
 
 const RECIPIENT_SELECT = {
   id: true,
-  email: true,
+  userId: true,
   role: true,
-  profile: { select: { fullName: true } },
+  user: { select: { email: true, fullName: true } },
 } as const;
 
 function toRecipients(
@@ -55,11 +67,12 @@ function toRecipients(
   missingRoles: Role[],
 ): RoleRecipients {
   return {
-    userIds: rows.map((r) => r.id),
+    organizationUserIds: rows.map((r) => r.id),
     emails: rows.map((r) => ({
-      userId: r.id,
-      email: r.email,
-      name: r.profile?.fullName ?? null,
+      organizationUserId: r.id,
+      userId: r.userId,
+      email: r.user.email,
+      name: r.user.fullName,
     })),
     usedFallback,
     missingRoles,
@@ -86,19 +99,21 @@ export async function resolveRoleRecipients(
 
   const excluded = new Set(options.excludeUserIds?.filter((id): id is string => Boolean(id)) ?? []);
 
-  const holders = (await prisma.user.findMany({
-    where: { organizationId, role: { in: targetRoles } },
+  const holders = await prisma.organizationUser.findMany({
+    where: { organizationId, role: { in: targetRoles }, active: true },
     select: RECIPIENT_SELECT,
     orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-  })) as RecipientRow[];
+  });
 
   const heldRoles = new Set(holders.map((h) => h.role));
   const missingRoles = targetRoles.filter((role) => !heldRoles.has(role));
 
   // Exclusion is applied after the role-coverage check on purpose: an event the
   // actor authored themselves is "covered" by their role, so excluding them must
-  // not masquerade as an unassigned role and trigger an owner fallback.
-  const eligible = holders.filter((h) => !excluded.has(h.id));
+  // not masquerade as an unassigned role and trigger an owner fallback. Matched
+  // on the underlying identity (userId), not the membership row, since the
+  // actor is identified by their global User id.
+  const eligible = holders.filter((h) => !excluded.has(h.userId));
 
   if (holders.length > 0) {
     return toRecipients(eligible, false, missingRoles);
@@ -113,11 +128,11 @@ export async function resolveRoleRecipients(
     return { ...EMPTY, missingRoles };
   }
 
-  const owner = (await prisma.user.findFirst({
-    where: { organizationId, role: 'owner' },
+  const owner = await prisma.organizationUser.findFirst({
+    where: { organizationId, role: 'owner', active: true },
     select: RECIPIENT_SELECT,
     orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-  })) as RecipientRow | null;
+  });
 
   if (!owner) {
     logger.error({
@@ -133,9 +148,9 @@ export async function resolveRoleRecipients(
     orgId: organizationId,
     targetRoles,
     missingRoles,
-    ownerEmail: maskEmail(owner.email),
+    ownerEmail: maskEmail(owner.user.email),
   });
 
-  const ownerRows = excluded.has(owner.id) ? [] : [owner];
+  const ownerRows = excluded.has(owner.userId) ? [] : [owner];
   return toRecipients(ownerRows, true, missingRoles);
 }

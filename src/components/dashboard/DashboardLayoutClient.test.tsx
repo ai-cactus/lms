@@ -7,9 +7,10 @@
  * including workers), so the SETTINGS section renders for everyone, and the mode
  * switcher stays manager-only (`isAdminRole`).
  *
- * The Billing gate resolves to `billing.read` — only `owner` and `finance` hold
- * that permission, so `supervisor` must no longer see the Billing nav entry even
- * though it still sees the (unrelated) admin-only PERFORMANCE section.
+ * The Billing gate resolves to `billing.read` — `owner`, `admin` (Owner-
+ * equivalent) and `finance` hold that permission, so `supervisor` must no
+ * longer see the Billing nav entry even though it still sees the (unrelated)
+ * admin-only MANAGEMENT section.
  *
  * `Header` and `SidebarModeSwitcher` are stubbed — they pull in notification
  * polling/actions and the `enterLearnMode` server action, both unrelated to
@@ -41,7 +42,7 @@ function renderLayout(role: string | undefined) {
 }
 
 describe('DashboardLayoutClient — Billing nav gate (billing.read)', () => {
-  it.each(['owner', 'finance'])('shows the Billing nav link for %s', (role) => {
+  it.each(['owner', 'admin', 'finance'])('shows the Billing nav link for %s', (role) => {
     renderLayout(role);
 
     expect(screen.getByRole('link', { name: /billing/i })).toBeInTheDocument();
@@ -63,9 +64,9 @@ describe('DashboardLayoutClient — Billing nav gate (billing.read)', () => {
   });
 });
 
-describe('DashboardLayoutClient — Settings nav gate (owner-only)', () => {
-  it('shows the Settings nav link for owner', () => {
-    renderLayout('owner');
+describe('DashboardLayoutClient — Settings nav gate (owner or admin, per organization.edit)', () => {
+  it.each(['owner', 'admin'])('shows the Settings nav link for %s', (role) => {
+    renderLayout(role);
 
     expect(screen.getByRole('link', { name: /^settings$/i })).toBeInTheDocument();
   });
@@ -124,17 +125,17 @@ describe('DashboardLayoutClient — SETTINGS section (universal Help Center) vs 
 });
 
 describe('DashboardLayoutClient — Status Tracker moved into MAIN MENU', () => {
-  it('places the Status Tracker link inside the MAIN MENU section, not PERFORMANCE', () => {
+  it('places the Status Tracker link inside the MAIN MENU section, not MANAGEMENT', () => {
     renderLayout('owner');
 
     const mainMenuSection = screen.getByRole('heading', { name: /main menu/i }).closest('div');
-    const performanceSection = screen.getByRole('heading', { name: /performance/i }).closest('div');
+    const managementSection = screen.getByRole('heading', { name: /management/i }).closest('div');
 
     expect(
       within(mainMenuSection!).getByRole('link', { name: /status tracker/i }),
     ).toBeInTheDocument();
     expect(
-      within(performanceSection!).queryByRole('link', { name: /status tracker/i }),
+      within(managementSection!).queryByRole('link', { name: /status tracker/i }),
     ).not.toBeInTheDocument();
   });
 
@@ -145,7 +146,7 @@ describe('DashboardLayoutClient — Status Tracker moved into MAIN MENU', () => 
   });
 });
 
-describe('DashboardLayoutClient — exact sidebar module set for all 5 manager roles + front_desk_admin worker', () => {
+describe('DashboardLayoutClient — exact sidebar module set for all 6 manager roles + front_desk_admin worker', () => {
   // One explicit assertion block per role in the authoritative access matrix,
   // rather than the scattered spot-checks above. Audit Reports is included even
   // though it is not a NAVIGATION matrix row — the component gates it directly
@@ -167,6 +168,22 @@ describe('DashboardLayoutClient — exact sidebar module set for all 5 manager r
   const ROLE_MODULE_MATRIX: Array<{ role: string; visible: NavLabel[] }> = [
     {
       role: 'owner',
+      visible: [
+        'Dashboard',
+        'Documents',
+        'Courses',
+        'Status Tracker',
+        'Staff Management',
+        'Audit Reports',
+        'Billing',
+        'Settings',
+        'Help Center',
+      ],
+    },
+    // Admin is Owner-equivalent (`everything` permission set) per the RBAC
+    // ruling — it must see exactly the same module set as owner.
+    {
+      role: 'admin',
       visible: [
         'Dashboard',
         'Documents',
@@ -203,6 +220,8 @@ describe('DashboardLayoutClient — exact sidebar module set for all 5 manager r
         'Help Center',
       ],
     },
+    // clinicalDirector lost `user.read` under the RBAC ruling ("no Staff
+    // Management module at all now") — Staff Management is no longer visible.
     {
       role: 'clinical_director',
       visible: [
@@ -210,21 +229,15 @@ describe('DashboardLayoutClient — exact sidebar module set for all 5 manager r
         'Documents',
         'Courses',
         'Status Tracker',
-        'Staff Management',
         'Audit Reports',
         'Help Center',
       ],
     },
+    // finance lost `user.read` and `auditPack.read` under the RBAC ruling —
+    // Staff Management and Audit Reports are no longer visible.
     {
       role: 'finance',
-      visible: [
-        'Dashboard',
-        'Courses',
-        'Staff Management',
-        'Audit Reports',
-        'Billing',
-        'Help Center',
-      ],
+      visible: ['Dashboard', 'Courses', 'Billing', 'Help Center'],
     },
     {
       role: 'front_desk_admin',
@@ -255,7 +268,7 @@ describe('DashboardLayoutClient — exact sidebar module set for all 5 manager r
 });
 
 describe('DashboardLayoutClient — Manage/Learn mode switcher gate', () => {
-  it.each(['owner', 'supervisor', 'hr', 'clinical_director', 'finance'])(
+  it.each(['owner', 'admin', 'supervisor', 'hr', 'clinical_director', 'finance'])(
     'renders the switcher (in "manage" mode) for admin role %s',
     (role) => {
       renderLayout(role);

@@ -716,12 +716,12 @@ export async function generateCourseAndQuizV46(
     // would be redundant. Only the fresh-upload path below needs a scan.
     try {
       const session = await auth();
-      if (!session?.user?.id) {
+      if (!session?.user?.id || !session.user.organizationUserId) {
         return { error: 'Unauthorized' };
       }
 
       const doc = await prisma.document.findUnique({
-        where: { id: documentId, userId: session.user.id },
+        where: { id: documentId, organizationUserId: session.user.organizationUserId },
         include: { versions: { orderBy: { version: 'desc' }, take: 1 } },
       });
 

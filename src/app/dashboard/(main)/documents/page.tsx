@@ -59,11 +59,8 @@ export default async function DocumentsPage() {
   const canDelete = can(roleKey, 'document.delete');
 
   const docs = await prisma.document.findMany({
-    where: { user: { organizationId } },
+    where: { organizationUser: { organizationId } },
     include: {
-      user: {
-        select: { email: true, profile: { select: { firstName: true, lastName: true } } },
-      },
       versions: {
         include: {
           phiReport: true,

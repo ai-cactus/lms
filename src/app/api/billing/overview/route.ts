@@ -34,9 +34,10 @@ export async function GET() {
       return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
     }
 
-    const activeStaffCount = await prisma.user.count({
+    const activeStaffCount = await prisma.organizationUser.count({
       where: {
         organizationId,
+        active: true,
         role: { in: [...WORKER_ROLES] },
       },
     });

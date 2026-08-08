@@ -22,14 +22,14 @@ const rowByLabel = (label: string) => {
 };
 
 describe('MATRIX_COLUMNS', () => {
-  it('exposes the six expected columns in order', () => {
+  it('exposes the six expected columns in order — Student column dropped, Admin added', () => {
     expect(MATRIX_COLUMNS.map((c) => c.key)).toEqual([
       'owner',
-      'supervisor',
+      'admin',
       'hr',
-      'clinicalDirector',
       'finance',
-      STUDENT_COLUMN_ROLE,
+      'clinicalDirector',
+      'supervisor',
     ]);
   });
 });
@@ -38,6 +38,14 @@ describe('owner', () => {
   it('is allowed for every row', () => {
     for (const row of MATRIX_ROWS) {
       expect(row.check('owner'), `owner should pass "${row.label}"`).toBe(true);
+    }
+  });
+});
+
+describe('admin', () => {
+  it('is Owner-equivalent — allowed for every row', () => {
+    for (const row of MATRIX_ROWS) {
+      expect(row.check('admin'), `admin should pass "${row.label}"`).toBe(true);
     }
   });
 });
@@ -76,10 +84,17 @@ describe('student (representative worker role)', () => {
 });
 
 describe('supervisor', () => {
-  it('has full facility access except billing (everythingExceptBilling)', () => {
-    expect(rowByLabel('Manage staff roster').check('supervisor')).toBe(true);
-    expect(rowByLabel('Invite & change user roles').check('supervisor')).toBe(true);
-    expect(rowByLabel('Build & edit courses').check('supervisor')).toBe(true);
+  // Supervisor was demoted to READ-ONLY: every prior write-level action
+  // (staff roster edits, invites, course authoring) is now denied.
+  it('is read-only — denied every write-level action (staff roster, invites, course authoring)', () => {
+    expect(rowByLabel('Manage staff roster').check('supervisor')).toBe(false);
+    expect(rowByLabel('Invite & change user roles').check('supervisor')).toBe(false);
+    expect(rowByLabel('Build & edit courses').check('supervisor')).toBe(false);
+    // SUSPECTED BUG (left failing intentionally, see report): the ruling states
+    // supervisor gets "no billing", but `readEverything` in permissions.ts grants
+    // `billing.read` to every resource for every read-only role, including
+    // supervisor, so this currently evaluates true. Not silently updated to
+    // match observed behavior — flagged for human confirmation instead.
     expect(rowByLabel('Billing').check('supervisor')).toBe(false);
     expect(rowByLabel('Manage billing & invoices').check('supervisor')).toBe(false);
     expect(rowByLabel('Settings').check('supervisor')).toBe(false);
@@ -87,10 +102,11 @@ describe('supervisor', () => {
 });
 
 describe('hr', () => {
-  it('manages staff and invites but cannot author courses or reach billing/settings', () => {
+  it('manages staff, invites and now courses, but cannot author clinical assessments or reach billing/settings', () => {
     expect(rowByLabel('Manage staff roster').check('hr')).toBe(true);
     expect(rowByLabel('Invite & change user roles').check('hr')).toBe(true);
-    expect(rowByLabel('Build & edit courses').check('hr')).toBe(false);
+    // HR gained full course CRUD per the updated ruling (previously blocked).
+    expect(rowByLabel('Build & edit courses').check('hr')).toBe(true);
     expect(rowByLabel('Author clinical assessments').check('hr')).toBe(false);
     expect(rowByLabel('Billing').check('hr')).toBe(false);
     expect(rowByLabel('Settings').check('hr')).toBe(false);
@@ -109,11 +125,12 @@ describe('clinicalDirector', () => {
 });
 
 describe('Settings row', () => {
-  it('is owner-only', () => {
+  it('is owner-or-admin only', () => {
     const settings = rowByLabel('Settings');
     expect(settings.check('owner')).toBe(true);
+    expect(settings.check('admin')).toBe(true);
     for (const column of MATRIX_COLUMNS) {
-      if (column.key === 'owner') continue;
+      if (column.key === 'owner' || column.key === 'admin') continue;
       expect(settings.check(column.key), `${column.key} must not access Settings`).toBe(false);
     }
   });
@@ -143,13 +160,21 @@ describe('universal navigation rows (Dashboard, Help Center)', () => {
   });
 });
 
-describe('per-role NAVIGATION module list — exact assertions for all 5 manager roles + worker', () => {
-  // Mirrors the authoritative access matrix: owner sees everything; supervisor
-  // adds every module except Billing/Settings; hr and clinicalDirector match
-  // supervisor minus Staff-roster write access is irrelevant here (NAVIGATION
-  // only cares about read visibility, and both hold user.read); finance trades
+describe('per-role NAVIGATION module list — exact assertions for owner/admin/4 manager roles + worker', () => {
+  // Mirrors the authoritative access matrix: owner and admin see everything
+  // (admin is Owner-equivalent); supervisor keeps read visibility everywhere
+  // it held before (its demotion to read-only affects write actions, not this
+  // NAVIGATION list) except Billing/Settings; hr keeps Staff Management
+  // (retains user.read) and now also reads/authors Courses; clinicalDirector
+  // LOSES Staff Management (no more user.read — no Staff module at all per the
+  // ruling); finance LOSES Staff Management too (lost user.read) and trades
   // Documents/Status Tracker for Billing; the worker representative only holds
   // the three universally-readable modules.
+  //
+  // NOTE: supervisor intentionally omits 'Billing' here even though the live
+  // registry currently grants it (see the suspected-bug callout in the
+  // 'supervisor' describe block above) — not widened to match the
+  // implementation until a human confirms the ruling's "no billing" intent.
   const NAVIGATION_LABELS = [
     'Dashboard',
     'Documents',
@@ -166,6 +191,7 @@ describe('per-role NAVIGATION module list — exact assertions for all 5 manager
     readonly (typeof NAVIGATION_LABELS)[number][],
   ][] = [
     ['owner', [...NAVIGATION_LABELS]],
+    ['admin', [...NAVIGATION_LABELS]],
     [
       'supervisor',
       ['Dashboard', 'Documents', 'Courses', 'Status Tracker', 'Staff Management', 'Help Center'],
@@ -174,11 +200,8 @@ describe('per-role NAVIGATION module list — exact assertions for all 5 manager
       'hr',
       ['Dashboard', 'Documents', 'Courses', 'Status Tracker', 'Staff Management', 'Help Center'],
     ],
-    [
-      'clinicalDirector',
-      ['Dashboard', 'Documents', 'Courses', 'Status Tracker', 'Staff Management', 'Help Center'],
-    ],
-    ['finance', ['Dashboard', 'Courses', 'Staff Management', 'Billing', 'Help Center']],
+    ['clinicalDirector', ['Dashboard', 'Documents', 'Courses', 'Status Tracker', 'Help Center']],
+    ['finance', ['Dashboard', 'Courses', 'Billing', 'Help Center']],
     [STUDENT_COLUMN_ROLE, ['Dashboard', 'Courses', 'Help Center']],
   ];
 
@@ -193,6 +216,9 @@ describe('per-role NAVIGATION module list — exact assertions for all 5 manager
 describe('canAccessModule', () => {
   it('resolves a NAVIGATION row by label against the registry', () => {
     expect(canAccessModule('owner', 'Billing')).toBe(true);
+    // SUSPECTED BUG (left failing, see the 'supervisor' describe block above):
+    // `readEverything` grants billing.read to every read-only role, so this
+    // currently evaluates true despite the ruling's "no billing" for supervisor.
     expect(canAccessModule('supervisor', 'Billing')).toBe(false);
     expect(canAccessModule(STUDENT_COLUMN_ROLE, 'Dashboard')).toBe(true);
     expect(canAccessModule(STUDENT_COLUMN_ROLE, 'Status Tracker')).toBe(false);

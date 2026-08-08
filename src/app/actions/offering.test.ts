@@ -15,7 +15,6 @@ const {
   mockOrgCourseOfferingFindMany,
   mockCourseFindMany,
   mockCourseFindFirst,
-  mockUserFindUnique,
 } = vi.hoisted(() => {
   const mockAdminAuth = vi.fn();
   const mockWorkerAuth = vi.fn();
@@ -27,7 +26,6 @@ const {
   const mockOrgCourseOfferingFindMany = vi.fn();
   const mockCourseFindMany = vi.fn();
   const mockCourseFindFirst = vi.fn();
-  const mockUserFindUnique = vi.fn();
 
   return {
     mockAdminAuth,
@@ -40,14 +38,12 @@ const {
     mockOrgCourseOfferingFindMany,
     mockCourseFindMany,
     mockCourseFindFirst,
-    mockUserFindUnique,
   };
 });
 
 vi.mock('@/lib/prisma', () => {
   const prisma = {
     course: { findMany: mockCourseFindMany, findFirst: mockCourseFindFirst },
-    user: { findUnique: mockUserFindUnique },
     orgCourseOffering: {
       findUnique: mockOrgCourseOfferingFindUnique,
       upsert: mockOrgCourseOfferingUpsert,
@@ -84,10 +80,16 @@ const ADMIN_USER_ID = 'user-admin-1';
 const ORG_ID = 'org-1';
 
 function setupAdminSession() {
-  // org/role are read from the DB-revalidated session (see resolveOrg), not a
-  // separate user query. 'admin' is retired post-RBAC; 'owner' is an admin role.
+  // resolveOrg() reads organizationId/role directly off the session — no DB
+  // lookup — so the JWT session itself must carry them (post multi-org split,
+  // these are resolved into the session at login from the active OrganizationUser).
   mockAdminAuth.mockResolvedValue({
-    user: { id: ADMIN_USER_ID, organizationId: ORG_ID, role: 'owner' },
+    user: {
+      id: ADMIN_USER_ID,
+      organizationId: ORG_ID,
+      organizationUserId: 'ou-admin-1',
+      role: 'owner',
+    },
   });
   mockWorkerAuth.mockResolvedValue(null);
 }
@@ -201,7 +203,7 @@ describe('listAvailableVideoCourses', () => {
 
   it('throws No organization when user has no organizationId', async () => {
     mockAdminAuth.mockResolvedValue({
-      user: { id: ADMIN_USER_ID, organizationId: null, role: 'owner' },
+      user: { id: ADMIN_USER_ID, organizationId: null, organizationUserId: null, role: 'owner' },
     });
     mockWorkerAuth.mockResolvedValue(null);
 
@@ -210,7 +212,12 @@ describe('listAvailableVideoCourses', () => {
 
   it('throws Forbidden when user role is not admin', async () => {
     mockAdminAuth.mockResolvedValue({
-      user: { id: ADMIN_USER_ID, organizationId: ORG_ID, role: 'nurse' },
+      user: {
+        id: ADMIN_USER_ID,
+        organizationId: ORG_ID,
+        organizationUserId: 'ou-worker-1',
+        role: 'nurse',
+      },
     });
     mockWorkerAuth.mockResolvedValue(null);
 
@@ -288,7 +295,12 @@ describe('offerCourseToOrg', () => {
 
   it('throws Forbidden when caller has worker role', async () => {
     mockAdminAuth.mockResolvedValue({
-      user: { id: ADMIN_USER_ID, organizationId: ORG_ID, role: 'nurse' },
+      user: {
+        id: ADMIN_USER_ID,
+        organizationId: ORG_ID,
+        organizationUserId: 'ou-worker-1',
+        role: 'nurse',
+      },
     });
     mockWorkerAuth.mockResolvedValue(null);
 
@@ -377,7 +389,12 @@ describe('withdrawOffering', () => {
 
   it('throws Forbidden when caller has worker role', async () => {
     mockAdminAuth.mockResolvedValue({
-      user: { id: ADMIN_USER_ID, organizationId: ORG_ID, role: 'nurse' },
+      user: {
+        id: ADMIN_USER_ID,
+        organizationId: ORG_ID,
+        organizationUserId: 'ou-worker-1',
+        role: 'nurse',
+      },
     });
     mockWorkerAuth.mockResolvedValue(null);
 

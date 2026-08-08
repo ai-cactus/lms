@@ -3,6 +3,7 @@ import { logger } from '@/lib/logger';
 import { createNotification } from '@/app/actions/notifications';
 import { runRetentionPurge, type RetentionPurgeSummary } from '@/lib/retention';
 import { createEnrollmentForUser, type CreateEnrollmentContext } from '@/lib/enrollment/create';
+import { resolveMemberFacilityIds } from '@/lib/facility/member-facility';
 import type { UserRole, RenewalCycle } from '@/generated/prisma/enums';
 import { SWEEP_LADDER_STAGES, REMINDER_STAGE_DEFAULTS } from './stages';
 import { DEFAULT_TZ, startOfDayInTz, addDays, diffInDaysInTz } from './time';
@@ -177,11 +178,14 @@ async function runRetryPrePass(
         select: {
           dueAt: true,
           course: { select: { title: true } },
-          user: {
+          organizationUser: {
             select: {
-              email: true,
-              profile: { select: { fullName: true } },
-              facility: { select: { timezone: true } },
+              user: { select: { email: true, fullName: true } },
+              facilities: {
+                where: { active: true },
+                take: 1,
+                select: { facility: { select: { timezone: true } } },
+              },
             },
           },
         },
@@ -200,7 +204,7 @@ async function runRetryPrePass(
         continue;
       }
 
-      const tz = log.enrollment.user.facility?.timezone ?? DEFAULT_TZ;
+      const tz = log.enrollment.organizationUser.facilities[0]?.facility.timezone ?? DEFAULT_TZ;
       const resent = await retryReminderEmail({
         sendEmail,
         emailMessage: { id: message.id, toEmail: message.toEmail },
@@ -210,8 +214,8 @@ async function runRetryPrePass(
         dueAt: log.enrollment.dueAt,
         timezone: tz,
         worker: {
-          email: log.enrollment.user.email,
-          name: log.enrollment.user.profile?.fullName ?? null,
+          email: log.enrollment.organizationUser.user.email,
+          name: log.enrollment.organizationUser.user.fullName,
         },
       });
 
@@ -286,23 +290,28 @@ async function runRoleTargetReconcilePrePass(
     const courseIds = [...new Set(assignments.map((a) => a.courseId))];
 
     // One query for every candidate holder across all targeted orgs/roles.
-    const holders = await prisma.user.findMany({
-      where: { organizationId: { in: orgIds }, role: { in: roles } },
-      select: { id: true, email: true, organizationId: true, role: true, roleAssignedAt: true },
+    const holders = await prisma.organizationUser.findMany({
+      where: { organizationId: { in: orgIds }, role: { in: roles }, active: true },
+      select: {
+        id: true,
+        organizationId: true,
+        role: true,
+        roleAssignedAt: true,
+        user: { select: { email: true } },
+      },
     });
     if (holders.length === 0) return;
 
     // One query for the holders already enrolled in the targeted courses.
     const existing = await prisma.enrollment.findMany({
-      where: { courseId: { in: courseIds }, userId: { in: holders.map((h) => h.id) } },
-      select: { userId: true, courseId: true },
+      where: { courseId: { in: courseIds }, organizationUserId: { in: holders.map((h) => h.id) } },
+      select: { organizationUserId: true, courseId: true },
     });
-    const enrolledSet = new Set(existing.map((e) => `${e.userId}|${e.courseId}`));
+    const enrolledSet = new Set(existing.map((e) => `${e.organizationUserId}|${e.courseId}`));
 
     // Index holders by `${organizationId}|${role}` for O(1) assignment matching.
     const holdersByOrgRole = new Map<string, typeof holders>();
     for (const holder of holders) {
-      if (!holder.organizationId) continue;
       const key = `${holder.organizationId}|${holder.role}`;
       const list = holdersByOrgRole.get(key);
       if (list) list.push(holder);
@@ -333,7 +342,7 @@ async function runRoleTargetReconcilePrePass(
             enrolledByUserId: 'system-sweep',
           };
 
-          const outcome = await createEnrollmentForUser({ email: holder.email }, ctx);
+          const outcome = await createEnrollmentForUser({ email: holder.user.email }, ctx);
           // Holders are always existing org members, so `invited` is unreachable
           // here; count it defensively alongside `enrolled` if it ever occurs.
           if (outcome.status === 'enrolled' || outcome.status === 'invited') {
@@ -345,7 +354,7 @@ async function runRoleTargetReconcilePrePass(
           summary.errors += 1;
           logger.error({
             msg: '[reminders] Role-target reconcile failed',
-            userId: holder.id,
+            organizationUserId: holder.id,
             courseId: assignment.courseId,
             err,
           });
@@ -443,11 +452,11 @@ async function runRenewalRetriggerPrePass(
       },
       select: {
         id: true,
-        userId: true,
+        organizationUserId: true,
         courseId: true,
         completedAt: true,
         assignmentId: true,
-        user: { select: { email: true, profile: { select: { fullName: true } } } },
+        organizationUser: { select: { user: { select: { email: true, fullName: true } } } },
       },
     });
     if (candidates.length === 0) return;
@@ -455,18 +464,22 @@ async function runRenewalRetriggerPrePass(
     // Newer-enrollment guard: the latest `startedAt` per (user, course). A
     // candidate whose latest start is after its own completion has already been
     // renewed or re-enrolled, so it must not renew again (idempotency).
-    const userIds = [...new Set(candidates.map((c) => c.userId))];
+    const organizationUserIds = [...new Set(candidates.map((c) => c.organizationUserId))];
     const courseIds = [...new Set(candidates.map((c) => c.courseId))];
     const related = await prisma.enrollment.findMany({
-      where: { userId: { in: userIds }, courseId: { in: courseIds } },
-      select: { userId: true, courseId: true, startedAt: true },
+      where: { organizationUserId: { in: organizationUserIds }, courseId: { in: courseIds } },
+      select: { organizationUserId: true, courseId: true, startedAt: true },
     });
     const latestStartByUserCourse = new Map<string, Date>();
     for (const row of related) {
-      const key = `${row.userId}|${row.courseId}`;
+      const key = `${row.organizationUserId}|${row.courseId}`;
       const current = latestStartByUserCourse.get(key);
       if (!current || row.startedAt > current) latestStartByUserCourse.set(key, row.startedAt);
     }
+
+    // Batched (the file's no-N+1 contract): the renewal is stamped with where the
+    // learner is posted NOW, which may differ from the completed enrollment.
+    const facilityByMember = await resolveMemberFacilityIds(prisma, organizationUserIds);
 
     // Guards against renewing the same (user, course) twice within one run.
     const renewedThisRun = new Set<string>();
@@ -480,7 +493,7 @@ async function runRenewalRetriggerPrePass(
         : undefined;
       if (!assignment) continue;
 
-      const key = `${candidate.userId}|${candidate.courseId}`;
+      const key = `${candidate.organizationUserId}|${candidate.courseId}`;
       if (renewedThisRun.has(key)) continue;
 
       // A start strictly after this completion means a newer enrollment already
@@ -501,8 +514,9 @@ async function runRenewalRetriggerPrePass(
       try {
         const renewal = await prisma.enrollment.create({
           data: {
-            userId: candidate.userId,
+            organizationUserId: candidate.organizationUserId,
             courseId: candidate.courseId,
+            facilityId: facilityByMember.get(candidate.organizationUserId) ?? null,
             status: 'enrolled',
             progress: 0,
             assignmentId: candidate.assignmentId ?? undefined,
@@ -532,7 +546,7 @@ async function runRenewalRetriggerPrePass(
         }
 
         await createNotification({
-          userId: candidate.userId,
+          organizationUserId: candidate.organizationUserId,
           type: 'COURSE_ASSIGNED',
           title: 'Training due for renewal',
           message: `Your training "${assignment.course.title}" is due for renewal. Please complete it again before the deadline.`,
@@ -543,8 +557,8 @@ async function runRenewalRetriggerPrePass(
         try {
           const { sendCourseLaunchEmail } = await import('@/lib/email');
           await sendCourseLaunchEmail(
-            candidate.user.email,
-            candidate.user.profile?.fullName || 'there',
+            candidate.organizationUser.user.email,
+            candidate.organizationUser.user.fullName || 'there',
             assignment.course.title,
             assignment.organization?.name || 'Your Organization',
             renewalDueAt,
@@ -608,7 +622,7 @@ async function runTrackA(
     },
     select: {
       id: true,
-      userId: true,
+      organizationUserId: true,
       courseId: true,
       dueAt: true,
       assignment: {
@@ -619,12 +633,15 @@ async function runTrackA(
         },
       },
       course: { select: { title: true } },
-      user: {
+      organizationUser: {
         select: {
           id: true,
-          email: true,
-          profile: { select: { fullName: true } },
-          facility: { select: { timezone: true } },
+          user: { select: { email: true, fullName: true } },
+          facilities: {
+            where: { active: true },
+            take: 1,
+            select: { facility: { select: { timezone: true } } },
+          },
         },
       },
     },
@@ -645,13 +662,13 @@ async function runTrackA(
       const dueAt = enrollment.dueAt;
       if (!dueAt) continue; // Defensive: the query already filters non-null.
 
-      const tz = enrollment.user.facility?.timezone ?? DEFAULT_TZ;
+      const tz = enrollment.organizationUser.facilities[0]?.facility.timezone ?? DEFAULT_TZ;
       const dueStart = startOfDayInTz(dueAt, tz);
       const stageConfig = enrollment.assignment?.reminderStages ?? [];
       const worker = {
-        id: enrollment.user.id,
-        email: enrollment.user.email,
-        name: enrollment.user.profile?.fullName ?? null,
+        id: enrollment.organizationUser.id,
+        email: enrollment.organizationUser.user.email,
+        name: enrollment.organizationUser.user.fullName,
       };
 
       for (const stage of SWEEP_LADDER_STAGES) {
@@ -683,7 +700,7 @@ async function runTrackA(
         const result = await dispatchLadderStage({
           enrollment: {
             id: enrollment.id,
-            userId: enrollment.userId,
+            organizationUserId: enrollment.organizationUserId,
             courseId: enrollment.courseId,
           },
           courseTitle: enrollment.course.title,
@@ -722,7 +739,7 @@ async function runTrackB(
     where: { status: { in: ['in_progress', 'locked'] } },
     select: {
       id: true,
-      userId: true,
+      organizationUserId: true,
       courseId: true,
       status: true,
       course: {
@@ -731,11 +748,10 @@ async function runTrackB(
           quiz: { select: { passingScore: true, allowedAttempts: true } },
         },
       },
-      user: {
+      organizationUser: {
         select: {
           id: true,
-          email: true,
-          profile: { select: { fullName: true } },
+          user: { select: { email: true, fullName: true } },
         },
       },
     },
@@ -776,9 +792,9 @@ async function runTrackB(
     summary.scanned += 1;
     try {
       const worker = {
-        id: enrollment.user.id,
-        email: enrollment.user.email,
-        name: enrollment.user.profile?.fullName ?? null,
+        id: enrollment.organizationUser.id,
+        email: enrollment.organizationUser.user.email,
+        name: enrollment.organizationUser.user.fullName,
       };
 
       if (enrollment.status === 'in_progress') {
@@ -808,7 +824,7 @@ async function runTrackB(
           courseId: enrollment.courseId,
           courseTitle: enrollment.course.title,
           worker,
-          recipients: { userIds: [], emails: [] },
+          recipients: { organizationUserIds: [], emails: [] },
           nudgeIntervalDays,
           attemptsRemaining,
           now,
@@ -823,7 +839,9 @@ async function runTrackB(
           continue;
         }
 
-        const recipients = await resolveEscalationRecipients({ userId: enrollment.userId });
+        const recipients = await resolveEscalationRecipients({
+          organizationUserId: enrollment.organizationUserId,
+        });
         const result = await dispatchNudge({
           kind: 'ADMIN_REASSIGN',
           enrollmentId: enrollment.id,

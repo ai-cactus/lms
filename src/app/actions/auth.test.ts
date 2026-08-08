@@ -34,6 +34,7 @@ const {
       findFirst: vi.fn(),
       delete: vi.fn(),
     },
+    organizationUser: { findMany: vi.fn(), count: vi.fn() },
   };
 
   // next/headers — returns a Headers-like object
@@ -333,7 +334,9 @@ describe('authenticate — missing user hint (THER-015 #1)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// QA ISSUE 2: authenticate() — removed (org-less non-owner admin) short-circuit
+// QA ISSUE 2: authenticate() — removed-staff short-circuit, now driven by
+// resolveActiveMembership() (membership state), not by role/organizationId
+// fields directly (those no longer live on User post multi-org refactor).
 // ---------------------------------------------------------------------------
 
 describe('authenticate — removed staff member (QA ISSUE 2)', () => {
@@ -341,15 +344,14 @@ describe('authenticate — removed staff member (QA ISSUE 2)', () => {
     vi.clearAllMocks();
     stubHeadersIp();
     mockCheckRateLimit.mockResolvedValue({ allowed: true, remaining: 9, resetInSeconds: 900 });
+    // authenticate()'s lookup only ever selects { id, mfaEnabled } — role/org
+    // no longer live on User, so the fixture never needs those fields.
+    prismaMock.user.findUnique.mockResolvedValue({ id: 'user-1', mfaEnabled: false });
   });
 
-  it('returns the specific "access has been removed" error for a non-owner admin with no organization', async () => {
-    prismaMock.user.findUnique.mockResolvedValue({
-      id: 'user-1',
-      role: 'hr',
-      mfaEnabled: false,
-      organizationId: null,
-    });
+  it('returns the specific "access has been removed" error when every membership has been deactivated', async () => {
+    prismaMock.organizationUser.findMany.mockResolvedValue([]);
+    prismaMock.organizationUser.count.mockResolvedValue(1); // had a membership, now inactive
 
     const result = await authenticate(undefined, makeLoginFormData('removed-hr@example.com'));
 
@@ -360,12 +362,8 @@ describe('authenticate — removed staff member (QA ISSUE 2)', () => {
   });
 
   it('never calls signIn (admin or worker) for a removed staff member', async () => {
-    prismaMock.user.findUnique.mockResolvedValue({
-      id: 'user-1',
-      role: 'finance',
-      mfaEnabled: false,
-      organizationId: null,
-    });
+    prismaMock.organizationUser.findMany.mockResolvedValue([]);
+    prismaMock.organizationUser.count.mockResolvedValue(1);
     const { signIn } = await import('@/auth');
     const { signIn: signInWorker } = await import('@/auth.worker');
 
@@ -375,15 +373,11 @@ describe('authenticate — removed staff member (QA ISSUE 2)', () => {
     expect(signInWorker).not.toHaveBeenCalled();
   });
 
-  it('does NOT short-circuit an org-less OWNER (owner is the only legitimate org-less admin state)', async () => {
-    prismaMock.user.findUnique.mockResolvedValue({
-      id: 'user-1',
-      role: 'owner',
-      mfaEnabled: false,
-      organizationId: null,
-    });
+  it('does NOT short-circuit a user who has never joined any organization (heading to onboarding)', async () => {
+    prismaMock.organizationUser.findMany.mockResolvedValue([]);
+    prismaMock.organizationUser.count.mockResolvedValue(0); // no membership rows at all
 
-    const result = await authenticate(undefined, makeLoginFormData('owner@example.com'));
+    const result = await authenticate(undefined, makeLoginFormData('new-owner@example.com'));
 
     expect(result).not.toEqual({
       error:
@@ -391,29 +385,15 @@ describe('authenticate — removed staff member (QA ISSUE 2)', () => {
     });
   });
 
-  it('does NOT apply the removed-staff check to a worker-tier account with no organization', async () => {
-    prismaMock.user.findUnique.mockResolvedValue({
-      id: 'user-1',
-      role: 'nurse',
-      mfaEnabled: false,
-      organizationId: null,
-    });
-
-    const result = await authenticate(undefined, makeLoginFormData('org-less-worker@example.com'));
-
-    expect(result).not.toEqual({
-      error:
-        'Your access to this organization has been removed. Please contact your administrator.',
-    });
-  });
-
-  it('does not apply the removed-staff check to an admin who still has an organization', async () => {
-    prismaMock.user.findUnique.mockResolvedValue({
-      id: 'user-1',
-      role: 'hr',
-      mfaEnabled: false,
-      organizationId: 'org-1',
-    });
+  it('does not apply the removed-staff check to an account with an active membership', async () => {
+    prismaMock.organizationUser.findMany.mockResolvedValue([
+      {
+        id: 'ou-1',
+        role: 'hr',
+        organizationId: 'org-1',
+        organization: { name: 'Acme', slug: 'acme' },
+      },
+    ]);
 
     const result = await authenticate(undefined, makeLoginFormData('active-hr@example.com'));
 
@@ -421,6 +401,116 @@ describe('authenticate — removed staff member (QA ISSUE 2)', () => {
       error:
         'Your access to this organization has been removed. Please contact your administrator.',
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// authenticate() — post-login destination. A membership-less identity must be
+// routed into onboarding by the ACTION, and at a route that RENDERS: any
+// further redirect on the target (the proxy's onboarding gate, or /onboarding's
+// own redirect to its first step) crashes the client with Next.js E394.
+// ---------------------------------------------------------------------------
+
+describe('authenticate — post-login redirect target', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    stubHeadersIp();
+    mockCheckRateLimit.mockResolvedValue({ allowed: true, remaining: 9, resetInSeconds: 900 });
+    prismaMock.user.findUnique.mockResolvedValue({ id: 'user-1', mfaEnabled: false });
+  });
+
+  it('sends a membership-less identity straight to the onboarding wizard, never /dashboard', async () => {
+    prismaMock.organizationUser.findMany.mockResolvedValue([]);
+    prismaMock.organizationUser.count.mockResolvedValue(0);
+    const { signIn } = await import('@/auth');
+
+    await authenticate(undefined, makeLoginFormData('new-owner@example.com'));
+
+    // /onboarding/step1, not /onboarding — the latter answers with its own
+    // redirect, which a Server Action's redirectTo cannot survive.
+    expect(signIn).toHaveBeenCalledWith(
+      'credentials',
+      expect.objectContaining({ redirectTo: '/onboarding/step1' }),
+    );
+  });
+
+  it('still sends an onboarded admin-tier membership to /dashboard', async () => {
+    prismaMock.organizationUser.findMany.mockResolvedValue([
+      {
+        id: 'ou-1',
+        role: 'hr',
+        organizationId: 'org-1',
+        organization: { name: 'Acme', slug: 'acme' },
+      },
+    ]);
+    const { signIn } = await import('@/auth');
+
+    await authenticate(undefined, makeLoginFormData('active-hr@example.com'));
+
+    expect(signIn).toHaveBeenCalledWith(
+      'credentials',
+      expect.objectContaining({ redirectTo: '/dashboard' }),
+    );
+  });
+
+  it('still sends an onboarded worker membership to /worker', async () => {
+    prismaMock.organizationUser.findMany.mockResolvedValue([
+      {
+        id: 'ou-2',
+        role: 'nurse',
+        organizationId: 'org-1',
+        organization: { name: 'Acme', slug: 'acme' },
+      },
+    ]);
+    const { signIn: signInWorker } = await import('@/auth.worker');
+
+    await authenticate(undefined, makeLoginFormData('nurse@example.com'));
+
+    expect(signInWorker).toHaveBeenCalledWith(
+      'credentials',
+      expect.objectContaining({ redirectTo: '/worker' }),
+    );
+  });
+
+  it('still sends a multi-membership identity with no remembered org to the picker', async () => {
+    prismaMock.organizationUser.findMany.mockResolvedValue([
+      {
+        id: 'ou-1',
+        role: 'hr',
+        organizationId: 'org-1',
+        organization: { name: 'Acme', slug: 'acme' },
+      },
+      {
+        id: 'ou-3',
+        role: 'hr',
+        organizationId: 'org-2',
+        organization: { name: 'Globex', slug: 'globex' },
+      },
+    ]);
+    const { signIn } = await import('@/auth');
+
+    await authenticate(undefined, makeLoginFormData('multi-org@example.com'));
+
+    expect(signIn).toHaveBeenCalledWith(
+      'credentials',
+      expect.objectContaining({ redirectTo: '/select-organization' }),
+    );
+  });
+
+  it('still prefers the MFA challenge over the onboarding destination', async () => {
+    prismaMock.user.findUnique.mockResolvedValue({ id: 'user-1', mfaEnabled: true });
+    prismaMock.organizationUser.findMany.mockResolvedValue([]);
+    prismaMock.organizationUser.count.mockResolvedValue(0);
+    const { createMfaChallenge } = await import('@/lib/mfa-challenge');
+    (createMfaChallenge as ReturnType<typeof vi.fn>).mockResolvedValue('challenge-token');
+    const { signIn } = await import('@/auth');
+
+    await authenticate(undefined, makeLoginFormData('mfa-owner@example.com'));
+
+    expect(signIn).toHaveBeenCalledWith(
+      'credentials',
+      expect.objectContaining({ redirectTo: '/mfa/verify?challenge=challenge-token' }),
+    );
   });
 });
 
@@ -597,7 +687,9 @@ describe('resetPasswordWithToken — emailed-token password reset', () => {
     expect(prismaMock.user.update).toHaveBeenCalledWith({
       where: { email: IDENTIFIER_EMAIL },
       data: { password: 'new-hashed-password', sessionVersion: { increment: 1 } },
-      select: { id: true, role: true, organizationId: true },
+      // Post multi-org split, role/organizationId live on OrganizationUser — the
+      // reset only ever needs the identity id it must bust the cache for.
+      select: { id: true },
     });
     // commit 66aa961: unlike the pre-existing F-059 sessionVersion bump alone
     // (which only self-heals within the cache TTL), this is the active bust

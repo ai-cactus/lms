@@ -30,11 +30,11 @@ export async function getDocumentSignedUrl(
   const version = await prisma.documentVersion.findUnique({
     where: { id: documentVersionId },
     include: {
-      document: { select: { userId: true } },
+      document: { select: { organizationUserId: true } },
     },
   });
 
-  if (!version || version.document.userId !== session.user.id) {
+  if (!version || version.document.organizationUserId !== session.user.organizationUserId) {
     return { error: 'Document not found' };
   }
 

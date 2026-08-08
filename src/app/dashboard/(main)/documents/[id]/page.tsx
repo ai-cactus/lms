@@ -16,7 +16,7 @@ export default async function DocumentViewerPage({ params }: { params: Promise<{
   const doc = await prisma.document.findUnique({
     where: { id },
     include: {
-      user: { select: { organizationId: true } },
+      organizationUser: { select: { organizationId: true } },
       versions: {
         include: {
           phiReport: true,
@@ -34,7 +34,7 @@ export default async function DocumentViewerPage({ params }: { params: Promise<{
     !doc ||
     !session?.user?.id ||
     !isAdminRole(session.user.role) ||
-    doc.user.organizationId !== session.user.organizationId
+    doc.organizationUser.organizationId !== session.user.organizationId
   ) {
     notFound();
   }

@@ -32,11 +32,13 @@ import {
   ChevronRight,
   Send,
   Copy,
+  Building2,
 } from 'lucide-react';
 import EmptyTableState from '@/components/ui/EmptyTableState';
 import { cn } from '@/lib/utils';
 import { can } from '@/lib/rbac/permissions';
 import { dbRoleToRoleKey, getRoleDisplayName } from '@/lib/rbac/role-utils';
+import type { AccessibleFacility } from '@/lib/facility/scope';
 import type { Role } from '@/types/next-auth';
 
 interface StaffEntry {
@@ -50,6 +52,8 @@ interface StaffEntry {
   isPending: boolean;
   isExpired: boolean;
   token: string | null;
+  /** Active facility assignments; always empty for pending invites. */
+  facilities: { id: string; name: string }[];
 }
 
 import OrganizationActivationModal from '@/components/dashboard/OrganizationActivationModal';
@@ -57,6 +61,7 @@ import InviteStaffModal from './InviteStaffModal';
 import RevokeInviteModal from './RevokeInviteModal';
 import RemoveStaffModal from './RemoveStaffModal';
 import WorkerLimitModal from './WorkerLimitModal';
+import ChangeFacilityModal, { type ChangeFacilityMember } from './ChangeFacilityModal';
 import { generateStaffActivityPdfAndEmail, resendInvite } from '@/app/actions/staff';
 
 interface StaffListClientProps {
@@ -68,6 +73,10 @@ interface StaffListClientProps {
   currentWorkerCount: number;
   pendingInviteCount: number;
   inviterRole: Role;
+  /** The viewer's own membership id — their row never offers Remove Staff. */
+  viewerOrganizationUserId: string | null;
+  /** Facilities the viewer may move staff into; empty for single-site orgs. */
+  facilities: AccessibleFacility[];
 }
 
 const tableHeadClass =
@@ -82,6 +91,8 @@ export default function StaffListClient({
   currentWorkerCount,
   pendingInviteCount,
   inviterRole,
+  viewerOrganizationUserId,
+  facilities,
 }: StaffListClientProps) {
   // Only roles that actually hold the relevant permission see each affordance;
   // the server still enforces these, this just hides the dead-end UI (e.g. finance
@@ -91,6 +102,9 @@ export default function StaffListClient({
   const canRemoveStaff = can(inviterRoleKey, 'user.delete');
   const canEditInvite = can(inviterRoleKey, 'invite.edit');
   const canDeleteInvite = can(inviterRoleKey, 'invite.delete');
+  // Reassigning a facility is a membership edit; with no facilities to move
+  // between the action is a dead end, so it is hidden too.
+  const canChangeFacility = can(inviterRoleKey, 'user.edit') && facilities.length > 0;
 
   // Total seats consumed = active workers + pending invites
   const totalUsed = currentWorkerCount + pendingInviteCount;
@@ -104,6 +118,9 @@ export default function StaffListClient({
     name: string;
     email: string;
   } | null>(null);
+  const [changeFacilityTarget, setChangeFacilityTarget] = useState<ChangeFacilityMember | null>(
+    null,
+  );
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -273,6 +290,15 @@ export default function StaffListClient({
         />
       )}
 
+      {changeFacilityTarget && (
+        <ChangeFacilityModal
+          isOpen={!!changeFacilityTarget}
+          onClose={() => setChangeFacilityTarget(null)}
+          member={changeFacilityTarget}
+          facilities={facilities}
+        />
+      )}
+
       <WorkerLimitModal
         isOpen={showWorkerLimitModal}
         onClose={() => setShowWorkerLimitModal(false)}
@@ -396,6 +422,9 @@ export default function StaffListClient({
                 >
                   Role
                 </TableHead>
+                <TableHead className={cn(tableHeadClass, 'hidden px-5 lg:table-cell lg:w-[190px]')}>
+                  Facility
+                </TableHead>
                 <TableHead
                   className={cn(
                     tableHeadClass,
@@ -480,6 +509,29 @@ export default function StaffListClient({
                       </span>
                     </TableCell>
 
+                    <TableCell className="hidden px-5 py-0 lg:table-cell">
+                      {user.facilities.length > 0 ? (
+                        <span className="flex items-center gap-1.5 text-[14px] font-medium text-[#0d0d12]">
+                          <span className="truncate" title={user.facilities[0].name}>
+                            {user.facilities[0].name}
+                          </span>
+                          {user.facilities.length > 1 && (
+                            <span
+                              className="shrink-0 rounded-full bg-[#f1f5f9] px-1.5 py-0.5 text-[11px] font-semibold text-[#475367]"
+                              title={user.facilities
+                                .slice(1)
+                                .map((f) => f.name)
+                                .join(', ')}
+                            >
+                              +{user.facilities.length - 1}
+                            </span>
+                          )}
+                        </span>
+                      ) : (
+                        <span className="text-[14px] font-medium text-[#a4abb8]">&mdash;</span>
+                      )}
+                    </TableCell>
+
                     {/* Date cell — hidden on small screens */}
                     <TableCell className="hidden px-5 py-0 text-[15.5px] font-medium whitespace-nowrap text-[#666d80] sm:table-cell">
                       {getRelativeTime(user.dateInvited)}
@@ -558,7 +610,28 @@ export default function StaffListClient({
                                 disabled: exportingUserId === user.id,
                                 onSelect: () => handleExportPdf(user.id),
                               },
-                              ...(canRemoveStaff
+                              // The owner row is immutable for everyone: no
+                              // facility reassignment and no removal (the
+                              // server rejects both independently).
+                              ...(canChangeFacility && user.role !== 'owner'
+                                ? [
+                                    {
+                                      label: 'Change Facility',
+                                      icon: <Building2 className="size-4" />,
+                                      onSelect: () =>
+                                        setChangeFacilityTarget({
+                                          id: user.id,
+                                          name: user.name,
+                                          email: user.email,
+                                          avatarUrl: user.avatarUrl,
+                                          currentFacilityName: user.facilities[0]?.name ?? null,
+                                        }),
+                                    },
+                                  ]
+                                : []),
+                              ...(canRemoveStaff &&
+                              user.id !== viewerOrganizationUserId &&
+                              user.role !== 'owner'
                                 ? [
                                     {
                                       label: 'Remove Staff',
@@ -589,7 +662,7 @@ export default function StaffListClient({
                 <EmptyTableState
                   message="No staff match your search."
                   subMessage="Try a different name or email."
-                  colSpan={4}
+                  colSpan={5}
                   asTableRow
                 />
               )}

@@ -2,11 +2,16 @@
  * F-038 regression test for the public /verify-certificate/[id] page.
  *
  * Bug: the recipient's raw email address was used as a fallback display value
- * (`certificate.user.profile?.fullName || certificate.user.email`) on a page
- * that is intentionally reachable WITHOUT authentication (anyone scanning the
- * certificate's QR code lands here). Fixed to fall back to a generic
- * "Certificate holder" label, and the Prisma `select` no longer even fetches
- * the user's email field.
+ * on a page that is intentionally reachable WITHOUT authentication (anyone
+ * scanning the certificate's QR code lands here). Fixed to fall back to a
+ * generic "Certificate holder" label, and the Prisma `select` no longer even
+ * fetches the user's email field.
+ *
+ * Post multi-org refactor: `Certificate.userId` is now `organizationUserId`,
+ * so the recipient's name/org are read via
+ * `certificate.organizationUser.user.fullName` /
+ * `certificate.organizationUser.organization.name` (the dropped `Profile`
+ * model's `fullName` now lives directly on `User`).
  */
 
 import { render, screen } from '@testing-library/react';
@@ -34,13 +39,13 @@ describe('VerifyCertificatePage — no email fallback/selection (F-038)', () => 
       enrollmentId: 'enrollment-1',
       issuedAt: new Date('2026-01-15'),
       course: { title: 'Fire Safety' },
-      user: {
-        profile: { fullName: null },
+      organizationUser: {
+        user: { fullName: null },
         organization: { name: 'Acme Co' },
         // Note: a real DB response (per the fixed `select`) would never even
         // include `email` here — this mock proves the page doesn't rely on
-        // it being absent, i.e. it never *reads* certificate.user.email even
-        // when present, only certificate.user.profile?.fullName.
+        // it being absent, i.e. it never *reads* an email field, only
+        // organizationUser.user.fullName.
       },
     });
 
@@ -57,8 +62,8 @@ describe('VerifyCertificatePage — no email fallback/selection (F-038)', () => 
       enrollmentId: 'enrollment-1',
       issuedAt: new Date('2026-01-15'),
       course: { title: 'Fire Safety' },
-      user: {
-        profile: { fullName: 'Jane Doe' },
+      organizationUser: {
+        user: { fullName: 'Jane Doe' },
         organization: { name: 'Acme Co' },
       },
     });
@@ -69,7 +74,7 @@ describe('VerifyCertificatePage — no email fallback/selection (F-038)', () => 
     expect(screen.getByText('Jane Doe')).toBeInTheDocument();
 
     const call = prismaMock.certificate.findUnique.mock.calls[0][0];
-    expect(call.select.user.select).not.toHaveProperty('email');
+    expect(call.select.organizationUser.select.user.select).not.toHaveProperty('email');
   });
 
   it('renders the not-found state without touching user data when no certificate matches', async () => {

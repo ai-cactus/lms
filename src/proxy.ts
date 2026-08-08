@@ -8,10 +8,14 @@ import type { Role } from '@/types/next-auth';
 
 // All route rules live in one config object — easy to audit and extend.
 // `allowedRoles` is a set: after the RBAC migration the admin portal is shared by
-// every admin-tier role (owner/supervisor/hr/clinical_director/finance). The
+// every admin-tier role (owner/admin/supervisor/hr/clinical_director/finance). The
 // worker portal accepts every role at the proxy so an admin bridged into learner
 // mode (see actions/session-bridge.ts) can reach /worker on their worker cookie;
 // the worker LOGIN form still gates on WORKER_ROLES.
+//
+// `token.organizationId` is the ACTIVE organization of the session (one identity
+// may hold several memberships); it is null only while a user has no membership
+// yet, which is exactly what the onboarding gates below key off.
 const ROUTE_CONFIG = {
   worker: {
     cookiePrefix: 'worker',
@@ -28,6 +32,7 @@ const ROUTE_CONFIG = {
     allowedRoles: ADMIN_ROLES,
     loginPath: '/login',
     paths: ['/dashboard', '/onboarding', '/login', '/api/auth'],
+    onboardingPath: '/onboarding',
     homePath: '/dashboard',
   },
 } as const;
@@ -162,22 +167,50 @@ async function handleProxy(req: NextRequest, correlationId: string): Promise<Nex
     return NextResponse.redirect(new URL(cfg.loginPath, req.url));
   }
 
-  // Worker-specific: force onboarding if no org
-  if (
-    context === 'worker' &&
-    !token.organizationId &&
-    pathname !== ROUTE_CONFIG.worker.onboardingPath
-  ) {
-    return NextResponse.redirect(new URL(ROUTE_CONFIG.worker.onboardingPath, req.url));
-  }
+  // Server Actions POST to the page they were invoked from and carry a
+  // `next-action` header. Answering one with a redirect to a DIFFERENT route
+  // crashes the client ("An unexpected response was received from the server",
+  // Next.js E394) instead of navigating. The onboarding gates below are purely
+  // about where a session BELONGS, so they are safely deferred to the ordinary
+  // GET/RSC navigation that follows the action — which hits them normally. The
+  // auth/role/MFA gates above are deliberately NOT deferred: those must deny
+  // the action itself.
+  const isServerAction = req.method === 'POST' && req.headers.has('next-action');
 
-  // Worker with org trying to hit onboarding — send home
-  if (
-    context === 'worker' &&
-    token.organizationId &&
-    pathname === ROUTE_CONFIG.worker.onboardingPath
-  ) {
-    return NextResponse.redirect(new URL(ROUTE_CONFIG.worker.homePath, req.url));
+  if (!isServerAction) {
+    // Worker-specific: force onboarding if no org
+    if (
+      context === 'worker' &&
+      !token.organizationId &&
+      pathname !== ROUTE_CONFIG.worker.onboardingPath
+    ) {
+      return NextResponse.redirect(new URL(ROUTE_CONFIG.worker.onboardingPath, req.url));
+    }
+
+    // Worker with org trying to hit onboarding — send home
+    if (
+      context === 'worker' &&
+      token.organizationId &&
+      pathname === ROUTE_CONFIG.worker.onboardingPath
+    ) {
+      return NextResponse.redirect(new URL(ROUTE_CONFIG.worker.homePath, req.url));
+    }
+
+    // Admin-specific: mirror the worker gates above. A founder whose session has
+    // no organization yet belongs in onboarding, not on a dashboard that can only
+    // render "no organization"; once the membership exists, onboarding is done.
+    //
+    // The proxy decodes the JWT without running the auth callbacks, so it sees
+    // whatever the cookie last stored. The onboarding-complete page re-mints the
+    // cookie (via update()) before it navigates to /dashboard, so a freshly
+    // onboarded admin is never bounced back here.
+    if (context === 'admin' && !token.organizationId && pathname.startsWith('/dashboard')) {
+      return NextResponse.redirect(new URL(ROUTE_CONFIG.admin.onboardingPath, req.url));
+    }
+
+    if (context === 'admin' && token.organizationId && pathname.startsWith('/onboarding')) {
+      return NextResponse.redirect(new URL(ROUTE_CONFIG.admin.homePath, req.url));
+    }
   }
 
   // ✅ Both admin and worker sessions can coexist independently.

@@ -43,16 +43,19 @@ import { issueCertificate } from './certificate';
 const WORKER_ID = 'worker-1';
 const ENROLLMENT_ID = 'enrollment-abc-123';
 
+const ORG_USER_ID = 'ou-1';
+
 function makeEnrollment(score: number | null | undefined) {
   return {
     id: ENROLLMENT_ID,
-    userId: WORKER_ID,
+    organizationUserId: ORG_USER_ID,
+    courseId: 'course-1',
     status: 'completed',
     score,
     certificate: null,
-    user: {
+    organizationUser: {
       organizationId: 'org-1',
-      profile: { fullName: 'Jane Worker' },
+      user: { fullName: 'Jane Worker' },
       organization: { name: 'Acme Co' },
     },
     course: { title: 'Safety 101' },
@@ -64,7 +67,14 @@ beforeEach(() => {
   // Worker issuing their own certificate — resolveSession() checks admin first,
   // then worker; admin auth resolves null so the worker session is used.
   mockAdminAuth.mockResolvedValue(null);
-  mockWorkerAuth.mockResolvedValue({ user: { id: WORKER_ID, role: 'worker' } });
+  mockWorkerAuth.mockResolvedValue({
+    user: {
+      id: WORKER_ID,
+      role: 'worker',
+      organizationUserId: ORG_USER_ID,
+      organizationId: 'org-1',
+    },
+  });
   mockUploadFile.mockResolvedValue({ storageUri: 'minio://certs/cert.pdf' });
   mockGeneratePdf.mockResolvedValue(Buffer.from('pdf-bytes'));
   prismaMock.certificate.create.mockImplementation(({ data }: { data: Record<string, unknown> }) =>

@@ -14,16 +14,13 @@ export async function POST(req: NextRequest) {
     const session = await auth();
     if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { organizationId: true, role: true },
-    });
-    if (!user || !isAdminRole(user.role) || !user.organizationId) {
+    const { role, organizationId } = session.user;
+    if (!isAdminRole(role) || !organizationId) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const org = await prisma.organization.findUnique({
-      where: { id: user.organizationId },
+      where: { id: organizationId },
       select: { hasAuditorAccess: true },
     });
     if (!org?.hasAuditorAccess) {
@@ -56,18 +53,16 @@ export async function POST(req: NextRequest) {
     // ── Authorize scopeId belongs to this org ──
     if (scope === 'course') {
       if (!scopeId) return NextResponse.json({ error: 'scopeId required' }, { status: 400 });
-      const orgUserIds = await prisma.user
-        .findMany({ where: { organizationId: user.organizationId }, select: { id: true } })
-        .then((u) => u.map((x) => x.id));
       const course = await prisma.course.findFirst({
-        where: { id: scopeId, createdBy: { in: orgUserIds } },
+        where: { id: scopeId, creator: { organizationId } },
         select: { id: true },
       });
       if (!course) return NextResponse.json({ error: 'Course not found' }, { status: 404 });
     } else if (scope === 'staff') {
       if (!scopeId) return NextResponse.json({ error: 'scopeId required' }, { status: 400 });
-      const staff = await prisma.user.findFirst({
-        where: { id: scopeId, organizationId: user.organizationId },
+      // scopeId is the OrganizationUser id — see auditor-export-worker.ts.
+      const staff = await prisma.organizationUser.findFirst({
+        where: { id: scopeId, organizationId },
         select: { id: true },
       });
       if (!staff) return NextResponse.json({ error: 'Staff not found' }, { status: 404 });
@@ -106,7 +101,7 @@ export async function POST(req: NextRequest) {
     getExportWorker();
 
     await auditorExportQueue.add('export-org-data', {
-      organizationId: user.organizationId,
+      organizationId,
       dbJobId: dbJob.id,
       scope,
       scopeId,

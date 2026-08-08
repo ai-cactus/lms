@@ -16,9 +16,9 @@ async function resolveSession() {
 }
 
 // ---------------------------------------------------------------------------
-// Org resolver — derives organizationId and asserts admin from the session.
-// role/organizationId are authoritative on the DB-revalidated session, so this
-// needs no extra user query.
+// Org resolver — derives the ACTIVE membership's organizationId and asserts
+// admin from the session. role/organizationId are authoritative on the
+// DB-revalidated session, so this needs no extra user query.
 // ---------------------------------------------------------------------------
 function resolveOrg(sessionUser: { organizationId: string | null; role: Role }): string {
   if (!sessionUser.organizationId) {
@@ -184,7 +184,7 @@ export async function listOfferedVideoCourses(): Promise<OfferedVideoCourseRow[]
   const counts = courseIds.length
     ? await prisma.enrollment.groupBy({
         by: ['courseId'],
-        where: { courseId: { in: courseIds }, user: { organizationId } },
+        where: { courseId: { in: courseIds }, organizationUser: { organizationId } },
         _count: { _all: true },
       })
     : [];

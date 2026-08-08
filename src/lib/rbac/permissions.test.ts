@@ -2,12 +2,15 @@
  * Unit tests for src/lib/rbac/permissions.ts — the can() checker.
  *
  * Key invariants validated:
- *   - supervisor has everything EXCEPT billing.*
- *   - owner has everything INCLUDING billing.*
- *   - facility.create/edit/delete held only by owner + supervisor; facility.read
- *     is readable by every role (everyone can view their facility)
- *   - finance has billing.* and facility.read but not facility.create/edit/delete
- *   - hr has invite.create + facility.read but not facility.edit or billing.*
+ *   - owner and admin both have everything INCLUDING billing.* (admin is
+ *     Owner-equivalent, delegated rather than established at org creation)
+ *   - supervisor was demoted to READ-ONLY: read on every resource plus
+ *     personal self-service actions only — no create/edit/delete anywhere,
+ *     including facility.create/edit (full facility CRUD is now owner/admin-only)
+ *   - hr has documents CRUD + courses CRUD (gained) and audit.read (gained)
+ *   - clinicalDirector has documents CRU (no delete) and audit.read (gained),
+ *     but no user.read (no Staff module)
+ *   - finance is billing-only: lost user.read and auditPack.read
  *   - every worker-category role shares one identical permission ceiling:
  *     course.read, enrollment.read/edit, assessment.create/read,
  *     certificate.read, organization.read, facility.read,
@@ -18,7 +21,14 @@
 import { describe, it, expect } from 'vitest';
 import { can, getRoles, permissions, RESOURCES, roles, type RoleKey } from './permissions';
 
-const MANAGER_ROLE_KEYS = ['owner', 'supervisor', 'hr', 'clinicalDirector', 'finance'] as const;
+const MANAGER_ROLE_KEYS = [
+  'owner',
+  'admin',
+  'supervisor',
+  'hr',
+  'clinicalDirector',
+  'finance',
+] as const;
 
 const WORKER_ROLE_KEYS = [
   'psychiatristPrescriber',
@@ -45,21 +55,34 @@ const WORKER_PERMISSION_CEILING = [
   'notification.delete',
 ] as const;
 
-describe('can() — supervisor (everything except billing)', () => {
-  it('supervisor is denied billing.read', () => {
-    expect(can('supervisor', 'billing.read')).toBe(false);
-  });
-  it('supervisor is denied billing.create', () => {
+describe('can() — supervisor (demoted to read-only + self-service)', () => {
+  // Every resource's `.read` action, per the ruling's "read on every resource".
+  // billing.read is deliberately EXCLUDED here per the ruling's explicit
+  // "no billing" — see the SUSPECTED BUG callout below where the current
+  // `readEverything` implementation disagrees and grants it anyway.
+  const SUPERVISOR_PERMISSIONS = [
+    ...RESOURCES.filter((r) => r !== 'billing').map((r) => `${r}.read` as const),
+    'enrollment.edit',
+    'assessment.create',
+    'notification.create',
+    'notification.edit',
+    'notification.delete',
+  ] as const;
+
+  it('supervisor is denied billing.create/edit/delete', () => {
     expect(can('supervisor', 'billing.create')).toBe(false);
-  });
-  it('supervisor is denied billing.edit', () => {
     expect(can('supervisor', 'billing.edit')).toBe(false);
-  });
-  it('supervisor is denied billing.delete', () => {
     expect(can('supervisor', 'billing.delete')).toBe(false);
   });
-  it('supervisor has facility.edit', () => {
-    expect(can('supervisor', 'facility.edit')).toBe(true);
+  it('supervisor is denied billing.read', () => {
+    // SUSPECTED BUG (left failing intentionally, see report): the ruling says
+    // supervisor gets "no billing", but `readEverything` in permissions.ts
+    // grants `billing.read` to every read-only role including supervisor.
+    // Not silently updated to match observed behavior.
+    expect(can('supervisor', 'billing.read')).toBe(false);
+  });
+  it('supervisor is denied facility.edit (full facility CRUD is now owner/admin-only)', () => {
+    expect(can('supervisor', 'facility.edit')).toBe(false);
   });
   it('supervisor has facility.read', () => {
     expect(can('supervisor', 'facility.read')).toBe(true);
@@ -67,15 +90,15 @@ describe('can() — supervisor (everything except billing)', () => {
   it('supervisor has organization.read', () => {
     expect(can('supervisor', 'organization.read')).toBe(true);
   });
-  it('supervisor has user.create', () => {
-    expect(can('supervisor', 'user.create')).toBe(true);
+  it('supervisor is denied user.create (no write verbs anywhere)', () => {
+    expect(can('supervisor', 'user.create')).toBe(false);
   });
-  it('supervisor has course.delete', () => {
-    expect(can('supervisor', 'course.delete')).toBe(true);
+  it('supervisor is denied course.delete (no write verbs anywhere)', () => {
+    expect(can('supervisor', 'course.delete')).toBe(false);
   });
-  it('supervisor has every permission EXCEPT billing.* (regression guard)', () => {
+  it('supervisor has exactly read-on-every-resource plus self-service permissions (regression guard)', () => {
     for (const permission of permissions) {
-      const expected = !permission.startsWith('billing.');
+      const expected = (SUPERVISOR_PERMISSIONS as readonly string[]).includes(permission);
       expect(can('supervisor', permission), `supervisor: ${permission}`).toBe(expected);
     }
   });
@@ -107,6 +130,24 @@ describe('can() — owner (everything including billing)', () => {
   });
 });
 
+describe('can() — admin (Owner-equivalent, delegated)', () => {
+  it('admin has billing.read and billing.edit', () => {
+    expect(can('admin', 'billing.read')).toBe(true);
+    expect(can('admin', 'billing.edit')).toBe(true);
+  });
+  it('admin has every permission for every resource', () => {
+    const actions = ['create', 'read', 'edit', 'delete'] as const;
+    for (const resource of RESOURCES) {
+      for (const action of actions) {
+        expect(
+          can('admin', `${resource}.${action}`),
+          `admin should have ${resource}.${action}`,
+        ).toBe(true);
+      }
+    }
+  });
+});
+
 describe('can() — hr (regression guard: exact permission set)', () => {
   const HR_PERMISSIONS = [
     'user.create',
@@ -124,12 +165,22 @@ describe('can() — hr (regression guard: exact permission set)', () => {
     'assignment.read',
     'assignment.edit',
     'assignment.delete',
+    // HR gained full course CRUD per the updated ruling (previously read-only).
+    'course.create',
     'course.read',
+    'course.edit',
+    'course.delete',
     'certificate.read',
     'category.read',
+    // HR gained full document CRUD per the updated ruling (previously read-only).
+    'document.create',
     'document.read',
+    'document.edit',
+    'document.delete',
     'organization.read',
     'facility.read',
+    // HR gained audit.read per the updated ruling (read-only on the trail).
+    'audit.read',
     'auditPack.create',
     'auditPack.read',
     'notification.create',
@@ -156,6 +207,19 @@ describe('can() — hr (regression guard: exact permission set)', () => {
   it('hr has enrollment.create', () => {
     expect(can('hr', 'enrollment.create')).toBe(true);
   });
+  it('hr has course.create/edit/delete (gained)', () => {
+    expect(can('hr', 'course.create')).toBe(true);
+    expect(can('hr', 'course.edit')).toBe(true);
+    expect(can('hr', 'course.delete')).toBe(true);
+  });
+  it('hr has document.create/edit/delete (gained)', () => {
+    expect(can('hr', 'document.create')).toBe(true);
+    expect(can('hr', 'document.edit')).toBe(true);
+    expect(can('hr', 'document.delete')).toBe(true);
+  });
+  it('hr has audit.read (gained)', () => {
+    expect(can('hr', 'audit.read')).toBe(true);
+  });
   it('hr has exactly the expected permission set — nothing more, nothing less', () => {
     for (const permission of permissions) {
       const expected = (HR_PERMISSIONS as readonly string[]).includes(permission);
@@ -172,11 +236,9 @@ describe('can() — finance (regression guard: exact permission set)', () => {
     'billing.delete',
     'organization.read',
     'facility.read',
-    'user.read',
     'course.read',
     'enrollment.read',
     'certificate.read',
-    'auditPack.read',
     'notification.create',
     'notification.read',
     'notification.edit',
@@ -200,6 +262,12 @@ describe('can() — finance (regression guard: exact permission set)', () => {
   });
   it('finance is denied user.create', () => {
     expect(can('finance', 'user.create')).toBe(false);
+  });
+  it('finance is denied user.read (lost — billing-only per the updated ruling)', () => {
+    expect(can('finance', 'user.read')).toBe(false);
+  });
+  it('finance is denied auditPack.read (lost per the updated ruling)', () => {
+    expect(can('finance', 'auditPack.read')).toBe(false);
   });
   it('finance has exactly the expected permission set — nothing more, nothing less', () => {
     for (const permission of permissions) {
@@ -233,12 +301,13 @@ describe('can() — clinicalDirector (regression guard: exact permission set)', 
     'document.create',
     'document.read',
     'document.edit',
-    'document.delete',
+    // document.delete deliberately withheld — clinicalDirector gets CRU only.
     'standardManual.read',
     'certificate.read',
-    'user.read',
     'organization.read',
     'facility.read',
+    // clinicalDirector gained audit.read per the updated ruling.
+    'audit.read',
     'auditPack.create',
     'auditPack.read',
     'notification.create',
@@ -261,6 +330,15 @@ describe('can() — clinicalDirector (regression guard: exact permission set)', 
   });
   it('clinicalDirector is denied invite.create', () => {
     expect(can('clinicalDirector', 'invite.create')).toBe(false);
+  });
+  it('clinicalDirector is denied document.delete (documents CRU only)', () => {
+    expect(can('clinicalDirector', 'document.delete')).toBe(false);
+  });
+  it('clinicalDirector is denied user.read (lost — no Staff module per the updated ruling)', () => {
+    expect(can('clinicalDirector', 'user.read')).toBe(false);
+  });
+  it('clinicalDirector has audit.read (gained)', () => {
+    expect(can('clinicalDirector', 'audit.read')).toBe(true);
   });
   it('clinicalDirector has exactly the expected permission set — nothing more, nothing less', () => {
     for (const permission of permissions) {
@@ -318,7 +396,7 @@ describe('can() — every worker-category role shares the identical permission c
   });
 });
 
-describe('organization.read + facility.read — granted to every one of the 13 roles', () => {
+describe('organization.read + facility.read — granted to every one of the 14 roles', () => {
   // Regression guard for the change that gave hr/clinicalDirector/finance
   // facility.read and gave workerPermissions organization.read + facility.read:
   // every role, manager or worker, must hold both.
@@ -330,12 +408,15 @@ describe('organization.read + facility.read — granted to every one of the 13 r
   });
 });
 
-describe('facility.* permissions — full CRUD is owner/supervisor-only; read is universal', () => {
+describe('facility.* permissions — full CRUD is owner/admin-only; read is universal', () => {
   const facilityActions = ['create', 'read', 'edit', 'delete'] as const;
   const facilityWriteActions = ['create', 'edit', 'delete'] as const;
-  const rolesWithFacility = ['owner', 'supervisor'] as const;
-  // Every non-owner/supervisor role can read its facility but never mutate it.
+  // Full facility CRUD is now owner/admin-only — supervisor was demoted to
+  // read-only (no more facility.create/edit) per the updated ruling.
+  const rolesWithFacility = ['owner', 'admin'] as const;
+  // Every non-owner/admin role can read its facility but never mutate it.
   const rolesWithReadOnlyFacility = [
+    'supervisor',
     'hr',
     'clinicalDirector',
     'finance',
@@ -393,9 +474,9 @@ describe('Role.category — every role carries a valid, correctly-scoped categor
     expect(roles[roleKey].category).toBe('worker');
   });
 
-  it('has exactly 13 roles total (5 manager + 8 worker)', () => {
-    expect(getRoles()).toHaveLength(13);
-    expect(getRoles().filter((r) => r.category === 'manager')).toHaveLength(5);
+  it('has exactly 14 roles total (6 manager + 8 worker)', () => {
+    expect(getRoles()).toHaveLength(14);
+    expect(getRoles().filter((r) => r.category === 'manager')).toHaveLength(6);
     expect(getRoles().filter((r) => r.category === 'worker')).toHaveLength(8);
   });
 });

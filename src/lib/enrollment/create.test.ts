@@ -2,13 +2,15 @@
  * Unit tests for createEnrollmentForUser (src/lib/enrollment/create.ts).
  *
  * fix/worker-invite unified the course-assignment flow with the staff-invite
- * flow: an unknown email (or an existing org-less account, e.g. a previously
- * removed staff member) is no longer given a premature user account with a
+ * flow: an unknown email (or an existing identity with no ACTIVE membership in
+ * the caller's organization — including a member of a different org entirely,
+ * since tenancy is now structural and membership is looked up scoped to
+ * ctx.organizationId) is no longer given a premature user account with a
  * temp password — it is sent a `/join/{token}` invite with the course parked
  * on it (`InviteCourseAssignment`), materialised into a real enrollment only
  * when the invite is accepted (see invite-courses.test.ts). This suite covers
- * the cross-tenant guard, invalid-email handling, idempotency, the invite
- * branch (create vs reuse-and-refresh, CSV role mapping, email-failure
+ * the membership-scoped tenancy guard, invalid-email handling, idempotency, the
+ * invite branch (create vs reuse-and-refresh, CSV role mapping, email-failure
  * isolation, DB-failure isolation), and the existing-org-member branch.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -16,12 +18,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const { prismaMock, mockCreateNotification, mockSendCourseInviteEmail, mockSendCourseLaunchEmail } =
   vi.hoisted(() => {
     const prismaMock = {
-      user: { findUnique: vi.fn() },
-      profile: { upsert: vi.fn() },
+      user: { findUnique: vi.fn(), update: vi.fn() },
+      organizationUser: { findFirst: vi.fn() },
       enrollment: { findFirst: vi.fn(), create: vi.fn() },
       reminderLog: { create: vi.fn() },
       invite: { findFirst: vi.fn(), update: vi.fn(), create: vi.fn() },
       inviteCourseAssignment: { upsert: vi.fn() },
+      facility: { findFirst: vi.fn() },
+      organizationUserFacility: { findFirst: vi.fn(), findMany: vi.fn() },
     };
     return {
       prismaMock,
@@ -61,6 +65,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   process.env.NEXT_PUBLIC_APP_URL = 'https://app.example.com';
   prismaMock.enrollment.findFirst.mockResolvedValue(null);
+  prismaMock.organizationUserFacility.findFirst.mockResolvedValue(null);
   prismaMock.enrollment.create.mockResolvedValue({ id: 'enrollment-1' });
   prismaMock.reminderLog.create.mockResolvedValue({ id: 'log-1' });
   prismaMock.invite.findFirst.mockResolvedValue(null);
@@ -74,49 +79,70 @@ beforeEach(() => {
   });
   prismaMock.invite.update.mockResolvedValue({});
   prismaMock.inviteCourseAssignment.upsert.mockResolvedValue({ id: 'ica-1' });
+  // ctx.facilityId is null in BASE_CTX, so the invite branch falls back to the
+  // org's first facility — every invite now requires a facilityId.
+  prismaMock.facility.findFirst.mockResolvedValue({ id: 'facility-1' });
+  prismaMock.organizationUser.findFirst.mockResolvedValue(null);
   mockCreateNotification.mockResolvedValue(undefined);
   mockSendCourseInviteEmail.mockResolvedValue(undefined);
   mockSendCourseLaunchEmail.mockResolvedValue(undefined);
 });
 
-describe('createEnrollmentForUser — cross-tenant guard', () => {
-  it('reports failed and writes no enrollment when the email resolves to a user in a DIFFERENT organization', async () => {
+describe('createEnrollmentForUser — membership-scoped tenancy guard', () => {
+  it('sends a /join invite (does not enroll) when the email resolves to an identity with no ACTIVE membership in the caller org — e.g. a member of a DIFFERENT org', async () => {
+    // Tenancy is now structural: the membership lookup is scoped to
+    // ctx.organizationId, so an identity that belongs only to another org is
+    // simply not found here — it is treated the same as an unknown email and
+    // gets an invite, never a bare "failed". This replaces the old explicit
+    // organizationId-mismatch rejection.
     prismaMock.user.findUnique.mockResolvedValue({
       id: 'user-in-org-2',
       email: 'staff@example.com',
-      organizationId: 'org-2', // different from ctx.organizationId ('org-1')
-      profile: null,
+      firstName: null,
+      lastName: null,
+      fullName: null,
     });
+    prismaMock.organizationUser.findFirst.mockResolvedValue(null); // no active membership in org-1
 
     const outcome = await createEnrollmentForUser({ email: 'staff@example.com' }, BASE_CTX);
 
-    expect(outcome).toEqual({ status: 'failed', email: 'staff@example.com' });
+    expect(outcome).toEqual({ status: 'invited', email: 'staff@example.com' });
+    expect(prismaMock.organizationUser.findFirst).toHaveBeenCalledWith({
+      where: { userId: 'user-in-org-2', organizationId: 'org-1', active: true },
+      select: { id: true },
+    });
     expect(prismaMock.enrollment.create).not.toHaveBeenCalled();
     expect(prismaMock.enrollment.findFirst).not.toHaveBeenCalled();
-    expect(prismaMock.invite.create).not.toHaveBeenCalled();
+    expect(prismaMock.invite.create).toHaveBeenCalled();
   });
 
-  it('proceeds normally when the resolved user belongs to the SAME organization', async () => {
+  it('proceeds normally (enrolls) when the resolved user has an ACTIVE membership in the caller org', async () => {
     prismaMock.user.findUnique.mockResolvedValue({
       id: 'user-in-org-1',
       email: 'staff@example.com',
-      organizationId: 'org-1',
-      profile: { fullName: 'Staff One' },
+      firstName: null,
+      lastName: null,
+      fullName: 'Staff One',
     });
+    prismaMock.organizationUser.findFirst.mockResolvedValue({ id: 'ou-1' });
 
     const outcome = await createEnrollmentForUser({ email: 'staff@example.com' }, BASE_CTX);
 
     expect(outcome.status).toBe('enrolled');
-    expect(prismaMock.enrollment.create).toHaveBeenCalled();
+    expect(prismaMock.enrollment.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ organizationUserId: 'ou-1' }) }),
+    );
   });
 
-  it('invites (does not relink or enroll) when the existing user has no organization yet (org-less user being claimed)', async () => {
+  it('invites (does not relink or enroll) when the existing identity has no active membership anywhere relevant (org-less user being claimed)', async () => {
     prismaMock.user.findUnique.mockResolvedValue({
       id: 'user-no-org',
       email: 'staff@example.com',
-      organizationId: null,
-      profile: null,
+      firstName: null,
+      lastName: null,
+      fullName: null,
     });
+    prismaMock.organizationUser.findFirst.mockResolvedValue(null);
 
     const outcome = await createEnrollmentForUser({ email: 'staff@example.com' }, BASE_CTX);
 
@@ -126,12 +152,20 @@ describe('createEnrollmentForUser — cross-tenant guard', () => {
     expect(prismaMock.invite.create).toHaveBeenCalled();
   });
 
-  it('proceeds when the caller context has no organizationId (individual/global-caller path)', async () => {
+  it('reports failed (never queries membership) when the caller context has no organizationId — there is no org to scope a membership lookup or an invite to', async () => {
+    // Intended behavior change from the pre-refactor model: previously a null
+    // ctx.organizationId skipped the tenancy guard entirely and fell through to
+    // enroll. Now the membership lookup itself is gated on ctx.organizationId
+    // (`user && ctx.organizationId ? ... : null`), so a null org means
+    // `membership` is unconditionally null regardless of the resolved user, and
+    // the function can only report `failed` — there's no organization context
+    // left to attach an enrollment or an invite to.
     prismaMock.user.findUnique.mockResolvedValue({
       id: 'user-in-org-2',
       email: 'staff@example.com',
-      organizationId: 'org-2',
-      profile: null,
+      firstName: null,
+      lastName: null,
+      fullName: null,
     });
 
     const outcome = await createEnrollmentForUser(
@@ -139,10 +173,10 @@ describe('createEnrollmentForUser — cross-tenant guard', () => {
       { ...BASE_CTX, organizationId: null },
     );
 
-    // No caller org to violate — the guard only fires when ctx.organizationId is set.
-    // The email resolves to an existing (non-org-less) user, so the existing-member
-    // enroll path is reached regardless of ctx.organizationId.
-    expect(outcome.status).toBe('enrolled');
+    expect(outcome).toEqual({ status: 'failed', email: 'staff@example.com' });
+    expect(prismaMock.organizationUser.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.enrollment.create).not.toHaveBeenCalled();
+    expect(prismaMock.invite.create).not.toHaveBeenCalled();
   });
 });
 
@@ -160,9 +194,11 @@ describe('createEnrollmentForUser — idempotency (existing org member)', () => 
     prismaMock.user.findUnique.mockResolvedValue({
       id: 'user-1',
       email: 'staff@example.com',
-      organizationId: 'org-1',
-      profile: null,
+      firstName: null,
+      lastName: null,
+      fullName: null,
     });
+    prismaMock.organizationUser.findFirst.mockResolvedValue({ id: 'ou-1' });
     prismaMock.enrollment.findFirst.mockResolvedValue({ id: 'existing-enrollment' });
 
     const outcome = await createEnrollmentForUser({ email: 'staff@example.com' }, BASE_CTX);
@@ -179,6 +215,7 @@ describe('createEnrollmentForUser — unknown/org-less email: invite branch', ()
     const outcome = await createEnrollmentForUser({ email: 'new@example.com' }, BASE_CTX);
 
     expect(outcome).toEqual({ status: 'invited', email: 'new@example.com' });
+    expect(prismaMock.organizationUser.findFirst).not.toHaveBeenCalled();
 
     expect(prismaMock.invite.findFirst).toHaveBeenCalledWith({
       where: { email: 'new@example.com', organizationId: 'org-1', status: 'pending' },
@@ -188,6 +225,7 @@ describe('createEnrollmentForUser — unknown/org-less email: invite branch', ()
       data: expect.objectContaining({
         email: 'new@example.com',
         organizationId: 'org-1',
+        facilityId: 'facility-1', // BASE_CTX.facilityId is null → falls back to the org's first facility
         role: 'front_desk_admin', // DEFAULT_SELF_SERVE_WORKER_ROLE — no explicit CSV role
         invitedBy: 'admin-1',
         status: 'pending',
@@ -276,6 +314,16 @@ describe('createEnrollmentForUser — unknown/org-less email: invite branch', ()
     expect(prismaMock.invite.create).not.toHaveBeenCalled();
   });
 
+  it('reports failed and creates no invite when the organization has no facility to attach it to', async () => {
+    prismaMock.user.findUnique.mockResolvedValue(null);
+    prismaMock.facility.findFirst.mockResolvedValue(null);
+
+    const outcome = await createEnrollmentForUser({ email: 'new@example.com' }, BASE_CTX);
+
+    expect(outcome).toEqual({ status: 'failed', email: 'new@example.com' });
+    expect(prismaMock.invite.create).not.toHaveBeenCalled();
+  });
+
   it('still returns invited when the invite email fails to send — the invite row is not rolled back', async () => {
     prismaMock.user.findUnique.mockResolvedValue(null);
     mockSendCourseInviteEmail.mockRejectedValue(new Error('SMTP down'));
@@ -302,9 +350,11 @@ describe('createEnrollmentForUser — existing org member', () => {
     prismaMock.user.findUnique.mockResolvedValue({
       id: 'user-1',
       email: 'staff@example.com',
-      organizationId: 'org-1',
-      profile: { fullName: 'Staff One' },
+      firstName: null,
+      lastName: null,
+      fullName: 'Staff One',
     });
+    prismaMock.organizationUser.findFirst.mockResolvedValue({ id: 'ou-1' });
 
     const outcome = await createEnrollmentForUser(
       { email: 'staff@example.com' },
@@ -312,6 +362,9 @@ describe('createEnrollmentForUser — existing org member', () => {
     );
 
     expect(outcome.status).toBe('enrolled');
+    expect(prismaMock.enrollment.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ organizationUserId: 'ou-1' }) }),
+    );
     expect(mockSendCourseLaunchEmail).toHaveBeenCalledWith(
       'staff@example.com',
       'Staff One',
@@ -320,5 +373,44 @@ describe('createEnrollmentForUser — existing org member', () => {
       new Date('2026-09-01T00:00:00Z'),
     );
     expect(mockSendCourseInviteEmail).not.toHaveBeenCalled();
+  });
+
+  it("stamps the enrollment with the member's OWN active facility assignment, resolved fresh — not ctx.facilityId", async () => {
+    prismaMock.user.findUnique.mockResolvedValue({
+      id: 'user-1',
+      email: 'staff@example.com',
+      firstName: null,
+      lastName: null,
+      fullName: 'Staff One',
+    });
+    prismaMock.organizationUser.findFirst.mockResolvedValue({ id: 'ou-1' });
+    prismaMock.organizationUserFacility.findFirst.mockResolvedValue({ facilityId: 'fac-own' });
+
+    await createEnrollmentForUser(
+      { email: 'staff@example.com' },
+      { ...BASE_CTX, facilityId: 'fac-inviter-context' },
+    );
+
+    expect(prismaMock.enrollment.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ facilityId: 'fac-own' }) }),
+    );
+  });
+
+  it('stamps facilityId: null for an existing member with no active facility assignment', async () => {
+    prismaMock.user.findUnique.mockResolvedValue({
+      id: 'user-1',
+      email: 'staff@example.com',
+      firstName: null,
+      lastName: null,
+      fullName: 'Staff One',
+    });
+    prismaMock.organizationUser.findFirst.mockResolvedValue({ id: 'ou-1' });
+    prismaMock.organizationUserFacility.findFirst.mockResolvedValue(null);
+
+    await createEnrollmentForUser({ email: 'staff@example.com' }, BASE_CTX);
+
+    expect(prismaMock.enrollment.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ facilityId: null }) }),
+    );
   });
 });

@@ -88,6 +88,10 @@ perf-results/
 security/incidents/
 testing_stages.jpeg
 Theraptly_LMS_QA_Test_Cases.docx
+multi-facility-management.pdf
+product_note_july.pdf
+multi-org-schema-upgrade-plan.md
 
 # Stray Chrome temp profiles from Lighthouse runs on Windows/WSL (literal "C:\..." dir names)
 /C:*
+v3_errors

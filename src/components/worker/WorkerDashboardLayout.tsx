@@ -101,21 +101,17 @@ export default function WorkerDashboardLayout({
               <span>Certificates</span>
             </Link>
           </div>
-
-          <div className="flex flex-col gap-2">
-            <h4 className="mb-3 pl-4 text-[11px] font-semibold uppercase tracking-[0.1em] text-[#a0aec0]">
-              HELP
-            </h4>
-
-            <Link
-              href="/worker/help"
-              className={`${navItemBase} ${pathname.startsWith('/worker/help') ? navItemActive : ''}`}
-            >
-              <HelpCircle className="size-5" />
-              <span>Help Center</span>
-            </Link>
-          </div>
         </nav>
+
+        <div className="mt-auto pt-6">
+          <Link
+            href="/worker/help"
+            className={`${navItemBase} ${pathname.startsWith('/worker/help') ? navItemActive : ''}`}
+          >
+            <HelpCircle className="size-5" />
+            <span>Help Center</span>
+          </Link>
+        </div>
       </aside>
 
       <main className="flex min-h-screen w-full flex-col lg:ml-[280px] lg:w-[calc(100%-280px)]">

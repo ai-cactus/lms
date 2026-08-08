@@ -32,7 +32,7 @@ const { mockAdminAuth, mockWorkerAuth, prismaMock, txMock, mockRevalidate } = vi
     enrollment: { findUnique: vi.fn(), update: vi.fn() },
     quiz: { findUnique: vi.fn() },
     notification: { findFirst: vi.fn(), createMany: vi.fn() },
-    user: { findMany: vi.fn() },
+    organizationUser: { findMany: vi.fn() },
     $transaction: vi.fn(async (cb: (tx: typeof txMock) => unknown) => cb(txMock)),
   };
   return {
@@ -90,10 +90,10 @@ function makeAnswers(n: number, correctCount: number) {
 
 const ENROLLMENT = {
   id: 'enr-1',
-  userId: 'user-1',
+  organizationUserId: 'ou-1',
   courseId: 'course-1',
   // Active billing so the defense-in-depth gate lets the attempt through.
-  user: { organization: { subscription: { status: 'active', pausedAt: null } } },
+  organizationUser: { organization: { subscription: { status: 'active', pausedAt: null } } },
 };
 
 function makeQuiz(overrides: Record<string, unknown> = {}) {
@@ -109,7 +109,7 @@ function makeQuiz(overrides: Record<string, unknown> = {}) {
   };
 }
 
-const WORKER_SESSION = { user: { id: 'user-1', role: 'worker' } };
+const WORKER_SESSION = { user: { id: 'user-1', organizationUserId: 'ou-1', role: 'worker' } };
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -121,7 +121,7 @@ beforeEach(() => {
   prismaMock.quiz.findUnique.mockResolvedValue(makeQuiz());
   prismaMock.notification.findFirst.mockResolvedValue(null);
   prismaMock.notification.createMany.mockResolvedValue({});
-  prismaMock.user.findMany.mockResolvedValue([]);
+  prismaMock.organizationUser.findMany.mockResolvedValue([]);
 
   txMock.quizAttempt.count.mockResolvedValue(0);
   txMock.quizAttempt.deleteMany.mockResolvedValue({});
@@ -151,7 +151,10 @@ describe('POST /api/quiz/[id]/submit — auth', () => {
   });
 
   it('403s when the enrollment does not belong to the calling session', async () => {
-    prismaMock.enrollment.findUnique.mockResolvedValue({ ...ENROLLMENT, userId: 'someone-else' });
+    prismaMock.enrollment.findUnique.mockResolvedValue({
+      ...ENROLLMENT,
+      organizationUserId: 'someone-else',
+    });
 
     const res = await POST(makeReq({ enrollmentId: 'enr-1', answers: makeAnswers(2, 1) }), {
       params,
@@ -174,7 +177,7 @@ describe('POST /api/quiz/[id]/submit — billing gate (TC-041-B defense in depth
   it('403s and never opens a transaction when the subscription is paused', async () => {
     prismaMock.enrollment.findUnique.mockResolvedValue({
       ...ENROLLMENT,
-      user: {
+      organizationUser: {
         organization: { subscription: { status: 'active', pausedAt: new Date('2026-06-01') } },
       },
     });
@@ -192,7 +195,7 @@ describe('POST /api/quiz/[id]/submit — billing gate (TC-041-B defense in depth
   it('403s when the org has no subscription row at all', async () => {
     prismaMock.enrollment.findUnique.mockResolvedValue({
       ...ENROLLMENT,
-      user: { organization: { subscription: null } },
+      organizationUser: { organization: { subscription: null } },
     });
 
     const res = await POST(makeReq({ enrollmentId: 'enr-1', answers: makeAnswers(2, 1) }), {

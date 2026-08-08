@@ -175,14 +175,6 @@ export default function UserDetailClient({ user }: UserDetailClientProps) {
                   </span>
                 </div>
               )}
-              {user.profile.companyName && (
-                <div className="flex items-center justify-between border-b border-border py-2.5 last:border-0">
-                  <span className="text-sm text-text-secondary">Company</span>
-                  <span className="text-sm font-medium text-foreground">
-                    {user.profile.companyName}
-                  </span>
-                </div>
-              )}
               <div className="flex items-center justify-between border-b border-border py-2.5 last:border-0">
                 <span className="text-sm text-text-secondary">Last Updated</span>
                 <span className="text-sm font-medium text-foreground">

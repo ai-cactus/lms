@@ -1,18 +1,23 @@
 // ── Document Management ──────────────────────────────────────────────────────
 
 model Document {
-  id           String            @id @default(uuid())
-  userId       String            @map("user_id")
-  filename     String
-  originalName String            @map("original_name")
-  mimeType     String            @map("mime_type")
-  size         Int
-  createdAt    DateTime          @default(now()) @map("created_at")
-  updatedAt    DateTime          @updatedAt @map("updated_at")
-  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  versions     DocumentVersion[]
+  id                 String            @id @default(uuid())
+  organizationUserId String            @map("organization_user_id")
+  filename           String
+  originalName       String            @map("original_name")
+  mimeType           String            @map("mime_type")
+  size               Int
+  /// Free-form classification chosen at upload (e.g. "Policy", "Training Manual").
+  /// Null for documents uploaded before categories existed, and for uploads that
+  /// omit one.
+  category           String?
+  createdAt          DateTime          @default(now()) @map("created_at")
+  updatedAt          DateTime          @updatedAt @map("updated_at")
+  organizationUser   OrganizationUser  @relation(fields: [organizationUserId], references: [id], onDelete: Cascade)
+  versions           DocumentVersion[]
 
-  @@index([userId])
+  @@index([organizationUserId])
+  @@index([category])
   @@map("documents")
 }
 

@@ -23,16 +23,29 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
+// Same load-flake guard as create-batch.test.ts: the first test in this file
+// pays @/lib/email's dynamic-import resolution cost, which can exceed the 5s
+// default under full-suite parallelism while passing in isolation.
+vi.setConfig({ testTimeout: 30_000 });
+
 interface FakeUser {
   id: string;
   email: string;
-  organizationId: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  fullName: string | null;
+}
+/** Post multi-org split: an identity's per-organization seat. */
+interface FakeMembership {
+  id: string;
+  userId: string;
+  organizationId: string;
   role: string;
-  profile: { fullName?: string | null } | null;
+  active: boolean;
 }
 interface FakeEnrollment {
   id: string;
-  userId: string;
+  organizationUserId: string;
   courseId: string;
 }
 interface FakeInvite {
@@ -57,9 +70,10 @@ const {
 } = vi.hoisted(() => {
   const prismaMock = {
     course: { findUnique: vi.fn() },
-    user: { findUnique: vi.fn(), findMany: vi.fn(), count: vi.fn() },
+    user: { findUnique: vi.fn(), findMany: vi.fn(), update: vi.fn() },
+    organizationUser: { findFirst: vi.fn(), findMany: vi.fn(), count: vi.fn() },
+    organizationUserFacility: { findFirst: vi.fn(), findMany: vi.fn() },
     organization: { findUnique: vi.fn() },
-    profile: { upsert: vi.fn() },
     orgCourseOffering: { findUnique: vi.fn(), upsert: vi.fn() },
     courseAssignment: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
     assignmentReminderStage: { upsert: vi.fn() },
@@ -108,19 +122,21 @@ import type { StaffEntry } from '@/types/enrollment';
 import type { UserRole } from '@/generated/prisma/enums';
 
 const ADMIN_ID = 'admin-1';
+const ADMIN_ORG_USER_ID = 'ou-admin-1';
 const ORG_ID = 'org-1';
 const COURSE_ID = 'course-1';
 
 const ownCourse = {
   id: COURSE_ID,
   title: 'Safety Training',
-  createdBy: ADMIN_ID,
+  createdByOrgUserId: ADMIN_ORG_USER_ID,
   isGlobal: false,
   status: 'published',
 };
 
 interface Seed {
   users?: FakeUser[];
+  memberships?: FakeMembership[];
   enrollments?: FakeEnrollment[];
   invites?: FakeInvite[];
   orgSubscription?: { plan?: string; status: string; pausedAt: Date | null } | null;
@@ -131,6 +147,7 @@ interface Seed {
 function seedDb(seed: Seed = {}) {
   const state = {
     users: (seed.users ?? []).map((u) => ({ ...u })),
+    memberships: (seed.memberships ?? []).map((m) => ({ ...m })),
     enrollments: (seed.enrollments ?? []).map((e) => ({ ...e })),
     invites: (seed.invites ?? []).map((i) => ({ ...i })),
     orgSubscription:
@@ -146,44 +163,54 @@ function seedDb(seed: Seed = {}) {
   prismaMock.course.findUnique.mockResolvedValue(ownCourse);
 
   prismaMock.user.findUnique.mockImplementation(async (args: any) => {
-    if (args.where.id) {
-      if (args.where.id !== ADMIN_ID) return null;
-      return {
-        id: ADMIN_ID,
-        role: 'owner',
-        organizationId: ORG_ID,
-        organization: { id: ORG_ID, name: 'Acme Corp', subscription: state.orgSubscription },
-      };
-    }
     const email = args.where.email.toLowerCase();
     const u = state.users.find((u) => u.email.toLowerCase() === email);
     return u ? { ...u } : null;
   });
 
+  // createEnrollmentForUser / createEnrollmentsForUsers identity reads.
   prismaMock.user.findMany.mockImplementation(async (args: any) => {
-    if (args.where?.role) {
-      // assignCourseToRole holder query.
-      return state.users
-        .filter((u) => u.organizationId === args.where.organizationId && u.role === args.where.role)
-        .map((u) => ({ id: u.id, email: u.email }));
-    }
     const emails: string[] = args.where.email.in.map((e: string) => e.toLowerCase());
-    if (args.include?.profile) {
-      // createEnrollmentsForUsers batched read 1.
-      return state.users
-        .filter((u) => emails.includes(u.email.toLowerCase()))
-        .map((u) => ({ ...u }));
-    }
-    // enrollUsers seat-gate existing-members query.
-    return state.users
-      .filter(
-        (u) =>
-          emails.includes(u.email.toLowerCase()) && u.organizationId === args.where.organizationId,
-      )
-      .map((u) => ({ email: u.email }));
+    return state.users.filter((u) => emails.includes(u.email.toLowerCase())).map((u) => ({ ...u }));
   });
 
-  prismaMock.user.count.mockImplementation(async () => state.workerCount);
+  const activeMemberships = () => state.memberships.filter((m) => m.active);
+
+  prismaMock.organizationUser.findFirst.mockImplementation(async (args: any) => {
+    const m = activeMemberships().find(
+      (m) => m.userId === args.where.userId && m.organizationId === args.where.organizationId,
+    );
+    return m ? { id: m.id } : null;
+  });
+
+  prismaMock.organizationUser.findMany.mockImplementation(async (args: any) => {
+    const where = args.where ?? {};
+    if (where.role) {
+      // assignCourseToRole holder query.
+      return activeMemberships()
+        .filter((m) => m.organizationId === where.organizationId && m.role === where.role)
+        .map((m) => ({
+          id: m.id,
+          user: { email: state.users.find((u) => u.id === m.userId)!.email },
+        }));
+    }
+    if (where.user?.email?.in) {
+      // enrollUsers seat-gate existing-members query.
+      const emails: string[] = where.user.email.in.map((e: string) => e.toLowerCase());
+      return activeMemberships()
+        .filter((m) => m.organizationId === where.organizationId)
+        .map((m) => ({ user: { email: state.users.find((u) => u.id === m.userId)!.email } }))
+        .filter((row) => emails.includes(row.user.email.toLowerCase()));
+    }
+    // createEnrollmentsForUsers batched membership read.
+    const ids: string[] = where.userId.in;
+    return activeMemberships()
+      .filter((m) => ids.includes(m.userId) && m.organizationId === where.organizationId)
+      .map((m) => ({ id: m.id, userId: m.userId }));
+  });
+
+  // getSeatUsage counts every non-owner ACTIVE membership as a consumed seat.
+  prismaMock.organizationUser.count.mockImplementation(async () => state.workerCount);
 
   prismaMock.organization.findUnique.mockImplementation(async (args: any) => {
     if (args.where.id !== ORG_ID) return null;
@@ -195,27 +222,35 @@ function seedDb(seed: Seed = {}) {
   prismaMock.assignmentReminderStage.upsert.mockResolvedValue({});
   prismaMock.orgCourseOffering.findUnique.mockResolvedValue(null);
   prismaMock.orgCourseOffering.upsert.mockResolvedValue({ id: 'offering-1' });
-  prismaMock.facility.findFirst.mockResolvedValue(null);
-  prismaMock.profile.upsert.mockResolvedValue({});
+  prismaMock.facility.findFirst.mockResolvedValue({ id: 'facility-1' });
+  prismaMock.organizationUserFacility.findFirst.mockResolvedValue(null);
+  prismaMock.organizationUserFacility.findMany.mockResolvedValue([]);
+  prismaMock.user.update.mockResolvedValue({});
   prismaMock.reminderLog.create.mockResolvedValue({ id: 'log' });
   prismaMock.inviteCourseAssignment.upsert.mockResolvedValue({});
 
   prismaMock.enrollment.findFirst.mockImplementation(async (args: any) => {
     return (
       state.enrollments.find(
-        (e) => e.userId === args.where.userId && e.courseId === args.where.courseId,
+        (e) =>
+          e.organizationUserId === args.where.organizationUserId &&
+          e.courseId === args.where.courseId,
       ) ?? null
     );
   });
   prismaMock.enrollment.findMany.mockImplementation(async (args: any) => {
-    const ids: string[] = args.where.userId.in;
+    const ids: string[] = args.where.organizationUserId.in;
     return state.enrollments
-      .filter((e) => e.courseId === args.where.courseId && ids.includes(e.userId))
-      .map((e) => ({ userId: e.userId }));
+      .filter((e) => e.courseId === args.where.courseId && ids.includes(e.organizationUserId))
+      .map((e) => ({ organizationUserId: e.organizationUserId }));
   });
   prismaMock.enrollment.create.mockImplementation(async (args: any) => {
     const id = `enr-${state.nextEnrollmentId++}`;
-    state.enrollments.push({ id, userId: args.data.userId, courseId: args.data.courseId });
+    state.enrollments.push({
+      id,
+      organizationUserId: args.data.organizationUserId,
+      courseId: args.data.courseId,
+    });
     return { id, ...args.data };
   });
 
@@ -261,14 +296,34 @@ function seedDb(seed: Seed = {}) {
   return state;
 }
 
-function member(id: string, email: string, role = 'nurse'): FakeUser {
-  return { id, email, organizationId: ORG_ID, role, profile: { fullName: null } };
+interface SeededMember {
+  user: FakeUser;
+  membership: FakeMembership;
+}
+
+function member(id: string, email: string, role = 'nurse'): SeededMember {
+  return {
+    user: { id, email, firstName: null, lastName: null, fullName: null },
+    membership: { id: `ou-${id}`, userId: id, organizationId: ORG_ID, role, active: true },
+  };
+}
+
+/** Split a member list into the identity + membership tables the fake DB holds. */
+function membersSeed(members: SeededMember[]) {
+  return { users: members.map((m) => m.user), memberships: members.map((m) => m.membership) };
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
   process.env.NEXT_PUBLIC_APP_URL = 'https://app.example.com';
-  mockAdminAuth.mockResolvedValue({ user: { id: ADMIN_ID } });
+  mockAdminAuth.mockResolvedValue({
+    user: {
+      id: ADMIN_ID,
+      role: 'owner',
+      organizationId: ORG_ID,
+      organizationUserId: ADMIN_ORG_USER_ID,
+    },
+  });
   mockWorkerAuth.mockResolvedValue(null);
   mockCreateNotification.mockResolvedValue(undefined);
   mockSendCourseInviteEmail.mockResolvedValue(undefined);
@@ -293,7 +348,7 @@ describe('enrollUsers — ENROLLMENT_BATCH_ENABLED equivalence', () => {
     async (flag) => {
       setFlag(flag);
       seedDb({
-        users: [member('u-1', 'staff@example.com')],
+        ...membersSeed([member('u-1', 'staff@example.com')]),
         orgSubscription: { plan: 'starter', status: 'active', pausedAt: null }, // staffMax 10
         workerCount: 10, // at cap — any brand-new email is rejected
       });
@@ -318,8 +373,8 @@ describe('enrollUsers — ENROLLMENT_BATCH_ENABLED equivalence', () => {
     async (flag) => {
       setFlag(flag);
       seedDb({
-        users: [member('u-1', 'staff@example.com')],
-        enrollments: [{ id: 'enr-existing', userId: 'u-1', courseId: COURSE_ID }],
+        ...membersSeed([member('u-1', 'staff@example.com')]),
+        enrollments: [{ id: 'enr-existing', organizationUserId: 'ou-u-1', courseId: COURSE_ID }],
       });
 
       const result = await enrollUsers(COURSE_ID, [{ email: 'staff@example.com' }]);
@@ -346,9 +401,8 @@ describe('enrollUsers — ENROLLMENT_BATCH_ENABLED equivalence', () => {
   );
 
   it('produces byte-identical results between flag UNSET and flag "false" (the fallback path is untouched)', async () => {
-    const buildSeed = () => ({
-      users: [member('u-1', 'existing@example.com'), member('u-2', 'holder2@example.com')],
-    });
+    const buildSeed = () =>
+      membersSeed([member('u-1', 'existing@example.com'), member('u-2', 'holder2@example.com')]);
     const entries: StaffEntry[] = [
       { email: 'existing@example.com' },
       { email: 'unknown@example.com' },
@@ -360,7 +414,14 @@ describe('enrollUsers — ENROLLMENT_BATCH_ENABLED equivalence', () => {
     const unsetResult = await enrollUsers(COURSE_ID, entries);
 
     vi.clearAllMocks();
-    mockAdminAuth.mockResolvedValue({ user: { id: ADMIN_ID } });
+    mockAdminAuth.mockResolvedValue({
+      user: {
+        id: ADMIN_ID,
+        role: 'owner',
+        organizationId: ORG_ID,
+        organizationUserId: ADMIN_ORG_USER_ID,
+      },
+    });
     mockWorkerAuth.mockResolvedValue(null);
     mockCreateNotification.mockResolvedValue(undefined);
     mockSendCourseInviteEmail.mockResolvedValue(undefined);
@@ -376,12 +437,12 @@ describe('enrollUsers — ENROLLMENT_BATCH_ENABLED equivalence', () => {
 describe('assignCourseToRole — ENROLLMENT_BATCH_ENABLED equivalence', () => {
   it.each(FLAG_STATES)('flag=%s: enrolls every current role holder exactly once', async (flag) => {
     setFlag(flag);
-    const holders: FakeUser[] = [
+    const holders = [
       member('u-1', 'nurse1@example.com', 'nurse'),
       member('u-2', 'nurse2@example.com', 'nurse'),
       member('u-3', 'nurse3@example.com', 'nurse'),
     ];
-    seedDb({ users: holders });
+    seedDb(membersSeed(holders));
 
     const result = await assignCourseToRole(COURSE_ID, 'nurse' as UserRole);
 
@@ -397,10 +458,10 @@ describe('assignCourseToRole — ENROLLMENT_BATCH_ENABLED equivalence', () => {
     async (flag) => {
       setFlag(flag);
       const holderCount = 55;
-      const holders: FakeUser[] = Array.from({ length: holderCount }, (_, i) =>
+      const holders = Array.from({ length: holderCount }, (_, i) =>
         member(`u-${i}`, `holder${i}@example.com`, 'front_desk_admin'),
       );
-      seedDb({ users: holders });
+      seedDb(membersSeed(holders));
 
       const result = await assignCourseToRole(COURSE_ID, 'front_desk_admin' as UserRole);
 

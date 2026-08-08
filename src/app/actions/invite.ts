@@ -40,7 +40,20 @@ interface InviteResult {
   };
 }
 
-export async function createInvites(items: InviteItem[]): Promise<InviteResult> {
+export interface CreateInvitesOptions {
+  /**
+   * Facility to attach the invites to, overriding the inviter's own. Used when
+   * inviting someone to a facility other than the caller's (e.g. the supervisor
+   * invited alongside a newly created facility). Validated against the caller's
+   * organization before use.
+   */
+  facilityId?: string;
+}
+
+export async function createInvites(
+  items: InviteItem[],
+  options?: CreateInvitesOptions,
+): Promise<InviteResult> {
   // SECURITY: `organizationId` and `inviterId` are intentionally NOT accepted
   // from the client — they are derived from the authenticated admin session below
   // to prevent cross-org invite injection. Each item's `role` IS client-supplied,
@@ -66,6 +79,56 @@ export async function createInvites(items: InviteItem[]): Promise<InviteResult> 
   const organizationId = session.user.organizationId;
   const inviterId = session.user.id;
   const grantableRoles = GRANTABLE_ROLES[session.user.role];
+
+  // Every invite now targets a specific facility. An explicitly requested one
+  // wins, but only after proving it belongs to the caller's organization — a
+  // caller-supplied id must never be able to seed an invite into another tenant.
+  let facilityId: string | undefined;
+  if (options?.facilityId) {
+    const requestedFacility = await prisma.facility.findFirst({
+      where: { id: options.facilityId, organizationId },
+      select: { id: true },
+    });
+    if (!requestedFacility) {
+      logger.warn({
+        msg: '[invite] Requested facility rejected — not in this organization',
+        organizationId,
+        facilityId: options.facilityId,
+      });
+      return { success: false, results: [], error: 'Invalid facility for this organization.' };
+    }
+    facilityId = requestedFacility.id;
+  }
+
+  // Otherwise prefer the inviter's own facility assignment; fall back to the
+  // org's oldest facility when the caller has none (e.g. an HR account not yet
+  // attached to one).
+  if (!facilityId) {
+    const inviterFacility = session.user.organizationUserId
+      ? await prisma.organizationUserFacility.findFirst({
+          where: { organizationUserId: session.user.organizationUserId, active: true },
+          select: { facilityId: true },
+        })
+      : null;
+    facilityId = inviterFacility?.facilityId;
+  }
+
+  if (!facilityId) {
+    const fallbackFacility = await prisma.facility.findFirst({
+      where: { organizationId },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true },
+    });
+    facilityId = fallbackFacility?.id;
+  }
+
+  if (!facilityId) {
+    return {
+      success: false,
+      results: [],
+      error: 'This organization has no facility configured for invites.',
+    };
+  }
 
   const results: InviteResultItem[] = [];
 
@@ -125,9 +188,9 @@ export async function createInvites(items: InviteItem[]): Promise<InviteResult> 
       // Only brand-new emails (not already members or pending-invited) consume a
       // new seat, so dedup before computing how many seats this batch needs.
       const [existingMemberEmails, existingPendingEmails] = await Promise.all([
-        prisma.user.findMany({
-          where: { email: { in: emails }, organizationId },
-          select: { email: true },
+        prisma.organizationUser.findMany({
+          where: { organizationId, active: true, user: { email: { in: emails } } },
+          select: { user: { select: { email: true } } },
         }),
         prisma.invite.findMany({
           where: {
@@ -141,7 +204,7 @@ export async function createInvites(items: InviteItem[]): Promise<InviteResult> 
       ]);
 
       const knownEmails = new Set([
-        ...existingMemberEmails.map((u) => u.email.toLowerCase()),
+        ...existingMemberEmails.map((m) => m.user.email.toLowerCase()),
         ...existingPendingEmails.map((i) => i.email.toLowerCase()),
       ]);
 
@@ -181,11 +244,14 @@ export async function createInvites(items: InviteItem[]): Promise<InviteResult> 
     }
     // ─────────────────────────────────────────────────────────────────────────
 
-    // Batch queries to avoid N+1 issue
-    const [existingUsers, existingInvites] = await Promise.all([
-      prisma.user.findMany({
-        where: { email: { in: emails } },
-        include: { organization: true },
+    // Batch query: which of these emails already hold an ACTIVE membership in
+    // THIS organization. An identity may already exist in another organization —
+    // multi-org membership is the point of this model, so that alone no longer
+    // blocks an invite; only a true duplicate (already a member here) does.
+    const [existingMemberships, existingInvites] = await Promise.all([
+      prisma.organizationUser.findMany({
+        where: { organizationId, active: true, user: { email: { in: emails } } },
+        select: { user: { select: { email: true } } },
       }),
       prisma.invite.findMany({
         where: {
@@ -196,21 +262,16 @@ export async function createInvites(items: InviteItem[]): Promise<InviteResult> 
       }),
     ]);
 
-    const existingUserMap = new Map(existingUsers.map((u) => [u.email, u]));
     const existingInviteMap = new Map(existingInvites.map((i) => [i.email, i]));
 
-    // Accounts already tied to an organization cannot be (re-)invited: same-org is
-    // already a member, a different org must not be poached. Org-less accounts
-    // (e.g. a removed user) are NOT blocked — they are re-invited like a fresh
-    // address and relinked on accept. This set drives the email-send skip below.
-    const blockedUserEmails = new Set(
-      existingUsers.filter((u) => u.organizationId !== null).map((u) => u.email),
-    );
+    // Drives the "already a member" result and the email-send skip below.
+    const blockedMemberEmails = new Set(existingMemberships.map((m) => m.user.email));
 
     const newInvitesData: {
       email: string;
       token: string;
       organizationId: string;
+      facilityId: string;
       role: UserRole;
       expiresAt: Date;
       invitedBy?: string;
@@ -223,31 +284,21 @@ export async function createInvites(items: InviteItem[]): Promise<InviteResult> 
 
     // Pre-process emails to determine what action is needed
     for (const email of emails) {
-      const existingUser = existingUserMap.get(email);
-      // Only accounts already bound to an org short-circuit; an org-less existing
-      // account falls through to be re-invited (and relinked on accept).
-      if (existingUser && existingUser.organizationId !== null) {
-        if (existingUser.organizationId === organizationId) {
-          results.push({ email, status: 'exists', message: 'User is already a member.' });
-        } else {
-          results.push({
-            email,
-            status: 'exists',
-            message: 'User already has an account. Ask them to login.',
-          });
-        }
+      if (blockedMemberEmails.has(email)) {
+        results.push({ email, status: 'exists', message: 'User is already a member.' });
         continue;
       }
 
       // Already has a pending invite — will be re-sent below
       if (existingInviteMap.has(email)) continue;
 
-      // Brand new invite (or a re-invite for an org-less existing account)
+      // Brand new invite (or a re-invite for an org-less/other-org existing account)
       const token = crypto.randomUUID();
       const inviteData = {
         email,
         token,
         organizationId,
+        facilityId,
         role: emailRoleMap.get(email) as UserRole,
         expiresAt,
         invitedBy: inviterId,
@@ -270,7 +321,7 @@ export async function createInvites(items: InviteItem[]): Promise<InviteResult> 
 
     // Send / resend emails concurrently
     const emailPromises = emails.map(async (email) => {
-      if (blockedUserEmails.has(email)) return; // Already handled above (member/other-org)
+      if (blockedMemberEmails.has(email)) return; // Already handled above (existing member)
 
       const roleDisplayName = getRoleDisplayName(emailRoleMap.get(email) as UserRole);
 
@@ -298,7 +349,7 @@ export async function createInvites(items: InviteItem[]): Promise<InviteResult> 
 
     emailResults.forEach((result, index) => {
       const email = emails[index];
-      if (blockedUserEmails.has(email)) return; // Skip — already pushed to results
+      if (blockedMemberEmails.has(email)) return; // Skip — already pushed to results
 
       if (result.status === 'fulfilled') {
         if (result.value) results.push(result.value as InviteResultItem);

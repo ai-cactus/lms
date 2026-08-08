@@ -26,7 +26,7 @@ export async function issueCertificate(enrollmentId: string) {
   const enrollment = await prisma.enrollment.findUnique({
     where: { id: enrollmentId },
     include: {
-      user: { include: { profile: true, organization: true } },
+      organizationUser: { include: { user: true, organization: true } },
       course: true,
       certificate: true,
     },
@@ -36,11 +36,11 @@ export async function issueCertificate(enrollmentId: string) {
     throw new Error('Enrollment not found');
   }
 
-  // Ensure user is authorized (either the user themselves, or their admin)
-  const isWorker = enrollment.userId === session.user.id;
+  // Ensure the caller is authorized (either the enrolled learner, or their admin)
+  const isWorker = enrollment.organizationUserId === session.user.organizationUserId;
   const isAdmin =
     isAdminRole(session.user.role) &&
-    enrollment.user.organizationId === session.user.organizationId;
+    enrollment.organizationUser.organizationId === session.user.organizationId;
 
   if (!isWorker && !isAdmin) {
     throw new Error('Unauthorized');
@@ -58,12 +58,12 @@ export async function issueCertificate(enrollmentId: string) {
   // A certificate PDF is immutable once generated, so it must carry the
   // recipient's real name — never fall back to their email address. Block
   // issuance until the profile has a full name set.
-  const fullName = enrollment.user.profile?.fullName?.trim();
+  const fullName = enrollment.organizationUser.user.fullName?.trim();
   if (!fullName) {
     logger.warn({
       msg: '[enrollment] Certificate issuance blocked — recipient has no profile name',
       enrollmentId,
-      userId: enrollment.userId,
+      organizationUserId: enrollment.organizationUserId,
     });
     throw new Error('Set your full name in your profile before earning a certificate.');
   }
@@ -77,7 +77,7 @@ export async function issueCertificate(enrollmentId: string) {
       month: 'long',
       day: 'numeric',
     }),
-    organizationName: enrollment.user.organization?.name,
+    organizationName: enrollment.organizationUser.organization?.name,
     certificateId: formatCertificateId(enrollmentId),
   });
 
@@ -87,7 +87,7 @@ export async function issueCertificate(enrollmentId: string) {
   const certificate = await prisma.certificate.create({
     data: {
       enrollmentId: enrollment.id,
-      userId: enrollment.userId,
+      organizationUserId: enrollment.organizationUserId,
       courseId: enrollment.courseId,
       score: enrollment.score ?? 100,
       pdfStoragePath: uploadResult.storageUri,
@@ -101,7 +101,7 @@ export async function issueCertificate(enrollmentId: string) {
     action: 'certificate.issue',
     actorId: session.user.id,
     actorRole: session.user.role,
-    organizationId: enrollment.user.organizationId ?? undefined,
+    organizationId: enrollment.organizationUser.organizationId,
     targetType: 'certificate',
     targetId: certificate.id,
     metadata: { enrollmentId, courseId: enrollment.courseId },
@@ -116,12 +116,12 @@ export async function issueCertificate(enrollmentId: string) {
 
 export async function getWorkerCertificates() {
   const session = await workerAuth();
-  if (!session?.user?.id) {
+  if (!session?.user?.id || !session.user.organizationUserId) {
     throw new Error('Unauthorized');
   }
 
   const certificates = await prisma.certificate.findMany({
-    where: { userId: session.user.id },
+    where: { organizationUserId: session.user.organizationUserId },
     include: {
       course: { select: { title: true } },
     },
@@ -131,18 +131,18 @@ export async function getWorkerCertificates() {
   return certificates;
 }
 
-export async function getAdminWorkerCertificates(workerId: string) {
+export async function getAdminWorkerCertificates(organizationUserId: string) {
   const session = await adminAuth();
-  if (!session?.user?.id || !isAdminRole(session.user.role)) {
+  if (!session?.user?.id || !isAdminRole(session.user.role) || !session.user.organizationId) {
     throw new Error('Unauthorized');
   }
 
   const certificates = await prisma.certificate.findMany({
     where: {
-      userId: workerId,
-      user: {
-        organizationId: session.user.organizationId,
-      },
+      // Scoped by the caller's org so a membership id from another tenant
+      // simply resolves to nothing.
+      organizationUserId,
+      organizationUser: { organizationId: session.user.organizationId },
     },
     include: {
       course: { select: { title: true } },
@@ -162,7 +162,7 @@ export async function getCertificateDetails(certificateId: string) {
   const certificate = await prisma.certificate.findUnique({
     where: { id: certificateId },
     include: {
-      user: { include: { profile: true, organization: true } },
+      organizationUser: { include: { user: true, organization: true } },
       course: true,
     },
   });
@@ -171,10 +171,10 @@ export async function getCertificateDetails(certificateId: string) {
     throw new Error('Certificate not found');
   }
 
-  const isWorker = certificate.userId === session.user.id;
+  const isWorker = certificate.organizationUserId === session.user.organizationUserId;
   const isAdmin =
     isAdminRole(session.user.role) &&
-    certificate.user.organizationId === session.user.organizationId;
+    certificate.organizationUser.organizationId === session.user.organizationId;
 
   if (!isWorker && !isAdmin) {
     throw new Error('Unauthorized');

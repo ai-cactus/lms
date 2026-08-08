@@ -89,7 +89,7 @@ export default function SettingsClient({
         </TabsContent>
 
         <TabsContent value="facility">
-          <FacilityTab facility={facility} planName={planName} />
+          <FacilityTab facility={facility} planName={planName} viewerRole={inviterRole} />
         </TabsContent>
 
         <TabsContent value="notifications">

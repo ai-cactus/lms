@@ -5,11 +5,13 @@
  * GCS/MinIO, and records the storage URIs in the CourseArtifact table.
  *
  * Usage:
- *   npx tsx scripts/migrate-json-to-storage.ts [--dry-run] [--batch-size=50]
+ *   npx tsx scripts/migrate-json-to-storage.ts --dry-run   # report only
+ *   npx tsx scripts/migrate-json-to-storage.ts             # migrate
  *
  * Flags:
  *   --dry-run       Log what would be migrated without actually uploading
  *   --batch-size=N  Process N courses at a time (default: 50)
+ *   --cleanup       Also null out the legacy JSON columns once uploaded
  *
  * The legacy JSON columns are NOT cleared by default. After verifying
  * the migration, run with --cleanup to null out the legacy columns.

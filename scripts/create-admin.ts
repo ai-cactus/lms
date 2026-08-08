@@ -1,5 +1,4 @@
 import { prisma } from '@/db/index';
-import { UserRole } from '@/generated/prisma/enums';
 import bcrypt from 'bcryptjs';
 
 async function main() {
@@ -20,21 +19,19 @@ async function main() {
 
     const hashedPassword = await bcrypt.hash(adminPassword, 10);
 
+    // No organization membership is created here (the original script never
+    // assigned one either): under the multi-org model, role and job-title
+    // data live on OrganizationUser, so this identity has neither until it
+    // joins an organization.
     const admin = await prisma.user.upsert({
       where: { email: adminEmail },
       update: {},
       create: {
         email: adminEmail,
         password: hashedPassword,
-        role: UserRole.supervisor,
-        profile: {
-          create: {
-            email: adminEmail,
-            firstName: 'Admin',
-            lastName: 'User',
-            fullName: 'Admin User',
-          },
-        },
+        firstName: 'Admin',
+        lastName: 'User',
+        fullName: 'Admin User',
       },
     });
 

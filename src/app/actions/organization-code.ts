@@ -12,6 +12,7 @@ import { checkRateLimit } from '@/lib/rate-limit';
 import { DEFAULT_SELF_SERVE_WORKER_ROLE, getRoleDisplayName } from '@/lib/rbac/role-utils';
 import { emitNotificationEvent } from '@/lib/notifications/emit';
 import { enrollUserForRoleTargets } from '@/lib/enrollment/role-targets';
+import { createMembership } from '@/lib/auth/membership';
 
 // Helper to generate a cryptographically-random 6-digit code
 function generateCode() {
@@ -181,26 +182,23 @@ export async function joinOrganization(code: string) {
     });
     if (!facility) {
       logger.warn({ msg: '[org-code] joinOrganization: no facility for organization', orgId });
+      return { success: false, error: 'This organization has no facility configured.' };
     }
 
-    await prisma.user.update({
-      where: { id: userId },
-      data: {
-        organizationId: orgId,
-        facilityId: facility?.id ?? null,
-        role: DEFAULT_SELF_SERVE_WORKER_ROLE,
-        // Join date drives the deadline window for any role-target assignments.
-        roleAssignedAt: new Date(),
-      },
+    const membership = await createMembership({
+      userId,
+      organizationId: orgId,
+      facilityId: facility.id,
+      role: DEFAULT_SELF_SERVE_WORKER_ROLE,
     });
 
     // Live auto-enroll: the worker just joined the org with a role — enroll them
     // in any active role-target assignments for it. Never throws.
-    await enrollUserForRoleTargets(userId, orgId);
+    await enrollUserForRoleTargets(membership.organizationUserId, orgId);
 
     // Create welcome notification for worker
     await createNotification({
-      userId: userId,
+      organizationUserId: membership.organizationUserId,
       type: 'WELCOME',
       title: `Welcome to ${verifyResult.organization.name}`,
       message: `You have successfully joined the organization. Your training will appear here when assigned.`,
@@ -210,10 +208,10 @@ export async function joinOrganization(code: string) {
     // the owner when nobody holds that role. Never throws.
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { email: true, profile: { select: { fullName: true } } },
+      select: { email: true, fullName: true },
     });
 
-    const workerName = user?.profile?.fullName || user?.email?.split('@')[0] || 'A new worker';
+    const workerName = user?.fullName || user?.email?.split('@')[0] || 'A new worker';
     const roleLabel = getRoleDisplayName(DEFAULT_SELF_SERVE_WORKER_ROLE);
 
     await emitNotificationEvent({
@@ -223,8 +221,8 @@ export async function joinOrganization(code: string) {
       message: `${workerName} joined as ${roleLabel} using an organization join code.`,
       actor: null,
       subjectUserId: userId,
-      facilityId: facility?.id ?? null,
-      linkUrl: `/dashboard/staff/${userId}`,
+      facilityId: facility.id,
+      linkUrl: `/dashboard/staff/${membership.organizationUserId}`,
       context: { workerName, roleLabel, addedVia: 'join_code' },
     });
 

@@ -79,7 +79,7 @@ describe('analyzeDocument', () => {
 
 describe('analyzeStoredDocument', () => {
   it('returns the sanitized message (not the raw Vertex error) when the AI call fails', async () => {
-    mockAuth.mockResolvedValue({ user: { id: 'user-1' } });
+    mockAuth.mockResolvedValue({ user: { id: 'user-1', organizationUserId: 'ou-1' } });
     prismaMock.document.findUnique.mockResolvedValue({
       id: 'doc-1',
       filename: 'stored.pdf',

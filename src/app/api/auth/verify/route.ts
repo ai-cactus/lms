@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
           },
         },
       });
-      return NextResponse.json({ success: true, role: existingUser.role });
+      return NextResponse.json({ success: true });
     }
 
     // Create the user and profile from pending data
@@ -76,6 +76,9 @@ export async function POST(request: NextRequest) {
     // Validate the pending role against the current role set before trusting it.
     // A token minted before the RBAC rollout may still carry a retired value
     // (e.g. `admin`); anything not in ALL_ROLES falls back to the default worker role.
+    // This is purely informational in the response — the role is assumed on an
+    // `OrganizationUser` membership once the account joins/founds an organisation
+    // (onboarding), never persisted on the global `User` identity created here.
     const pendingRole = verificationToken.role;
     const userRole: UserRole =
       pendingRole && ALL_ROLES.includes(pendingRole as Role)
@@ -83,19 +86,11 @@ export async function POST(request: NextRequest) {
         : DEFAULT_SELF_SERVE_WORKER_ROLE;
 
     await prisma.$transaction(async (tx) => {
-      const user = await tx.user.create({
+      await tx.user.create({
         data: {
           email: verificationToken.identifier,
           password: verificationToken.password!,
           emailVerified: true,
-          role: userRole,
-        },
-      });
-
-      await tx.profile.create({
-        data: {
-          id: user.id,
-          email: user.email,
           firstName: verificationToken.firstName!,
           lastName: verificationToken.lastName!,
           fullName: `${verificationToken.firstName} ${verificationToken.lastName}`,

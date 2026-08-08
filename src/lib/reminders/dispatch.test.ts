@@ -79,9 +79,9 @@ vi.mock('@/lib/logger', () => ({
 import { dispatchLadderStage, dispatchNudge } from './dispatch';
 
 const WORKER = { id: 'user-1', email: 'worker@test.com', name: 'Test Worker' };
-const ENROLLMENT = { id: 'enroll-1', userId: 'user-1', courseId: 'course-1' };
+const ENROLLMENT = { id: 'enroll-1', organizationUserId: 'user-1', courseId: 'course-1' };
 const ESCALATION_RECIPIENTS = {
-  userIds: ['admin-1'],
+  organizationUserIds: ['admin-1'],
   emails: [{ email: 'admin@test.com', name: 'Admin Name' }],
 };
 
@@ -144,7 +144,7 @@ describe('dispatchLadderStage', () => {
       // In-app notification for the worker
       expect(mockCreateNotification).toHaveBeenCalledWith(
         expect.objectContaining({
-          userId: 'user-1',
+          organizationUserId: 'user-1',
           type: 'COURSE_DEADLINE_REMINDER',
           linkUrl: '/worker/trainings',
         }),
@@ -179,13 +179,13 @@ describe('dispatchLadderStage', () => {
 
       // resolveEscalationRecipients invoked
       expect(mockResolveEscalationRecipients).toHaveBeenCalledWith(
-        expect.objectContaining({ userId: 'user-1' }),
+        expect.objectContaining({ organizationUserId: 'user-1' }),
       );
 
       // In-app for escalation admin
       expect(mockCreateNotification).toHaveBeenCalledWith(
         expect.objectContaining({
-          userId: 'admin-1',
+          organizationUserId: 'admin-1',
           type: 'COMPLIANCE_ESCALATION',
         }),
       );
@@ -201,7 +201,7 @@ describe('dispatchLadderStage', () => {
 
       // Worker createNotification NOT called (escalation-only stage)
       const workerCalls = mockCreateNotification.mock.calls.filter(
-        ([arg]) => arg.userId === 'user-1',
+        ([arg]) => arg.organizationUserId === 'user-1',
       );
       expect(workerCalls).toHaveLength(0);
     });
@@ -221,12 +221,14 @@ describe('dispatchLadderStage', () => {
       expect(result).toEqual({ sent: true, reason: 'sent' });
 
       // Worker in-app notification
-      const workerNotif = mockCreateNotification.mock.calls.find(([a]) => a.userId === 'user-1');
+      const workerNotif = mockCreateNotification.mock.calls.find(
+        ([a]) => a.organizationUserId === 'user-1',
+      );
       expect(workerNotif).toBeDefined();
 
       // Escalation in-app notification
       const escalationNotif = mockCreateNotification.mock.calls.find(
-        ([a]) => a.userId === 'admin-1',
+        ([a]) => a.organizationUserId === 'admin-1',
       );
       expect(escalationNotif).toBeDefined();
 
@@ -250,7 +252,7 @@ describe('dispatchLadderStage', () => {
       expect(result).toEqual({ sent: true, reason: 'sent' });
 
       expect(mockResolveEscalationRecipients).toHaveBeenCalledWith(
-        expect.objectContaining({ userId: 'user-1' }),
+        expect.objectContaining({ organizationUserId: 'user-1' }),
       );
 
       // Escalation in-app notification uses the hard-typed COMPLIANCE_ESCALATION
@@ -258,7 +260,7 @@ describe('dispatchLadderStage', () => {
       // stageToNotificationType mapping (which is worker-notification-only).
       // Its copy is pre-deadline ("approaching"), never "overdue"/"past its deadline".
       const escalationNotif = mockCreateNotification.mock.calls.find(
-        ([a]) => a.userId === 'admin-1',
+        ([a]) => a.organizationUserId === 'admin-1',
       )?.[0];
       expect(escalationNotif).toMatchObject({ type: 'COMPLIANCE_ESCALATION' });
       expect(escalationNotif.message.toLowerCase()).not.toContain('overdue');
@@ -278,7 +280,7 @@ describe('dispatchLadderStage', () => {
 
       // Worker is never notified for this admin-only stage.
       const workerCalls = mockCreateNotification.mock.calls.filter(
-        ([arg]) => arg.userId === 'user-1',
+        ([arg]) => arg.organizationUserId === 'user-1',
       );
       expect(workerCalls).toHaveLength(0);
     });
@@ -400,7 +402,7 @@ describe('dispatchNudge', () => {
     courseId: 'course-1',
     courseTitle: 'Safety Training',
     worker: WORKER,
-    recipients: { userIds: [], emails: [] },
+    recipients: { organizationUserIds: [], emails: [] },
     nudgeIntervalDays: 3,
     attemptsRemaining: 2,
     now: NOW,
@@ -418,7 +420,7 @@ describe('dispatchNudge', () => {
 
       expect(result).toEqual({ sent: true, reason: 'sent' });
       expect(mockCreateNotification).toHaveBeenCalledWith(
-        expect.objectContaining({ userId: 'user-1', type: 'COURSE_RETAKE_REMINDER' }),
+        expect.objectContaining({ organizationUserId: 'user-1', type: 'COURSE_RETAKE_REMINDER' }),
       );
       expect(sendEmail).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -488,7 +490,7 @@ describe('dispatchNudge', () => {
       prismaMock.reminderNudge.findUnique.mockResolvedValue(null);
       const sendEmail = vi.fn().mockResolvedValue({ ok: true });
       const recipients = {
-        userIds: ['admin-1'],
+        organizationUserIds: ['admin-1'],
         emails: [{ email: 'admin@test.com', name: 'Admin Name' }],
       };
 
@@ -504,7 +506,7 @@ describe('dispatchNudge', () => {
 
       expect(mockCreateNotification).toHaveBeenCalledWith(
         expect.objectContaining({
-          userId: 'admin-1',
+          organizationUserId: 'admin-1',
           type: 'QUIZ_RETRY_LIMIT_REACHED',
         }),
       );
@@ -517,7 +519,9 @@ describe('dispatchNudge', () => {
       );
 
       // Worker createNotification NOT called
-      const workerCalls = mockCreateNotification.mock.calls.filter(([a]) => a.userId === 'user-1');
+      const workerCalls = mockCreateNotification.mock.calls.filter(
+        ([a]) => a.organizationUserId === 'user-1',
+      );
       expect(workerCalls).toHaveLength(0);
     });
   });

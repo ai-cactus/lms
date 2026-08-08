@@ -20,7 +20,7 @@ export async function GET(
     include: { document: true },
   });
 
-  if (!version || version.document.userId !== session.user.id) {
+  if (!version || version.document.organizationUserId !== session.user.organizationUserId) {
     return new Response('Not found', { status: 404 });
   }
 

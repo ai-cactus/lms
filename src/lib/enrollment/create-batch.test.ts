@@ -36,12 +36,20 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 interface FakeUser {
   id: string;
   email: string;
-  organizationId: string | null;
-  profile: { fullName?: string | null } | null;
+  firstName: string | null;
+  lastName: string | null;
+  fullName: string | null;
+}
+/** Post multi-org split: an identity's per-organization seat. */
+interface FakeMembership {
+  id: string;
+  userId: string;
+  organizationId: string;
+  active: boolean;
 }
 interface FakeEnrollment {
   id: string;
-  userId: string;
+  organizationUserId: string;
   courseId: string;
 }
 interface FakeInvite {
@@ -59,8 +67,10 @@ interface FakeInvite {
 const { prismaMock, mockCreateNotification, mockSendCourseInviteEmail, mockSendCourseLaunchEmail } =
   vi.hoisted(() => {
     const prismaMock = {
-      user: { findUnique: vi.fn(), findMany: vi.fn() },
-      profile: { upsert: vi.fn() },
+      user: { findUnique: vi.fn(), findMany: vi.fn(), update: vi.fn() },
+      organizationUser: { findFirst: vi.fn(), findMany: vi.fn() },
+      organizationUserFacility: { findFirst: vi.fn(), findMany: vi.fn() },
+      facility: { findFirst: vi.fn() },
       enrollment: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn() },
       reminderLog: { create: vi.fn() },
       invite: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn() },
@@ -126,6 +136,7 @@ async function runSequential(
 
 interface Seed {
   users?: FakeUser[];
+  memberships?: FakeMembership[];
   enrollments?: FakeEnrollment[];
   invites?: FakeInvite[];
 }
@@ -133,6 +144,7 @@ interface Seed {
 function seedDb(seed: Seed = {}) {
   const state = {
     users: (seed.users ?? []).map((u) => ({ ...u })),
+    memberships: (seed.memberships ?? []).map((m) => ({ ...m })),
     enrollments: (seed.enrollments ?? []).map((e) => ({ ...e })),
     invites: (seed.invites ?? []).map((i) => ({ ...i })),
     nextEnrollmentId: 1,
@@ -150,23 +162,53 @@ function seedDb(seed: Seed = {}) {
     return state.users.filter((u) => emails.includes(u.email.toLowerCase())).map((u) => ({ ...u }));
   });
 
+  // Membership lookups are always scoped to the CALLER's org, which is exactly
+  // what makes tenancy structural: an identity seated only in another org
+  // simply resolves to no membership here.
+  prismaMock.organizationUser.findFirst.mockImplementation(async ({ where }: any) => {
+    const m = state.memberships.find(
+      (m) =>
+        m.userId === where.userId &&
+        m.organizationId === where.organizationId &&
+        m.active === where.active,
+    );
+    return m ? { id: m.id } : null;
+  });
+
+  prismaMock.organizationUser.findMany.mockImplementation(async ({ where }: any) => {
+    const ids: string[] = where.userId.in;
+    return state.memberships
+      .filter(
+        (m) =>
+          ids.includes(m.userId) &&
+          m.organizationId === where.organizationId &&
+          m.active === where.active,
+      )
+      .map((m) => ({ id: m.id, userId: m.userId }));
+  });
+
   prismaMock.enrollment.findFirst.mockImplementation(async ({ where }: any) => {
     return (
-      state.enrollments.find((e) => e.userId === where.userId && e.courseId === where.courseId) ??
-      null
+      state.enrollments.find(
+        (e) => e.organizationUserId === where.organizationUserId && e.courseId === where.courseId,
+      ) ?? null
     );
   });
 
   prismaMock.enrollment.findMany.mockImplementation(async ({ where }: any) => {
-    const ids: string[] = where.userId.in;
+    const ids: string[] = where.organizationUserId.in;
     return state.enrollments
-      .filter((e) => e.courseId === where.courseId && ids.includes(e.userId))
-      .map((e) => ({ userId: e.userId }));
+      .filter((e) => e.courseId === where.courseId && ids.includes(e.organizationUserId))
+      .map((e) => ({ organizationUserId: e.organizationUserId }));
   });
 
   prismaMock.enrollment.create.mockImplementation(async ({ data }: any) => {
     const id = `enr-${state.nextEnrollmentId++}`;
-    state.enrollments.push({ id, userId: data.userId, courseId: data.courseId });
+    state.enrollments.push({
+      id,
+      organizationUserId: data.organizationUserId,
+      courseId: data.courseId,
+    });
     return { id, ...data };
   });
 
@@ -208,7 +250,14 @@ function seedDb(seed: Seed = {}) {
     return { ...inv };
   });
 
-  prismaMock.profile.upsert.mockResolvedValue({});
+  prismaMock.user.update.mockResolvedValue({});
+  // Members hold no facility assignment in these fixtures, so enrollments are
+  // stamped with a null facilityId — irrelevant to the equivalence being tested.
+  prismaMock.organizationUserFacility.findFirst.mockResolvedValue(null);
+  prismaMock.organizationUserFacility.findMany.mockResolvedValue([]);
+  // CTX.facilityId is null, so the invite branch falls back to the org's first
+  // facility — every invite requires one.
+  prismaMock.facility.findFirst.mockResolvedValue({ id: 'facility-1' });
   prismaMock.reminderLog.create.mockResolvedValue({ id: 'log' });
   prismaMock.inviteCourseAssignment.upsert.mockResolvedValue({});
 
@@ -220,8 +269,10 @@ function normalizeOutcomes(outcomes: EnrollmentOutcome[]) {
   return outcomes.map((o) => ({ ...o, userId: undefined, enrollmentId: undefined }));
 }
 
-function enrollmentCreateUserIds() {
-  return prismaMock.enrollment.create.mock.calls.map(([args]: any[]) => args.data.userId);
+function enrollmentCreateMembershipIds() {
+  return prismaMock.enrollment.create.mock.calls.map(
+    ([args]: any[]) => args.data.organizationUserId,
+  );
 }
 function inviteCreateEmails() {
   return prismaMock.invite.create.mock.calls.map(([args]: any[]) => args.data.email);
@@ -235,24 +286,48 @@ beforeEach(() => {
   mockSendCourseLaunchEmail.mockResolvedValue(undefined);
 });
 
-function existingMember(id: string, email: string): FakeUser {
-  return { id, email, organizationId: 'org-1', profile: { fullName: null } };
+function identity(id: string, email: string): FakeUser {
+  return { id, email, firstName: null, lastName: null, fullName: null };
+}
+
+/** An identity plus its ACTIVE seat in the given org (defaults to the caller's). */
+interface SeededMember {
+  user: FakeUser;
+  membership: FakeMembership;
+}
+function existingMember(id: string, email: string, organizationId = 'org-1'): SeededMember {
+  return {
+    user: identity(id, email),
+    membership: { id: `ou-${id}`, userId: id, organizationId, active: true },
+  };
+}
+
+/** Split a member list into the identity + membership tables the fake DB holds. */
+function membersSeed(members: SeededMember[]): Seed {
+  return { users: members.map((m) => m.user), memberships: members.map((m) => m.membership) };
 }
 
 describe('createEnrollmentsForUsers — equivalence with the sequential reference path', () => {
   it('produces identical outcomes (status, order, bucketing) for a mixed batch: new / existing / cross-tenant / org-less-invite / malformed / seat-rejected', async () => {
     const seed: Seed = {
-      users: [
+      ...membersSeed([
         existingMember('u-existing', 'existing@example.com'),
-        { id: 'u-other-org', email: 'foreign@example.com', organizationId: 'org-2', profile: null },
-        { id: 'u-orgless', email: 'orgless@example.com', organizationId: null, profile: null },
+        // Seated in ANOTHER org only: the membership lookup is scoped to the
+        // caller's org, so this identity resolves to no membership here.
+        existingMember('u-other-org', 'foreign@example.com', 'org-2'),
+      ]),
+      // An identity with no membership row at all (e.g. previously removed staff).
+      users: [
+        identity('u-existing', 'existing@example.com'),
+        identity('u-other-org', 'foreign@example.com'),
+        identity('u-membershipless', 'membershipless@example.com'),
       ],
     };
     const entries: StaffEntry[] = [
       { email: 'new@example.com' }, // unknown → invited
       { email: 'existing@example.com' }, // existing member → enrolled
-      { email: 'foreign@example.com' }, // cross-tenant → failed
-      { email: 'orgless@example.com' }, // org-less account → invited
+      { email: 'foreign@example.com' }, // seated only in another org → invited into this one
+      { email: 'membershipless@example.com' }, // no membership anywhere → invited
       { email: 'not-an-email' }, // malformed → failed
       { email: 'rejected@example.com' }, // seat-rejected → failed, no DB writes
     ];
@@ -261,7 +336,7 @@ describe('createEnrollmentsForUsers — equivalence with the sequential referenc
     seedDb(seed);
     const seqOutcomes = await runSequential(entries, CTX, skipEmails);
     const seqInviteEmails = new Set(inviteCreateEmails());
-    const seqEnrollUserIds = enrollmentCreateUserIds();
+    const seqEnrollUserIds = enrollmentCreateMembershipIds();
 
     vi.clearAllMocks();
     mockCreateNotification.mockResolvedValue(undefined);
@@ -270,14 +345,14 @@ describe('createEnrollmentsForUsers — equivalence with the sequential referenc
     seedDb(seed);
     const batchOutcomes = await createEnrollmentsForUsers(entries, CTX, skipEmails);
     const batchInviteEmails = new Set(inviteCreateEmails());
-    const batchEnrollUserIds = enrollmentCreateUserIds();
+    const batchEnrollUserIds = enrollmentCreateMembershipIds();
 
     // Index-aligned outcome buckets must match exactly, in order, on both paths.
     expect(normalizeOutcomes(batchOutcomes)).toEqual(normalizeOutcomes(seqOutcomes));
     expect(batchOutcomes.map((o) => o.status)).toEqual([
       'invited',
       'enrolled',
-      'failed',
+      'invited',
       'invited',
       'failed',
       'failed',
@@ -287,12 +362,15 @@ describe('createEnrollmentsForUsers — equivalence with the sequential referenc
     // Same DB writes as the sequential reference (prisma is a static import — reliable under concurrency).
     expect(batchInviteEmails).toEqual(seqInviteEmails);
     expect(batchEnrollUserIds.length).toBe(seqEnrollUserIds.length);
-    expect(batchEnrollUserIds).toEqual(['u-existing']);
+    expect(batchEnrollUserIds).toEqual(['ou-u-existing']);
 
     // No enrollment/invite written for the seat-rejected or malformed entries.
     expect([...batchInviteEmails]).not.toContain('rejected@example.com');
     expect([...batchInviteEmails]).not.toContain('not-an-email');
-  });
+    // Each entry resolves '@/lib/email' through a dynamic import; running the
+    // batch twice (sequential + batched) makes this slow enough to exceed the
+    // 5s default when the whole suite runs in parallel.
+  }, 30_000);
 
   it('seat-rejected (skipEmails) entries are force-failed with zero DB work on both paths', async () => {
     const entries: StaffEntry[] = [{ email: 'a@example.com' }, { email: 'b@example.com' }];
@@ -318,8 +396,8 @@ describe('createEnrollmentsForUsers — equivalence with the sequential referenc
 
   it('already-enrolled users are skipped identically — no write, no email, on both paths (single entry, no concurrency)', async () => {
     const seed: Seed = {
-      users: [existingMember('u-1', 'staff@example.com')],
-      enrollments: [{ id: 'enr-existing', userId: 'u-1', courseId: 'course-1' }],
+      ...membersSeed([existingMember('u-1', 'staff@example.com')]),
+      enrollments: [{ id: 'enr-existing', organizationUserId: 'ou-u-1', courseId: 'course-1' }],
     };
     const entries: StaffEntry[] = [{ email: 'staff@example.com' }];
 
@@ -339,7 +417,7 @@ describe('createEnrollmentsForUsers — equivalence with the sequential referenc
 
   describe('no-duplicate-email guarantee (single email → single group, no cross-entry concurrency)', () => {
     it('a repeated NEW email in one batch enrolls only once — one enrollment write, one launch email, second occurrence alreadyEnrolled', async () => {
-      const seed: Seed = { users: [existingMember('u-1', 'dup@example.com')] };
+      const seed: Seed = membersSeed([existingMember('u-1', 'dup@example.com')]);
       const entries: StaffEntry[] = [{ email: 'dup@example.com' }, { email: 'dup@example.com' }];
 
       seedDb(seed);
@@ -400,18 +478,18 @@ describe('createEnrollmentsForUsers — equivalence with the sequential referenc
   describe('assignCourseToRole-style batch (no seat rejection, holders only)', () => {
     it('enrolls 50+ role holders identically on both paths, with correct outcome counts', async () => {
       const holderCount = 60;
-      const users: FakeUser[] = Array.from({ length: holderCount }, (_, i) =>
+      const members = Array.from({ length: holderCount }, (_, i) =>
         existingMember(`u-${i}`, `holder${i}@example.com`),
       );
-      const entries: StaffEntry[] = users.map((u) => ({ email: u.email }));
+      const entries: StaffEntry[] = members.map((m) => ({ email: m.user.email }));
 
-      seedDb({ users });
+      seedDb(membersSeed(members));
       const seqOutcomes = await runSequential(entries, CTX, new Set());
       const seqEnrollCount = prismaMock.enrollment.create.mock.calls.length;
 
       vi.clearAllMocks();
       mockSendCourseLaunchEmail.mockResolvedValue(undefined);
-      seedDb({ users });
+      seedDb(membersSeed(members));
       const batchOutcomes = await createEnrollmentsForUsers(entries, CTX, new Set());
       const batchEnrollCount = prismaMock.enrollment.create.mock.calls.length;
 
@@ -422,18 +500,20 @@ describe('createEnrollmentsForUsers — equivalence with the sequential referenc
       // concurrency, unlike the dynamically-imported email mocks (see file header).
       expect(batchEnrollCount).toBe(holderCount);
       expect(batchEnrollCount).toBe(seqEnrollCount);
-    });
+      // 60 holders x 2 paths, each entry resolving '@/lib/email' via a dynamic
+      // import — well past the 5s default under full-suite parallel load.
+    }, 30_000);
   });
 });
 
 describe('createEnrollmentsForUsers — bounded concurrency', () => {
   it('never runs more than ENROLLMENT_BATCH_CONCURRENCY (10) enrollment writes in flight at once', async () => {
     const holderCount = 25;
-    const users: FakeUser[] = Array.from({ length: holderCount }, (_, i) =>
+    const members = Array.from({ length: holderCount }, (_, i) =>
       existingMember(`u-${i}`, `holder${i}@example.com`),
     );
-    const entries: StaffEntry[] = users.map((u) => ({ email: u.email }));
-    seedDb({ users });
+    const entries: StaffEntry[] = members.map((m) => ({ email: m.user.email }));
+    seedDb(membersSeed(members));
 
     let inFlight = 0;
     let maxInFlight = 0;
@@ -457,7 +537,7 @@ describe('createEnrollmentsForUsers — partial-failure semantics', () => {
   it('a mid-batch launch-email failure does not abort the batch and does not roll back that enrollment', async () => {
     // Single entry — avoids the dynamic-import concurrency caveat (file header);
     // the property under test (email failure isolation) only needs one call.
-    const seed: Seed = { users: [existingMember('u-1', 'emailfails@example.com')] };
+    const seed: Seed = membersSeed([existingMember('u-1', 'emailfails@example.com')]);
     const entries: StaffEntry[] = [{ email: 'emailfails@example.com' }];
     seedDb(seed);
     mockSendCourseLaunchEmail.mockRejectedValue(new Error('SMTP down'));
@@ -471,16 +551,16 @@ describe('createEnrollmentsForUsers — partial-failure semantics', () => {
   });
 
   it('a createNotification throw aborts the run on BOTH paths (rejects, does not resolve a partial result)', async () => {
-    const users: FakeUser[] = [
+    const members = [
       existingMember('u-1', 'ok1@example.com'),
       existingMember('u-2', 'boom@example.com'),
       existingMember('u-3', 'ok2@example.com'),
     ];
-    const entries: StaffEntry[] = users.map((u) => ({ email: u.email }));
+    const entries: StaffEntry[] = members.map((m) => ({ email: m.user.email }));
 
-    seedDb({ users });
+    seedDb(membersSeed(members));
     mockCreateNotification.mockImplementation(async (data: any) => {
-      if (data.userId === 'u-2') throw new Error('notification service down');
+      if (data.organizationUserId === 'ou-u-2') throw new Error('notification service down');
     });
     await expect(runSequential(entries, CTX, new Set())).rejects.toThrow(
       'notification service down',
@@ -488,9 +568,9 @@ describe('createEnrollmentsForUsers — partial-failure semantics', () => {
 
     vi.clearAllMocks();
     mockSendCourseLaunchEmail.mockResolvedValue(undefined);
-    seedDb({ users });
+    seedDb(membersSeed(members));
     mockCreateNotification.mockImplementation(async (data: any) => {
-      if (data.userId === 'u-2') throw new Error('notification service down');
+      if (data.organizationUserId === 'ou-u-2') throw new Error('notification service down');
     });
     await expect(createEnrollmentsForUsers(entries, CTX, new Set())).rejects.toThrow(
       'notification service down',
@@ -510,37 +590,37 @@ describe('createEnrollmentsForUsers — partial-failure semantics', () => {
   // avoided in multi-group-concurrent scenarios).
   // ---------------------------------------------------------------------
   it('DIVERGENCE: entries positioned AFTER the failing one are committed on the batched path but never attempted on the sequential path', async () => {
-    const users: FakeUser[] = [
+    const members = [
       existingMember('u-1', 'before@example.com'),
       existingMember('u-2', 'fails@example.com'),
       existingMember('u-3', 'after1@example.com'),
       existingMember('u-4', 'after2@example.com'),
     ];
-    const entries: StaffEntry[] = users.map((u) => ({ email: u.email }));
+    const entries: StaffEntry[] = members.map((m) => ({ email: m.user.email }));
 
     // Sequential reference run.
-    seedDb({ users });
+    seedDb(membersSeed(members));
     mockCreateNotification.mockImplementation(async (data: any) => {
-      if (data.userId === 'u-2') throw new Error('notify down');
+      if (data.organizationUserId === 'ou-u-2') throw new Error('notify down');
     });
     await expect(runSequential(entries, CTX, new Set())).rejects.toThrow('notify down');
-    const seqEnrolledUserIds = enrollmentCreateUserIds();
+    const seqEnrolledMembershipIds = enrollmentCreateMembershipIds();
 
     // Batched run, identical input/fixtures.
     vi.clearAllMocks();
     mockSendCourseLaunchEmail.mockResolvedValue(undefined);
-    seedDb({ users });
+    seedDb(membersSeed(members));
     mockCreateNotification.mockImplementation(async (data: any) => {
-      if (data.userId === 'u-2') throw new Error('notify down');
+      if (data.organizationUserId === 'ou-u-2') throw new Error('notify down');
     });
     await expect(createEnrollmentsForUsers(entries, CTX, new Set())).rejects.toThrow('notify down');
-    const batchEnrolledUserIds = enrollmentCreateUserIds();
+    const batchEnrolledMembershipIds = enrollmentCreateMembershipIds();
 
     // Sequential: the failing entry's OWN enrollment write already happened
     // (createNotification runs AFTER enrollment.create — see create.ts), so
     // u-2 is committed too; but u-3/u-4 are never touched (no user lookup, no
     // enrollment write) — the loop stops the instant u-2 throws.
-    expect(seqEnrolledUserIds).toEqual(['u-1', 'u-2']);
+    expect(seqEnrolledMembershipIds).toEqual(['ou-u-1', 'ou-u-2']);
 
     // Batched: u-3 and u-4 are dispatched to their own concurrent workers
     // BEFORE u-2's error is observed, and are not cancelled — they commit
@@ -548,6 +628,6 @@ describe('createEnrollmentsForUsers — partial-failure semantics', () => {
     // is a real, blocking behavioral divergence from the sequential path's
     // "nothing after the failure point is ever touched" guarantee — see the
     // test file header / PR-7 report for the full writeup.
-    expect(batchEnrolledUserIds.sort()).toEqual(['u-1', 'u-2', 'u-3', 'u-4']);
+    expect(batchEnrolledMembershipIds.sort()).toEqual(['ou-u-1', 'ou-u-2', 'ou-u-3', 'ou-u-4']);
   });
 });

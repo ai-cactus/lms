@@ -12,6 +12,7 @@ import {
 } from '@/lib/rbac/role-utils';
 import { logger } from '@/lib/logger';
 import { deriveTimezoneFromState } from '@/lib/reminders/us-state-timezone';
+import { createMembership } from '@/lib/auth/membership';
 
 // Define types for the data we expect
 // Note: We are using 'any' for simplicity here to match the flexible structure,
@@ -79,6 +80,26 @@ export interface OnboardingData {
   step5?: OnboardingStep5;
 }
 
+/**
+ * Every Org Details field is mandatory: the organization + its first facility are
+ * created from this step alone, and a half-populated facility (no address, no
+ * state → no timezone) silently breaks reminders and compliance reporting later.
+ */
+const REQUIRED_STEP1_FIELDS: { key: keyof OnboardingStep1; label: string }[] = [
+  { key: 'legalName', label: 'Legal Business Name' },
+  { key: 'dba', label: 'Doing Business As (DBA)' },
+  { key: 'ein', label: 'Employer Identification Number (EIN)' },
+  { key: 'staffCount', label: 'Number of Staff' },
+  { key: 'primaryContactName', label: 'Primary Contact Name' },
+  { key: 'primaryContactEmail', label: 'Primary Contact Email' },
+  { key: 'phone', label: 'Phone Number' },
+  { key: 'country', label: 'Country' },
+  { key: 'streetAddress', label: 'Street Address' },
+  { key: 'zipCode', label: 'Zip Code' },
+  { key: 'city', label: 'City' },
+  { key: 'state', label: 'State' },
+];
+
 export type CompleteOnboardingResult =
   | { success: true; organizationId: string }
   | { success: false; error: string; code?: 'MISSING_STEP1' };
@@ -106,12 +127,31 @@ export async function completeOnboarding(data: OnboardingData): Promise<Complete
     return { success: false, error: 'Missing Organization Data (Step 1)', code: 'MISSING_STEP1' };
   }
 
+  // Fail fast on an incomplete step 1 — a stale draft saved before these fields
+  // became mandatory, or a direct action call, must not create a partial org.
+  // `MISSING_STEP1` sends the client back to the step to supply what is missing.
+  const missingStep1Fields = REQUIRED_STEP1_FIELDS.filter((field) => !step1[field.key]?.trim()).map(
+    (field) => field.label,
+  );
+
+  if (missingStep1Fields.length > 0) {
+    logger.warn({
+      msg: '[completeOnboarding] Rejected incomplete organization details',
+      missingFields: missingStep1Fields,
+    });
+    return {
+      success: false,
+      error: `Missing required organization details: ${missingStep1Fields.join(', ')}`,
+      code: 'MISSING_STEP1',
+    };
+  }
+
   // One organisation per user — a user already in an org cannot create another.
-  const existingMembership = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { organizationId: true },
+  const existingMembership = await prisma.organizationUser.findFirst({
+    where: { userId, active: true },
+    select: { id: true },
   });
-  if (existingMembership?.organizationId) {
+  if (existingMembership) {
     return {
       success: false,
       error: 'You already belong to an organization and cannot create another.',
@@ -199,25 +239,15 @@ export async function completeOnboarding(data: OnboardingData): Promise<Complete
         });
       }
 
-      // 2. Link founding user as the organisation `owner`, attached to the facility.
-      logger.info({ msg: '[completeOnboarding] Linking User:', data: userId });
-      await tx.user.update({
-        where: { id: userId },
-        data: {
-          organizationId: org.id,
-          facilityId: facility.id,
-          role: 'owner',
-          roleAssignedAt: new Date(),
-        },
-      });
-
       // 3. Prepare Invites to be sent
       const invitesToSend: { email: string; role: UserRole; token: string; orgName: string }[] = [];
 
+      // An identity that already exists (in another organization, or org-less)
+      // is still invitable — multi-org membership is the point of this model,
+      // and the organization created moments ago cannot have members yet, so no
+      // invite here can be a duplicate. The /join acceptance flow relinks such
+      // an identity instead of creating a second one.
       const queueInvite = async (email: string, role: UserRole) => {
-        const existingUser = await tx.user.findUnique({ where: { email } });
-        if (existingUser) return;
-
         const token = crypto.randomUUID();
         const expiresAt = new Date();
         expiresAt.setDate(expiresAt.getDate() + 7);
@@ -227,6 +257,7 @@ export async function completeOnboarding(data: OnboardingData): Promise<Complete
             email,
             token,
             organizationId: org.id,
+            facilityId: facility.id,
             role,
             expiresAt,
             invitedBy: userId,
@@ -278,7 +309,16 @@ export async function completeOnboarding(data: OnboardingData): Promise<Complete
         }
       }
 
-      return { org, invitesToSend };
+      return { org, facility, invitesToSend };
+    });
+
+    // 2. Link founding user as the organisation `owner`, attached to the facility.
+    logger.info({ msg: '[completeOnboarding] Linking User:', data: userId });
+    await createMembership({
+      userId,
+      organizationId: result.org.id,
+      facilityId: result.facility.id,
+      role: 'owner',
     });
 
     // 4. Send Emails (Outside Transaction logic, but initiated here)

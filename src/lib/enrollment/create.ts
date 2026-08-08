@@ -3,9 +3,10 @@ import { DEFAULT_SELF_SERVE_WORKER_ROLE } from '@/lib/rbac/role-utils';
 import { logger, maskEmail } from '@/lib/logger';
 import { createNotification } from '@/app/actions/notifications';
 import { computeDueAt, resolveStartDate } from '@/lib/reminders/deadline';
+import { resolveMemberFacilityId, resolveMemberFacilityIds } from '@/lib/facility/member-facility';
 import type { StaffEntry } from '@/types/enrollment';
 import type { UserRole } from '@/generated/prisma/enums';
-import type { Invite, Prisma } from '@/generated/prisma/client';
+import type { Invite } from '@/generated/prisma/client';
 
 /**
  * Assignment-scoped context shared by every user enrolled in a single call.
@@ -20,14 +21,14 @@ export interface CreateEnrollmentContext {
   organizationId: string | null;
   /** Display name used in invite / launch emails. */
   organizationName: string;
-  /** Facility to attach a newly created worker to; null when the org has none. */
+  /** Facility an invited worker is attached to; null falls back to the org's first. */
   facilityId: string | null;
   /** Parent {@link CourseAssignment} id; null when no assignment batch exists. */
   assignmentId: string | null;
   scheduleAt: Date | null;
   assignmentDueAt: Date | null;
   assignmentWindowDays: number | null;
-  /** Actor recorded on the structured enrollment log. */
+  /** Actor (identity id) recorded on the structured enrollment log. */
   enrolledByUserId: string;
 }
 
@@ -44,21 +45,34 @@ export type EnrollmentOutcome =
   | { status: 'invited'; email: string }
   | { status: 'enrolled'; email: string; userId: string; enrollmentId: string };
 
+/** The identity projection this module reads — never the credential columns. */
+interface PrefetchedUser {
+  id: string;
+  firstName: string | null;
+  lastName: string | null;
+  fullName: string | null;
+}
+
 /**
- * Pre-fetched, per-user snapshot the batched path ({@link createEnrollmentsForUsers})
- * hands to {@link createEnrollmentForUser} so it can skip the three per-user read
+ * Pre-fetched, per-email snapshot the batched path ({@link createEnrollmentsForUsers})
+ * hands to {@link createEnrollmentForUser} so it can skip the five per-user read
  * queries it would otherwise issue one row at a time (`user.findUnique`,
- * `enrollment.findFirst`, `invite.findFirst`). Every field must be the exact row
- * those queries would have returned for this email; omit the argument entirely to
- * keep the original read-per-call behaviour (the sequential fallback path).
+ * `organizationUser.findFirst`, `invite.findFirst`, `enrollment.findFirst` and the
+ * member's facility look-up). Every field must be the exact row those queries would
+ * have returned for this email under `ctx.organizationId`; omit the argument
+ * entirely to keep the original read-per-call behaviour (the sequential fallback).
  */
 export interface EnrollmentPrefetch {
-  /** The user for this email (with profile), or null if none exists. */
-  user: Prisma.UserGetPayload<{ include: { profile: true } }> | null;
-  /** Whether an enrollment already exists for this user on `ctx.courseId`. */
+  /** The identity for this email, or null if none exists. */
+  user: PrefetchedUser | null;
+  /** The caller-org membership for that identity, or null when it has none. */
+  membership: { id: string } | null;
+  /** Whether an enrollment already exists for that membership on `ctx.courseId`. */
   alreadyEnrolled: boolean;
   /** The most recent outstanding pending invite for this email, or null. */
   existingInvite: Invite | null;
+  /** The membership's facility, or null when it holds no active assignment. */
+  memberFacilityId: string | null;
 }
 
 /**
@@ -101,35 +115,27 @@ export async function createEnrollmentForUser(
     ? prefetch.user
     : await prisma.user.findUnique({
         where: { email: normalizedEmail },
-        include: { profile: true },
+        select: { id: true, firstName: true, lastName: true, fullName: true },
       });
 
-  // Tenancy guard: an email that resolves to an existing user in a DIFFERENT
-  // organization must never be enrolled by this org. Covers every caller of this
-  // helper (standalone assign, wizard, role-join hook). Reported as a generic
-  // failure; the cross-tenant detail stays in the log only.
-  if (
-    user &&
-    ctx.organizationId &&
-    user.organizationId &&
-    user.organizationId !== ctx.organizationId
-  ) {
-    logger.warn({
-      msg: '[enrollment] Cross-tenant enrollment blocked — user belongs to a different organization',
-      email: maskEmail(normalizedEmail),
-      callerOrganizationId: ctx.organizationId,
-      userOrganizationId: user.organizationId,
-      courseId: ctx.courseId,
-    });
-    return { status: 'failed', email: normalizedEmail };
-  }
+  // Tenancy is now structural: we only ever look for a membership in the
+  // CALLER's organization, so an identity that also belongs to another org is
+  // simply not found here and can never be enrolled cross-tenant.
+  const membership = prefetch
+    ? prefetch.membership
+    : user && ctx.organizationId
+      ? await prisma.organizationUser.findFirst({
+          where: { userId: user.id, organizationId: ctx.organizationId, active: true },
+          select: { id: true },
+        })
+      : null;
 
-  // Unknown email, or an existing account with no org (e.g. previously removed
-  // staff): do NOT create/enroll a user. Send a `/join` invite and park the
-  // course on it — the enrollment is materialised when the invite is accepted
-  // (see enrollInviteCourses). Unifies the assign flow with the staff-invite
-  // flow; no premature accounts, no temporary passwords.
-  if (!user || user.organizationId === null) {
+  // Unknown email, or an identity with no active membership in this org (e.g.
+  // previously removed staff): do NOT create/enroll. Send a `/join` invite and
+  // park the course on it — the enrollment is materialised when the invite is
+  // accepted (see enrollInviteCourses). Unifies the assign flow with the
+  // staff-invite flow; no premature accounts, no temporary passwords.
+  if (!user || !membership) {
     if (!ctx.organizationId) {
       // No org to attach an invite to — the standalone assign / wizard paths
       // always have one, so this only guards a misconfigured caller.
@@ -146,6 +152,27 @@ export async function createEnrollmentForUser(
     // default self-serve worker role.
     const inviteRole: UserRole =
       entry.role === 'admin' ? 'supervisor' : DEFAULT_SELF_SERVE_WORKER_ROLE;
+
+    // Every invite must name a facility. Prefer the caller's; otherwise fall
+    // back to the org's first facility (onboarding guarantees at least one).
+    const inviteFacilityId =
+      ctx.facilityId ??
+      (
+        await prisma.facility.findFirst({
+          where: { organizationId: ctx.organizationId },
+          orderBy: { createdAt: 'asc' },
+          select: { id: true },
+        })
+      )?.id;
+
+    if (!inviteFacilityId) {
+      logger.warn({
+        msg: '[enrollment] Cannot invite for course assignment — organization has no facility',
+        organizationId: ctx.organizationId,
+        courseId: ctx.courseId,
+      });
+      return { status: 'failed', email: normalizedEmail };
+    }
 
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7);
@@ -175,6 +202,7 @@ export async function createEnrollmentForUser(
               email: normalizedEmail,
               token: crypto.randomUUID(),
               organizationId: ctx.organizationId,
+              facilityId: inviteFacilityId,
               role: inviteRole,
               expiresAt,
               invitedBy: ctx.enrolledByUserId,
@@ -225,33 +253,23 @@ export async function createEnrollmentForUser(
     }
   }
 
-  // Existing org member: opportunistically backfill blank profile name fields
-  // from the CSV without overwriting anything already set.
-  if (firstName || lastName) {
-    const profile = user.profile;
-    if (!profile?.fullName && fullName) {
-      await prisma.profile.upsert({
-        where: { id: user.id },
-        create: {
-          id: user.id,
-          email: normalizedEmail,
-          firstName: firstName ?? null,
-          lastName: lastName ?? null,
-          fullName: fullName ?? null,
-        },
-        update: {
-          firstName: profile?.firstName ?? firstName ?? null,
-          lastName: profile?.lastName ?? lastName ?? null,
-          fullName: profile?.fullName ?? fullName ?? null,
-        },
-      });
-    }
+  // Existing org member: opportunistically backfill blank name fields from the
+  // CSV without overwriting anything already set.
+  if ((firstName || lastName) && !user.fullName && fullName) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        firstName: user.firstName ?? firstName ?? null,
+        lastName: user.lastName ?? lastName ?? null,
+        fullName,
+      },
+    });
   }
 
   const alreadyEnrolled = prefetch
     ? prefetch.alreadyEnrolled
     : (await prisma.enrollment.findFirst({
-        where: { userId: user.id, courseId: ctx.courseId },
+        where: { organizationUserId: membership.id, courseId: ctx.courseId },
       })) !== null;
 
   if (alreadyEnrolled) {
@@ -273,8 +291,13 @@ export async function createEnrollmentForUser(
 
   const enrollment = await prisma.enrollment.create({
     data: {
-      userId: user.id,
+      organizationUserId: membership.id,
       courseId: ctx.courseId,
+      // The member's OWN facility, not ctx.facilityId — the latter is the invite
+      // target for an address with no membership yet, which this branch is not.
+      facilityId: prefetch
+        ? prefetch.memberFacilityId
+        : await resolveMemberFacilityId(prisma, membership.id),
       status: 'enrolled',
       progress: 0,
       assignmentId: ctx.assignmentId ?? undefined,
@@ -304,7 +327,7 @@ export async function createEnrollmentForUser(
   }
 
   await createNotification({
-    userId: user.id,
+    organizationUserId: membership.id,
     type: 'COURSE_ASSIGNED',
     title: 'New Required Training Assigned',
     message: `You have been assigned a new course: ${ctx.courseTitle}`,
@@ -315,7 +338,7 @@ export async function createEnrollmentForUser(
   // This path is only reached for a pre-existing org member, so the Stage 1
   // launch email always sends here (invited addresses returned earlier with the
   // `/join` invite email instead).
-  const recipientName = user.profile?.fullName || fullName || 'there';
+  const recipientName = user.fullName || fullName || 'there';
   try {
     await sendCourseLaunchEmail(
       normalizedEmail,
@@ -360,8 +383,8 @@ const ENROLLMENT_BATCH_CONCURRENCY = 10;
  * gated behind the `ENROLLMENT_BATCH_ENABLED` kill-switch at the call sites.
  *
  * Equivalent to calling `createEnrollmentForUser` once per entry in array order,
- * but it (a) collapses the per-user `user` / `enrollment` / `invite` reads into
- * three batched look-ups up front and (b) runs the independent per-user
+ * but it (a) collapses the per-user identity / membership / enrollment / invite /
+ * facility reads into batched look-ups up front and (b) runs the independent per-user
  * side-effects with bounded concurrency instead of awaiting each serially. It
  * chooses the *implementation*, never the outcome: seat-limit rejection, skip
  * logic, which users get enrolled/invited, and the emails sent are all identical
@@ -400,22 +423,36 @@ export async function createEnrollmentsForUsers(
 
   const uniqueEmails = [...new Set(pending.map((p) => p.email))];
 
-  // Batch read 1: resolve every candidate user (with profile) in one query.
+  // Batch read 1: resolve every candidate identity in one query.
   const users = await prisma.user.findMany({
     where: { email: { in: uniqueEmails } },
-    include: { profile: true },
+    select: { id: true, email: true, firstName: true, lastName: true, fullName: true },
   });
   const userByEmail = new Map(users.map((u) => [u.email.toLowerCase(), u]));
 
-  // Batch reads 2 & 3: existing enrollments for the resolved users on this course,
-  // and outstanding pending invites for the batch — the two remaining per-user
-  // reads createEnrollmentForUser would otherwise issue one row at a time.
+  // Batch read 2: the caller-org memberships for those identities. Reading only
+  // this org's rows keeps the batched path's tenancy guarantee identical to the
+  // sequential one — an identity in another org simply resolves to no membership.
   const userIds = users.map((u) => u.id);
-  const [existingEnrollments, pendingInvites] = await Promise.all([
-    userIds.length > 0
+  const memberships =
+    ctx.organizationId && userIds.length > 0
+      ? await prisma.organizationUser.findMany({
+          where: { userId: { in: userIds }, organizationId: ctx.organizationId, active: true },
+          select: { id: true, userId: true },
+        })
+      : [];
+  const membershipByUserId = new Map(memberships.map((m) => [m.userId, { id: m.id }]));
+  const membershipIds = memberships.map((m) => m.id);
+
+  // Batch reads 3, 4 & 5: existing enrollments for those memberships on this
+  // course, outstanding pending invites for the batch, and each member's facility
+  // — the remaining per-user reads createEnrollmentForUser would otherwise issue
+  // one row at a time.
+  const [existingEnrollments, pendingInvites, facilityByMembership] = await Promise.all([
+    membershipIds.length > 0
       ? prisma.enrollment.findMany({
-          where: { courseId: ctx.courseId, userId: { in: userIds } },
-          select: { userId: true },
+          where: { courseId: ctx.courseId, organizationUserId: { in: membershipIds } },
+          select: { organizationUserId: true },
         })
       : Promise.resolve([]),
     ctx.organizationId
@@ -428,9 +465,10 @@ export async function createEnrollmentsForUsers(
           orderBy: { createdAt: 'desc' },
         })
       : Promise.resolve([]),
+    resolveMemberFacilityIds(prisma, membershipIds),
   ]);
 
-  const enrolledUserIds = new Set(existingEnrollments.map((e) => e.userId));
+  const enrolledMembershipIds = new Set(existingEnrollments.map((e) => e.organizationUserId));
   // `orderBy createdAt desc` means the first invite seen per email is the most
   // recent — the exact row createEnrollmentForUser's `findFirst` would return.
   const inviteByEmail = new Map<string, Invite>();
@@ -458,10 +496,13 @@ export async function createEnrollmentsForUsers(
     while (cursor < groupList.length && firstError === undefined) {
       const [email, items] = groupList[cursor++];
       const user = userByEmail.get(email) ?? null;
+      const membership = user ? (membershipByUserId.get(user.id) ?? null) : null;
       const prefetch: EnrollmentPrefetch = {
         user,
-        alreadyEnrolled: user ? enrolledUserIds.has(user.id) : false,
+        membership,
+        alreadyEnrolled: membership ? enrolledMembershipIds.has(membership.id) : false,
         existingInvite: inviteByEmail.get(email) ?? null,
+        memberFacilityId: membership ? (facilityByMembership.get(membership.id) ?? null) : null,
       };
       try {
         for (let i = 0; i < items.length; i++) {

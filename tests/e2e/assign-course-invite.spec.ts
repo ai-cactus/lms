@@ -45,6 +45,7 @@ interface Seeded {
   orgId: string;
   facilityId: string;
   ownerId: string;
+  ownerOrgUserId: string;
   ownerEmail: string;
   ownerPassword: string;
   courseId: string;
@@ -65,6 +66,7 @@ async function seedOrgWithOwnerAndCourse(): Promise<Seeded> {
     const orgId = crypto.randomUUID();
     const facilityId = crypto.randomUUID();
     const ownerId = crypto.randomUUID();
+    const ownerOrgUserId = crypto.randomUUID();
     const courseId = crypto.randomUUID();
 
     await client.query(
@@ -78,14 +80,19 @@ async function seedOrgWithOwnerAndCourse(): Promise<Seeded> {
       [facilityId, orgId, `Assign Invite E2E Facility ${slug}`],
     );
     await client.query(
-      `INSERT INTO users (id, email, password, role, email_verified, organization_id, facility_id, created_at, updated_at)
-       VALUES ($1, $2, $3, 'owner'::"UserRole", true, $4, $5, NOW(), NOW())`,
-      [ownerId, ownerEmail, ownerHashed, orgId, facilityId],
+      `INSERT INTO users (id, email, password, email_verified, auth_provider, first_name, last_name, full_name, created_at, updated_at)
+       VALUES ($1, $2, $3, true, 'credentials', $4, $5, $6, NOW(), NOW())`,
+      [ownerId, ownerEmail, ownerHashed, 'Assign', 'Owner', 'Assign Owner'],
     );
     await client.query(
-      `INSERT INTO profiles (id, email, first_name, last_name, full_name, created_at, updated_at)
-       VALUES ($1, $2, 'Assign', 'Owner', 'Assign Owner', NOW(), NOW())`,
-      [ownerId, ownerEmail],
+      `INSERT INTO organization_users (id, user_id, organization_id, role, active, joined_at, role_assigned_at, created_at, updated_at)
+       VALUES ($1, $2, $3, 'owner'::"UserRole", true, NOW(), NOW(), NOW(), NOW())`,
+      [ownerOrgUserId, ownerId, orgId],
+    );
+    await client.query(
+      `INSERT INTO organization_user_facilities (id, organization_user_id, facility_id, active, joined_at)
+       VALUES ($1, $2, $3, true, NOW())`,
+      [crypto.randomUUID(), ownerOrgUserId, facilityId],
     );
 
     // Active subscription: enrollUsers' billing gate requires it, and the
@@ -111,12 +118,12 @@ async function seedOrgWithOwnerAndCourse(): Promise<Seeded> {
     );
 
     await client.query(
-      `INSERT INTO courses (id, title, status, created_by, type, is_global, created_at, updated_at)
+      `INSERT INTO courses (id, title, status, created_by_org_user_id, type, is_global, created_at, updated_at)
        VALUES ($1, $2, 'published'::"CourseStatus", $3, 'text'::"CourseType", false, NOW(), NOW())`,
-      [courseId, `Assign Invite E2E Course ${slug}`, ownerId],
+      [courseId, `Assign Invite E2E Course ${slug}`, ownerOrgUserId],
     );
 
-    return { orgId, facilityId, ownerId, ownerEmail, ownerPassword, courseId };
+    return { orgId, facilityId, ownerId, ownerOrgUserId, ownerEmail, ownerPassword, courseId };
   } finally {
     await client.end();
   }
@@ -132,10 +139,6 @@ async function cleanup(seeded: Seeded, inviteeEmail: string): Promise<void> {
     await client.query(`DELETE FROM invites WHERE organization_id = $1`, [seeded.orgId]);
     await client.query(`DELETE FROM enrollments WHERE course_id = $1`, [seeded.courseId]);
     await client.query(`DELETE FROM course_assignments WHERE course_id = $1`, [seeded.courseId]);
-    await client.query(`DELETE FROM profiles WHERE email IN ($1, $2)`, [
-      seeded.ownerEmail,
-      inviteeEmail,
-    ]);
     await client.query(`DELETE FROM users WHERE email = $1`, [inviteeEmail]);
     await client.query(`DELETE FROM courses WHERE id = $1`, [seeded.courseId]);
     await client.query(`DELETE FROM subscriptions WHERE organization_id = $1`, [seeded.orgId]);
@@ -264,7 +267,8 @@ test.describe('Assign course to a brand-new email — unified invite flow', () =
       try {
         const enrollmentRes = await dbAfterAccept.query(
           `SELECT e.status FROM enrollments e
-           JOIN users u ON u.id = e.user_id
+           JOIN organization_users ou ON ou.id = e.organization_user_id
+           JOIN users u ON u.id = ou.user_id
            WHERE u.email = $1 AND e.course_id = $2`,
           [inviteeEmail, seeded.courseId],
         );

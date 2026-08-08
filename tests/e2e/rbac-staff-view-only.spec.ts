@@ -56,7 +56,9 @@ type ViewerRole = 'finance' | 'clinical_director' | 'hr' | 'owner' | 'supervisor
 
 interface SeededScenario {
   viewerId: string;
+  viewerOrgUserId: string;
   targetId: string;
+  targetOrgUserId: string;
   inviteId: string;
   orgId: string;
   facilityId: string;
@@ -83,6 +85,8 @@ async function seedScenario(
     const facilityId = crypto.randomUUID();
     const viewerId = crypto.randomUUID();
     const targetId = crypto.randomUUID();
+    const viewerOrgUserId = crypto.randomUUID();
+    const targetOrgUserId = crypto.randomUUID();
     const inviteId = crypto.randomUUID();
     const inviteToken = crypto.randomUUID();
 
@@ -97,34 +101,44 @@ async function seedScenario(
       [facilityId, orgId, `View-Only Test ${slug}`],
     );
     await client.query(
-      `INSERT INTO users (id, email, password, role, email_verified, organization_id, facility_id, created_at, updated_at)
-       VALUES ($1, $2, $3, $4::"UserRole", true, $5, $6, NOW(), NOW())`,
-      [viewerId, viewerEmail, hashed, viewerRole, orgId, facilityId],
+      `INSERT INTO users (id, email, password, email_verified, auth_provider, first_name, last_name, full_name, created_at, updated_at)
+       VALUES ($1, $2, $3, true, 'credentials', 'Viewer', 'Test', 'Viewer Test', NOW(), NOW())`,
+      [viewerId, viewerEmail, hashed],
     );
     await client.query(
-      `INSERT INTO profiles (id, email, first_name, last_name, full_name, job_title, created_at, updated_at)
-       VALUES ($1, $2, 'Viewer', 'Test', 'Viewer Test', 'Viewer', NOW(), NOW())`,
-      [viewerId, viewerEmail],
+      `INSERT INTO organization_users (id, user_id, organization_id, role, job_title, active, joined_at, role_assigned_at, created_at, updated_at)
+       VALUES ($1, $2, $3, $4::"UserRole", 'Viewer', true, NOW(), NOW(), NOW(), NOW())`,
+      [viewerOrgUserId, viewerId, orgId, viewerRole],
+    );
+    await client.query(
+      `INSERT INTO organization_user_facilities (id, organization_user_id, facility_id, active, joined_at)
+       VALUES ($1, $2, $3, true, NOW())`,
+      [crypto.randomUUID(), viewerOrgUserId, facilityId],
     );
 
     await client.query(
-      `INSERT INTO users (id, email, password, role, email_verified, organization_id, facility_id, created_at, updated_at)
-       VALUES ($1, $2, $3, 'nurse'::"UserRole", true, $4, $5, NOW(), NOW())`,
-      [targetId, targetEmail, hashed, orgId, facilityId],
+      `INSERT INTO users (id, email, password, email_verified, auth_provider, first_name, last_name, full_name, created_at, updated_at)
+       VALUES ($1, $2, $3, true, 'credentials', 'Target', 'Nurse', 'Target Nurse', NOW(), NOW())`,
+      [targetId, targetEmail, hashed],
     );
     await client.query(
-      `INSERT INTO profiles (id, email, first_name, last_name, full_name, job_title, created_at, updated_at)
-       VALUES ($1, $2, 'Target', 'Nurse', 'Target Nurse', 'Staff Nurse', NOW(), NOW())`,
-      [targetId, targetEmail],
+      `INSERT INTO organization_users (id, user_id, organization_id, role, job_title, active, joined_at, role_assigned_at, created_at, updated_at)
+       VALUES ($1, $2, $3, 'nurse'::"UserRole", 'Staff Nurse', true, NOW(), NOW(), NOW(), NOW())`,
+      [targetOrgUserId, targetId, orgId],
+    );
+    await client.query(
+      `INSERT INTO organization_user_facilities (id, organization_user_id, facility_id, active, joined_at)
+       VALUES ($1, $2, $3, true, NOW())`,
+      [crypto.randomUUID(), targetOrgUserId, facilityId],
     );
 
     await client.query(
-      `INSERT INTO invites (id, email, token, organization_id, role, status, expires_at, created_at)
-       VALUES ($1, $2, $3, $4, 'nurse'::"UserRole", 'pending', NOW() + INTERVAL '7 days', NOW())`,
-      [inviteId, inviteEmail, inviteToken, orgId],
+      `INSERT INTO invites (id, email, token, organization_id, facility_id, role, status, expires_at, created_at)
+       VALUES ($1, $2, $3, $4, $5, 'nurse'::"UserRole", 'pending', NOW() + INTERVAL '7 days', NOW())`,
+      [inviteId, inviteEmail, inviteToken, orgId, facilityId],
     );
 
-    return { viewerId, targetId, inviteId, orgId, facilityId };
+    return { viewerId, viewerOrgUserId, targetId, targetOrgUserId, inviteId, orgId, facilityId };
   } finally {
     await client.end();
   }
@@ -134,7 +148,13 @@ async function cleanupScenario(s: SeededScenario): Promise<void> {
   const client = await db();
   try {
     await client.query(`DELETE FROM invites WHERE id = $1`, [s.inviteId]);
-    await client.query(`DELETE FROM profiles WHERE id = ANY($1)`, [[s.viewerId, s.targetId]]);
+    await client.query(
+      `DELETE FROM organization_user_facilities WHERE organization_user_id = ANY($1)`,
+      [[s.viewerOrgUserId, s.targetOrgUserId]],
+    );
+    await client.query(`DELETE FROM organization_users WHERE id = ANY($1)`, [
+      [s.viewerOrgUserId, s.targetOrgUserId],
+    ]);
     await client.query(`DELETE FROM users WHERE id = ANY($1)`, [[s.viewerId, s.targetId]]);
     await client.query(`DELETE FROM facilities WHERE organization_id = $1`, [s.orgId]);
     await client.query(`DELETE FROM organizations WHERE id = $1`, [s.orgId]);
@@ -207,7 +227,7 @@ test.describe('RBAC matrix realignment — Finance / Clinical Director are view-
         // Staff profile page — navigate directly rather than clicking the row:
         // this scenario is about profile-level permission gating, not row-click
         // behavior — a direct nav decouples it from list/HMR timing.
-        await page.goto(`/dashboard/staff/${seeded.targetId}`);
+        await page.goto(`/dashboard/staff/${seeded.targetOrgUserId}`);
 
         await expect(page.getByRole('heading', { name: 'Trainings' })).toBeVisible();
         await expect(page.getByRole('button', { name: 'Assign Course' })).not.toBeVisible();
@@ -248,12 +268,9 @@ test.describe('RBAC matrix realignment — Finance / Clinical Director are view-
       const staffRowMenuBtn = staffRow.getByRole('button', { name: 'Row actions' });
       await staffRowMenuBtn.waitFor({ state: 'visible' });
       await staffRowMenuBtn.click();
-      // NOTE: at the time this spec was written, HR is missing `user.delete` in
-      // the RBAC permission registry (src/lib/rbac/permissions.ts), so this
-      // assertion is expected to fail until that registry gap is fixed — see the
-      // matching unit-test failure in staff.test.ts ("removeStaff() — permission
-      // matrix ... allows hr to remove a staff member"). Per the approved plan's
-      // decision ("HR keeps full staff CRUD"), HR must see this action.
+      // hr holds `user.delete` in the RBAC permission registry
+      // (src/lib/rbac/permissions.ts) — per the approved plan's decision ("HR
+      // keeps full staff CRUD"), HR must see this action.
       await expect(page.getByRole('menuitem', { name: 'Remove Staff' })).toBeVisible({
         timeout: 15000,
       });
@@ -262,7 +279,7 @@ test.describe('RBAC matrix realignment — Finance / Clinical Director are view-
       // Navigate directly rather than clicking the row: this scenario is
       // about profile-level permission gating, not row-click behavior — a
       // direct nav decouples it from the list's own click/HMR timing.
-      await page.goto(`/dashboard/staff/${seeded.targetId}`);
+      await page.goto(`/dashboard/staff/${seeded.targetOrgUserId}`);
 
       await expect(page.getByRole('button', { name: 'Assign Course' })).toBeVisible();
     } finally {
@@ -301,7 +318,7 @@ test.describe('RBAC matrix realignment — Finance / Clinical Director are view-
       // Navigate directly rather than clicking the row: this scenario is
       // about profile-level permission gating, not row-click behavior — a
       // direct nav decouples it from the list's own click/HMR timing.
-      await page.goto(`/dashboard/staff/${seeded.targetId}`);
+      await page.goto(`/dashboard/staff/${seeded.targetOrgUserId}`);
 
       await expect(page.getByRole('button', { name: 'Assign Course' })).toBeVisible();
     } finally {

@@ -5,7 +5,7 @@ import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { callVertexAI } from '@/lib/ai-client';
-import { logger } from '@/lib/logger';
+import { logger, maskEmail } from '@/lib/logger';
 import { ADMIN_ROLES } from '@/lib/rbac/role-utils';
 import { guardApiSession } from '@/lib/auth-guard';
 import { hasActiveBilling } from '@/lib/billing';
@@ -119,7 +119,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       where: { id: enrollmentId },
       include: {
         course: true,
-        user: {
+        organizationUser: {
           select: {
             organization: {
               select: { subscription: { select: { status: true, pausedAt: true } } },
@@ -134,8 +134,8 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     }
 
     if (
-      enrollment.userId !== workerSession?.user?.id &&
-      enrollment.userId !== adminSession?.user?.id
+      enrollment.organizationUserId !== workerSession?.user?.organizationUserId &&
+      enrollment.organizationUserId !== adminSession?.user?.organizationUserId
     ) {
       return NextResponse.json(
         { error: 'Enrollment does not belong to active sessions' },
@@ -145,7 +145,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
 
     // Billing gate (defense in depth): the layout blocks the portal when the org
     // lacks active billing; this stops a direct POST from submitting an attempt.
-    if (!hasActiveBilling(enrollment.user?.organization?.subscription)) {
+    if (!hasActiveBilling(enrollment.organizationUser?.organization?.subscription)) {
       logger.warn({
         msg: '[quiz] Submit blocked — organization lacks active billing',
         enrollmentId,
@@ -266,17 +266,17 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       const enrollmentWithDetails = await prisma.enrollment.findUnique({
         where: { id: enrollmentId },
         include: {
-          user: { include: { profile: true } },
+          organizationUser: { include: { user: true } },
           course: { include: { lessons: { include: { quiz: true } } } },
         },
       });
 
-      if (enrollmentWithDetails?.user?.organizationId) {
-        const workerName =
-          enrollmentWithDetails.user.profile?.fullName || enrollmentWithDetails.user.email;
+      if (enrollmentWithDetails?.organizationUser?.organizationId) {
+        const { organizationUser } = enrollmentWithDetails;
+        const workerName = organizationUser.user.fullName || organizationUser.user.email;
         const courseName = enrollmentWithDetails.course?.title || 'Unknown Course';
         const quizTitle = quiz.title || 'Quiz';
-        const orgId = enrollmentWithDetails.user.organizationId;
+        const orgId = organizationUser.organizationId;
 
         // Deduplicated notification
         const existingNotification = await prisma.notification.findFirst({
@@ -288,22 +288,22 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
         });
 
         if (!existingNotification) {
-          const admins = await prisma.user.findMany({
-            where: { organizationId: orgId, role: { in: [...ADMIN_ROLES] } },
-            select: { id: true, email: true },
+          const admins = await prisma.organizationUser.findMany({
+            where: { organizationId: orgId, active: true, role: { in: [...ADMIN_ROLES] } },
+            select: { id: true, user: { select: { email: true } } },
           });
 
           if (admins.length > 0) {
             await prisma.notification.createMany({
               data: admins.map((admin) => ({
-                userId: admin.id,
+                organizationUserId: admin.id,
                 type: 'QUIZ_RETRY_LIMIT_REACHED',
                 title: 'Quiz Attempts Exhausted',
                 message: `${workerName} has used all ${currentAttemptCount} attempts on "${quizTitle}" in course "${courseName}" and requires a retake assignment.`,
-                linkUrl: `/dashboard/staff/${enrollmentWithDetails.user.id}`,
+                linkUrl: `/dashboard/staff/${organizationUser.id}`,
                 metadata: {
                   enrollmentId,
-                  userId: enrollmentWithDetails.user.id,
+                  organizationUserId: organizationUser.id,
                   courseId: enrollmentWithDetails.courseId,
                   workerName,
                   quizTitle,
@@ -320,16 +320,17 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
           Promise.allSettled(
             admins.map((admin) =>
               sendQuizLockedEmail(
-                admin.email,
+                admin.user.email,
                 workerName,
                 quizTitle,
                 courseName,
                 currentAttemptCount,
-                `${appUrl}/dashboard/staff/${enrollmentWithDetails.user.id}`,
+                `${appUrl}/dashboard/staff/${organizationUser.id}`,
               ).catch((err) =>
                 logger.error({
-                  msg: `Failed to send quiz locked email to ${admin.email}`,
-                  err: err,
+                  msg: '[quiz] Failed to send quiz locked email',
+                  email: maskEmail(admin.user.email),
+                  err,
                 }),
               ),
             ),

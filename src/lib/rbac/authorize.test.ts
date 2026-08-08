@@ -131,6 +131,26 @@ describe('authorize() — authenticated but permission denied (403)', () => {
     expect(result.ok).toBe(false);
     expect(mockApiError).toHaveBeenCalledWith('Forbidden', 403, 'INSUFFICIENT_PERMISSIONS');
   });
+
+  // The RBAC matrix demoted Facility Supervisor to read-only: creating and
+  // editing facilities moved to Owner/Admin.
+  it('returns ok:false when supervisor requests facility.edit', async () => {
+    mockAuth.mockResolvedValue(makeSession('supervisor'));
+
+    const result = await authorize('facility.edit');
+
+    expect(result.ok).toBe(false);
+    expect(mockApiError).toHaveBeenCalledWith('Forbidden', 403, 'INSUFFICIENT_PERMISSIONS');
+  });
+
+  it('returns ok:false when supervisor requests facility.create', async () => {
+    mockAuth.mockResolvedValue(makeSession('supervisor'));
+
+    const result = await authorize('facility.create');
+
+    expect(result.ok).toBe(false);
+    expect(mockApiError).toHaveBeenCalledWith('Forbidden', 403, 'INSUFFICIENT_PERMISSIONS');
+  });
 });
 
 describe('authorize() — regression: stale/unknown role denies cleanly instead of throwing', () => {
@@ -183,10 +203,10 @@ describe('authorize() — authenticated and permitted (ok)', () => {
     expect(mockLoggerWarn).not.toHaveBeenCalled();
   });
 
-  it('returns ok:true when supervisor requests facility.edit', async () => {
+  it('returns ok:true when supervisor requests facility.read', async () => {
     mockAuth.mockResolvedValue(makeSession('supervisor'));
 
-    const result = await authorize('facility.edit');
+    const result = await authorize('facility.read');
 
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error('Expected ok');

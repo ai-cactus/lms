@@ -326,8 +326,9 @@ function escalationStageCopy(
 }
 
 export interface LadderStageInput {
-  enrollment: { id: string; userId: string; courseId: string };
+  enrollment: { id: string; organizationUserId: string; courseId: string };
   courseTitle: string;
+  /** `worker.id` is the `OrganizationUser.id` — createNotification's recipient key. */
   worker: { id: string; email: string; name: string | null };
   stage: ReminderStage;
   /** Effective channels for this stage (`'email'`, `'in_app'`). */
@@ -394,7 +395,7 @@ export async function dispatchLadderStage(input: LadderStageInput): Promise<Disp
       const copy = workerStageCopy(stage, courseTitle);
       if (wantsInApp) {
         await createNotification({
-          userId: worker.id,
+          organizationUserId: worker.id,
           type: stageToNotificationType(stage),
           title: copy.title,
           message: copy.message,
@@ -422,7 +423,9 @@ export async function dispatchLadderStage(input: LadderStageInput): Promise<Disp
     }
 
     if (audience === 'escalation' || audience === 'worker_and_escalation') {
-      const recipients = await resolveEscalationRecipients({ userId: enrollment.userId });
+      const recipients = await resolveEscalationRecipients({
+        organizationUserId: enrollment.organizationUserId,
+      });
       const workerName = worker.name ?? worker.email;
       const copy = escalationStageCopy(
         stage,
@@ -432,9 +435,9 @@ export async function dispatchLadderStage(input: LadderStageInput): Promise<Disp
       );
 
       if (wantsInApp) {
-        for (const userId of recipients.userIds) {
+        for (const organizationUserId of recipients.organizationUserIds) {
           await createNotification({
-            userId,
+            organizationUserId,
             type: 'COMPLIANCE_ESCALATION',
             title: copy.title,
             message: copy.message,
@@ -542,7 +545,7 @@ export async function dispatchNudge(input: NudgeInput): Promise<DispatchResult> 
 
     if (kind === 'WORKER_RETAKE') {
       await createNotification({
-        userId: worker.id,
+        organizationUserId: worker.id,
         type: 'COURSE_RETAKE_REMINDER',
         title: 'Retake your quiz',
         message: `You still have attempts remaining for "${courseTitle}". Please retake the quiz before your deadline.`,
@@ -565,9 +568,9 @@ export async function dispatchNudge(input: NudgeInput): Promise<DispatchResult> 
       });
     } else {
       const workerName = worker.name ?? worker.email;
-      for (const userId of recipients.userIds) {
+      for (const organizationUserId of recipients.organizationUserIds) {
         await createNotification({
-          userId,
+          organizationUserId,
           type: 'QUIZ_RETRY_LIMIT_REACHED',
           title: 'Quiz attempts exhausted',
           message: `${workerName} has exhausted all quiz attempts for "${courseTitle}" and needs a retake assignment.`,

@@ -46,6 +46,8 @@ vi.mock('@/lib/prisma', () => {
       create: mockEnrollmentCreate,
       groupBy: mockEnrollmentGroupBy,
     },
+    // A retake is stamped with the member's CURRENT facility, resolved fresh.
+    organizationUserFacility: { findFirst: vi.fn().mockResolvedValue(null) },
     notification: { updateMany: mockNotificationUpdateMany },
   };
   return { prisma, default: prisma };
@@ -72,7 +74,9 @@ beforeEach(() => {
 
 describe('getCourses — org-scoping sourced from the session', () => {
   it('scopes the adopted-offerings query to org-A when the session carries org-A', async () => {
-    mockAdminAuth.mockResolvedValue({ user: { id: 'admin-1', organizationId: 'org-A' } });
+    mockAdminAuth.mockResolvedValue({
+      user: { id: 'admin-1', organizationUserId: 'ou-admin-1', organizationId: 'org-A' },
+    });
     mockWorkerAuth.mockResolvedValue(null);
 
     await getCourses();
@@ -83,7 +87,9 @@ describe('getCourses — org-scoping sourced from the session', () => {
   });
 
   it('scopes to org-B (never org-A) for a different admin whose session carries org-B — no cross-tenant bleed between calls', async () => {
-    mockAdminAuth.mockResolvedValue({ user: { id: 'admin-2', organizationId: 'org-B' } });
+    mockAdminAuth.mockResolvedValue({
+      user: { id: 'admin-2', organizationUserId: 'ou-admin-2', organizationId: 'org-B' },
+    });
     mockWorkerAuth.mockResolvedValue(null);
 
     await getCourses();
@@ -93,12 +99,25 @@ describe('getCourses — org-scoping sourced from the session', () => {
     );
   });
 
-  it('never queries adopted offerings at all for an org-less session (must not fall back to an unscoped/global query)', async () => {
-    mockAdminAuth.mockResolvedValue({ user: { id: 'admin-1', organizationId: null } });
+  it('never queries adopted offerings at all for a session with a membership but no org id (must not fall back to an unscoped/global query)', async () => {
+    mockAdminAuth.mockResolvedValue({
+      user: { id: 'admin-1', organizationUserId: 'ou-admin-1', organizationId: null },
+    });
     mockWorkerAuth.mockResolvedValue(null);
 
     await getCourses();
 
+    expect(mockOrgCourseOfferingFindMany).not.toHaveBeenCalled();
+  });
+
+  it('refuses outright (no queries at all) for a session carrying no active membership', async () => {
+    mockAdminAuth.mockResolvedValue({
+      user: { id: 'admin-1', organizationUserId: null, organizationId: null },
+    });
+    mockWorkerAuth.mockResolvedValue(null);
+
+    await expect(getCourses()).rejects.toThrow('No active organization membership');
+    expect(mockCourseFindMany).not.toHaveBeenCalled();
     expect(mockOrgCourseOfferingFindMany).not.toHaveBeenCalled();
   });
 
@@ -131,7 +150,9 @@ describe('getCourseForOrgView — org-scoped enrollment visibility sourced from 
     const callArgs = mockCourseFindFirst.mock.calls[0][0];
     // Tier 3 5.2: include -> select (courseDetailSelect), but the org `where`
     // value scoping enrolled staff to the caller's org is unchanged.
-    expect(callArgs.select.enrollments.where).toEqual({ user: { organizationId: 'org-A' } });
+    expect(callArgs.select.enrollments.where).toEqual({
+      organizationUser: { organizationId: 'org-A' },
+    });
   });
 
   it('rejects with "Course not found" (never leaking existence) for an org-less session, without ever calling the DB', async () => {
@@ -147,9 +168,9 @@ describe('assignRetake — admin-only role gate sourced from the session', () =>
   const lockedEnrollment = {
     id: 'enr-1',
     status: 'locked',
-    userId: 'worker-1',
+    organizationUserId: 'ou-worker-1',
     courseId: 'course-1',
-    user: { profile: { fullName: 'Worker One' } },
+    organizationUser: { userId: 'worker-1', user: { fullName: 'Worker One' } },
     course: { id: 'course-1', title: 'Safety 101' },
   };
 
@@ -181,9 +202,25 @@ describe('assignRetake — admin-only role gate sourced from the session', () =>
     expect(mockEnrollmentCreate).not.toHaveBeenCalled();
   });
 
-  it('defense-in-depth: rejects the retired legacy "admin" role even if it somehow reaches the action (isAdminRole excludes it post-RBAC-migration)', async () => {
+  it('allows `admin`, which the multi-org rework un-retired as a real Owner-equivalent role holding enrollment.create', async () => {
+    // Dev branch treated `admin` as a retired legacy value the gate had to
+    // reject. Under the multi-org RBAC registry it is a first-class delegated
+    // Owner-equivalent seat, so the gate must ADMIT it — asserted here so the
+    // divergence is pinned rather than silently inherited.
     mockAdminAuth.mockResolvedValue({
-      user: { id: 'legacy-1', role: 'admin', organizationId: 'org-A' },
+      user: { id: 'admin-2', role: 'admin', organizationId: 'org-A' },
+    });
+    mockWorkerAuth.mockResolvedValue(null);
+
+    const result = await assignRetake('enr-1');
+
+    expect(result.success).toBe(true);
+    expect(mockEnrollmentCreate).toHaveBeenCalledOnce();
+  });
+
+  it('rejects a read-only Supervisor: `enrollment.edit` is a self-service permission every role holds, so the gate must be `enrollment.create`', async () => {
+    mockAdminAuth.mockResolvedValue({
+      user: { id: 'sup-1', role: 'supervisor', organizationId: 'org-A' },
     });
     mockWorkerAuth.mockResolvedValue(null);
 
