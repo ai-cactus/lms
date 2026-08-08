@@ -51,10 +51,12 @@ export const metadata: Metadata = {
   },
 };
 
+// No `maximumScale`: pinning it to 1 blocks pinch-zoom on Android Chrome, which
+// is a WCAG 1.4.4 (Resize Text) failure and reads to users as "the page isn't
+// responsive".
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  maximumScale: 1,
 };
 
 export default function RootLayout({
