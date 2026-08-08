@@ -172,12 +172,13 @@ test.describe('Settings page — Facility tab persistence', () => {
       const nameInput = page.getByLabel('Facility name');
       await nameInput.fill(newName);
 
-      await page.getByRole('combobox').click();
-      // multi-facility v3 replaced this tab's locally-defined type list (which
-      // included "Outpatient clinic") with the shared, curated
-      // FACILITY_TYPE_OPTIONS list used by both this form and AddFacilityModal
-      // — pick a value that's actually on the new list.
-      await page.getByRole('option', { name: 'Private Practice / Group Practice' }).click();
+      // The type field is a FacilityTypeMultiSelect: a popover trigger
+      // (aria-haspopup="listbox") over checkboxes, not a Radix Select. The
+      // popover portals to <body>, so the checkbox is located page-wide, and
+      // Escape closes only the popover before saving.
+      await page.locator('button[aria-haspopup="listbox"]').click();
+      await page.getByRole('checkbox', { name: 'Private Practice / Group Practice' }).click();
+      await page.keyboard.press('Escape');
 
       const responsePromise = page.waitForResponse(
         (resp) => resp.url().includes('/dashboard/settings') && resp.status() === 200,
@@ -253,10 +254,9 @@ async function cleanupSupervisor(seeded: SeededWithSupervisor): Promise<void> {
   const client = new Client({ connectionString: DB_URL });
   await client.connect();
   try {
-    await client.query(
-      `DELETE FROM organization_user_facilities WHERE organization_user_id = $1`,
-      [seeded.supervisorOrgUserId],
-    );
+    await client.query(`DELETE FROM organization_user_facilities WHERE organization_user_id = $1`, [
+      seeded.supervisorOrgUserId,
+    ]);
     await client.query(`DELETE FROM organization_users WHERE id = $1`, [
       seeded.supervisorOrgUserId,
     ]);
