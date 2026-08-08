@@ -73,11 +73,15 @@ COPY --from=builder --chown=nextjs:nodejs /app/next.config.ts ./next.config.ts
 
 # The queue workers run scripts/{transcode,index}-worker.ts via `node --import tsx`
 # at runtime. tsx needs the generated Prisma client, the shared db/index singleton,
-# and tsconfig.json (for `@/` path resolution). db/index.ts imports only
-# @/generated/prisma/client + @prisma/adapter-pg, so src/ is NOT required here.
+# and tsconfig.json (for `@/` path resolution).
 COPY --from=builder --chown=nextjs:nodejs /app/generated ./generated
 COPY --from=builder --chown=nextjs:nodejs /app/db ./db
 COPY --from=builder --chown=nextjs:nodejs /app/tsconfig.json ./tsconfig.json
+
+# Operational scripts (`npm run script <env> <file>`) import shared app modules
+# via `@/*` → ./src/* (structured logger, RBAC role lists, billing helpers).
+# Without src/ those imports die in-container with ERR_MODULE_NOT_FOUND.
+COPY --from=builder --chown=nextjs:nodejs /app/src ./src
 
 # Prisma schema + migrations are required for `prisma migrate deploy` at startup.
 # prisma.config.ts (repo root, NOT inside prisma/) now holds datasource.url — it
