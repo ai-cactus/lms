@@ -7,11 +7,7 @@
 import { Client as MinioClient } from 'minio';
 import pdfParse from 'pdf-parse';
 import { prisma } from '@/db/index';
-
-interface EmbedContentResponse {
-  embedding?: { values?: number[] };
-  error?: unknown;
-}
+import { generateBatchEmbeddings } from '@/lib/ai-client';
 
 const client = new MinioClient({
   endPoint: process.env.MINIO_ENDPOINT ?? 'localhost',
@@ -66,12 +62,6 @@ async function run() {
 
   console.log('\n─── Testing embedding API...');
   const GOOGLE_VERTEX_PROJECT = process.env.GOOGLE_PROJECT_ID || process.env.GCP_PROJECT_ID;
-  const VERTEX_EMBEDDING_MODEL = process.env.VERTEX_EMBEDDING_MODEL || 'text-embedding-004';
-  const GOOGLE_AI_API_KEY = process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY;
-
-  console.log(
-    `  GOOGLE_AI_API_KEY: ${GOOGLE_AI_API_KEY ? GOOGLE_AI_API_KEY.slice(0, 6) + '****' : 'NOT SET'}`,
-  );
   console.log(`  GOOGLE_PROJECT_ID: ${GOOGLE_VERTEX_PROJECT ?? 'NOT SET'}`);
 
   const testChunk = (pdfData.text || '').slice(0, 300).trim();
@@ -80,28 +70,18 @@ async function run() {
     return;
   }
 
-  // Try Gemini REST API (what ai-client.ts likely uses)
-  if (GOOGLE_AI_API_KEY) {
-    const model = VERTEX_EMBEDDING_MODEL;
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:embedContent?key=${GOOGLE_AI_API_KEY}`;
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: `models/${model}`, content: { parts: [{ text: testChunk }] } }),
-      });
-      const responseBody = (await res.json()) as EmbedContentResponse;
-      if (!res.ok) {
-        console.error(`  ✗ Embedding API error ${res.status}:`, JSON.stringify(responseBody));
-      } else {
-        const dim = responseBody.embedding?.values?.length ?? 0;
-        console.log(`  ✓ Embedding OK — ${dim} dimensions`);
-      }
-    } catch (err) {
-      console.error(`  ✗ Fetch failed: ${err instanceof Error ? err.message : String(err)}`);
-    }
-  } else {
-    console.log('  ⚠ No GOOGLE_AI_API_KEY — skipping embedding test');
+  // Goes through the same BAA-covered Vertex AI path the app uses
+  // (generateBatchEmbeddings → *-aiplatform.googleapis.com, OAuth service
+  // account). This block previously POSTed the extracted document text to
+  // generativelanguage.googleapis.com with a GEMINI_API_KEY — the consumer
+  // endpoint, which carries no BAA. Pointed at a real customer manual, that
+  // was an uncontrolled disclosure of document content; it also tested an API
+  // the app does not use. See the PHI egress guard in eslint.config.mjs.
+  try {
+    const [embedding] = await generateBatchEmbeddings([testChunk]);
+    console.log(`  ✓ Embedding OK — ${embedding?.length ?? 0} dimensions`);
+  } catch (err) {
+    console.error(`  ✗ Embedding failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   await prisma.$disconnect();
