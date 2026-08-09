@@ -32,7 +32,7 @@ vi.mock('@/app/actions/course', () => ({
 }));
 vi.mock('@/app/actions/course-ai-v4.6', () => ({ checkCourseGenerationJobV46: vi.fn() }));
 vi.mock('@/components/dashboard/billing/BillingGateModal', () => ({
-  default: () => null,
+  default: () => <div data-testid="billing-gate" />,
 }));
 vi.mock('@/components/ui', () => ({
   RowActionsMenu: ({ actions }: { actions: RowAction[] }) => (
@@ -349,6 +349,52 @@ describe('CoursesListClient — header create affordance gated on course.create'
     render(<CoursesListClient courses={[makeCourse()]} hasBilling viewerRole="supervisor" />);
 
     expect(screen.queryByRole('button', { name: /Create Course/i })).not.toBeInTheDocument();
+  });
+});
+
+// The Video tab lists only already-offered courses, so this link is the sole
+// remaining route into the adoptable global catalog.
+describe('CoursesListClient — prebuilt catalog link', () => {
+  const catalogLink = /Browse course catalog/i;
+
+  it('navigates an owner to the prebuilt catalog from the Video tab', async () => {
+    const user = userEvent.setup();
+    render(<CoursesListClient courses={[makeCourse()]} hasBilling viewerRole="owner" />);
+
+    await user.click(screen.getByRole('button', { name: catalogLink }));
+
+    expect(mockPush).toHaveBeenCalledWith('/dashboard/courses/prebuilt');
+  });
+
+  it('hides the link for supervisor (no course.create)', () => {
+    render(<CoursesListClient courses={[makeCourse()]} hasBilling viewerRole="supervisor" />);
+
+    expect(screen.queryByRole('button', { name: catalogLink })).not.toBeInTheDocument();
+  });
+
+  it('is scoped to the Video tab and disappears on Reading Course', async () => {
+    const user = userEvent.setup();
+    const courses = [
+      makeCourse({ id: 'v1', type: 'video' }),
+      makeCourse({ id: 't1', type: 'text' }),
+    ];
+    render(<CoursesListClient courses={courses} hasBilling viewerRole="owner" />);
+
+    expect(screen.getByRole('button', { name: catalogLink })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('tab', { name: 'Reading Course 1' }));
+
+    expect(screen.queryByRole('button', { name: catalogLink })).not.toBeInTheDocument();
+  });
+
+  it('opens the billing gate instead of navigating when the org has no active plan', async () => {
+    const user = userEvent.setup();
+    render(<CoursesListClient courses={[makeCourse()]} hasBilling={false} viewerRole="owner" />);
+
+    await user.click(screen.getByRole('button', { name: catalogLink }));
+
+    expect(screen.getByTestId('billing-gate')).toBeInTheDocument();
+    expect(mockPush).not.toHaveBeenCalled();
   });
 });
 

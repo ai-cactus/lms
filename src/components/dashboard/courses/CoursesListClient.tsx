@@ -32,7 +32,7 @@ import { useRouter } from 'next/navigation';
 import { CourseWithStats } from '@/types/course';
 import { deleteCourse } from '@/app/actions/course';
 import BillingGateModal from '@/components/dashboard/billing/BillingGateModal';
-import { Plus, Search, Pencil, Trash2, UserPlus, FileText, Play } from 'lucide-react';
+import { Plus, Search, Pencil, Trash2, UserPlus, FileText, Play, Library } from 'lucide-react';
 import CourseRenameModal from '@/components/dashboard/courses/CourseRenameModal';
 import CoursesEmptyState from '@/components/dashboard/courses/CoursesEmptyState';
 import CoursesTableFooter from '@/components/dashboard/courses/CoursesTableFooter';
@@ -141,6 +141,16 @@ export default function CoursesListClient({
       return;
     }
     router.push('/dashboard/courses/create');
+  }, [hasBilling, router]);
+
+  // The Video tab lists only courses already offered to the org, so the catalog
+  // of adoptable global courses needs its own way in.
+  const startPrebuiltCatalog = useCallback(() => {
+    if (!hasBilling) {
+      setShowBillingGate(true);
+      return;
+    }
+    router.push('/dashboard/courses/prebuilt');
   }, [hasBilling, router]);
 
   const selectTab = useCallback((tab: CourseTypeTab) => {
@@ -301,7 +311,7 @@ export default function CoursesListClient({
       <PendingGenerationBanner />
 
       <div className="flex min-w-0 flex-col gap-6 rounded-[17px] border border-[#dfe1e6] bg-white p-4 shadow-[0px_1px_2px_0px_rgba(228,229,231,0.24)] md:px-[21px] md:pt-[21px] md:pb-4">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-col gap-4 lg:flex-row lg:flex-wrap lg:items-end lg:justify-between">
           <Tabs value={activeTab} onValueChange={(value) => selectTab(value as CourseTypeTab)}>
             <TabsList
               variant="line"
@@ -334,18 +344,30 @@ export default function CoursesListClient({
             </TabsList>
           </Tabs>
 
-          <div className="w-full sm:w-[470px]">
-            <Input
-              className="h-[38px] rounded-[8.5px] border-[#dfe1e6] pl-9 text-[15px] shadow-[0px_1px_2px_0px_rgba(228,229,231,0.24)] placeholder:text-[#a4abb8]"
-              placeholder="Search for courses..."
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                setCurrentPage(1);
-              }}
-              aria-label="Search courses"
-              startIcon={<Search aria-hidden="true" />}
-            />
+          <div className="flex w-full flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center lg:w-auto">
+            <div className="w-full sm:w-[470px] sm:max-w-full">
+              <Input
+                className="h-[38px] rounded-[8.5px] border-[#dfe1e6] pl-9 text-[15px] shadow-[0px_1px_2px_0px_rgba(228,229,231,0.24)] placeholder:text-[#a4abb8]"
+                placeholder="Search for courses..."
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setCurrentPage(1);
+                }}
+                aria-label="Search courses"
+                startIcon={<Search aria-hidden="true" />}
+              />
+            </div>
+            {isVideoTab && canCreateCourse && (
+              <Button
+                variant="link"
+                onClick={startPrebuiltCatalog}
+                className="h-auto shrink-0 justify-start gap-1.5 p-0 text-[14px] font-semibold whitespace-nowrap sm:justify-center"
+              >
+                <Library className="size-4" aria-hidden="true" />
+                Browse course catalog
+              </Button>
+            )}
           </div>
         </div>
 
