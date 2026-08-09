@@ -1,0 +1,240 @@
+name: Security Scan
+
+# Static analysis, vulnerability scanning, and SBOM generation.
+#
+# Kept separate from quality-gate.yml on purpose: these scans are slower and
+# produce a triage backlog rather than a pass/fail signal. The gate stays fast
+# so it can block deploys without stalling them.
+#
+# ── Why no CodeQL and no SARIF upload to the Security tab ────────────────────
+# This repository is going private. On a private repo, both CodeQL and
+# `github/codeql-action/upload-sarif` require GitHub Code Security /
+# Advanced Security (paid per committer). Rather than ship a workflow that
+# silently breaks on the visibility flip, every job here is deliberately
+# self-contained: findings print to the job log and the machine-readable
+# report is kept as a build artifact. This works identically on public and
+# private repos, with no licence dependency.
+#
+# If GitHub Code Security is purchased later, add CodeQL and upload SARIF —
+# the Security-tab UI, dismissal tracking, and PR annotations are genuinely
+# better than reading artifacts.
+
+on:
+  push:
+    branches:
+      - dev
+  pull_request:
+    branches:
+      - dev
+      - staging
+      - main
+      - master
+  schedule:
+    # Mondays 04:15 UTC — offset from scheduled-audit.yml (05:30) so the two
+    # security jobs don't contend for runners.
+    - cron: '15 4 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: security-scan-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────────────
+  # Semgrep (OSS) — SAST for the TypeScript/React tree.
+  #
+  # Rule packs are pinned explicitly rather than using `--config auto`, which
+  # resolves rules dynamically and makes results non-reproducible between
+  # runs. No SEMGREP_APP_TOKEN, no account, no telemetry.
+  #
+  # REPORT-ONLY on first introduction: the backlog is unknown, and a hard fail
+  # would block all work on day one. Triage the findings, add any false
+  # positives to .semgrepignore, then delete `continue-on-error` below.
+  # ──────────────────────────────────────────────────────────────────────────
+  semgrep:
+    name: Semgrep (SAST)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Semgrep
+        run: python -m pip install --disable-pip-version-check semgrep
+
+      # Human-readable pass for the job log. `--error` makes findings non-zero
+      # so the job is marked failed (surfaced, not silent) while
+      # continue-on-error keeps it from blocking the run.
+      - name: Scan (log output)
+        run: |
+          semgrep scan \
+            --config=p/security-audit \
+            --config=p/typescript \
+            --config=p/react \
+            --metrics=off \
+            --error \
+            --skip-unknown-extensions \
+            .
+
+      # Machine-readable copy regardless of the outcome above.
+      - name: Scan (SARIF artifact)
+        if: ${{ !cancelled() }}
+        run: |
+          semgrep scan \
+            --config=p/security-audit \
+            --config=p/typescript \
+            --config=p/react \
+            --metrics=off \
+            --sarif \
+            --output=semgrep.sarif \
+            --skip-unknown-extensions \
+            . || true
+
+      - name: Upload Semgrep report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: semgrep-report
+          path: semgrep.sarif
+          retention-days: 30
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Trivy — dependency vulnerabilities plus IaC/config misconfiguration.
+  # The misconfig scan covers the Dockerfile and compose files, which
+  # `npm audit` cannot see.
+  # ──────────────────────────────────────────────────────────────────────────
+  trivy:
+    name: Trivy (deps + config)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Table output so the findings are readable in the job log without
+      # downloading anything.
+      - name: Scan filesystem (log output)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scanners: vuln,misconfig,secret
+          format: table
+          severity: HIGH,CRITICAL
+          # Report-only on first introduction — same reasoning as Semgrep.
+          # Flip to '1' after the initial triage pass.
+          exit-code: '0'
+
+      - name: Scan filesystem (JSON artifact)
+        if: ${{ !cancelled() }}
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scanners: vuln,misconfig,secret
+          format: json
+          output: trivy-results.json
+          severity: HIGH,CRITICAL
+          exit-code: '0'
+
+      - name: Upload Trivy report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-report
+          path: trivy-results.json
+          retention-days: 30
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Full git-history secret scan (F-075).
+  #
+  # quality-gate.yml scans only the working tree (`--no-git`), so a secret
+  # that was committed and later removed still sits in history. This
+  # repository was public, so anything ever committed must be treated as
+  # disclosed — at least one dev database credential is known to be there
+  # (docs/deployment.md §2.4).
+  #
+  # REPORT-ONLY and schedule/dispatch-only by necessity: known historical
+  # leaks would fail this on every run. Its purpose is to produce the
+  # credential-rotation worklist. Treat every hit as "rotate the credential",
+  # not "scrub the commit" — for anything that was public, rotation is the
+  # only fix that actually works.
+  # ──────────────────────────────────────────────────────────────────────────
+  secret-scan-history:
+    name: Secret Scan (full history)
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # gitleaks needs the whole history, not the default shallow clone.
+          fetch-depth: 0
+
+      - name: Install gitleaks
+        run: |
+          VERSION="$(curl -sSfL https://api.github.com/repos/gitleaks/gitleaks/releases/latest | grep -oP '"tag_name":\s*"v\K[^"]+')"
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz" -o /tmp/gitleaks.tar.gz
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          sudo install /tmp/gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      - name: Scan full history for secrets
+        continue-on-error: true
+        run: |
+          gitleaks detect \
+            --source . \
+            --config .gitleaks.toml \
+            --redact \
+            --report-format sarif \
+            --report-path gitleaks-history.sarif \
+            --verbose
+
+      - name: Upload history scan report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-history-report
+          path: gitleaks-history.sarif
+          retention-days: 30
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # SBOM — a dependency inventory to answer "are we affected by CVE-X?"
+  # without reconstructing the tree from a lockfile after the fact.
+  # ──────────────────────────────────────────────────────────────────────────
+  sbom:
+    name: SBOM
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Generate CycloneDX SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: cyclonedx-json
+          output-file: sbom-cyclonedx.json
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom-cyclonedx.json
+          retention-days: 90

@@ -1,0 +1,73 @@
+# Code owners for security-sensitive paths (F-077).
+#
+# Effect today: opening a PR that touches these paths auto-requests review
+# from the owner. It is NOT an enforced control until branch protection
+# enables "Require review from Code Owners".
+#
+# DO NOT enable that rule while @idowuseyi is the only account with write
+# access — GitHub does not allow approving your own PR, so requiring
+# code-owner review would block every PR you open. Turn it on once a second
+# reviewer exists, and add them here at the same time.
+#
+# Note: GitHub silently ignores an owner who lacks write access — a typo here
+# produces no error, just no reviewer. Verify on the first PR that the review
+# request actually appears.
+#
+# Last matching pattern wins, so order matters: general first, specific last.
+
+# Default owner for everything not matched below.
+*                                   @idowuseyi
+
+# ── CI/CD and supply chain ───────────────────────────────────────────────────
+# The quality gate, deploy workflows, and dependency policy. A change here can
+# disable every other control in the repo.
+/.github/                           @idowuseyi
+
+# ── Data model and migrations ────────────────────────────────────────────────
+# Schema changes carry tenancy and retention consequences; migrations run
+# automatically on deploy via docker-entrypoint.sh.
+/prisma/                            @idowuseyi
+
+# ── Authentication and session handling ──────────────────────────────────────
+/src/auth.ts                        @idowuseyi
+/src/auth.config.ts                 @idowuseyi
+/src/middleware.ts                  @idowuseyi
+/src/lib/auth-guard.ts              @idowuseyi
+/src/lib/mfa.ts                     @idowuseyi
+
+# ── Authorisation / RBAC ─────────────────────────────────────────────────────
+# Tenant isolation is application-enforced with no DB backstop until F-007
+# lands, so these files are the isolation boundary.
+/src/lib/rbac/                      @idowuseyi
+
+# ── Audit trail, logging, and abuse controls ─────────────────────────────────
+# audit.ts and logger.ts are the evidence pipeline; rate-limit.ts is the
+# brute-force and cost control.
+/src/lib/audit.ts                   @idowuseyi
+/src/lib/logger.ts                  @idowuseyi
+/src/lib/rate-limit.ts              @idowuseyi
+/src/lib/captcha.ts                 @idowuseyi
+/src/lib/sanitize.ts                @idowuseyi
+
+# ── PHI rejection path ───────────────────────────────────────────────────────
+# The gate that keeps PHI out of the system and out of non-BAA egress.
+/src/lib/documents/phiScanner.ts    @idowuseyi
+/src/lib/documents/piiPatterns.ts   @idowuseyi
+/src/lib/ai-client.ts               @idowuseyi
+
+# ── Destructive jobs and retention ───────────────────────────────────────────
+# Two production data-loss incidents originated here.
+/src/lib/retention.ts               @idowuseyi
+/src/lib/queue/video-sweep-worker.ts @idowuseyi
+/scripts/                           @idowuseyi
+
+# ── Infrastructure definitions ───────────────────────────────────────────────
+/Dockerfile                         @idowuseyi
+/docker-compose.production.yml      @idowuseyi
+/docker-compose.staging.yml         @idowuseyi
+/cloudflared_config.yml             @idowuseyi
+/next.config.ts                     @idowuseyi
+
+# ── Security policy and audit records ────────────────────────────────────────
+/SECURITY.md                        @idowuseyi
+/docs/analysis/                     @idowuseyi
