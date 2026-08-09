@@ -7,10 +7,14 @@
  * cut-off JSON → parse failure → 0 questions). The fix raises the per-call
  * ceiling AND splits any request over QUIZ_SINGLE_CALL_MAX (20) into
  * QUIZ_SUB_BATCH_SIZE (6)-question sub-batches, each independently retried,
- * then merged with de-dup + re-numbering. `generateQuizV46` was exported
- * (still async, so it stays valid in a 'use server' module) solely so this
- * orchestration is testable without driving the full background pipeline —
- * see the export-site comment in course-ai-v4.6.ts.
+ * then merged with de-dup + re-numbering.
+ *
+ * `generateQuizV46` now lives in `src/lib/ai/course-pipeline-v46.ts`. It used to
+ * be exported from the `'use server'` action module purely so this test could
+ * import it, which silently published it as a callable HTTP endpoint (F-084).
+ * The move keeps it directly testable without that side effect — and note how
+ * few mocks this file needs as a result: the stage functions touch no prisma,
+ * no auth, and no request state.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -25,16 +29,8 @@ vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
   maskEmail: (e: string) => e,
 }));
-// generateQuizV46 doesn't touch these, but the module graph (course-ai-v4.6.ts)
-// imports them at the top level, so they must resolve.
-vi.mock('@/lib/prisma', () => ({ prisma: {}, default: {} }));
-vi.mock('@/auth', () => ({ auth: vi.fn() }));
-vi.mock('@/lib/file-parser', () => ({ extractTextFromFile: vi.fn() }));
-vi.mock('@/lib/rag', () => ({ retrieveRelevantChunks: vi.fn().mockResolvedValue([]) }));
-vi.mock('@/lib/documents/phiScanner', () => ({ scanText: vi.fn() }));
-vi.mock('@/lib/rate-limit', () => ({ checkRateLimit: vi.fn() }));
 
-import { generateQuizV46 } from './course-ai-v4.6';
+import { generateQuizV46 } from '@/lib/ai/course-pipeline-v46';
 
 /** A minimal valid QuizV46 raw-JSON response for `count` questions. */
 function makeQuizResponse(count: number, opts: { startId?: number; questionPrefix?: string } = {}) {
