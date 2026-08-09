@@ -47,7 +47,7 @@ export default async function CoursesPage() {
 
   return (
     <Suspense fallback={null}>
-      <CoursesListClient courses={courses} hasBilling={hasBilling} />
+      <CoursesListClient courses={courses} hasBilling={hasBilling} viewerRole={user.role} />
     </Suspense>
   );
 }

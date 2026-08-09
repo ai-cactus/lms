@@ -46,6 +46,14 @@ export async function getCourses(): Promise<CourseWithStats[]> {
     createdAt: true,
     updatedAt: true,
     _count: { select: { lessons: true } },
+    // Source-document lineage for the row's "view source document" action. Only
+    // the earliest version is needed — that is the document the course was
+    // generated from.
+    versions: {
+      select: { documentVersion: { select: { documentId: true } } },
+      orderBy: { version: 'asc' },
+      take: 1,
+    },
   } satisfies Prisma.CourseSelect;
 
   const [ownCourses, offerings] = await Promise.all([
@@ -114,8 +122,10 @@ export async function getCourses(): Promise<CourseWithStats[]> {
       createdAt: Date;
       updatedAt: Date;
       _count: { lessons: number };
+      versions?: { documentVersion: { documentId: string } }[];
     },
     counts: { total: number; completed: number },
+    options?: { includeSourceDocument?: boolean },
   ): CourseWithStats => ({
     id: course.id,
     title: course.title,
@@ -128,12 +138,19 @@ export async function getCourses(): Promise<CourseWithStats[]> {
     updatedAt: course.updatedAt,
     lessonsCount: course._count.lessons,
     enrollmentsCount: counts.total,
+    sourceDocumentId: options?.includeSourceDocument
+      ? (course.versions?.[0]?.documentVersion.documentId ?? null)
+      : null,
     completionRate: counts.total > 0 ? Math.round((counts.completed / counts.total) * 100) : 0,
   });
 
   const own = ownCourses.map((course) =>
-    toStats(course, ownCountMap.get(course.id) ?? { total: 0, completed: 0 }),
+    toStats(course, ownCountMap.get(course.id) ?? { total: 0, completed: 0 }, {
+      includeSourceDocument: true,
+    }),
   );
+  // Adopted offerings are another tenant's course — their source document
+  // belongs to that tenant and must never be linkable from here.
   const adopted = adoptedCourses.map((course) =>
     toStats(course, adoptedCountMap.get(course.id) ?? { total: 0, completed: 0 }),
   );
