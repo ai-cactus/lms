@@ -19,7 +19,9 @@ describe('phiScanner', () => {
     const text = 'Short text';
     const result = await scanText(text);
 
-    expect(result).toEqual({ hasPHI: false, findings: [] });
+    // decidedBy records that NO scan ran, rather than filing an unscanned
+    // document under "scanned and clean" (F-092 evidence quality).
+    expect(result).toEqual({ hasPHI: false, findings: [], decidedBy: 'skipped_short' });
     expect(mockedCallVertexAI).not.toHaveBeenCalled();
   });
 
@@ -93,7 +95,7 @@ describe('phiScanner', () => {
 
     const result = await scanText(text);
 
-    expect(result).toEqual({ hasPHI: false, findings: [] });
+    expect(result).toEqual({ hasPHI: false, findings: [], decidedBy: 'ai' });
   });
 
   // THER-003: the scanner now ALWAYS fails closed — a scan that could not be

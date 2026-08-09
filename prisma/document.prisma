@@ -50,6 +50,64 @@ model PhiReport {
   @@map("phi_reports")
 }
 
+/// Append-only ledger of every PHI-scan decision (F-092).
+///
+/// Why this exists separately from PhiReport: PhiReport hangs off
+/// `documentVersionId`, and a blocked upload never gets a DocumentVersion — the
+/// upload paths return before storage. So PhiReport can only ever evidence what
+/// was ACCEPTED. The rejections, which are what actually matter when someone
+/// alleges PHI entered the system, previously left no durable trace at all
+/// beyond a stdout warning.
+///
+/// This table answers, for any period: how many documents were scanned, how many
+/// were blocked and why, and — critically — that no content reached an AI
+/// provider without a decision row. Rows are INSERTed only, never updated or
+/// deleted, and are excluded from `runRetentionPurge`.
+///
+/// Contains NO document text and NO raw identifiers. Findings are the same
+/// value-free shape the scanner persists (type + offsets + confidence), and the
+/// filename is stored only as a hash: a filename can itself carry PHI
+/// ("john-doe-intake.pdf"), so recording it verbatim on a PHI-rejection ledger
+/// would defeat the purpose. Hashes still allow an operator to correlate a
+/// specific file with its decision.
+model PhiDecision {
+  id String @id @default(uuid())
+
+  /// Where the scanned text came from. A discriminator rather than a relation so
+  /// new ingress points (e.g. lesson-editor text — see F-089) can be recorded
+  /// without a schema change.
+  source  String
+  /// 'allowed' | 'blocked_phi' | 'blocked_scan_failed'
+  outcome String
+  /// Which layer decided: 'local_regex' (zero network) | 'ai' | null when allowed.
+  decidedBy String? @map("decided_by")
+
+  /// Set only for accepted content, where a version row exists. Intentionally not
+  /// a foreign key: the ledger must outlive the document it describes.
+  documentVersionId String? @map("document_version_id")
+
+  detectorVersion String   @map("detector_version")
+  findingTypes    String[] @default([]) @map("finding_types")
+  findingCount    Int      @default(0) @map("finding_count")
+  /// Value-free findings: { type, offsetStart, offsetEnd, confidence }.
+  entities        Json?
+
+  /// SHA-256 hex digests — correlation without storing the text or the name.
+  contentHash   String? @map("content_hash")
+  contentLength Int?    @map("content_length")
+  filenameHash  String? @map("filename_hash")
+
+  actorId        String? @map("actor_id")
+  organizationId String? @map("organization_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([organizationId, createdAt])
+  @@index([outcome, createdAt])
+  @@index([contentHash])
+  @@map("phi_decisions")
+}
+
 model MappingEvidence {
   id                String          @id @default(uuid())
   documentVersionId String          @map("document_version_id")

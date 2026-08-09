@@ -28,6 +28,7 @@ import {
 } from '@/lib/ai/course-pipeline-v46';
 import { extractTextFromFile } from '@/lib/file-parser';
 import { scanText } from '@/lib/documents/phiScanner';
+import { recordPhiDecision } from '@/lib/documents/phiDecision';
 import { MAX_DOCUMENT_UPLOAD_BYTES } from '@/lib/documents/upload-config';
 import { checkRateLimit } from '@/lib/rate-limit';
 import prisma from '@/lib/prisma';
@@ -215,13 +216,30 @@ export async function generateCourseAndQuizV46(
       return { error: 'We could not verify this document for PHI. Please try again in a moment.' };
     }
 
+    // F-092: the wizard's fresh-upload path stores nothing when it blocks, so
+    // without this the rejection would leave no durable record. Recorded for
+    // the accepted case too — this path never creates a DocumentVersion, so
+    // there is no transaction to join and no PhiReport row to stand in for it.
+    await recordPhiDecision({
+      source: 'course_wizard_upload',
+      scan: phiResult,
+      scannedText: sourceText,
+      filename: docFilename,
+      actorId: userId,
+      organizationId: session.user.organizationId ?? undefined,
+    });
+
     if (phiResult.scanFailed) {
       logger.warn({ msg: '[v4.6] Upload blocked — PHI scan could not complete', userId });
       return { error: 'We could not verify this document for PHI. Please try again in a moment.' };
     }
 
     if (phiResult.hasPHI) {
-      logger.warn({ msg: '[v4.6] Upload blocked — PHI detected', userId });
+      logger.warn({
+        msg: '[v4.6] Upload blocked — PHI detected',
+        userId,
+        decidedBy: phiResult.decidedBy,
+      });
       return {
         error: 'This document appears to contain PHI (e.g. SSN/DOB/MRN) and cannot be uploaded.',
       };
