@@ -7,28 +7,42 @@ name: Security Scan
 # so it can block deploys without stalling them.
 #
 # ── Why no CodeQL and no SARIF upload to the Security tab ────────────────────
-# This repository is going private. On a private repo, both CodeQL and
+# This repository is PRIVATE. On a private repo, both CodeQL and
 # `github/codeql-action/upload-sarif` require GitHub Code Security /
-# Advanced Security (paid per committer). Rather than ship a workflow that
-# silently breaks on the visibility flip, every job here is deliberately
-# self-contained: findings print to the job log and the machine-readable
-# report is kept as a build artifact. This works identically on public and
-# private repos, with no licence dependency.
+# Advanced Security (paid per committer), so neither is available here. Every
+# job is therefore self-contained: findings print to the job log and the
+# machine-readable report is kept as a build artifact.
 #
 # If GitHub Code Security is purchased later, add CodeQL and upload SARIF —
 # the Security-tab UI, dismissal tracking, and PR annotations are genuinely
 # better than reading artifacts.
+#
+# ── Trigger economics ────────────────────────────────────────────────────────
+# Private repos on the Free plan get 2,000 Actions minutes/month (public repos
+# were unlimited). There is no `push` trigger: pushes to dev arrive via PR,
+# which already ran this, so a push trigger only paid twice for one answer.
+# `paths` skips runs where nothing scannable changed — a docs-only commit
+# cannot introduce a code vulnerability. Safe to path-filter because no job
+# here is a required status check; doing the same to ci.yml would leave a
+# required check permanently "expected" and block the PR.
 
 on:
-  push:
-    branches:
-      - dev
   pull_request:
     branches:
       - dev
       - staging
       - main
       - master
+    paths:
+      - 'src/**'
+      - 'scripts/**'
+      - 'prisma/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'Dockerfile'
+      - 'docker-compose*.yml'
+      - '.github/workflows/**'
+      - '.github/actions/**'
   schedule:
     # Mondays 04:15 UTC — offset from scheduled-audit.yml (05:30) so the two
     # security jobs don't contend for runners.
@@ -212,18 +226,16 @@ jobs:
   sbom:
     name: SBOM
     runs-on: ubuntu-latest
+    # Schedule/dispatch only. An SBOM is an inventory for answering "are we
+    # affected by CVE-X?" later; it has no per-PR value, and generating it on
+    # every PR spent ~4 metered minutes to produce an artifact nobody reads.
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci --legacy-peer-deps
+      - uses: ./.github/actions/setup-node-deps
 
       - name: Generate CycloneDX SBOM
         uses: anchore/sbom-action@v0

@@ -62,16 +62,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - uses: ./.github/actions/setup-node-deps
         with:
-          node-version: '24'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci --legacy-peer-deps
-
-      - name: Generate Prisma client
-        run: npx prisma generate
+          prisma: 'true'
 
       - name: Build application
         run: npm run build
@@ -180,16 +173,9 @@ jobs:
             -e MINIO_ROOT_PASSWORD="$MINIO_SECRET_KEY" \
             minio/minio:latest server /data
 
-      - uses: actions/setup-node@v4
+      - uses: ./.github/actions/setup-node-deps
         with:
-          node-version: '24'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci --legacy-peer-deps
-
-      - name: Generate Prisma client
-        run: npx prisma generate
+          prisma: 'true'
 
       - name: Apply database migrations
         run: npx prisma migrate deploy
