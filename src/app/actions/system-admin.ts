@@ -1,10 +1,11 @@
 'use server';
 
 import prisma from '@/lib/prisma';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import crypto from 'crypto';
 import { revalidatePath } from 'next/cache';
 import { logger } from '@/lib/logger';
+import { audit, auditCritical, getClientContext } from '@/lib/audit';
 import { verifySystemAdminCookie, SYSTEM_ADMIN_COOKIE } from '@/lib/system-auth';
 import type { Prisma } from '@/generated/prisma/client';
 import type { UserRole } from '@/generated/prisma/enums';
@@ -36,6 +37,23 @@ function signToken(payload: string): string {
   return `${payload}.${hmac}`;
 }
 
+/**
+ * Audit context for system-admin events (F-094).
+ *
+ * `actorRole: 'system_admin'` is recorded, but deliberately no `actorId`: this
+ * surface authenticates with a SHARED static password (F-056), so the trail can
+ * establish that someone holding it acted, and when, and from where — but not
+ * who. IP and user-agent are the only identifying signals available until real
+ * per-admin accounts exist. Do not invent an actorId here; a fabricated
+ * attribution is worse than an honest gap.
+ */
+async function systemClientContext() {
+  return {
+    actorRole: 'system_admin',
+    ...getClientContext(await headers()),
+  };
+}
+
 // ── Auth Action ──────────────────────────────────────────────────────────────
 
 export async function verifySystemPassword(
@@ -48,6 +66,14 @@ export async function verifySystemPassword(
 
   if (password !== systemPassword) {
     logger.warn({ msg: 'System admin login failed: wrong password' });
+    // F-094: this is the entry point to cross-organization super-admin powers,
+    // so a failed attempt is exactly what a reviewer needs to see. Best-effort
+    // rather than critical: a failing audit sink must not make the login
+    // endpoint unusable, and a genuine attacker is not deterred by a 500.
+    await audit({
+      action: 'system.auth.failure',
+      ...(await systemClientContext()),
+    });
     return { success: false, error: 'Invalid password' };
   }
 
@@ -70,6 +96,14 @@ export async function verifySystemPassword(
   });
 
   logger.info({ msg: 'System admin authenticated successfully' });
+  // F-094 + F-056: a successful super-admin session must be on the record. Note
+  // there is no actorId to record — system-admin auth is a SHARED static
+  // password, so the trail can prove that someone held it and when, but not
+  // who. Real per-actor attribution needs the F-056 account model.
+  await audit({
+    action: 'system.auth.success',
+    ...(await systemClientContext()),
+  });
   return { success: true };
 }
 
@@ -528,6 +562,10 @@ export async function deleteUserWithRelations(
 
     logger.info({ msg: 'System admin: deleting user', email: user.email, userId: user.id });
 
+    // Resolved before opening the transaction: headers() is request-scoped and
+    // must not be awaited inside a transaction callback.
+    const clientContext = await systemClientContext();
+
     const result = await prisma.$transaction(async (tx) => {
       const counts: Record<string, number> = {};
 
@@ -614,6 +652,25 @@ export async function deleteUserWithRelations(
       // MfaRecoveryCode rows.
       await tx.user.delete({ where: { id: userId } });
       counts.user = 1;
+
+      // F-094: the most destructive action in the system — an irreversible
+      // cross-organization hard delete of a person and all their enrollments,
+      // attempts, certificates and attestations. auditCritical INSIDE the
+      // transaction, so the deletion and its record commit together: there can
+      // be no unexplained disappearance of a user's compliance history. If the
+      // audit write fails, the delete correctly rolls back.
+      await auditCritical(
+        {
+          action: 'system.user.delete',
+          targetType: 'user',
+          targetId: userId,
+          // Counts only — no email, no names. The logger redacts PII anyway,
+          // but the audit row is long-lived so it carries even less.
+          metadata: { deletedCounts: counts },
+          ...clientContext,
+        },
+        tx,
+      );
 
       return counts;
     });
