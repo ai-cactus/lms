@@ -30,6 +30,12 @@ jobs:
   gate:
     name: Quality Gate
     uses: ./.github/workflows/quality-gate.yml
+    with:
+      # Verified clean on CI (PR #444: Dependency Audit passed), so the PR path
+      # can block on HIGH+ advisories. Deliberately NOT set on the deploy
+      # workflows: `npm audit` exits non-zero identically for a real advisory and
+      # an unreachable registry, and a registry blip must not block a hotfix.
+      strict-audit: true
 
   # ──────────────────────────────────────────────
   # Job 7: Build check (gates on the quality gate)
