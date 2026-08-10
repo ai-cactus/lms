@@ -71,6 +71,60 @@ done
 
 Place each key on the VM at `/home/deploy/secrets/otel-sa-<env>.json`, mode `0400`, owned by `deploy`. These files are **never** committed — `infra/otel/collector-config.yaml` mounts them read-only by path.
 
+## Log-based metrics
+
+Domain counters are **derived from the logs**, not emitted from application code. The events already appear as structured lines with stable `msg` prefixes, so extracting them here avoids instrumenting every call site a second time, keeps label cardinality under explicit control instead of depending on whatever a caller passes, and adds no dependency to the app.
+
+```bash
+PROJECT_ID=your-project-id
+
+# PHI gate outcomes. The label distinguishes a genuine detection from a scan that
+# could not complete — a Vertex outage must not read as a wave of PHI uploads.
+gcloud logging metrics create lms_phi_blocked \
+  --project="$PROJECT_ID" \
+  --description="Documents blocked by the PHI gate" \
+  --log-filter='jsonPayload.msg=~"Upload blocked" AND jsonPayload.service=~"lms-"'
+
+# Failed logins — the input to credential-stuffing detection.
+gcloud logging metrics create lms_auth_failures \
+  --project="$PROJECT_ID" \
+  --description="Failed authentication attempts" \
+  --log-filter='jsonPayload.msg=~"login failed" OR jsonPayload.msg=~"System admin login failed"'
+
+# Rate-limit rejections. A sudden drop to zero is as interesting as a spike: the
+# limiter falls back to per-process memory when Redis is unreachable (F-024), so
+# silence can mean it has stopped limiting rather than that abuse stopped.
+gcloud logging metrics create lms_rate_limit_rejections \
+  --project="$PROJECT_ID" \
+  --description="Requests rejected by the rate limiter" \
+  --log-filter='jsonPayload.msg=~"rate limit exceeded"'
+
+# Evidence-ledger gaps. Should be permanently zero.
+gcloud logging metrics create lms_ledger_write_failures \
+  --project="$PROJECT_ID" \
+  --description="audit_logs or phi_decisions write failures" \
+  --log-filter='jsonPayload.msg=~"Failed to write audit log" OR jsonPayload.msg=~"FAILED to record PHI decision"'
+```
+
+These filters depend on the `msg` prefixes in the code. If a message is reworded, the metric silently goes quiet — so treat the strings as a contract, and prefer adding a new `msg` over editing an existing one.
+
+## Six-year audit retention off-host
+
+Audit rows live in Postgres and are excluded from `runRetentionPurge`, but there are no database backups yet (F-004), so the shipped copy is what survives losing the DB. The default log bucket's retention is far short of the ≥6-year requirement, so route audit entries to their own bucket:
+
+```bash
+gcloud logging buckets create lms-audit \
+  --location=global --retention-days=2200 \
+  --description="LMS audit trail — 6 year retention" --project="$PROJECT_ID"
+
+gcloud logging sinks create lms-audit-sink \
+  "logging.googleapis.com/projects/$PROJECT_ID/locations/global/buckets/lms-audit" \
+  --log-filter='jsonPayload.msg=~"\[audit\]" OR jsonPayload.msg=~"\[phi\]"' \
+  --project="$PROJECT_ID"
+```
+
+2200 days ≈ 6 years. Consider locking the bucket (`--locked`) once satisfied with the filter — a locked bucket's retention cannot be shortened, which is the point, and also means a mistake in the filter is permanent.
+
 ## Log retention
 
 Cloud Logging's `_Default` bucket retains 30 days. Audit rows live in Postgres and are retained ≥6 years by policy, but the shipped copy is what survives a database loss, so raise the retention on the bucket holding `lms-container-logs`:

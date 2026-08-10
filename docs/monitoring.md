@@ -81,12 +81,26 @@ A monitor nobody has seen fail is a monitor nobody should trust. Do these agains
 3. **One alert end to end** — trigger a system-admin login failure on staging and confirm the notification actually arrives. An alert policy with an unverified notification channel is decoration.
 4. **Log rotation** — `docker inspect lms-production-app` and confirm `max-size` / `max-file`.
 
-## 7. Not yet built
+## 7. Traces and metrics
+
+**Traces.** `@vercel/otel` is registered in `src/instrumentation.ts` and exports OTLP to the collector, which forwards to Cloud Trace. Next.js instruments itself, so you get a root span per request plus render, route-handler and fetch spans without touching handler code. `NEXT_OTEL_VERBOSE=1` adds finer-grained spans when actively debugging.
+
+Tracing is **opt-in**: it registers only when `OTEL_EXPORTER_OTLP_ENDPOINT` is set. Local dev, CI and the build therefore carry no tracing overhead and never retry an exporter that will not answer. Enabling it is a config change, not a deploy. It is also wrapped so a tracing failure cannot stop the background workers from booting.
+
+**Metrics come from two places, deliberately:**
+
+*Host metrics* are scraped by the collector (`hostmetrics`, `root_path: /hostfs`) — CPU, memory, load and filesystem. Host rather than app metrics because the operationally dangerous conditions here are disk and memory pressure: production, staging, Postgres, Redis and MinIO share one VM and one disk, the app container is capped at 1 GB with a single replica, and workers run inside that same process. The `/hostfs` mount is required because a container's own `/proc` describes the container, not the VM whose disk actually fills.
+
+*Domain counters* — PHI gate outcomes, auth failures, rate-limit rejections, ledger write failures — are **log-based metrics** defined in [`infra/gcp/README.md`](../infra/gcp/README.md), not emitted from code. These events already log as structured lines, so deriving them avoids instrumenting every call site twice and keeps label cardinality under explicit control rather than depending on what a caller passes. The trade-off is real: the filters depend on `msg` prefixes, so **rewording a log message silently kills its metric**. Treat those strings as a contract and prefer adding a new `msg` over editing one.
+
+One thing not measured: **BullMQ queue depth and DLQ growth**. It needs a queue-scraping exporter or an app-side gauge; the worker-boot alert catches total failure but not a queue quietly backing up.
+
+## 8. Not yet built
 
 Honest list, so nobody assumes coverage that does not exist:
 
-- **Metrics and traces.** Only logs ship today. Request latency, queue depth, DLQ growth and Vertex spend are not measured; the alerts above are log-derived. Adding them needs the OTel SDK wired into `src/instrumentation.ts` and an OTLP receiver on the collector.
-- **Error grouping.** Cloud Error Reporting will pick up structured error entries, but stack-trace grouping has not been verified.
-- **Six-year audit retention off-host.** The `_Default` log bucket is being raised to 400 days; the ≥6-year audit requirement wants a dedicated bucket or a Cloud Storage sink.
-- **Log-based metrics + SLOs.** No error-budget tracking.
+- **Queue depth / DLQ metrics** (above).
+- **Error grouping.** Cloud Error Reporting will pick up structured error entries, but stack-trace grouping has not been verified against a real error.
+- **SLOs and error budgets.** The log-based metrics exist; no burn-rate alerting is built on them.
+- **Nothing is applied yet.** Every definition in `infra/gcp/` is committed config awaiting a `gcloud` run — see that README. Until then this document describes intent, not a live system.
 - **On-call rotation and IR runbook.** Alerts route to an email channel. Who responds, and how, is a policy artefact and out of scope for engineering readiness.

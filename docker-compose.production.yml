@@ -43,6 +43,9 @@ services:
       # Stamped onto every structured log line so entries are
       # attributable in Cloud Logging (container paths carry only an id).
       OTEL_SERVICE_NAME: lms-production
+      # Presence of this var is what ENABLES tracing (see registerTracing in
+      # src/instrumentation.ts). Internal Docker network only.
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       PORT: '3000'
       DATABASE_URL: postgresql://${POSTGRES_USER:-lms}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-lms_production}
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
@@ -171,6 +174,10 @@ services:
       - /home/deploy/secrets/otel-sa-production.json:/etc/otel/sa-key.json:ro
       # Read-only: the collector reads container logs and must never mutate them.
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      # Host root, read-only, for the hostmetrics scraper (root_path: /hostfs).
+      # Needed because a container's own /proc and mounts describe the container,
+      # not the VM whose disk actually fills up.
+      - /:/hostfs:ro
     deploy:
       resources:
         limits:

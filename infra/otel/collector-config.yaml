@@ -24,6 +24,39 @@
 # unclosed root cause behind two prod data-loss incidents.
 
 receivers:
+  # Traces from the app (@vercel/otel in src/instrumentation.ts). Bound to the
+  # Docker network only — never published to the host — so nothing off-box can
+  # inject spans.
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+  # VM-level metrics. Deliberately host metrics rather than app metrics: the
+  # alerts that matter operationally here are disk and memory pressure, and the
+  # production app container is capped at 1 GB with a single replica on a VM that
+  # also hosts Postgres, Redis, MinIO and staging. Filling the disk takes
+  # Postgres down with it.
+  #
+  # Application-level counters (PHI outcomes, auth failures, rate-limit
+  # rejections) are NOT emitted from code — they are derived as log-based metrics
+  # from the structured logs already shipping. That avoids instrumenting every
+  # call site twice, and keeps label cardinality under explicit control rather
+  # than depending on whatever a caller passes.
+  hostmetrics:
+    collection_interval: 60s
+    root_path: /hostfs
+    scrapers:
+      cpu:
+      memory:
+      load:
+      filesystem:
+        exclude_mount_points:
+          mount_points: ['/var/lib/docker/*', '/snap/*']
+          match_type: regexp
+
   filelog:
     include:
       - /var/lib/docker/containers/*/*-json.log
@@ -94,11 +127,21 @@ exporters:
       default_log_name: lms-container-logs
 
 service:
-  # memory_limiter first: it can only protect the pipeline if it sees data
-  # before the batcher buffers it.
+  # memory_limiter first in every pipeline: it can only protect the pipeline if
+  # it sees data before the batcher buffers it.
   pipelines:
     logs:
       receivers: [filelog]
+      processors: [memory_limiter, resource, batch]
+      exporters: [googlecloud]
+
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [googlecloud]
+
+    metrics:
+      receivers: [hostmetrics]
       processors: [memory_limiter, resource, batch]
       exporters: [googlecloud]
 
