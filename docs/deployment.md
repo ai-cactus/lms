@@ -37,20 +37,20 @@ docker image ls --digests | grep minio                        # map digest → R
 ```
 If the running digest maps to a different RELEASE tag than the one pinned in `docker-compose.*.yml`, update the tag in the compose files to match, then commit. Upgrading MinIO is a separate, deliberate decision — not part of this pin.
 
-### 2.3 nginx is NOT in the request path — proposal withdrawn (F-043)
+### 2.3 nginx is not used at all (F-043) — resolved
 
 A previous version of this section described routing the Cloudflare Tunnel through nginx so nginx could re-assert security headers. **That change was never applied, and it is now withdrawn rather than left pending.**
 
 The facts, verified 2026-08-10:
 
 - `cloudflared_config.yml` routes `training.theraptly.com` → `http://localhost:3000` and `staging-lms.theraptly.com` → `http://localhost:3001`. Ingress goes **straight to the app ports**. nginx is bypassed.
-- No workflow deploys `lms2_nginx.conf`; it is hand-applied on the VM, so the repo copy is documentation, not configuration.
+- No workflow ever deployed `lms2_nginx.conf`; it was hand-applied on the VM, so the repo copy was documentation rather than configuration — which is why deleting it changes nothing about the running system.
 - The proposal's only real benefit — security headers — is already delivered by `next.config.ts`, which **is** in the request path. HSTS (2y, preload, includeSubDomains), CSP, `X-Frame-Options: DENY`, nosniff, Referrer-Policy and Permissions-Policy all ship from there and are verifiable with `curl -I` today.
 - The proposal's other benefits (body-size limits) are enforced in-app instead: `MAX_DOCUMENT_UPLOAD_BYTES` rejects oversized uploads before buffering (F-017).
 
 So inserting nginx into the path would add a hop, a failure mode and a second place to keep the CSP in sync, in exchange for duplicating headers that already work. The former §2.3 was also flagged "can take production fully offline if misapplied" — that is a poor trade for zero security gain.
 
-**Decision needed from ops (not blocking):** whether `lms2_nginx.conf` and `scripts/setup_nginx_cloudflare.sh` should be deleted from the repo. They are dead as far as this application is concerned, but if nginx serves anything else on that VM the repo copy may be the only record of its config. They have been left in place pending that confirmation; delete them once you know.
+**Resolved (2026-08-10):** `lms2_nginx.conf` and `scripts/setup_nginx_cloudflare.sh` have been **deleted**. The former was LMS-specific config for a proxy that never sees a request; the latter existed only to give nginx the real client IP via `set_real_ip_from`, which is meaningless when nginx is not handling requests. Both remain in git history if nginx is ever reintroduced or turns out to serve something unrelated on that host.
 
 Verify the headers arrive without nginx:
 
