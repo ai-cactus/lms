@@ -4,6 +4,39 @@ import prisma from '@/lib/prisma';
 import { auth } from '@/auth';
 import { revalidatePath } from 'next/cache';
 import { Prisma } from '@/generated/prisma/client';
+import { logger } from '@/lib/logger';
+import { can } from '@/lib/rbac/permissions';
+import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
+import type { Role } from '@/types/next-auth';
+
+/**
+ * F-034: every mutator in this file previously checked only that SOME session
+ * existed, then that the course's `createdByOrgUserId` matched the caller's
+ * membership. Ownership is not authorization — any authenticated member of the
+ * org, a worker included, could create, edit, delete and reorder lesson content.
+ *
+ * A lesson is course content, so the permission is `course.edit`. The registry
+ * has no `lesson.*` entry and inventing one would fragment the model for no
+ * gain: there is no role that should edit lessons but not the course containing
+ * them.
+ *
+ * Throws rather than returning an error object, matching this file's style.
+ */
+function assertCanEditCourseContent(
+  session: { user: { id: string; role: Role } },
+  action: string,
+  context: Record<string, unknown> = {},
+): void {
+  if (!can(dbRoleToRoleKey(session.user.role), 'course.edit')) {
+    logger.warn({
+      msg: `[lesson] ${action} denied — missing course.edit`,
+      ...context,
+      userId: session.user.id,
+      role: session.user.role,
+    });
+    throw new Error('Insufficient permissions');
+  }
+}
 
 export async function createLesson(data: {
   courseId: string;
@@ -15,6 +48,8 @@ export async function createLesson(data: {
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
   }
+
+  assertCanEditCourseContent(session, 'createLesson', { courseId: data.courseId });
 
   const course = await prisma.course.findUnique({
     where: { id: data.courseId },
@@ -53,6 +88,8 @@ export async function updateLesson(
     throw new Error('Unauthorized');
   }
 
+  assertCanEditCourseContent(session, 'updateLesson', { lessonId });
+
   const existing = await prisma.lesson.findUnique({
     where: { id: lessonId },
     include: { course: true },
@@ -75,6 +112,8 @@ export async function deleteLesson(lessonId: string) {
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
   }
+
+  assertCanEditCourseContent(session, 'deleteLesson', { lessonId });
 
   const existing = await prisma.lesson.findUnique({
     where: { id: lessonId },
@@ -111,6 +150,8 @@ export async function reorderLessons(
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
   }
+
+  assertCanEditCourseContent(session, 'reorderLessons', { courseId });
 
   const course = await prisma.course.findUnique({ where: { id: courseId } });
   if (!course || course.createdByOrgUserId !== session.user.organizationUserId) {
@@ -150,6 +191,8 @@ export async function createLessonWithQuiz(data: {
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
   }
+
+  assertCanEditCourseContent(session, 'createLessonWithQuiz', { courseId: data.courseId });
 
   const course = await prisma.course.findUnique({
     where: { id: data.courseId },

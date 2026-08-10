@@ -259,6 +259,19 @@ export async function createCourse(data: { title: string; description?: string }
     throw new Error('You must belong to an organization to create courses');
   }
 
+  // F-034: registry permission check. These mutators previously validated only
+  // that SOME session existed plus `createdByOrgUserId` ownership, so any
+  // authenticated member of the org — a worker included — could reach them.
+  // Ownership is not authorization.
+  if (!can(dbRoleToRoleKey(session.user.role), 'course.create')) {
+    logger.warn({
+      msg: '[course] createCourse denied — missing course.create',
+      userId: session.user.id,
+      role: session.user.role,
+    });
+    throw new Error('Insufficient permissions');
+  }
+
   const course = await prisma.course.create({
     data: {
       title: data.title,
@@ -284,6 +297,16 @@ export async function updateCourse(
   const session = await resolveSession();
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
+  }
+
+  if (!can(dbRoleToRoleKey(session.user.role), 'course.edit')) {
+    logger.warn({
+      msg: '[course] updateCourse denied — missing course.edit',
+      courseId,
+      userId: session.user.id,
+      role: session.user.role,
+    });
+    throw new Error('Insufficient permissions');
   }
 
   const existing = await prisma.course.findUnique({ where: { id: courseId } });
@@ -316,6 +339,16 @@ export async function publishCourse(courseId: string, opts?: { acknowledgeWarnin
   const session = await resolveSession();
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
+  }
+
+  if (!can(dbRoleToRoleKey(session.user.role), 'course.edit')) {
+    logger.warn({
+      msg: '[course] publishCourse denied — missing course.edit',
+      courseId,
+      userId: session.user.id,
+      role: session.user.role,
+    });
+    throw new Error('Insufficient permissions');
   }
 
   const existing = await prisma.course.findUnique({ where: { id: courseId } });
@@ -371,6 +404,16 @@ export async function deleteCourse(courseId: string) {
   const session = await resolveSession();
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
+  }
+
+  if (!can(dbRoleToRoleKey(session.user.role), 'course.delete')) {
+    logger.warn({
+      msg: '[course] deleteCourse denied — missing course.delete',
+      courseId,
+      userId: session.user.id,
+      role: session.user.role,
+    });
+    throw new Error('Insufficient permissions');
   }
 
   const existing = await prisma.course.findUnique({ where: { id: courseId } });
