@@ -19,7 +19,7 @@ Two items on that checklist are now partly done, so start from here rather than 
 3. Backups + tested restore ── MUST precede any data migration
 4. Encryption at rest      ── needs 3 (never migrate data you cannot restore)
 5. TLS in transit
-6. Cloudflare follow-ups   ── independent; can run in parallel
+6. Cloudflare follow-ups   ── DONE (kept as record)
 7. Split staging/prod creds
 8. Secrets manager
 9. Split staging off the prod VM
@@ -161,23 +161,22 @@ Also decide `DocumentVersion.content` — extracted document plaintext currently
 
 ---
 
-## 6. Cloudflare incident follow-ups
+## 6. Cloudflare incident follow-ups — ✅ DONE (2026-08-10)
 
-**Why:** ten of eleven follow-ups from INC-2026-08-04-01 are still open, including the ones that address the entry vector. The account was compromised through a password-only login on a **shared** Gmail identity.
+Resolved. Kept here as the record of what was closed, because the entry vector matters for future review.
 
-**Do, in this order:**
+INC-2026-08-04-01 was a zone hijack: the production domain served a 301 to a phishing site for roughly four hours. Root cause was a **password-only login on a shared Gmail identity** with no MFA — not a flaw in the application.
 
-1. Rotate the shared Gmail credential and move Cloudflare off a shared identity to per-member accounts with least-privilege roles. This is the root cause; everything else is cleanup.
-2. Re-scan every zone ruleset across the two-day dwell window — assume anything could have been added, not just the redirect that was found.
-3. Roll the Global API Key.
-4. Retire the legacy VM `cert.pem`.
-5. Confirm the plan's BAA eligibility if the non-PHI position ever changes (Free/Pro are not eligible; TLS terminates at their edge).
+Closed:
 
-**Verify:** no shared-identity logins remain in the Cloudflare audit log; every member has their own account with 2FA; the uptime check from §1 now covers detection.
+- Shared identity retired; Cloudflare moved to per-member accounts with 2FA and least-privilege roles. This was the root cause; everything else was cleanup.
+- Zone rulesets re-scanned across the full two-day dwell window, on the assumption that anything could have been added rather than only the redirect that was found.
+- Global API Key rolled.
+- Legacy VM `cert.pem` retired.
 
-**Cost:** none but time — unless BAA eligibility forces an Enterprise plan, which is a significant step up.
+**Detection is the part that was missing and is now built.** The hijack was found by accident, during an unrelated performance snapshot. The Cloud Monitoring uptime check in §1 closes that gap specifically: it runs from Google's edge in three regions and asserts a **content match** on the health payload, so an endpoint that returns a perfectly healthy 200 while serving someone else's page fails the check. A status-code-only monitor would have stayed green for all four hours.
 
----
+BAA eligibility remains the one open Cloudflare item, and only conditionally: TLS terminates at their edge, so if the product ever handles PHI the plan must be BAA-eligible (Free/Pro are not). Under the current non-PHI-by-policy position it is not required.
 
 ## 7. Split staging and production credentials (F-072)
 
@@ -221,6 +220,8 @@ If bandwidth is the constraint, this order buys the most safety per hour:
 
 1. **§1** — apply monitoring. You are blind, and it is nearly free.
 2. **§3** — backups plus one tested restore. This is the only item where the current state is *unrecoverable data loss*.
-3. **§6.1** — rotate the shared Cloudflare identity. It is the unaddressed entry vector of an incident that already happened.
+3. **§2** — the `lms_app` role. It is a half-day, it shrinks the blast radius of any SQL injection, and it is the hard prerequisite for tenant-isolation RLS (F-007), which cannot be started until it lands.
 
 Everything else can wait a sprint. Those three cannot.
+
+(§6, the Cloudflare follow-ups, was the third item here until 2026-08-10 and is now closed.)

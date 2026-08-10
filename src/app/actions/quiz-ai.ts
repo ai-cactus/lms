@@ -6,6 +6,7 @@ import prisma from '@/lib/prisma';
 import { auth } from '@/auth';
 import { logger } from '@/lib/logger';
 import { checkRateLimit } from '@/lib/rate-limit';
+import { assertNoPhi, PhiBlockedError } from '@/lib/documents/phiGate';
 
 // Single user-facing failure message. Raw internal error detail (Vertex AI
 // errors, stack traces) is logged server-side only and NEVER returned to the
@@ -116,6 +117,17 @@ export async function generateSingleQuestion(options: {
 
     if (!courseContext && options.context) {
       courseContext = options.context.substring(0, 8000);
+
+      // F-089: this is raw client-supplied free text on its way to Vertex AI.
+      // Course-derived context above is transitively covered (lesson bodies are
+      // now gated on save), but this path accepts arbitrary text from the caller
+      // and had no gate at all.
+      await assertNoPhi({
+        text: courseContext,
+        source: 'quiz_context',
+        actorId: session.user.id,
+        organizationId: session.user.organizationId ?? undefined,
+      });
     }
 
     if (!courseContext) {
@@ -179,6 +191,12 @@ Return ONLY a valid JSON object matching this schema:
 
     return { success: true, question: result.data };
   } catch (err: unknown) {
+    // A PHI rejection is actionable by the user ("remove the personal details"),
+    // so it must survive the generic sanitiser below rather than becoming
+    // "we couldn't generate a question".
+    if (err instanceof PhiBlockedError) {
+      return { success: false, error: err.message };
+    }
     const error = err as Error;
     logger.error({ msg: 'generateSingleQuestion error:', err: error });
     // Never surface error.message: it carries raw Vertex AI failures (e.g.

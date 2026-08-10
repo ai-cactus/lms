@@ -121,7 +121,12 @@ destructive script.
 | `npm run build`          | Compiles the application for production.          |
 | `npm run start`          | Launches the production server.                   |
 | `npm run lint`           | Checks for code quality and style violations.     |
-| `./deploy-production.sh` | Automated production deployment script.           |
+| `npm run test`           | Runs the unit/integration suite (vitest).         |
+
+Deployment is **not** run from a local script. Pushing to `staging` or `main`
+triggers the GitHub Actions workflow, which builds an image, pushes it to GHCR
+and deploys it over SSH — see [`docs/deployment.md`](docs/deployment.md). The old
+`deploy*.sh` scripts targeted a stale path and have been deleted.
 
 ---
 

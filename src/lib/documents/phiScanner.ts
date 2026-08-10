@@ -234,11 +234,13 @@ function chunkText(text: string): string[] {
 }
 
 export async function scanText(text: string): Promise<ScanResult> {
-  // Quick heuristic: very short text can't meaningfully contain PHI — skip AI.
-  if (text.length < MIN_SCAN_LENGTH)
-    return { hasPHI: false, findings: [], decidedBy: 'skipped_short' };
-
   // ── Local PII pre-pass (deterministic, ZERO network) ──
+  //
+  // This runs on EVERY input, including very short ones. It previously sat behind
+  // a `text.length < MIN_SCAN_LENGTH` early return whose comment said "skip AI"
+  // but whose code skipped everything — so "SSN: 123-45-6789" (16 chars) was
+  // declared PHI-free without a single check. Length is a reason to skip the
+  // expensive AI call; it is never a reason to skip the free local one.
   // High-confidence structural identifiers (SSN / email / phone) fail closed
   // IMMEDIATELY without transmitting anything to Vertex. Softer categories
   // (ZIP, MRN-like) are ambiguous on their own and are deferred to the
@@ -267,6 +269,14 @@ export async function scanText(text: string): Promise<ScanResult> {
         findingFromPiiMatch(m.category as 'SSN' | 'EMAIL' | 'PHONE', m.value, m.index),
       ),
     };
+  }
+
+  // Only NOW is length allowed to short-circuit, and only the AI pass. The text
+  // has already been checked for structural identifiers above. `skipped_short`
+  // records honestly that no contextual scan ran, so the evidence report does not
+  // count it as "scanned and clean".
+  if (text.length < MIN_SCAN_LENGTH) {
+    return { hasPHI: false, findings: [], decidedBy: 'skipped_short' };
   }
 
   // ── AI scan over the FULL document, chunked ──

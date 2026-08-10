@@ -19,9 +19,35 @@ describe('phiScanner', () => {
     const text = 'Short text';
     const result = await scanText(text);
 
-    // decidedBy records that NO scan ran, rather than filing an unscanned
-    // document under "scanned and clean" (F-092 evidence quality).
+    // decidedBy records that no CONTEXTUAL scan ran, rather than filing
+    // unscanned text under "scanned and clean" (F-092 evidence quality).
     expect(result).toEqual({ hasPHI: false, findings: [], decidedBy: 'skipped_short' });
+    expect(mockedCallVertexAI).not.toHaveBeenCalled();
+  });
+
+  /**
+   * F-089 regression. The length check used to sit ABOVE the local pre-pass, and
+   * its comment said "skip AI" while the code skipped everything — so a 16-character
+   * string containing an SSN was declared PHI-free without a single check.
+   *
+   * Length may short-circuit the expensive AI call. It must never short-circuit the
+   * free, deterministic, zero-network local one.
+   */
+  it('BLOCKS short text containing a structural identifier, with no AI call', async () => {
+    const result = await scanText('SSN 123-45-6789');
+
+    expect(result.hasPHI).toBe(true);
+    expect(result.decidedBy).toBe('local_regex');
+    expect(result.findings.map((f) => f.type)).toContain('SSN');
+    // Rejected without a byte leaving the process.
+    expect(mockedCallVertexAI).not.toHaveBeenCalled();
+  });
+
+  it('BLOCKS a short string that is only an email address', async () => {
+    const result = await scanText('a.patient@clinic.com');
+
+    expect(result.hasPHI).toBe(true);
+    expect(result.decidedBy).toBe('local_regex');
     expect(mockedCallVertexAI).not.toHaveBeenCalled();
   });
 

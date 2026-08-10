@@ -1,6 +1,6 @@
 # Data Classification & Egress Map
 
-**System:** Theraptly LMS · **Compiled:** 2026-08-09 · Companion to [`AUDIT-2026-08.md`](./AUDIT-2026-08.md)
+**System:** Theraptly LMS · **Compiled:** 2026-08-09 · **Updated:** 2026-08-10 · Companion to [`AUDIT-2026-08.md`](./AUDIT-2026-08.md)
 
 The product is positioned as **non-PHI**: the scanner exists to keep PHI *out*, not to process it. This document exists so that position is auditable rather than asserted — it names every field that could plausibly carry personal data, and every path by which data leaves the trust boundary.
 
@@ -45,9 +45,9 @@ This is the category that matters. Everything here is user-supplied free text or
 | Location | Scanned? | Notes |
 | --- | --- | --- |
 | `DocumentVersion.content` | **Yes** | Extracted document text. The only production writer is `uploadDocument`, which blocks on `hasPHI` and `scanFailed` **before** persisting. Stored in plaintext — F-025's "encrypt or drop" decision is still open. |
-| `Document.filename`, `.originalName` | No | A filename can itself carry a name (`john-doe-intake.pdf`). Stored verbatim for accepted documents; the `phi_decisions` ledger deliberately stores only a hash. |
-| `Lesson.content`, `.slideContent` | **No** | AI-generated from scanned documents *or* typed directly into the editor. The editor path has no scan — **F-089, open, needs a product decision**. |
-| `Quiz`/`Question.text`, `.correctAnswer` | No | Generated or authored. Reaches Vertex via the explanation fallback. |
+| `Document.filename`, `.originalName` | No — **residual gap** | A filename can itself carry a name (`john-doe-intake.pdf`) and is stored verbatim for accepted documents. The `phi_decisions` ledger deliberately stores only a hash. Scanning filenames is possible but noisy; recorded here rather than silently accepted. |
+| `Lesson.content`, `.slideContent` | **Yes** | AI-generated from scanned documents *or* typed into the editor. **Both paths are now gated** — the editor's save path runs `assertNoPhi` (F-089). |
+| `Quiz`/`Question.text`, `.correctAnswer` | Inherited | Generated from gated lesson/document content, or authored. Reaches Vertex via the explanation fallback. |
 | `MappingEvidence.snippet`, `.justification` | Inherited | Verbatim excerpts of already-scanned document text. |
 | `ManualChunk.content` + `embedding` | No | Standard-manual RAG corpus, admin-curated reference material. |
 | `PhiReport.detectedEntities` | n/a | **Value-free by construction**: type + offsets + confidence only. |
@@ -66,11 +66,11 @@ Every path that sends P2 content to a third party, and what gates it.
 | `generateCourseAndQuizV46` (fresh upload) | Vertex AI | ✅ | `scanText` blocks **before the Job is created**, so no scheduled work sees unscanned text. |
 | `generateCourseAndQuizV46` (stored doc) | Vertex AI | ✅ | Transitively gated — reads `DocumentVersion.content`, written only post-scan. |
 | `analyzeStoredDocument` | Vertex AI | ✅ | Transitively gated, same invariant. Auth + org scope + rate limit. |
-| `generateSingleQuestion` | Vertex AI | ✅ | Auth + **org scope** + rate limit. Content is lesson text — **ungated for editor-authored text (F-089)**. |
+| `generateSingleQuestion` | Vertex AI | ✅ | Auth + **org scope** + rate limit. Lesson text is gated on save; client-supplied `context` is gated inline (F-089). |
 | Quiz-submit explanation fallback | Vertex AI | ✅ | Sends question text, correct answer and options only — **never** the worker's submitted answers. Rate limited, degrades to score-only. |
 | `retrieveRelevantChunks` → `generateEmbedding` | Vertex AI | ✅ | Query text derived from already-scanned source. |
 | Document / video / certificate objects | GCS (primary), MinIO (fallback) | ✅ GCS | Signed-URL access; no public buckets. MinIO is `MINIO_USE_SSL=false` internally — open item. |
-| All HTTP traffic | Cloudflare (TLS terminates at edge) | ⚠️ Requires Enterprise | Current plan is not BAA-eligible (F-043). Acceptable under the non-PHI position; would need addressing if that changes. |
+| All HTTP traffic | Cloudflare (TLS terminates at edge) | ⚠️ Only if PHI position changes | Account security hardened after INC-2026-08-04-01 (per-member accounts + 2FA, shared identity retired, API key rolled). Plan BAA-eligibility is **not required** under the non-PHI position; it would be if that changes (Free/Pro are not eligible). |
 | Transactional email | Zoho SMTP (prod), MailHog (dev/CI) | ⚠️ Unverified | Recipient PII + tokenised links. Bodies must not carry P2 content. |
 | Billing | Stripe | ❌ None needed | Org email + plan metadata only. **Keep P2 out of Stripe metadata.** |
 | Auth | Microsoft Entra ID | Covered by MS DPA | Identity assertions. |
@@ -84,19 +84,20 @@ Every path that sends P2 content to a third party, and what gates it.
 
 ## 3. The invariant, stated plainly
 
-> **No document content reaches an AI provider without a recorded scan decision.**
+> **No user-supplied content reaches storage or an AI provider without a recorded scan decision** — uploaded documents, lesson bodies, and client-supplied AI context alike.
 
-Enforced by three things working together, not one:
+Enforced by four things working together, not one:
 
 1. **The gate** — `scanText`, fail-closed, runs before any generation call on every ingress path.
 2. **The transitive rule** — anything reading `DocumentVersion.content` inherits the gate, because `uploadDocument` is the sole production writer and blocks before persisting. *This is the fragility that produced F-002 and F-082: it is an invariant of the call graph, not a local check.* Any new path feeding document text to an AI call must either scan locally or read from a column with the same guarantee.
 3. **The ledger** — `phi_decisions` records every decision, including rejections. `buildPhiEvidenceReport` verifies the invariant rather than assuming it: `integrity.acceptedWithoutDecision` must be 0, and `attestable` is false whenever the ledger does not cover the whole period being claimed.
+4. **One gate for every ingress** — `assertNoPhi` (`src/lib/documents/phiGate.ts`) wraps scan + record + reject, so a new ingress point is one call rather than a re-implementation, and no call site can scan without recording. Added when F-089 showed that "we scan documents" had quietly become the whole of the coverage.
 
 ### Known gaps in the invariant
 
 | Gap | Finding |
 | --- | --- |
-| Editor-authored lesson content and client-supplied `options.context` are never scanned | **F-089** — open, product decision |
+| ~~Editor-authored lesson content unscanned~~ | **F-089 — closed 2026-08-10** |
 | `DocumentVersion.content` is stored in plaintext | F-025 — open, ops |
 | Free-text names/addresses still require the AI pass; only SSN/email/phone are caught locally with zero transmission | Noted in `phiScanner.ts`; a local NER/DLP model would close it |
 | Chunk boundaries do not overlap, so a value straddling a 15k boundary could evade the AI pass | Noted in `phiScanner.ts`; the local pre-pass runs over the full text and bounds the risk |

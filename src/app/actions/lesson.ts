@@ -8,6 +8,7 @@ import { logger } from '@/lib/logger';
 import { can } from '@/lib/rbac/permissions';
 import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
 import type { Role } from '@/types/next-auth';
+import { assertNoPhi } from '@/lib/documents/phiGate';
 
 /**
  * F-034: every mutator in this file previously checked only that SOME session
@@ -51,6 +52,16 @@ export async function createLesson(data: {
 
   assertCanEditCourseContent(session, 'createLesson', { courseId: data.courseId });
 
+  // F-089: lesson bodies are user-authored and previously reached storage with
+  // no PHI gate at all — the scan only ever covered uploaded documents.
+  await assertNoPhi({
+    text: data.content,
+    source: 'lesson_edit',
+    actorId: session.user.id,
+    organizationId: session.user.organizationId ?? undefined,
+    logContext: { courseId: data.courseId },
+  });
+
   const course = await prisma.course.findUnique({
     where: { id: data.courseId },
     include: { lessons: { select: { order: true } } },
@@ -89,6 +100,16 @@ export async function updateLesson(
   }
 
   assertCanEditCourseContent(session, 'updateLesson', { lessonId });
+
+  // F-089: `content` is optional on this signature, and assertNoPhi no-ops on
+  // empty input, so a title-only edit skips the AI round trip.
+  await assertNoPhi({
+    text: data.content ?? '',
+    source: 'lesson_edit',
+    actorId: session.user.id,
+    organizationId: session.user.organizationId ?? undefined,
+    logContext: { lessonId },
+  });
 
   const existing = await prisma.lesson.findUnique({
     where: { id: lessonId },
@@ -193,6 +214,16 @@ export async function createLessonWithQuiz(data: {
   }
 
   assertCanEditCourseContent(session, 'createLessonWithQuiz', { courseId: data.courseId });
+
+  // F-089: same gate as createLesson — a second creation path must not be a
+  // way around it.
+  await assertNoPhi({
+    text: data.content,
+    source: 'lesson_edit',
+    actorId: session.user.id,
+    organizationId: session.user.organizationId ?? undefined,
+    logContext: { courseId: data.courseId },
+  });
 
   const course = await prisma.course.findUnique({
     where: { id: data.courseId },

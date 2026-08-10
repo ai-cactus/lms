@@ -3,6 +3,7 @@
 import prisma from '@/lib/prisma';
 import type { Prisma } from '@/generated/prisma/client';
 import { dbRoleToRoleKey, WORKER_ROLES } from '@/lib/rbac/role-utils';
+import { assertNoPhi } from '@/lib/documents/phiGate';
 import { can } from '@/lib/rbac/permissions';
 import { hasActiveBilling } from '@/lib/billing';
 import { auth as adminAuth } from '@/auth';
@@ -1428,6 +1429,16 @@ export async function updateLessonContent(lessonId: string, content: string, tit
   if (!lesson || lesson.course.createdByOrgUserId !== session.user.organizationUserId) {
     throw new Error('Unauthorized or Lesson not found');
   }
+
+  // F-089: this is the rich-text editor's save path — the most likely place for
+  // someone to paste a real clinical note. Gated like every other ingress.
+  await assertNoPhi({
+    text: content,
+    source: 'lesson_edit',
+    actorId: session.user.id,
+    organizationId: session.user.organizationId ?? undefined,
+    logContext: { lessonId },
+  });
 
   await prisma.lesson.update({
     where: { id: lessonId },

@@ -41,7 +41,13 @@ import type { ScanResult, PHIDecidedBy } from '@/lib/documents/phiScanner';
  * a relation, so a new ingress point (e.g. lesson-editor text — F-089) can be
  * recorded without a migration.
  */
-export type PhiDecisionSource = 'document_upload' | 'course_wizard_upload';
+export type PhiDecisionSource =
+  | 'document_upload'
+  | 'course_wizard_upload'
+  /** Lesson body text typed or pasted into the authoring UI (F-089). */
+  | 'lesson_edit'
+  /** Free-text context supplied by the client to AI quiz generation (F-089). */
+  | 'quiz_context';
 
 export type PhiDecisionOutcome = 'allowed' | 'blocked_phi' | 'blocked_scan_failed';
 
