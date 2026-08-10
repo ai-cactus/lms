@@ -1,0 +1,23 @@
+{
+  "displayName": "LMS audit or PHI ledger write failed",
+  "documentation": {
+    "content": "A row could not be written to audit_logs or phi_decisions. This is a COMPLIANCE issue rather than a availability one: the trail that HIPAA \u00a7164.312(b) treats as a control now has a gap, and the PHI evidence report will refuse to attest for any period containing it.\n\n**First response:** establish the window, then run buildPhiEvidenceReport across it and check integrity.acceptedWithoutDecision. Record the gap explicitly \u2014 an unexplained hole is far worse than a documented one.",
+    "mimeType": "text/markdown"
+  },
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "ledger write failures",
+      "conditionMatchedLog": {
+        "filter": "(jsonPayload.msg=~\"Failed to write audit log\" OR jsonPayload.msg=~\"FAILED to record PHI decision\")"
+      }
+    }
+  ],
+  "notificationChannels": [
+    "REPLACE_WITH_CHANNEL"
+  ],
+  "alertStrategy": {
+    "autoClose": "604800s"
+  },
+  "enabled": true
+}

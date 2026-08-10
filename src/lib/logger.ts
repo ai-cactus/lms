@@ -247,6 +247,11 @@ function emit(level: LogLevel, payload: LogPayload): void {
     level,
     time: new Date().toISOString(),
     env: process.env.NODE_ENV,
+    // Self-identifying for log aggregation. The collector tails Docker's log
+    // files, whose paths carry only a container ID, so without this every app
+    // line in Cloud Logging would be attributable only to an opaque hash.
+    // Same var the collector reports as service.name, so they agree.
+    ...(process.env.OTEL_SERVICE_NAME ? { service: process.env.OTEL_SERVICE_NAME } : {}),
     ...(correlationId ? { correlationId } : {}),
     // F-078: scrub before the entry is assembled. Structural rather than
     // per-call-site, so a forgotten maskEmail can no longer leak.
