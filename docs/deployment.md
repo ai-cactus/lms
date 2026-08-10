@@ -15,9 +15,9 @@ Production and staging deploy via **GitHub Actions → GHCR → Docker Compose o
 - `.github/workflows/deploy-production.yml` — on push to `main`/`master`: builds the image, pushes to GHCR, SSHes to the VM, pulls, and `docker compose up -d`.
 - `.github/workflows/deploy-staging.yml` — the staging equivalent.
 
-The legacy PM2 shell scripts (`deploy.sh`, `deploy-production.sh`, `deploy-staging.sh`) and `ecosystem.config.js` have been **deleted** (2026-08-10). They targeted a stale `/home/homepc/lms2*` path the CD pipeline never used, and the deploy workflows already `pm2 delete` the old process. Keeping them "for reference" was a liability: `README.md` still told people to run `./deploy-production.sh`, which would have deployed nothing while appearing to work.
+**Docker is the only runtime. PM2 is gone.** The legacy PM2 shell scripts (`deploy.sh`, `deploy-production.sh`, `deploy-staging.sh`) and `ecosystem.config.js` were **deleted** on 2026-08-10, and the `pm2 delete` teardown step was removed from both deploy workflows — it was running on every deploy against a process that no longer exists. Keeping the scripts "for reference" was a liability: `README.md` still told people to run `./deploy-production.sh`, which would have deployed nothing while appearing to work.
 
-If PM2 is still installed on the VM, decommission it once you've confirmed Docker Compose owns both environments. Their contents remain in git history if ever needed.
+Their contents remain in git history if ever needed. There is nothing left in the repo that references a process manager: one container per service per environment, started by `docker compose up -d`.
 
 ## 2. Required ops steps for this sweep's infra changes
 
