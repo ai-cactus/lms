@@ -6,6 +6,7 @@ import crypto from 'crypto';
 import { revalidatePath } from 'next/cache';
 import { logger } from '@/lib/logger';
 import { audit, auditCritical, getClientContext } from '@/lib/audit';
+import { checkRateLimit } from '@/lib/rate-limit';
 import { verifySystemAdminCookie, SYSTEM_ADMIN_COOKIE } from '@/lib/system-auth';
 import type { Prisma } from '@/generated/prisma/client';
 import type { UserRole } from '@/generated/prisma/enums';
@@ -38,6 +39,22 @@ function signToken(payload: string): string {
 }
 
 /**
+ * Constant-time password comparison (F-056).
+ *
+ * A plain `===` short-circuits on the first differing byte, so response timing
+ * leaks how much of the password a guess got right — which turns brute-forcing a
+ * shared secret from 62^n into roughly 62*n work. Length is compared first and
+ * separately because timingSafeEqual throws on differing lengths; leaking the
+ * length alone is not materially useful.
+ */
+function timingSafeEquals(a: string, b: string): boolean {
+  const bufA = Buffer.from(a, 'utf8');
+  const bufB = Buffer.from(b, 'utf8');
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
+/**
  * Audit context for system-admin events (F-094).
  *
  * `actorRole: 'system_admin'` is recorded, but deliberately no `actorId`: this
@@ -64,7 +81,36 @@ export async function verifySystemPassword(
     return { success: false, error: 'System admin is not enabled' };
   }
 
-  if (password !== systemPassword) {
+  // F-097: this gate previously accepted UNLIMITED attempts against a single
+  // shared static password (F-056), guarding cross-organization powers including
+  // irreversible user deletion. It was the most brute-forceable surface in the
+  // system.
+  //
+  // Deliberately tighter than the tenant login limiter (10 per 15 min): a
+  // legitimate operator needs a handful of attempts, and there is no self-service
+  // reset to lock anyone out of.
+  //
+  // failClosed on purpose. Everywhere else that is a trade-off; here it is not.
+  // If Redis is unavailable, refusing platform-admin logins for a few minutes is
+  // strictly better than opening an unmetered brute-force window on a shared
+  // credential — the console is an operations tool, not a customer-facing path.
+  const ip = getClientContext(await headers()).ip ?? 'unknown';
+  const { allowed, resetInSeconds } = await checkRateLimit(`system-admin-login:${ip}`, 5, 900, {
+    failClosed: true,
+  });
+  if (!allowed) {
+    logger.warn({ msg: '[system] System admin login rate limit exceeded', ip });
+    await audit({
+      action: 'system.auth.rate_limited',
+      ...(await systemClientContext()),
+    });
+    return {
+      success: false,
+      error: `Too many attempts. Please wait ${resetInSeconds} seconds and try again.`,
+    };
+  }
+
+  if (!timingSafeEquals(password, systemPassword)) {
     logger.warn({ msg: 'System admin login failed: wrong password' });
     // F-094: this is the entry point to cross-organization super-admin powers,
     // so a failed attempt is exactly what a reviewer needs to see. Best-effort
