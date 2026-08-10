@@ -490,6 +490,24 @@ test.describe('Settings page — Add Facility (multi-facility v3)', () => {
         .getByPlaceholder('e.g. supervisor@yourfacility.com')
         .fill(unknownEmail);
 
+      // The supervisor field is a combobox: typing into it calls setOpen(true)
+      // (SupervisorCombobox.tsx), and its Radix popover renders directly over
+      // the dialog footer — so "No supervisors yet." intercepts the pointer
+      // events meant for "Create facility". Whether that matters is a race
+      // between the portal mounting and the click, which a fast machine wins
+      // and a loaded CI runner loses; it made this test pass locally while
+      // failing in CI for 110+ actionability retries.
+      //
+      // Waiting for the popover and then dismissing it removes the race in
+      // both directions. Escape targets the popover, not the dialog (Radix
+      // closes the topmost layer and stops propagation) — the dialog assertion
+      // below proves that held.
+      const supervisorPopover = page.locator('[data-radix-popper-content-wrapper]');
+      await expect(supervisorPopover).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(supervisorPopover).toHaveCount(0);
+      await expect(addFacilityDialog).toBeVisible();
+
       const responsePromise = page.waitForResponse(
         (resp) => resp.url().includes('/dashboard/settings') && resp.status() === 200,
       );
