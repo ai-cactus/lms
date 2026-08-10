@@ -9,6 +9,7 @@ import { prisma } from '@/db/index';
 import { Prisma } from '@/generated/prisma/client';
 import { EnrollmentStatus, UserRole } from '@/generated/prisma/enums';
 import bcrypt from 'bcryptjs';
+import { BCRYPT_COST } from '@/lib/bcrypt-config';
 
 interface QuizOption {
   id: string;
@@ -85,7 +86,7 @@ async function main() {
     { email: 'emily.taylor@company.com', firstName: 'Emily', lastName: 'Taylor' },
   ];
 
-  const hashedPassword = await bcrypt.hash('TestPassword123!', 10);
+  const hashedPassword = await bcrypt.hash('TestPassword123!', BCRYPT_COST);
   const staffUsers: { id: string }[] = [];
 
   for (const s of staffData) {

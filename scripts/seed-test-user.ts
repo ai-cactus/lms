@@ -8,6 +8,7 @@
 import { prisma } from '@/db/index';
 import { UserRole } from '@/generated/prisma/enums';
 import bcrypt from 'bcryptjs';
+import { BCRYPT_COST } from '@/lib/bcrypt-config';
 
 async function main() {
   const org = await prisma.organization.upsert({
@@ -32,7 +33,7 @@ async function main() {
   });
 
   // Create admin user — the founding/primary admin of the org is the `owner`.
-  const hashed = await bcrypt.hash('Admin123!', 10);
+  const hashed = await bcrypt.hash('Admin123!', BCRYPT_COST);
   const admin = await prisma.user.upsert({
     where: { email: 'admin@test.com' },
     update: { password: hashed, emailVerified: true, firstName: 'Jane', lastName: 'Doe', fullName: 'Jane Doe' },
@@ -59,7 +60,7 @@ async function main() {
   });
   console.log('Admin:', admin.email, '| role:', adminMembership.role);
 
-  const workerHash = await bcrypt.hash('Worker123!', 10);
+  const workerHash = await bcrypt.hash('Worker123!', BCRYPT_COST);
   // Seed a spread of worker-category roles for fixture variety.
   const workerRoles: UserRole[] = [
     UserRole.therapist_clinician,
