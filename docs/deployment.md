@@ -66,6 +66,14 @@ The heavy `test` + `build` steps were moved out of `.husky/pre-commit` (now lint
 
 ## 4. Ops checklist — items with no repo expression (F-004, F-025, availability)
 
+> **See [`security-infra-runbook.md`](./security-infra-runbook.md)** for the executable version of this
+> checklist: ordering with dependency rationale (backups MUST precede any
+> encryption-at-rest migration; the `lms_app` role MUST precede RLS), concrete
+> commands, cost estimates, and a verification step per item. Two entries below
+> have moved on since this was written — monitoring/alerting is now built but
+> unapplied, and detection is no longer the binding constraint for incident
+> response.
+
 These are infrastructure/process work outside the codebase. Track them to closure:
 
 - [ ] **Backups (F-004):** automated, encrypted Postgres backups with PITR (WAL archiving) to off-host storage; **a tested restore runbook** (an untested backup is not a backup). MinIO/GCS object versioning + off-host replication. Redis off-host snapshot (AOF on the same disk is not a backup).
