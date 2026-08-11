@@ -453,11 +453,17 @@ export default function CourseWizard() {
         analyzedDocId.current = matchedDoc.id;
       }
 
-      const { analyzeDocument } = await import('@/app/actions/course-ai');
-      const analysisFormData = new FormData();
-      analysisFormData.append('file', file);
+      // Analyse the STORED copy, not the raw File. The upload above already
+      // ran the fail-closed PHI scan and persisted the extracted text, so this
+      // keeps every AI call downstream of the gate and avoids extracting the
+      // same document twice. Previously this called analyzeDocument(file) — an
+      // unauthenticated, ungated server action (see course-ai.ts history).
+      if (!analyzedDocId.current) {
+        throw new Error('Upload succeeded but the stored document could not be located.');
+      }
 
-      const result = await analyzeDocument(analysisFormData);
+      const { analyzeStoredDocument } = await import('@/app/actions/course-ai');
+      const result = await analyzeStoredDocument(analyzedDocId.current);
       setAnalysisProgress(100);
 
       if (result.error) {

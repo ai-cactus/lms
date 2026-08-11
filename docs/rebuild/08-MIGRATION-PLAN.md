@@ -64,7 +64,7 @@ During each cutover: strip `revalidatePath`, add the `error.tsx`/`loading.tsx` b
 
 ## Phase 5 — Infrastructure hardening (overlaps Phases 1–4)
 
-1. Split into three deployables with immutable image tags; retire the PM2 path (F-029); migrations as a one-shot job.
+1. Split into three deployables with immutable image tags; migrations as a one-shot job. (Retiring the PM2 path — F-029 — is already done as of 2026-08-10.)
 2. Private network for `api`/`worker`/stores; single enforced ingress with headers + limits; internal mTLS (F-043, F-019, F-025).
 3. Managed encrypted Postgres/Redis + backups + tested restore (F-004); GCS CMEK / MinIO SSE (F-025).
 4. Secrets manager + rotation; remove all secrets from VCS (F-060).

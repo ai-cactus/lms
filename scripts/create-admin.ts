@@ -1,5 +1,6 @@
 import { prisma } from '@/db/index';
 import bcrypt from 'bcryptjs';
+import { BCRYPT_COST } from '@/lib/bcrypt-config';
 
 async function main() {
   try {
@@ -17,7 +18,7 @@ async function main() {
       return;
     }
 
-    const hashedPassword = await bcrypt.hash(adminPassword, 10);
+    const hashedPassword = await bcrypt.hash(adminPassword, BCRYPT_COST);
 
     // No organization membership is created here (the original script never
     // assigned one either): under the multi-org model, role and job-title

@@ -1,0 +1,23 @@
+{
+  "displayName": "LMS background workers failed to start",
+  "documentation": {
+    "content": "Workers boot inside the web process (see src/instrumentation.ts), and a boot failure is swallowed so the process still serves traffic. The visible symptom is silence: reminders, escalations, transcodes, digests and retention purges simply stop, and nothing else reports it. F-005 was this exact class of failure.\n\n**First response:** confirm Redis is reachable, then restart the app container and verify the '[instrumentation] Background workers started at boot' line with a non-zero count.",
+    "mimeType": "text/markdown"
+  },
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "worker boot failure",
+      "conditionMatchedLog": {
+        "filter": "jsonPayload.msg=~\"Failed to start background workers\""
+      }
+    }
+  ],
+  "notificationChannels": [
+    "REPLACE_WITH_CHANNEL"
+  ],
+  "alertStrategy": {
+    "autoClose": "604800s"
+  },
+  "enabled": true
+}

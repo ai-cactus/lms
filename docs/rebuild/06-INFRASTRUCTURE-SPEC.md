@@ -34,7 +34,7 @@ Only `web` is reachable from the internet (through the ingress/WAF). `api`, `wor
 
 ## 4. Migrations & deploys
 
-- **One deploy mechanism.** Retire the dual PM2-scripts + Docker/GHCR-CI setup (F-029); pick containers with **immutable image tags** (sha-pinned, not moving branch tips) and a **documented rollback** (redeploy prior tag).
+- **One deploy mechanism.** ✅ Done (2026-08-10): the PM2 path is fully removed — scripts, `ecosystem.config.js` and the workflows' `pm2 delete` step are all deleted, leaving Docker/GHCR-CI as the only runtime. Still outstanding: **immutable image tags** (sha-pinned, not moving branch tips) and a **documented rollback** (redeploy prior tag).
 - **Migrations as a one-shot job** in the deploy pipeline — not `prisma migrate deploy` on every container start *and* in a shell script (double-execution / replica race — F-030/register).
 - **Pin all image tags** (no `minio/minio:latest` — F-044).
 - **CI (fix F-030):** lint/format/typecheck/unit + **integration + Playwright e2e** + `npm audit` + secret-scan, all gating PRs; branch protection requiring the checks; build artifacts = the immutable images.
@@ -74,7 +74,7 @@ Only `web` is reachable from the internet (through the ingress/WAF). `api`, `wor
 | One Next.js process does web + API + workers + cron | Three services: `web` / `api` / `worker`; cron in `worker` |
 | Workers start on `/system` page-load | Workers always-on at service boot (F-005) |
 | Single VM, bind mounts, no backups | Managed/replicated stores, encrypted, backed up (F-004, F-025) |
-| Two deploy systems (PM2 + Docker) | One, immutable tags, one-shot migrations (F-029) |
+| ~~Two deploy systems (PM2 + Docker)~~ — PM2 removed 2026-08-10 | One, immutable tags, one-shot migrations (F-029) |
 | Tunnel bypasses nginx; hostname mismatch | Single enforced ingress with headers + limits (F-043, F-019) |
 | Secrets as one base64 blob; some in VCS | Secrets manager + rotation; none in VCS (F-060) |
 | Gemini key in browser build | No `NEXT_PUBLIC_` secret ever (F-008) |

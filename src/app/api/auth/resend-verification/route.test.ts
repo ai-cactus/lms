@@ -97,12 +97,19 @@ describe('POST /api/auth/resend-verification — rate limiting', () => {
     expect(mockSendEmailVerification).not.toHaveBeenCalled();
   });
 
-  it('calls checkRateLimit with the correct key and parameters', async () => {
+  it('calls checkRateLimit with the correct key and parameters, fail-closed', async () => {
     mockCheckRateLimit.mockResolvedValue({ allowed: false, remaining: 0, resetInSeconds: 600 });
 
     await POST(makeRequest({ email: 'user@example.com' }, '5.5.5.5') as never);
 
-    expect(mockCheckRateLimit).toHaveBeenCalledWith('resend-verification:5.5.5.5', 5, 600);
+    // F-024: failClosed matters here specifically. This endpoint is
+    // unauthenticated and sends an email on every accepted call, so falling back
+    // to the per-instance in-memory window during a Redis outage would turn it
+    // into an email-bombing vector — and the damage lands on our sending
+    // reputation, not just the target's inbox.
+    expect(mockCheckRateLimit).toHaveBeenCalledWith('resend-verification:5.5.5.5', 5, 600, {
+      failClosed: true,
+    });
   });
 });
 

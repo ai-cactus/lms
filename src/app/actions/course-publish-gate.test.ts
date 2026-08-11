@@ -35,7 +35,15 @@ beforeEach(() => {
   // Org/membership are read straight off the DB-revalidated session (see
   // createFullCourse in course.ts) rather than a separate user.findUnique.
   mockAuth.mockResolvedValue({
-    user: { id: 'admin-1', organizationUserId: ORG_USER_ID, organizationId: 'org-1' },
+    // F-034: `role` is now load-bearing — publishCourse checks the registry for
+    // `course.edit`. A real session always carries one; omitting it here made the
+    // fixture less realistic than production, and the new guard exposed that.
+    user: {
+      id: 'admin-1',
+      role: 'owner',
+      organizationUserId: ORG_USER_ID,
+      organizationId: 'org-1',
+    },
   });
   mockWorkerAuth.mockResolvedValue(null);
 });

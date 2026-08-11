@@ -31,6 +31,18 @@ export type PHIFinding = {
   confidence?: number;
 };
 
+/**
+ * Which layer produced the result.
+ *
+ * Recorded on the PhiDecision ledger because the distinction is a compliance
+ * claim in its own right: `local_regex` means the content was rejected without
+ * a single byte leaving the process, while `ai` means it was sent to the
+ * BAA-covered Vertex endpoint. `skipped_short` means no scan was performed at
+ * all (below MIN_SCAN_LENGTH) — worth recording honestly rather than filing it
+ * under "scanned and clean".
+ */
+export type PHIDecidedBy = 'local_regex' | 'ai' | 'skipped_short';
+
 export type ScanResult = {
   hasPHI: boolean;
   findings: PHIFinding[];
@@ -41,6 +53,8 @@ export type ScanResult = {
    * distinct from a genuine PHI detection.
    */
   scanFailed?: boolean;
+  /** Which layer decided — see PHIDecidedBy. */
+  decidedBy?: PHIDecidedBy;
 };
 
 /** Raw finding shape as returned by the AI (carries the value transiently, in-request only). */
@@ -80,7 +94,7 @@ function normalizeType(raw: unknown): PHIType {
 // "couldn't verify" semantics.
 function failClosed(reason: string): ScanResult {
   logger.warn({ msg: `[doc] PHI scanner fail-closed: ${reason}` });
-  return { hasPHI: true, scanFailed: true, findings: [] };
+  return { hasPHI: true, scanFailed: true, findings: [], decidedBy: 'ai' };
 }
 
 /**
@@ -190,6 +204,7 @@ async function scanChunkWithAI(chunk: string, chunkStart: number): Promise<ScanR
     if (typeof data.hasPHI === 'boolean' && Array.isArray(data.findings)) {
       return {
         hasPHI: data.hasPHI,
+        decidedBy: 'ai',
         findings: resolveFindingOffsets(data.findings as RawAIFinding[], chunk, chunkStart),
       };
     }
@@ -219,10 +234,13 @@ function chunkText(text: string): string[] {
 }
 
 export async function scanText(text: string): Promise<ScanResult> {
-  // Quick heuristic: very short text can't meaningfully contain PHI — skip AI.
-  if (text.length < MIN_SCAN_LENGTH) return { hasPHI: false, findings: [] };
-
   // ── Local PII pre-pass (deterministic, ZERO network) ──
+  //
+  // This runs on EVERY input, including very short ones. It previously sat behind
+  // a `text.length < MIN_SCAN_LENGTH` early return whose comment said "skip AI"
+  // but whose code skipped everything — so "SSN: 123-45-6789" (16 chars) was
+  // declared PHI-free without a single check. Length is a reason to skip the
+  // expensive AI call; it is never a reason to skip the free local one.
   // High-confidence structural identifiers (SSN / email / phone) fail closed
   // IMMEDIATELY without transmitting anything to Vertex. Softer categories
   // (ZIP, MRN-like) are ambiguous on their own and are deferred to the
@@ -246,10 +264,19 @@ export async function scanText(text: string): Promise<ScanResult> {
     });
     return {
       hasPHI: true,
+      decidedBy: 'local_regex',
       findings: highConfidence.map((m) =>
         findingFromPiiMatch(m.category as 'SSN' | 'EMAIL' | 'PHONE', m.value, m.index),
       ),
     };
+  }
+
+  // Only NOW is length allowed to short-circuit, and only the AI pass. The text
+  // has already been checked for structural identifiers above. `skipped_short`
+  // records honestly that no contextual scan ran, so the evidence report does not
+  // count it as "scanned and clean".
+  if (text.length < MIN_SCAN_LENGTH) {
+    return { hasPHI: false, findings: [], decidedBy: 'skipped_short' };
   }
 
   // ── AI scan over the FULL document, chunked ──
@@ -266,11 +293,11 @@ export async function scanText(text: string): Promise<ScanResult> {
     // First genuine detection is enough to block — short-circuit to save the
     // remaining (now unnecessary) AI calls. Clean documents scan every chunk.
     if (chunkResult.hasPHI) {
-      return { hasPHI: true, findings: [...findings, ...chunkResult.findings] };
+      return { hasPHI: true, decidedBy: 'ai', findings: [...findings, ...chunkResult.findings] };
     }
 
     findings.push(...chunkResult.findings);
   }
 
-  return { hasPHI: false, findings };
+  return { hasPHI: false, decidedBy: 'ai', findings };
 }

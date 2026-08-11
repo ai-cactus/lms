@@ -1,0 +1,71 @@
+version: 2
+
+updates:
+  # ──────────────────────────────────────────────────────────────────────────
+  # GitHub Actions — keeps third-party actions and the pinned external
+  # reusable workflow (see alert-trigger.yml, F-073) from silently rotting.
+  # ──────────────────────────────────────────────────────────────────────────
+  - package-ecosystem: github-actions
+    directory: '/'
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: 'chore(actions)'
+    labels:
+      - dependencies
+      - github-actions
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # npm — security-first. The tree needs `--legacy-peer-deps` to install, so
+  # Dependabot cannot always resolve a version bump on its own; treat its npm
+  # PRs as proposals to verify locally, not as auto-merge candidates.
+  #
+  # Version updates are grouped and capped to keep review load sane. Security
+  # advisories are what actually matter here and arrive regardless of the
+  # grouping below.
+  # ──────────────────────────────────────────────────────────────────────────
+  - package-ecosystem: npm
+    directory: '/'
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    versioning-strategy: increase
+    commit-message:
+      prefix: 'chore(deps)'
+      prefix-development: 'chore(deps-dev)'
+    labels:
+      - dependencies
+    groups:
+      # Next/React move together; splitting them produces unresolvable PRs.
+      next-react:
+        patterns:
+          - 'next'
+          - 'react'
+          - 'react-dom'
+          - '@types/react'
+          - '@types/react-dom'
+      prisma:
+        patterns:
+          - 'prisma'
+          - '@prisma/*'
+      dev-tooling:
+        dependency-type: development
+        patterns:
+          - 'eslint*'
+          - '@typescript-eslint/*'
+          - 'prettier'
+          - 'vitest'
+          - '@vitest/*'
+          - '@playwright/*'
+    ignore:
+      # Major bumps of the framework and ORM are migration projects, not
+      # dependency chores — they get their own planned work.
+      - dependency-name: 'next'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'prisma'
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@prisma/client'
+        update-types: ['version-update:semver-major']
