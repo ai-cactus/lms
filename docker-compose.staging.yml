@@ -67,9 +67,29 @@ services:
       # Stamped onto every structured log line so entries are
       # attributable in Cloud Logging (container paths carry only an id).
       OTEL_SERVICE_NAME: lms-staging
-      # Presence of this var is what ENABLES tracing (see registerTracing in
-      # src/instrumentation.ts). Internal Docker network only.
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      # TRACING IS DELIBERATELY OFF. Presence of OTEL_EXPORTER_OTLP_ENDPOINT is
+      # what enables it (registerTracing returns early without it, see
+      # src/instrumentation.ts:20) — so leaving it unset disables tracing with
+      # no code change.
+      #
+      # Why: unlike the logs and hostmetrics pipelines, which the collector PULLS
+      # (it tails Docker's *-json.log files and scrapes the host every 60s, both
+      # out of process and free to the request path), traces are PUSHED from
+      # inside the app. Next.js auto-instrumentation spans every request, render,
+      # route handler and outbound fetch, and no sampler is configured, so the
+      # OTel default of parentbased_always_on would trace 100% of traffic. On a
+      # shared 2-vCPU host where production's app already sits at ~590 MiB of its
+      # 1g cap, that allocation churn is a cost with no current question behind it:
+      # every incident to date (zone hijack, disk exhaustion, cross-project Vertex
+      # calls) was a logs-and-metrics problem, not a latency one.
+      #
+      # Logs are UNAFFECTED — logger.ts reads OTEL_SERVICE_NAME independently
+      # (src/lib/logger.ts:254) for the `service` field, so attribution survives.
+      #
+      # To re-enable, uncomment and add a sampler rather than defaulting to 100%:
+      #   OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      #   OTEL_TRACES_SAMPLER: parentbased_traceidratio
+      #   OTEL_TRACES_SAMPLER_ARG: '0.1'
       PORT: '3001'
       # Override REDIS_URL to point to the Docker redis service.
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
