@@ -447,16 +447,21 @@ test.describe('Courses list — Video/Reading Course tabs and role-gated row act
 
       const row = page.getByRole('row', { name: new RegExp(seeded.videoCourseTitle) });
       await expect(row).toBeVisible();
-      // A read-only supervisor's buildRowActions() resolves to just "View
-      // Source Document" (document.read, not course.edit/delete/assignment.create) —
-      // confirm the write items are absent from the menu, and the header's
-      // Create Course button (gated on course.create) is hidden too.
-      await row.getByRole('button', { name: 'Row actions' }).click();
-      const menu = page.getByRole('menu');
-      await expect(menu.getByRole('menuitem', { name: 'View Source Document' })).toBeVisible();
-      await expect(menu.getByRole('menuitem', { name: 'Assign to staff' })).toHaveCount(0);
-      await expect(menu.getByRole('menuitem', { name: 'Rename' })).toHaveCount(0);
-      await expect(menu.getByRole('menuitem', { name: 'Delete' })).toHaveCount(0);
+      // A read-only supervisor's buildRowActions() resolves to an EMPTY list, so
+      // CoursesListClient renders no menu trigger for the row at all — the
+      // strongest form of "no write items".
+      //
+      // The supervisor gets no "View Source Document" either, despite holding
+      // document.read: getCourses() selects the source-document lineage only on
+      // the `ownCourses` branch (createdByOrgUserId), and a course the viewer
+      // did not create reaches them through `offerings`, which omits it on
+      // purpose — an adopted offering's document belongs to the publishing org
+      // and must never be linked from this tenant. Do NOT "fix" this by adding
+      // `versions` to the offerings select: that is a tenancy control, not an
+      // oversight.
+      await expect(row.getByRole('button', { name: 'Row actions' })).toHaveCount(0);
+      // Read access itself is intact — the row still offers View.
+      await expect(row.getByRole('link', { name: 'View' })).toBeVisible();
       await expect(page.getByRole('button', { name: 'Create Course' })).not.toBeVisible();
     } finally {
       await cleanupCourseTabsFixture(seeded);
