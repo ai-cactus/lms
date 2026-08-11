@@ -233,9 +233,7 @@ function splitMarkdownSections(markdown: string): { title: string; content: stri
  */
 const adaptModulesForRenderingV46 = (
   articleMeta:
-    | { sections: { title: string; sectionId: string; keyPoints?: string[] }[] }
-    | null
-    | undefined,
+    { sections: { title: string; sectionId: string; keyPoints?: string[] }[] } | null | undefined,
   articleMarkdown: string,
   slidesJson: { slides: RichSlide[] } | null | undefined,
   estimatedDurationMinutes?: number,
@@ -616,6 +614,11 @@ export default function Step5Review({
               isFirst={activeModuleIndex === 0}
               isLast={activeModuleIndex === editedModules.length - 1}
             >
+              {/* Sanitised via sanitizeHtml (DOMPurify). Suppressed at the call site rather
+                  than disabling the rule, so a future UNSANITISED sink is still caught.
+                  Brace form is required here: this is JSX *children* position, where a bare
+                  `//` comment renders as visible text on the page.
+                  nosemgrep: typescript.react.security.audit.react-dangerouslysetinnerhtml.react-dangerouslysetinnerhtml */}
               <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(displayContent) }} />
             </CourseArticle>
           )}

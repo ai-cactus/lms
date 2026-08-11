@@ -9,6 +9,7 @@ import { headers } from 'next/headers';
 import { logger } from '@/lib/logger';
 import { invalidateRevalidationCache } from '@/lib/auth/session-revalidation-cache';
 import bcrypt from 'bcryptjs';
+import { BCRYPT_COST } from '@/lib/bcrypt-config';
 
 // Helper: resolve the active session from either auth instance
 async function resolveSession() {
@@ -305,7 +306,7 @@ export async function changePassword(data: { currentPassword?: string; newPasswo
       return { success: false, error: 'New password must be at least 12 characters long.' };
     }
 
-    const hashedNewPassword = await bcrypt.hash(newPassword, 12);
+    const hashedNewPassword = await bcrypt.hash(newPassword, BCRYPT_COST);
 
     // F-059: bump sessionVersion so changing the password also invalidates every
     // other existing session (the jwt callback compares the token's version on

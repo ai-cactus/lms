@@ -1,0 +1,39 @@
+{
+  "displayName": "LMS production unreachable or not serving our app",
+  "documentation": {
+    "content": "Fires when the uptime check fails, which includes the case where the endpoint returns 200 but the body no longer contains our health payload \u2014 i.e. a DNS/proxy hijack, a parked domain, or a proxy error page.\n\n**First response:** open the URL yourself and compare what is served against the app. If it is not ours, treat it as an ingress compromise and check the Cloudflare audit log before touching the VM.\n\nPrecedent: INC-2026-08-04-01, a four-hour 301 to a phishing site found only by accident.",
+    "mimeType": "text/markdown"
+  },
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "Uptime check failing",
+      "conditionThreshold": {
+        "filter": "metric.type=\"monitoring.googleapis.com/uptime_check/check_passed\" AND resource.type=\"uptime_url\"",
+        "comparison": "COMPARISON_LT",
+        "thresholdValue": 1,
+        "duration": "120s",
+        "aggregations": [
+          {
+            "alignmentPeriod": "60s",
+            "perSeriesAligner": "ALIGN_NEXT_OLDER",
+            "crossSeriesReducer": "REDUCE_COUNT_FALSE",
+            "groupByFields": [
+              "resource.label.host"
+            ]
+          }
+        ],
+        "trigger": {
+          "count": 1
+        }
+      }
+    }
+  ],
+  "notificationChannels": [
+    "REPLACE_WITH_CHANNEL"
+  ],
+  "alertStrategy": {
+    "autoClose": "604800s"
+  },
+  "enabled": true
+}

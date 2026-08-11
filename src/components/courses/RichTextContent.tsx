@@ -37,6 +37,9 @@ export function RichTextContent({ html, className }: RichTextContentProps) {
   return (
     <div
       className={cn(PROSE_CLASSES, className)}
+      // Sanitised via sanitizeHtml (DOMPurify). Suppressed at the call site rather
+      // than disabling the rule, so a future UNSANITISED sink is still caught.
+      // nosemgrep: typescript.react.security.audit.react-dangerouslysetinnerhtml.react-dangerouslysetinnerhtml
       dangerouslySetInnerHTML={{ __html: sanitizeHtml(html) }}
     />
   );

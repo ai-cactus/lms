@@ -1,0 +1,23 @@
+{
+  "displayName": "LMS system-admin authentication",
+  "documentation": {
+    "content": "Any system-admin authentication, successful or failed. This surface grants cross-organization powers including irreversible user deletion, and authenticates with a SHARED static password (F-056), so there is no per-actor attribution \u2014 every use deserves a human look.\n\nExpected to be low volume. If it is noisy, that itself is the finding.\n\n**First response:** correlate the IP and user-agent on the audit row against who was legitimately working. A failure burst means the shared password is being guessed, and it has no rate limit (F-097).",
+    "mimeType": "text/markdown"
+  },
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "system.auth entries",
+      "conditionMatchedLog": {
+        "filter": "jsonPayload.msg=~\"System admin\" AND jsonPayload.service=~\"lms-\""
+      }
+    }
+  ],
+  "notificationChannels": [
+    "REPLACE_WITH_CHANNEL"
+  ],
+  "alertStrategy": {
+    "autoClose": "86400s"
+  },
+  "enabled": true
+}

@@ -80,6 +80,9 @@ export default function SlideContentFitter({
         visibility: isAdjusting ? 'hidden' : 'visible', // Hide while calculating to prevent flash
         overflowY: 'auto', // Fallback
       }}
+      // Sanitised via sanitizeHtml (DOMPurify). Suppressed at the call site rather
+      // than disabling the rule, so a future UNSANITISED sink is still caught.
+      // nosemgrep: typescript.react.security.audit.react-dangerouslysetinnerhtml.react-dangerouslysetinnerhtml
       dangerouslySetInnerHTML={{ __html: sanitizeHtml(content) }}
     />
   );

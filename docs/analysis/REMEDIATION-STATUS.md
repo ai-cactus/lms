@@ -1,5 +1,16 @@
 # Remediation Status — Audit Findings
 
+> **⚠ STALE as of 2026-08-10 — verify against code before acting on any row.**
+> This document was accurate when written (2026-07-06) and drifted as later waves
+> landed. A re-verification during the August 2026 pass found **four** rows
+> reporting work as open or deferred that was in fact already done: **F-013**,
+> **F-024**, **F-034** and **F-058**. Corrections, with evidence, are in
+> [`AUDIT-2026-08.md`](./AUDIT-2026-08.md) → "Corrections to the 2026-07 register".
+>
+> The cost of this was concrete: it sent a later engineer toward re-implementing
+> finished features three times. If you are picking up an item below, confirm the
+> current state in source first.
+
 **Branch:** `feat/audit-fx` · **Updated:** 2026-07-06 · Complete disposition of every finding in [`FINDINGS-REGISTER.md`](./FINDINGS-REGISTER.md).
 
 This sweep fixed everything that improves the **current codebase** without doing the rewrite. The only findings still open are: the **RBAC-owned** items (F-034, F-056, F-013), the **rewrite-scoped** items the team chose to leave for the split (F-007, F-015, F-016, F-046, F-047, F-063 is done / F-026 is done), the two large **refactors kept incremental** by choice (F-065, F-068), and the pure-**ops** items (F-004, F-025). Everything else is fixed.

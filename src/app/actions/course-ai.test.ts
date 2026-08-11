@@ -1,11 +1,14 @@
 /**
- * Regression tests for the QA-002 fix in course-ai.ts:
+ * Tests for course-ai.ts, covering two properties:
  *
- *   analyzeDocument / analyzeStoredDocument NEVER leak raw internal error
- *   detail (e.g. a raw "Vertex AI 404 Not Found: <!DOCTYPE html>...") to the
- *   client. On an AI failure they return the sanitized
- *   ANALYSIS_FAILED_USER_MESSAGE while the raw error is logged server-side.
- *   Mirrors the THER-013 boundary fix in course-ai-v4.6.ts.
+ * 1. Error hygiene (QA-002 / THER-013): analyzeStoredDocument NEVER leaks raw
+ *    internal error detail (e.g. "Vertex AI 404 Not Found: <!DOCTYPE html>...")
+ *    to the client. On an AI failure it returns the sanitized
+ *    ANALYSIS_FAILED_USER_MESSAGE while the raw error is logged server-side.
+ *
+ * 2. AI egress control (F-003 / F-012 / F-018): every path that reaches Vertex
+ *    is behind an auth check, an org scope, and a rate limit — and the module
+ *    exposes no action that analyses a raw, unscanned file.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -14,19 +17,19 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // Hoisted mocks
 // ---------------------------------------------------------------------------
 
-const { prismaMock, mockAuth, mockCallVertexAI, mockExtractTextFromFile } = vi.hoisted(() => {
+const { prismaMock, mockAuth, mockCallVertexAI, mockCheckRateLimit } = vi.hoisted(() => {
   const prismaMock = {
     document: { findUnique: vi.fn() },
   };
   const mockAuth = vi.fn();
   const mockCallVertexAI = vi.fn();
-  const mockExtractTextFromFile = vi.fn();
-  return { prismaMock, mockAuth, mockCallVertexAI, mockExtractTextFromFile };
+  const mockCheckRateLimit = vi.fn();
+  return { prismaMock, mockAuth, mockCallVertexAI, mockCheckRateLimit };
 });
 
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock, default: prismaMock }));
 vi.mock('@/auth', () => ({ auth: mockAuth }));
-vi.mock('@/lib/file-parser', () => ({ extractTextFromFile: mockExtractTextFromFile }));
+vi.mock('@/lib/rate-limit', () => ({ checkRateLimit: mockCheckRateLimit }));
 vi.mock('@/lib/ai-client', () => ({
   callVertexAI: mockCallVertexAI,
   truncateToContext: (text: string) => text,
@@ -39,7 +42,7 @@ vi.mock('@/lib/logger', () => ({
 // ---------------------------------------------------------------------------
 // Import under test AFTER all vi.mock() declarations.
 // ---------------------------------------------------------------------------
-import { analyzeDocument, analyzeStoredDocument } from './course-ai';
+import { analyzeStoredDocument } from './course-ai';
 
 // The sanitized message the fix guarantees — copied from source since it is
 // not exported. If this drifts from the real constant, the equality
@@ -58,33 +61,43 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe('analyzeDocument', () => {
-  function buildFormData() {
-    const formData = new FormData();
-    formData.set('file', new File([SUFFICIENT_TEXT], 'source.txt', { type: 'text/plain' }));
-    return formData;
-  }
+describe('course-ai module surface', () => {
+  /**
+   * `analyzeDocument(formData)` was a `'use server'` action that took a raw
+   * File and forwarded its extracted text to Vertex AI with no auth check, no
+   * rate limit and no PHI scan. Server actions are independently invokable
+   * HTTP endpoints, so the wizard's upload-then-analyse sequencing was not a
+   * control. It was removed in favour of analyzeStoredDocument, which only
+   * ever reads text that already passed the fail-closed scanText gate.
+   *
+   * This asserts the export stays gone: re-adding a File-taking analysis
+   * action would silently reopen an ungated PHI egress path.
+   */
+  it('exposes no action that analyses a raw file without a PHI scan', async () => {
+    const mod: Record<string, unknown> = await import('./course-ai');
 
-  it('returns the sanitized message (not the raw Vertex error) when the AI call fails', async () => {
-    mockExtractTextFromFile.mockResolvedValue(SUFFICIENT_TEXT);
-    mockCallVertexAI.mockRejectedValue(new Error(RAW_VERTEX_ERROR));
-
-    const result = await analyzeDocument(buildFormData());
-
-    expect(result.error).toBe(ANALYSIS_FAILED_USER_MESSAGE);
-    expect(result.error).not.toContain('Vertex AI');
-    expect(result.error).not.toContain('<!DOCTYPE');
+    expect(mod.analyzeDocument).toBeUndefined();
+    expect(Object.keys(mod).filter((k) => typeof mod[k] === 'function')).toEqual([
+      'analyzeStoredDocument',
+    ]);
   });
 });
 
 describe('analyzeStoredDocument', () => {
-  it('returns the sanitized message (not the raw Vertex error) when the AI call fails', async () => {
-    mockAuth.mockResolvedValue({ user: { id: 'user-1' } });
+  const authedSession = { user: { id: 'user-1' } };
+
+  function mockStoredDoc() {
     prismaMock.document.findUnique.mockResolvedValue({
       id: 'doc-1',
       filename: 'stored.pdf',
       versions: [{ version: 1, content: SUFFICIENT_TEXT }],
     });
+  }
+
+  it('returns the sanitized message (not the raw Vertex error) when the AI call fails', async () => {
+    mockAuth.mockResolvedValue(authedSession);
+    mockCheckRateLimit.mockResolvedValue({ allowed: true, resetInSeconds: 0 });
+    mockStoredDoc();
     mockCallVertexAI.mockRejectedValue(new Error(RAW_VERTEX_ERROR));
 
     const result = await analyzeStoredDocument('doc-1');
@@ -92,5 +105,49 @@ describe('analyzeStoredDocument', () => {
     expect(result.error).toBe(ANALYSIS_FAILED_USER_MESSAGE);
     expect(result.error).not.toContain('Vertex AI');
     expect(result.error).not.toContain('<!DOCTYPE');
+  });
+
+  // Unauthenticated callers must never reach Vertex: this action is a directly
+  // invokable server action, so the session check is the only thing standing
+  // between an anonymous POST and billable AI egress.
+  it('refuses unauthenticated callers without calling Vertex', async () => {
+    mockAuth.mockResolvedValue(null);
+
+    const result = await analyzeStoredDocument('doc-1');
+
+    expect(result.error).toBe('Unauthorized');
+    expect(mockCallVertexAI).not.toHaveBeenCalled();
+    expect(prismaMock.document.findUnique).not.toHaveBeenCalled();
+  });
+
+  // F-018: an authenticated caller must not be able to replay the action to
+  // drive unbounded Vertex spend.
+  it('stops at the rate limit without calling Vertex', async () => {
+    mockAuth.mockResolvedValue(authedSession);
+    mockCheckRateLimit.mockResolvedValue({ allowed: false, resetInSeconds: 42 });
+    mockStoredDoc();
+
+    const result = await analyzeStoredDocument('doc-1');
+
+    expect(result.error).toContain('42');
+    expect(mockCallVertexAI).not.toHaveBeenCalled();
+  });
+
+  // Tenancy: the document lookup is scoped to the owning userId, so another
+  // user's document is simply not found.
+  it('scopes the document lookup to the calling user', async () => {
+    mockAuth.mockResolvedValue(authedSession);
+    mockCheckRateLimit.mockResolvedValue({ allowed: true, resetInSeconds: 0 });
+    prismaMock.document.findUnique.mockResolvedValue(null);
+
+    const result = await analyzeStoredDocument('other-org-doc');
+
+    expect(result.error).toBe('Document not found');
+    expect(prismaMock.document.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ userId: 'user-1' }),
+      }),
+    );
+    expect(mockCallVertexAI).not.toHaveBeenCalled();
   });
 });

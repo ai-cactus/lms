@@ -10,6 +10,10 @@
  *    (there is no update path for the historical record).
  *  - Auth: guardApiSession (unauthenticated / MFA-required) and cross-user
  *    enrollment ownership.
+ *  - The legacy AI-explanation fallback, which had NO coverage because every
+ *    fixture carried embedded v3.1 explanations: prompt delimiting (F-049),
+ *    the per-user AI rate limit (F-018), and the invariant that neither a rate
+ *    limit nor a Vertex outage may cost a worker their recorded attempt.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -19,7 +23,15 @@ import type { NextRequest } from 'next/server';
 // Hoisted mocks
 // ---------------------------------------------------------------------------
 
-const { mockAdminAuth, mockWorkerAuth, prismaMock, txMock, mockRevalidate } = vi.hoisted(() => {
+const {
+  mockAdminAuth,
+  mockWorkerAuth,
+  prismaMock,
+  txMock,
+  mockRevalidate,
+  mockCallVertexAI,
+  mockCheckRateLimit,
+} = vi.hoisted(() => {
   const txMock = {
     quizAttempt: {
       count: vi.fn(),
@@ -41,6 +53,8 @@ const { mockAdminAuth, mockWorkerAuth, prismaMock, txMock, mockRevalidate } = vi
     prismaMock,
     txMock,
     mockRevalidate: vi.fn(),
+    mockCallVertexAI: vi.fn(),
+    mockCheckRateLimit: vi.fn(),
   };
 });
 
@@ -48,7 +62,8 @@ vi.mock('@/auth', () => ({ auth: mockAdminAuth }));
 vi.mock('@/auth.worker', () => ({ auth: mockWorkerAuth }));
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock, default: prismaMock }));
 vi.mock('next/cache', () => ({ revalidatePath: mockRevalidate }));
-vi.mock('@/lib/ai-client', () => ({ callVertexAI: vi.fn() }));
+vi.mock('@/lib/ai-client', () => ({ callVertexAI: mockCallVertexAI }));
+vi.mock('@/lib/rate-limit', () => ({ checkRateLimit: mockCheckRateLimit }));
 vi.mock('@/lib/email', () => ({ sendQuizLockedEmail: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -126,7 +141,25 @@ beforeEach(() => {
   txMock.quizAttempt.count.mockResolvedValue(0);
   txMock.quizAttempt.deleteMany.mockResolvedValue({});
   txMock.quizAttempt.create.mockResolvedValue({});
+
+  mockCheckRateLimit.mockResolvedValue({ allowed: true, resetInSeconds: 0 });
+  mockCallVertexAI.mockResolvedValue('{"1":"because A","2":"because A"}');
 });
+
+/**
+ * Questions WITHOUT embedded explanations, which is what forces the legacy
+ * AI-explanation fallback. Every other fixture here carries embedded
+ * explanations, so that branch had no coverage at all until these tests.
+ */
+function makeQuestionsNeedingAi(n: number) {
+  return Array.from({ length: n }, (_, i) => ({
+    id: `q${i}`,
+    text: `Question ${i}`,
+    correctAnswer: 'A',
+    options: ['A', 'B'],
+    explanation: null,
+  }));
+}
 
 describe('POST /api/quiz/[id]/submit — auth', () => {
   it('401s when there is no session at all', async () => {
@@ -368,5 +401,76 @@ describe('POST /api/quiz/[id]/submit — append-history + attempt limit', () => 
       where: { id: 'enr-1' },
       data: expect.objectContaining({ status: 'locked', lockedAt: expect.any(Date) }),
     });
+  });
+});
+
+describe('POST /api/quiz/[id]/submit — legacy AI explanation fallback', () => {
+  const body = { enrollmentId: 'enr-1', answers: makeAnswers(2, 2), timeTaken: 30 };
+
+  it('uses embedded explanations without calling Vertex', async () => {
+    // Default fixture already carries embedded (v3.1) explanations.
+    const res = await POST(makeReq(body), { params });
+
+    expect(res.status).toBe(200);
+    expect(mockCallVertexAI).not.toHaveBeenCalled();
+  });
+
+  it('falls back to Vertex when explanations are missing, with the quiz body delimited', async () => {
+    prismaMock.quiz.findUnique.mockResolvedValue(
+      makeQuiz({ questions: makeQuestionsNeedingAi(2) }),
+    );
+
+    const res = await POST(makeReq(body), { params });
+
+    expect(res.status).toBe(200);
+    expect(mockCallVertexAI).toHaveBeenCalledTimes(1);
+
+    // F-049: untrusted question text must sit inside explicit data delimiters.
+    const prompt = mockCallVertexAI.mock.calls[0][0] as string;
+    expect(prompt).toContain('<<<BEGIN UNTRUSTED QUIZ CONTENT>>>');
+    expect(prompt).toContain('<<<END UNTRUSTED QUIZ CONTENT>>>');
+    const begin = prompt.indexOf('<<<BEGIN UNTRUSTED QUIZ CONTENT>>>');
+    const end = prompt.indexOf('<<<END UNTRUSTED QUIZ CONTENT>>>');
+    const content = prompt.indexOf('Question 0');
+    expect(content).toBeGreaterThan(begin);
+    expect(content).toBeLessThan(end);
+  });
+
+  /**
+   * The deliberate design choice: a rate limit must never cost a worker their
+   * attempt. Explanations are optional enrichment; the score decides whether
+   * someone passed a compliance course. So the limiter degrades the response
+   * rather than rejecting the submission.
+   */
+  it('still records the attempt and returns the score when rate limited', async () => {
+    prismaMock.quiz.findUnique.mockResolvedValue(
+      makeQuiz({ questions: makeQuestionsNeedingAi(2) }),
+    );
+    mockCheckRateLimit.mockResolvedValue({ allowed: false, resetInSeconds: 60 });
+
+    const res = await POST(makeReq(body), { params });
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.score).toBe(100);
+    expect(json.passed).toBe(true);
+    // The attempt is still persisted — the submission is not lost.
+    expect(txMock.quizAttempt.create).toHaveBeenCalledTimes(1);
+    // ...but no AI spend was incurred.
+    expect(mockCallVertexAI).not.toHaveBeenCalled();
+  });
+
+  it('still returns the score when the Vertex call itself fails', async () => {
+    prismaMock.quiz.findUnique.mockResolvedValue(
+      makeQuiz({ questions: makeQuestionsNeedingAi(2) }),
+    );
+    mockCallVertexAI.mockRejectedValue(new Error('Vertex AI 503'));
+
+    const res = await POST(makeReq(body), { params });
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.score).toBe(100);
+    expect(txMock.quizAttempt.create).toHaveBeenCalledTimes(1);
   });
 });

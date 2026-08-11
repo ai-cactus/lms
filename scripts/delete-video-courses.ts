@@ -29,7 +29,7 @@
  *   --keep-files        Delete DB rows only; leave object-storage blobs in place.
  *   --env-file=<path>   Load env vars from this file (in addition to the usual
  *                       .env*). Useful when DATABASE_URL/storage creds aren't in
- *                       the shell (e.g. staging injects them via PM2/systemd).
+ *                       the shell (e.g. staging injects them via the container's env_file).
  *                       Real environment vars always take precedence.
  *
  * Examples:
@@ -70,7 +70,7 @@ function loadEnvFile(file: string): boolean {
  * Load env BEFORE importing anything that reads it at module-init time (Prisma
  * client, storage providers) — hence the dynamic imports inside main(). Honors
  * an explicit `--env-file=<path>` and otherwise tries the usual files. Vars
- * already set in the real environment (e.g. injected by PM2/systemd on staging)
+ * already set in the real environment (e.g. injected via env_file on staging)
  * always win.
  */
 function loadEnv(): void {

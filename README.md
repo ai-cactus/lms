@@ -13,7 +13,7 @@ LMS is built on a modern, scalable stack:
 - **Database**: PostgreSQL with Prisma ORM for type-safe data management.
 - **AI Pipeline (v4.6)**: Multi-stage orchestration using Google Vertex AI and Gemini for content generation and validation.
 - **Authentication**: Isolated sessions for different roles (`admin` vs `worker`) using NextAuth.v5.
-- **Infrastructure**: Deployment-ready scripts for staging and production, including PM2 and Cloudflare Tunnel support.
+- **Infrastructure**: Containerised staging and production, deployed from GitHub Actions to Docker Compose on the VM, reached through a Cloudflare Tunnel.
 
 ---
 
@@ -22,7 +22,7 @@ LMS is built on a modern, scalable stack:
 - **Multi-Tenant Org Management**: Complete isolation between different organizations.
 - **AI-Driven Course Authoring**: Generate rich articles, slides, and quizzes from PDF, DOCX, and XLSX files.
 - **Global Video Courses**: System admins upload self-hosted video courses with a quiz (CSV/JSON) in the back office; every organization can assign them. Course details, the video, and the quiz file can all be updated later from the edit page.
-- **PHI Scanning**: Automatic detection of Protected Health Information in uploaded documents.
+- **PHI Blocking**: Every user-supplied ingress — uploaded documents, lesson content typed in the editor, and text handed to AI generation — is scanned and **rejected** if it contains PHI. Fails closed, and every decision is recorded in an append-only ledger for evidence.
 - **Interactive Learning**: Slide decks, quizzes with archetypes, and real-time progress tracking.
 - **Compliance Reporting**: Automated generation of evidence packs for auditors (e.g., CARF compliance).
 - **Secure Attestations**: Cryptographically logged digital signatures for course completions.
@@ -113,7 +113,12 @@ destructive script.
 | `npm run build`          | Compiles the application for production.          |
 | `npm run start`          | Launches the production server.                   |
 | `npm run lint`           | Checks for code quality and style violations.     |
-| `./deploy-production.sh` | Automated production deployment script.           |
+| `npm run test`           | Runs the unit/integration suite (vitest).         |
+
+Deployment is **not** run from a local script. Pushing to `staging` or `main`
+triggers the GitHub Actions workflow, which builds an image, pushes it to GHCR
+and deploys it over SSH — see [`docs/deployment.md`](docs/deployment.md). The old
+`deploy*.sh` scripts targeted a stale path and have been deleted.
 
 ---
 

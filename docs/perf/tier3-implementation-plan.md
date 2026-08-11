@@ -1,3 +1,11 @@
+> **RESOLVED 2026-08-10 — the nginx open question in this document is answered: NO.**
+> `cloudflared_config.yml` routes both hostnames straight to the app ports, so the
+> tunnel does **not** proxy through nginx. The nginx compression / `_next/static`
+> caching line items in §9 are therefore **not actionable** — there is no nginx in
+> the request path to configure, and `lms2_nginx.conf` has been deleted. If those
+> wins are still wanted, they belong at the app layer or at Cloudflare (which can
+> compress and cache at the edge). See `docs/deployment.md` §2.3.
+
 # Tier 3 — Application-Level Performance: Implementation Plan
 
 **Status:** Draft — pending review · **Author:** architect (planning agent) · **Drafted:** 2026-08-05

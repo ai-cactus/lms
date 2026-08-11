@@ -5,6 +5,7 @@ import prisma from '@/lib/prisma';
 import { saveFile } from '@/lib/documents/uploadHandler';
 import { calculateHash } from '@/lib/documents/versioning';
 import { scanText } from '@/lib/documents/phiScanner';
+import { recordPhiDecision, recordPhiDecisionInTransaction } from '@/lib/documents/phiDecision';
 import { MAX_DOCUMENT_UPLOAD_BYTES } from '@/lib/documents/upload-config';
 import { extractTextFromFile } from '@/lib/file-parser';
 import { deleteFile } from '@/lib/storage';
@@ -37,6 +38,9 @@ export async function uploadDocument(
   }
 
   const userId = session.user.id;
+  // Stamped onto the PHI decision ledger so a rejection can be attributed to a
+  // tenant, not just an actor. Org is authoritative on the revalidated session.
+  const organizationId = session.user.organizationId ?? undefined;
 
   // Registry gate: only roles granted `document.create` may upload (e.g. Finance
   // has no document access — it must not be able to seed the Document Hub).
@@ -130,6 +134,21 @@ export async function uploadDocument(
   // Compliance product: never store a document we could not confirm is
   // PHI-free. A scan that failed to complete is blocked with a distinct,
   // retry-able message; a genuine PHI detection is blocked with a clear reason.
+  // F-092: record the decision BEFORE returning. A block leaves no
+  // DocumentVersion and therefore no PhiReport, so without this the rejection
+  // would exist only as a stdout warning — and "prove you rejected it" is the
+  // question that actually matters.
+  if (phiResult.scanFailed || phiResult.hasPHI) {
+    await recordPhiDecision({
+      source: 'document_upload',
+      scan: phiResult,
+      scannedText: textContent,
+      filename: file.name,
+      actorId: userId,
+      organizationId,
+    });
+  }
+
   if (phiResult.scanFailed) {
     logger.warn({ msg: '[doc] Upload blocked — PHI scan could not complete', userId });
     return {
@@ -138,7 +157,11 @@ export async function uploadDocument(
   }
 
   if (phiResult.hasPHI) {
-    logger.warn({ msg: '[doc] Upload blocked — PHI detected', userId });
+    logger.warn({
+      msg: '[doc] Upload blocked — PHI detected',
+      userId,
+      decidedBy: phiResult.decidedBy,
+    });
     return {
       error: 'This document appears to contain PHI (e.g. SSN/DOB/MRN) and cannot be uploaded.',
       phiDetected: true,
@@ -203,6 +226,20 @@ export async function uploadDocument(
           detectedEntities: phiResult.findings as unknown as Prisma.InputJsonValue,
           scannerVersion: 'v2',
         },
+      });
+
+      // F-092: inside the transaction on purpose — the decision row and the
+      // stored version commit or roll back together, so the ledger cannot be
+      // missing a row for content that was accepted. Throws on failure, which
+      // correctly fails the upload rather than storing unattested content.
+      await recordPhiDecisionInTransaction(tx, {
+        source: 'document_upload',
+        scan: phiResult,
+        scannedText: textContent,
+        filename: file.name,
+        documentVersionId: version.id,
+        actorId: userId,
+        organizationId,
       });
 
       return docId!;

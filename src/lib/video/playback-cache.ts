@@ -10,8 +10,8 @@
  * and zero signatures.
  *
  * IN-PROCESS ONLY — deliberately no Redis. This app runs as exactly ONE
- * container per environment (`docker-compose.production.yml`; no pm2 cluster,
- * no replicas), so a plain in-process map is ~100% effective and a Redis tier
+ * container per environment (`docker-compose.production.yml`; single replica, no
+ * process manager or cluster), so a plain in-process map is ~100% effective and a Redis tier
  * would only add a network hop plus JSON serialisation for nothing. Revisit
  * this the moment the app is scaled horizontally, or a dedicated worker service
  * is split out of the web container — at that point each instance would hold
