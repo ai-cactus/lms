@@ -87,7 +87,7 @@ jobs:
 
     steps:
       - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.2.0
+        uses: appleboy/ssh-action@v1.2.5
         env:
           ENV_FILE_BASE64: ${{ secrets.PRODUCTION_ENV_BASE64 }}
         with:
