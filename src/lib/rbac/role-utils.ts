@@ -139,10 +139,7 @@ export const ROLE_CHANGE_ACTOR_ROLES: readonly Role[] = ['owner', 'admin'];
 
 /** Why {@link canChangeRole} denied a role change (maps to caller-facing copy). */
 export type RoleChangeDenyReason =
-  | 'actor_not_permitted'
-  | 'self_change'
-  | 'target_not_reachable'
-  | 'role_not_grantable';
+  'actor_not_permitted' | 'self_change' | 'target_not_reachable' | 'role_not_grantable';
 
 export interface RoleChangeDecision {
   allowed: boolean;

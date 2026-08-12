@@ -3,15 +3,7 @@ import { logger } from '@/lib/logger';
 import { scanForPii } from '@/lib/documents/piiPatterns';
 
 export type PHIType =
-  | 'DATE'
-  | 'EMAIL'
-  | 'PHONE'
-  | 'SSN'
-  | 'ZIP'
-  | 'MRN'
-  | 'NAME'
-  | 'ADDRESS'
-  | 'OTHER';
+  'DATE' | 'EMAIL' | 'PHONE' | 'SSN' | 'ZIP' | 'MRN' | 'NAME' | 'ADDRESS' | 'OTHER';
 
 /**
  * Persisted, value-free finding shape.
