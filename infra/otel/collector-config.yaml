@@ -135,6 +135,12 @@ service:
       processors: [memory_limiter, resource, batch]
       exporters: [googlecloud]
 
+    # Wired but INERT by default: no app pushes to the otlp receiver, because
+    # OTEL_EXPORTER_OTLP_ENDPOINT is intentionally unset in both compose files
+    # (see the reasoning there). Unlike filelog and hostmetrics, which this
+    # collector pulls out of process, traces are pushed from inside the app and
+    # would be unsampled at OTel's parentbased_always_on default. Kept here so
+    # re-enabling is an env var plus a sampler, not a config change.
     traces:
       receivers: [otlp]
       processors: [memory_limiter, resource, batch]
