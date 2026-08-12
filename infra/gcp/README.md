@@ -73,6 +73,30 @@ Place each key on the VM at `/home/deploy/secrets/otel-sa-<env>.json`, mode `040
 
 ## Log-based metrics
 
+> **Filters use `labels.*`, not `jsonPayload.*`.** Verified against real entries in
+> `theraptly-lms-staging` on 2026-08-12. The `googlecloud` exporter puts the raw
+> line in `textPayload` and maps the collector's parsed OTel attributes into
+> Cloud Logging **`labels`** — so `jsonPayload` does not exist on these entries and
+> any filter written against it matches nothing, permanently and silently.
+>
+> A real entry looks like:
+>
+> ```json
+> {
+>   "textPayload": "{\"level\":\"debug\",\"service\":\"lms-staging\",\"msg\":\"...\"}\n",
+>   "severity": "DEBUG",
+>   "labels": { "level": "debug", "msg": "...", "service": "lms-staging",
+>               "service.name": "lms-staging", "log.iostream": "stdout" },
+>   "logName": "projects/theraptly-lms-staging/logs/lms-container-logs",
+>   "resource": { "type": "generic_node" }
+> }
+> ```
+>
+> `severity` **is** mapped correctly by the collector's severity parser, so
+> `severity>=ERROR` works as written and is preferable to matching on
+> `labels.level` where either would do.
+
+
 Domain counters are **derived from the logs**, not emitted from application code. The events already appear as structured lines with stable `msg` prefixes, so extracting them here avoids instrumenting every call site a second time, keeps label cardinality under explicit control instead of depending on whatever a caller passes, and adds no dependency to the app.
 
 ```bash
@@ -83,13 +107,13 @@ PROJECT_ID=your-project-id
 gcloud logging metrics create lms_phi_blocked \
   --project="$PROJECT_ID" \
   --description="Documents blocked by the PHI gate" \
-  --log-filter='jsonPayload.msg=~"Upload blocked" AND jsonPayload.service=~"lms-"'
+  --log-filter='labels.msg=~"Upload blocked" AND labels.service=~"lms-"'
 
 # Failed logins — the input to credential-stuffing detection.
 gcloud logging metrics create lms_auth_failures \
   --project="$PROJECT_ID" \
   --description="Failed authentication attempts" \
-  --log-filter='jsonPayload.msg=~"login failed" OR jsonPayload.msg=~"System admin login failed"'
+  --log-filter='labels.msg=~"login failed" OR labels.msg=~"System admin login failed"'
 
 # Rate-limit rejections. A sudden drop to zero is as interesting as a spike: the
 # limiter falls back to per-process memory when Redis is unreachable (F-024), so
@@ -97,13 +121,13 @@ gcloud logging metrics create lms_auth_failures \
 gcloud logging metrics create lms_rate_limit_rejections \
   --project="$PROJECT_ID" \
   --description="Requests rejected by the rate limiter" \
-  --log-filter='jsonPayload.msg=~"rate limit exceeded"'
+  --log-filter='labels.msg=~"rate limit exceeded"'
 
 # Evidence-ledger gaps. Should be permanently zero.
 gcloud logging metrics create lms_ledger_write_failures \
   --project="$PROJECT_ID" \
   --description="audit_logs or phi_decisions write failures" \
-  --log-filter='jsonPayload.msg=~"Failed to write audit log" OR jsonPayload.msg=~"FAILED to record PHI decision"'
+  --log-filter='labels.msg=~"Failed to write audit log" OR labels.msg=~"FAILED to record PHI decision"'
 ```
 
 These filters depend on the `msg` prefixes in the code. If a message is reworded, the metric silently goes quiet — so treat the strings as a contract, and prefer adding a new `msg` over editing an existing one.
@@ -119,7 +143,7 @@ gcloud logging buckets create lms-audit \
 
 gcloud logging sinks create lms-audit-sink \
   "logging.googleapis.com/projects/$PROJECT_ID/locations/global/buckets/lms-audit" \
-  --log-filter='jsonPayload.msg=~"\[audit\]" OR jsonPayload.msg=~"\[phi\]"' \
+  --log-filter='labels.msg=~"\[audit\]" OR labels.msg=~"\[phi\]"' \
   --project="$PROJECT_ID"
 ```
 
