@@ -11,6 +11,18 @@
 
 name: lms-production
 
+# Bounded container logs (F-074). Without an explicit driver config Docker's
+# default json-file driver grows without limit, and every service here writes
+# to the same single-disk VM — an unbounded app log can fill the disk and take
+# Postgres down with it. 10m x 5 keeps ~50 MB of recent history per service,
+# which is enough for local triage; durable retention is Cloud Logging's job
+# (see the OTel collector), not the disk's.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '5'
+
 services:
   # ── Next.js Application ──────────────────────────────────────────────────────
   app:
@@ -18,6 +30,7 @@ services:
     # Image is built in GitHub Actions CI, pushed to GHCR, then pulled here.
     image: ${APP_IMAGE:?APP_IMAGE must be set. Run via the deploy workflow or set manually.}
     restart: unless-stopped
+    logging: *default-logging
     ports:
       # Bind to loopback only: traffic must enter via the host nginx reverse proxy
       # (Cloudflare Tunnel -> nginx -> 127.0.0.1:3000), never directly off the VM's
@@ -27,6 +40,32 @@ services:
       - .env.production
     environment:
       NODE_ENV: production
+      # Stamped onto every structured log line so entries are
+      # attributable in Cloud Logging (container paths carry only an id).
+      OTEL_SERVICE_NAME: lms-production
+      # TRACING IS DELIBERATELY OFF. Presence of OTEL_EXPORTER_OTLP_ENDPOINT is
+      # what enables it (registerTracing returns early without it, see
+      # src/instrumentation.ts:20) — so leaving it unset disables tracing with
+      # no code change.
+      #
+      # Why: unlike the logs and hostmetrics pipelines, which the collector PULLS
+      # (it tails Docker's *-json.log files and scrapes the host every 60s, both
+      # out of process and free to the request path), traces are PUSHED from
+      # inside the app. Next.js auto-instrumentation spans every request, render,
+      # route handler and outbound fetch, and no sampler is configured, so the
+      # OTel default of parentbased_always_on would trace 100% of traffic. On a
+      # shared 2-vCPU host where production's app already sits at ~590 MiB of its
+      # 1g cap, that allocation churn is a cost with no current question behind it:
+      # every incident to date (zone hijack, disk exhaustion, cross-project Vertex
+      # calls) was a logs-and-metrics problem, not a latency one.
+      #
+      # Logs are UNAFFECTED — logger.ts reads OTEL_SERVICE_NAME independently
+      # (src/lib/logger.ts:254) for the `service` field, so attribution survives.
+      #
+      # To re-enable, uncomment and add a sampler rather than defaulting to 100%:
+      #   OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      #   OTEL_TRACES_SAMPLER: parentbased_traceidratio
+      #   OTEL_TRACES_SAMPLER_ARG: '0.1'
       PORT: '3000'
       DATABASE_URL: postgresql://${POSTGRES_USER:-lms}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-lms_production}
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
@@ -64,6 +103,7 @@ services:
     # activate with: CREATE EXTENSION IF NOT EXISTS vector;
     image: pgvector/pgvector:pg16
     restart: unless-stopped
+    logging: *default-logging
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-lms_production}
       POSTGRES_USER: ${POSTGRES_USER:-lms}
@@ -84,6 +124,7 @@ services:
     container_name: lms-production-redis
     image: redis:7-alpine
     restart: unless-stopped
+    logging: *default-logging
     command: redis-server --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env.production} --appendonly yes
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
@@ -109,6 +150,7 @@ services:
     # then map that digest back to its RELEASE tag (docker image ls --digests).
     image: minio/minio:RELEASE.2025-04-22T22-12-26Z
     restart: unless-stopped
+    logging: *default-logging
     command: server /data
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY must be set in .env.production}
@@ -121,6 +163,45 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    networks:
+      - production-net
+
+  # ── OpenTelemetry Collector (log shipping) ────────────────────────────────
+  # Tails this host's container logs and ships them to Cloud Logging so they
+  # survive the container. See infra/otel/collector-config.yaml for why the file
+  # tail is used instead of app-side OTLP.
+  #
+  # Opt-in: with TELEMETRY_ENABLED unset the container still starts but the
+  # collector exits unless GOOGLE_PROJECT_ID and the credentials file are
+  # present, so a missing key is loud rather than silent.
+  otel-collector:
+    container_name: lms-production-otel-collector
+    image: otel/opentelemetry-collector-contrib:0.114.0
+    restart: unless-stopped
+    logging: *default-logging
+    command: ['--config=/etc/otel/collector-config.yaml']
+    environment:
+      GOOGLE_PROJECT_ID: ${GOOGLE_PROJECT_ID:?GOOGLE_PROJECT_ID must be set for log shipping}
+      # Per-environment service account. NEVER share this key across
+      # environments — a staging credential able to write production telemetry
+      # repeats the mistake behind two prod data-loss incidents.
+      GOOGLE_APPLICATION_CREDENTIALS: /etc/otel/sa-key.json
+      OTEL_SERVICE_NAME: lms-production
+      OTEL_ENVIRONMENT: production
+    volumes:
+      - ./infra/otel/collector-config.yaml:/etc/otel/collector-config.yaml:ro
+      # Hand-placed on the VM, mode 0400, owned by the deploy user. Not in git.
+      - /home/deploy/secrets/otel-sa-production.json:/etc/otel/sa-key.json:ro
+      # Read-only: the collector reads container logs and must never mutate them.
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      # Host root, read-only, for the hostmetrics scraper (root_path: /hostfs).
+      # Needed because a container's own /proc and mounts describe the container,
+      # not the VM whose disk actually fills up.
+      - /:/hostfs:ro
+    deploy:
+      resources:
+        limits:
+          memory: 256m
     networks:
       - production-net
 

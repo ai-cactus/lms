@@ -28,7 +28,7 @@ LMS2 is a modern, enterprise-grade Learning Management System designed for healt
 
 ### Infrastructure
 - **Database:** PostgreSQL.
-- **Process Management:** PM2 (running `npm run start`).
+- **Process Management:** ~~PM2~~ → Docker Compose. One container per service per environment; PM2 was removed 2026-08-10.
 - **Web Server / Proxy:** Nginx (Reverse Proxy with SSL termination capabilities).
 - **Tunneling:** Cloudflare Tunnel (`cloudflared`) for exposing local/staging environments securely.
 - **Email:** Nodemailer (SMTP via Zoho).
@@ -41,7 +41,7 @@ LMS2 is a modern, enterprise-grade Learning Management System designed for healt
 graph TD
     Client[Client Browser] -->|HTTPS| CF[Cloudflare Tunnel]
     CF -->|Tunnel| Nginx[Nginx Proxy]
-    Nginx -->|HTTP :3000| NextApp[Next.js App Server (PM2)]
+    Tunnel[Cloudflare Tunnel] -->|HTTP :3000| NextApp[Next.js App Container]
     
     subgraph "Application Layer (Next.js)"
         NextApp -->|Auth| NextAuth[NextAuth.js]

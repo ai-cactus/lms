@@ -1,0 +1,23 @@
+{
+  "displayName": "LMS authentication failure spike",
+  "documentation": {
+    "content": "A burst of failed logins, which usually means credential stuffing against known addresses.\n\n**First response:** query audit_logs for the source IPs and whether failures cluster on one account (targeted) or many (spray). The rate limiter should already be throttling; if it is not, check whether Redis is reachable \u2014 the limiter falls back to per-process in-memory state and effectively fails open across restarts (F-024).",
+    "mimeType": "text/markdown"
+  },
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "auth.login.failure entries",
+      "conditionMatchedLog": {
+        "filter": "jsonPayload.msg=~\"login\" AND severity>=WARNING AND jsonPayload.service=~\"lms-\""
+      }
+    }
+  ],
+  "notificationChannels": [
+    "REPLACE_WITH_CHANNEL"
+  ],
+  "alertStrategy": {
+    "autoClose": "604800s"
+  },
+  "enabled": true
+}

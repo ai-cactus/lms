@@ -1,0 +1,130 @@
+name: Quality Gate
+
+# Reusable quality/security gate (F-070).
+#
+# Why this exists: GitHub Actions workflows do not block one another. Adding
+# `push: main` to ci.yml would run CI *alongside* deploy-production.yml, not
+# before it, so a red build would still deploy. Extracting the checks into a
+# `workflow_call` workflow lets the deploy workflows depend on them with
+# `needs:`, which is a real gate.
+#
+# Scope: the FAST checks only (~5 min in parallel). The heavy jobs — full
+# production build and the Playwright e2e suite — stay in ci.yml on the PR
+# path. Tradeoff: a direct push to main/staging is gated on lint/types/unit
+# tests/secrets but not on e2e, so that an urgent production deploy is not
+# held for 30+ minutes. Merges arriving via PR do get e2e.
+
+on:
+  workflow_call:
+    inputs:
+      strict-audit:
+        description: >-
+          Fail the gate on HIGH+ npm advisories. Defaults to false because
+          `npm audit` exits non-zero both for a real advisory and for a
+          registry/network error, so a registry blip would block deploys.
+          Flip to true on the PR path once F-055's remaining transitive
+          advisories are cleared.
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-node-deps
+
+      - name: Run ESLint
+        run: npm run lint
+
+  format:
+    name: Format Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-node-deps
+
+      - name: Check formatting
+        run: npm run format:check
+
+  typecheck:
+    name: Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-node-deps
+        with:
+          prisma: 'true'
+
+      - name: Run TypeScript compiler
+        run: npx tsc --noEmit
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-node-deps
+        with:
+          prisma: 'true'
+
+      - name: Run tests
+        run: npm run test
+
+  audit:
+    name: Dependency Audit
+    runs-on: ubuntu-latest
+    # See the strict-audit input docs above for why this is conditional.
+    continue-on-error: ${{ inputs.strict-audit != true }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      # Reads package-lock.json and queries the advisory DB — no install needed.
+      # Retried because a transient registry error is indistinguishable from a
+      # real advisory by exit code alone.
+      - name: Run npm audit (high+)
+        run: |
+          for attempt in 1 2 3; do
+            if npm audit --audit-level=high; then
+              exit 0
+            fi
+            echo "npm audit attempt ${attempt} failed; retrying in 10s..." >&2
+            sleep 10
+          done
+          echo "npm audit reported advisories or could not reach the registry." >&2
+          exit 1
+
+  secret-scan:
+    name: Secret Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install gitleaks
+        run: |
+          VERSION="$(curl -sSfL https://api.github.com/repos/gitleaks/gitleaks/releases/latest | grep -oP '"tag_name":\s*"v\K[^"]+')"
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz" -o /tmp/gitleaks.tar.gz
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          sudo install /tmp/gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      # `detect --no-git` scans files on disk (working tree), so the scan
+      # covers committed paths like .claude/agent-memory/** without failing
+      # on secrets that only exist in older commits. Full-history scanning is
+      # tracked separately (F-075).
+      - name: Scan working tree for secrets
+        run: gitleaks detect --no-git --source . --config .gitleaks.toml --redact --verbose

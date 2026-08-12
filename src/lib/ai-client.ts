@@ -34,6 +34,32 @@ const auth = new GoogleAuth({
   scopes: 'https://www.googleapis.com/auth/cloud-platform',
 });
 
+/**
+ * Resolve the Vertex AI project, with NO fallback by design.
+ *
+ * This previously read `process.env.GOOGLE_PROJECT_ID || 'theraptly-lms'`. Because
+ * that default names the *production* project, any environment without the variable
+ * set — staging included — silently issued its Vertex calls against production
+ * while appearing correctly configured. Credentials came from Application Default
+ * Credentials (the host's attached service account), so nothing in any env file
+ * revealed the crossing.
+ *
+ * That is the same defect that caused two production video-deletion incidents: a
+ * default pointing at production is invisibly right in production and invisibly
+ * wrong everywhere else. Missing configuration must stop the call, not reroute it.
+ */
+function requireProjectId(): string {
+  const projectId = process.env.GOOGLE_PROJECT_ID;
+  if (!projectId) {
+    const err = new Error(
+      'GOOGLE_PROJECT_ID is not set — refusing to call Vertex AI. Set it explicitly per environment; there is deliberately no default.',
+    );
+    logger.error({ msg: '[ai-client] GOOGLE_PROJECT_ID is not configured', err });
+    throw err;
+  }
+  return projectId;
+}
+
 async function withRetry<T>(fn: () => Promise<T>, label: string): Promise<T> {
   let lastError: Error | null = null;
 
@@ -78,7 +104,7 @@ export interface VertexAIConfig {
  * Returns the raw text output from the model.
  */
 export async function callVertexAI(prompt: string, config?: VertexAIConfig): Promise<string> {
-  const projectId = process.env.GOOGLE_PROJECT_ID || 'theraptly-lms';
+  const projectId = requireProjectId();
   const location = process.env.GOOGLE_LOCATION || 'us-central1';
   const model = config?.model || 'gemini-2.5-flash-lite';
 
@@ -222,7 +248,7 @@ export async function generateEmbedding(text: string): Promise<number[]> {
 export async function generateBatchEmbeddings(texts: string[]): Promise<number[][]> {
   if (texts.length === 0) return [];
 
-  const projectId = process.env.GOOGLE_PROJECT_ID || 'theraptly-lms';
+  const projectId = requireProjectId();
   const location = process.env.GOOGLE_LOCATION || 'us-central1';
   const model = 'text-embedding-004';
 

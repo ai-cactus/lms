@@ -32,8 +32,7 @@ export interface AuthorizedContext {
 }
 
 export type AuthResult =
-  | { ok: true; ctx: AuthorizedContext }
-  | { ok: false; response: NextResponse };
+  { ok: true; ctx: AuthorizedContext } | { ok: false; response: NextResponse };
 
 /**
  * Authorize the current request against a single permission.

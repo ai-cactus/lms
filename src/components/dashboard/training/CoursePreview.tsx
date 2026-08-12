@@ -59,8 +59,13 @@ function PreviewVideoPlayer({ courseId }: { courseId: string }) {
       <video
         ref={videoRef}
         src={`/api/courses/${courseId}/preview-video#t=0.1`}
+        poster={`/api/courses/${courseId}/preview-poster`}
         className="h-full w-full object-contain"
-        preload="metadata"
+        // With a poster painting the still frame, `preload="metadata"` would buy
+        // nothing and cost an authenticated proxy request plus the MP4 header on
+        // every page view. `none` means ZERO video bytes until the viewer
+        // actually presses play.
+        preload="none"
         playsInline
         controls={started}
         onPlay={() => setStarted(true)}

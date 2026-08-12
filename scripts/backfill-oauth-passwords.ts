@@ -12,6 +12,7 @@
  */
 import { prisma } from '@/db/index';
 import bcrypt from 'bcryptjs';
+import { BCRYPT_COST } from '@/lib/bcrypt-config';
 import nodeCrypto from 'crypto';
 
 const DRY_RUN = process.argv.includes('--dry-run');
@@ -35,7 +36,7 @@ async function main() {
   }
 
   for (const user of usersWithEmptyPassword) {
-    const randomPassword = await bcrypt.hash(nodeCrypto.randomUUID() + Date.now().toString(), 12);
+    const randomPassword = await bcrypt.hash(nodeCrypto.randomUUID() + Date.now().toString(), BCRYPT_COST);
     await prisma.user.update({
       where: { id: user.id },
       data: {

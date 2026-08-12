@@ -14,6 +14,37 @@
 
 name: lms-staging
 
+# Bounded container logs (F-074). Without an explicit driver config Docker's
+# default json-file driver grows without limit, and every service here writes
+# to the same single-disk VM — an unbounded app log can fill the disk and take
+# Postgres down with it. 10m x 5 keeps ~50 MB of recent history per service,
+# which is enough for local triage; durable retention is Cloud Logging's job
+# (see the OTel collector), not the disk's.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '5'
+
+# Resource ceilings exist because staging is CO-RESIDENT with production on one
+# VM, sharing its RAM, CPU and disk. Production's app is capped at 1g while this
+# stack was unbounded — inverted, since staging is where load tests, migration
+# rehearsals and AI-pipeline experiments run. Unbounded staging can drive the VM
+# into system-wide OOM, where the kernel picks a victim by RSS and may choose a
+# production container.
+#
+# Sized from MEASURED usage on the real host (2 vCPU / 7.9 GB, 2026-08-11), not
+# from estimates — an earlier draft capped minio at 192m against an actual 255 MiB
+# and would have been OOM-killed on deploy. Observed at rest: app 480 MiB,
+# minio 255 MiB, db 31 MiB, redis 6 MiB. Limits give each roughly 2x that.
+#
+# Aggregate 2560m / 1.40 vCPU — about a third of the box, leaving production its
+# 1g app cap plus uncapped db/redis/minio and ~2 GB of page-cache headroom.
+# Production is deliberately left CPU-uncapped, so under contention the scheduler
+# favours it: staging is throttled, production is not.
+#
+# Re-measure with `docker stats --no-stream` before tightening any of these. A
+# limit below real usage is not a guardrail, it is an outage.
 services:
   # ── Next.js Application ──────────────────────────────────────────────────────
   app:
@@ -23,6 +54,7 @@ services:
     #   APP_IMAGE=ghcr.io/owner/repo:staging-abc1234
     image: ${APP_IMAGE:?APP_IMAGE must be set. Run via the deploy workflow or set manually.}
     restart: unless-stopped
+    logging: *default-logging
     ports:
       # Bind to loopback only: traffic must enter via the host nginx reverse proxy
       # (Cloudflare Tunnel -> nginx -> 127.0.0.1:3001), never directly off the VM's
@@ -32,6 +64,32 @@ services:
       - .env.staging
     environment:
       NODE_ENV: production
+      # Stamped onto every structured log line so entries are
+      # attributable in Cloud Logging (container paths carry only an id).
+      OTEL_SERVICE_NAME: lms-staging
+      # TRACING IS DELIBERATELY OFF. Presence of OTEL_EXPORTER_OTLP_ENDPOINT is
+      # what enables it (registerTracing returns early without it, see
+      # src/instrumentation.ts:20) — so leaving it unset disables tracing with
+      # no code change.
+      #
+      # Why: unlike the logs and hostmetrics pipelines, which the collector PULLS
+      # (it tails Docker's *-json.log files and scrapes the host every 60s, both
+      # out of process and free to the request path), traces are PUSHED from
+      # inside the app. Next.js auto-instrumentation spans every request, render,
+      # route handler and outbound fetch, and no sampler is configured, so the
+      # OTel default of parentbased_always_on would trace 100% of traffic. On a
+      # shared 2-vCPU host where production's app already sits at ~590 MiB of its
+      # 1g cap, that allocation churn is a cost with no current question behind it:
+      # every incident to date (zone hijack, disk exhaustion, cross-project Vertex
+      # calls) was a logs-and-metrics problem, not a latency one.
+      #
+      # Logs are UNAFFECTED — logger.ts reads OTEL_SERVICE_NAME independently
+      # (src/lib/logger.ts:254) for the `service` field, so attribution survives.
+      #
+      # To re-enable, uncomment and add a sampler rather than defaulting to 100%:
+      #   OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      #   OTEL_TRACES_SAMPLER: parentbased_traceidratio
+      #   OTEL_TRACES_SAMPLER_ARG: '0.1'
       PORT: '3001'
       # Override REDIS_URL to point to the Docker redis service.
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
@@ -54,6 +112,11 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 1024m
+          cpus: '0.5'
 
   # ── PostgreSQL Database ───────────────────────────────────────────────────────
   db:
@@ -63,6 +126,7 @@ services:
     # activate with: CREATE EXTENSION IF NOT EXISTS vector;
     image: pgvector/pgvector:pg16
     restart: unless-stopped
+    logging: *default-logging
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-lms_staging}
       POSTGRES_USER: ${POSTGRES_USER:-lms}
@@ -76,6 +140,11 @@ services:
       timeout: 5s
       retries: 10
       start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: '0.3'
     networks:
       - staging-net
 
@@ -84,8 +153,26 @@ services:
     container_name: lms-staging-redis
     image: redis:7-alpine
     restart: unless-stopped
-    # requirepass enforces auth even on the internal network (defence in depth)
-    command: redis-server --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env.staging} --appendonly yes
+    logging: *default-logging
+    # requirepass enforces auth even on the internal network (defence in depth).
+    #
+    # maxmemory sits below the cgroup limit so Redis refuses writes itself rather
+    # than being OOM-killed by the kernel with its AOF mid-write. The policy is
+    # noeviction because these keys are BullMQ jobs, not cache — an LRU policy
+    # would silently discard queued work and look like a job that never ran.
+    #
+    # It is deliberately HALF the limit, not the ~75% that looks sufficient.
+    # Two effects stack above the configured ceiling, both measured on this image:
+    # maxmemory is only checked when a command STARTS, so one multi-write Lua
+    # script (BullMQ uses them for atomic queue ops) overshot it by ~18 MB; and
+    # RSS then runs a further ~11 MB above Redis's own used_memory accounting
+    # through allocator fragmentation. An AOF rewrite forks on top of that. At a
+    # 75% ratio the container sat at 125 MiB of a 128 MiB limit — one rewrite from
+    # being killed. 128mb in 256m keeps that ratio. Real usage here is ~6 MiB;
+    # the ceiling exists for a runaway queue, not for steady state.
+    command:
+      redis-server --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env.staging}
+      --appendonly yes --maxmemory 128mb --maxmemory-policy noeviction
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
     volumes:
@@ -98,6 +185,11 @@ services:
       timeout: 5s
       retries: 10
       start_period: 5s
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          cpus: '0.15'
     networks:
       - staging-net
 
@@ -112,6 +204,7 @@ services:
     # then map that digest back to its RELEASE tag (docker image ls --digests).
     image: minio/minio:RELEASE.2025-04-22T22-12-26Z
     restart: unless-stopped
+    logging: *default-logging
     command: server /data
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY must be set in .env.staging}
@@ -124,6 +217,51 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: '0.3'
+    networks:
+      - staging-net
+
+  # ── OpenTelemetry Collector (log shipping) ────────────────────────────────
+  # Tails this host's container logs and ships them to Cloud Logging so they
+  # survive the container. See infra/otel/collector-config.yaml for why the file
+  # tail is used instead of app-side OTLP.
+  #
+  # Opt-in: with TELEMETRY_ENABLED unset the container still starts but the
+  # collector exits unless GOOGLE_PROJECT_ID and the credentials file are
+  # present, so a missing key is loud rather than silent.
+  otel-collector:
+    container_name: lms-staging-otel-collector
+    image: otel/opentelemetry-collector-contrib:0.114.0
+    restart: unless-stopped
+    logging: *default-logging
+    command: ['--config=/etc/otel/collector-config.yaml']
+    environment:
+      GOOGLE_PROJECT_ID: ${GOOGLE_PROJECT_ID:?GOOGLE_PROJECT_ID must be set for log shipping}
+      # Per-environment service account. NEVER share this key across
+      # environments — a staging credential able to write production telemetry
+      # repeats the mistake behind two prod data-loss incidents.
+      GOOGLE_APPLICATION_CREDENTIALS: /etc/otel/sa-key.json
+      OTEL_SERVICE_NAME: lms-staging
+      OTEL_ENVIRONMENT: staging
+    volumes:
+      - ./infra/otel/collector-config.yaml:/etc/otel/collector-config.yaml:ro
+      # Hand-placed on the VM, mode 0400, owned by the deploy user. Not in git.
+      - /home/deploy/secrets/otel-sa-staging.json:/etc/otel/sa-key.json:ro
+      # Read-only: the collector reads container logs and must never mutate them.
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      # Host root, read-only, for the hostmetrics scraper (root_path: /hostfs).
+      # Needed because a container's own /proc and mounts describe the container,
+      # not the VM whose disk actually fills up.
+      - /:/hostfs:ro
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          cpus: '0.15'
     networks:
       - staging-net
 

@@ -1,0 +1,27 @@
+{
+  "displayName": "LMS production — reachable and serving our own app",
+  "monitoredResource": {
+    "type": "uptime_url",
+    "labels": {
+      "project_id": "REPLACE_WITH_PROJECT_ID",
+      "host": "training.theraptly.com"
+    }
+  },
+  "httpCheck": {
+    "requestMethod": "GET",
+    "useSsl": true,
+    "validateSsl": true,
+    "path": "/api/health",
+    "port": 443,
+    "acceptedResponseStatusCodes": [{ "statusValue": 200 }]
+  },
+  "contentMatchers": [
+    {
+      "content": "\"status\":\"ok\"",
+      "matcher": "CONTAINS_STRING"
+    }
+  ],
+  "period": "60s",
+  "timeout": "10s",
+  "selectedRegions": ["USA_OREGON", "EUROPE_IRELAND", "ASIA_PACIFIC_SINGAPORE"]
+}

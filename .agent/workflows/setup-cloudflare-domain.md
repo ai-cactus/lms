@@ -68,9 +68,9 @@ Create a configuration file to tell the tunnel where to send traffic.
 
 # Step 6: Update Ecosystem File
 
-Update your `ecosystem.config.js` to run the named tunnel.
+Run the named tunnel as a systemd service (the repo's `start-tunnel.sh` shows the command).
 
-1.  Open `ecosystem.config.js`.
+1.  Install the tunnel as a service: `cloudflared service install`.
 2.  Modify the "tunnel" app section:
     ```javascript
     {
@@ -87,9 +87,9 @@ Update your `ecosystem.config.js` to run the named tunnel.
     ```bash
     npm run build
     ```
-2.  Restart PM2:
+2.  Restart the tunnel:
     ```bash
-    pm2 restart ecosystem.config.js
+    sudo systemctl restart cloudflared
     ```
 
 Your app should now be live at `https://example.com` with a valid SSL certificate managed by Cloudflare!

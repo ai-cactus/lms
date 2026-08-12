@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - staging
+  # Manual trigger — run the staging deploy on demand, independent of the push
+  # event (e.g. `gh workflow run deploy-staging.yml --ref staging`). Requires this
+  # trigger to be present on the default branch to be dispatchable.
+  workflow_dispatch:
 
 # Cancel any in-progress deployment for the same branch to avoid race conditions
 concurrency:
@@ -17,12 +21,23 @@ permissions:
 
 jobs:
   # ────────────────────────────────────────────────────────────────────────────
+  # Job 0: Quality/security gate (F-070)
+  # Before this existed, a push to staging went straight to build-and-deploy
+  # with no lint, typecheck, test, audit, or secret scan. `build` depends on
+  # it, so a red gate stops the deploy.
+  # ────────────────────────────────────────────────────────────────────────────
+  gate:
+    name: Quality Gate
+    uses: ./.github/workflows/quality-gate.yml
+
+  # ────────────────────────────────────────────────────────────────────────────
   # Job 1: Build the Docker image in CI and push to GHCR
   # This runs on GitHub's own runners — no VM build overhead.
   # ────────────────────────────────────────────────────────────────────────────
   build:
     name: Build & Push Docker Image
     runs-on: ubuntu-latest
+    needs: gate
     timeout-minutes: 20
 
     outputs:
@@ -54,7 +69,7 @@ jobs:
             type=sha,prefix=staging-,format=long
 
       - name: Build and push image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
@@ -80,7 +95,7 @@ jobs:
 
     steps:
       - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.2.0
+        uses: appleboy/ssh-action@v1.2.5
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
@@ -119,15 +134,9 @@ jobs:
             docker tag "${IMAGE_REF}" "ghcr.io/${GITHUB_REPO}:staging-latest"
 
             # ── [3/4] Start / update services ────────────────────────────────
-            # db and redis only restart if their config changed (idempotent).
-            # The app container is recreated with the new image.
-            
-            if pm2 info lms-staging > /dev/null 2>&1; then
-              echo "==> Shutting down legacy PM2 instance 'lms-staging' to free port 3001..."
-              pm2 delete lms-staging || true
-              pm2 save || true
-            fi
-
+            # db, redis, minio and the collector only restart if their config
+            # changed (idempotent). The app container is recreated with the new
+            # image.
             echo "==> [3/4] Starting services..."
             APP_IMAGE="${IMAGE_REF}" \
               docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" up -d

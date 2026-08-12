@@ -1,0 +1,156 @@
+# OpenTelemetry Collector — ships container logs to Google Cloud Logging.
+#
+# ── Why this exists ─────────────────────────────────────────────────────────
+# Application logs went to stdout and died with the container. There was no
+# aggregator, no retention, and no way to search them — so the structured
+# logging and PHI-decision work was only durable as far as the next
+# `docker compose up`. The 2026-08-04 Cloudflare hijack was found by accident
+# partly because nothing was watching.
+#
+# ── Why the file tail rather than app-side OTLP ──────────────────────────────
+# The app already writes one JSON object per line to stdout, and Docker's
+# json-file driver already persists that (with rotation, added alongside this).
+# Tailing it needs ZERO application changes and no new npm dependency, and it
+# captures Postgres, Redis and MinIO too — not just the app. An app-side OTLP
+# exporter would cover only the app and would couple request handling to the
+# availability of a telemetry sink.
+#
+# ── Why the Ops Agent is not used ───────────────────────────────────────────
+# The VM is not a GCE instance, so Application Default Credentials cannot
+# auto-resolve (the same reason the app uses GCS_KEY_BASE64). Authentication is
+# an explicit service-account key via GOOGLE_APPLICATION_CREDENTIALS, mounted
+# read-only. Use a SEPARATE service account per environment: staging must never
+# hold a credential that can write to production's project, which is the
+# unclosed root cause behind two prod data-loss incidents.
+
+receivers:
+  # Traces from the app (@vercel/otel in src/instrumentation.ts). Bound to the
+  # Docker network only — never published to the host — so nothing off-box can
+  # inject spans.
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+  # VM-level metrics. Deliberately host metrics rather than app metrics: the
+  # alerts that matter operationally here are disk and memory pressure, and the
+  # production app container is capped at 1 GB with a single replica on a VM that
+  # also hosts Postgres, Redis, MinIO and staging. Filling the disk takes
+  # Postgres down with it.
+  #
+  # Application-level counters (PHI outcomes, auth failures, rate-limit
+  # rejections) are NOT emitted from code — they are derived as log-based metrics
+  # from the structured logs already shipping. That avoids instrumenting every
+  # call site twice, and keeps label cardinality under explicit control rather
+  # than depending on whatever a caller passes.
+  hostmetrics:
+    collection_interval: 60s
+    root_path: /hostfs
+    scrapers:
+      cpu:
+      memory:
+      load:
+      filesystem:
+        exclude_mount_points:
+          mount_points: ['/var/lib/docker/*', '/snap/*']
+          match_type: regexp
+
+  filelog:
+    include:
+      - /var/lib/docker/containers/*/*-json.log
+    # Only new lines. `beginning` would replay the entire retained history into
+    # Cloud Logging on every collector restart — duplicate entries and a
+    # surprise ingestion bill.
+    start_at: end
+    include_file_path: true
+    # Bound the checkpoint file's growth on a long-lived host.
+    poll_interval: 1s
+
+    operators:
+      # 1. Unwrap Docker's envelope: {"log":"…","stream":"stdout","time":"…"}.
+      #    The container operator also recombines partial lines, which a plain
+      #    json_parser does not — Docker splits any line over ~16KB, and a split
+      #    stack trace would otherwise arrive as unparseable fragments.
+      - type: container
+        format: docker
+        # k8s-oriented; this is plain Compose, so the path yields no pod metadata.
+        add_metadata_from_filepath: false
+
+      # 2. Parse OUR structured lines. Guarded by `if` so plain-text output from
+      #    Postgres/Redis/MinIO passes through untouched instead of erroring —
+      #    those logs are still worth having, just unstructured.
+      - type: json_parser
+        if: 'body matches "^\\s*\\{.*\\}\\s*$"'
+        parse_from: body
+        parse_to: attributes
+        # Trust the app's own timestamp over the time the collector read the
+        # line; they differ under backpressure.
+        timestamp:
+          parse_from: attributes.time
+          layout: '%Y-%m-%dT%H:%M:%S.%LZ'
+          layout_type: strptime
+        severity:
+          parse_from: attributes.level
+          mapping:
+            debug: debug
+            info: info
+            warn: warn
+            error: error
+
+processors:
+  # Guards the VM: the collector must never be the reason the host runs out of
+  # memory. It drops data under pressure rather than growing without bound.
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 65
+    spike_limit_percentage: 20
+
+  resource:
+    attributes:
+      - key: service.name
+        value: ${env:OTEL_SERVICE_NAME}
+        action: upsert
+      - key: deployment.environment
+        value: ${env:OTEL_ENVIRONMENT}
+        action: upsert
+
+  batch:
+    send_batch_size: 200
+    timeout: 5s
+
+exporters:
+  googlecloud:
+    project: ${env:GOOGLE_PROJECT_ID}
+    log:
+      default_log_name: lms-container-logs
+
+service:
+  # memory_limiter first in every pipeline: it can only protect the pipeline if
+  # it sees data before the batcher buffers it.
+  pipelines:
+    logs:
+      receivers: [filelog]
+      processors: [memory_limiter, resource, batch]
+      exporters: [googlecloud]
+
+    # Wired but INERT by default: no app pushes to the otlp receiver, because
+    # OTEL_EXPORTER_OTLP_ENDPOINT is intentionally unset in both compose files
+    # (see the reasoning there). Unlike filelog and hostmetrics, which this
+    # collector pulls out of process, traces are pushed from inside the app and
+    # would be unsampled at OTel's parentbased_always_on default. Kept here so
+    # re-enabling is an env var plus a sampler, not a config change.
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [googlecloud]
+
+    metrics:
+      receivers: [hostmetrics]
+      processors: [memory_limiter, resource, batch]
+      exporters: [googlecloud]
+
+  telemetry:
+    logs:
+      level: warn
