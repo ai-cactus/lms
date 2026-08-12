@@ -93,6 +93,24 @@ import {
 } from './create';
 import type { StaffEntry } from '@/types/enrollment';
 
+/**
+ * These specs are slow by construction, not by accident: each one drives 25-50
+ * simulated members through BOTH the batched and the sequential path against an
+ * in-memory fake DB, and the concurrency spec additionally holds 25 deferred
+ * promises open to observe how many writes are in flight. Measured locally:
+ * 2.5s, 4.3s, 2.7s, 2.7s — four of ten tests within 2x of vitest's 5s default,
+ * and the concurrency one landing at 5004ms on a machine under load.
+ *
+ * That is deterministic-but-marginal rather than flaky: it passes on an idle
+ * machine and fails on a busy one, which made the pre-push hook block a push
+ * whose CI run was green. Raised file-wide rather than on the single failing
+ * spec, because its three siblings sit in the same band.
+ *
+ * This buys headroom; it does not make the suite fast. If these grow further,
+ * the fix is the harness (the fake DB and the per-entry awaits), not the limit.
+ */
+vi.setConfig({ testTimeout: 20_000 });
+
 const CTX: CreateEnrollmentContext = {
   courseId: 'course-1',
   courseTitle: 'Safety Training',
