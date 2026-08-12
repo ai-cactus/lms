@@ -236,6 +236,14 @@ services:
   otel-collector:
     container_name: lms-staging-otel-collector
     image: otel/opentelemetry-collector-contrib:0.114.0
+    # Runs as root because the filelog receiver tails /var/lib/docker/containers,
+    # which Docker keeps 0700 root:root. The image's default UID 10001 cannot
+    # traverse it and the logs pipeline silently collects nothing:
+    #   find files with '/var/lib/docker/containers/*/*-json.log': permission denied
+    # Loosening that directory is not an option — it is Docker's internal state.
+    # Both host mounts are :ro, and this is the same approach the upstream
+    # Docker-logs examples take.
+    user: '0:0'
     restart: unless-stopped
     logging: *default-logging
     command: ['--config=/etc/otel/collector-config.yaml']
@@ -249,7 +257,22 @@ services:
       OTEL_ENVIRONMENT: staging
     volumes:
       - ./infra/otel/collector-config.yaml:/etc/otel/collector-config.yaml:ro
-      # Hand-placed on the VM, mode 0400, owned by the deploy user. Not in git.
+      # Hand-placed on the VM, mode 0400, owned by UID 10001. Not in git.
+      #
+      # 10001, NOT `deploy`: this image is distroless and runs as UID 10001, and
+      # bind mounts map ownership numerically — a key owned by `deploy` is
+      # unreadable to the container and the collector crash-loops with
+      # "open /etc/otel/sa-key.json: permission denied". Note that is *permission
+      # denied*, not *no such file*: the former means the mount worked and the
+      # mode is wrong, the latter means Docker created a directory at a missing
+      # source path. They need different fixes.
+      #
+      #   sudo install -o 10001 -g 10001 -m 0400 otel-sa-<env>.json \
+      #     /home/deploy/secrets/otel-sa-<env>.json
+      #   sudo chmod 0711 /home/deploy/secrets     # container must traverse it
+      #
+      # This is also tighter than owning it as `deploy`: no host user except
+      # root can read a service-account key.
       - /home/deploy/secrets/otel-sa-staging.json:/etc/otel/sa-key.json:ro
       # Read-only: the collector reads container logs and must never mutate them.
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
