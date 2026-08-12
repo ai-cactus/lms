@@ -118,10 +118,7 @@ export function notificationTypesFor(audience: NotificationAudience): Notificati
 
 /** Notification types emitted by the engine (`emitNotificationEvent`). */
 export type NotificationEngineType =
-  | 'STAFF_ADDED'
-  | 'DOCUMENT_UPLOADED'
-  | 'ROLE_FALLBACK_TRIGGERED'
-  | 'COMPLIANCE_LICENSE_EXPIRING';
+  'STAFF_ADDED' | 'DOCUMENT_UPLOADED' | 'ROLE_FALLBACK_TRIGGERED' | 'COMPLIANCE_LICENSE_EXPIRING';
 
 /** Who an engine event notifies, resolved per emit from the actor's role. */
 export interface NotificationTargets {
