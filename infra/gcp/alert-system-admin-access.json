@@ -9,7 +9,7 @@
     {
       "displayName": "system.auth entries",
       "conditionMatchedLog": {
-        "filter": "jsonPayload.msg=~\"System admin\" AND jsonPayload.service=~\"lms-\""
+        "filter": "labels.msg=~\"System admin\" AND labels.service=~\"lms-\""
       }
     }
   ],

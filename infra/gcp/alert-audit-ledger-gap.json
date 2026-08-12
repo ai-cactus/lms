@@ -9,7 +9,7 @@
     {
       "displayName": "ledger write failures",
       "conditionMatchedLog": {
-        "filter": "(jsonPayload.msg=~\"Failed to write audit log\" OR jsonPayload.msg=~\"FAILED to record PHI decision\")"
+        "filter": "(labels.msg=~\"Failed to write audit log\" OR labels.msg=~\"FAILED to record PHI decision\")"
       }
     }
   ],

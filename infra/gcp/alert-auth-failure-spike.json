@@ -9,7 +9,7 @@
     {
       "displayName": "auth.login.failure entries",
       "conditionMatchedLog": {
-        "filter": "jsonPayload.msg=~\"login\" AND severity>=WARNING AND jsonPayload.service=~\"lms-\""
+        "filter": "labels.msg=~\"login\" AND severity>=WARNING AND labels.service=~\"lms-\""
       }
     }
   ],
