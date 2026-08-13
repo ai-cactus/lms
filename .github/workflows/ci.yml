@@ -166,6 +166,14 @@ jobs:
       MINIO_ACCESS_KEY: lms_minio_ci
       MINIO_SECRET_KEY: lms_minio_secret_ci
       MINIO_BUCKET: lms-documents
+      # Dummy, like every other external credential above. ai-client.ts requires
+      # this and no longer falls back to a default — that default named the
+      # PRODUCTION project, so before it was removed these e2e runs resolved
+      # their Vertex calls against production. The calls still fail here (there
+      # are no Google credentials on the runner, by design), but they now fail at
+      # auth rather than at config, which is the behaviour the AI-degradation
+      # specs assert against.
+      GOOGLE_PROJECT_ID: ci-dummy-project-not-real
 
     steps:
       - uses: actions/checkout@v4

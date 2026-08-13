@@ -49,16 +49,16 @@ Each policy carries its first-response steps in its `documentation` field, so th
 
 ```
 # All app logs for an environment
-jsonPayload.service="lms-production"
+labels.service="lms-production"
 
 # Follow one request end to end (the logger stamps this automatically)
-jsonPayload.correlationId="<id>"
+labels.correlationId="<id>"
 
 # Errors only
-jsonPayload.service="lms-production" AND severity>=ERROR
+labels.service="lms-production" AND severity>=ERROR
 
 # PHI gate activity
-jsonPayload.msg=~"PHI"
+labels.msg=~"PHI"
 ```
 
 `correlationId` is the useful one: `src/lib/request-context.ts` binds it per request via `AsyncLocalStorage`, so every line emitted while handling a request shares it without anyone threading it through call signatures.
@@ -76,7 +76,7 @@ So a log line is safe to paste into a ticket, and if you need the full value of 
 A monitor nobody has seen fail is a monitor nobody should trust. Do these against **staging**, never by breaking production:
 
 1. **Log shipping** — restart the staging app, then confirm the boot line appears in Cloud Logging within a minute:
-   `jsonPayload.service="lms-staging" AND jsonPayload.msg=~"Background workers started"`
+   `labels.service="lms-staging" AND labels.msg=~"Background workers started"`
 2. **Content matcher** — change the staging health response so it no longer contains `"status":"ok"`, confirm the check goes red, then revert.
 3. **One alert end to end** — trigger a system-admin login failure on staging and confirm the notification actually arrives. An alert policy with an unverified notification channel is decoration.
 4. **Log rotation** — `docker inspect lms-production-app` and confirm `max-size` / `max-file`.
