@@ -20,7 +20,7 @@ interface Step2DocumentsProps {
   documents: CourseDocument[];
   onToggleSelect: (id: string) => void;
   onDelete?: (id: string) => void;
-  onUpload?: (files: File[]) => void;
+  onUpload?: (files: File[], phiAttested: boolean) => void;
   isAnalyzing?: boolean;
   progress?: number;
   error?: string | null;
@@ -38,6 +38,10 @@ export default function Step2Documents({
   isScanningPhi,
 }: Step2DocumentsProps) {
   const [source, setSource] = React.useState('uploaded');
+  // The server action rejects any upload without this attestation
+  // (src/app/actions/documents.ts). It is the user's declaration, so it is
+  // carried up to the caller rather than hardcoded at the call site.
+  const [phiAttested, setPhiAttested] = React.useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const sourceOptions = [
@@ -45,16 +49,20 @@ export default function Step2Documents({
     { label: 'Browse Computer', value: 'computer' },
   ];
 
+  const uploadDisabled = isAnalyzing || !phiAttested;
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (uploadDisabled) return;
     if (e.target.files && e.target.files.length > 0 && onUpload) {
-      onUpload(Array.from(e.target.files));
+      onUpload(Array.from(e.target.files), phiAttested);
     }
   };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
+    if (uploadDisabled) return;
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0 && onUpload) {
-      onUpload(Array.from(e.dataTransfer.files));
+      onUpload(Array.from(e.dataTransfer.files), phiAttested);
     }
   };
 
@@ -96,14 +104,28 @@ export default function Step2Documents({
 
         {source === 'computer' ? (
           <div>
+            <div className="mb-4 flex items-start gap-2 text-sm text-text-secondary">
+              <Checkbox
+                id="wizard-phi-agree"
+                checked={phiAttested}
+                onCheckedChange={(checked) => setPhiAttested(checked === true)}
+                disabled={isAnalyzing}
+                className="mt-0.5"
+              />
+              <label htmlFor="wizard-phi-agree" className="cursor-pointer">
+                I verify this document contains no Personal Health Information (PHI).
+              </label>
+            </div>
+
             <div
               className="flex h-[220px] w-full shrink-0 cursor-pointer flex-col items-center justify-center rounded-[12px] border-[1.5px] border-dashed border-[#e5e7ea] bg-[#fafcfe] transition-all hover:border-primary hover:bg-[#f8fafc]"
-              onClick={() => !isAnalyzing && fileInputRef.current?.click()}
+              onClick={() => !uploadDisabled && fileInputRef.current?.click()}
               onDragOver={(e) => e.preventDefault()}
               onDrop={handleDrop}
+              aria-disabled={uploadDisabled}
               style={{
-                opacity: isAnalyzing ? 0.7 : 1,
-                pointerEvents: isAnalyzing ? 'none' : 'auto',
+                opacity: uploadDisabled ? 0.7 : 1,
+                pointerEvents: uploadDisabled ? 'none' : 'auto',
               }}
             >
               <input
@@ -133,7 +155,9 @@ export default function Step2Documents({
               <p className="text-balance text-center text-sm text-[#718096]">
                 {isAnalyzing
                   ? 'Analyzing document structure and content...'
-                  : 'PDF, DOCX. Single file upload.'}
+                  : phiAttested
+                    ? 'PDF, DOCX. Single file upload.'
+                    : 'Confirm the statement above to enable uploading.'}
               </p>
 
               {isAnalyzing && (
