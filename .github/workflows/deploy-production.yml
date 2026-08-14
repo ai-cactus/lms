@@ -105,7 +105,11 @@ jobs:
             ENV_FILE="${APP_DIR}/.env.production"
 
             echo "==> Creating .env.production from secret..."
-            echo "$ENV_FILE_BASE64" | base64 --decode > "${ENV_FILE}"
+            # tr -d '\r' matches deploy-staging.yml: a secret encoded from a
+            # CRLF file yields values with a trailing CR, which compose passes
+            # through verbatim — GOOGLE_PROJECT_ID would resolve to a project id
+            # ending in CR and fail authentication with no obvious cause.
+            echo "$ENV_FILE_BASE64" | base64 --decode | tr -d '\r' > "${ENV_FILE}"
 
             # GITHUB variables need to be explicitly exported inside the script 
             # if passed via envs block to get interpolated inside strings if needed, 
