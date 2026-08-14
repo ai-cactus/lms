@@ -18,7 +18,38 @@ The checks also run from Google's edge in three regions rather than from the VM,
 
 ## Applying
 
-Requires `roles/monitoring.editor`.
+Requires `roles/monitoring.editor`. Use the script — it is idempotent by display
+name, so re-running after a partial failure will not create duplicates:
+
+```bash
+./apply.sh production ops@theraptly.com --with-uptime
+./apply.sh staging    ops@theraptly.com
+```
+
+It creates (or reuses) the notification channel, the four log-based metrics, the
+alert policies and the `_Default` bucket retention, and finishes by printing the
+verification steps that turn this from applied into proven.
+
+> ⚠️ **The disk and memory alerts depend on OPTIONAL collector metrics.**
+> `system.memory.utilization` and `system.filesystem.utilization` are not emitted
+> by the hostmetrics receiver unless explicitly enabled, and both policies filter
+> on exactly those metric types. They are enabled in
+> `infra/otel/collector-config.yaml` as of 2026-08-14 — verified empirically
+> against `otel/opentelemetry-collector-contrib:0.114.0`, which with the scrapers
+> alone emits only `system.memory.usage` / `system.filesystem.usage`.
+>
+> **A collector running the old config leaves both alerts permanently silent**,
+> which looks exactly like "nothing is wrong". Redeploy the collector before
+> trusting them, and confirm with the `time-series list` check the script prints.
+
+> ⚠️ **`system.memory.utilization` emits one series per state** (used, free,
+> cached, buffered, slab_\*), and the condition reduces with MAX across series.
+> The filter therefore pins `state="used"`. Without that pin, an idle host with
+> plenty of free memory fires a memory-pressure alert continuously — the alert
+> would be loudest precisely when there is no problem.
+
+The raw commands below are kept for reference and for anyone applying a single
+piece by hand.
 
 ```bash
 PROJECT_ID=your-project-id

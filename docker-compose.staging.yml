@@ -118,6 +118,42 @@ services:
           memory: 1024m
           cpus: '0.5'
 
+  # ── Schema migrations (one-shot, never part of `up -d`) ──────────────────────
+  #
+  # Migrations used to run in the app container's entrypoint on every start. That
+  # guaranteed schema and code matched, but it also meant the app's own database
+  # credential had to be able to run DDL — and a container restart at 3am could
+  # alter the schema unattended.
+  #
+  # The deploy workflow now runs this explicitly between "database is healthy"
+  # and "start the app". `profiles: [tools]` keeps it out of `up -d`, so it only
+  # runs when asked for by name.
+  #
+  # MIGRATE_DATABASE_URL is the credential split this exists to enable: set it
+  # and migrations use a DDL-capable role while the app keeps a least-privilege
+  # one (F-093 / lms_app). Unset, it falls back to DATABASE_URL from
+  # .env.staging, so this is behaviour-preserving until that role exists.
+  #
+  # ⚠️ Migrations no longer run automatically. Anything starting this stack
+  # outside the deploy workflow must run this service first, or the app boots
+  # against an unmigrated schema.
+  migrate:
+    profiles: ['tools']
+    container_name: lms-staging-migrate
+    image: ${APP_IMAGE:?APP_IMAGE must be set. Run via the deploy workflow or set manually.}
+    logging: *default-logging
+    command: ['./node_modules/.bin/prisma', 'migrate', 'deploy']
+    env_file:
+      - .env.staging
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${MIGRATE_DATABASE_URL:-${DATABASE_URL}}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - staging-net
+
   # ── PostgreSQL Database ───────────────────────────────────────────────────────
   db:
     container_name: lms-staging-db

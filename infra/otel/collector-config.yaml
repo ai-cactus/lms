@@ -50,9 +50,30 @@ receivers:
     root_path: /hostfs
     scrapers:
       cpu:
-      memory:
       load:
+      # `system.memory.utilization` and `system.filesystem.utilization` are
+      # OPTIONAL metrics in this receiver and are NOT emitted unless enabled
+      # here. Both alert policies in infra/gcp/ filter on exactly those two
+      # metric types, so without these blocks the disk- and memory-pressure
+      # alerts reference series that never exist — permanently silent, and
+      # indistinguishable from "nothing is wrong". Verified against
+      # otel/opentelemetry-collector-contrib:0.114.0 on 2026-08-14: with the
+      # scrapers alone the receiver emits only *.usage.
+      memory:
+        metrics:
+          system.memory.utilization:
+            enabled: true
       filesystem:
+        metrics:
+          system.filesystem.utilization:
+            enabled: true
+        # Pseudo filesystems sit at or near 100% by design (a squashfs snap is
+        # always exactly full). The disk alert takes the MAX across mount
+        # points, so leaving these in guarantees a permanently-firing alert
+        # that everyone learns to ignore.
+        exclude_fs_types:
+          fs_types: ['squashfs', 'tmpfs', 'devtmpfs', 'overlay', 'ramfs', 'iso9660', 'autofs', 'nsfs']
+          match_type: strict
         exclude_mount_points:
           mount_points: ['/var/lib/docker/*', '/snap/*']
           match_type: regexp
