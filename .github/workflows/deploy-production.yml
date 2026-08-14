@@ -109,7 +109,15 @@ jobs:
             # CRLF file yields values with a trailing CR, which compose passes
             # through verbatim — GOOGLE_PROJECT_ID would resolve to a project id
             # ending in CR and fail authentication with no obvious cause.
-            echo "$ENV_FILE_BASE64" | base64 --decode | tr -d '\r' > "${ENV_FILE}"
+            # umask before the redirect, not chmod after: `>` creates the file
+            # with the shell's umask, so between creation and a later chmod the
+            # credentials are briefly world-readable. Setting it here closes
+            # that window and also covers the case where the file does not yet
+            # exist (a rewrite of an existing file keeps its current mode).
+            ( umask 077; echo "$ENV_FILE_BASE64" | base64 --decode | tr -d '\r' > "${ENV_FILE}" )
+            # Existing files were created 0664 by earlier deploys — group- and
+            # world-readable on a host with other accounts. Correct them once.
+            chmod 600 "${ENV_FILE}"
 
             # GITHUB variables need to be explicitly exported inside the script 
             # if passed via envs block to get interpolated inside strings if needed, 
