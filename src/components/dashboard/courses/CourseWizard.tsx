@@ -409,7 +409,7 @@ export default function CourseWizard() {
     setDocuments([]);
   };
 
-  const handleUpload = async (files: File[]) => {
+  const handleUpload = async (files: File[], phiAttested: boolean) => {
     setUploadError(null);
     const file = files[0];
     if (!file) return;
@@ -420,6 +420,9 @@ export default function CourseWizard() {
     const uploadFormData = new FormData();
     uploadFormData.append('file', file);
     uploadFormData.append('rejectOnPHI', 'true');
+    // Required by the server action's attestation gate; omitting it rejected
+    // every upload made through this wizard.
+    uploadFormData.append('phiAttested', phiAttested ? 'true' : 'false');
 
     try {
       setAnalysisProgress(30);
