@@ -1,0 +1,17 @@
+[Unit]
+Description=Nightly LMS backup timer (%i)
+
+[Timer]
+# 02:30 UTC. Deliberately clear of the scheduled GitHub jobs (04:15 / 05:30
+# UTC) so a backup is not competing with CI for the same 2-vCPU host, and clear
+# of typical working hours in the served timezones.
+OnCalendar=*-*-* 02:30:00 UTC
+# Staging and production share this host; the offset keeps the two dumps from
+# running concurrently on 2 vCPUs.
+RandomizedDelaySec=15m
+# If the VM was down at 02:30, run at next boot rather than skipping the night.
+Persistent=true
+Unit=lms-backup@%i.service
+
+[Install]
+WantedBy=timers.target
