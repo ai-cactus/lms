@@ -30,5 +30,20 @@
 
 set -e
 
+# A command override runs INSTEAD of the server.
+#
+# Docker passes a container's `command` as ARGUMENTS to ENTRYPOINT, so a script
+# that ignores "$@" silently discards them. Without this block, the compose
+# `migrate` service's `prisma migrate deploy` was thrown away and a Next.js
+# server started in its place — and because a server never exits, the deploy
+# hung until the SSH step's 10-minute timeout and reported only "cancelled".
+# That is exactly what happened to staging run 31814561810 on 2026-08-14.
+#
+# Honouring "$@" is also the conventional contract for an image entrypoint: it
+# is what makes `docker run <image> sh` and any other override work at all.
+if [ "$#" -gt 0 ]; then
+  exec "$@"
+fi
+
 echo "==> Starting Next.js server on port ${PORT:-3001}..."
 exec ./node_modules/.bin/next start -p "${PORT:-3001}"

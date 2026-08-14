@@ -109,7 +109,15 @@ jobs:
             # CRLF file yields values with a trailing CR, which compose passes
             # through verbatim — GOOGLE_PROJECT_ID would resolve to a project id
             # ending in CR and fail authentication with no obvious cause.
-            echo "$ENV_FILE_BASE64" | base64 --decode | tr -d '\r' > "${ENV_FILE}"
+            # umask before the redirect, not chmod after: `>` creates the file
+            # with the shell's umask, so between creation and a later chmod the
+            # credentials are briefly world-readable. Setting it here closes
+            # that window and also covers the case where the file does not yet
+            # exist (a rewrite of an existing file keeps its current mode).
+            ( umask 077; echo "$ENV_FILE_BASE64" | base64 --decode | tr -d '\r' > "${ENV_FILE}" )
+            # Existing files were created 0664 by earlier deploys — group- and
+            # world-readable on a host with other accounts. Correct them once.
+            chmod 600 "${ENV_FILE}"
 
             # GITHUB variables need to be explicitly exported inside the script 
             # if passed via envs block to get interpolated inside strings if needed, 
@@ -146,9 +154,15 @@ jobs:
             # A failure here stops the deploy with the old app still serving —
             # which is the point: a half-migrated schema behind a new app is a
             # worse outcome than not deploying.
+            # `timeout` so a hung migration fails in 5 minutes with a clear exit
+            # code instead of consuming the job's 10-minute budget and reporting
+            # only "cancelled" — which is how staging run 31814561810 presented,
+            # and it took reading the raw log to see the real cause.
+            # -T disables TTY allocation, which this non-interactive SSH session
+            # cannot provide.
             APP_IMAGE="${IMAGE_REF}" \
-              docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" \
-              --profile tools run --rm migrate
+              timeout 300 docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" \
+              --profile tools run --rm -T migrate
 
             echo "==> [5/5] Starting application..."
             APP_IMAGE="${IMAGE_REF}" \

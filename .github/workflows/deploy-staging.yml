@@ -116,7 +116,15 @@ jobs:
             ENV_FILE="${APP_DIR}/.env.staging"
 
             echo "==> Creating .env.staging from secret..."
-            echo "$ENV_FILE_BASE64" | base64 --decode | tr -d '\r' > "${ENV_FILE}"
+            # umask before the redirect, not chmod after: `>` creates the file
+            # with the shell's umask, so between creation and a later chmod the
+            # credentials are briefly world-readable. Setting it here closes
+            # that window and also covers the case where the file does not yet
+            # exist (a rewrite of an existing file keeps its current mode).
+            ( umask 077; echo "$ENV_FILE_BASE64" | base64 --decode | tr -d '\r' > "${ENV_FILE}" )
+            # Existing files were created 0664 by earlier deploys — group- and
+            # world-readable on a host with other accounts. Correct them once.
+            chmod 600 "${ENV_FILE}"
 
             # ── [1/4] Update compose files on the VM ──────────────────────────
             echo "==> [1/4] Pulling latest compose config..."
@@ -149,9 +157,15 @@ jobs:
             # which is the point: a half-migrated schema behind a new app is a
             # worse outcome than not deploying.
             echo "==> [4/5] Applying migrations..."
+            # `timeout` so a hung migration fails in 5 minutes with a clear exit
+            # code instead of consuming the job's 10-minute budget and reporting
+            # only "cancelled" — which is how run 31814561810 presented, and it
+            # took reading the raw log to see the real cause.
+            # -T disables TTY allocation, which this non-interactive SSH session
+            # cannot provide.
             APP_IMAGE="${IMAGE_REF}" \
-              docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" \
-              --profile tools run --rm migrate
+              timeout 300 docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" \
+              --profile tools run --rm -T migrate
 
             # ── [5/5] Start / update the app ─────────────────────────────────
             echo "==> [5/5] Starting application..."
