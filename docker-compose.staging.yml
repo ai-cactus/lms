@@ -142,7 +142,15 @@ services:
     container_name: lms-staging-migrate
     image: ${APP_IMAGE:?APP_IMAGE must be set. Run via the deploy workflow or set manually.}
     logging: *default-logging
-    command: ['./node_modules/.bin/prisma', 'migrate', 'deploy']
+    # entrypoint is overridden explicitly rather than relying on the image's
+    # ENTRYPOINT to honour a command override. Docker passes `command` as
+    # ARGUMENTS to ENTRYPOINT, so an entrypoint that ignores "$@" silently runs
+    # the web server instead — which never exits, hanging the deploy until its
+    # timeout (staging run 31814561810, 2026-08-14). docker-entrypoint.sh now
+    # handles this correctly; this line means the migrate path does not depend
+    # on that staying true.
+    entrypoint: ['./node_modules/.bin/prisma']
+    command: ['migrate', 'deploy']
     env_file:
       - .env.staging
     environment:

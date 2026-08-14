@@ -149,9 +149,15 @@ jobs:
             # which is the point: a half-migrated schema behind a new app is a
             # worse outcome than not deploying.
             echo "==> [4/5] Applying migrations..."
+            # `timeout` so a hung migration fails in 5 minutes with a clear exit
+            # code instead of consuming the job's 10-minute budget and reporting
+            # only "cancelled" — which is how run 31814561810 presented, and it
+            # took reading the raw log to see the real cause.
+            # -T disables TTY allocation, which this non-interactive SSH session
+            # cannot provide.
             APP_IMAGE="${IMAGE_REF}" \
-              docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" \
-              --profile tools run --rm migrate
+              timeout 300 docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" \
+              --profile tools run --rm -T migrate
 
             # ── [5/5] Start / update the app ─────────────────────────────────
             echo "==> [5/5] Starting application..."
