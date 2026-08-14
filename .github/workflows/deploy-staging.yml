@@ -133,11 +133,28 @@ jobs:
             # Also tag as staging-latest for ease of reference
             docker tag "${IMAGE_REF}" "ghcr.io/${GITHUB_REPO}:staging-latest"
 
-            # ── [3/4] Start / update services ────────────────────────────────
-            # db, redis, minio and the collector only restart if their config
-            # changed (idempotent). The app container is recreated with the new
-            # image.
-            echo "==> [3/4] Starting services..."
+            # ── [3/5] Bring up the data services ─────────────────────────────
+            # Started first and waited on, so migrations have a healthy database
+            # to talk to. Idempotent: these only restart if their config changed.
+            echo "==> [3/5] Starting data services..."
+            APP_IMAGE="${IMAGE_REF}" \
+              docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" up -d --wait db redis minio
+
+            # ── [4/5] Apply database migrations ──────────────────────────────
+            # Explicit, and BEFORE the app starts. This used to happen inside the
+            # app container's entrypoint, which required the app's credential to
+            # hold DDL rights and let an unattended restart alter the schema.
+            #
+            # A failure here stops the deploy with the old app still serving —
+            # which is the point: a half-migrated schema behind a new app is a
+            # worse outcome than not deploying.
+            echo "==> [4/5] Applying migrations..."
+            APP_IMAGE="${IMAGE_REF}" \
+              docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" \
+              --profile tools run --rm migrate
+
+            # ── [5/5] Start / update the app ─────────────────────────────────
+            echo "==> [5/5] Starting application..."
             APP_IMAGE="${IMAGE_REF}" \
               docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" up -d
 
