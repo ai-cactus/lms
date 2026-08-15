@@ -24,9 +24,19 @@ interface Props {
   children: React.ReactNode;
   fullName: string;
   role: string | undefined;
+  organizationName?: string;
+  roleDisplayName?: string;
+  facilityName?: string | null;
 }
 
-const DefaultDashboardLayout: FC<Props> = ({ role, fullName, children }) => {
+const DefaultDashboardLayout: FC<Props> = ({
+  role,
+  fullName,
+  organizationName,
+  roleDisplayName,
+  facilityName,
+  children,
+}) => {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -216,6 +226,9 @@ const DefaultDashboardLayout: FC<Props> = ({ role, fullName, children }) => {
       <main className="flex h-full w-full flex-col lg:ml-[280px] lg:w-[calc(100%-280px)]">
         <DefaultDashboardNavBar
           fullName={fullName}
+          organizationName={organizationName}
+          roleDisplayName={roleDisplayName}
+          facilityName={facilityName}
           onMenuClick={() => setSidebarOpen(true)}
           forProfile
         />

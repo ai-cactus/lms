@@ -3,6 +3,8 @@
 import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
 import { getSignedUrl, isLegacyPath } from '@/lib/storage';
+import { can } from '@/lib/rbac/permissions';
+import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
 import { logger } from '@/lib/logger';
 
 const SIGNED_URL_EXPIRY_SECONDS = 900; // 15 minutes
@@ -26,15 +28,27 @@ export async function getDocumentSignedUrl(
     return { error: 'Not authenticated' };
   }
 
-  // Fetch the version and verify ownership via the parent document
+  // Fetch the version and verify access via the parent document: the uploader
+  // always may read their own file; any same-org member holding document.read
+  // (the documents-page gate) may read the rest. Cross-org stays "not found".
   const version = await prisma.documentVersion.findUnique({
     where: { id: documentVersionId },
     include: {
-      document: { select: { organizationUserId: true } },
+      document: {
+        select: {
+          organizationUserId: true,
+          organizationUser: { select: { organizationId: true } },
+        },
+      },
     },
   });
 
-  if (!version || version.document.organizationUserId !== session.user.organizationUserId) {
+  const isUploader = version?.document.organizationUserId === session.user.organizationUserId;
+  const isSameOrgReader =
+    version?.document.organizationUser?.organizationId === session.user.organizationId &&
+    can(dbRoleToRoleKey(session.user.role), 'document.read');
+
+  if (!version || (!isUploader && !isSameOrgReader)) {
     return { error: 'Document not found' };
   }
 

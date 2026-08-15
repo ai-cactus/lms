@@ -494,6 +494,8 @@ export async function deleteDocument(
     return { error: 'Document not found' };
   }
 
+  const versionIds = doc.versions.map((v) => v.id);
+
   // Delete each stored object from cloud storage before removing DB records.
   // Failures are logged but do not abort the DB delete — orphaned objects
   // are preferable to an inconsistent DB state.
@@ -509,8 +511,15 @@ export async function deleteDocument(
   );
   await Promise.allSettled(storageDeleteJobs);
 
-  // Remove DB record (cascade deletes versions + PHI reports)
-  await prisma.document.delete({ where: { id: documentId } });
+  // Sever course lineage first: CourseVersion→DocumentVersion is a Restrict
+  // relation, so course-backed documents would otherwise be undeletable. The
+  // course itself survives — only its source-document link is removed, and the
+  // UI already renders "View Source Document" disabled when lineage is gone.
+  await prisma.$transaction([
+    prisma.courseVersion.deleteMany({ where: { documentVersionId: { in: versionIds } } }),
+    // Remove DB record (cascade deletes versions + PHI reports)
+    prisma.document.delete({ where: { id: documentId } }),
+  ]);
 
   logger.info({
     msg: '[doc] Document deleted',

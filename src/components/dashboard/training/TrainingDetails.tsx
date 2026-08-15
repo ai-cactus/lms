@@ -16,7 +16,6 @@ import Link from 'next/link';
 import CertificateModal from './CertificateModal';
 import AssignRetakeModal from './AssignRetakeModal';
 import {
-  ClipboardList,
   RotateCcw,
   ArrowLeft,
   CheckCircle2,
@@ -280,7 +279,18 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
               </TableHeader>
               <TableBody>
                 {filteredEnrollments.map((enrollment) => (
-                  <TableRow key={enrollment.id}>
+                  <TableRow
+                    key={enrollment.id}
+                    onClick={
+                      enrollment.score !== null
+                        ? () =>
+                            router.push(
+                              `/dashboard/training/courses/${course.id}/results/${enrollment.id}`,
+                            )
+                        : undefined
+                    }
+                    className={cn(enrollment.score !== null && 'cursor-pointer')}
+                  >
                     <TableCell className={cn(cellCls, 'px-2 md:px-[18px]')}>
                       <div className="flex items-center gap-3 sm:gap-[18px]">
                         <div className="flex size-[38px] shrink-0 items-center justify-center rounded-full bg-[#1a202c] text-sm font-semibold text-white">
@@ -332,37 +342,17 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
                         </span>
                       )}
                     </TableCell>
-                    <TableCell className={cn(cellCls, 'px-1 md:px-[18px]')}>
+                    <TableCell
+                      className={cn(cellCls, 'px-1 md:px-[18px]')}
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <div className="flex items-center gap-1 md:gap-3">
-                        {enrollment.score !== null ? (
-                          <Link
-                            href={`/dashboard/training/courses/${course.id}/results/${enrollment.id}`}
-                            className="hidden px-4 py-2.5 text-sm font-semibold text-primary hover:underline sm:inline-flex"
-                          >
-                            View Result
-                          </Link>
-                        ) : (
-                          <span className="hidden cursor-not-allowed px-4 py-2.5 text-sm font-semibold text-text-tertiary sm:inline-flex">
-                            View Result
-                          </span>
-                        )}
-
                         <RowActionsMenu
                           className="size-8 rounded-[8px] border border-[#ece4e4] bg-white text-[#0d0d12] [&_svg]:size-4"
                           actions={[
                             {
-                              label: 'View Result',
-                              icon: <ClipboardList className="size-4" />,
-                              disabled: enrollment.score === null,
-                              onSelect: () =>
-                                router.push(
-                                  `/dashboard/training/courses/${course.id}/results/${enrollment.id}`,
-                                ),
-                            },
-                            {
                               label: 'Assign Retake',
                               icon: <RotateCcw className="size-4" />,
-                              separatorBefore: true,
                               // Retakes only exist for locked enrollments (quiz
                               // attempts exhausted) — assignRetake rejects any
                               // other status, so don't offer it.

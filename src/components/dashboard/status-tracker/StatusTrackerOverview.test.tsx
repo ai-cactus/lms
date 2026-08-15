@@ -8,9 +8,13 @@
  *   - the "N at risk" pill count and the overdue/due-soon status badges
  */
 import { render, screen, within } from '@testing-library/react';
-import { describe, it, expect } from 'vitest';
+import userEvent from '@testing-library/user-event';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import StatusTrackerOverview from './StatusTrackerOverview';
 import type { StatusTrackerRowView } from './StatusTrackerTableClient';
+
+const { mockPush } = vi.hoisted(() => ({ mockPush: vi.fn() }));
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: mockPush }) }));
 
 function makeRow(overrides: Partial<StatusTrackerRowView> = {}): StatusTrackerRowView {
   return {
@@ -20,6 +24,7 @@ function makeRow(overrides: Partial<StatusTrackerRowView> = {}): StatusTrackerRo
     workerEmail: 'worker.one@test.com',
     courseId: 'c1',
     courseTitle: 'HIPAA Basics',
+    facilityName: null,
     dueAt: '2024-06-01T00:00:00.000Z',
     daysOverdue: 3,
     daysUntilDue: null,
@@ -28,6 +33,10 @@ function makeRow(overrides: Partial<StatusTrackerRowView> = {}): StatusTrackerRo
 }
 
 describe('StatusTrackerOverview', () => {
+  beforeEach(() => {
+    mockPush.mockClear();
+  });
+
   it('renders the "All caught up" empty state when there are no rows', () => {
     render(<StatusTrackerOverview rows={[]} />);
 
@@ -56,8 +65,7 @@ describe('StatusTrackerOverview', () => {
     const dataRows = within(table).getAllByRole('row').slice(1); // drop header row
     expect(dataRows).toHaveLength(5);
     // The first 5 (most-overdue, already sorted by the caller) are the ones
-    // shown. Names appear twice per row (visible cell + the View link's
-    // sr-only suffix), so assert on presence/absence rather than uniqueness.
+    // shown.
     expect(within(table).getAllByText('Worker 0').length).toBeGreaterThan(0);
     expect(within(table).getAllByText('Worker 4').length).toBeGreaterThan(0);
     expect(within(table).queryAllByText('Worker 5')).toHaveLength(0);
@@ -83,14 +91,17 @@ describe('StatusTrackerOverview', () => {
     expect(screen.getAllByText('Due in 2 days').length).toBeGreaterThan(0);
   });
 
-  it("links each row's View action to the staff profile", () => {
+  it("navigates to the staff profile when a row is clicked — the row is the only 'view' affordance", async () => {
+    const user = userEvent.setup();
     render(<StatusTrackerOverview rows={[makeRow({ userId: 'u42' })]} />);
 
-    const staffLink = screen
-      .getAllByRole('link')
-      .find((link) => link.getAttribute('href') === '/dashboard/staff/u42');
-    expect(staffLink).toBeDefined();
-    expect(staffLink).toHaveTextContent(/view/i);
+    expect(screen.queryByRole('link', { name: /^view$/i })).not.toBeInTheDocument();
+
+    const table = screen.getByRole('table');
+    const [dataRow] = within(table).getAllByRole('row').slice(1);
+    await user.click(dataRow);
+
+    expect(mockPush).toHaveBeenCalledWith('/dashboard/staff/u42');
   });
 
   it('singularizes "day" for a row that is exactly 1 day overdue', () => {

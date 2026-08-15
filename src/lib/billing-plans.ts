@@ -46,7 +46,7 @@ export const BILLING_PLANS: BillingPlan[] = [
     name: 'Growth',
     staffMin: 11,
     staffMax: 50,
-    description: '11–50 staff — single-location post-acute & home health',
+    description: '11–50 staff — single-location facilities',
     featuresLabel: 'EVERYTHING IN STARTER PLUS',
     features: ['Advanced analytics', 'Priority processing'],
     priceId: {

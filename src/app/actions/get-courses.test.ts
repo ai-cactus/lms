@@ -68,6 +68,9 @@ describe('getCourses', () => {
           createdAt: new Date(),
           updatedAt: new Date(),
           _count: { lessons: 1 },
+          versions: [],
+          // Cross-tenant publisher: lineage must resolve to null for this org.
+          creator: { organizationId: 'other-org' },
         },
       },
     ]);

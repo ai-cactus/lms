@@ -1,7 +1,7 @@
 'use server';
 
 import { auth } from '@/auth';
-import { isAdminRole, WORKER_ROLES } from '@/lib/rbac/role-utils';
+import { getRoleDisplayName, isAdminRole, WORKER_ROLES } from '@/lib/rbac/role-utils';
 import prisma from '@/lib/prisma';
 import { logger } from '@/lib/logger';
 import { startedAtWhere, type AuditDateRangeInput } from '@/lib/audit-reports/date-range';
@@ -29,9 +29,17 @@ export interface AuditorStaffRow {
   id: string;
   name: string;
   email: string;
+  /**
+   * Rendered under the "Department/Role" column. The data model has no
+   * department entity, so this pairs the membership's free-text job title with
+   * the RBAC role display name, falling back to the role alone when no job
+   * title is recorded.
+   */
+  roleLabel: string;
   coursesAssigned: number;
   coursesCompleted: number;
-  lastActivity: Date | null;
+  /** Most recent enrollment completion, or null when nothing has completed. */
+  lastCompletion: Date | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -191,6 +199,8 @@ export async function getAuditorStaff(
     },
     select: {
       id: true,
+      role: true,
+      jobTitle: true,
       user: { select: { email: true, fullName: true } },
       enrollments: {
         // Per-staff stats reflect only enrollments started within the range.
@@ -207,15 +217,23 @@ export async function getAuditorStaff(
     const completed = worker.enrollments.filter((e) =>
       ['completed', 'attested'].includes(e.status),
     ).length;
-    const lastActivity = worker.enrollments.find((e) => e.completedAt)?.completedAt ?? null;
+    // Enrollments are ordered by start date, so the newest completion is not
+    // necessarily the first one carrying a `completedAt` — take the maximum.
+    const lastCompletion = worker.enrollments.reduce<Date | null>(
+      (latest, e) =>
+        e.completedAt && (!latest || e.completedAt > latest) ? e.completedAt : latest,
+      null,
+    );
+    const roleDisplayName = getRoleDisplayName(worker.role);
 
     return {
       id: worker.id,
       name: worker.user.fullName ?? worker.user.email.split('@')[0],
       email: worker.user.email,
+      roleLabel: worker.jobTitle ? `${worker.jobTitle}/ ${roleDisplayName}` : roleDisplayName,
       coursesAssigned: total,
       coursesCompleted: completed,
-      lastActivity,
+      lastCompletion,
     };
   });
 }

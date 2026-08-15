@@ -22,7 +22,12 @@ vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), warn: mockWarn, error: vi.fn(), debug: vi.fn() },
 }));
 
-import { isOrgWideFacilityRole, listAccessibleFacilities, resolveFacilityScope } from './scope';
+import {
+  isOrgWideFacilityRole,
+  listAccessibleFacilities,
+  resolveFacilityScope,
+  resolveFacilityScopeSelection,
+} from './scope';
 
 const FACILITY_A = { id: 'fac-a', name: 'Alpha Site', type: 'clinic', city: 'Austin' };
 const FACILITY_B = { id: 'fac-b', name: 'Beta Site', type: 'clinic', city: 'Dallas' };
@@ -167,5 +172,88 @@ describe('resolveFacilityScope', () => {
     const result = await resolveFacilityScope(session({ role: 'supervisor' }), FACILITY_B.id);
 
     expect(result).toEqual({ mode: 'all' });
+  });
+});
+
+const FACILITY_C = { id: 'fac-c', name: 'Gamma Site', type: 'clinic', city: 'Houston' };
+
+describe('resolveFacilityScopeSelection', () => {
+  it('returns { mode: "all" } for an absent param without querying', async () => {
+    const result = await resolveFacilityScopeSelection(session(), undefined);
+
+    expect(result).toEqual({ mode: 'all' });
+    expect(mockFindMany).not.toHaveBeenCalled();
+  });
+
+  it('resolves a single accessible id to { mode: "single" }', async () => {
+    mockFindMany.mockResolvedValue([FACILITY_A, FACILITY_B]);
+
+    const result = await resolveFacilityScopeSelection(session(), FACILITY_B.id);
+
+    expect(result).toEqual({ mode: 'single', facility: FACILITY_B });
+  });
+
+  it('resolves two or more accessible ids to { mode: "compare" }', async () => {
+    mockFindMany.mockResolvedValue([FACILITY_A, FACILITY_B, FACILITY_C]);
+
+    const result = await resolveFacilityScopeSelection(
+      session(),
+      `${FACILITY_C.id},${FACILITY_A.id}`,
+    );
+
+    // Ordered by the accessible set (alphabetical), not by the URL's order.
+    expect(result).toEqual({ mode: 'compare', facilities: [FACILITY_A, FACILITY_C] });
+  });
+
+  it("drops ids outside the caller's accessible set and compares what remains", async () => {
+    mockFindMany.mockResolvedValue([FACILITY_A, FACILITY_B]);
+
+    const result = await resolveFacilityScopeSelection(
+      session(),
+      `${FACILITY_A.id},foreign-id,${FACILITY_B.id}`,
+    );
+
+    expect(result).toEqual({ mode: 'compare', facilities: [FACILITY_A, FACILITY_B] });
+    expect(mockWarn).toHaveBeenCalledWith(
+      expect.objectContaining({ msg: expect.stringContaining('not accessible') }),
+    );
+  });
+
+  it('narrows to { mode: "single" } when only one requested id survives the tenancy filter', async () => {
+    mockFindMany.mockResolvedValue([FACILITY_A]);
+
+    const result = await resolveFacilityScopeSelection(session(), `${FACILITY_A.id},foreign-id`);
+
+    expect(result).toEqual({ mode: 'single', facility: FACILITY_A });
+  });
+
+  it('falls back to { mode: "all" } when no requested id is accessible, never throwing', async () => {
+    mockFindMany.mockResolvedValue([FACILITY_A]);
+
+    const result = await resolveFacilityScopeSelection(session(), 'foreign-1,foreign-2');
+
+    expect(result).toEqual({ mode: 'all' });
+    expect(mockWarn).toHaveBeenCalled();
+  });
+
+  it('accepts a repeated param array as one comparison request', async () => {
+    mockFindMany.mockResolvedValue([FACILITY_A, FACILITY_B]);
+
+    const result = await resolveFacilityScopeSelection(session(), [FACILITY_A.id, FACILITY_B.id]);
+
+    expect(result).toEqual({ mode: 'compare', facilities: [FACILITY_A, FACILITY_B] });
+  });
+
+  it('never widens a supervisor beyond their assigned facilities', async () => {
+    // The supervisor's accessible query returns only FACILITY_A, so the second
+    // requested id cannot enter the comparison.
+    mockFindMany.mockResolvedValue([FACILITY_A]);
+
+    const result = await resolveFacilityScopeSelection(
+      session({ role: 'supervisor' }),
+      `${FACILITY_A.id},${FACILITY_B.id}`,
+    );
+
+    expect(result).toEqual({ mode: 'single', facility: FACILITY_A });
   });
 });

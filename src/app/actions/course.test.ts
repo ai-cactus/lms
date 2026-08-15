@@ -636,6 +636,7 @@ describe('getCourseById', () => {
       enrollments,
       creator: {
         userId: CREATOR_USER_ID,
+        organizationId: ORG_ID,
         user: { email: 'creator@example.com', fullName: 'Course Creator' },
       },
       ...overrides,
@@ -763,6 +764,27 @@ describe('getCourseById', () => {
 
     expect(result.enrollments).toHaveLength(1);
     expect(result.enrollments[0].organizationUser.userId).toBe('staff-a');
+  });
+
+  it.each(['owner', 'admin', 'hr', 'clinical_director', 'finance', 'supervisor'] as Role[])(
+    'a same-org manager (%s) who is neither creator nor enrolled can open the course (COU-002/COU-004)',
+    async (role) => {
+      const otherA = makeEnrollment('staff-a', 1);
+      mockCourseFindUnique.mockResolvedValue(makeCourse([otherA]));
+      setAdminSession('manager-viewer', role);
+
+      const result = await getCourseById('course-1');
+
+      expect(result.id).toBe('course-1');
+    },
+  );
+
+  it('a same-org WORKER who is neither creator nor enrolled is still denied (enrollment-gated)', async () => {
+    const otherA = makeEnrollment('staff-a', 1);
+    mockCourseFindUnique.mockResolvedValue(makeCourse([otherA]));
+    setWorkerSession('worker-browsing', 'nurse');
+
+    await expect(getCourseById('course-1')).rejects.toThrow('Course not found');
   });
 
   it('a user who is neither creator, admin, nor enrolled still gets "Course not found" (access gate unchanged)', async () => {

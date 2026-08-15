@@ -1,7 +1,16 @@
 'use client';
 
 import React, { useMemo, useRef, useState } from 'react';
-import { Check, ChevronLeft, Trash2, Upload, Download, FileSpreadsheet } from 'lucide-react';
+import {
+  Building2,
+  Check,
+  ChevronLeft,
+  Trash2,
+  Upload,
+  Download,
+  FileSpreadsheet,
+  X,
+} from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui';
@@ -21,10 +30,23 @@ import {
   buildStaffInviteCsvTemplate,
   summariseSkippedCsvRows,
 } from '@/lib/staff-csv';
+import { parseEmailList } from '@/lib/email-list';
 import { logger } from '@/lib/logger';
 import { useRouter } from 'next/navigation';
 import { groupRolesForSelect, GRANTABLE_ROLES } from '@/lib/rbac/role-utils';
 import type { Role } from '@/types/next-auth';
+
+/**
+ * The facility fields this modal renders. Kept structural (rather than reusing
+ * `AccessibleFacility`) so both mount points — the staff roster and Settings,
+ * which carry different facility shapes — can pass their list unchanged.
+ */
+export interface InviteFacilityOption {
+  id: string;
+  name: string;
+  type: string | null;
+  city?: string | null;
+}
 
 interface InviteStaffModalProps {
   isOpen: boolean;
@@ -45,6 +67,8 @@ interface InviteStaffModalProps {
    * for seat limits and duplicate handling.
    */
   existingEmails?: string[];
+  /** Facilities the inviter may target, listed under the always-present Global option. */
+  facilities: InviteFacilityOption[];
 }
 
 interface Contact {
@@ -56,31 +80,12 @@ interface Contact {
 
 type Step = 'input' | 'assign' | 'success';
 
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-function parseEmailText(text: string): { valid: string[]; invalidCount: number } {
-  const tokens = text
-    .split(/[\s,]+/)
-    .map((t) => t.trim())
-    .filter(Boolean);
-
-  const valid: string[] = [];
-  const seen = new Set<string>();
-  let invalidCount = 0;
-
-  for (const token of tokens) {
-    if (!EMAIL_REGEX.test(token)) {
-      invalidCount++;
-      continue;
-    }
-    const lower = token.toLowerCase();
-    if (seen.has(lower)) continue;
-    seen.add(lower);
-    valid.push(lower);
-  }
-
-  return { valid, invalidCount };
-}
+/**
+ * Sentinel for the org-wide option. Radix `Select` reserves the empty string for
+ * "nothing selected", so Global needs a value of its own; it maps to an explicit
+ * `facilityId: null` on the server.
+ */
+const GLOBAL_FACILITY_VALUE = '__global__';
 
 export default function InviteStaffModal({
   isOpen,
@@ -89,6 +94,7 @@ export default function InviteStaffModal({
   planName,
   inviterRole,
   existingEmails = [],
+  facilities,
 }: InviteStaffModalProps) {
   const router = useRouter();
   const roleGroups = useMemo(() => groupRolesForSelect(inviterRole), [inviterRole]);
@@ -99,6 +105,7 @@ export default function InviteStaffModal({
     [inviterRole],
   );
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const emailInputRef = useRef<HTMLInputElement>(null);
 
   const isLimitedPlan = remainingSeats !== null;
   const seatsExhausted = isLimitedPlan && remainingSeats === 0;
@@ -109,7 +116,11 @@ export default function InviteStaffModal({
   );
 
   const [step, setStep] = useState<Step>('input');
-  const [emailText, setEmailText] = useState('');
+  const [facilityChoice, setFacilityChoice] = useState('');
+  const [facilityError, setFacilityError] = useState<string | null>(null);
+  const [emails, setEmails] = useState<string[]>([]);
+  const [emailDraft, setEmailDraft] = useState('');
+  const [skippedCount, setSkippedCount] = useState(0);
   const [csvContacts, setCsvContacts] = useState<Contact[]>([]);
   const [csvFileName, setCsvFileName] = useState<string | null>(null);
   const [csvParsing, setCsvParsing] = useState(false);
@@ -120,12 +131,14 @@ export default function InviteStaffModal({
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [invitedCount, setInvitedCount] = useState(0);
 
-  const textParsed = useMemo(() => parseEmailText(emailText), [emailText]);
+  // Valid emails still sitting uncommitted in the chip input's draft text — they
+  // count immediately so Continue doesn't demand a trailing space/Enter first.
+  const draftParsed = useMemo(() => parseEmailList(emailDraft), [emailDraft]);
 
-  // Combined, de-duplicated importable emails from both the textarea and any CSV.
+  // Combined, de-duplicated importable emails from chips, draft text, and any CSV.
   const combinedEmails = useMemo(() => {
     const map = new Map<string, Contact>();
-    for (const email of textParsed.valid) {
+    for (const email of [...emails, ...draftParsed.valid]) {
       if (!map.has(email)) map.set(email, { email, role: '' });
     }
     for (const contact of csvContacts) {
@@ -134,11 +147,55 @@ export default function InviteStaffModal({
       if (!map.has(contact.email)) map.set(contact.email, { ...contact });
     }
     return [...map.values()];
-  }, [textParsed.valid, csvContacts]);
+  }, [emails, draftParsed.valid, csvContacts]);
+
+  const addEmailsFromText = (text: string) => {
+    const { valid, invalidCount } = parseEmailList(text);
+    if (valid.length > 0) {
+      setEmails((prev) => [...prev, ...valid.filter((email) => !prev.includes(email))]);
+    }
+    setSkippedCount(invalidCount);
+    return invalidCount === 0;
+  };
+
+  const commitEmailDraft = () => {
+    if (!emailDraft.trim()) return;
+    if (addEmailsFromText(emailDraft)) setEmailDraft('');
+  };
+
+  const handleEmailKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' || e.key === ',' || e.key === ' ') {
+      e.preventDefault();
+      commitEmailDraft();
+      return;
+    }
+    if (e.key === 'Backspace' && !emailDraft && emails.length > 0) {
+      setEmails((prev) => prev.slice(0, -1));
+    }
+  };
+
+  const handleEmailPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    addEmailsFromText(e.clipboardData.getData('text'));
+    setEmailDraft('');
+  };
+
+  const removeEmail = (email: string) => {
+    setEmails((prev) => prev.filter((entry) => entry !== email));
+  };
+
+  const selectedFacilityLabel =
+    facilityChoice === GLOBAL_FACILITY_VALUE
+      ? 'Global'
+      : (facilities.find((facility) => facility.id === facilityChoice)?.name ?? '');
 
   const resetState = () => {
     setStep('input');
-    setEmailText('');
+    setFacilityChoice('');
+    setFacilityError(null);
+    setEmails([]);
+    setEmailDraft('');
+    setSkippedCount(0);
     setCsvContacts([]);
     setCsvFileName(null);
     setCsvParsing(false);
@@ -236,6 +293,10 @@ export default function InviteStaffModal({
   };
 
   const goToAssign = () => {
+    if (!facilityChoice) {
+      setFacilityError('Select a facility before continuing.');
+      return;
+    }
     if (combinedEmails.length === 0) return;
     setContacts(combinedEmails);
     setMessage(null);
@@ -269,7 +330,11 @@ export default function InviteStaffModal({
 
     try {
       const items = contacts.map((c) => ({ email: c.email, role: c.role as Role }));
-      const result = await createInvites(items);
+      // `null` is the explicit "Global" marker — it tells the server not to fall
+      // back to the inviter's own facility.
+      const result = await createInvites(items, {
+        facilityId: facilityChoice === GLOBAL_FACILITY_VALUE ? null : facilityChoice,
+      });
 
       if (!result.success) {
         setMessage({ type: 'error', text: result.error || 'Failed to send invites' });
@@ -344,7 +409,7 @@ export default function InviteStaffModal({
         if (!open) handleClose();
       }}
     >
-      <DialogContent className="sm:max-w-[596px]" showCloseButton={step !== 'success'}>
+      <DialogContent className="sm:max-w-[643px]" showCloseButton={step !== 'success'}>
         {step === 'input' && (
           <div className="flex flex-col gap-5">
             <div className="flex flex-col gap-1">
@@ -358,23 +423,133 @@ export default function InviteStaffModal({
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label
-                htmlFor="invite-email-textarea"
-                className="text-sm font-medium text-foreground"
+              <label htmlFor="invite-facility" className="text-sm font-medium text-foreground">
+                Facility
+              </label>
+              <Select
+                value={facilityChoice}
+                onValueChange={(value) => {
+                  setFacilityChoice(value);
+                  setFacilityError(null);
+                }}
               >
+                <SelectTrigger
+                  id="invite-facility"
+                  aria-invalid={!!facilityError}
+                  className="h-11 w-full"
+                >
+                  <span className="flex min-w-0 items-center gap-2">
+                    <Building2 className="size-4 shrink-0 text-text-secondary" aria-hidden="true" />
+                    <SelectValue
+                      className={`truncate ${facilityChoice ? 'text-[#5C47FF]' : ''}`}
+                      placeholder="Select a facility"
+                    >
+                      {selectedFacilityLabel}
+                    </SelectValue>
+                  </span>
+                </SelectTrigger>
+                <SelectContent
+                  position="popper"
+                  align="start"
+                  sideOffset={-20}
+                  className="w-[var(--radix-select-trigger-width)] data-[side=bottom]:translate-y-0 flex flex-col gap-[1px]"
+                >
+                  <SelectItem
+                    value={GLOBAL_FACILITY_VALUE}
+                    className="py-[17px] px-[14px] cursor-pointer"
+                  >
+                    <span className="flex min-w-0 flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-2 w-full">
+                      <span
+                        className={`font-medium text-[15px] ${
+                          facilityChoice === GLOBAL_FACILITY_VALUE
+                            ? 'text-[#5C47FF]'
+                            : 'text-[#101928]'
+                        }`}
+                      >
+                        Global
+                      </span>
+                      <span className="text-[13px] text-[#667085]">
+                        &middot; For managerial roles including Admin, HR, Finance, Clinical/Quality
+                        Director
+                      </span>
+                    </span>
+                  </SelectItem>
+                  {facilities.map((facility) => {
+                    const meta = [facility.type, facility.city].filter(Boolean).join(' · ');
+                    return (
+                      <SelectItem
+                        key={facility.id}
+                        value={facility.id}
+                        className="py-[17px] px-[14px] cursor-pointer w-full"
+                      >
+                        <span className="flex min-w-0 flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-2">
+                          <span
+                            className={`font-medium text-[15px] ${
+                              facilityChoice === facility.id ? 'text-[#5C47FF]' : 'text-[#101928]'
+                            }`}
+                          >
+                            {facility.name}
+                          </span>
+                          {meta && (
+                            <span className="text-[13px] text-[#667085]">&middot; {meta}</span>
+                          )}
+                        </span>
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+              {facilityError && <p className="text-xs text-error">{facilityError}</p>}
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="invite-email-input" className="text-sm font-medium text-foreground">
                 Email address
               </label>
-              <textarea
-                id="invite-email-textarea"
-                value={emailText}
-                onChange={(e) => setEmailText(e.target.value)}
-                placeholder="Enter emails separated by commas, spaces, or new lines"
-                className="min-h-[110px] w-full resize-y rounded-[10px] border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none transition-[color,box-shadow] placeholder:text-text-secondary focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-              />
-              {(combinedEmails.length > 0 || textParsed.invalidCount > 0) && (
+              <div
+                onClick={() => emailInputRef.current?.focus()}
+                className="flex min-h-[110px] w-full cursor-text flex-wrap content-start items-start gap-2 rounded-[10px] border border-border bg-background p-3 transition-[color,box-shadow] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50"
+              >
+                {emails.map((email) => (
+                  <span
+                    key={email}
+                    className="flex max-w-full items-center gap-1.5 rounded-md border border-border bg-background-secondary px-2.5 py-1 text-sm text-foreground"
+                  >
+                    <span className="truncate">{email}</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeEmail(email);
+                      }}
+                      className="shrink-0 text-text-secondary transition-colors hover:text-error"
+                      aria-label={`Remove ${email}`}
+                    >
+                      <X className="size-3.5" aria-hidden="true" />
+                    </button>
+                  </span>
+                ))}
+                <input
+                  id="invite-email-input"
+                  ref={emailInputRef}
+                  type="text"
+                  value={emailDraft}
+                  onChange={(e) => setEmailDraft(e.target.value)}
+                  onKeyDown={handleEmailKeyDown}
+                  onBlur={commitEmailDraft}
+                  onPaste={handleEmailPaste}
+                  placeholder={
+                    emails.length === 0
+                      ? 'Enter emails separated by commas, spaces, or new lines'
+                      : ''
+                  }
+                  className="min-w-[140px] flex-1 border-none bg-transparent py-1 text-sm text-foreground outline-none placeholder:text-text-secondary"
+                />
+              </div>
+              {(combinedEmails.length > 0 || skippedCount > 0) && (
                 <p className="text-xs text-text-secondary">
                   {combinedEmails.length} valid email{combinedEmails.length !== 1 ? 's' : ''} found
-                  {textParsed.invalidCount > 0 ? ` • ${textParsed.invalidCount} skipped` : ''}
+                  {skippedCount > 0 ? ` • ${skippedCount} skipped — not a valid email address` : ''}
                 </p>
               )}
             </div>
@@ -490,12 +665,9 @@ export default function InviteStaffModal({
               </Select>
             </div>
 
-            <div className="flex max-h-[320px] flex-col gap-2 overflow-y-auto">
+            <div className="flex max-h-[320px] flex-col gap-0 divide-y divide-border overflow-y-auto overflow-x-hidden rounded-lg border border-border">
               {contacts.map((contact) => (
-                <div
-                  key={contact.email}
-                  className="flex items-center gap-3 rounded-lg border border-border p-3"
-                >
+                <div key={contact.email} className="flex items-center gap-3 p-3">
                   <div className="flex min-w-0 flex-1 flex-col">
                     <span className="truncate text-sm font-medium text-foreground">
                       {contact.name ?? contact.email}
@@ -519,7 +691,7 @@ export default function InviteStaffModal({
                     className="shrink-0 text-text-secondary transition-colors hover:text-error"
                     aria-label={`Remove ${contact.email}`}
                   >
-                    <Trash2 className="size-4" aria-hidden="true" />
+                    <X className="size-4" aria-hidden="true" />
                   </button>
                 </div>
               ))}
@@ -548,7 +720,7 @@ export default function InviteStaffModal({
                 loading={isLoading}
                 disabled={!allAssigned || (seatsExhausted && isLimitedPlan)}
               >
-                Continue
+                {`Invite ${contacts.length} staff${contacts.length === 1 ? '' : 's'}`}
               </Button>
             </div>
           </div>
@@ -566,12 +738,12 @@ export default function InviteStaffModal({
                 Invite sent
               </DialogTitle>
               <DialogDescription className="text-sm text-text-secondary">
-                {`${invitedCount} ${invitedCount === 1 ? 'person has' : 'people have'} been invited.`}{' '}
-                They&apos;ll get an email to join and start their assigned training.
+                {`${invitedCount} staff${invitedCount === 1 ? '' : 's'} invited.`} They&apos;ll get
+                an email to join and start their assigned training.
               </DialogDescription>
             </div>
             <Button variant="default" type="button" className="w-full" onClick={handleClose}>
-              Done
+              Okay
             </Button>
           </div>
         )}

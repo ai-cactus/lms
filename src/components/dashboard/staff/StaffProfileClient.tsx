@@ -15,7 +15,10 @@ import EmptyTableState from '@/components/ui/EmptyTableState';
 import { RowActionsMenu } from '@/components/ui';
 import Link from 'next/link';
 import Image from 'next/image';
-import AssignUserCourseModal from './AssignUserCourseModal';
+import AssignCoursesModal from './AssignCoursesModal';
+import ChangeFacilityModal from './ChangeFacilityModal';
+import type { AccessibleFacility } from '@/lib/facility/scope';
+import { getRoleDisplayName } from '@/lib/rbac/role-utils';
 import AssignRetakeModal from '../training/AssignRetakeModal';
 import CertificateModal from '../training/CertificateModal';
 import QuizResults from '@/components/dashboard/training/QuizResults';
@@ -28,6 +31,7 @@ import { logger } from '@/lib/logger';
 import { cn } from '@/lib/utils';
 import {
   ArrowLeft,
+  Building2,
   User,
   X,
   BookOpen,
@@ -38,7 +42,6 @@ import {
   Check,
   BadgeCheck,
   Award,
-  ClipboardList,
   RotateCcw,
   Plus,
   Search,
@@ -53,7 +56,9 @@ interface StaffProfileClientProps {
       name: string;
       email: string;
       avatarUrl: string | null;
+      role: string;
       jobTitle: string;
+      facilityName: string | null;
     };
     stats: {
       totalCourses: number;
@@ -81,6 +86,7 @@ interface StaffProfileClientProps {
     }[];
   };
   viewerRole: Role;
+  facilities: AccessibleFacility[];
 }
 
 const headCls = 'h-10 px-[18px] text-[15.5px] font-medium tracking-[0.31px] text-[#666d80]';
@@ -151,20 +157,29 @@ const STAT_CARDS = [
   },
 ] as const;
 
-export default function StaffProfileClient({ staff, viewerRole }: StaffProfileClientProps) {
+export default function StaffProfileClient({
+  staff,
+  viewerRole,
+  facilities,
+}: StaffProfileClientProps) {
   // NOTE: `user.id` here is the OrganizationUser (membership) id, not the global
   // identity id — getStaffDetails maps orgUser.id onto this field. Everything
   // downstream of it is membership-scoped.
   const { user, stats, enrollments } = staff;
 
-  // Assigning a course is a roster mutation: view-only roles (Finance, Clinical
-  // Director) can read a profile but must not see the affordance. The server
-  // action enforces the same gate — this only hides dead-end UI.
+  // Moving a member between facilities is a roster mutation, so it stays on
+  // `user.edit`. Assigning courses is an assignment write and follows the gate
+  // `assignCoursesToUser` enforces — a Clinical Director may assign training
+  // without holding any roster-edit rights. Both only hide dead-end UI; the
+  // server actions are authoritative.
   const canEdit = can(dbRoleToRoleKey(viewerRole), 'user.edit');
+  const canAssignCourses = can(dbRoleToRoleKey(viewerRole), 'assignment.create');
 
   const [searchQuery, setSearchQuery] = useState('');
   const [certificateSearchQuery, setCertificateSearchQuery] = useState('');
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
+  const [isChangeFacilityOpen, setIsChangeFacilityOpen] = useState(false);
+  const canChangeFacility = canEdit && facilities.length > 0 && user.role !== 'owner';
   const [retakeEnrollment, setRetakeEnrollment] = useState<{
     id: string;
     courseName: string;
@@ -284,18 +299,34 @@ export default function StaffProfileClient({ staff, viewerRole }: StaffProfileCl
                 <span className="truncate">{user.email}</span>
               </div>
               <span className="w-fit rounded-[6px] bg-[#eafdf5] px-[12.4px] py-[5px] text-[12.4px] leading-[20.667px] font-semibold text-[#59904b]">
-                {user.jobTitle || 'Direct Support Professional (DSP)'}
+                {[getRoleDisplayName(user.role as Role) || user.jobTitle, user.facilityName]
+                  .filter(Boolean)
+                  .join(', ')}
               </span>
             </div>
 
-            {canEdit && (
-              <Button
-                onClick={() => setIsAssignModalOpen(true)}
-                className="h-12 shrink-0 gap-2 rounded-[12px] px-6 text-[15.5px] font-semibold tracking-[-0.31px]"
-              >
-                <Plus className="size-[25px]" />
-                Assign Course
-              </Button>
+            {(canAssignCourses || canChangeFacility) && (
+              <div className="flex shrink-0 flex-wrap items-center gap-3">
+                {canChangeFacility && (
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsChangeFacilityOpen(true)}
+                    className="h-12 gap-2 rounded-[12px] px-6 text-[15.5px] font-semibold tracking-[-0.31px]"
+                  >
+                    <Building2 className="size-5" />
+                    Change Facility
+                  </Button>
+                )}
+                {canAssignCourses && (
+                  <Button
+                    onClick={() => setIsAssignModalOpen(true)}
+                    className="h-12 gap-2 rounded-[12px] px-6 text-[15.5px] font-semibold tracking-[-0.31px]"
+                  >
+                    <Plus className="size-[25px]" />
+                    Assign Course
+                  </Button>
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -390,8 +421,19 @@ export default function StaffProfileClient({ staff, viewerRole }: StaffProfileCl
               const showDueChip =
                 !isComplete && !!enrollment.dueAt && isDueUrgent(enrollment.dueAt);
 
+              const isLoadingResult = loadingEnrollmentId === enrollment.id;
+
               return (
-                <TableRow key={enrollment.id}>
+                <TableRow
+                  key={enrollment.id}
+                  onClick={
+                    hasResult && !isLoadingResult
+                      ? () => handleViewResult(enrollment.id)
+                      : undefined
+                  }
+                  aria-busy={isLoadingResult}
+                  className={cn(hasResult && 'cursor-pointer')}
+                >
                   <TableCell className={cn(cellCls, 'px-3 md:px-[18px]')}>
                     <div className="flex items-center gap-3 md:gap-[18px]">
                       <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[#f1f5f9]">
@@ -492,9 +534,12 @@ export default function StaffProfileClient({ staff, viewerRole }: StaffProfileCl
                     )}
                   </TableCell>
 
-                  <TableCell className={cn(cellCls, 'px-3 md:px-5')}>
+                  <TableCell
+                    className={cn(cellCls, 'px-3 md:px-5')}
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <div className="flex items-center justify-end gap-2 md:gap-3">
-                      {isLocked ? (
+                      {isLocked && (
                         <Button
                           variant="link"
                           className={cn(rowLinkCls, 'text-[#d92d20] hover:text-[#d92d20]')}
@@ -507,32 +552,14 @@ export default function StaffProfileClient({ staff, viewerRole }: StaffProfileCl
                         >
                           Retry
                         </Button>
-                      ) : (
-                        hasResult && (
-                          <Button
-                            variant="link"
-                            className={rowLinkCls}
-                            onClick={() => handleViewResult(enrollment.id)}
-                            loading={loadingEnrollmentId === enrollment.id}
-                          >
-                            View
-                          </Button>
-                        )
                       )}
                       <RowActionsMenu
                         className="size-8 text-[#7f838f]"
                         label={`Actions for ${enrollment.courseName}`}
                         actions={[
                           {
-                            label: 'View Result',
-                            icon: <ClipboardList className="size-4" />,
-                            disabled: !hasResult || loadingEnrollmentId === enrollment.id,
-                            onSelect: () => handleViewResult(enrollment.id),
-                          },
-                          {
                             label: 'Assign Retake',
                             icon: <RotateCcw className="size-4" />,
-                            separatorBefore: true,
                             // Retakes only exist for locked enrollments (quiz
                             // attempts exhausted) — assignRetake rejects any
                             // other status, so don't offer it.
@@ -586,29 +613,33 @@ export default function StaffProfileClient({ staff, viewerRole }: StaffProfileCl
             <TableHeader>
               <TableRow className="border-0 hover:bg-transparent">
                 <TableHead
-                  className={cn(headCls, 'w-full rounded-l-[9px] px-3 md:w-[48%] md:px-[18px]')}
+                  className={cn(
+                    headCls,
+                    'w-full rounded-l-[9px] rounded-r-[9px] px-3 sm:rounded-r-none md:w-[57%] md:px-[18px]',
+                  )}
                 >
                   Certificates/Courses
                 </TableHead>
                 <TableHead className={cn(headCls, 'hidden md:table-cell md:w-[27%]')}>
                   Completion Date
                 </TableHead>
-                <TableHead className={cn(headCls, 'hidden sm:table-cell sm:w-[160px] md:w-[16%]')}>
-                  Status
-                </TableHead>
                 <TableHead
                   className={cn(
                     headCls,
-                    'w-[92px] rounded-r-[9px] px-3 text-right md:w-[9%] md:px-5',
+                    'hidden sm:table-cell sm:w-[160px] sm:rounded-r-[9px] md:w-[16%]',
                   )}
                 >
-                  <span className="sr-only">Action</span>
+                  Status
                 </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredCertificates.map((certificate) => (
-                <TableRow key={certificate.id}>
+                <TableRow
+                  key={certificate.id}
+                  onClick={() => setViewingCertificateId(certificate.id)}
+                  className="cursor-pointer"
+                >
                   <TableCell className={cn(cellCls, 'px-3 md:px-[18px]')}>
                     <div className="flex items-center gap-3 md:gap-[18px]">
                       <span className="flex size-10 shrink-0 items-center justify-center rounded-[10px] border border-[#e4e7ec] bg-white text-[#e0a712]">
@@ -630,25 +661,13 @@ export default function StaffProfileClient({ staff, viewerRole }: StaffProfileCl
                       Approved
                     </span>
                   </TableCell>
-
-                  <TableCell className={cn(cellCls, 'px-3 md:px-5')}>
-                    <div className="flex justify-end">
-                      <Button
-                        variant="link"
-                        className={rowLinkCls}
-                        onClick={() => setViewingCertificateId(certificate.id)}
-                      >
-                        View
-                      </Button>
-                    </div>
-                  </TableCell>
                 </TableRow>
               ))}
               {filteredCertificates.length === 0 && (
                 <EmptyTableState
                   message="No certificates found."
                   subMessage="This staff member has not earned any certificates yet."
-                  colSpan={4}
+                  colSpan={3}
                   asTableRow
                 />
               )}
@@ -657,15 +676,24 @@ export default function StaffProfileClient({ staff, viewerRole }: StaffProfileCl
         )}
       </section>
 
-      <AssignUserCourseModal
+      <ChangeFacilityModal
+        isOpen={isChangeFacilityOpen}
+        onClose={() => setIsChangeFacilityOpen(false)}
+        member={{
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          avatarUrl: user.avatarUrl,
+          currentFacilityName: user.facilityName,
+        }}
+        facilities={facilities}
+      />
+
+      <AssignCoursesModal
         isOpen={isAssignModalOpen}
         onClose={() => setIsAssignModalOpen(false)}
         staffOrgUserId={user.id}
-        userName={user.name}
-        enrolledCourseIds={enrollments.map((e) => e.courseId)}
-        onSuccess={() => {
-          window.location.reload();
-        }}
+        staffName={user.name}
       />
 
       <AssignRetakeModal

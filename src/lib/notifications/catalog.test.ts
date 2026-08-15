@@ -12,8 +12,13 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
+  ALWAYS_ON_NOTIFICATION_CATEGORY,
   ENGINE_EVENTS,
+  NOTIFICATION_CATEGORIES,
+  NOTIFICATION_CATEGORY_DEFAULTS,
+  NOTIFICATION_CATEGORY_META,
   NOTIFICATION_TYPES,
+  categoryForNotificationType,
   notificationTypesFor,
   type NotificationEngineType,
 } from './catalog';
@@ -132,5 +137,44 @@ describe('notificationTypesFor — audience filtering', () => {
       const entry = NOTIFICATION_TYPES.find((t) => t.key === type);
       expect(entry?.audience).toBe('admin');
     }
+  });
+});
+
+/**
+ * SET-004: the Settings → Notification category table switches delivery per
+ * category, so every catalog type must be classified and every category the UI
+ * renders must have a default.
+ */
+describe('notification categories', () => {
+  it('classifies every catalog type into a known category', () => {
+    for (const meta of NOTIFICATION_TYPES) {
+      expect(NOTIFICATION_CATEGORIES).toContain(meta.category);
+      expect(categoryForNotificationType(meta.key)).toBe(meta.category);
+    }
+  });
+
+  it('returns null for a type the catalog does not know, so it stays ungated', () => {
+    expect(categoryForNotificationType('SOMETHING_UNCLASSIFIED')).toBeNull();
+  });
+
+  it('routes the engine types to the categories the settings table advertises', () => {
+    expect(categoryForNotificationType('STAFF_ADDED')).toBe('workforce');
+    expect(categoryForNotificationType('ROLE_FALLBACK_TRIGGERED')).toBe('workforce');
+    expect(categoryForNotificationType('DOCUMENT_UPLOADED')).toBe('documentation');
+    expect(categoryForNotificationType('COMPLIANCE_LICENSE_EXPIRING')).toBe('reports');
+    expect(categoryForNotificationType('COURSE_ASSIGNED')).toBe('training');
+  });
+
+  it('gives every rendered category a row of copy and a shipped default', () => {
+    expect(NOTIFICATION_CATEGORY_META.map((meta) => meta.key)).toEqual([
+      ...NOTIFICATION_CATEGORIES,
+    ]);
+    for (const category of NOTIFICATION_CATEGORIES) {
+      expect(NOTIFICATION_CATEGORY_DEFAULTS[category]).toBeDefined();
+    }
+  });
+
+  it('keeps the always-on category inside the known set', () => {
+    expect(NOTIFICATION_CATEGORIES).toContain(ALWAYS_ON_NOTIFICATION_CATEGORY);
   });
 });

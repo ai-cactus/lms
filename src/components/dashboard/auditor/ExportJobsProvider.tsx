@@ -1,25 +1,40 @@
 'use client';
 
-import { createContext, useContext, useCallback, useEffect, useRef, useState } from 'react';
+import {
+  createContext,
+  useContext,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
 import { useJobStatus, type JobPollResult } from '@/hooks/use-job-status';
 
 export type ExportScope = 'org' | 'course' | 'staff' | 'all-courses' | 'all-staff';
 
+/** Noun the export banners count, derived from the scope by the caller. */
+export type ExportEntity = 'course' | 'staff';
+
 export interface ExportJob {
   id: string;
   label: string;
   scope: ExportScope;
+  entity: ExportEntity;
+  /** Rows the export covers, used for the banner headline ("Exporting 48 Courses…"). */
+  count: number;
   status: 'processing' | 'completed' | 'failed';
   progress: number;
-  downloaded: boolean;
 }
 
 interface StartArgs {
   scope: ExportScope;
   scopeId?: string;
   label: string;
+  entity: ExportEntity;
+  count: number;
   // Optional date-range filter (YYYY-MM-DD); threaded to the export worker so
   // the generated report only covers enrollments started within the period.
   from?: string;
@@ -28,15 +43,21 @@ interface StartArgs {
 
 interface ExportJobsContextValue {
   jobs: ExportJob[];
+  /** The single in-flight export, if any. Exports are blocked while it runs. */
+  activeJob: ExportJob | null;
+  /** The export that finished during this session, cleared when a new one starts. */
+  completedJob: ExportJob | null;
   startExport: (args: StartArgs) => Promise<void>;
   downloadJob: (jobId: string) => void;
 }
 
-const STORAGE_KEY = 'auditReportExportJobs';
+// v2: the stored shape gained `entity`/`count` for the banner headlines, so v1
+// entries are deliberately abandoned rather than migrated.
+const STORAGE_KEY = 'auditReportExportJobs.v2';
 const ExportJobsContext = createContext<ExportJobsContextValue | null>(null);
 
 function downloadUrl(jobId: string): string {
-  return `/api/auditor/export/${jobId}/download?format=pdf`;
+  return `/api/auditor/export/${jobId}/download?format=csv`;
 }
 
 function triggerBrowserDownload(jobId: string) {
@@ -104,23 +125,19 @@ function ExportJobWatcher({
 
 export function ExportJobsProvider({ children }: { children: React.ReactNode }) {
   const [jobs, setJobs] = useState<ExportJob[]>([]);
-  // Latest jobs snapshot so the finalize callbacks can read a job's label
-  // without re-subscribing (avoids a stale closure).
-  const jobsRef = useRef<ExportJob[]>(jobs);
-  // Job IDs that have already been downloaded/toasted so we never fire twice
-  // (guards against StrictMode double-mounts and repeat terminal observations).
+  // Which finished job the success banner is showing. Session-scoped on purpose:
+  // a restored job from a previous visit must not resurrect a stale banner.
+  const [completedJobId, setCompletedJobId] = useState<string | null>(null);
+  // Job IDs that have already been finalized so we never settle twice (guards
+  // against StrictMode double-mounts and repeat terminal observations).
   const finalizedRef = useRef<Set<string>>(new Set());
-
-  useEffect(() => {
-    jobsRef.current = jobs;
-  }, [jobs]);
 
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) setJobs(JSON.parse(raw) as ExportJob[]);
     } catch (e) {
-      logger.error({ msg: 'Failed to load export jobs', err: e });
+      logger.error({ msg: '[auditor] Failed to load export jobs', err: e });
     }
   }, []);
 
@@ -149,64 +166,60 @@ export function ExportJobsProvider({ children }: { children: React.ReactNode }) 
     if (finalizedRef.current.has(jobId)) return;
     finalizedRef.current.add(jobId);
 
-    const label = jobsRef.current.find((j) => j.id === jobId)?.label ?? 'Export';
-
     if (outcome === 'completed') {
       setJobs((prev) =>
-        prev.map((j) =>
-          j.id === jobId ? { ...j, status: 'completed', progress: 100, downloaded: true } : j,
-        ),
+        prev.map((j) => (j.id === jobId ? { ...j, status: 'completed', progress: 100 } : j)),
       );
-      triggerBrowserDownload(jobId);
-      toast.success(`${label} is ready`, {
-        description: 'Your PDF has been downloaded.',
-        action: {
-          label: 'Download again',
-          onClick: () => triggerBrowserDownload(jobId),
-        },
-        duration: 10000,
-      });
-    } else {
-      setJobs((prev) => prev.map((j) => (j.id === jobId ? { ...j, status: 'failed' } : j)));
-      toast.error(`${label} failed`, { description: 'Please try again.' });
+      setCompletedJobId(jobId);
+      return;
     }
+
+    setJobs((prev) => {
+      const label = prev.find((j) => j.id === jobId)?.label ?? 'Export';
+      toast.error(`${label} failed`, { description: 'Please try again.' });
+      return prev.map((j) => (j.id === jobId ? { ...j, status: 'failed' } : j));
+    });
   }, []);
 
   const startExport = useCallback(async (args: StartArgs) => {
+    const { entity, count, ...payload } = args;
     try {
-      toast.loading(`Preparing ${args.label}…`, {
-        id: `start-${args.scopeId ?? args.scope}`,
-        duration: 2000,
-      });
       const res = await fetch('/api/auditor/export/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(args),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error(`Start failed (${res.status})`);
       const data = (await res.json()) as { jobId: string };
+      setCompletedJobId(null);
       setJobs((prev) => [
         ...prev,
         {
           id: data.jobId,
           label: args.label,
           scope: args.scope,
+          entity,
+          count,
           status: 'processing',
           progress: 0,
-          downloaded: false,
         },
       ]);
-      toast.success('Export started', {
-        description: 'We will download it automatically when ready.',
-      });
     } catch (e) {
-      logger.error({ msg: 'Failed to start export', err: e });
+      logger.error({ msg: '[auditor] Failed to start export', err: e });
       toast.error('Could not start export', { description: 'Please try again.' });
     }
   }, []);
 
+  const value = useMemo<ExportJobsContextValue>(() => {
+    const activeJob = jobs.find((j) => j.status === 'processing') ?? null;
+    const completedJob =
+      (completedJobId && jobs.find((j) => j.id === completedJobId && j.status === 'completed')) ||
+      null;
+    return { jobs, activeJob, completedJob, startExport, downloadJob };
+  }, [jobs, completedJobId, startExport, downloadJob]);
+
   return (
-    <ExportJobsContext.Provider value={{ jobs, startExport, downloadJob }}>
+    <ExportJobsContext.Provider value={value}>
       {jobs
         .filter((j) => j.status === 'processing')
         .map((j) => (

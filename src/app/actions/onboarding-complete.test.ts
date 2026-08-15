@@ -25,6 +25,8 @@ const { mockAuth, mockSendInviteEmail, mockLoggerWarn, mockCreateMembership, txM
       organization: { findFirst: vi.fn(), create: vi.fn() },
       facility: { create: vi.fn() },
       facilityDocument: { createMany: vi.fn() },
+      // Every new org is seeded with the default Document Hub vocabulary.
+      documentCategory: { createMany: vi.fn() },
       user: { findUnique: vi.fn() },
       invite: { create: vi.fn() },
     };
@@ -60,6 +62,7 @@ vi.mock('@/lib/logger', () => ({
 
 import { completeOnboarding, type OnboardingData } from './onboarding-complete';
 import prisma from '@/lib/prisma';
+import { DEFAULT_DOCUMENT_CATEGORIES } from '@/lib/documents/document-categories';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -189,6 +192,15 @@ describe('completeOnboarding — Organization/Facility split', () => {
       organizationId: 'org-1',
       facilityId: 'facility-1',
       role: 'owner',
+    });
+  });
+
+  it('seeds the new organization with the default Document Hub categories, in the same transaction', async () => {
+    await completeOnboarding(BASE_DATA);
+
+    expect(txMock.documentCategory.createMany).toHaveBeenCalledExactlyOnceWith({
+      data: DEFAULT_DOCUMENT_CATEGORIES.map((name) => ({ organizationId: 'org-1', name })),
+      skipDuplicates: true,
     });
   });
 

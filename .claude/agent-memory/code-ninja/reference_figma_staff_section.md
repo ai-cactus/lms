@@ -29,6 +29,16 @@ Figma file `cySAabdYLDKzwbs88owBHn`, STAFF section. Key frames:
 - Certificates rows use a colour medal emoji illustration; the kit equivalent is lucide `Award`
   in a tinted tile (see [[reference-figma-lms-v2]] for the no-inline-svg rule).
 
+**Roster list frame — the five columns do not fit at `lg`.** The design is drawn at 1440, where
+the table gets 1026px. At **1024** the shell (280 sidebar + 46×2 + card 21×2) leaves only
+**608px**, which cannot hold Name + Role + Facility + Date + Action. Fixed px widths there
+starve Name down to its avatar (names and emails vanish entirely) — the fix is to drop **Date
+Added** between lg and xl (`hidden sm:table-cell lg:hidden xl:table-cell`) and to size the
+columns by **percentage from xl up** (Role/Facility 17%, Date 15%, Action 18%, Name takes the
+33% remainder) so 1280 and 1440 both stay balanced. Fixed px at xl looks fine at 1440 and
+breaks at 1280 — always measure both. The "View profile" link is `hidden xl:inline-flex`
+because its ~121px cluster has no room below xl.
+
 Measured tokens unique to this frame (rest is the standard kit): red deadline chip
 `bg #fff1f1 / text #d31616`; Attested + Approved pill `bg #eaf2fc / text #0e69f3`;
 plain deadline text `#525252`, plain completion date `#3e4558`.

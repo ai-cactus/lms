@@ -5,9 +5,11 @@ import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
 import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
 import { can } from '@/lib/rbac/permissions';
+import { getDocumentCategories } from '@/app/actions/document-categories';
 import { Button } from '@/components/ui/button';
 import UploadSection from './upload-section';
 import DocumentListClient from './DocumentListClient';
+import { UploadProgressProvider } from './upload-progress-context';
 
 export const metadata = {
   title: 'Documents | Theraptly LMS',
@@ -55,8 +57,9 @@ export default async function DocumentsPage() {
   }
 
   const canCreate = can(roleKey, 'document.create');
-  const canEdit = can(roleKey, 'document.edit');
   const canDelete = can(roleKey, 'document.delete');
+
+  const categories = await getDocumentCategories();
 
   const docs = await prisma.document.findMany({
     where: { organizationUser: { organizationId } },
@@ -76,25 +79,27 @@ export default async function DocumentsPage() {
   });
 
   return (
-    <div className="mx-auto flex w-full max-w-[1400px] flex-col">
-      <header className="mb-[30px] flex flex-col gap-[5px]">
-        <div className="flex items-center gap-4">
-          <h1 className="min-w-0 flex-1 text-[28px] leading-[1.31] font-semibold tracking-[-0.04em] text-[#272b30] sm:text-[33.5px]">
-            Documents
-          </h1>
-          {canCreate && <UploadSection />}
-        </div>
-        <p className="text-sm leading-tight font-medium text-[#a0aec0]">
-          Documents and attachments that have been uploaded are displayed here
-        </p>
-      </header>
+    <UploadProgressProvider>
+      <div className="mx-auto flex w-full max-w-[1400px] flex-col">
+        <header className="mb-[30px] flex flex-col gap-[5px]">
+          <div className="flex items-center gap-4">
+            <h1 className="min-w-0 flex-1 text-[28px] leading-[1.31] font-semibold tracking-[-0.04em] text-[#272b30] sm:text-[33.5px]">
+              Documents
+            </h1>
+            {canCreate && <UploadSection categories={categories} />}
+          </div>
+          <p className="text-sm leading-tight font-medium text-[#a0aec0]">
+            Documents and attachments that have been uploaded are displayed here
+          </p>
+        </header>
 
-      <DocumentListClient
-        initialDocs={docs}
-        canUpload={canCreate}
-        canEdit={canEdit}
-        canDelete={canDelete}
-      />
-    </div>
+        <DocumentListClient
+          initialDocs={docs}
+          canUpload={canCreate}
+          canDelete={canDelete}
+          categories={categories}
+        />
+      </div>
+    </UploadProgressProvider>
   );
 }

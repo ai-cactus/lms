@@ -6,7 +6,12 @@
  */
 import { describe, expect, it } from 'vitest';
 import { FACILITY_TYPE_OPTIONS, OTHER_FACILITY_TYPE } from '@/lib/facility/facility-type-options';
-import { joinFacilityTypes, parseFacilityTypes } from './FacilityTypeMultiSelect';
+import {
+  facilityTypeChips,
+  facilityTypeList,
+  joinFacilityTypes,
+  parseFacilityTypes,
+} from './FacilityTypeMultiSelect';
 
 const [TYPE_A, TYPE_B, TYPE_C] = FACILITY_TYPE_OPTIONS;
 
@@ -39,6 +44,45 @@ describe('parseFacilityTypes', () => {
 
   it('treats a legacy single canonical value as one selection', () => {
     expect(parseFacilityTypes(TYPE_A)).toEqual({ types: [TYPE_A], otherText: '' });
+  });
+
+  // SET-005 renamed "Telehealth-Only Behavioral Health Provider" to drop the
+  // "-Only". Rows stored under the old label must keep rendering, which the
+  // existing free-text passthrough already covers — no data migration needed.
+  it('surfaces a retired option label as the Other free text', () => {
+    expect(parseFacilityTypes('Telehealth-Only Behavioral Health Provider')).toEqual({
+      types: [OTHER_FACILITY_TYPE],
+      otherText: 'Telehealth-Only Behavioral Health Provider',
+    });
+  });
+});
+
+describe('facilityTypeList', () => {
+  it('lists canonical selections in registry order with the trimmed custom text last', () => {
+    expect(
+      facilityTypeList({ types: [TYPE_C, TYPE_A, OTHER_FACILITY_TYPE], otherText: ' Annex ' }),
+    ).toEqual([TYPE_A, TYPE_C, 'Annex']);
+  });
+
+  it('omits the sentinel when its text is blank', () => {
+    expect(facilityTypeList({ types: [TYPE_A, OTHER_FACILITY_TYPE], otherText: '  ' })).toEqual([
+      TYPE_A,
+    ]);
+  });
+});
+
+describe('facilityTypeChips', () => {
+  it('keeps a checked-but-blank Other visible so the selection never vanishes mid-edit', () => {
+    expect(facilityTypeChips({ types: [TYPE_A, OTHER_FACILITY_TYPE], otherText: '' })).toEqual([
+      { label: TYPE_A, option: TYPE_A },
+      { label: OTHER_FACILITY_TYPE, option: OTHER_FACILITY_TYPE },
+    ]);
+  });
+
+  it('labels the Other chip with its free text once typed', () => {
+    expect(facilityTypeChips({ types: [OTHER_FACILITY_TYPE], otherText: ' Annex ' })).toEqual([
+      { label: 'Annex', option: OTHER_FACILITY_TYPE },
+    ]);
   });
 });
 

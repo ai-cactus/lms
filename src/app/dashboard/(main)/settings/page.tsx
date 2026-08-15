@@ -8,8 +8,10 @@ import { BILLING_PLANS } from '@/lib/billing-plans';
 import { ADMIN_ROLES, dbRoleToRoleKey } from '@/lib/rbac/role-utils';
 import { can } from '@/lib/rbac/permissions';
 import SettingsClient, {
+  type SettingsFacility,
   type SettingsTeamMember,
 } from '@/components/dashboard/settings/SettingsClient';
+import { getNotificationCategoryPreferences } from '@/lib/notifications/category-preferences';
 import type { Role } from '@/types/next-auth';
 
 export const dynamic = 'force-dynamic';
@@ -76,12 +78,13 @@ export default async function SettingsPageRoute() {
   const [
     members,
     adminInvites,
-    facility,
+    orgFacilities,
     subscription,
     workerCount,
     pendingInviteCount,
     allMembers,
     organization,
+    categoryPreferences,
   ] = await Promise.all([
     // Admin-tier team members (owner + managers) shown on Users & Permissions.
     prisma.organizationUser.findMany({
@@ -105,9 +108,25 @@ export default async function SettingsPageRoute() {
       select: { id: true, email: true, role: true },
       orderBy: { createdAt: 'desc' },
     }),
-    prisma.facility.findFirst({
+    // Every facility in the org, each with its active supervisor. The nested
+    // read keeps this to one extra query rather than one per card.
+    prisma.facility.findMany({
       where: { organizationId },
-      select: { id: true, name: true, type: true },
+      select: {
+        id: true,
+        name: true,
+        type: true,
+        address: true,
+        userFacilities: {
+          where: { active: true, organizationUser: { active: true, role: 'supervisor' } },
+          select: {
+            organizationUser: { select: { user: { select: { fullName: true, email: true } } } },
+          },
+          orderBy: { joinedAt: 'asc' },
+          take: 1,
+        },
+      },
+      orderBy: { createdAt: 'asc' },
     }),
     prisma.subscription.findUnique({
       where: { organizationId },
@@ -132,7 +151,20 @@ export default async function SettingsPageRoute() {
       where: { id: organizationId },
       select: { notificationDigestFrequency: true },
     }),
+    getNotificationCategoryPreferences(organizationId),
   ]);
+
+  const facilities: SettingsFacility[] = orgFacilities.map((facility) => {
+    const supervisor = facility.userFacilities[0]?.organizationUser.user ?? null;
+    return {
+      id: facility.id,
+      name: facility.name,
+      type: facility.type,
+      address: facility.address,
+      supervisorName: supervisor?.fullName || null,
+      supervisorEmail: supervisor?.email ?? null,
+    };
+  });
 
   const activeMembers: SettingsTeamMember[] = members.map((member) => ({
     id: member.id,
@@ -174,12 +206,13 @@ export default async function SettingsPageRoute() {
   return (
     <SettingsClient
       teamMembers={[...activeMembers, ...pendingMembers]}
-      facility={facility}
+      facilities={facilities}
       planName={planName}
       inviterRole={role as Role}
       remainingSeats={remainingSeats}
       existingEmails={existingEmails}
       digestFrequency={organization?.notificationDigestFrequency ?? 'daily'}
+      categoryPreferences={categoryPreferences}
     />
   );
 }

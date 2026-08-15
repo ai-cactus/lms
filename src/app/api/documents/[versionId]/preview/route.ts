@@ -1,6 +1,8 @@
 import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
 import { getDocumentSignedUrl } from '@/app/actions/storage';
+import { can } from '@/lib/rbac/permissions';
+import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
 import { logger } from '@/lib/logger';
 import { audit, getClientContext } from '@/lib/audit';
 
@@ -17,10 +19,20 @@ export async function GET(
 
   const version = await prisma.documentVersion.findUnique({
     where: { id: versionId },
-    include: { document: true },
+    include: {
+      document: { include: { organizationUser: { select: { organizationId: true } } } },
+    },
   });
 
-  if (!version || version.document.organizationUserId !== session.user.organizationUserId) {
+  // Uploader always; otherwise any same-org member holding document.read (the
+  // documents-page gate) — an admin/HR must be able to preview a colleague's
+  // upload. Cross-org access stays a 404.
+  const isUploader = version?.document.organizationUserId === session.user.organizationUserId;
+  const isSameOrgReader =
+    version?.document.organizationUser?.organizationId === session.user.organizationId &&
+    can(dbRoleToRoleKey(session.user.role), 'document.read');
+
+  if (!version || (!isUploader && !isSameOrgReader)) {
     return new Response('Not found', { status: 404 });
   }
 

@@ -1,11 +1,15 @@
+import type { Prisma } from '@/generated/prisma/client';
+
 /**
- * Classifications offered when uploading to the Document Hub.
+ * The classification vocabulary every organization starts with.
  *
- * `Document.category` is a nullable free-form string, so this list drives the
- * picker only — documents uploaded before categories existed, or with the field
- * left blank, stay valid.
+ * This list is the SEED SOURCE only — the pickers and the hub filter read the
+ * organization's own `DocumentCategory` rows, which members extend from the
+ * upload modal. Changing this list only affects organizations created from now
+ * on; existing ones were seeded by the `add_org_document_categories` migration,
+ * which carries the same values (keep the two in step).
  */
-export const DOCUMENT_CATEGORIES = [
+export const DEFAULT_DOCUMENT_CATEGORIES = [
   'HR',
   'Compliance',
   'Clinical',
@@ -14,4 +18,31 @@ export const DOCUMENT_CATEGORIES = [
   'Other',
 ] as const;
 
-export type DocumentCategory = (typeof DOCUMENT_CATEGORIES)[number];
+/**
+ * Label of the picker entry that opens the "name a new category" step.
+ *
+ * It doubles as a seeded category name, so the picker renders it exactly once —
+ * as the add-new affordance — rather than offering a literal "Other" bucket
+ * alongside it.
+ */
+export const OTHER_CATEGORY_OPTION = 'Other';
+
+/** Longest category name accepted from the custom-category input. */
+export const MAX_DOCUMENT_CATEGORY_LENGTH = 60;
+
+/**
+ * Give a freshly created organization the default vocabulary.
+ *
+ * Runs inside the caller's transaction so a failed onboarding never leaves an
+ * organization half-seeded. `skipDuplicates` makes it safe to re-run against an
+ * organization that already has some of these names.
+ */
+export async function seedDefaultDocumentCategories(
+  organizationId: string,
+  tx: Prisma.TransactionClient,
+): Promise<void> {
+  await tx.documentCategory.createMany({
+    data: DEFAULT_DOCUMENT_CATEGORIES.map((name) => ({ organizationId, name })),
+    skipDuplicates: true,
+  });
+}

@@ -1,24 +1,19 @@
+import Image from 'next/image';
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { isAdminRole } from '@/lib/rbac/role-utils';
-import { Circle } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
-import { getAuditorOverviewStats, getAuditorCourses } from '@/app/actions/auditor';
+import { getAuditorOverviewStats } from '@/app/actions/auditor';
+import { Button } from '@/components/ui/button';
 import AuditorPackClient from '@/components/dashboard/auditor/AuditorPackClient';
-import AuditorBillingGateWrapper from './AuditorBillingGateWrapper';
-import { logger } from '@/lib/logger';
+import { auditPageSubtitle, auditPageTitle } from '@/components/dashboard/auditor/audit-ui';
 
 export const metadata = {
   title: 'Audit Reports | Theraptly LMS',
   description: 'Real-time compliance monitoring and audit reporting for your organization.',
 };
-
-function getGreeting(): string {
-  const hour = new Date().getHours();
-  if (hour < 12) return 'Good Morning';
-  if (hour < 17) return 'Good Afternoon';
-  return 'Good Evening';
-}
 
 export default async function AuditorPackPage() {
   const session = await auth();
@@ -33,74 +28,54 @@ export default async function AuditorPackPage() {
     redirect('/dashboard');
   }
 
-  const [user, organization] = await Promise.all([
-    prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { firstName: true, hasSeenAuditorWelcome: true },
-    }),
-    organizationId
-      ? prisma.organization.findUnique({
-          where: { id: organizationId },
-          select: { hasAuditorAccess: true },
-        })
-      : null,
-  ]);
-
-  const firstName = user?.firstName ?? 'there';
-  const hasAccess = organization?.hasAuditorAccess ?? false;
-  const showBanner = hasAccess && !user?.hasSeenAuditorWelcome;
-
-  if (showBanner) {
-    // Mark as seen for future visits
-    prisma.user
-      .update({
-        where: { id: session.user.id },
-        data: { hasSeenAuditorWelcome: true },
+  const organization = organizationId
+    ? await prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: { hasAuditorAccess: true },
       })
-      .catch((e) => logger.error({ msg: 'Failed to update welcome flag', err: e }));
-  }
+    : null;
 
-  // Pre-fetch data server-side so initial render is instant (only if has access)
-  const [initialStats, initialCourses] = hasAccess
-    ? await Promise.all([getAuditorOverviewStats(), getAuditorCourses()])
-    : [{ totalCourses: 0, totalStaffAssigned: 0, completionRate: 0 }, []];
+  const hasAccess = organization?.hasAuditorAccess ?? false;
 
   if (!hasAccess) {
     return (
       <div className="flex flex-col gap-10">
         <div className="flex flex-col gap-[5px]">
-          <h1 className="text-[28px] font-semibold leading-[1.31] tracking-[-0.04em] text-[#272b30] sm:text-[33.5px]">
-            Audit Reports
-          </h1>
-          <p className="text-[14px] font-medium leading-none text-[#a0aec0]">
-            Generate a scannable evidence document for auditors.
-          </p>
+          <h1 className={auditPageTitle}>Audit Reports</h1>
+          <p className={auditPageSubtitle}>Generate a scannable evidence document for auditors.</p>
         </div>
-        <AuditorBillingGateWrapper />
+
+        <div className="flex flex-1 flex-col items-center justify-center px-4 py-10">
+          <div className="flex w-full max-w-[420px] flex-col items-center gap-5">
+            <Image
+              src="/images/audit-empty-state.svg"
+              alt=""
+              width={187}
+              height={150}
+              aria-hidden="true"
+              className="h-[150px] w-auto md:h-[188px]"
+            />
+            <div className="flex flex-col gap-1.5 text-center">
+              <p className="text-[20px] font-semibold leading-[1.32] text-[#11181c] md:text-[22px]">
+                Billing required for reports
+              </p>
+              <p className="text-[15px] leading-[1.45] text-[#475367]">
+                Subscribe to a plan to generate Audit Reports.
+              </p>
+            </div>
+            <Button asChild className="h-11 gap-2 rounded-[8px] px-5 text-[14px] font-semibold">
+              <Link href="/dashboard/billing">
+                Select a plan
+                <ChevronRight className="size-4" aria-hidden="true" />
+              </Link>
+            </Button>
+          </div>
+        </div>
       </div>
     );
   }
 
-  return (
-    <div>
-      {showBanner && (
-        <div className="relative mb-8 flex min-h-[180px] flex-col justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-primary to-[#3a2fd8] px-6 py-8 text-white sm:px-12 sm:py-10">
-          <div className="pointer-events-none absolute -right-5 -top-5 opacity-15" aria-hidden>
-            <Circle className="size-48" strokeWidth={20} />
-          </div>
-          <p className="mb-1.5 text-sm opacity-90">
-            {getGreeting()}, {firstName}!
-          </p>
-          <h2 className="mb-2.5 max-w-[540px] text-[28px] font-bold leading-tight">
-            Welcome to Your Auditor Workspace!
-          </h2>
-          <p className="max-w-[480px] text-sm leading-relaxed opacity-85">
-            Generate scannable evidence documents for auditors based on your learning management.
-          </p>
-        </div>
-      )}
+  const stats = await getAuditorOverviewStats();
 
-      <AuditorPackClient initialStats={initialStats} initialCourses={initialCourses} />
-    </div>
-  );
+  return <AuditorPackClient stats={stats} />;
 }

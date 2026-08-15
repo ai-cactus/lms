@@ -1,19 +1,20 @@
 /**
  * Shared document-lifecycle status vocabulary.
  *
- * The document list and the document detail page both describe where a document
- * sits in its lifecycle. They MUST agree on the same wording, so this helper is
- * the single source of truth: a document is either freshly "Uploaded" or has
- * been "Converted to Course" once at least one course has been generated from
- * (any version of) it.
+ * Status describes the UPLOAD, not the downstream course pipeline: a document
+ * is "In progress" only while its bytes are still being uploaded (a client-side
+ * state the list shows optimistically), and "Completed" once it is persisted.
+ * Every document the server returns is therefore completed by definition.
+ *
+ * Whether a document went on to generate a course is a separate fact, surfaced
+ * on the document detail page only — see `DOCUMENT_CONVERTED_LABEL`.
  */
-export type DocumentLifecycleStatus = 'uploaded' | 'converted';
+export type DocumentLifecycleStatus = 'in_progress' | 'completed';
 
 export const DOCUMENT_STATUS_LABELS: Record<DocumentLifecycleStatus, string> = {
-  uploaded: 'Uploaded',
-  converted: 'Converted to Course',
+  in_progress: 'In progress',
+  completed: 'Completed',
 };
 
-export function deriveDocumentStatus(hasLinkedCourse: boolean): DocumentLifecycleStatus {
-  return hasLinkedCourse ? 'converted' : 'uploaded';
-}
+/** Detail-page-only wording for a document that has generated a course. */
+export const DOCUMENT_CONVERTED_LABEL = 'Converted to Course';

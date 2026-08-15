@@ -15,9 +15,10 @@ const { mockAuth, prismaMock, mockRedirect, makeSession } = vi.hoisted(() => ({
   prismaMock: {
     organizationUser: { findMany: vi.fn(), count: vi.fn() },
     invite: { findMany: vi.fn(), count: vi.fn() },
-    facility: { findFirst: vi.fn() },
+    facility: { findMany: vi.fn() },
     subscription: { findUnique: vi.fn() },
     organization: { findUnique: vi.fn() },
+    notificationCategoryPreference: { findMany: vi.fn() },
   },
   mockRedirect: vi.fn(() => {
     throw new Error('NEXT_REDIRECT');
@@ -41,18 +42,19 @@ vi.mock('next/navigation', () => ({ redirect: mockRedirect }));
 vi.mock('@/components/dashboard/settings/SettingsClient', () => ({
   default: ({
     teamMembers,
-    facility,
+    facilities,
     planName,
     inviterRole,
   }: {
     teamMembers: Array<{ email: string }>;
-    facility: { name: string } | null;
+    facilities: Array<{ name: string; supervisorName: string | null }>;
     planName: string;
     inviterRole: string;
   }) => (
     <div data-testid="settings-client">
-      members {teamMembers.length} / facility {facility?.name ?? 'none'} / plan {planName || 'none'}{' '}
-      / role {inviterRole}
+      members {teamMembers.length} / facility{' '}
+      {facilities.map((f) => `${f.name}:${f.supervisorName ?? 'none'}`).join(', ') || 'none'} / plan{' '}
+      {planName || 'none'} / role {inviterRole}
     </div>
   ),
 }));
@@ -67,13 +69,20 @@ beforeEach(() => {
   // both; tests that care queue a `mockResolvedValueOnce` for the first call.
   prismaMock.organizationUser.findMany.mockResolvedValue([]);
   prismaMock.invite.findMany.mockResolvedValue([]);
-  prismaMock.facility.findFirst.mockResolvedValue({
-    id: 'facility-1',
-    name: 'Acme Clinic',
-    type: 'clinic',
-  });
+  prismaMock.facility.findMany.mockResolvedValue([
+    {
+      id: 'facility-1',
+      name: 'Acme Clinic',
+      type: 'clinic',
+      address: '1 Main St',
+      userFacilities: [
+        { organizationUser: { user: { fullName: 'Sasha Supervisor', email: 'sup@acme.com' } } },
+      ],
+    },
+  ]);
   prismaMock.subscription.findUnique.mockResolvedValue({ plan: 'growth', status: 'active' });
   prismaMock.organization.findUnique.mockResolvedValue({ notificationDigestFrequency: 'daily' });
+  prismaMock.notificationCategoryPreference.findMany.mockResolvedValue([]);
   prismaMock.organizationUser.count.mockResolvedValue(3);
   prismaMock.invite.count.mockResolvedValue(0);
 });
@@ -94,7 +103,9 @@ describe('SettingsPageRoute — organization.edit gate', () => {
     const element = await SettingsPageRoute();
     render(element);
 
-    expect(screen.getByTestId('settings-client')).toHaveTextContent('facility Acme Clinic');
+    expect(screen.getByTestId('settings-client')).toHaveTextContent(
+      'facility Acme Clinic:Sasha Supervisor',
+    );
     expect(screen.getByTestId('settings-client')).toHaveTextContent(`role ${role}`);
     expect(screen.queryByText(/don.t have access to settings/i)).not.toBeInTheDocument();
   });
@@ -114,7 +125,7 @@ describe('SettingsPageRoute — organization.edit gate', () => {
         '/dashboard',
       );
       // Denial happens before any organization-scoped queries fire.
-      expect(prismaMock.facility.findFirst).not.toHaveBeenCalled();
+      expect(prismaMock.facility.findMany).not.toHaveBeenCalled();
     },
   );
 
@@ -126,7 +137,7 @@ describe('SettingsPageRoute — organization.edit gate', () => {
 
     expect(screen.getByText(/no organization found/i)).toBeInTheDocument();
     expect(screen.queryByTestId('settings-client')).not.toBeInTheDocument();
-    expect(prismaMock.facility.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.facility.findMany).not.toHaveBeenCalled();
   });
 });
 

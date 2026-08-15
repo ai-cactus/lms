@@ -384,7 +384,13 @@ export async function getDocuments() {
 
 ---
 
-### 3. PHI Error Modal — `src/components/dashboard/courses/PhiErrorModal.tsx`
+### 3. PHI Error Modal — REMOVED
+
+> **Removed in the course-wizard design alignment.** The rebuilt module-upload
+> step (`Step2Modules`) surfaces a PHI rejection inline on the failing upload
+> slot instead of in a modal, so `PhiErrorModal.tsx` had no remaining callers
+> and was deleted. The gate itself is unchanged — only the presentation. The
+> section below is kept for historical reference.
 
 Modal displayed when PHI is detected during course wizard document upload.
 

@@ -115,10 +115,9 @@ async function cleanupTestUser(seeded: SeededUser): Promise<void> {
   try {
     await db.query(`DELETE FROM mfa_recovery_codes WHERE user_id = $1`, [seeded.userId]);
     await db.query(`DELETE FROM mfa_factors WHERE user_id = $1`, [seeded.userId]);
-    await db.query(
-      `DELETE FROM organization_user_facilities WHERE organization_user_id = $1`,
-      [seeded.orgUserId],
-    );
+    await db.query(`DELETE FROM organization_user_facilities WHERE organization_user_id = $1`, [
+      seeded.orgUserId,
+    ]);
     await db.query(`DELETE FROM organization_users WHERE id = $1`, [seeded.orgUserId]);
     await db.query(`DELETE FROM users WHERE id = $1`, [seeded.userId]);
     await db.query(`DELETE FROM facilities WHERE id = $1`, [seeded.facilityId]);
@@ -220,7 +219,8 @@ function trackMainFrameNavigations(page: Page): string[] {
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-test.describe.serial('2FA consolidation: the money test — exactly one challenge, no /verify-2fa bounce', () => {
+test.describe
+  .serial('2FA consolidation: the money test — exactly one challenge, no /verify-2fa bounce', () => {
   let seeded: SeededUser;
   const seenMailHogIds = new Set<string>();
 
@@ -242,7 +242,7 @@ test.describe.serial('2FA consolidation: the money test — exactly one challeng
     await page.goto('/dashboard/profile');
     await page.waitForLoadState('networkidle');
 
-    await page.getByRole('tab', { name: /two factor auth/i }).click();
+    await page.getByRole('tab', { name: 'Two-factor Authentication' }).click();
     await page.getByRole('button', { name: /set up 2fa/i }).click();
     await expect(page.getByRole('heading', { name: /check your email/i })).toBeVisible({
       timeout: 15000,

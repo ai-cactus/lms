@@ -37,13 +37,20 @@ vi.mock('@/lib/logger', () => ({
 
 describe("course-ai-v4.6 'use server' surface", () => {
   /**
-   * The only two functions that should be reachable as actions:
+   * The only functions that should be reachable as actions:
    *   generateCourseAndQuizV46 — gates on scanText before creating a Job
    *   checkCourseGenerationJobV46 — job status polling
+   *   startModuleGenerationJobs — 9-step wizard batch wrapper; every module is
+   *     routed through generateCourseAndQuizV46, so auth, rate limiting, and
+   *     the PHI scan all still apply per module
    */
-  const ALLOWED_ACTIONS = ['checkCourseGenerationJobV46', 'generateCourseAndQuizV46'];
+  const ALLOWED_ACTIONS = [
+    'checkCourseGenerationJobV46',
+    'generateCourseAndQuizV46',
+    'startModuleGenerationJobs',
+  ];
 
-  it('exports only the two intended entry points as callable actions', async () => {
+  it('exports only the intended entry points as callable actions', async () => {
     const mod: Record<string, unknown> = await import('./course-ai-v4.6');
 
     const exportedFunctions = Object.keys(mod)

@@ -86,7 +86,7 @@ export default function ChangeFacilityModal({
         if (!open) close();
       }}
     >
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[614px]">
         {step === 'select' ? (
           <>
             <DialogHeader>
@@ -129,28 +129,44 @@ export default function ChangeFacilityModal({
               value={targetId}
               onValueChange={setTargetId}
               aria-label="Target facility"
-              className="gap-2"
+              // One bordered container for the whole list (per the design) —
+              // rows are separated by dividers, not individually boxed.
+              className="gap-0 divide-y divide-border overflow-hidden rounded-xl border border-border"
             >
-              {facilities.map((facility) => (
-                <label
-                  key={facility.id}
-                  className={cn(
-                    'flex cursor-pointer items-start gap-3 rounded-xl border p-3.5 transition-colors hover:bg-accent',
-                    facility.id === targetId ? 'border-primary bg-primary/5' : 'border-border',
-                  )}
-                >
-                  <RadioGroupItem value={facility.id} className="mt-1" />
-                  <span className="flex min-w-0 flex-col gap-0.5">
-                    <span className="truncate text-sm font-semibold text-foreground">
-                      {facility.name}
+              {facilities.map((facility) => {
+                const meta =
+                  [facility.type, facility.city].filter(Boolean).join(' · ') ||
+                  'No type or city recorded';
+                return (
+                  // `min-w-0` is load-bearing: the label is a grid item (RadioGroup
+                  // is `grid`), whose default `min-width: auto` would let a long
+                  // comma-joined type string push past the card instead of
+                  // truncating.
+                  <label
+                    key={facility.id}
+                    className={cn(
+                      'flex min-w-0 cursor-pointer items-center gap-3 p-3.5 transition-colors',
+                      facility.id === targetId ? 'bg-primary/5' : 'hover:bg-accent',
+                    )}
+                  >
+                    <RadioGroupItem value={facility.id} />
+                    <span className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                      <span
+                        className={cn(
+                          'truncate text-sm font-semibold',
+                          facility.id === targetId ? 'text-primary' : 'text-foreground',
+                        )}
+                        title={facility.name}
+                      >
+                        {facility.name}
+                      </span>
+                      <span className="truncate text-xs text-text-secondary" title={meta}>
+                        &bull; {meta}
+                      </span>
                     </span>
-                    <span className="truncate text-xs text-text-secondary">
-                      {[facility.type, facility.city].filter(Boolean).join(' · ') ||
-                        'No type or city recorded'}
-                    </span>
-                  </span>
-                </label>
-              ))}
+                  </label>
+                );
+              })}
             </RadioGroup>
 
             <p className="text-sm text-text-secondary">
@@ -161,8 +177,13 @@ export default function ChangeFacilityModal({
 
             {error && <Alert variant="error">{error}</Alert>}
 
-            <DialogFooter>
-              <Button variant="ghost" type="button" onClick={close}>
+            <DialogFooter className="grid grid-cols-2 gap-3 sm:flex sm:justify-end">
+              <Button
+                variant="outline"
+                type="button"
+                onClick={close}
+                className="h-12 w-full border border-[#E4E7EC] bg-white sm:w-[178px]"
+              >
                 Cancel
               </Button>
               <Button
@@ -172,8 +193,9 @@ export default function ChangeFacilityModal({
                   setError(null);
                   setStep('confirm');
                 }}
+                className="h-12 w-full sm:w-[178px]"
               >
-                Continue
+                Change facility
               </Button>
             </DialogFooter>
           </>
@@ -181,29 +203,36 @@ export default function ChangeFacilityModal({
           <>
             <DialogHeader>
               <DialogTitle>
-                Switch &ldquo;{member.name || member.email}&rdquo; from &ldquo;
-                {member.currentFacilityName ?? 'No facility'}&rdquo; to &ldquo;{target?.name}
-                &rdquo;?
+                Switch &ldquo;{member.name || member.email}&rdquo; from{' '}
+                <span className="text-[#5C47FF]">
+                  &ldquo;
+                  {member.currentFacilityName ?? 'No facility'}&rdquo;{' '}
+                  <span className="text-[#202020]">to</span> &ldquo;
+                  {target?.name}
+                  &rdquo;?
+                </span>
               </DialogTitle>
-              <DialogDescription>
-                {
-                  "The staff's training records will be preserved. All completed courses and certificates will remain accessible on this profile."
-                }
-              </DialogDescription>
+              <DialogDescription>Are you sure you want to perform this action ?</DialogDescription>
             </DialogHeader>
 
             {error && <Alert variant="error">{error}</Alert>}
 
-            <DialogFooter>
+            <DialogFooter className="grid grid-cols-2 gap-3 sm:flex sm:justify-end">
               <Button
-                variant="ghost"
+                variant="outline"
                 type="button"
                 onClick={() => setStep('select')}
                 disabled={isSaving}
+                className="h-12 w-full border border-[#E4E7EC] bg-white sm:w-[178px]"
               >
                 Cancel
               </Button>
-              <Button type="button" onClick={handleConfirm} loading={isSaving}>
+              <Button
+                type="button"
+                onClick={handleConfirm}
+                loading={isSaving}
+                className="h-12 w-full sm:w-[178px]"
+              >
                 Switch facility
               </Button>
             </DialogFooter>

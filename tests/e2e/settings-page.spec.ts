@@ -7,8 +7,8 @@
  *   - A non-owner admin (hr) gets the styled access-denied card at
  *     /dashboard/settings AND does not see the "Settings" nav item at all.
  *   - Saving the Facility tab's name/type persists via `updateFacility` (DB
- *     row updated), matching the "Your Facility" persistence pattern already
- *     covered for /dashboard/profile in rbac-facility-tab.spec.ts.
+ *     row updated). The same action backs the supervisor's own-facility form on
+ *     /dashboard/profile, covered in rbac-facility-tab.spec.ts.
  *
  * Pre-conditions:
  *   - App running on http://localhost:3005.
@@ -167,6 +167,14 @@ test.describe('Settings page — Facility tab persistence', () => {
 
       await page.getByRole('tab', { name: /^facility$/i }).click();
 
+      // The tab is now a card per facility; editing happens in the shared
+      // create/update modal opened from the card's Edit link.
+      await page
+        .getByRole('button', { name: /^edit$/i })
+        .first()
+        .click();
+      await expect(page.getByRole('heading', { name: 'Update facility' })).toBeVisible();
+
       // "Facility name" is a real <Input> — Field's id-clone reaches its DOM
       // node correctly here (unlike the Select-based "Facility type" field).
       const nameInput = page.getByLabel('Facility name');
@@ -184,7 +192,7 @@ test.describe('Settings page — Facility tab persistence', () => {
         (resp) => resp.url().includes('/dashboard/settings') && resp.status() === 200,
         { timeout: 10000 },
       );
-      await page.getByRole('button', { name: /save changes/i }).click();
+      await page.getByRole('button', { name: /update facility/i }).click();
       await responsePromise;
 
       await expect(page.getByText(/facility updated/i)).toBeVisible({ timeout: 10000 });
@@ -289,9 +297,12 @@ test.describe('Settings page — Add Facility (multi-facility v3)', () => {
       await addFacilityDialog
         .getByPlaceholder('e.g. Sunrise Behavioral Health')
         .fill(newFacilityName);
-      await addFacilityDialog
-        .getByRole('checkbox', { name: 'Private Practice / Group Practice' })
-        .click();
+      // The type panel's checkboxes render in a Radix Popover portal appended
+      // to <body>, outside the dialog's own DOM subtree — open via the
+      // dialog-scoped trigger, then query the checkboxes from `page`.
+      await addFacilityDialog.getByRole('button', { name: 'Facility type' }).click();
+      await page.getByRole('checkbox', { name: 'Private Practice / Group Practice' }).click();
+      await addFacilityDialog.getByRole('button', { name: 'Facility type' }).click();
 
       const responsePromise = page.waitForResponse(
         (resp) => resp.url().includes('/dashboard/settings') && resp.status() === 200,
@@ -358,14 +369,18 @@ test.describe('Settings page — Add Facility (multi-facility v3)', () => {
       await addFacilityDialog
         .getByPlaceholder('e.g. Sunrise Behavioral Health')
         .fill(newFacilityName);
-      await addFacilityDialog
-        .getByRole('checkbox', { name: 'Community Mental Health Center' })
-        .click();
-      await addFacilityDialog
+      // The type panel (checkboxes + the "Other (specify)" row, itself a
+      // checkbox — not a separate button) renders in a Radix Popover portal
+      // appended to <body> — open via the dialog-scoped trigger, then query
+      // from `page`.
+      await addFacilityDialog.getByRole('button', { name: 'Facility type' }).click();
+      await page.getByRole('checkbox', { name: 'Community Mental Health Center' }).click();
+      await page
         .getByRole('checkbox', { name: 'Behavioral Health Hospital / Psychiatric Hospital' })
         .click();
-      await addFacilityDialog.getByRole('button', { name: 'Other (specify)' }).click();
-      await addFacilityDialog.getByPlaceholder('Describe the facility type').fill(otherType);
+      await page.getByRole('checkbox', { name: 'Other (specify)' }).click();
+      await page.getByPlaceholder('Describe the facility type').fill(otherType);
+      await addFacilityDialog.getByRole('button', { name: 'Facility type' }).click();
 
       const responsePromise = page.waitForResponse(
         (resp) => resp.url().includes('/dashboard/settings') && resp.status() === 200,
@@ -414,9 +429,12 @@ test.describe('Settings page — Add Facility (multi-facility v3)', () => {
       await addFacilityDialog
         .getByPlaceholder('e.g. Sunrise Behavioral Health')
         .fill(newFacilityName);
-      await addFacilityDialog
-        .getByRole('checkbox', { name: 'Private Practice / Group Practice' })
-        .click();
+      // The type panel's checkboxes render in a Radix Popover portal appended
+      // to <body>, outside the dialog's own DOM subtree — open via the
+      // dialog-scoped trigger, then query the checkboxes from `page`.
+      await addFacilityDialog.getByRole('button', { name: 'Facility type' }).click();
+      await page.getByRole('checkbox', { name: 'Private Practice / Group Practice' }).click();
+      await addFacilityDialog.getByRole('button', { name: 'Facility type' }).click();
 
       await addFacilityDialog.getByRole('button', { name: 'Show supervisors' }).click();
       // The Popover's content is rendered in a Radix portal appended to
@@ -483,9 +501,12 @@ test.describe('Settings page — Add Facility (multi-facility v3)', () => {
       await addFacilityDialog
         .getByPlaceholder('e.g. Sunrise Behavioral Health')
         .fill(newFacilityName);
-      await addFacilityDialog
-        .getByRole('checkbox', { name: 'Private Practice / Group Practice' })
-        .click();
+      // The type panel's checkboxes render in a Radix Popover portal appended
+      // to <body>, outside the dialog's own DOM subtree — open via the
+      // dialog-scoped trigger, then query the checkboxes from `page`.
+      await addFacilityDialog.getByRole('button', { name: 'Facility type' }).click();
+      await page.getByRole('checkbox', { name: 'Private Practice / Group Practice' }).click();
+      await addFacilityDialog.getByRole('button', { name: 'Facility type' }).click();
       await addFacilityDialog
         .getByPlaceholder('e.g. supervisor@yourfacility.com')
         .fill(unknownEmail);
@@ -562,7 +583,7 @@ test.describe('Settings page — Notifications tab persistence', () => {
       await page.goto('/dashboard/settings');
       await page.waitForLoadState('networkidle');
 
-      await page.getByRole('tab', { name: /^notifications$/i }).click();
+      await page.getByRole('tab', { name: /^notification$/i }).click();
 
       // A freshly-seeded organization defaults to daily; assert the starting
       // state before changing it, so the persistence check below is meaningful.
@@ -596,7 +617,7 @@ test.describe('Settings page — Notifications tab persistence', () => {
       // value rather than relying on client-side form state.
       await page.reload();
       await page.waitForLoadState('networkidle');
-      await page.getByRole('tab', { name: /^notifications$/i }).click();
+      await page.getByRole('tab', { name: /^notification$/i }).click();
       await expect(page.getByRole('radio', { name: /^weekly/i })).toBeChecked();
     } finally {
       await cleanup(seeded);
@@ -611,7 +632,7 @@ test.describe('Settings page — Notifications tab persistence', () => {
       await page.goto('/dashboard/settings');
       await page.waitForLoadState('networkidle');
 
-      await expect(page.getByRole('tab', { name: /^notifications$/i })).not.toBeVisible();
+      await expect(page.getByRole('tab', { name: /^notification$/i })).not.toBeVisible();
       await expect(page.getByText(/don.t have access to settings/i)).toBeVisible();
     } finally {
       await cleanup(seeded);

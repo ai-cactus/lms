@@ -12,8 +12,7 @@
  * roles or touches onboarding.
  */
 
-/** Same email shape used by the manual invite-chip input, kept consistent. */
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+import { isValidEmail } from '@/lib/email-list';
 
 /** Header label the downloadable template uses and the parser detects. */
 export const STAFF_CSV_EMAIL_HEADER = 'email';
@@ -127,7 +126,7 @@ export function extractStaffEmailsFromRows(
 
     const lower = raw.toLowerCase();
 
-    if (!EMAIL_REGEX.test(raw)) {
+    if (!isValidEmail(raw)) {
       result.push({ email: raw, valid: false, error: 'Invalid email format' });
       continue;
     }
@@ -326,7 +325,7 @@ export function extractManagerInvitesFromRows(
       skipped.push({ row: rowNumber, reason: 'missing_email' });
       continue;
     }
-    if (!EMAIL_REGEX.test(rawEmail)) {
+    if (!isValidEmail(rawEmail)) {
       invalidEmailCount++;
       skipped.push({ row: rowNumber, reason: 'invalid_email', email: rawEmail });
       continue;

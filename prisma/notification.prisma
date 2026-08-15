@@ -49,9 +49,29 @@ enum NotificationEventStatus {
 }
 
 /// How often an organization's batched (Tier 2) notifications are emailed.
+/// `realtime` opts out of batching entirely — digest-tier events are dispatched
+/// at emit time exactly like Tier 1.
 enum DigestFrequency {
   daily
   weekly
+  realtime
+}
+
+/// Org-wide delivery switches per notification category (see the `category`
+/// field on the notification catalog). Absence of a row means the category's
+/// shipped default applies, so a new organization needs no backfill.
+model NotificationCategoryPreference {
+  id             String       @id @default(uuid())
+  organizationId String       @map("organization_id")
+  category       String
+  emailEnabled   Boolean      @default(true) @map("email_enabled")
+  inAppEnabled   Boolean      @default(true) @map("in_app_enabled")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, category])
+  @@map("notification_category_preferences")
 }
 
 /// Outbox row for a single engine notification. Deliberately FK-free (mirroring

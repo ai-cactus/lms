@@ -136,14 +136,19 @@ test.describe('Staff invite — 2-step modal, submit to success', () => {
       await page.getByRole('button', { name: /add staff/i }).first().click();
       await page.waitForSelector('[role="dialog"]', { timeout: 5000 });
 
-      // Step 1 — email entry.
+      // Step 1 — email entry. Facility is required before Continue advances.
       await expect(page.getByText('Invite New Staffs')).toBeVisible();
+      await page.getByRole('combobox', { name: 'Facility' }).click();
+      await page.getByRole('option', { name: /^global/i }).click();
       await page.getByPlaceholder(/enter emails separated by/i).fill(inviteeEmail);
       await expect(page.getByRole('button', { name: /^continue$/i })).toBeEnabled();
       await page.getByRole('button', { name: /^continue$/i }).click();
 
-      // Step 2 — assign a role to the single parsed contact.
-      await expect(page.getByText('Assign roles')).toBeVisible();
+      // Step 2 — assign a role to the single parsed contact. Exact heading
+      // match — the step-1 description paragraph ("...so you can assign
+      // roles.") contains the same words and would otherwise satisfy a loose
+      // getByText('Assign roles') even while still stuck on step 1.
+      await expect(page.getByRole('heading', { name: 'Assign roles', exact: true })).toBeVisible();
       await expect(page.getByText(inviteeEmail)).toBeVisible();
 
       // Per-contact role Select is the SECOND combobox on this step (the first
@@ -151,13 +156,15 @@ test.describe('Staff invite — 2-step modal, submit to success', () => {
       await page.getByRole('combobox').nth(1).click();
       await page.getByRole('option', { name: /^nurse$/i }).click();
 
-      const continueBtn = page.getByRole('button', { name: /^continue$/i });
-      await expect(continueBtn).toBeEnabled();
-      await continueBtn.click();
+      // The step-2 submit button reads "Invite N staff(s)", not "Continue" —
+      // it's the same button used to advance step 1, just relabeled.
+      const inviteBtn = page.getByRole('button', { name: /^invite \d+ staffs?$/i });
+      await expect(inviteBtn).toBeEnabled();
+      await inviteBtn.click();
 
       // Step 3 — success screen.
       await expect(page.getByText('Invite sent')).toBeVisible({ timeout: 10000 });
-      await page.getByRole('button', { name: /^done$/i }).click();
+      await page.getByRole('button', { name: /^okay$/i }).click();
 
       // Modal closes; the staff table (refreshed via router.refresh()) now
       // shows the invitee with a "Pending" badge.
@@ -202,6 +209,9 @@ test.describe('Staff invite — 2-step modal, submit to success', () => {
       await page.getByRole('button', { name: /add staff/i }).first().click();
       await page.waitForSelector('[role="dialog"]', { timeout: 5000 });
 
+      // Facility is required before Continue advances past step 1.
+      await page.getByRole('combobox', { name: 'Facility' }).click();
+      await page.getByRole('option', { name: /^global/i }).click();
       await page.getByPlaceholder(/enter emails separated by/i).fill(`${emailA}, ${emailB}`);
       await page.getByRole('button', { name: /^continue$/i }).click();
 
@@ -213,7 +223,12 @@ test.describe('Staff invite — 2-step modal, submit to success', () => {
       // Babel's per-line whitespace trim eats the leading space of " found.".
       // See src/components/dashboard/staff/InviteStaffModal.tsx line ~433.
       // Reported as a product bug (cosmetic) — not fixed here.
-      await expect(page.getByText('Assign roles')).toBeVisible();
+      //
+      // Exact heading match — the step-1 description paragraph ("...so you
+      // can assign roles.") contains the same words and would otherwise
+      // satisfy a loose getByText('Assign roles') even while still stuck on
+      // step 1.
+      await expect(page.getByRole('heading', { name: 'Assign roles', exact: true })).toBeVisible();
       await expect(page.getByRole('button', { name: `Remove ${emailA}` })).toBeVisible();
       await expect(page.getByRole('button', { name: `Remove ${emailB}` })).toBeVisible();
 
@@ -221,9 +236,10 @@ test.describe('Staff invite — 2-step modal, submit to success', () => {
       await page.getByRole('combobox').first().click();
       await page.getByRole('option', { name: /case manager/i }).click();
 
-      await page.getByRole('button', { name: /^continue$/i }).click();
+      // The step-2 submit button reads "Invite N staff(s)", not "Continue".
+      await page.getByRole('button', { name: /^invite \d+ staffs?$/i }).click();
       await expect(page.getByText('Invite sent')).toBeVisible({ timeout: 10000 });
-      await page.getByRole('button', { name: /^done$/i }).click();
+      await page.getByRole('button', { name: /^okay$/i }).click();
 
       const client = new Client({ connectionString: DB_URL });
       await client.connect();
@@ -275,6 +291,9 @@ test.describe('Staff invite — 2-step modal, submit to success', () => {
 
       await page.getByRole('button', { name: /add staff/i }).first().click();
       await page.waitForSelector('[role="dialog"]', { timeout: 5000 });
+      // Facility is required before Continue advances past step 1.
+      await page.getByRole('combobox', { name: 'Facility' }).click();
+      await page.getByRole('option', { name: /^global/i }).click();
       await page.getByPlaceholder(/enter emails separated by/i).fill(email);
       await page.getByRole('button', { name: /^continue$/i }).click();
 
@@ -304,6 +323,9 @@ test.describe('Staff invite — 2-step modal, submit to success', () => {
       const dialog = page.getByRole('dialog');
       await expect(dialog).toBeVisible();
       await expect(page.getByText('Invite New Staffs')).toBeVisible();
+      // Facility is required before Continue advances past step 1.
+      await page.getByRole('combobox', { name: 'Facility' }).click();
+      await page.getByRole('option', { name: /^global/i }).click();
 
       await dialog.locator('input[type="file"]').setInputFiles({
         name: 'staff-import.csv',
@@ -318,17 +340,22 @@ test.describe('Staff invite — 2-step modal, submit to success', () => {
       await expect(page.getByText('1 contact imported')).toBeVisible();
 
       await page.getByRole('button', { name: /^continue$/i }).click();
-      await expect(page.getByText('Assign roles')).toBeVisible();
+      // Exact heading match — the step-1 description paragraph ("...so you
+      // can assign roles.") contains the same words and would otherwise
+      // satisfy a loose getByText('Assign roles') even while still stuck on
+      // step 1.
+      await expect(page.getByRole('heading', { name: 'Assign roles', exact: true })).toBeVisible();
       await expect(page.getByText(inviteeEmail)).toBeVisible();
 
       // The CSV's `role` column ('nurse') pre-fills the per-contact Select, so
-      // Continue is already enabled without picking a role manually.
-      const continueBtn = page.getByRole('button', { name: /^continue$/i });
-      await expect(continueBtn).toBeEnabled();
-      await continueBtn.click();
+      // the submit button is already enabled without picking a role manually.
+      // It reads "Invite N staff(s)", not "Continue".
+      const inviteBtn = page.getByRole('button', { name: /^invite \d+ staffs?$/i });
+      await expect(inviteBtn).toBeEnabled();
+      await inviteBtn.click();
 
       await expect(page.getByText('Invite sent')).toBeVisible({ timeout: 10000 });
-      await page.getByRole('button', { name: /^done$/i }).click();
+      await page.getByRole('button', { name: /^okay$/i }).click();
 
       const client = new Client({ connectionString: DB_URL });
       await client.connect();
