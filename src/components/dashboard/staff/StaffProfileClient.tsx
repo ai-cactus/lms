@@ -168,12 +168,14 @@ export default function StaffProfileClient({
   const { user, stats, enrollments } = staff;
 
   // Moving a member between facilities is a roster mutation, so it stays on
-  // `user.edit`. Assigning courses is an assignment write and follows the gate
-  // `assignCoursesToUser` enforces — a Clinical Director may assign training
-  // without holding any roster-edit rights. Both only hide dead-end UI; the
+  // `user.edit`. Assigning from a staff PROFILE additionally requires roster
+  // rights: the RBAC matrix keeps Clinical Director/Finance view-only on staff
+  // (rbac-staff-view-only.spec.ts), so `assignment.create` alone — which a
+  // Clinical Director holds for course-side training-path assignment — must
+  // not surface mutating affordances here. Both only hide dead-end UI; the
   // server actions are authoritative.
   const canEdit = can(dbRoleToRoleKey(viewerRole), 'user.edit');
-  const canAssignCourses = can(dbRoleToRoleKey(viewerRole), 'assignment.create');
+  const canAssignCourses = canEdit && can(dbRoleToRoleKey(viewerRole), 'assignment.create');
 
   const [searchQuery, setSearchQuery] = useState('');
   const [certificateSearchQuery, setCertificateSearchQuery] = useState('');
