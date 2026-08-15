@@ -177,8 +177,7 @@ export async function getOrganization() {
 }
 
 type FacilitySupervisorLookup =
-  | { ok: true; membership: { id: string } | null }
-  | { ok: false; error: string };
+  { ok: true; membership: { id: string } | null } | { ok: false; error: string };
 
 /**
  * Resolve a supervisor email against the organization's roster.
