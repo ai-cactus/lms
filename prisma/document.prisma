@@ -21,6 +21,24 @@ model Document {
   @@map("documents")
 }
 
+/// Org-scoped classification vocabulary for the Document Hub.
+///
+/// Every organization is seeded with the default list at onboarding and can add
+/// its own from the upload modal. `Document.category` stays a free-form string
+/// (it is a snapshot of the name chosen at upload), so renaming or removing a
+/// category here never rewrites history.
+model DocumentCategory {
+  id             String       @id @default(uuid())
+  organizationId String       @map("organization_id")
+  name           String
+  createdAt      DateTime     @default(now()) @map("created_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@map("document_categories")
+}
+
 model DocumentVersion {
   id             String            @id @default(uuid())
   documentId     String            @map("document_id")

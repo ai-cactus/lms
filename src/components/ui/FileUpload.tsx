@@ -11,6 +11,12 @@ interface FileUploadProps {
 
   error?: string;
   description?: string;
+  /** Replaces the default "Drop your files here…" prompt. */
+  label?: React.ReactNode;
+  /** Drops the upload glyph, for surfaces that call for a slimmer dropzone. */
+  hideIcon?: boolean;
+  /** Extra classes on the drop target, e.g. to override its default height. */
+  className?: string;
 }
 
 export default function FileUpload({
@@ -20,6 +26,9 @@ export default function FileUpload({
 
   error,
   description,
+  label,
+  hideIcon,
+  className,
 }: FileUploadProps) {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -77,6 +86,7 @@ export default function FileUpload({
             : isDragging
               ? 'scale-[0.995] border-primary bg-primary/5'
               : 'border-input bg-background-secondary hover:border-primary hover:bg-primary/5',
+          className,
         )}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
@@ -94,11 +104,18 @@ export default function FileUpload({
         />
 
         <div className="flex flex-col items-center gap-3 text-center">
-          <div className="mb-2 flex size-12 items-center justify-center rounded-full bg-accent text-text-secondary">
-            <Upload className="size-6" aria-hidden="true" />
-          </div>
+          {!hideIcon && (
+            <div className="mb-2 flex size-12 items-center justify-center rounded-full bg-accent text-text-secondary">
+              <Upload className="size-6" aria-hidden="true" />
+            </div>
+          )}
           <p className="text-sm font-medium text-text-secondary">
-            Drop your files here or <span className="text-primary underline">Click to upload</span>
+            {label ?? (
+              <>
+                Drop your files here or{' '}
+                <span className="text-primary underline">Click to upload</span>
+              </>
+            )}
           </p>
           <p className="text-xs text-text-tertiary">
             {description || 'PDF, DOCX, JPG, PNG. You may upload multiple files.'}

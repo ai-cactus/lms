@@ -14,6 +14,83 @@ import type { NotificationTier } from '@/generated/prisma/enums';
 
 export type NotificationAudience = 'admin' | 'worker' | 'all';
 
+/**
+ * Org-wide grouping a notification type belongs to. Settings → Notification
+ * switches email/in-app delivery per category, so every type must land in one.
+ */
+export const NOTIFICATION_CATEGORIES = [
+  'training',
+  'documentation',
+  'workforce',
+  'reports',
+  'security',
+] as const;
+
+export type NotificationCategory = (typeof NOTIFICATION_CATEGORIES)[number];
+
+/**
+ * Security/account notifications are transactional — an organization cannot
+ * switch itself out of being told about its own access changes, so this
+ * category ignores the stored preference and its toggles render disabled.
+ */
+export const ALWAYS_ON_NOTIFICATION_CATEGORY: NotificationCategory = 'security';
+
+export interface NotificationCategoryMeta {
+  key: NotificationCategory;
+  label: string;
+  description: string;
+}
+
+/** Row copy for the Settings → Notification category table. */
+export const NOTIFICATION_CATEGORY_META: NotificationCategoryMeta[] = [
+  {
+    key: 'training',
+    label: 'Training & Learning',
+    description:
+      'Updates about courses, assignments, deadlines, assessments, and training progress.',
+  },
+  {
+    key: 'documentation',
+    label: 'Documentation',
+    description:
+      'Updates about policies, documents, reviews, approvals, and course source materials.',
+  },
+  {
+    key: 'workforce',
+    label: 'Workforce',
+    description: 'Updates about workers, access, onboarding, and training activity.',
+  },
+  {
+    key: 'reports',
+    label: 'Reports & Audits',
+    description: 'Updates when reports, audit packs, or compliance summaries are ready.',
+  },
+  {
+    key: 'security',
+    label: 'Security & Account',
+    description: 'Security and account notifications are always sent.',
+  },
+];
+
+export interface NotificationChannelPreference {
+  emailEnabled: boolean;
+  inAppEnabled: boolean;
+}
+
+export type NotificationCategoryPreferenceMap = Record<
+  NotificationCategory,
+  NotificationChannelPreference
+>;
+
+/** Applied to any category with no stored row. */
+export const NOTIFICATION_CATEGORY_DEFAULTS: NotificationCategoryPreferenceMap = {
+  training: { emailEnabled: false, inAppEnabled: true },
+  documentation: { emailEnabled: true, inAppEnabled: true },
+  workforce: { emailEnabled: false, inAppEnabled: true },
+  reports: { emailEnabled: true, inAppEnabled: true },
+  security: { emailEnabled: true, inAppEnabled: true },
+};
+
 export interface NotificationTypeMeta {
   key: string;
   /** Short label for filter chips. */
@@ -21,6 +98,7 @@ export interface NotificationTypeMeta {
   /** Sentence used in the preferences panel. */
   description: string;
   audience: NotificationAudience;
+  category: NotificationCategory;
 }
 
 /** Catalog of notification types — drives filter chips and preference toggles. */
@@ -30,86 +108,113 @@ export const NOTIFICATION_TYPES: NotificationTypeMeta[] = [
     label: 'Assigned',
     description: 'When a course is assigned to you',
     audience: 'worker',
+    category: 'training',
   },
   {
     key: 'RETAKE_ASSIGNED',
     label: 'Retakes',
     description: 'When an admin assigns you a quiz retake',
     audience: 'worker',
+    category: 'training',
   },
   {
     key: 'COURSE_PASSED',
     label: 'Completed',
     description: 'When a worker completes a course',
     audience: 'admin',
+    category: 'training',
   },
   {
     key: 'COURSE_FAILED',
     label: 'Failed',
     description: 'When a worker fails a quiz',
     audience: 'admin',
+    category: 'training',
   },
   {
     key: 'COURSE_RETRY_REQUESTED',
     label: 'Retry requests',
     description: 'When a worker requests a course retry',
     audience: 'admin',
+    category: 'training',
   },
   {
     key: 'QUIZ_RETRY_LIMIT_REACHED',
     label: 'Retry limit',
     description: 'When a worker reaches their quiz retry limit',
     audience: 'admin',
+    category: 'training',
   },
   {
     key: 'COURSE_DEADLINE_REMINDER',
     label: 'Deadline reminders',
     description: 'When a course deadline is approaching',
     audience: 'worker',
+    category: 'training',
   },
   {
     key: 'COURSE_OVERDUE',
     label: 'Overdue',
     description: 'When a course deadline has passed',
     audience: 'worker',
+    category: 'training',
   },
   {
     key: 'COMPLIANCE_ESCALATION',
     label: 'Compliance alerts',
     description: 'When an overdue course is escalated for compliance',
     audience: 'admin',
+    category: 'reports',
   },
   {
     key: 'COURSE_RETAKE_REMINDER',
     label: 'Retake reminders',
     description: 'When you have remaining quiz attempts to use',
     audience: 'worker',
+    category: 'training',
   },
   {
     key: 'STAFF_ADDED',
     label: 'Staff added',
     description: 'When a worker joins your organization',
     audience: 'admin',
+    category: 'workforce',
   },
   {
     key: 'DOCUMENT_UPLOADED',
     label: 'Documents',
     description: 'When a document is uploaded to your organization',
     audience: 'admin',
+    category: 'documentation',
   },
   {
     key: 'ROLE_FALLBACK_TRIGGERED',
     label: 'Unassigned roles',
     description: 'When a notification is redirected to you because a role is unassigned',
     audience: 'admin',
+    category: 'workforce',
   },
   {
     key: 'COMPLIANCE_LICENSE_EXPIRING',
     label: 'License expiry',
     description: 'When a mandatory compliance license is expiring or expired',
     audience: 'admin',
+    category: 'reports',
   },
 ];
+
+const CATEGORY_BY_TYPE: ReadonlyMap<string, NotificationCategory> = new Map(
+  NOTIFICATION_TYPES.map((meta) => [meta.key, meta.category]),
+);
+
+/**
+ * The category a notification type belongs to, or null when the type is not in
+ * the catalog. Unmapped types stay ungated — a delivery switch must never
+ * silently swallow an event nobody classified.
+ */
+export function categoryForNotificationType(type: string): NotificationCategory | null {
+  return CATEGORY_BY_TYPE.get(type) ?? null;
+}
 
 /** The notification types relevant to a given audience (includes 'all'). */
 export function notificationTypesFor(audience: NotificationAudience): NotificationTypeMeta[] {

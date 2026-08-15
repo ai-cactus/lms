@@ -211,18 +211,13 @@ test.describe('RBAC matrix realignment — Finance / Clinical Director are view-
         await expect(inviteRow).toBeVisible();
         await expect(inviteRow.getByRole('button', { name: 'Row actions' })).toHaveCount(0);
 
-        // Active staff row: View Profile / Export PDF still show (unrelated to
-        // user.delete), but "Remove Staff" must be absent from the menu.
+        // Active staff row: the kebab now carries only Change Facility
+        // (user.edit) and Remove Staff (user.delete) — this role holds neither,
+        // so the kebab must not render. Read-only access to the profile is
+        // unaffected: the row click itself opens it.
         const staffRow = page.locator('tr', { hasText: targetEmail });
         await expect(staffRow).toBeVisible();
-        const staffRowMenuBtn = staffRow.getByRole('button', { name: 'Row actions' });
-        await staffRowMenuBtn.waitFor({ state: 'visible' });
-        await staffRowMenuBtn.click();
-        await expect(page.getByRole('menuitem', { name: 'View Profile' })).toBeVisible({
-          timeout: 15000,
-        });
-        await expect(page.getByRole('menuitem', { name: 'Remove Staff' })).not.toBeVisible();
-        await page.keyboard.press('Escape');
+        await expect(staffRow.getByRole('button', { name: 'Row actions' })).toHaveCount(0);
 
         // Staff profile page — navigate directly rather than clicking the row:
         // this scenario is about profile-level permission gating, not row-click

@@ -5,7 +5,9 @@ import { sendInstantNotificationEmail } from '@/lib/email';
 import { getRoleDisplayName } from '@/lib/rbac/role-utils';
 import type { Role } from '@/types/next-auth';
 import { ENGINE_EVENTS, type NotificationEngineType } from './catalog';
+import { isNotificationChannelEnabled } from './category-preferences';
 import { resolveRoleRecipients } from './recipients';
+import type { NotificationTier } from '@/generated/prisma/enums';
 
 /**
  * The single funnel every engine notification goes through.
@@ -78,6 +80,22 @@ const ERROR_RESULT: EmitNotificationResult = {
   usedFallback: false,
 };
 
+/**
+ * The tier this emit actually delivers at. An organization on the `realtime`
+ * cadence has opted out of batching, so its digest-tier events are dispatched
+ * immediately exactly like Tier 1 — nothing is ever left for the digest worker.
+ */
+async function resolveTier(organizationId: string, tier: NotificationTier) {
+  if (tier === 'instant') return tier;
+
+  const organization = await prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: { notificationDigestFrequency: true },
+  });
+
+  return organization?.notificationDigestFrequency === 'realtime' ? 'instant' : tier;
+}
+
 /** True when an event carrying this dedupe key was already recorded within 24h. */
 async function isThrottled(organizationId: string, dedupeKey: string, now: Date): Promise<boolean> {
   const existing = await prisma.notificationEvent.findFirst({
@@ -113,6 +131,7 @@ export async function emitNotificationEvent(
       return { status: 'throttled', recipientCount: 0, usedFallback: false };
     }
 
+    const tier = await resolveTier(input.organizationId, meta.tier);
     const targets = meta.resolveTargets(input.actor?.role);
     const recipients = await resolveRoleRecipients(input.organizationId, targets.roles, {
       fallbackToOwner: targets.fallbackToOwner,
@@ -132,7 +151,7 @@ export async function emitNotificationEvent(
       data: {
         organizationId: input.organizationId,
         facilityId: input.facilityId ?? null,
-        tier: meta.tier,
+        tier,
         type: input.type,
         actorUserId: input.actor?.userId ?? null,
         subjectUserId: input.subjectUserId ?? null,
@@ -173,15 +192,25 @@ export async function emitNotificationEvent(
       });
     }
 
-    if (meta.tier === 'instant') {
-      for (const recipient of recipients.emails) {
-        await sendInstantNotificationEmail(recipient.email, recipient.name, {
-          subject: input.title,
-          title: meta.label,
-          bodyLines: [input.message],
-          actionLabel: 'View in Theraptly',
-          actionLink: input.linkUrl ?? '/dashboard',
-        });
+    if (tier === 'instant') {
+      // The bell row is written above regardless; only the email leg respects
+      // the organization's per-category email switch.
+      const emailEnabled = await isNotificationChannelEnabled(
+        input.organizationId,
+        input.type,
+        'email',
+      );
+
+      if (emailEnabled) {
+        for (const recipient of recipients.emails) {
+          await sendInstantNotificationEmail(recipient.email, recipient.name, {
+            subject: input.title,
+            title: meta.label,
+            bodyLines: [input.message],
+            actionLabel: 'View in Theraptly',
+            actionLink: input.linkUrl ?? '/dashboard',
+          });
+        }
       }
 
       await prisma.notificationEvent.update({
@@ -194,7 +223,7 @@ export async function emitNotificationEvent(
       msg: '[notifications] Event emitted',
       orgId: input.organizationId,
       type: input.type,
-      tier: meta.tier,
+      tier,
       eventId: event.id,
       recipientCount: recipients.organizationUserIds.length,
       usedFallback: recipients.usedFallback,
@@ -203,7 +232,7 @@ export async function emitNotificationEvent(
     await emitFallbackAlert(input, recipients.usedFallback, recipients.missingRoles);
 
     return {
-      status: meta.tier === 'instant' ? 'dispatched' : 'pending',
+      status: tier === 'instant' ? 'dispatched' : 'pending',
       eventId: event.id,
       recipientCount: recipients.organizationUserIds.length,
       usedFallback: recipients.usedFallback,

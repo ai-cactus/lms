@@ -9,9 +9,11 @@ import { listAccessibleFacilities, isOrgWideFacilityRole } from '@/lib/facility/
 import type { AccessibleFacility } from '@/lib/facility/scope';
 import {
   ACTIVE_ENROLLMENT_STATUSES,
+  APPROACHING_DEADLINE_WINDOW_DAYS,
   COMPLETED_ENROLLMENT_STATUSES,
+  DORMANT_STAFF_DAYS,
   EXPIRING_CREDENTIALS_WINDOW_DAYS,
-  INACTIVE_STAFF_DAYS,
+  RISK_OVERDUE_GRACE_DAYS,
   TREND_WINDOW_DAYS,
   classifyAuditReadiness,
   computeAuditReadinessPercent,
@@ -20,6 +22,7 @@ import {
   computeTrendPercent,
   riskWeight,
   type AuditReadinessLevel,
+  type FacilityComplianceSignals,
   type RiskLevel,
 } from '@/lib/facility/metrics';
 import type { Prisma } from '@/generated/prisma/client';
@@ -60,8 +63,8 @@ export interface PriorityRiskRow {
   facilityId: string;
   name: string;
   type: string | null;
-  staffCount: number;
   activeLearners: number;
+  approachingDeadlines: number;
   overdueTrainings: number;
   riskLevel: RiskLevel;
 }
@@ -70,9 +73,9 @@ export interface FacilityOverviewRow {
   facilityId: string;
   name: string;
   type: string | null;
+  staffCount: number;
   activeTrainings: number;
   completionPercent: number;
-  overdueTrainings: number;
   auditReadinessPercent: number;
   auditReadiness: AuditReadinessLevel;
   riskLevel: RiskLevel;
@@ -86,13 +89,13 @@ export interface GlobalDashboardData {
     totalStaff: DashboardMetric;
   };
   trainingVelocity: {
-    activeWorkersInTraining: DashboardMetric;
+    activeLearners: DashboardMetric;
     ongoingCourses: DashboardMetric;
     firstTimePassRate: DashboardMetric;
   };
   riskCompliance: {
-    missingTrainingDeadlines: DashboardMetric;
-    inactiveStaff: DashboardMetric;
+    overdueTrainings: DashboardMetric;
+    dormantStaff: DashboardMetric;
     expiringCredentials: DashboardMetric;
   };
   /** Every accessible facility, most at risk first. */
@@ -114,19 +117,46 @@ function pointInTime(value: number): DashboardMetric {
   return { value, trendPercent: null };
 }
 
+interface EnrollmentTotals {
+  total: number;
+  completed: number;
+  active: number;
+}
+
+const EMPTY_ENROLLMENT_TOTALS: EnrollmentTotals = { total: 0, completed: 0, active: 0 };
+
+/**
+ * Collapses a `groupBy(['facilityId'])` result into a per-facility lookup plus
+ * the organisation-wide total. Enrollments in the null-facility bucket belong
+ * to the organisation but to no facility row, so they count towards the total
+ * only.
+ */
+function splitByFacility(groups: { facilityId: string | null; _count: { _all: number } }[]): {
+  total: number;
+  byFacilityId: Map<string, number>;
+} {
+  const byFacilityId = new Map<string, number>();
+  let total = 0;
+  for (const row of groups) {
+    total += row._count._all;
+    if (row.facilityId) byFacilityId.set(row.facilityId, row._count._all);
+  }
+  return { total, byFacilityId };
+}
+
 function emptyGlobalDashboardData(facilities: AccessibleFacility[]): GlobalDashboardData {
   const zero = pointInTime(0);
   return {
     facilities,
     enterpriseFootprint: { totalFacilities: zero, totalStaff: zero },
     trainingVelocity: {
-      activeWorkersInTraining: zero,
+      activeLearners: zero,
       ongoingCourses: zero,
       firstTimePassRate: zero,
     },
     riskCompliance: {
-      missingTrainingDeadlines: zero,
-      inactiveStaff: zero,
+      overdueTrainings: zero,
+      dormantStaff: zero,
       expiringCredentials: zero,
     },
     priorityRisks: [],
@@ -172,7 +202,9 @@ export async function getGlobalDashboardData(): Promise<GlobalDashboardData> {
 
   const now = new Date();
   const windowStart = daysAgo(now, TREND_WINDOW_DAYS);
-  const inactiveCutoff = daysAgo(now, INACTIVE_STAFF_DAYS);
+  const dormantCutoff = daysAgo(now, DORMANT_STAFF_DAYS);
+  const overdueGraceCutoff = daysAgo(now, RISK_OVERDUE_GRACE_DAYS);
+  const approachingCutoff = daysAhead(now, APPROACHING_DEADLINE_WINDOW_DAYS);
   const expiringCutoff = daysAhead(now, EXPIRING_CREDENTIALS_WINDOW_DAYS);
   const previousExpiringStart = daysAgo(now, EXPIRING_CREDENTIALS_WINDOW_DAYS);
 
@@ -199,16 +231,19 @@ export async function getGlobalDashboardData(): Promise<GlobalDashboardData> {
     previousFacilityCount,
     totalStaff,
     previousStaffCount,
-    inactiveStaff,
+    dormantStaff,
     staffPerFacility,
     enrollmentsByFacilityStatus,
     activeLearnerPairs,
     overdueByFacility,
+    overdueBeyondGraceByFacility,
+    approachingByFacility,
     withDeadlineByFacility,
     onTimeByFacility,
+    expiredCredentialsByFacility,
+    expiringCredentialsByFacility,
     ongoingCourseGroups,
     firstAttemptScores,
-    expiringCredentials,
     previousExpiringCredentials,
   ] = await Promise.all([
     prisma.facility.count({ where: { ...facilityWhere, createdAt: { lt: windowStart } } }),
@@ -229,7 +264,7 @@ export async function getGlobalDashboardData(): Promise<GlobalDashboardData> {
     prisma.organizationUser.count({
       where: {
         ...staffWhere,
-        OR: [{ lastLoginAt: null }, { lastLoginAt: { lt: inactiveCutoff } }],
+        OR: [{ lastLoginAt: null }, { lastLoginAt: { lt: dormantCutoff } }],
       },
     }),
 
@@ -267,6 +302,29 @@ export async function getGlobalDashboardData(): Promise<GlobalDashboardData> {
       _count: { _all: true },
     }),
 
+    // Risk escalates once an overdue training passes the grace period, so the
+    // overdue population is also counted at the older cutoff; the 1-to-grace
+    // bucket is the difference between the two rather than a third query.
+    prisma.enrollment.groupBy({
+      by: ['facilityId'],
+      where: {
+        ...enrollmentWhere,
+        dueAt: { lt: overdueGraceCutoff },
+        status: { notIn: [...COMPLETED_ENROLLMENT_STATUSES] },
+      },
+      _count: { _all: true },
+    }),
+
+    prisma.enrollment.groupBy({
+      by: ['facilityId'],
+      where: {
+        ...enrollmentWhere,
+        dueAt: { gte: now, lte: approachingCutoff },
+        status: { notIn: [...COMPLETED_ENROLLMENT_STATUSES] },
+      },
+      _count: { _all: true },
+    }),
+
     prisma.enrollment.groupBy({
       by: ['facilityId'],
       where: { ...enrollmentWhere, dueAt: { not: null } },
@@ -287,6 +345,30 @@ export async function getGlobalDashboardData(): Promise<GlobalDashboardData> {
       _count: { _all: true },
     }),
 
+    // Credential proxy: an enrollment whose assignment carries a renewal cycle.
+    // Expired = its renewal deadline has passed with no completion recorded;
+    // completing it renews the credential, so completions are excluded.
+    prisma.enrollment.groupBy({
+      by: ['facilityId'],
+      where: {
+        ...enrollmentWhere,
+        assignment: { renewalCycle: { not: 'none' } },
+        dueAt: { lt: now },
+        status: { notIn: [...COMPLETED_ENROLLMENT_STATUSES] },
+      },
+      _count: { _all: true },
+    }),
+
+    prisma.enrollment.groupBy({
+      by: ['facilityId'],
+      where: {
+        ...enrollmentWhere,
+        assignment: { renewalCycle: { not: 'none' } },
+        dueAt: { gte: now, lte: expiringCutoff },
+      },
+      _count: { _all: true },
+    }),
+
     prisma.enrollment.groupBy({
       by: ['courseId'],
       where: { ...enrollmentWhere, status: { in: [...ACTIVE_ENROLLMENT_STATUSES] } },
@@ -300,14 +382,6 @@ export async function getGlobalDashboardData(): Promise<GlobalDashboardData> {
       by: ['courseId', 'score'],
       where: { ...enrollmentWhere, retakeOf: null, score: { not: null } },
       _count: { _all: true },
-    }),
-
-    prisma.enrollment.count({
-      where: {
-        ...enrollmentWhere,
-        assignment: { renewalCycle: { not: 'none' } },
-        dueAt: { gte: now, lte: expiringCutoff },
-      },
     }),
 
     prisma.enrollment.count({
@@ -364,10 +438,10 @@ export async function getGlobalDashboardData(): Promise<GlobalDashboardData> {
     staffCountByFacility.set(row.facilityId, row._count._all);
   }
 
-  const totalsByFacility = new Map<string, { total: number; completed: number; active: number }>();
+  const totalsByFacility = new Map<string, EnrollmentTotals>();
   for (const row of enrollmentsByFacilityStatus) {
     if (!row.facilityId) continue;
-    const entry = totalsByFacility.get(row.facilityId) ?? { total: 0, completed: 0, active: 0 };
+    const entry = totalsByFacility.get(row.facilityId) ?? { ...EMPTY_ENROLLMENT_TOTALS };
     entry.total += row._count._all;
     if ((COMPLETED_ENROLLMENT_STATUSES as readonly string[]).includes(row.status)) {
       entry.completed += row._count._all;
@@ -389,35 +463,36 @@ export async function getGlobalDashboardData(): Promise<GlobalDashboardData> {
     );
   }
 
-  const overdueByFacilityId = new Map<string, number>();
-  let missingTrainingDeadlines = 0;
-  for (const row of overdueByFacility) {
-    missingTrainingDeadlines += row._count._all;
-    if (row.facilityId) overdueByFacilityId.set(row.facilityId, row._count._all);
-  }
+  const overdue = splitByFacility(overdueByFacility);
+  const overdueBeyondGrace = splitByFacility(overdueBeyondGraceByFacility);
+  const approaching = splitByFacility(approachingByFacility);
+  const withDeadline = splitByFacility(withDeadlineByFacility);
+  const onTime = splitByFacility(onTimeByFacility);
+  const expiredCredentials = splitByFacility(expiredCredentialsByFacility);
+  const expiringCredentials = splitByFacility(expiringCredentialsByFacility);
 
-  const withDeadlineByFacilityId = new Map<string, number>();
-  for (const row of withDeadlineByFacility) {
-    if (row.facilityId) withDeadlineByFacilityId.set(row.facilityId, row._count._all);
-  }
-
-  const onTimeByFacilityId = new Map<string, number>();
-  for (const row of onTimeByFacility) {
-    if (row.facilityId) onTimeByFacilityId.set(row.facilityId, row._count._all);
-  }
-
-  const priorityRisks: PriorityRiskRow[] = facilities.map((facility) => {
-    const overdueTrainings = overdueByFacilityId.get(facility.id) ?? 0;
+  const complianceSignals = (facilityId: string): FacilityComplianceSignals => {
+    const totals = totalsByFacility.get(facilityId) ?? EMPTY_ENROLLMENT_TOTALS;
+    const beyondGrace = overdueBeyondGrace.byFacilityId.get(facilityId) ?? 0;
     return {
-      facilityId: facility.id,
-      name: facility.name,
-      type: facility.type,
-      staffCount: staffCountByFacility.get(facility.id) ?? 0,
-      activeLearners: activeLearnersByFacility.get(facility.id) ?? 0,
-      overdueTrainings,
-      riskLevel: computeRiskLevel(overdueTrainings),
+      overdueBeyondGrace: beyondGrace,
+      overdueWithinGrace: Math.max((overdue.byFacilityId.get(facilityId) ?? 0) - beyondGrace, 0),
+      completionPercent:
+        totals.total > 0 ? computeCompletionPercent(totals.completed, totals.total) : null,
+      expiredCredentials: expiredCredentials.byFacilityId.get(facilityId) ?? 0,
+      expiringCredentials: expiringCredentials.byFacilityId.get(facilityId) ?? 0,
     };
-  });
+  };
+
+  const priorityRisks: PriorityRiskRow[] = facilities.map((facility) => ({
+    facilityId: facility.id,
+    name: facility.name,
+    type: facility.type,
+    activeLearners: activeLearnersByFacility.get(facility.id) ?? 0,
+    approachingDeadlines: approaching.byFacilityId.get(facility.id) ?? 0,
+    overdueTrainings: overdue.byFacilityId.get(facility.id) ?? 0,
+    riskLevel: computeRiskLevel(complianceSignals(facility.id)),
+  }));
 
   priorityRisks.sort(
     (a, b) =>
@@ -429,22 +504,21 @@ export async function getGlobalDashboardData(): Promise<GlobalDashboardData> {
 
   const facilitiesOverview: FacilityOverviewRow[] = facilities
     .map((facility) => {
-      const totals = totalsByFacility.get(facility.id) ?? { total: 0, completed: 0, active: 0 };
-      const overdueTrainings = overdueByFacilityId.get(facility.id) ?? 0;
-      const auditReadinessPercent = computeAuditReadinessPercent(
-        onTimeByFacilityId.get(facility.id) ?? 0,
-        withDeadlineByFacilityId.get(facility.id) ?? 0,
-      );
+      const totals = totalsByFacility.get(facility.id) ?? EMPTY_ENROLLMENT_TOTALS;
+      const signals = complianceSignals(facility.id);
       return {
         facilityId: facility.id,
         name: facility.name,
         type: facility.type,
+        staffCount: staffCountByFacility.get(facility.id) ?? 0,
         activeTrainings: totals.active,
         completionPercent: computeCompletionPercent(totals.completed, totals.total),
-        overdueTrainings,
-        auditReadinessPercent,
-        auditReadiness: classifyAuditReadiness(auditReadinessPercent),
-        riskLevel: computeRiskLevel(overdueTrainings),
+        auditReadinessPercent: computeAuditReadinessPercent(
+          onTime.byFacilityId.get(facility.id) ?? 0,
+          withDeadline.byFacilityId.get(facility.id) ?? 0,
+        ),
+        auditReadiness: classifyAuditReadiness(signals),
+        riskLevel: computeRiskLevel(signals),
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -470,18 +544,18 @@ export async function getGlobalDashboardData(): Promise<GlobalDashboardData> {
       },
     },
     trainingVelocity: {
-      activeWorkersInTraining: pointInTime(distinctActiveLearners.size),
+      activeLearners: pointInTime(distinctActiveLearners.size),
       ongoingCourses: pointInTime(ongoingCourseGroups.length),
       firstTimePassRate: pointInTime(
         firstAttemptTotal > 0 ? Math.round((firstAttemptPassed / firstAttemptTotal) * 100) : 0,
       ),
     },
     riskCompliance: {
-      missingTrainingDeadlines: pointInTime(missingTrainingDeadlines),
-      inactiveStaff: pointInTime(inactiveStaff),
+      overdueTrainings: pointInTime(overdue.total),
+      dormantStaff: pointInTime(dormantStaff),
       expiringCredentials: {
-        value: expiringCredentials,
-        trendPercent: computeTrendPercent(expiringCredentials, previousExpiringCredentials),
+        value: expiringCredentials.total,
+        trendPercent: computeTrendPercent(expiringCredentials.total, previousExpiringCredentials),
       },
     },
     priorityRisks,

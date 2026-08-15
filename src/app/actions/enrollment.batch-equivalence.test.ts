@@ -186,9 +186,10 @@ function seedDb(seed: Seed = {}) {
   prismaMock.organizationUser.findMany.mockImplementation(async (args: any) => {
     const where = args.where ?? {};
     if (where.role) {
-      // assignCourseToRole holder query.
+      // Role-target holder query — always a role list since multi-role targeting.
+      const roles: string[] = where.role.in ?? [where.role];
       return activeMemberships()
-        .filter((m) => m.organizationId === where.organizationId && m.role === where.role)
+        .filter((m) => m.organizationId === where.organizationId && roles.includes(m.role))
         .map((m) => ({
           id: m.id,
           user: { email: state.users.find((u) => u.id === m.userId)!.email },

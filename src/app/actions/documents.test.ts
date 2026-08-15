@@ -36,8 +36,15 @@ const {
     phiDecision: { create: vi.fn() },
   };
   const prismaMock = {
-    $transaction: vi.fn(async (cb: (tx: typeof txClient) => Promise<unknown>) => cb(txClient)),
+    // Supports both forms: interactive (callback) for uploadDocument, and the
+    // batch array form deleteDocument uses to sever course lineage atomically.
+    $transaction: vi.fn(async (arg: unknown) =>
+      Array.isArray(arg)
+        ? Promise.all(arg)
+        : (arg as (tx: typeof txClient) => Promise<unknown>)(txClient),
+    ),
     _tx: txClient,
+    courseVersion: { deleteMany: vi.fn() },
     // F-092: the BLOCKED paths write their decision row outside any
     // transaction. This must be mocked, not omitted: recordPhiDecision catches
     // its own failures by design, so an unmocked client would let the write

@@ -1,3 +1,5 @@
+'use client';
+
 import { FC, useState, useRef, useEffect, Ref } from 'react';
 import { signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
@@ -15,21 +17,33 @@ import {
 import NotificationPanel from '@/components/notifications/NotificationPanel';
 import { useNotifications } from '@/components/notifications/useNotifications';
 import { clearSiblingSessionCookie } from '@/app/actions/session-bridge';
-import { Bell, ChevronDown, Smile, LogOut, Menu } from 'lucide-react';
+import { Bell, Building2, ChevronDown, Smile, LogOut, Menu } from 'lucide-react';
 
 interface DefaultDashboardNavBarProps {
   fullName: string;
   forProfile: boolean;
   onMenuClick?: () => void;
+  /** Organization the active membership belongs to. */
+  organizationName?: string;
+  /** Display name of the member's role, shown beneath their name. */
+  roleDisplayName?: string;
+  /** Site a facility-bound member belongs to; appended to the role. */
+  facilityName?: string | null;
 }
 
 interface ProfileDashboardNavBarProps {
   fullName: string;
+  /** Organization the active membership belongs to. */
+  organizationName?: string;
+  /** Display name of the member's role, shown beneath their name. */
+  roleDisplayName?: string;
 }
 
 interface UserProfileProps {
   isOpen: boolean;
   fullName: string;
+  /** Second line under the name — omitted on the profile navbar. */
+  subtitle?: string;
   ref: Ref<HTMLDivElement> | null;
   onProfileClick: () => void;
   onLogout: () => void;
@@ -45,6 +59,7 @@ const handleConfirmLogout = async () => {
 
 const UserProfile: FC<UserProfileProps> = ({
   fullName,
+  subtitle,
   isOpen,
   ref,
   onProfileClick,
@@ -69,7 +84,14 @@ const UserProfile: FC<UserProfileProps> = ({
               : 'U'}
           </span>
         </div>
-        <span className="hidden text-sm font-semibold text-[#292d32] lg:block">{fullName}</span>
+        <span className="hidden min-w-0 max-w-[180px] flex-col text-left lg:flex">
+          <span className="truncate text-sm font-semibold text-[#292d32]">{fullName}</span>
+          {subtitle && (
+            <span className="truncate text-xs text-text-secondary" title={subtitle}>
+              {subtitle}
+            </span>
+          )}
+        </span>
         <ChevronDown
           className={[
             'hidden size-6 text-[#cbd5e0] transition-transform duration-200 lg:inline',
@@ -101,9 +123,72 @@ const UserProfile: FC<UserProfileProps> = ({
   );
 };
 
+/**
+ * Self-contained avatar menu: dropdown state, outside-click dismissal and the
+ * logout confirmation, for minimal chrome (e.g. the full-screen document
+ * viewer) that wants the profile control without a whole navbar.
+ */
+export const UserProfileMenu: FC<{ fullName: string; subtitle?: string }> = ({
+  fullName,
+  subtitle,
+}) => {
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [isOpen, setIsOpen] = useState(false);
+  const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  return (
+    <>
+      <UserProfile
+        isOpen={isOpen}
+        fullName={fullName}
+        subtitle={subtitle}
+        ref={dropdownRef}
+        onLogout={() => setIsLogoutModalOpen(true)}
+        onDropDown={() => setIsOpen((open) => !open)}
+        onProfileClick={() => setIsOpen(false)}
+      />
+      <Dialog open={isLogoutModalOpen} onOpenChange={setIsLogoutModalOpen}>
+        <DialogContent showCloseButton={false} className="sm:max-w-md">
+          <DialogHeader className="items-center text-center">
+            <div className="mb-4">
+              <LogOut className="mx-auto size-12 text-[#e53e3e]" />
+            </div>
+            <DialogTitle>Confirm Logout</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to log out? You will need to sign in again to access your
+              account.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="justify-center sm:justify-center">
+            <Button variant="outline" onClick={() => setIsLogoutModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="default" onClick={handleConfirmLogout}>
+              Logout
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+};
+
 export const DefaultDashboardNavBar: FC<DefaultDashboardNavBarProps> = ({
   fullName,
   onMenuClick,
+  organizationName,
+  roleDisplayName,
+  facilityName,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
@@ -144,6 +229,12 @@ export const DefaultDashboardNavBar: FC<DefaultDashboardNavBarProps> = ({
   };
 
   const handleLogout = () => setIsLogoutModalOpen(true);
+
+  const userSubtitle = roleDisplayName
+    ? facilityName
+      ? `${roleDisplayName} · ${facilityName}`
+      : roleDisplayName
+    : undefined;
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -197,9 +288,24 @@ export const DefaultDashboardNavBar: FC<DefaultDashboardNavBarProps> = ({
               />
             )}
           </div>
+          {organizationName && (
+            <div className="hidden items-center gap-4 lg:flex">
+              <div className="flex min-w-0 items-center gap-2">
+                <Building2 className="size-5 shrink-0 text-text-secondary" aria-hidden="true" />
+                <span
+                  className="max-w-[220px] truncate text-sm font-semibold text-foreground"
+                  title={organizationName}
+                >
+                  {organizationName}
+                </span>
+              </div>
+              <span className="h-8 w-px shrink-0 bg-border" aria-hidden="true" />
+            </div>
+          )}
           <UserProfile
             isOpen={isOpen}
             fullName={fullName}
+            subtitle={userSubtitle}
             ref={dropdownRef}
             onLogout={handleLogout}
             onDropDown={toggleDropdown}
@@ -233,7 +339,11 @@ export const DefaultDashboardNavBar: FC<DefaultDashboardNavBarProps> = ({
   );
 };
 
-export const ProfileDashboardNavBar: FC<ProfileDashboardNavBarProps> = ({ fullName }) => {
+export const ProfileDashboardNavBar: FC<ProfileDashboardNavBarProps> = ({
+  fullName,
+  organizationName,
+  roleDisplayName,
+}) => {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
@@ -257,14 +367,31 @@ export const ProfileDashboardNavBar: FC<ProfileDashboardNavBarProps> = ({ fullNa
         <div className="flex items-center">
           <Logo size="md" variant="blue" />
         </div>
-        <UserProfile
-          isOpen={isOpen}
-          fullName={fullName}
-          ref={dropdownRef}
-          onLogout={handleLogout}
-          onDropDown={toggleDropdown}
-          onProfileClick={() => setIsOpen(false)}
-        />
+        <div className="flex items-center gap-4">
+          {organizationName && (
+            <div className="hidden items-center gap-4 lg:flex">
+              <div className="flex min-w-0 items-center gap-2">
+                <Building2 className="size-5 shrink-0 text-text-secondary" aria-hidden="true" />
+                <span
+                  className="max-w-[220px] truncate text-sm font-semibold text-foreground"
+                  title={organizationName}
+                >
+                  {organizationName}
+                </span>
+              </div>
+              <span className="h-8 w-px shrink-0 bg-border" aria-hidden="true" />
+            </div>
+          )}
+          <UserProfile
+            isOpen={isOpen}
+            fullName={fullName}
+            subtitle={roleDisplayName}
+            ref={dropdownRef}
+            onLogout={handleLogout}
+            onDropDown={toggleDropdown}
+            onProfileClick={() => setIsOpen(false)}
+          />
+        </div>
       </header>
       <Dialog open={isLogoutModalOpen} onOpenChange={setIsLogoutModalOpen}>
         <DialogContent showCloseButton={false} className="sm:max-w-md">

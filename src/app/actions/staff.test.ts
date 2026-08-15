@@ -940,6 +940,7 @@ describe('getStaffDetails — org isolation (F-009)', () => {
       organizationId,
       user: { fullName: 'Target User', email: 'target@example.com', avatarUrl: null },
       manager: null,
+      facilities: [],
       enrollments: [],
     };
   }

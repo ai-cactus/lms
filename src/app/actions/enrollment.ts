@@ -13,7 +13,6 @@ import { logger } from '@/lib/logger';
 import { invalidatePlaybackAuthz } from '@/lib/video/playback-cache';
 import type { StaffEntry } from '@/types/enrollment';
 import { RenewalCycle, ReminderStage, UserRole } from '@/generated/prisma/enums';
-import { REMINDER_STAGE_DEFAULTS, SWEEP_STAGES } from '@/lib/reminders/stages';
 import {
   createEnrollmentForUser,
   createEnrollmentsForUsers,
@@ -21,6 +20,13 @@ import {
   type EnrollmentOutcome,
 } from '@/lib/enrollment/create';
 import { getSeatUsage } from '@/lib/seat-limits';
+import {
+  defaultStageRows,
+  reminderDaysToStageRows,
+  upsertCourseAssignment,
+  type StageRowInput,
+} from '@/lib/enrollment/assignment';
+import { combineDateAndTime } from '@/lib/reminders/deadline';
 
 export interface AssignmentSettingsInput {
   scheduleAt?: string | Date | null;
@@ -31,7 +37,7 @@ export interface AssignmentSettingsInput {
   dueWindowDays?: number | null;
   /** Master switch for the deadline reminder ladder. Defaults to `true`. */
   remindersEnabled?: boolean;
-  /** Per-stage cadence overrides; falls back to {@link REMINDER_STAGE_DEFAULTS}. */
+  /** Per-stage cadence overrides; falls back to the canonical reminder defaults. */
   stages?: { stage: ReminderStage; offsetDays: number; enabled: boolean; channels?: string[] }[];
 }
 
@@ -48,113 +54,6 @@ export interface CourseAssignmentSettings {
   /** Non-null when this assignment targets a whole role rather than individuals. */
   targetRole: UserRole | null;
   stages: { stage: ReminderStage; offsetDays: number; enabled: boolean; channels: string[] }[];
-}
-
-/**
- * Default `AssignmentReminderStage` rows — one per sweep stage seeded from the
- * canonical {@link REMINDER_STAGE_DEFAULTS}. Used when the caller does not supply
- * its own cadence. `INITIAL_LAUNCH` is intentionally excluded (it fires at
- * assignment time, never via the daily sweep).
- */
-function defaultStageRows() {
-  return SWEEP_STAGES.map((stage) => {
-    const def = REMINDER_STAGE_DEFAULTS[stage];
-    return { stage, offsetDays: def.offsetDays, enabled: true, channels: def.channels };
-  });
-}
-
-interface StageRowInput {
-  stage: ReminderStage;
-  offsetDays: number;
-  enabled: boolean;
-  channels: string[];
-}
-
-interface UpsertCourseAssignmentParams {
-  organizationId: string;
-  courseId: string;
-  assignedByAdminId: string;
-  scheduleAt: Date | null;
-  dueAt: Date | null;
-  dueWindowDays: number | null;
-  remindersEnabled: boolean;
-  renewalCycle: RenewalCycle;
-  stageRows: StageRowInput[];
-  /**
-   * Role this assignment targets. `undefined` leaves the existing value untouched
-   * (an individual re-assignment must never clear a course's role targeting);
-   * `null` explicitly clears it; a role value sets it.
-   */
-  targetRole?: UserRole | null;
-}
-
-/**
- * Create or update the org's single {@link CourseAssignment} for a course and
- * reconcile its per-stage reminder cadence. One assignment per
- * `(organizationId, courseId)`: reuse the most recent row so already-enrolled
- * workers keep firing off the same (now updated) schedule/ladder. Stage rows are
- * upserted on the `(assignmentId, stage)` unique key — never duplicated — and
- * stages outside the submitted set survive. Returns the assignment id.
- *
- * Shared by the individual-assignment path ({@link enrollUsers}) and the
- * role-target path ({@link assignCourseToRole}).
- */
-async function upsertCourseAssignment(params: UpsertCourseAssignmentParams): Promise<string> {
-  const { organizationId, courseId, targetRole } = params;
-
-  const existing = await prisma.courseAssignment.findFirst({
-    where: { organizationId, courseId },
-    orderBy: { createdAt: 'desc' },
-    select: { id: true },
-  });
-
-  if (existing) {
-    await prisma.courseAssignment.update({
-      where: { id: existing.id },
-      data: {
-        assignedByAdminId: params.assignedByAdminId,
-        scheduleAt: params.scheduleAt,
-        dueAt: params.dueAt,
-        dueWindowDays: params.dueWindowDays,
-        remindersEnabled: params.remindersEnabled,
-        renewalCycle: params.renewalCycle,
-        ...(targetRole !== undefined ? { targetRole } : {}),
-      },
-    });
-
-    for (const row of params.stageRows) {
-      await prisma.assignmentReminderStage.upsert({
-        where: { assignmentId_stage: { assignmentId: existing.id, stage: row.stage } },
-        update: { offsetDays: row.offsetDays, enabled: row.enabled, channels: row.channels },
-        create: { assignmentId: existing.id, ...row },
-      });
-    }
-
-    logger.info({
-      msg: '[enrollment] Existing course assignment updated',
-      assignmentId: existing.id,
-      organizationId,
-      courseId,
-      userId: params.assignedByAdminId,
-    });
-    return existing.id;
-  }
-
-  const created = await prisma.courseAssignment.create({
-    data: {
-      organizationId,
-      courseId,
-      assignedByAdminId: params.assignedByAdminId,
-      scheduleAt: params.scheduleAt,
-      dueAt: params.dueAt,
-      dueWindowDays: params.dueWindowDays,
-      remindersEnabled: params.remindersEnabled,
-      renewalCycle: params.renewalCycle,
-      ...(targetRole != null ? { targetRole } : {}),
-      reminderStages: { create: params.stageRows },
-    },
-  });
-  return created.id;
 }
 
 // Helper: resolve the active session from either auth instance
@@ -540,39 +439,60 @@ export async function getCourseAssignmentSettings(
   };
 }
 
+/** What a role-target assignment persists, once the caller's input is resolved. */
+interface RoleTargetAssignmentOptions {
+  scheduleAt: Date | null;
+  /** Absolute deadline shared by every holder; null ⇒ each holder gets start + window. */
+  dueAt: Date | null;
+  dueWindowDays: number | null;
+  remindersEnabled: boolean;
+  renewalCycle: RenewalCycle;
+  stageRows: StageRowInput[];
+}
+
+interface RoleTargetAssignmentResult {
+  assignmentId: string;
+  holderCount: number;
+  enrolled: number;
+  alreadyEnrolled: number;
+  failed: number;
+}
+
 /**
- * Assign a course to a whole ROLE. Creates/updates the org's single
- * {@link CourseAssignment} for the course with a non-null `targetRole`, then
- * enrolls every CURRENT holder of that role in the caller's org. Future holders
- * are auto-enrolled live by {@link enrollUserForRoleTargets} at each role-write
- * site, with the nightly sweep as a backstop.
+ * Shared role-target assignment core behind {@link assignCourseToRole} (one role)
+ * and {@link assignCourseToRoles} (the course wizard's multi-role step): gate the
+ * caller, upsert the org's single {@link CourseAssignment} for the course with
+ * the targeted roles, and enroll every CURRENT holder of any of them. Future
+ * holders are auto-enrolled live by {@link enrollUserForRoleTargets} at each
+ * role-write site, with the nightly sweep as a backstop.
  *
- * Requires `assignment.create`, strictly scoped to the caller's own
- * organization. Role-target
- * assignments never carry an absolute `dueAt` — the per-user deadline is always
- * `start + window` — so an explicit `dueAt` is rejected server-side.
+ * Requires `assignment.create`, strictly scoped to the caller's own organization.
  */
-export async function assignCourseToRole(
+async function assignCourseToRoleTargets(
   courseId: string,
-  targetRole: UserRole,
-  assignmentSettings?: Omit<AssignmentSettingsInput, 'dueAt'>,
-) {
+  roles: UserRole[],
+  options: RoleTargetAssignmentOptions,
+): Promise<RoleTargetAssignmentResult> {
   const session = await resolveSession();
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
   }
 
-  if (!(ALL_ROLES as readonly string[]).includes(targetRole)) {
+  const targetRoles = [...new Set(roles)];
+  if (targetRoles.length === 0) {
+    throw new Error('At least one role is required');
+  }
+  if (targetRoles.some((role) => !(ALL_ROLES as readonly string[]).includes(role))) {
     throw new Error('Invalid role');
   }
 
   if (!can(dbRoleToRoleKey(session.user.role), 'assignment.create')) {
     logger.warn({
-      msg: '[enrollment] assignCourseToRole denied — missing assignment.create',
+      msg: '[enrollment] Role assignment denied — missing assignment.create',
       userId: session.user.id,
       role: session.user.role,
       courseId,
-      targetRole,
+      targetRoles,
     });
     throw new Error('Forbidden');
   }
@@ -616,8 +536,7 @@ export async function assignCourseToRole(
     throw new Error('Your organization needs an active subscription to assign courses.');
   }
 
-  const scheduleAt =
-    assignmentSettings?.scheduleAt != null ? new Date(assignmentSettings.scheduleAt) : null;
+  const { scheduleAt, dueAt, dueWindowDays } = options;
 
   // Offer a global catalog course to the org as part of the assignment (idempotent).
   if (course.isGlobal === true && !isOwnCourse) {
@@ -628,42 +547,33 @@ export async function assignCourseToRole(
     });
   }
 
-  const stageRows = assignmentSettings?.stages?.length
-    ? assignmentSettings.stages.map((s) => ({
-        stage: s.stage,
-        offsetDays: s.offsetDays,
-        enabled: s.enabled,
-        channels: s.channels ?? ['email', 'in_app'],
-      }))
-    : defaultStageRows();
-
   const assignmentId = await upsertCourseAssignment({
     organizationId,
     courseId,
     assignedByAdminId: session.user.id,
     scheduleAt,
-    // Role-target assignments never carry an absolute deadline.
-    dueAt: null,
-    dueWindowDays: assignmentSettings?.dueWindowDays ?? null,
-    remindersEnabled: assignmentSettings?.remindersEnabled ?? true,
-    renewalCycle: assignmentSettings?.renewalCycle ?? 'none',
-    stageRows,
-    targetRole,
+    dueAt,
+    dueWindowDays,
+    remindersEnabled: options.remindersEnabled,
+    renewalCycle: options.renewalCycle,
+    stageRows: options.stageRows,
+    targetRoles,
   });
 
   logger.info({
-    msg: '[enrollment] Course assigned to role',
+    msg: '[enrollment] Course assigned to roles',
     assignmentId,
     organizationId,
     courseId,
-    targetRole,
+    targetRoles,
     userId: session.user.id,
   });
 
-  // Enroll every CURRENT holder of the role; their deadline window counts from
-  // the assignment start (now, unless a schedule date is set).
+  // Enroll every CURRENT holder of any targeted role. Without an absolute
+  // deadline their window counts from the assignment start (now, unless a
+  // schedule date is set).
   const holders = await prisma.organizationUser.findMany({
-    where: { organizationId, role: targetRole, active: true },
+    where: { organizationId, role: { in: targetRoles }, active: true },
     select: { id: true, user: { select: { email: true } } },
   });
 
@@ -675,8 +585,8 @@ export async function assignCourseToRole(
     facilityId: null,
     assignmentId,
     scheduleAt,
-    assignmentDueAt: null,
-    assignmentWindowDays: assignmentSettings?.dueWindowDays ?? null,
+    assignmentDueAt: dueAt,
+    assignmentWindowDays: dueWindowDays,
     enrolledByUserId: session.user.id,
   };
 
@@ -699,13 +609,101 @@ export async function assignCourseToRole(
   logger.info({
     msg: '[enrollment] Role assignment enrolled current holders',
     courseId,
-    targetRole,
+    targetRoles,
     holderCount: holders.length,
     ...results,
   });
 
   revalidatePath(`/dashboard/training/courses/${courseId}`);
-  return { assignmentId, targetRole, holderCount: holders.length, ...results };
+  return { assignmentId, holderCount: holders.length, ...results };
+}
+
+/**
+ * Assign a course to a single whole ROLE (the standalone assign page). Delegates
+ * to {@link assignCourseToRoleTargets}. Role-target assignments made here never
+ * carry an absolute `dueAt` — the per-user deadline is always `start + window` —
+ * so an explicit `dueAt` is rejected by the parameter type and forced to null.
+ */
+export async function assignCourseToRole(
+  courseId: string,
+  targetRole: UserRole,
+  assignmentSettings?: Omit<AssignmentSettingsInput, 'dueAt'>,
+) {
+  const stageRows = assignmentSettings?.stages?.length
+    ? assignmentSettings.stages.map((s) => ({
+        stage: s.stage,
+        offsetDays: s.offsetDays,
+        enabled: s.enabled,
+        channels: s.channels ?? ['email', 'in_app'],
+      }))
+    : defaultStageRows();
+
+  const result = await assignCourseToRoleTargets(courseId, [targetRole], {
+    scheduleAt:
+      assignmentSettings?.scheduleAt != null ? new Date(assignmentSettings.scheduleAt) : null,
+    dueAt: null,
+    dueWindowDays: assignmentSettings?.dueWindowDays ?? null,
+    remindersEnabled: assignmentSettings?.remindersEnabled ?? true,
+    renewalCycle: assignmentSettings?.renewalCycle ?? 'none',
+    stageRows,
+  });
+
+  return { ...result, targetRole };
+}
+
+/** The course wizard's step-9 assignment settings, in the wizard's own vocabulary. */
+export interface RoleAssignmentSettingsInput {
+  /** Deadline date from the wizard's "Set Completion Deadline" toggle, when set. */
+  dueDate?: string | Date | null;
+  /** Time of day paired with {@link dueDate}; ignored without one. */
+  dueTime?: string | null;
+  /**
+   * Fallback deadline window (the course's `completionDeadlineDays`), used for
+   * every holder when no absolute deadline was set.
+   */
+  dueWindowDays?: number | null;
+  remindersEnabled?: boolean;
+  /** "Remind N days before the deadline" rows, in whole days. */
+  reminderDaysBefore?: number[];
+  renewalCycle?: RenewalCycle;
+}
+
+/**
+ * Assign a course to one or more ROLES — the course wizard's "Select by Roles"
+ * publish path. Writes the org's single {@link CourseAssignment} for the course
+ * with every targeted role and enrolls the union of their current holders;
+ * future holders are auto-enrolled by {@link enrollUserForRoleTargets}.
+ *
+ * Deadline precedence: the wizard's explicit due date (+ time) becomes the
+ * assignment's absolute `dueAt` and applies to every holder; without one, each
+ * holder gets `start + dueWindowDays` (the course's completion-deadline days).
+ * Both are persisted, so the window still covers anyone enrolled without the
+ * absolute date.
+ *
+ * Requires `assignment.create`, strictly scoped to the caller's own organization.
+ */
+export async function assignCourseToRoles(
+  courseId: string,
+  roles: UserRole[],
+  assignmentSettings?: RoleAssignmentSettingsInput,
+) {
+  const dueDate = assignmentSettings?.dueDate ? new Date(assignmentSettings.dueDate) : null;
+  if (dueDate && Number.isNaN(dueDate.getTime())) {
+    throw new Error('Invalid completion deadline');
+  }
+
+  const result = await assignCourseToRoleTargets(courseId, roles, {
+    scheduleAt: null,
+    dueAt: combineDateAndTime(dueDate, assignmentSettings?.dueTime),
+    dueWindowDays: assignmentSettings?.dueWindowDays ?? null,
+    remindersEnabled: assignmentSettings?.remindersEnabled ?? true,
+    renewalCycle: assignmentSettings?.renewalCycle ?? 'none',
+    stageRows: assignmentSettings?.reminderDaysBefore
+      ? reminderDaysToStageRows(assignmentSettings.reminderDaysBefore)
+      : defaultStageRows(),
+  });
+
+  return { ...result, targetRoles: [...new Set(roles)] };
 }
 
 /**

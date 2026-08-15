@@ -13,6 +13,7 @@ import {
 import { logger } from '@/lib/logger';
 import { deriveTimezoneFromState } from '@/lib/reminders/us-state-timezone';
 import { createMembership } from '@/lib/auth/membership';
+import { seedDefaultDocumentCategories } from '@/lib/documents/document-categories';
 
 // Define types for the data we expect
 // Note: We are using 'any' for simplicity here to match the flexible structure,
@@ -217,6 +218,8 @@ export async function completeOnboarding(data: OnboardingData): Promise<Complete
         },
       });
       logger.info({ msg: '[completeOnboarding] Facility Created:', data: facility.id });
+
+      await seedDefaultDocumentCategories(org.id, tx);
 
       // 1c. Persist any compliance documents uploaded during step 2. They were
       // parked under the founding user's onboarding storage prefix; now that the

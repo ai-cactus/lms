@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { logger } from '@/lib/logger';
 import { createMembership } from '@/lib/auth/membership';
+import { seedDefaultDocumentCategories } from '@/lib/documents/document-categories';
 
 const createOrgSchema = z.object({
   name: z.string().min(2, 'Organization name must be at least 2 characters'),
@@ -76,6 +77,8 @@ export async function createOrganization(prevState: State, formData: FormData): 
           name,
         },
       });
+
+      await seedDefaultDocumentCategories(org.id, tx);
 
       return { orgId: org.id, facilityId: facility.id };
     });

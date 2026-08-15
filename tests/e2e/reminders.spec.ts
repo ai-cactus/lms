@@ -215,12 +215,12 @@ test.describe('Reminders & Escalations', () => {
     // `src/app/dashboard/(main)/page.tsx`. The compact "Status Tracker" widget
     // this test targets only exists on the single-facility scoped dashboard, so
     // drill into the seeded org's one facility first, same as a real admin
-    // would via "Facilities Overview" → "View dashboard" (see
+    // would by clicking its "Facilities Overview" row (see
     // facility-dashboard.spec.ts's "drills into a facility" flow).
     const overviewSection = page
       .locator('section')
       .filter({ has: page.getByRole('heading', { name: 'Facilities Overview' }) });
-    await overviewSection.getByRole('link', { name: 'View dashboard' }).click();
+    await overviewSection.getByRole('row', { name: /View dashboard for/ }).click();
     await page.waitForURL('**/dashboard?facility=**');
 
     const section = page.locator('section', {
@@ -237,11 +237,9 @@ test.describe('Reminders & Escalations', () => {
     // badge — StatusTrackerOverview.tsx.)
     await expect(section.getByText(/\d+ at risk/)).toBeVisible();
 
-    // Seeded overdue worker appears in the compact top-5 list. Scope to the
-    // row rather than a bare getByText: each row's "View" action link also
-    // carries the worker's name in a visually-hidden (sr-only) span for
-    // screen readers, so an unscoped text match resolves to two elements
-    // (strict-mode violation) — same pattern as the full status-tracker page.
+    // Seeded overdue worker appears in the compact top-5 list. Address it by
+    // row so the following cell-level assertions stay scoped to it — same
+    // pattern as the full status-tracker page.
     const overdueRow = section.getByRole('row', { name: new RegExp(OVERDUE_WORKER_NAME) });
     await expect(overdueRow).toBeVisible();
     // Scoped to the row's desktop-only course cell: the row also carries a
@@ -255,10 +253,8 @@ test.describe('Reminders & Escalations', () => {
     // same worker present.
     await viewAllLink.click();
     await page.waitForURL('**/dashboard/status-tracker');
-    // Scope to the row rather than a bare getByText: each row's "View" action link
-    // also carries the worker's name in a visually-hidden (sr-only) span for screen
-    // readers, so an unscoped text match resolves to two elements (strict-mode
-    // violation).
+    // Address the worker by row: the name also appears in the row's secondary
+    // line, so a bare getByText is ambiguous under strict mode.
     await expect(page.getByRole('row', { name: new RegExp(OVERDUE_WORKER_NAME) })).toBeVisible();
   });
 

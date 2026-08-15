@@ -98,8 +98,34 @@ test.describe('PDF viewer — self-hosted pdf.js worker (Issue #1 / TC-011)', ()
   });
 });
 
-test.describe('Document upload — client-side .doc rejection (Issue #13)', () => {
-  test('selecting a .doc file shows a validation error and never enables Upload', async ({
+/**
+ * The upload modal is now a two-step flow: pick a REQUIRED category from the
+ * organization's vocabulary, then queue the files. Opens the modal and clears
+ * step 1 with an existing category, leaving the dialog on the file step.
+ */
+async function openUploadModalOnFileStep(
+  page: import('@playwright/test').Page,
+): Promise<import('@playwright/test').Locator> {
+  await page
+    .getByRole('button', { name: /upload/i })
+    .first()
+    .click();
+
+  const dialog = page.getByRole('dialog', { name: 'Upload documents' });
+  await expect(dialog).toBeVisible();
+
+  // Step 1 gates the flow — no dropzone exists until a category is chosen.
+  await expect(dialog.locator('input[type="file"]')).toHaveCount(0);
+  await dialog.getByRole('combobox', { name: 'Category' }).click();
+  await page.getByRole('option').first().click();
+  await dialog.getByRole('button', { name: 'Continue' }).click();
+
+  await expect(dialog.getByText('PDF or DOCX · up to 10 MB each')).toBeVisible();
+  return dialog;
+}
+
+test.describe('Document upload — step 1 requires a category (multi-facility v3)', () => {
+  test('Continue is refused until a category is picked, and "Other" opens the new-category input', async ({
     page,
   }) => {
     await loginAsAdmin(page, 'admin@test.com');
@@ -109,10 +135,34 @@ test.describe('Document upload — client-side .doc rejection (Issue #13)', () =
       .getByRole('button', { name: /upload/i })
       .first()
       .click();
-    // multi-facility v3 rewrote the single-file "Upload Document" dialog into
-    // the multi-file "Upload documents" one — updated to match.
     const dialog = page.getByRole('dialog', { name: 'Upload documents' });
     await expect(dialog).toBeVisible();
+
+    await dialog.getByRole('button', { name: 'Continue' }).click();
+    await expect(dialog.getByText('Select a category to continue.')).toBeVisible();
+    await expect(dialog.locator('input[type="file"]')).toHaveCount(0);
+
+    // "Other" swaps the picker for the custom-category input and its helper copy.
+    await dialog.getByRole('combobox', { name: 'Category' }).click();
+    await page.getByRole('option', { name: 'Other', exact: true }).click();
+
+    await expect(dialog.getByRole('textbox', { name: 'Category' })).toBeVisible();
+    await expect(
+      dialog.getByText(
+        'The new categories will appear in the hub filter for every facility immediately.',
+      ),
+    ).toBeVisible();
+  });
+});
+
+test.describe('Document upload — client-side .doc rejection (Issue #13)', () => {
+  test('selecting a .doc file shows a validation error and never enables Upload', async ({
+    page,
+  }) => {
+    await loginAsAdmin(page, 'admin@test.com');
+    await page.goto('/dashboard/documents');
+
+    const dialog = await openUploadModalOnFileStep(page);
 
     await dialog.locator('input[type="file"]').setInputFiles({
       name: 'legacy-policy.doc',
@@ -144,12 +194,7 @@ test.describe('Document upload — multi-file batch selection (multi-facility v3
     await loginAsAdmin(page, 'admin@test.com');
     await page.goto('/dashboard/documents');
 
-    await page
-      .getByRole('button', { name: /upload/i })
-      .first()
-      .click();
-    const dialog = page.getByRole('dialog', { name: 'Upload documents' });
-    await expect(dialog).toBeVisible();
+    const dialog = await openUploadModalOnFileStep(page);
 
     await dialog.locator('input[type="file"]').setInputFiles([
       {
@@ -168,9 +213,6 @@ test.describe('Document upload — multi-file batch selection (multi-facility v3
     await expect(dialog.getByText('policy-two.pdf')).toBeVisible();
     // Not attested yet — Upload stays disabled even with 2 valid files queued.
     await expect(dialog.getByRole('button', { name: /upload 2 files/i })).toBeDisabled();
-
-    await dialog.getByRole('combobox', { name: 'Category' }).click();
-    await page.getByRole('option').first().click();
 
     await dialog.getByLabel(/no personal health information/i).check();
     await expect(dialog.getByRole('button', { name: /upload 2 files/i })).toBeEnabled();

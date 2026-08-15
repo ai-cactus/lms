@@ -292,17 +292,13 @@ test.describe('Staff role change — no in-place UI path remains', () => {
 
       const staffRow = page.locator('tr', { hasText: targetEmail });
       await expect(staffRow).toBeVisible();
-      const staffRowMenuBtn = staffRow.getByRole('button', { name: 'Row actions' });
-      await staffRowMenuBtn.waitFor({ state: 'visible' });
-      await staffRowMenuBtn.click();
 
-      await expect(page.getByRole('menuitem', { name: 'View Profile' })).toBeVisible({
-        timeout: 15000,
-      });
+      // supervisor holds neither user.edit nor user.delete, so the row kebab —
+      // now limited to Change Facility / Remove Staff — renders not at all.
+      // Read-only access to the profile survives as the row click.
+      await expect(staffRow.getByRole('button', { name: 'Row actions' })).toHaveCount(0);
       await expect(page.getByRole('menuitem', { name: /edit profile/i })).toHaveCount(0);
       await expect(page.getByRole('menuitem', { name: /change role/i })).toHaveCount(0);
-      await expect(page.getByRole('menuitem', { name: 'Remove Staff' })).not.toBeVisible();
-      await page.keyboard.press('Escape');
 
       // Staff member remains in the roster — no removal path was reachable.
       await expect(page.locator('tr', { hasText: targetEmail })).toBeVisible();

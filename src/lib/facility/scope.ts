@@ -14,6 +14,7 @@
  */
 import prisma from '@/lib/prisma';
 import { logger } from '@/lib/logger';
+import { MIN_COMPARISON_FACILITIES, parseFacilityScopeParam } from '@/lib/facility/scope-param';
 import type { Prisma } from '@/generated/prisma/client';
 import type { AuthSession, Role } from '@/types/next-auth';
 
@@ -62,6 +63,15 @@ export interface AccessibleFacility {
  */
 export type FacilityScope = { mode: 'all' } | { mode: 'single'; facility: AccessibleFacility };
 
+/**
+ * `compare` extends {@link FacilityScope} with the multi-facility selection the
+ * dashboard's scope palette produces. Two or more surviving ids are required —
+ * a single survivor is an ordinary single-facility scope, none is org-wide.
+ */
+export type FacilityScopeSelection =
+  | FacilityScope
+  | { mode: 'compare'; facilities: AccessibleFacility[] };
+
 /** The session fields this module reads — satisfied by a full NextAuth session. */
 type FacilityScopeSession = {
   user: Pick<AuthSession['user'], 'id' | 'role' | 'organizationId' | 'organizationUserId'>;
@@ -96,6 +106,31 @@ export async function listAccessibleFacilities(
 }
 
 /**
+ * The requested ids that the caller may actually view, in the accessible set's
+ * (alphabetical) order. Ids outside that set are dropped silently — the caller
+ * must not be able to probe for facilities in another tenant — and logged.
+ */
+async function accessibleSubset(
+  session: FacilityScopeSession,
+  requestedIds: string[],
+): Promise<AccessibleFacility[]> {
+  const accessible = await listAccessibleFacilities(session);
+  const requested = new Set(requestedIds);
+  const facilities = accessible.filter((facility) => requested.has(facility.id));
+
+  if (facilities.length < requestedIds.length) {
+    logger.warn({
+      msg: '[facility] Requested facility not accessible — falling back to org scope',
+      userId: session.user.id,
+      organizationId: session.user.organizationId,
+      requestedFacilityId: requestedIds.join(','),
+    });
+  }
+
+  return facilities;
+}
+
+/**
  * Resolve the facility scope for a request. An absent, unknown, foreign or
  * unassigned `requestedFacilityId` falls back to `{ mode: 'all' }` — never an
  * error — so the caller cannot probe for the existence of facilities outside
@@ -105,20 +140,29 @@ export async function resolveFacilityScope(
   session: FacilityScopeSession,
   requestedFacilityId?: string | null,
 ): Promise<FacilityScope> {
-  if (!requestedFacilityId) return { mode: 'all' };
+  const requestedIds = parseFacilityScopeParam(requestedFacilityId);
+  if (requestedIds.length !== 1) return { mode: 'all' };
 
-  const accessible = await listAccessibleFacilities(session);
-  const facility = accessible.find((f) => f.id === requestedFacilityId);
+  const [facility] = await accessibleSubset(session, requestedIds);
+  return facility ? { mode: 'single', facility } : { mode: 'all' };
+}
 
-  if (!facility) {
-    logger.warn({
-      msg: '[facility] Requested facility not accessible — falling back to org scope',
-      userId: session.user.id,
-      organizationId: session.user.organizationId,
-      requestedFacilityId,
-    });
-    return { mode: 'all' };
-  }
+/**
+ * Resolve a raw `?facility=` value, which may name several facilities. Widening
+ * rules mirror {@link resolveFacilityScope}: whatever survives the accessibility
+ * filter decides the mode, and nothing surviving means the org-wide view.
+ */
+export async function resolveFacilityScopeSelection(
+  session: FacilityScopeSession,
+  param?: string | string[] | null,
+): Promise<FacilityScopeSelection> {
+  const requestedIds = parseFacilityScopeParam(param);
+  if (requestedIds.length === 0) return { mode: 'all' };
 
-  return { mode: 'single', facility };
+  const facilities = await accessibleSubset(session, requestedIds);
+
+  if (facilities.length === 0) return { mode: 'all' };
+  if (facilities.length < MIN_COMPARISON_FACILITIES)
+    return { mode: 'single', facility: facilities[0] };
+  return { mode: 'compare', facilities };
 }

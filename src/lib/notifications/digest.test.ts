@@ -10,28 +10,34 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { prismaMock, MockPrismaKnownRequestError, mockResolveRoleRecipients } = vi.hoisted(() => {
-  const prismaMock = {
-    notificationEvent: { groupBy: vi.fn(), findMany: vi.fn(), updateMany: vi.fn() },
-    organization: { findMany: vi.fn() },
-    facility: { findMany: vi.fn() },
-    notificationDigestRun: { create: vi.fn(), update: vi.fn() },
-  };
+const { prismaMock, MockPrismaKnownRequestError, mockResolveRoleRecipients, mockIsChannelEnabled } =
+  vi.hoisted(() => {
+    const prismaMock = {
+      notificationEvent: { groupBy: vi.fn(), findMany: vi.fn(), updateMany: vi.fn() },
+      organization: { findMany: vi.fn() },
+      facility: { findMany: vi.fn() },
+      notificationDigestRun: { create: vi.fn(), update: vi.fn() },
+    };
 
-  // Same technique as src/lib/reminders/dispatch.test.ts: a fake class that
-  // passes `instanceof Prisma.PrismaClientKnownRequestError` because both this
-  // file and digest.ts import the same mocked module.
-  class MockPrismaKnownRequestError extends Error {
-    code: string;
-    constructor(message: string, code: string) {
-      super(message);
-      this.code = code;
-      this.name = 'PrismaClientKnownRequestError';
+    // Same technique as src/lib/reminders/dispatch.test.ts: a fake class that
+    // passes `instanceof Prisma.PrismaClientKnownRequestError` because both this
+    // file and digest.ts import the same mocked module.
+    class MockPrismaKnownRequestError extends Error {
+      code: string;
+      constructor(message: string, code: string) {
+        super(message);
+        this.code = code;
+        this.name = 'PrismaClientKnownRequestError';
+      }
     }
-  }
 
-  return { prismaMock, MockPrismaKnownRequestError, mockResolveRoleRecipients: vi.fn() };
-});
+    return {
+      prismaMock,
+      MockPrismaKnownRequestError,
+      mockResolveRoleRecipients: vi.fn(),
+      mockIsChannelEnabled: vi.fn(),
+    };
+  });
 
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock, default: prismaMock }));
 vi.mock('@/generated/prisma/client', () => ({
@@ -42,6 +48,9 @@ vi.mock('@/lib/logger', () => ({
   maskEmail: (e: string) => e,
 }));
 vi.mock('./recipients', () => ({ resolveRoleRecipients: mockResolveRoleRecipients }));
+vi.mock('./category-preferences', () => ({
+  isNotificationChannelEnabled: mockIsChannelEnabled,
+}));
 
 import { runNotificationDigest, periodKeyFor, ORGANIZATION_WIDE_LABEL } from './digest';
 
@@ -76,6 +85,7 @@ beforeEach(() => {
     usedFallback: false,
     missingRoles: [],
   });
+  mockIsChannelEnabled.mockResolvedValue(true);
 });
 
 describe('periodKeyFor — daily', () => {
@@ -438,5 +448,76 @@ describe('runNotificationDigest — org failure isolation', () => {
       where: { id: 'run-1' },
       data: { status: 'sent', eventCount: 0, sentAt: expect.any(Date) },
     });
+  });
+});
+
+/**
+ * SET-004: the org-wide category switches gate the EMAIL leg only. The in-app
+ * row was already written at emit time, so a suppressed event must still be
+ * marked dispatched — leaving it pending would only re-surface it next period.
+ */
+describe('runNotificationDigest — category email switch', () => {
+  beforeEach(() => {
+    prismaMock.notificationEvent.groupBy.mockResolvedValue([{ organizationId: 'org-1' }]);
+    prismaMock.organization.findMany.mockResolvedValue([
+      { id: 'org-1', name: 'Acme', notificationDigestFrequency: 'daily' },
+    ]);
+  });
+
+  it('sends no email but still dispatches the events when the category is off for email', async () => {
+    prismaMock.notificationEvent.findMany.mockResolvedValue([pendingEvent()]);
+    mockIsChannelEnabled.mockResolvedValue(false);
+
+    const sendEmail = vi.fn().mockResolvedValue({ ok: true });
+    const summary = await runNotificationDigest({ now: new Date(), dryRun: false, sendEmail });
+
+    expect(sendEmail).not.toHaveBeenCalled();
+    expect(prismaMock.notificationEvent.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['event-1'] } },
+      data: { status: 'dispatched', dispatchedAt: expect.any(Date), digestRunId: 'run-1' },
+    });
+    expect(summary.emailsSent).toBe(0);
+    expect(summary.eventsDispatched).toBe(1);
+  });
+
+  it('keeps the enabled events in the email and drops only the suppressed ones', async () => {
+    prismaMock.notificationEvent.findMany.mockResolvedValue([
+      pendingEvent({ id: 'event-1', type: 'STAFF_ADDED' }),
+      pendingEvent({ id: 'event-2', type: 'DOCUMENT_UPLOADED' }),
+    ]);
+    mockIsChannelEnabled.mockImplementation(
+      async (_orgId: string, type: string) => type === 'DOCUMENT_UPLOADED',
+    );
+
+    const sendEmail = vi.fn().mockResolvedValue({ ok: true });
+    await runNotificationDigest({ now: new Date(), dryRun: false, sendEmail });
+
+    const message = sendEmail.mock.calls[0][0];
+    expect(message.totalCount).toBe(1);
+    expect(message.sections[0].groups.map((g: { type: string }) => g.type)).toEqual([
+      'DOCUMENT_UPLOADED',
+    ]);
+    // Both rows still close out, suppressed or not.
+    expect(prismaMock.notificationEvent.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['event-1', 'event-2'] } },
+      data: { status: 'dispatched', dispatchedAt: expect.any(Date), digestRunId: 'run-1' },
+    });
+  });
+
+  // One decision per distinct type, reused across every event that shares it.
+  it('resolves each event type once', async () => {
+    prismaMock.notificationEvent.findMany.mockResolvedValue([
+      pendingEvent({ id: 'event-1' }),
+      pendingEvent({ id: 'event-2' }),
+      pendingEvent({ id: 'event-3' }),
+    ]);
+
+    await runNotificationDigest({
+      now: new Date(),
+      dryRun: false,
+      sendEmail: vi.fn().mockResolvedValue({ ok: true }),
+    });
+
+    expect(mockIsChannelEnabled).toHaveBeenCalledOnce();
   });
 });

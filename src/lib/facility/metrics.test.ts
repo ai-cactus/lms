@@ -11,11 +11,24 @@ import {
   computeCompletionPercent,
   computeTrendPercent,
   riskWeight,
-  AUDIT_READY_MIN_PERCENT,
-  AUDIT_NEEDS_ATTENTION_MIN_PERCENT,
-  RISK_HIGH_MIN_OVERDUE,
-  RISK_MEDIUM_MIN_OVERDUE,
+  AUDIT_READY_MIN_COMPLETION_PERCENT,
+  RISK_HIGH_COMPLETION_PERCENT,
+  RISK_LOW_COMPLETION_PERCENT,
+  type FacilityComplianceSignals,
 } from './metrics';
+
+/** A facility with nothing wrong: no overdue work, no credential pressure, full completion. */
+const CLEAN: FacilityComplianceSignals = {
+  overdueBeyondGrace: 0,
+  overdueWithinGrace: 0,
+  completionPercent: 100,
+  expiredCredentials: 0,
+  expiringCredentials: 0,
+};
+
+function signals(overrides: Partial<FacilityComplianceSignals> = {}): FacilityComplianceSignals {
+  return { ...CLEAN, ...overrides };
+}
 
 describe('computeAuditReadinessPercent', () => {
   it('returns 100 when there are no deadline-bearing enrollments, regardless of on-time count', () => {
@@ -40,51 +53,101 @@ describe('computeAuditReadinessPercent', () => {
   });
 });
 
-describe('classifyAuditReadiness', () => {
-  it('classifies exactly at the audit_ready boundary as audit_ready', () => {
-    expect(classifyAuditReadiness(AUDIT_READY_MIN_PERCENT)).toBe('audit_ready');
+describe('classifyAuditReadiness (glossary §0.2)', () => {
+  it('is audit_ready with zero overdue, zero expired credentials and completion at the minimum', () => {
+    expect(
+      classifyAuditReadiness(signals({ completionPercent: AUDIT_READY_MIN_COMPLETION_PERCENT })),
+    ).toBe('audit_ready');
   });
 
-  it('classifies one point below the audit_ready boundary as needs_attention', () => {
-    expect(classifyAuditReadiness(AUDIT_READY_MIN_PERCENT - 1)).toBe('needs_attention');
+  it('is not audit_ready one point below the completion minimum', () => {
+    expect(
+      classifyAuditReadiness(
+        signals({ completionPercent: AUDIT_READY_MIN_COMPLETION_PERCENT - 1 }),
+      ),
+    ).toBe('needs_attention');
   });
 
-  it('classifies exactly at the needs_attention boundary as needs_attention', () => {
-    expect(classifyAuditReadiness(AUDIT_NEEDS_ATTENTION_MIN_PERCENT)).toBe('needs_attention');
+  it('is audit_ready for a facility with nothing assigned (no completion to be judged on)', () => {
+    expect(classifyAuditReadiness(signals({ completionPercent: null }))).toBe('audit_ready');
   });
 
-  it('classifies one point below the needs_attention boundary as critical', () => {
-    expect(classifyAuditReadiness(AUDIT_NEEDS_ATTENTION_MIN_PERCENT - 1)).toBe('critical');
+  it('is not audit_ready with a single overdue training inside the grace period', () => {
+    expect(classifyAuditReadiness(signals({ overdueWithinGrace: 1 }))).toBe('needs_attention');
   });
 
-  it('classifies 0 as critical', () => {
-    expect(classifyAuditReadiness(0)).toBe('critical');
+  it('is critical with an overdue training past the grace period', () => {
+    expect(classifyAuditReadiness(signals({ overdueBeyondGrace: 1 }))).toBe('critical');
   });
 
-  it('classifies 100 as audit_ready', () => {
-    expect(classifyAuditReadiness(100)).toBe('audit_ready');
+  it('is critical with an expired credential even when everything else passes', () => {
+    expect(classifyAuditReadiness(signals({ expiredCredentials: 1 }))).toBe('critical');
+  });
+
+  it('is critical when completion falls below the high-risk floor', () => {
+    expect(
+      classifyAuditReadiness(signals({ completionPercent: RISK_HIGH_COMPLETION_PERCENT - 1 })),
+    ).toBe('critical');
+  });
+
+  it('stays audit_ready when a credential is merely expiring, not expired', () => {
+    expect(classifyAuditReadiness(signals({ expiringCredentials: 3 }))).toBe('audit_ready');
   });
 });
 
-describe('computeRiskLevel', () => {
-  it('classifies exactly at the high boundary as high', () => {
-    expect(computeRiskLevel(RISK_HIGH_MIN_OVERDUE)).toBe('high');
+describe('computeRiskLevel (glossary §0.1)', () => {
+  it('is low for a facility with no overdue work, full completion and no credential pressure', () => {
+    expect(computeRiskLevel(CLEAN)).toBe('low');
   });
 
-  it('classifies one below the high boundary as medium', () => {
-    expect(computeRiskLevel(RISK_HIGH_MIN_OVERDUE - 1)).toBe('medium');
+  it('is high for any overdue training past the grace period', () => {
+    expect(computeRiskLevel(signals({ overdueBeyondGrace: 1 }))).toBe('high');
   });
 
-  it('classifies exactly at the medium boundary as medium', () => {
-    expect(computeRiskLevel(RISK_MEDIUM_MIN_OVERDUE)).toBe('medium');
+  it('is high for any expired credential', () => {
+    expect(computeRiskLevel(signals({ expiredCredentials: 1 }))).toBe('high');
   });
 
-  it('classifies one below the medium boundary as low', () => {
-    expect(computeRiskLevel(RISK_MEDIUM_MIN_OVERDUE - 1)).toBe('low');
+  it('is high just below the high-risk completion floor', () => {
+    expect(computeRiskLevel(signals({ completionPercent: RISK_HIGH_COMPLETION_PERCENT - 1 }))).toBe(
+      'high',
+    );
   });
 
-  it('classifies zero overdue trainings as low', () => {
-    expect(computeRiskLevel(0)).toBe('low');
+  it('is medium exactly at the high-risk completion floor', () => {
+    expect(computeRiskLevel(signals({ completionPercent: RISK_HIGH_COMPLETION_PERCENT }))).toBe(
+      'medium',
+    );
+  });
+
+  it('is medium for an overdue training inside the grace period', () => {
+    expect(computeRiskLevel(signals({ overdueWithinGrace: 1 }))).toBe('medium');
+  });
+
+  it('is medium for a credential expiring inside the window', () => {
+    expect(computeRiskLevel(signals({ expiringCredentials: 1 }))).toBe('medium');
+  });
+
+  it('is medium one point below the low-risk completion floor', () => {
+    expect(computeRiskLevel(signals({ completionPercent: RISK_LOW_COMPLETION_PERCENT - 1 }))).toBe(
+      'medium',
+    );
+  });
+
+  it('is low exactly at the low-risk completion floor', () => {
+    expect(computeRiskLevel(signals({ completionPercent: RISK_LOW_COMPLETION_PERCENT }))).toBe(
+      'low',
+    );
+  });
+
+  it('is low for a facility with nothing assigned rather than scoring its absent completion as 0%', () => {
+    expect(computeRiskLevel(signals({ completionPercent: null }))).toBe('low');
+  });
+
+  it('escalates to high when a beyond-grace overdue coexists with within-grace ones', () => {
+    expect(computeRiskLevel(signals({ overdueBeyondGrace: 1, overdueWithinGrace: 9 }))).toBe(
+      'high',
+    );
   });
 });
 

@@ -1,5 +1,14 @@
-# Code-Ninja Memory Index
+# Memory Index
 
+- [Dashboard metrics glossary](dashboard-metrics-glossary.md) — multi_facility_notes.pdf is canonical for dashboard metric names/formulas; two open product decisions from the alignment pass
+- [Supervisor own-facility edit](supervisor_own_facility_edit.md) — PROF-002 deliberately lets supervisors edit their own facility despite the read-only RBAC ruling; don't "fix" it back
+- [Figma STAFF section](reference_figma_staff_section.md) — frame→page map; roster's 5 columns don't fit at lg, % widths from xl (measure 1280 AND 1440)
+- [Local UI verification](project_local_ui_verification.md) — Playwright recipe for the dev app; port 3005 may be a decoy build, newPage() ignores viewport
+- [Course wizard 7→9 steps](project_course-wizard-9-step.md) — steps 1-7 built (Phase 6 = per-module generation); steps 6+7 share GenerationController by design
+- [Wizard PHI attestation](project_course-wizard-phi-attestation.md) — step 2's attestation checkbox isn't in the mock but is required: uploadDocument rejects FormData without phiAttested
+- [Document Hub scope](project_document-hub-scope.md) — rename dropped from the UI (action kept); list hover card cut, but the viewer's thumbnail rail was ruled back IN
+- [Step-7 review honest gaps](project_wizard-step7-review-honest-gaps.md) — no citation chips, "Key Points" not "Tip!", Edit button inert: deliberate, don't invent the missing data
+- [Assign-action authorization split](gotcha_assignment_action_authorization_split.md) — enrollUsers gates on creator identity, assignCourseToUsers on org ownership; wrong pick → "Course not found"
 - [npm install needs --allow-remote=all](gotcha_npm_install_allow_remote.md) — lockfile has ~293 npmmirror.com URLs; npm 12 aborts with EALLOWREMOTE without the flag.
 - [npm swallows --dry-run](gotcha_npm_swallows_dry_run.md) — scripts/ now execute by default; a dropped `--dry-run` is destructive, hence run.ts's rescue block.
 - [npm audit high gate](project_npm_audit_gate.md) — cleared via overrides; the load-bearing `minimatch@10` pin breaks ~12 currently-disabled react/import/jsx-a11y rules.

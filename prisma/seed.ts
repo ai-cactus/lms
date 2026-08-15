@@ -24,6 +24,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../generated/prisma/client';
 import type { UserRole } from '../generated/prisma/enums';
 import { BCRYPT_COST } from '../src/lib/bcrypt-config';
+import { seedDefaultDocumentCategories } from '../src/lib/documents/document-categories';
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
@@ -198,6 +199,11 @@ async function main(): Promise<void> {
     },
   });
   log(`organization ready (${org.slug})`);
+
+  // Document Hub categories are org-scoped; onboarding seeds them for real
+  // organizations, so the seeded ones need the same vocabulary or the upload
+  // modal's required category picker has nothing to offer.
+  await seedDefaultDocumentCategories(org.id, prisma);
 
   // 1a. Facility — every membership needs at least one facility assignment.
   const facility = await prisma.facility.upsert({
@@ -814,6 +820,8 @@ async function main(): Promise<void> {
       requireMfa: false,
     },
   });
+  await seedDefaultDocumentCategories(secondOrg.id, prisma);
+
   const secondFacility = await prisma.facility.upsert({
     where: { id: SECOND_FACILITY_ID },
     update: { organizationId: secondOrg.id },

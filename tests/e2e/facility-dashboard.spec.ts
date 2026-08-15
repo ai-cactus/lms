@@ -150,9 +150,8 @@ test.describe('Global (multi-facility) dashboard', () => {
       await login(page, seeded.ownerEmail, seeded.ownerPassword);
 
       // Global View landing state. Both the Priority Risks and Facilities
-      // Overview tables render a row per facility — scope to the Facilities
-      // Overview section (its "View dashboard" link text, unlike Priority
-      // Risks' "View facility dashboard", is unambiguous within that table).
+      // Overview tables render a row per facility, so scope to the Facilities
+      // Overview section before addressing a facility's row.
       await expect(page.getByText('Here is an overview across all your facilities')).toBeVisible();
       await expect(page.getByLabel('Facility scope')).toBeVisible();
       const overviewSection = page
@@ -161,9 +160,8 @@ test.describe('Global (multi-facility) dashboard', () => {
       await expect(overviewSection.getByRole('row', { name: seeded.facilityAName })).toBeVisible();
       await expect(overviewSection.getByRole('row', { name: seeded.facilityBName })).toBeVisible();
 
-      // Drill into facility A via its "View dashboard" link.
-      const facilityARow = overviewSection.getByRole('row', { name: seeded.facilityAName });
-      await facilityARow.getByRole('link', { name: 'View dashboard' }).click();
+      // Drill into facility A: the row itself is the navigation affordance.
+      await overviewSection.getByRole('row', { name: seeded.facilityAName }).click();
       await page.waitForURL(`**/dashboard?facility=${seeded.facilityAId}`);
 
       await expect(page.getByText('Here is an overview of your facility')).toBeVisible();
@@ -175,9 +173,12 @@ test.describe('Global (multi-facility) dashboard', () => {
       const switcher = page.getByLabel('Facility scope');
       await expect(switcher).toContainText(seeded.facilityAName);
 
-      // Switching back to "All Facilities" returns to the Global View.
+      // Clearing the selection in the scope palette returns to the Global View.
+      // The "All facilities" chip applies immediately and closes the palette
+      // (FacilityScopePalette.tsx's applyAllFacilities) — there is no separate
+      // confirmation step once it's clicked.
       await switcher.click();
-      await page.getByRole('option', { name: 'All Facilities' }).click();
+      await page.getByRole('button', { name: 'All facilities' }).click();
       await page.waitForURL('**/dashboard');
       await expect(page.getByText('Here is an overview across all your facilities')).toBeVisible();
     } finally {

@@ -9,6 +9,7 @@ import FacilityTab from './FacilityTab';
 import NotificationSettingsTab from './NotificationSettingsTab';
 import type { Role } from '@/types/next-auth';
 import type { DigestFrequency } from '@/generated/prisma/enums';
+import type { NotificationCategoryPreferenceMap } from '@/lib/notifications/catalog';
 
 export interface SettingsTeamMember {
   id: string;
@@ -24,16 +25,21 @@ export interface SettingsFacility {
   id: string;
   name: string;
   type: string | null;
+  address: string | null;
+  /** Active supervisor of this facility, or null when the seat is vacant. */
+  supervisorName: string | null;
+  supervisorEmail: string | null;
 }
 
 interface SettingsClientProps {
   teamMembers: SettingsTeamMember[];
-  facility: SettingsFacility | null;
+  facilities: SettingsFacility[];
   planName: string;
   inviterRole: Role;
   remainingSeats: number | null;
   existingEmails: string[];
   digestFrequency: DigestFrequency;
+  categoryPreferences: NotificationCategoryPreferenceMap;
 }
 
 const TAB_TRIGGER_CLASS =
@@ -41,12 +47,13 @@ const TAB_TRIGGER_CLASS =
 
 export default function SettingsClient({
   teamMembers,
-  facility,
+  facilities,
   planName,
   inviterRole,
   remainingSeats,
   existingEmails,
   digestFrequency,
+  categoryPreferences,
 }: SettingsClientProps) {
   const [showInviteModal, setShowInviteModal] = useState(false);
 
@@ -76,7 +83,7 @@ export default function SettingsClient({
             Facility
           </TabsTrigger>
           <TabsTrigger value="notifications" className={TAB_TRIGGER_CLASS}>
-            Notifications
+            Notification
           </TabsTrigger>
         </TabsList>
 
@@ -89,11 +96,14 @@ export default function SettingsClient({
         </TabsContent>
 
         <TabsContent value="facility">
-          <FacilityTab facility={facility} planName={planName} viewerRole={inviterRole} />
+          <FacilityTab facilities={facilities} viewerRole={inviterRole} />
         </TabsContent>
 
         <TabsContent value="notifications">
-          <NotificationSettingsTab digestFrequency={digestFrequency} />
+          <NotificationSettingsTab
+            digestFrequency={digestFrequency}
+            categoryPreferences={categoryPreferences}
+          />
         </TabsContent>
       </Tabs>
 
@@ -104,6 +114,7 @@ export default function SettingsClient({
         planName={planName}
         inviterRole={inviterRole}
         existingEmails={existingEmails}
+        facilities={facilities}
       />
     </div>
   );

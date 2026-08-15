@@ -7,8 +7,15 @@
  * this folder instead of being promoted to a global primitive.
  */
 
+export const auditPageTitle =
+  'text-[28px] font-semibold leading-[1.31] tracking-[-0.04em] text-[#272b30] sm:text-[33.5px]';
+
+export const auditPageSubtitle = 'text-[14px] font-medium leading-[1.4] text-[#a0aec0]';
+
+// @container: the tables inside drop columns based on THIS card's width, not the
+// viewport — with the dashboard sidebar open the two differ by ~300px.
 export const auditCard =
-  'overflow-hidden rounded-[12px] border border-[#e2e8f0] bg-white shadow-[0px_1px_2px_0px_rgba(0,0,0,0.05)]';
+  '@container overflow-hidden rounded-[12px] border border-[#e2e8f0] bg-white shadow-[0px_1px_2px_0px_rgba(0,0,0,0.05)]';
 
 export const auditCardHeader =
   'flex flex-col gap-3 border-b border-[#f1f5f9] px-4 pb-5 pt-5 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:pb-[25px] sm:pt-6';
@@ -33,4 +40,5 @@ export const auditSearch =
 export const auditOutlineButton =
   'h-[38px] gap-2 rounded-[8px] border-[#e2e8f0] px-[13px] text-[14px] font-medium text-[#0f172a]';
 
-export const auditRowAction = 'text-[14px] font-semibold text-primary hover:underline';
+export const auditRowAction =
+  'text-[14px] font-semibold text-primary hover:underline disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:no-underline';

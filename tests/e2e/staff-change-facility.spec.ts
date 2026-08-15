@@ -214,10 +214,13 @@ test.describe('Staff — Change Facility flow', () => {
 
       const dialog = page.getByRole('dialog');
       await expect(dialog).toBeVisible();
-      await expect(dialog.getByText('Change facility')).toBeVisible();
+      // The dialog's heading and its confirm button both read "Change
+      // facility" (ChangeFacilityModal.tsx), so a plain getByText match is
+      // ambiguous (strict-mode violation) — scope to the heading.
+      await expect(dialog.getByRole('heading', { name: 'Change facility' })).toBeVisible();
 
       await dialog.getByRole('radio', { name: new RegExp(seeded.facilityBName) }).click();
-      await dialog.getByRole('button', { name: 'Continue' }).click();
+      await dialog.getByRole('button', { name: 'Change facility' }).click();
 
       await expect(
         dialog.getByRole('heading', { name: new RegExp(`Switch.*${seeded.facilityBName}`) }),
@@ -257,11 +260,11 @@ test.describe('Staff — Change Facility flow', () => {
 
       const dialog = page.getByRole('dialog');
       await dialog.getByRole('radio', { name: new RegExp(seeded.facilityBName) }).click();
-      await dialog.getByRole('button', { name: 'Continue' }).click();
+      await dialog.getByRole('button', { name: 'Change facility' }).click();
       // "Cancel" on the confirm step returns to the select step — it does not
       // close the dialog (ChangeFacilityModal.tsx: onClick={() => setStep('select')}).
       await dialog.getByRole('button', { name: 'Cancel' }).click();
-      await expect(dialog.getByRole('button', { name: 'Continue' })).toBeVisible();
+      await expect(dialog.getByRole('button', { name: 'Change facility' })).toBeVisible();
       // Closing from the select step is what actually dismisses the dialog.
       await dialog.getByRole('button', { name: 'Cancel' }).click();
       await expect(dialog).toBeHidden();
@@ -295,8 +298,11 @@ test.describe('Staff — Change Facility flow', () => {
 
       const staffRow = page.getByRole('row', { name: new RegExp(seeded.staffFullName, 'i') });
       await expect(staffRow).toBeVisible();
-      await staffRow.getByRole('button', { name: 'Row actions' }).click();
-      await expect(page.getByRole('menuitem', { name: 'Change Facility' })).not.toBeVisible();
+      // A supervisor has neither `user.edit` (Change Facility) nor
+      // `user.delete` (Remove Staff) on this row, so StaffListClient.tsx's
+      // action cell renders no kebab trigger at all — not a kebab with a
+      // hidden/disabled item (see its "Action cell" comment).
+      await expect(staffRow.getByRole('button', { name: 'Row actions' })).not.toBeVisible();
     } finally {
       await cleanup(seeded, [supervisorOrgUserId]);
     }

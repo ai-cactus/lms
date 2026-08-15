@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Settings2, Trash2 } from 'lucide-react';
+import { ArrowLeft, Check, ListFilter, Settings2, Trash2 } from 'lucide-react';
 import EmptyTableState from '@/components/ui/EmptyTableState';
 import { getNotificationPreferences, setNotificationPreference } from '@/app/actions/notifications';
 import NotificationItem from '@/components/notifications/NotificationItem';
@@ -32,11 +32,11 @@ export default function NotificationsView({ backHref, audience }: NotificationsV
     loadMore,
     markRead,
     markAll,
-    remove,
     clearAll,
   } = useNotifications({ autoLoad: true, pageSize: 20 });
 
   const types = notificationTypesFor(audience);
+  const [showFilters, setShowFilters] = useState(true);
   const [showPrefs, setShowPrefs] = useState(false);
   const [prefs, setPrefs] = useState<Record<string, boolean>>({});
 
@@ -63,53 +63,60 @@ export default function NotificationsView({ backHref, audience }: NotificationsV
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-[760px] flex-1 flex-col gap-5 px-5 py-6 sm:px-8">
+    <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6">
       <Link
         href={backHref}
-        className="inline-flex w-fit items-center gap-1.5 text-sm font-medium text-[#718096] transition-colors hover:text-[#2d3748]"
+        className="inline-flex w-fit items-center gap-1.5 text-sm font-medium text-text-muted transition-colors hover:text-foreground"
       >
         <ArrowLeft className="size-4" aria-hidden="true" />
         Back
       </Link>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <h1 className="text-2xl font-bold text-[#1a202c]">Notifications</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-[28px] leading-[1.31] font-semibold tracking-[-0.04em] text-foreground sm:text-[33.5px]">
+            Notifications
+          </h1>
           {unreadCount > 0 && (
             <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-primary px-2 text-xs font-bold text-white">
               {unreadCount}
             </span>
           )}
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1">
           {unreadCount > 0 && (
-            <button onClick={markAll} className="text-sm font-medium text-primary hover:underline">
+            <button
+              onClick={markAll}
+              className="mr-2 cursor-pointer text-sm font-medium text-primary hover:underline"
+            >
               Mark all as read
             </button>
           )}
           <button
-            onClick={() => setShowPrefs((v) => !v)}
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-[#718096] hover:text-[#2d3748]"
+            type="button"
+            aria-label="Toggle filters"
+            aria-pressed={showFilters}
+            onClick={() => setShowFilters((v) => !v)}
+            className="inline-flex size-9 cursor-pointer items-center justify-center rounded-lg text-foreground transition-colors hover:bg-accent"
           >
-            <Settings2 className="size-4" aria-hidden="true" />
-            Preferences
+            <ListFilter className="size-5" aria-hidden="true" />
           </button>
-          {notifications.length > 0 && (
-            <button
-              onClick={handleClearAll}
-              className="inline-flex items-center gap-1.5 text-sm font-medium text-red-600 hover:underline"
-            >
-              <Trash2 className="size-4" aria-hidden="true" />
-              Clear all
-            </button>
-          )}
+          <button
+            type="button"
+            aria-label="Notification preferences"
+            aria-pressed={showPrefs}
+            onClick={() => setShowPrefs((v) => !v)}
+            className="inline-flex size-9 cursor-pointer items-center justify-center rounded-lg text-foreground transition-colors hover:bg-accent"
+          >
+            <Settings2 className="size-5" aria-hidden="true" />
+          </button>
         </div>
       </div>
 
       {showPrefs && (
-        <div className="flex flex-col gap-3 rounded-2xl border border-[#edf2f7] bg-[#fafcff] p-5">
-          <h2 className="m-0 text-sm font-semibold text-[#1a202c]">Notify me about</h2>
-          <div className="flex flex-col divide-y divide-[#edf2f7]">
+        <div className="flex flex-col gap-3 rounded-2xl border border-border bg-background-secondary p-5">
+          <h2 className="m-0 text-sm font-semibold text-foreground">Notify me about</h2>
+          <div className="flex flex-col divide-y divide-border">
             {types.map((t) => {
               const enabled = prefs[t.key] ?? true;
               return (
@@ -117,15 +124,15 @@ export default function NotificationsView({ backHref, audience }: NotificationsV
                   key={t.key}
                   className="flex cursor-pointer items-center justify-between gap-4 py-2.5"
                 >
-                  <span className="text-sm text-[#4a5568]">{t.description}</span>
+                  <span className="text-sm text-text-secondary">{t.description}</span>
                   <button
                     type="button"
                     role="switch"
                     aria-checked={enabled}
                     onClick={() => togglePref(t.key)}
                     className={[
-                      'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors',
-                      enabled ? 'bg-primary' : 'bg-[#cbd5e0]',
+                      'relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full transition-colors',
+                      enabled ? 'bg-primary' : 'bg-input',
                     ].join(' ')}
                   >
                     <span
@@ -139,27 +146,38 @@ export default function NotificationsView({ backHref, audience }: NotificationsV
               );
             })}
           </div>
+          {notifications.length > 0 && (
+            <button
+              onClick={handleClearAll}
+              className="inline-flex w-fit cursor-pointer items-center gap-1.5 text-sm font-medium text-error hover:underline"
+            >
+              <Trash2 className="size-4" aria-hidden="true" />
+              Clear all notifications
+            </button>
+          )}
         </div>
       )}
 
-      <div className="flex flex-wrap gap-2">
-        <FilterChip active={typeFilter === null} onClick={() => setTypeFilter(null)}>
-          All
-        </FilterChip>
-        {types.map((t) => (
-          <FilterChip
-            key={t.key}
-            active={typeFilter === t.key}
-            onClick={() => setTypeFilter(t.key)}
-          >
-            {t.label}
-          </FilterChip>
-        ))}
-      </div>
+      <div className="overflow-hidden rounded-2xl border border-border bg-background">
+        {showFilters && (
+          <div className="flex flex-wrap gap-2 px-5 pt-5 pb-4">
+            <FilterChip active={typeFilter === null} onClick={() => setTypeFilter(null)}>
+              All
+            </FilterChip>
+            {types.map((t) => (
+              <FilterChip
+                key={t.key}
+                active={typeFilter === t.key}
+                onClick={() => setTypeFilter(t.key)}
+              >
+                {t.label}
+              </FilterChip>
+            ))}
+          </div>
+        )}
 
-      <div className="overflow-hidden rounded-2xl border border-[#edf2f7] bg-white">
         {isLoading ? (
-          <div className="px-5 py-16 text-center text-sm text-[#a0aec0]">Loading…</div>
+          <div className="px-5 py-16 text-center text-sm text-text-tertiary">Loading…</div>
         ) : notifications.length === 0 ? (
           <EmptyTableState
             message="You're all caught up!"
@@ -169,22 +187,22 @@ export default function NotificationsView({ backHref, audience }: NotificationsV
           />
         ) : (
           <>
-            <div className="flex flex-col divide-y divide-[#edf2f7]">
+            <div className="flex flex-col divide-y divide-border px-4">
               {notifications.map((notif) => (
                 <NotificationItem
                   key={notif.id}
                   notif={notif}
                   onClick={() => handleItemClick(notif.id, notif.linkUrl)}
-                  onDelete={() => remove(notif.id)}
+                  onViewDetails={() => handleItemClick(notif.id, notif.linkUrl)}
                 />
               ))}
             </div>
             {hasMore && (
-              <div className="border-t border-[#edf2f7] p-3 text-center">
+              <div className="border-t border-border p-3 text-center">
                 <button
                   onClick={loadMore}
                   disabled={isLoadingMore}
-                  className="text-sm font-semibold text-primary hover:underline disabled:opacity-60"
+                  className="cursor-pointer text-sm font-semibold text-primary hover:underline disabled:opacity-60"
                 >
                   {isLoadingMore ? 'Loading…' : 'Load more'}
                 </button>
@@ -208,14 +226,17 @@ function FilterChip({
 }) {
   return (
     <button
+      type="button"
+      aria-pressed={active}
       onClick={onClick}
       className={[
-        'rounded-full border px-3 py-1 text-[13px] font-medium transition-colors',
+        'inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[13px] font-medium transition-colors',
         active
           ? 'border-primary bg-primary text-white'
-          : 'border-[#e2e8f0] bg-white text-[#4a5568] hover:bg-[#f7fafc]',
+          : 'border-border bg-background text-foreground hover:bg-background-secondary',
       ].join(' ')}
     >
+      {active && <Check className="size-4" aria-hidden="true" />}
       {children}
     </button>
   );

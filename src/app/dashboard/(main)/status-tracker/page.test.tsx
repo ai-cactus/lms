@@ -41,6 +41,13 @@ vi.mock('next/navigation', () => ({ redirect: mockRedirect }));
 vi.mock('@/lib/reminders/status-tracker', () => ({
   getStatusTrackerSummaryForOrg: mockGetStatusTrackerSummaryForOrg,
 }));
+vi.mock('@/lib/facility/scope', () => ({
+  listAccessibleFacilities: vi.fn().mockResolvedValue([]),
+  resolveFacilityScopeSelection: vi.fn().mockResolvedValue({ mode: 'all' }),
+}));
+vi.mock('@/components/dashboard/FacilityScopeSwitcher', () => ({
+  default: () => <div data-testid="facility-scope-switcher" />,
+}));
 vi.mock('@/components/dashboard/status-tracker/StatusTrackerTableClient', () => ({
   default: () => <div data-testid="status-tracker-table" />,
 }));
@@ -64,7 +71,7 @@ describe('StatusTrackerPage — assignment.read gate', () => {
     async (role) => {
       mockAuth.mockResolvedValueOnce(makeSession(role));
 
-      const element = await StatusTrackerPage();
+      const element = await StatusTrackerPage({ searchParams: Promise.resolve({}) });
       render(element);
 
       expect(screen.getByTestId('status-tracker-table')).toBeInTheDocument();
@@ -75,7 +82,9 @@ describe('StatusTrackerPage — assignment.read gate', () => {
   it('redirects finance to /dashboard (no roster-wide assignment visibility)', async () => {
     mockAuth.mockResolvedValueOnce(makeSession('finance'));
 
-    await expect(StatusTrackerPage()).rejects.toThrow('NEXT_REDIRECT');
+    await expect(StatusTrackerPage({ searchParams: Promise.resolve({}) })).rejects.toThrow(
+      'NEXT_REDIRECT',
+    );
 
     expect(mockRedirect).toHaveBeenCalledExactlyOnceWith('/dashboard');
     expect(mockGetStatusTrackerSummaryForOrg).not.toHaveBeenCalled();
@@ -84,7 +93,9 @@ describe('StatusTrackerPage — assignment.read gate', () => {
   it('redirects a worker role (front_desk_admin) to /dashboard', async () => {
     mockAuth.mockResolvedValueOnce(makeSession('front_desk_admin'));
 
-    await expect(StatusTrackerPage()).rejects.toThrow('NEXT_REDIRECT');
+    await expect(StatusTrackerPage({ searchParams: Promise.resolve({}) })).rejects.toThrow(
+      'NEXT_REDIRECT',
+    );
 
     expect(mockRedirect).toHaveBeenCalledExactlyOnceWith('/dashboard');
     expect(mockGetStatusTrackerSummaryForOrg).not.toHaveBeenCalled();
@@ -93,7 +104,9 @@ describe('StatusTrackerPage — assignment.read gate', () => {
   it('redirects to /login when there is no session', async () => {
     mockAuth.mockResolvedValueOnce(null);
 
-    await expect(StatusTrackerPage()).rejects.toThrow('NEXT_REDIRECT');
+    await expect(StatusTrackerPage({ searchParams: Promise.resolve({}) })).rejects.toThrow(
+      'NEXT_REDIRECT',
+    );
 
     expect(mockRedirect).toHaveBeenCalledExactlyOnceWith('/login');
     expect(mockGetStatusTrackerSummaryForOrg).not.toHaveBeenCalled();

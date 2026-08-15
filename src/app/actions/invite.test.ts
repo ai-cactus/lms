@@ -231,6 +231,17 @@ describe('createInvites() — facility resolution for the invite', () => {
     expect(inviteData.facilityId).toBe('facility-fallback');
   });
 
+  it('skips the inviter’s facility entirely for an explicit global invite (facilityId: null)', async () => {
+    mockOrganizationUserFacilityFindFirst.mockResolvedValue({ facilityId: 'facility-inviter' });
+    mockFacilityFindFirst.mockResolvedValue({ id: 'facility-oldest' });
+
+    await createInvites([item('hr@acme.com', 'hr')], { facilityId: null });
+
+    expect(mockOrganizationUserFacilityFindFirst).not.toHaveBeenCalled();
+    const inviteData = mockInviteCreateMany.mock.calls[0][0].data[0];
+    expect(inviteData.facilityId).toBe('facility-oldest');
+  });
+
   it('fails the whole batch when the organization has no facility at all', async () => {
     mockOrganizationUserFacilityFindFirst.mockResolvedValue(null);
     mockFacilityFindFirst.mockResolvedValue(null);

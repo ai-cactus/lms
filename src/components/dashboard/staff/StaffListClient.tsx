@@ -24,8 +24,6 @@ import { useRouter } from 'next/navigation';
 import {
   UserPlus,
   Search,
-  Eye,
-  FileText,
   UserMinus,
   XCircle,
   ChevronLeft,
@@ -35,7 +33,7 @@ import {
   Building2,
 } from 'lucide-react';
 import EmptyTableState from '@/components/ui/EmptyTableState';
-import { cn } from '@/lib/utils';
+import { cn, formatRelativeTime } from '@/lib/utils';
 import { can } from '@/lib/rbac/permissions';
 import { dbRoleToRoleKey, getRoleDisplayName } from '@/lib/rbac/role-utils';
 import type { AccessibleFacility } from '@/lib/facility/scope';
@@ -62,7 +60,7 @@ import RevokeInviteModal from './RevokeInviteModal';
 import RemoveStaffModal from './RemoveStaffModal';
 import WorkerLimitModal from './WorkerLimitModal';
 import ChangeFacilityModal, { type ChangeFacilityMember } from './ChangeFacilityModal';
-import { generateStaffActivityPdfAndEmail, resendInvite } from '@/app/actions/staff';
+import { resendInvite } from '@/app/actions/staff';
 
 interface StaffListClientProps {
   users: StaffEntry[];
@@ -81,6 +79,9 @@ interface StaffListClientProps {
 
 const tableHeadClass =
   'h-[41px] truncate text-[13px] font-medium tracking-[0.31px] whitespace-nowrap text-[#666d80] sm:text-[15.5px]';
+
+/** Sentinel value for the role filter's "All Staff" option — never a real `Role`. */
+const ALL_ROLES_FILTER = 'all';
 
 export default function StaffListClient({
   users: initialUsers,
@@ -123,15 +124,9 @@ export default function StaffListClient({
   );
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
+  const [roleFilter, setRoleFilter] = useState<string>(ALL_ROLES_FILTER);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
-  // Export state: tracks which user ID is currently being exported
-  const [exportingUserId, setExportingUserId] = useState<string | null>(null);
-  const [exportFeedback, setExportFeedback] = useState<{
-    id: string;
-    ok: boolean;
-    msg: string;
-  } | null>(null);
   // Tracks the invite currently being resent, plus inline feedback for
   // resend/copy-link actions (keyed by the invite row id).
   const [resendingInviteId, setResendingInviteId] = useState<string | null>(null);
@@ -141,13 +136,32 @@ export default function StaffListClient({
     msg: string;
   } | null>(null);
 
+  // Only roles actually present in the roster are offered, so the filter can
+  // never resolve to an empty list the viewer cannot explain.
+  const roleOptions = useMemo(() => {
+    const byRole = new Map<string, string>();
+    for (const user of initialUsers) {
+      if (!byRole.has(user.role)) byRole.set(user.role, getRoleDisplayName(user.role as Role));
+    }
+    return [...byRole]
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [initialUsers]);
+
+  // A refresh can retire the selected role (last holder removed/re-roled);
+  // falling back to "All Staff" keeps the trigger from rendering blank.
+  const activeRoleFilter = roleOptions.some((option) => option.value === roleFilter)
+    ? roleFilter
+    : ALL_ROLES_FILTER;
+
   const filteredUsers = useMemo(() => {
+    const query = searchQuery.toLowerCase();
     return initialUsers.filter(
       (user) =>
-        user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        user.email.toLowerCase().includes(searchQuery.toLowerCase()),
+        (activeRoleFilter === ALL_ROLES_FILTER || user.role === activeRoleFilter) &&
+        (user.name.toLowerCase().includes(query) || user.email.toLowerCase().includes(query)),
     );
-  }, [initialUsers, searchQuery]);
+  }, [initialUsers, searchQuery, activeRoleFilter]);
 
   const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
@@ -168,26 +182,6 @@ export default function StaffListClient({
     return [1, '…', currentPage, '…', totalPages];
   }, [totalPages, currentPage]);
 
-  // Calculate relative time (e.g. "2 days ago")
-  const getRelativeTime = (date: Date) => {
-    const now = new Date();
-    const diffInSeconds = Math.floor((now.getTime() - new Date(date).getTime()) / 1000);
-
-    if (diffInSeconds < 60) return 'just now';
-
-    const diffInMinutes = Math.floor(diffInSeconds / 60);
-    if (diffInMinutes < 60) return `${diffInMinutes} minute${diffInMinutes > 1 ? 's' : ''} ago`;
-
-    const diffInHours = Math.floor(diffInMinutes / 60);
-    if (diffInHours < 24) return `${diffInHours} hour${diffInHours > 1 ? 's' : ''} ago`;
-
-    const diffInDays = Math.floor(diffInHours / 24);
-    if (diffInDays < 30) return `${diffInDays} day${diffInDays > 1 ? 's' : ''} ago`;
-
-    const diffInMonths = Math.floor(diffInDays / 30);
-    return `${diffInMonths} month${diffInMonths > 1 ? 's' : ''} ago`;
-  };
-
   const openInvite = () => {
     if (isAtLimit) {
       setShowWorkerLimitModal(true);
@@ -195,26 +189,6 @@ export default function StaffListClient({
       setShowFeatureGate(true);
     } else {
       setShowInviteModal(true);
-    }
-  };
-
-  // Handle Export PDF: generate and email activity report for a staff member
-  const handleExportPdf = async (userId: string) => {
-    setExportingUserId(userId);
-    setExportFeedback(null);
-    try {
-      const result = await generateStaffActivityPdfAndEmail(userId);
-      setExportFeedback({
-        id: userId,
-        ok: result.success,
-        msg: result.success
-          ? 'Report emailed to you successfully.'
-          : (result.error ?? 'Failed to generate report.'),
-      });
-    } finally {
-      setExportingUserId(null);
-      // Auto-clear feedback after 5 s
-      setTimeout(() => setExportFeedback(null), 5000);
     }
   };
 
@@ -269,6 +243,7 @@ export default function StaffListClient({
           planName={planName}
           inviterRole={inviterRole}
           existingEmails={initialUsers.map((u) => u.email)}
+          facilities={facilities}
         />
       )}
       {revokeTarget && (
@@ -317,9 +292,8 @@ export default function StaffListClient({
           </h1>
           {canInvite && (
             <Button
-              variant="outline"
               onClick={openInvite}
-              className="h-12 shrink-0 gap-2 rounded-xl border-[#d4d4d4] px-5 text-[15.5px] font-semibold text-primary hover:text-primary"
+              className="h-12 shrink-0 gap-2 rounded-xl px-5 text-[15.5px] font-semibold"
             >
               <UserPlus className="size-[23px]" />
               Add Staff
@@ -388,20 +362,48 @@ export default function StaffListClient({
           </div>
         </div>
       ) : (
-        <div className="rounded-[17px] bg-white pt-[21px] pb-4 shadow-[0px_1px_2px_0px_rgba(228,229,231,0.24)]">
-          <div className="mb-6 w-full sm:ml-auto sm:w-[470px]">
-            <Input
-              className="h-[38px] rounded-[8px] border-[#dfe1e6] pl-9 text-[15px] placeholder:text-[#a4abb8]"
-              type="search"
-              placeholder="Search for staff..."
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
+        <div className="flex min-w-0 flex-col gap-6 rounded-[17px] border border-[#dfe1e6] bg-white p-4 shadow-[0px_1px_2px_0px_rgba(228,229,231,0.24)] md:px-[21px] md:pt-[21px] md:pb-4">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="w-full lg:max-w-[470px]">
+              <Input
+                className="h-[38px] rounded-[8px] border-[#dfe1e6] pl-9 text-[15px] placeholder:text-[#a4abb8]"
+                type="search"
+                placeholder="Search for staff..."
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setCurrentPage(1);
+                }}
+                aria-label="Search staff"
+                startIcon={<Search aria-hidden="true" />}
+              />
+            </div>
+
+            <Select
+              value={activeRoleFilter}
+              onValueChange={(value) => {
+                setRoleFilter(value);
                 setCurrentPage(1);
               }}
-              aria-label="Search staff"
-              startIcon={<Search aria-hidden="true" />}
-            />
+            >
+              <SelectTrigger
+                aria-label="Filter by role"
+                // min-w-0 on the value span is load-bearing: without it the flex
+                // child's min-width:auto lets a long role label push past the
+                // fixed trigger width instead of truncating.
+                className="h-[38px] w-full rounded-[8px] border-[#dfe1e6] px-4 text-[15px] text-[#0d0d12] *:data-[slot=select-value]:block *:data-[slot=select-value]:min-w-0 *:data-[slot=select-value]:truncate lg:w-[200px] lg:shrink-0"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_ROLES_FILTER}>All Staff</SelectItem>
+                {roleOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <Table className="table-fixed">
@@ -413,31 +415,43 @@ export default function StaffListClient({
                   Name
                 </TableHead>
                 {/* Role and Date collapse away on phones — the mobile design keeps
-                    only the identity column and the row menu. */}
+                    only the identity column and the row menu. Between lg and xl
+                    the shell's 280px sidebar leaves too little room for all five
+                    columns, so Date Added (the least actionable of them) drops
+                    out there rather than starving Name down to its avatar. From
+                    xl up the five share the table proportionally (the design's
+                    ratios) instead of by fixed px, so none starves the others. */}
                 <TableHead
                   className={cn(
                     tableHeadClass,
-                    'hidden sm:table-cell sm:w-[180px] sm:px-5 xl:w-[276px]',
+                    'hidden sm:table-cell sm:w-[150px] sm:px-5 xl:w-[17%]',
                   )}
                 >
                   Role
                 </TableHead>
-                <TableHead className={cn(tableHeadClass, 'hidden px-5 lg:table-cell lg:w-[190px]')}>
+                <TableHead
+                  className={cn(
+                    tableHeadClass,
+                    'hidden px-5 lg:table-cell lg:w-[150px] xl:w-[17%]',
+                  )}
+                >
                   Facility
                 </TableHead>
                 <TableHead
                   className={cn(
                     tableHeadClass,
-                    'hidden px-5 sm:table-cell sm:w-[170px] lg:w-[200px]',
+                    'hidden px-5 sm:table-cell sm:w-[140px] lg:hidden xl:table-cell xl:w-[15%]',
                   )}
                 >
-                  Date Invited
+                  Date Added
                 </TableHead>
-                {/* Kebab column — intentionally unlabelled, matching the design */}
                 <TableHead
-                  className={cn(tableHeadClass, 'w-[56px] rounded-r-[9px] px-0 sm:w-[70px]')}
+                  className={cn(
+                    tableHeadClass,
+                    'w-[56px] rounded-r-[9px] px-0 text-right sm:w-[70px] sm:pr-[19px] xl:w-[10%] xl:pr-[19px]',
+                  )}
                 >
-                  <span className="sr-only">Actions</span>
+                  Action
                 </TableHead>
               </TableRow>
             </TableHeader>
@@ -496,6 +510,18 @@ export default function StaffListClient({
                           <span className="truncate text-[12px] font-normal tracking-[0.27px] text-[#666d80] sm:text-[13.5px]">
                             {user.email}
                           </span>
+                          {/* Resend/copy feedback rides the identity column —
+                              it is the only cell shown at every breakpoint. */}
+                          {inviteFeedback?.id === user.id && (
+                            <span
+                              className={cn(
+                                'text-[11px] font-medium',
+                                inviteFeedback.ok ? 'text-success' : 'text-error',
+                              )}
+                            >
+                              {inviteFeedback.msg}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </TableCell>
@@ -503,9 +529,11 @@ export default function StaffListClient({
                     <TableCell className="hidden py-0 sm:table-cell sm:px-5">
                       <span
                         title={getRoleDisplayName(user.role as Role)}
-                        className="inline-flex h-[29px] max-w-full items-center truncate rounded-full bg-[#dcfce7] px-2 text-[12px] font-semibold text-[#15803d] sm:px-[14px] sm:text-[13px]"
+                        className="inline-flex h-[29px] max-w-full items-center rounded-full bg-[#dcfce7] px-2 text-[12px] font-semibold text-[#15803d] sm:px-[14px] sm:text-[13px]"
                       >
-                        {getRoleDisplayName(user.role as Role)}
+                        {/* Ellipsis needs its own block — text-overflow never
+                            applies to a flex container's anonymous text item. */}
+                        <span className="truncate">{getRoleDisplayName(user.role as Role)}</span>
                       </span>
                     </TableCell>
 
@@ -532,35 +560,15 @@ export default function StaffListClient({
                       )}
                     </TableCell>
 
-                    {/* Date cell — hidden on small screens */}
-                    <TableCell className="hidden px-5 py-0 text-[15.5px] font-medium whitespace-nowrap text-[#666d80] sm:table-cell">
-                      {getRelativeTime(user.dateInvited)}
-                      {exportFeedback?.id === user.id && (
-                        <span
-                          className={cn(
-                            'mt-1 block text-[11px] font-medium',
-                            exportFeedback.ok ? 'text-success' : 'text-error',
-                          )}
-                        >
-                          {exportFeedback.msg}
-                        </span>
-                      )}
-                      {inviteFeedback?.id === user.id && (
-                        <span
-                          className={cn(
-                            'mt-1 block text-[11px] font-medium',
-                            inviteFeedback.ok ? 'text-success' : 'text-error',
-                          )}
-                        >
-                          {inviteFeedback.msg}
-                        </span>
-                      )}
+                    <TableCell className="hidden px-5 py-0 text-[15.5px] font-medium whitespace-nowrap text-[#666d80] sm:table-cell lg:hidden xl:table-cell">
+                      {formatRelativeTime(user.dateInvited)}
                     </TableCell>
 
-                    {/* Kebab action cell — actions are permission-gated; view-only
-                        roles (finance, clinical_director) see no mutating actions. */}
+                    {/* Action cell — the kebab's actions are permission-gated;
+                        view-only roles (finance, clinical_director) see no
+                        mutating actions and therefore no kebab at all. */}
                     <TableCell
-                      className="px-0 py-0 text-right sm:pr-[19px]"
+                      className="px-0 py-0 sm:pr-[19px]"
                       onClick={(e) => e.stopPropagation()}
                     >
                       {(() => {
@@ -599,17 +607,6 @@ export default function StaffListClient({
                                 : []),
                             ]
                           : [
-                              {
-                                label: 'View Profile',
-                                icon: <Eye className="size-4" />,
-                                onSelect: () => router.push(`/dashboard/staff/${user.id}`),
-                              },
-                              {
-                                label: exportingUserId === user.id ? 'Exporting…' : 'Export PDF',
-                                icon: <FileText className="size-4" />,
-                                disabled: exportingUserId === user.id,
-                                onSelect: () => handleExportPdf(user.id),
-                              },
                               // The owner row is immutable for everyone: no
                               // facility reassignment and no removal (the
                               // server rejects both independently).
@@ -637,7 +634,6 @@ export default function StaffListClient({
                                       label: 'Remove Staff',
                                       icon: <UserMinus className="size-4" />,
                                       variant: 'destructive' as const,
-                                      separatorBefore: true,
                                       onSelect: () =>
                                         setRemoveTarget({
                                           id: user.id,
@@ -648,12 +644,16 @@ export default function StaffListClient({
                                   ]
                                 : []),
                             ];
-                        return actions.length > 0 ? (
-                          <RowActionsMenu
-                            className="size-8 rounded-[8px] border border-[#ece4e4] bg-white text-[#0d0d12] [&_svg]:size-4"
-                            actions={actions}
-                          />
-                        ) : null;
+                        return (
+                          <div className="flex items-center justify-end gap-2">
+                            {actions.length > 0 && (
+                              <RowActionsMenu
+                                className="size-8 rounded-[8px] border border-[#ece4e4] bg-white text-[#0d0d12] [&_svg]:size-4"
+                                actions={actions}
+                              />
+                            )}
+                          </div>
+                        );
                       })()}
                     </TableCell>
                   </TableRow>
@@ -661,7 +661,7 @@ export default function StaffListClient({
               ) : (
                 <EmptyTableState
                   message="No staff match your search."
-                  subMessage="Try a different name or email."
+                  subMessage="Try a different name, email, or role."
                   colSpan={5}
                   asTableRow
                 />
@@ -669,7 +669,7 @@ export default function StaffListClient({
             </TableBody>
           </Table>
 
-          <div className="mt-6 flex flex-col items-center gap-3 sm:flex-row sm:flex-wrap sm:justify-between sm:gap-4">
+          <div className="flex flex-col items-center gap-3 sm:flex-row sm:flex-wrap sm:justify-between sm:gap-4">
             <span className="text-xs font-medium tracking-[-0.36px] text-[#9a9a9a]">
               Showing {totalEntries === 0 ? 0 : startIndex + 1} to{' '}
               {Math.min(startIndex + itemsPerPage, totalEntries)} of {totalEntries} entries

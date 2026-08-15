@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { CheckCircle2, FileText, X, XCircle } from 'lucide-react';
 import { uploadDocuments, type DocumentUploadResult } from '@/app/actions/documents';
+import { createDocumentCategory } from '@/app/actions/document-categories';
 import {
   Dialog,
   DialogContent,
@@ -16,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Alert } from '@/components/ui/alert';
 import { Field } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
@@ -24,8 +26,12 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import FileUpload from '@/components/ui/FileUpload';
-import { DOCUMENT_CATEGORIES } from '@/lib/documents/document-categories';
+import {
+  MAX_DOCUMENT_CATEGORY_LENGTH,
+  OTHER_CATEGORY_OPTION,
+} from '@/lib/documents/document-categories';
 import { formatFileSize } from '@/lib/utils';
+import { useUploadProgress } from './upload-progress-context';
 
 // Client-side guard only — `uploadDocuments` re-validates size and type, and its
 // cap is env-configurable server-side. This mirrors the limit stated in the UI.
@@ -40,15 +46,83 @@ function isAcceptedType(file: File): boolean {
   return ACCEPTED_MIME_TYPES.includes(file.type) || ACCEPTED_EXTENSIONS.test(file.name);
 }
 
-export default function UploadModal({ onClose }: { onClose: () => void }) {
+interface UploadModalProps {
+  onClose: () => void;
+  /** The organization's category vocabulary, as rendered by the server page. */
+  categories: string[];
+}
+
+export default function UploadModal({ onClose, categories }: UploadModalProps) {
   const router = useRouter();
-  const [files, setFiles] = useState<File[]>([]);
+  const { startUploads, clearUploads } = useUploadProgress();
+
+  const [step, setStep] = useState<'category' | 'files'>('category');
   const [category, setCategory] = useState('');
+  const [customCategory, setCustomCategory] = useState('');
+  const [isNamingCategory, setIsNamingCategory] = useState(false);
+  const [categoryError, setCategoryError] = useState<string | null>(null);
+  const [isSavingCategory, startCategoryTransition] = useTransition();
+
+  const [files, setFiles] = useState<File[]>([]);
   const [agreed, setAgreed] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [results, setResults] = useState<DocumentUploadResult[]>([]);
-  const [isPending, startTransition] = useTransition();
+  const [isUploading, startUploadTransition] = useTransition();
+
+  // "Other" doubles as a seeded category name, so it is rendered once — as the
+  // add-new affordance pinned to the bottom — rather than as its own bucket.
+  const selectableCategories = useMemo(
+    () => categories.filter((option) => option !== OTHER_CATEGORY_OPTION),
+    [categories],
+  );
+
+  const handleCategoryChange = (value: string) => {
+    setCategoryError(null);
+    if (value === OTHER_CATEGORY_OPTION) {
+      setIsNamingCategory(true);
+      setCategory('');
+      return;
+    }
+    setCategory(value);
+  };
+
+  const handleContinue = () => {
+    if (!isNamingCategory) {
+      if (!category) {
+        setCategoryError('Select a category to continue.');
+        return;
+      }
+      setStep('files');
+      return;
+    }
+
+    const trimmed = customCategory.trim();
+    if (!trimmed) {
+      setCategoryError('Category name is required.');
+      return;
+    }
+    if (trimmed.length > MAX_DOCUMENT_CATEGORY_LENGTH) {
+      setCategoryError(
+        `Category name is too long (max ${MAX_DOCUMENT_CATEGORY_LENGTH} characters).`,
+      );
+      return;
+    }
+
+    setCategoryError(null);
+    startCategoryTransition(async () => {
+      const outcome = await createDocumentCategory(trimmed);
+      if (outcome.error || !outcome.name) {
+        setCategoryError(outcome.error ?? 'Could not add that category. Please try again.');
+        return;
+      }
+      setCategory(outcome.name);
+      // The hub filter reads the org's categories server-side, so the new one
+      // has to reach it before the list re-renders.
+      router.refresh();
+      setStep('files');
+    });
+  };
 
   const handleFilesSelected = (selected: File[]) => {
     setValidationError(null);
@@ -91,10 +165,22 @@ export default function UploadModal({ onClose }: { onClose: () => void }) {
     const formData = new FormData();
     for (const file of files) formData.append('files', file);
     formData.append('phiAttested', agreed ? 'true' : 'false');
-    if (category) formData.append('category', category);
+    formData.append('category', category);
 
-    startTransition(async () => {
-      const outcome = await uploadDocuments(formData);
+    // The list shows these as "In progress" rows for as long as the action runs.
+    startUploads(files, category);
+
+    startUploadTransition(async () => {
+      let outcome: Awaited<ReturnType<typeof uploadDocuments>>;
+      try {
+        outcome = await uploadDocuments(formData);
+      } catch {
+        setFormError('Upload failed. Please check your connection and try again.');
+        return;
+      } finally {
+        // Never strand an "In progress" row, however the action ended.
+        clearUploads();
+      }
 
       if (outcome.error) {
         setFormError(outcome.error);
@@ -135,119 +221,166 @@ export default function UploadModal({ onClose }: { onClose: () => void }) {
           <DialogDescription>Supports PDF and Word documents up to 10MB each.</DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-col gap-5">
-          <FileUpload
-            multiple
-            onFilesSelected={handleFilesSelected}
-            accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            description="PDF or DOCX, up to 10MB each. You may upload multiple files."
-          />
-
-          {fileCount > 0 && (
-            <ul className="flex flex-col gap-2">
-              {files.map((file) => (
-                <li
-                  key={`${file.name}:${file.size}`}
-                  className="flex items-center gap-3 rounded-xl border border-border px-3 py-2.5"
-                >
-                  <FileText className="size-5 shrink-0 text-primary" aria-hidden="true" />
-                  <div className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate text-sm font-medium text-foreground">
-                      {file.name}
-                    </span>
-                    <span className="text-xs text-text-secondary">{formatFileSize(file.size)}</span>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label={`Remove ${file.name}`}
-                    disabled={isPending}
-                    onClick={() => removeFile(file.name, file.size)}
-                  >
-                    <X className="size-4" aria-hidden="true" />
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          )}
-
-          <Field label="Category" helperText="Applied to every file in this upload.">
-            <Select value={category} onValueChange={setCategory}>
-              <SelectTrigger className="h-11 w-full" aria-label="Category">
-                <SelectValue placeholder="Select a category (optional)" />
-              </SelectTrigger>
-              <SelectContent>
-                {DOCUMENT_CATEGORIES.map((option) => (
-                  <SelectItem key={option} value={option}>
-                    {option}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-
-          <div className="flex items-start gap-2 text-sm text-text-secondary">
-            <Checkbox
-              id="phi-agree"
-              checked={agreed}
-              onCheckedChange={(c) => setAgreed(c === true)}
-              className="mt-0.5"
-            />
-            <label htmlFor="phi-agree" className="cursor-pointer">
-              I verify this document contains no Personal Health Information (PHI).
-            </label>
+        {step === 'category' ? (
+          <div className="flex flex-col gap-5">
+            {isNamingCategory ? (
+              <Field
+                label="Category"
+                required
+                error={categoryError ?? undefined}
+                helperText="The new categories will appear in the hub filter for every facility immediately."
+              >
+                <Input
+                  value={customCategory}
+                  onChange={(event) => {
+                    setCustomCategory(event.target.value);
+                    setCategoryError(null);
+                  }}
+                  maxLength={MAX_DOCUMENT_CATEGORY_LENGTH}
+                  autoFocus
+                  aria-label="Category"
+                  placeholder="e.g. Clinical Operations"
+                  disabled={isSavingCategory}
+                />
+              </Field>
+            ) : (
+              <Field label="Category" required error={categoryError ?? undefined}>
+                <Select value={category} onValueChange={handleCategoryChange}>
+                  <SelectTrigger className="h-11 w-full" aria-label="Category">
+                    <SelectValue placeholder="Select a category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {selectableCategories.map((option) => (
+                      <SelectItem key={option} value={option}>
+                        {option}
+                      </SelectItem>
+                    ))}
+                    <SelectItem value={OTHER_CATEGORY_OPTION}>{OTHER_CATEGORY_OPTION}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+            )}
           </div>
+        ) : (
+          <div className="flex flex-col gap-5">
+            <FileUpload
+              multiple
+              hideIcon
+              className="min-h-[135px] p-6"
+              onFilesSelected={handleFilesSelected}
+              accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              label={
+                <>
+                  Drop files here or <span className="text-primary">browse</span>
+                </>
+              }
+              description="PDF or DOCX · up to 10 MB each"
+            />
 
-          {validationError && <Alert variant="error">{validationError}</Alert>}
-          {formError && <Alert variant="error">{formError}</Alert>}
+            {fileCount > 0 && (
+              <ul className="flex flex-col divide-y divide-border overflow-hidden rounded-xl border border-border">
+                {files.map((file) => (
+                  <li
+                    key={`${file.name}:${file.size}`}
+                    className="flex items-center gap-3 px-3 py-2.5"
+                  >
+                    <FileText className="size-5 shrink-0 text-primary" aria-hidden="true" />
+                    <div className="flex min-w-0 flex-1 flex-col">
+                      <span className="truncate text-sm font-medium text-foreground">
+                        {file.name}
+                      </span>
+                      <span className="text-xs text-text-secondary">
+                        {formatFileSize(file.size)}
+                      </span>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={`Remove ${file.name}`}
+                      disabled={isUploading}
+                      onClick={() => removeFile(file.name, file.size)}
+                    >
+                      <X className="size-4" aria-hidden="true" />
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
 
-          {results.length > 0 && (
-            <ul className="flex flex-col gap-2" aria-label="Upload results">
-              {succeeded.map((result) => (
-                <li
-                  key={`ok-${result.name}`}
-                  className="flex items-center gap-2.5 rounded-xl border border-success/30 bg-success/10 px-3 py-2.5 text-sm"
-                >
-                  <CheckCircle2 className="size-4 shrink-0 text-success" aria-hidden="true" />
-                  <span className="min-w-0 flex-1 truncate font-medium text-foreground">
-                    {result.name}
-                  </span>
-                  <span className="shrink-0 text-xs font-semibold text-success">Uploaded</span>
-                </li>
-              ))}
-              {failed.map((result) => (
-                <li
-                  key={`failed-${result.name}`}
-                  className="flex items-start gap-2.5 rounded-xl border border-error/30 bg-error/10 px-3 py-2.5 text-sm"
-                >
-                  <XCircle className="mt-0.5 size-4 shrink-0 text-error" aria-hidden="true" />
-                  <div className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate font-medium text-foreground">{result.name}</span>
-                    <span className="text-xs text-error">
-                      {result.error ?? 'Upload failed. Please try again.'}
+            <div className="flex items-start gap-2 text-sm text-text-secondary">
+              <Checkbox
+                id="phi-agree"
+                checked={agreed}
+                onCheckedChange={(c) => setAgreed(c === true)}
+                className="mt-0.5"
+              />
+              <label htmlFor="phi-agree" className="cursor-pointer">
+                I verify this document contains no Personal Health Information (PHI).
+              </label>
+            </div>
+
+            {validationError && <Alert variant="error">{validationError}</Alert>}
+            {formError && <Alert variant="error">{formError}</Alert>}
+
+            {results.length > 0 && (
+              <ul className="flex flex-col gap-2" aria-label="Upload results">
+                {succeeded.map((result) => (
+                  <li
+                    key={`ok-${result.name}`}
+                    className="flex items-center gap-2.5 rounded-xl border border-success/30 bg-success/10 px-3 py-2.5 text-sm"
+                  >
+                    <CheckCircle2 className="size-4 shrink-0 text-success" aria-hidden="true" />
+                    <span className="min-w-0 flex-1 truncate font-medium text-foreground">
+                      {result.name}
                     </span>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+                    <span className="shrink-0 text-xs font-semibold text-success">Uploaded</span>
+                  </li>
+                ))}
+                {failed.map((result) => (
+                  <li
+                    key={`failed-${result.name}`}
+                    className="flex items-start gap-2.5 rounded-xl border border-error/30 bg-error/10 px-3 py-2.5 text-sm"
+                  >
+                    <XCircle className="mt-0.5 size-4 shrink-0 text-error" aria-hidden="true" />
+                    <div className="flex min-w-0 flex-1 flex-col">
+                      <span className="truncate font-medium text-foreground">{result.name}</span>
+                      <span className="text-xs text-error">
+                        {result.error ?? 'Upload failed. Please try again.'}
+                      </span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
 
         <DialogFooter>
-          <Button variant="ghost" type="button" onClick={onClose} disabled={isPending}>
-            {succeeded.length > 0 && files.length === 0 ? 'Close' : 'Cancel'}
-          </Button>
           <Button
+            variant="outline"
             type="button"
-            onClick={handleSubmit}
-            loading={isPending}
-            disabled={fileCount === 0 || isPending || !agreed}
+            onClick={onClose}
+            disabled={isSavingCategory || isUploading}
           >
-            {isPending
-              ? 'Scanning for PHI…'
-              : `${isRetry ? 'Retry' : 'Upload'} ${fileCount} file${fileCount === 1 ? '' : 's'}`}
+            Cancel
           </Button>
+          {step === 'category' ? (
+            <Button type="button" onClick={handleContinue} loading={isSavingCategory}>
+              Continue
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              onClick={handleSubmit}
+              loading={isUploading}
+              disabled={fileCount === 0 || isUploading || !agreed}
+            >
+              {isUploading
+                ? 'Scanning for PHI…'
+                : `${isRetry ? 'Retry' : 'Upload'} ${fileCount} file${fileCount === 1 ? '' : 's'}`}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

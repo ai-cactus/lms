@@ -83,10 +83,14 @@ function setupTransaction() {
     role: 'owner',
   });
   mockTransaction.mockImplementation(
-    async (fn: (tx: { organization: unknown; facility: unknown }) => unknown) => {
+    async (
+      fn: (tx: { organization: unknown; facility: unknown; documentCategory: unknown }) => unknown,
+    ) => {
       return fn({
         organization: { create: mockOrgCreate },
         facility: { create: mockFacilityCreate },
+        // Every new org is seeded with the default Document Hub vocabulary.
+        documentCategory: { createMany: vi.fn() },
       });
     },
   );

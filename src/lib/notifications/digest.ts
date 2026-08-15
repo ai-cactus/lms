@@ -4,6 +4,7 @@ import { Prisma } from '@/generated/prisma/client';
 import type { DigestFrequency } from '@/generated/prisma/enums';
 import type { Role } from '@/types/next-auth';
 import { ENGINE_EVENTS, type NotificationEngineType } from './catalog';
+import { isNotificationChannelEnabled } from './category-preferences';
 import { resolveRoleRecipients } from './recipients';
 
 /**
@@ -203,6 +204,30 @@ function buildSections(
   });
 }
 
+/**
+ * Drop the events whose category the organization has switched off for email.
+ * They still get marked dispatched by the caller — the in-app row was already
+ * written at emit time, so re-digesting them later would only duplicate it.
+ */
+async function emailableEvents(
+  organizationId: string,
+  events: PendingEvent[],
+): Promise<PendingEvent[]> {
+  const decisionByType = new Map<string, boolean>();
+  const kept: PendingEvent[] = [];
+
+  for (const event of events) {
+    let enabled = decisionByType.get(event.type);
+    if (enabled === undefined) {
+      enabled = await isNotificationChannelEnabled(organizationId, event.type, 'email');
+      decisionByType.set(event.type, enabled);
+    }
+    if (enabled) kept.push(event);
+  }
+
+  return kept;
+}
+
 export async function runNotificationDigest(
   opts: NotificationDigestOptions,
 ): Promise<DigestRunSummary> {
@@ -314,7 +339,9 @@ async function digestOrganization(
       return;
     }
 
-    const facilityIds = [...new Set(events.map((e) => e.facilityId).filter((id) => id !== null))];
+    const mailable = await emailableEvents(organization.id, events);
+
+    const facilityIds = [...new Set(mailable.map((e) => e.facilityId).filter((id) => id !== null))];
     const facilities = facilityIds.length
       ? await prisma.facility.findMany({
           where: { id: { in: facilityIds } },
@@ -330,7 +357,7 @@ async function digestOrganization(
       { email: string; name: string | null; events: PendingEvent[] }
     >();
 
-    for (const event of events) {
+    for (const event of mailable) {
       const routing = readRouting(event);
       if (routing.roles.length === 0) continue;
 

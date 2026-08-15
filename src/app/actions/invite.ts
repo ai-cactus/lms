@@ -46,8 +46,12 @@ export interface CreateInvitesOptions {
    * inviting someone to a facility other than the caller's (e.g. the supervisor
    * invited alongside a newly created facility). Validated against the caller's
    * organization before use.
+   *
+   * `null` marks a GLOBAL invite — an org-wide managerial seat that is
+   * deliberately not tied to the inviter's site. Omitting the field keeps the
+   * legacy behaviour (inherit the inviter's facility).
    */
-  facilityId?: string;
+  facilityId?: string | null;
 }
 
 export async function createInvites(
@@ -80,6 +84,11 @@ export async function createInvites(
   const inviterId = session.user.id;
   const grantableRoles = GRANTABLE_ROLES[session.user.role];
 
+  // An explicit `null` asks for a global (org-wide) invite: the caller has
+  // chosen NOT to bind these seats to a site, so the inviter's own facility must
+  // not slip in as a default.
+  const isGlobalInvite = options?.facilityId === null;
+
   // Every invite now targets a specific facility. An explicitly requested one
   // wins, but only after proving it belongs to the caller's organization — a
   // caller-supplied id must never be able to seed an invite into another tenant.
@@ -102,8 +111,8 @@ export async function createInvites(
 
   // Otherwise prefer the inviter's own facility assignment; fall back to the
   // org's oldest facility when the caller has none (e.g. an HR account not yet
-  // attached to one).
-  if (!facilityId) {
+  // attached to one). A global invite skips this step by design.
+  if (!facilityId && !isGlobalInvite) {
     const inviterFacility = session.user.organizationUserId
       ? await prisma.organizationUserFacility.findFirst({
           where: { organizationUserId: session.user.organizationUserId, active: true },
@@ -113,6 +122,11 @@ export async function createInvites(
     facilityId = inviterFacility?.facilityId;
   }
 
+  // NOTE: `Invite.facilityId` is a required FK, so even a global invite has to
+  // be anchored to a row. The org's oldest facility is the neutral anchor —
+  // what actually makes these seats org-wide is the granted role
+  // (see `isOrgWideFacilityRole`), not this column. Making the column nullable
+  // is a schema change tracked separately.
   if (!facilityId) {
     const fallbackFacility = await prisma.facility.findFirst({
       where: { organizationId },

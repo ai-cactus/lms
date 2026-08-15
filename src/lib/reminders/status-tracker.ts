@@ -52,6 +52,7 @@ const enrollmentRowSelect = {
     },
   },
   course: { select: { title: true } },
+  facility: { select: { name: true } },
   organizationUser: {
     select: {
       user: { select: { email: true, fullName: true } },
@@ -75,6 +76,8 @@ export interface StatusTrackerRow {
   workerEmail: string;
   courseId: string;
   courseTitle: string;
+  /** Facility stamped on the enrollment at assignment time; null when none. */
+  facilityName: string | null;
   dueAt: Date;
   daysOverdue: number;
   status: string;
@@ -91,6 +94,8 @@ export interface NearDeadlineRow {
   workerEmail: string;
   courseId: string;
   courseTitle: string;
+  /** Facility stamped on the enrollment at assignment time; null when none. */
+  facilityName: string | null;
   dueAt: Date;
   /** Whole days from now until the deadline (0 = due today, tz-aware). */
   daysUntilDue: number;
@@ -145,9 +150,15 @@ function displayName(enrollment: EnrollmentRow): string {
 export async function getStatusTrackerSummaryForOrg(
   orgId: string,
   now: Date = new Date(),
-  facilityId?: string | null,
+  facilityId?: string | string[] | null,
 ): Promise<StatusTrackerSummary> {
-  const facilityFilter = facilityId ? { facilityId } : {};
+  const facilityFilter = Array.isArray(facilityId)
+    ? facilityId.length > 0
+      ? { facilityId: { in: facilityId } }
+      : {}
+    : facilityId
+      ? { facilityId }
+      : {};
 
   const [overdueEnrollments, nearDeadlineEnrollments] = await Promise.all([
     prisma.enrollment.findMany({
@@ -184,6 +195,7 @@ export async function getStatusTrackerSummaryForOrg(
       workerEmail: enrollment.organizationUser.user.email,
       courseId: enrollment.courseId,
       courseTitle: enrollment.course.title,
+      facilityName: enrollment.facility?.name ?? null,
       dueAt,
       daysOverdue,
       status: enrollment.status,
@@ -205,6 +217,7 @@ export async function getStatusTrackerSummaryForOrg(
       workerEmail: enrollment.organizationUser.user.email,
       courseId: enrollment.courseId,
       courseTitle: enrollment.course.title,
+      facilityName: enrollment.facility?.name ?? null,
       dueAt,
       daysUntilDue: diffInDaysInTz(dueAt, now, tz),
       status: enrollment.status,

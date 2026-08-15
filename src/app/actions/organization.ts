@@ -12,6 +12,7 @@ import { audit, getClientContext } from '@/lib/audit';
 import { headers } from 'next/headers';
 import { deriveTimezoneFromState } from '@/lib/reminders/us-state-timezone';
 import { createMembership } from '@/lib/auth/membership';
+import { seedDefaultDocumentCategories } from '@/lib/documents/document-categories';
 import { createInvites } from '@/app/actions/invite';
 
 interface OrganizationUpdateData {
@@ -100,7 +101,10 @@ export async function updateOrganization(data: OrganizationUpdateData) {
           country: data.country,
           state: data.state,
           zipCode: data.zipCode,
-          timezone: data.timezone,
+          // Reminder scheduling reads the facility timezone, so a state change
+          // made after onboarding has to carry the derived zone with it or the
+          // facility keeps sending reminders on its old clock.
+          timezone: data.timezone ?? (data.state ? deriveTimezoneFromState(data.state) : undefined),
           licenseNumber: data.licenseNumber,
           programServices: data.programServices ?? undefined,
           complianceDocumentUrl: data.complianceDocumentUrl,
@@ -127,6 +131,7 @@ export async function updateOrganization(data: OrganizationUpdateData) {
       ...getClientContext(await headers()),
     });
 
+    revalidatePath('/dashboard/profile');
     return { success: true };
   } catch (error) {
     logger.error({ msg: 'Error updating organization:', err: error });
@@ -171,7 +176,126 @@ export async function getOrganization() {
   }
 }
 
+type FacilitySupervisorLookup =
+  | { ok: true; membership: { id: string } | null }
+  | { ok: false; error: string };
+
+/**
+ * Resolve a supervisor email against the organization's roster.
+ *
+ * A member holding a different role is rejected rather than silently re-roled:
+ * changing someone's role from a facility form would be a privilege change made
+ * outside Staff Management. A stranger resolves to `membership: null`, which the
+ * caller turns into an invite.
+ */
+async function lookupFacilitySupervisor(
+  organizationId: string,
+  supervisorEmail: string,
+  actorId: string,
+): Promise<FacilitySupervisorLookup> {
+  const membership = await prisma.organizationUser.findFirst({
+    where: { organizationId, active: true, user: { email: supervisorEmail } },
+    select: { id: true, role: true },
+  });
+
+  if (membership && membership.role !== 'supervisor') {
+    logger.warn({
+      msg: '[org] Facility supervisor candidate holds another role',
+      orgId: organizationId,
+      userId: actorId,
+      role: membership.role,
+    });
+    return {
+      ok: false,
+      error:
+        `That person is already a member of this organization as ` +
+        `${getRoleDisplayName(membership.role)}. Change their role in Staff ` +
+        `Management before assigning them as a facility supervisor.`,
+    };
+  }
+
+  return { ok: true, membership: membership ? { id: membership.id } : null };
+}
+
+interface FacilitySupervisorAssignment {
+  supervisorAssigned: boolean;
+  supervisorInvited: boolean;
+}
+
+/**
+ * Attach the resolved supervisor to a facility: an existing member is assigned
+ * outright, a stranger is invited.
+ *
+ * The invite is best-effort — a facility that exists without its supervisor
+ * invite is recoverable from the staff screen, whereas failing the whole action
+ * would leave the admin unable to tell what was written.
+ */
+async function applyFacilitySupervisor(input: {
+  organizationId: string;
+  facilityId: string;
+  supervisorEmail: string;
+  membership: { id: string } | null;
+  actorId: string;
+  actorRole: string;
+}): Promise<FacilitySupervisorAssignment> {
+  if (input.membership) {
+    // Mirrors createMembership's facility upsert: re-assigning a previously
+    // removed supervisor reactivates the row instead of duplicating it.
+    await prisma.organizationUserFacility.upsert({
+      where: {
+        organizationUserId_facilityId: {
+          organizationUserId: input.membership.id,
+          facilityId: input.facilityId,
+        },
+      },
+      create: { organizationUserId: input.membership.id, facilityId: input.facilityId },
+      update: { active: true, deactivatedAt: null },
+    });
+
+    logger.info({
+      msg: '[org] Facility supervisor assigned',
+      orgId: input.organizationId,
+      facilityId: input.facilityId,
+      userId: input.actorId,
+    });
+
+    await audit({
+      action: 'org.facility.supervisor.assign',
+      actorId: input.actorId,
+      actorRole: input.actorRole,
+      organizationId: input.organizationId,
+      targetType: 'facility',
+      targetId: input.facilityId,
+      metadata: { organizationUserId: input.membership.id },
+      ...getClientContext(await headers()),
+    });
+
+    return { supervisorAssigned: true, supervisorInvited: false };
+  }
+
+  const invite = await createInvites([{ email: input.supervisorEmail, role: 'supervisor' }], {
+    facilityId: input.facilityId,
+  });
+  const supervisorInvited = invite.success && invite.results.some((r) => r.status === 'sent');
+
+  if (!supervisorInvited) {
+    logger.warn({
+      msg: '[org] Facility supervisor invite not sent',
+      facilityId: input.facilityId,
+      email: maskEmail(input.supervisorEmail),
+      error: invite.error,
+    });
+  }
+
+  return { supervisorAssigned: false, supervisorInvited };
+}
+
 interface FacilityUpdateData {
+  /**
+   * Which facility to update. Omit to fall back to the caller's own active
+   * facility — the behaviour every pre-multi-facility caller relies on.
+   */
+  facilityId?: string;
   name?: string;
   type?: string;
   staffCount?: string;
@@ -185,11 +309,22 @@ interface FacilityUpdateData {
   programServices?: string[];
   complianceDocumentUrl?: string;
   complianceDocumentName?: string;
+  /**
+   * Hand the facility to this supervisor. An existing member is assigned
+   * outright; a stranger is invited. Omit to leave the assignment untouched.
+   */
+  supervisorEmail?: string;
 }
 
-// Update the current user's facility. Permission-gated on `facility.edit`, which
-// only `owner` and `supervisor` hold (per the RBAC matrix).
-export async function updateFacility(data: FacilityUpdateData) {
+// Update a facility in the caller's organization. Permission-gated on
+// `facility.edit` (Owner/Admin only per the RBAC matrix), with one scoped
+// exception for supervisors — see SUPERVISOR_WRITABLE_FIELDS below.
+export async function updateFacility(data: FacilityUpdateData): Promise<{
+  success: boolean;
+  error?: string;
+  supervisorAssigned?: boolean;
+  supervisorInvited?: boolean;
+}> {
   try {
     const session = await auth();
     if (!session?.user?.id) {
@@ -205,7 +340,15 @@ export async function updateFacility(data: FacilityUpdateData) {
       });
       return { success: false, error: 'Forbidden' };
     }
-    if (!can(roleKey, 'facility.edit')) {
+
+    // PROF-002: a supervisor holds no `facility.edit` (the RBAC matrix made the
+    // role read-only org-wide), yet must be able to maintain the details of a
+    // facility they personally run. They are admitted here for their OWN active
+    // assignments only, proven against organizationUserFacility below; every
+    // other role still needs the permission outright.
+    const hasFacilityEdit = can(roleKey, 'facility.edit');
+    const isSupervisor = roleKey === 'supervisor';
+    if (!hasFacilityEdit && !isSupervisor) {
       logger.warn({
         msg: '[facility] updateFacility: permission denied',
         userId: session.user.id,
@@ -214,49 +357,237 @@ export async function updateFacility(data: FacilityUpdateData) {
       return { success: false, error: 'Forbidden' };
     }
 
-    const membershipFacility = session.user.organizationUserId
-      ? await prisma.organizationUserFacility.findFirst({
-          where: { organizationUserId: session.user.organizationUserId, active: true },
-          select: { facilityId: true },
-        })
-      : null;
+    const organizationId = session.user.organizationId;
+    let facilityId: string;
+    // Whether `facilityId` was resolved *from* the caller's own assignments,
+    // which already proves the ownership the supervisor branch has to check.
+    let isOwnAssignment = false;
 
-    if (!membershipFacility) {
-      logger.error({
-        msg: '[facility] updateFacility: no facility for user',
-        userId: session.user.id,
+    if (data.facilityId) {
+      // Tenancy: an explicit id is only honoured once it is proven to belong to
+      // the caller's own organization — otherwise this action would let any
+      // owner rename a facility in someone else's tenant.
+      if (!organizationId) {
+        return { success: false, error: 'No organization found' };
+      }
+      const target = await prisma.facility.findFirst({
+        where: { id: data.facilityId, organizationId },
+        select: { id: true },
       });
-      return { success: false, error: 'No facility found' };
+      if (!target) {
+        logger.warn({
+          msg: '[facility] updateFacility: facility not in caller organization',
+          userId: session.user.id,
+          orgId: organizationId,
+          facilityId: data.facilityId,
+        });
+        return { success: false, error: 'Facility not found' };
+      }
+      facilityId = target.id;
+    } else {
+      const membershipFacility = session.user.organizationUserId
+        ? await prisma.organizationUserFacility.findFirst({
+            where: { organizationUserId: session.user.organizationUserId, active: true },
+            select: { facilityId: true },
+          })
+        : null;
+
+      if (!membershipFacility) {
+        logger.error({
+          msg: '[facility] updateFacility: no facility for user',
+          userId: session.user.id,
+        });
+        return { success: false, error: 'No facility found' };
+      }
+      facilityId = membershipFacility.facilityId;
+      isOwnAssignment = true;
+    }
+
+    if (!hasFacilityEdit) {
+      if (!isOwnAssignment) {
+        const assignment = session.user.organizationUserId
+          ? await prisma.organizationUserFacility.findFirst({
+              where: {
+                organizationUserId: session.user.organizationUserId,
+                facilityId,
+                active: true,
+              },
+              select: { id: true },
+            })
+          : null;
+
+        if (!assignment) {
+          logger.warn({
+            msg: '[facility] updateFacility: supervisor is not assigned to this facility',
+            userId: session.user.id,
+            role: session.user.role,
+            facilityId,
+          });
+          return { success: false, error: 'Forbidden' };
+        }
+      }
+
+      // Handing a facility to a different supervisor is a staffing decision, not
+      // a detail edit — it stays with the roles that hold `facility.edit`.
+      if (data.supervisorEmail?.trim()) {
+        logger.warn({
+          msg: '[facility] updateFacility: supervisor may not reassign a facility',
+          userId: session.user.id,
+          role: session.user.role,
+          facilityId,
+        });
+        return { success: false, error: 'Forbidden' };
+      }
+    }
+
+    const supervisorEmail = data.supervisorEmail?.trim().toLowerCase() || undefined;
+
+    // Resolved before the write so a role conflict fails fast rather than
+    // leaving the facility renamed behind an error message.
+    let supervisor: FacilitySupervisorLookup | null = null;
+    if (supervisorEmail && organizationId) {
+      supervisor = await lookupFacilitySupervisor(organizationId, supervisorEmail, session.user.id);
+      if (!supervisor.ok) return { success: false, error: supervisor.error };
     }
 
     await prisma.facility.update({
-      where: { id: membershipFacility.facilityId },
-      data: {
-        name: data.name,
-        type: data.type,
-        staffCount: data.staffCount,
-        phone: data.phone,
-        address: data.address,
-        city: data.city,
-        country: data.country,
-        state: data.state,
-        zipCode: data.zipCode,
-        licenseNumber: data.licenseNumber,
-        programServices: data.programServices ?? undefined,
-        complianceDocumentUrl: data.complianceDocumentUrl,
-        complianceDocumentName: data.complianceDocumentName,
-      },
+      where: { id: facilityId },
+      // Least privilege: the supervisor exception covers only the three fields
+      // on their own profile form. Staffing counts, credentials and compliance
+      // documents remain writable solely by `facility.edit` holders, so a
+      // hand-crafted payload cannot widen the grant.
+      data: hasFacilityEdit
+        ? {
+            name: data.name,
+            type: data.type,
+            staffCount: data.staffCount,
+            phone: data.phone,
+            address: data.address,
+            city: data.city,
+            country: data.country,
+            state: data.state,
+            zipCode: data.zipCode,
+            licenseNumber: data.licenseNumber,
+            programServices: data.programServices ?? undefined,
+            complianceDocumentUrl: data.complianceDocumentUrl,
+            complianceDocumentName: data.complianceDocumentName,
+          }
+        : { name: data.name, type: data.type, address: data.address },
     });
 
     logger.info({
       msg: '[facility] Facility updated',
-      facilityId: membershipFacility.facilityId,
+      facilityId,
       userId: session.user.id,
     });
-    return { success: true };
+
+    let assignment: FacilitySupervisorAssignment = {
+      supervisorAssigned: false,
+      supervisorInvited: false,
+    };
+    if (supervisor?.ok && supervisorEmail && organizationId) {
+      assignment = await applyFacilitySupervisor({
+        organizationId,
+        facilityId,
+        supervisorEmail,
+        membership: supervisor.membership,
+        actorId: session.user.id,
+        actorRole: session.user.role,
+      });
+    }
+
+    if (organizationId) {
+      await audit({
+        action: 'org.facility.update',
+        actorId: session.user.id,
+        actorRole: session.user.role,
+        organizationId,
+        targetType: 'facility',
+        targetId: facilityId,
+        ...getClientContext(await headers()),
+      });
+    }
+
+    revalidatePath('/dashboard/settings');
+    revalidatePath('/dashboard/profile');
+    return { success: true, ...assignment };
   } catch (error) {
     logger.error({ msg: 'Error updating facility:', err: error });
     return { success: false, error: 'Failed to update facility' };
+  }
+}
+
+/**
+ * Remove one compliance certification from the caller's own facility.
+ *
+ * Gated on `organization.edit` because the file rows are surfaced (and deleted)
+ * from the My Organization editor, whose Save is gated the same way — a role
+ * that cannot edit the organization must not be able to drop its credentials.
+ */
+export async function deleteFacilityComplianceDocument(
+  documentId: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return { success: false, error: 'Not authenticated' };
+    }
+
+    const organizationId = session.user.organizationId;
+    if (!organizationId) {
+      return { success: false, error: 'No organization found' };
+    }
+
+    if (!can(dbRoleToRoleKey(session.user.role), 'organization.edit')) {
+      logger.warn({
+        msg: '[org] deleteFacilityComplianceDocument: permission denied',
+        userId: session.user.id,
+        role: session.user.role,
+      });
+      return { success: false, error: 'You do not have permission to update this organization' };
+    }
+
+    // Tenancy: the document is only reachable through a facility in the caller's
+    // own organization, so a guessed id from another tenant resolves to nothing.
+    const document = await prisma.facilityDocument.findFirst({
+      where: { id: documentId, facility: { organizationId } },
+      select: { id: true, facilityId: true },
+    });
+
+    if (!document) {
+      logger.warn({
+        msg: '[org] deleteFacilityComplianceDocument: document not in caller organization',
+        userId: session.user.id,
+        orgId: organizationId,
+        documentId,
+      });
+      return { success: false, error: 'Document not found' };
+    }
+
+    await prisma.facilityDocument.delete({ where: { id: document.id } });
+
+    logger.info({
+      msg: '[facility] Compliance document deleted',
+      facilityId: document.facilityId,
+      documentId: document.id,
+      userId: session.user.id,
+    });
+
+    await audit({
+      action: 'org.facility.document.delete',
+      actorId: session.user.id,
+      actorRole: session.user.role,
+      organizationId,
+      targetType: 'facilityDocument',
+      targetId: document.id,
+      ...getClientContext(await headers()),
+    });
+
+    revalidatePath('/dashboard/profile');
+    return { success: true };
+  } catch (error) {
+    logger.error({ msg: '[org] Failed to delete compliance document', err: error });
+    return { success: false, error: 'Failed to delete document' };
   }
 }
 
@@ -395,27 +726,10 @@ export async function createFacility(input: CreateFacilityInput): Promise<{
 
     // Resolved before the facility is written so a role conflict fails fast
     // rather than leaving an orphaned facility behind an error message.
-    const supervisorMembership = supervisorEmail
-      ? await prisma.organizationUser.findFirst({
-          where: { organizationId, active: true, user: { email: supervisorEmail } },
-          select: { id: true, role: true },
-        })
-      : null;
-
-    if (supervisorMembership && supervisorMembership.role !== 'supervisor') {
-      logger.warn({
-        msg: '[org] createFacility: supervisor candidate holds another role',
-        orgId: organizationId,
-        userId: session.user.id,
-        role: supervisorMembership.role,
-      });
-      return {
-        success: false,
-        error:
-          `That person is already a member of this organization as ` +
-          `${getRoleDisplayName(supervisorMembership.role)}. Change their role in Staff ` +
-          `Management before assigning them as a facility supervisor.`,
-      };
+    let supervisor: FacilitySupervisorLookup | null = null;
+    if (supervisorEmail) {
+      supervisor = await lookupFacilitySupervisor(organizationId, supervisorEmail, session.user.id);
+      if (!supervisor.ok) return { success: false, error: supervisor.error };
     }
 
     const facility = await prisma.facility.create({
@@ -440,58 +754,23 @@ export async function createFacility(input: CreateFacilityInput): Promise<{
       ...getClientContext(await headers()),
     });
 
-    let supervisorInvited = false;
-    let supervisorAssigned = false;
-
-    if (supervisorMembership) {
-      // Mirrors createMembership's facility upsert: re-assigning a previously
-      // removed supervisor reactivates the row instead of duplicating it.
-      await prisma.organizationUserFacility.upsert({
-        where: {
-          organizationUserId_facilityId: {
-            organizationUserId: supervisorMembership.id,
-            facilityId: facility.id,
-          },
-        },
-        create: { organizationUserId: supervisorMembership.id, facilityId: facility.id },
-        update: { active: true, deactivatedAt: null },
-      });
-      supervisorAssigned = true;
-
-      logger.info({
-        msg: '[org] Facility supervisor assigned',
-        orgId: organizationId,
+    let assignment: FacilitySupervisorAssignment = {
+      supervisorAssigned: false,
+      supervisorInvited: false,
+    };
+    if (supervisor?.ok && supervisorEmail) {
+      assignment = await applyFacilitySupervisor({
+        organizationId,
         facilityId: facility.id,
-        userId: session.user.id,
-      });
-
-      await audit({
-        action: 'org.facility.supervisor.assign',
+        supervisorEmail,
+        membership: supervisor.membership,
         actorId: session.user.id,
         actorRole: session.user.role,
-        organizationId,
-        targetType: 'facility',
-        targetId: facility.id,
-        metadata: { organizationUserId: supervisorMembership.id },
-        ...getClientContext(await headers()),
       });
-    } else if (supervisorEmail) {
-      const invite = await createInvites([{ email: supervisorEmail, role: 'supervisor' }], {
-        facilityId: facility.id,
-      });
-      supervisorInvited = invite.success && invite.results.some((r) => r.status === 'sent');
-      if (!supervisorInvited) {
-        logger.warn({
-          msg: '[org] Facility supervisor invite not sent',
-          facilityId: facility.id,
-          email: maskEmail(supervisorEmail),
-          error: invite.error,
-        });
-      }
     }
 
     revalidatePath('/dashboard/settings');
-    return { success: true, facilityId: facility.id, supervisorInvited, supervisorAssigned };
+    return { success: true, facilityId: facility.id, ...assignment };
   } catch (error) {
     logger.error({ msg: '[org] Failed to create facility', err: error });
     return { success: false, error: 'Failed to create facility' };
@@ -585,6 +864,8 @@ export async function createOrganization(data: OrganizationCreationData) {
           timezone: deriveTimezoneFromState(data.state),
         },
       });
+
+      await seedDefaultDocumentCategories(org.id, tx);
 
       return { orgId: org.id, facilityId: facility.id };
     });

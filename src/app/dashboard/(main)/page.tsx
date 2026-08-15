@@ -15,7 +15,7 @@ import type { Role } from '@/types/next-auth';
 import { getStatusTrackerSummaryForOrg } from '@/lib/reminders/status-tracker';
 import Link from 'next/link';
 import { BookOpen, Users, BadgeCheck } from 'lucide-react';
-import { listAccessibleFacilities, resolveFacilityScope } from '@/lib/facility/scope';
+import { listAccessibleFacilities, resolveFacilityScopeSelection } from '@/lib/facility/scope';
 import { getGlobalDashboardData } from '@/app/actions/dashboard-facility';
 import GlobalDashboardView from '@/components/dashboard/global/GlobalDashboardView';
 import FacilityScopeSwitcher from '@/components/dashboard/FacilityScopeSwitcher';
@@ -35,21 +35,31 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
   // Scope comes from the URL, never the session: switching facilities must not
   // mint a new token, and a stale token must not carry a facility the user has
-  // since lost. `resolveFacilityScope` re-derives the accessible set per request.
+  // since lost. `resolveFacilityScopeSelection` re-derives the accessible set per
+  // request and drops any id the caller may not view.
   const { facility: facilityParam } = await searchParams;
-  const requestedFacilityId = typeof facilityParam === 'string' ? facilityParam : null;
-  const scope = await resolveFacilityScope(session, requestedFacilityId);
+  const scope = await resolveFacilityScopeSelection(session, facilityParam);
 
   // Roster-wide training and compliance data — same gate as the Status Tracker
   // widget below, so finance (an admin-tier role) keeps its own dashboard.
   const canSeeRosterMetrics = can(dbRoleToRoleKey(role as Role), 'assignment.read');
 
-  if (canSeeRosterMetrics && scope.mode === 'all') {
+  // A comparison is the Global View narrowed to the selected facilities, so it
+  // takes the same branch as the unscoped request.
+  if (canSeeRosterMetrics && scope.mode !== 'single') {
     const globalData = await getGlobalDashboardData();
     // An organisation with no facilities has nothing to compare across sites;
     // it keeps the single-scope dashboard until one is created.
     if (globalData.facilities.length > 0) {
-      return <GlobalDashboardView data={globalData} userName={session.user.name} />;
+      return (
+        <GlobalDashboardView
+          data={globalData}
+          userName={session.user.name}
+          comparedFacilityIds={
+            scope.mode === 'compare' ? scope.facilities.map((facility) => facility.id) : []
+          }
+        />
+      );
     }
   }
 
@@ -88,6 +98,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       workerEmail: row.workerEmail,
       courseId: row.courseId,
       courseTitle: row.courseTitle,
+      facilityName: row.facilityName,
       dueAt: row.dueAt.toISOString(),
       daysOverdue: row.daysOverdue,
       daysUntilDue: null,
@@ -99,6 +110,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       workerEmail: row.workerEmail,
       courseId: row.courseId,
       courseTitle: row.courseTitle,
+      facilityName: row.facilityName,
       dueAt: row.dueAt.toISOString(),
       daysOverdue: null,
       daysUntilDue: row.daysUntilDue,
@@ -152,7 +164,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
               {scopedFacility && (
                 <FacilityScopeSwitcher
                   facilities={accessibleFacilities}
-                  selectedFacilityId={scopedFacility.id}
+                  selectedFacilityIds={[scopedFacility.id]}
                 />
               )}
               <DashboardCreateCourseButton hasBilling={hasBilling} />

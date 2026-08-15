@@ -19,6 +19,8 @@ const { mockAuth, mockCreateMembership, txMock } = vi.hoisted(() => {
   const txMock = {
     organization: { create: vi.fn(), findFirst: vi.fn() },
     facility: { create: vi.fn() },
+    // Every new org is seeded with the default Document Hub vocabulary.
+    documentCategory: { createMany: vi.fn() },
   };
   return { mockAuth: vi.fn(), mockCreateMembership: vi.fn(), txMock };
 });
@@ -82,6 +84,7 @@ import {
   createFacility,
   getSupervisorOptions,
 } from './organization';
+import { DEFAULT_DOCUMENT_CATEGORIES } from '@/lib/documents/document-categories';
 
 describe('checkOrganizationNameAvailable', () => {
   beforeEach(() => {
@@ -179,6 +182,15 @@ describe('createOrganization', () => {
     phone: '555-0100',
     staffCount: '25',
   };
+
+  it('seeds the new organization with the default Document Hub categories, in the same transaction', async () => {
+    await createOrganization(baseData);
+
+    expect(txMock.documentCategory.createMany).toHaveBeenCalledExactlyOnceWith({
+      data: DEFAULT_DOCUMENT_CATEGORIES.map((name) => ({ organizationId: 'org-1', name })),
+      skipDuplicates: true,
+    });
+  });
 
   it('creates the facility with location fields and a timezone derived from state; organization gets none of them', async () => {
     await createOrganization(baseData);
@@ -399,19 +411,23 @@ describe('updateFacility', () => {
     });
   });
 
-  // RBAC ruling: supervisor was demoted to READ-ONLY on every resource, incl.
-  // facilities — `facility.edit` now resolves to owner/admin only. Previously
-  // this test asserted supervisor could write, which predates the ruling.
-  // Representative "supervisor write denied" coverage at the action level.
-  it('denies supervisor — demoted to read-only, no longer holds facility.edit', async () => {
+  // RBAC ruling: supervisor was demoted to READ-ONLY, so it holds no
+  // `facility.edit`. PROF-002 re-admits it for its OWN assigned facilities, but
+  // narrowed to the three fields on the supervisor's profile form — the
+  // staffing/credential fields in `facilityData` must still be dropped.
+  // Full branch coverage of the exception lives in facility.test.ts.
+  it('lets a supervisor edit their own facility, but only the name/type/address fields', async () => {
     mockAuth.mockResolvedValue({
       user: { id: 'user-1', organizationUserId: 'ou-1', role: 'supervisor' },
     });
 
-    const result = await updateFacility(facilityData);
+    const result = await updateFacility({ ...facilityData, name: 'Sunrise' });
 
-    expect(result).toEqual({ success: false, error: 'Forbidden' });
-    expect(prisma.facility.update).not.toHaveBeenCalled();
+    expect(result.success).toBe(true);
+    expect(prisma.facility.update).toHaveBeenCalledWith({
+      where: { id: 'facility-1' },
+      data: { name: 'Sunrise', type: undefined, address: '789 Pine Rd' },
+    });
   });
 
   it('allows admin (Owner-equivalent, has facility.edit) to update the facility', async () => {

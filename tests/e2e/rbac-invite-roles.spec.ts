@@ -159,13 +159,21 @@ async function loginAndOpenInviteModal(
   // Wait for modal to appear (step 1 — email entry).
   await page.waitForSelector('[role="dialog"]', { timeout: 5000 });
 
-  // Step 1 → step 2: type a throwaway email and click Continue. The role
-  // selector only exists on step 2 ("Assign roles").
+  // Step 1 → step 2: pick a facility (required — Continue is a no-op without
+  // one), type a throwaway email, and click Continue. The role selector only
+  // exists on step 2 ("Assign roles").
+  await page.getByRole('combobox', { name: 'Facility' }).click();
+  await page.getByRole('option', { name: /^global/i }).click();
   await page
     .getByPlaceholder(/enter emails separated by/i)
     .fill(`probe-${crypto.randomBytes(3).toString('hex')}@invite-e2e.invalid`);
   await page.getByRole('button', { name: /^continue$/i }).click();
-  await expect(page.getByText('Assign roles')).toBeVisible({ timeout: 5000 });
+  // Exact heading match — the step-1 description paragraph ("...so you can
+  // assign roles.") contains the same words and would otherwise satisfy a
+  // loose getByText('Assign roles') even while still stuck on step 1.
+  await expect(page.getByRole('heading', { name: 'Assign roles', exact: true })).toBeVisible({
+    timeout: 5000,
+  });
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
