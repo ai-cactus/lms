@@ -132,6 +132,14 @@ export async function register() {
         }),
       );
 
+      // Analytics events are BATCHED (flushInterval 10s), so without an explicit
+      // flush here every deploy discards whatever is still queued — which reads
+      // in PostHog as a recurring dip in usage at each release. Bounded
+      // internally, and it swallows its own errors, so it cannot block the DB
+      // disconnect below.
+      const { shutdownAnalytics } = await import('@/lib/analytics/server');
+      await shutdownAnalytics();
+
       try {
         await prisma.$disconnect();
         logger.info({ msg: 'Database disconnected' });

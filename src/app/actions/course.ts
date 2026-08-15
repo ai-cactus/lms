@@ -39,6 +39,8 @@ import {
   type CreateEnrollmentContext,
   type EnrollmentOutcome,
 } from '@/lib/enrollment/create';
+import { captureServer } from '@/lib/analytics/server';
+import { analyticsContextFrom } from '@/lib/analytics/identity';
 
 // Helper: resolve the active session from either auth instance
 async function resolveSession() {
@@ -523,7 +525,15 @@ export async function publishCourse(courseId: string, opts?: { acknowledgeWarnin
     throw new Error('Insufficient permissions');
   }
 
-  const existing = await prisma.course.findUnique({ where: { id: courseId } });
+  const existing = await prisma.course.findUnique({
+    where: { id: courseId },
+    // Lesson shape is selected alongside the ownership check rather than queried
+    // again after the update: publishing is the activation moment we most want
+    // to measure, and it should not cost an extra round trip to record it.
+    include: {
+      lessons: { select: { videoStorageUri: true, quiz: { select: { id: true } } } },
+    },
+  });
   if (!existing || existing.createdByOrgUserId !== session.user.organizationUserId) {
     logger.warn({
       msg: '[course] publishCourse: not found or unauthorized',
@@ -631,6 +641,23 @@ export async function publishCourse(courseId: string, opts?: { acknowledgeWarnin
   } else {
     logger.info({ msg: '[course] Course published', courseId, userId: session.user.id });
   }
+
+  const analytics = analyticsContextFrom(session);
+  if (analytics) {
+    // Thunk, not a literal: these values are derived from a relation, and that
+    // derivation belongs inside captureServer's try/catch rather than in the
+    // publish path. See captureServer's docblock.
+    captureServer(
+      'course_published',
+      () => ({
+        lesson_count: existing.lessons.length,
+        has_quiz: existing.lessons.some((lesson) => lesson.quiz !== null),
+        has_video: existing.lessons.some((lesson) => Boolean(lesson.videoStorageUri)),
+      }),
+      analytics,
+    );
+  }
+
   revalidatePath('/dashboard/training');
   return { ...course, assignmentFailed };
 }
