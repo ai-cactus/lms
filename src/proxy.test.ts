@@ -31,7 +31,7 @@ vi.mock('@/lib/logger', () => ({
   maskEmail: (e: string) => e,
 }));
 
-import { proxy } from './proxy';
+import { proxy, config } from './proxy';
 
 function makeRequest(pathname: string, cookieName?: string, cookieValue?: string): NextRequest {
   const url = `http://localhost:3005${pathname}`;
@@ -409,5 +409,44 @@ describe('proxy — API default-deny (F-013)', () => {
 
     expect(res.status).toBe(401);
     expect(res.headers.get('x-correlation-id')).toBeTruthy();
+  });
+
+  /**
+   * The PostHog reverse proxy (next.config.ts rewrites) serves ingest at
+   * /ingest. If a matcher entry ever covers that path, gateApiRoute answers 401
+   * to unauthenticated ingest — and because posthog-js does not surface
+   * transport failures, capture() would appear to work while recording nothing.
+   * Silent analytics loss is hard to notice and harder to date, so it is
+   * asserted rather than left to the comment in proxy.ts.
+   */
+  describe('PostHog ingest path is not gated', () => {
+    // Mirrors Next.js matcher semantics for the two forms used here: a literal
+    // path, and a `/:path*` suffix meaning "this segment and anything under it".
+    const toRegExp = (pattern: string): RegExp => {
+      const source = pattern
+        .replace(/\/:path\*$/, '___WILDCARD___')
+        .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        .replace('___WILDCARD___', '(?:/.*)?');
+      return new RegExp(`^${source}$`);
+    };
+
+    it.each(['/ingest', '/ingest/e/', '/ingest/decide', '/ingest/static/array.js'])(
+      'leaves %s unmatched by every proxy matcher entry',
+      (path) => {
+        const matched = config.matcher.filter((pattern) => toRegExp(pattern).test(path));
+        expect(matched).toEqual([]);
+      },
+    );
+
+    it('has no matcher entry mentioning ingest at all', () => {
+      expect(config.matcher.some((pattern) => pattern.includes('ingest'))).toBe(false);
+    });
+
+    // Guards the conversion helper itself — a regex builder that matched nothing
+    // would make the assertions above vacuously pass.
+    it('the pattern converter still matches the paths that ARE gated', () => {
+      expect(config.matcher.some((pattern) => toRegExp(pattern).test('/api/courses'))).toBe(true);
+      expect(config.matcher.some((pattern) => toRegExp(pattern).test('/dashboard'))).toBe(true);
+    });
   });
 });
