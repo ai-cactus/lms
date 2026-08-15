@@ -1,12 +1,13 @@
 name: CI
 
+# PR-only by design: branch protection marks these checks as required, so a
+# PR cannot merge until they all pass — which makes re-running them on the
+# post-merge push pure duplicate spend. There is deliberately NO `push`
+# trigger; once a PR merges, nothing in this workflow runs again.
 on:
-  push:
-    branches:
-      - dev
   pull_request:
     # main and staging are included so the gate runs on the PRs that promote
-    # code into the deploying branches — these are the checks to mark as
+    # code into the deploying branches — these are the checks marked as
     # required in branch protection (F-070).
     branches:
       - dev
