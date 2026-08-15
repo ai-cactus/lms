@@ -320,6 +320,15 @@ export const ALLOWED_INTERNAL_EVENTS: ReadonlySet<string> = new Set([
   '$groupidentify',
   '$pageleave',
   '$set',
+  /**
+   * Error tracking. Admitted only because it is DELIBERATE: PostHog's exception
+   * autocapture is disabled on both clients (`capture_exceptions: false`,
+   * `enableExceptionAutocapture: false`), so the sole source is an explicit
+   * captureException() call. Its payload takes a structure-preserving scrub
+   * (sanitizeExceptionProperties) rather than the usual one, because error
+   * tracking needs `$exception_list` to survive as a nested structure.
+   */
+  '$exception',
 ]);
 
 export function isAllowedEvent(eventName: string): boolean {

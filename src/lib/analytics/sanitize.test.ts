@@ -4,7 +4,12 @@
  * not a broken unit test.
  */
 import { describe, it, expect } from 'vitest';
-import { normalizePath, sanitizeProperties, sanitizeErrorText } from './sanitize';
+import {
+  normalizePath,
+  sanitizeProperties,
+  sanitizeErrorText,
+  sanitizeExceptionProperties,
+} from './sanitize';
 
 const UUID = '3f2b8c1e-4a5d-4b7e-9c0f-1a2b3c4d5e6f';
 
@@ -137,5 +142,63 @@ describe('sanitizeErrorText', () => {
 
   it('scrubs a bare path containing a record id', () => {
     expect(sanitizeErrorText(`no enrollment at /learn/${UUID}`)).toContain('/learn/[id]');
+  });
+});
+
+/**
+ * Exceptions are the ONE event that keeps its nested shape — PostHog's error
+ * tracking reads `$exception_list`, and flattening it would leave an
+ * untriageable error with no stack. So the scrub has to reach inside.
+ */
+describe('sanitizeExceptionProperties', () => {
+  it('preserves the exception_list structure error tracking depends on', () => {
+    const out = sanitizeExceptionProperties({
+      $exception_list: [
+        { type: 'TypeError', value: 'x is not a function', stacktrace: { frames: [] } },
+      ],
+    });
+
+    const list = out.$exception_list as Array<Record<string, unknown>>;
+    expect(Array.isArray(list)).toBe(true);
+    expect(list[0].type).toBe('TypeError');
+    expect(list[0]).toHaveProperty('stacktrace');
+  });
+
+  it('scrubs an email nested deep inside a frame', () => {
+    const out = sanitizeExceptionProperties({
+      $exception_list: [
+        {
+          value: 'failed for nurse@clinic.com',
+          stacktrace: { frames: [{ filename: '/app/x.ts' }] },
+        },
+      ],
+    });
+
+    expect(JSON.stringify(out)).not.toContain('nurse@clinic.com');
+    expect(JSON.stringify(out)).toContain('***@clinic.com');
+  });
+
+  // A stack frame's filename is a URL on the client, and a failing request URL
+  // routinely appears in the message — /join/<token> is a credential.
+  it('reduces a token-bearing URL inside a frame to its route shape', () => {
+    const out = sanitizeExceptionProperties({
+      $exception_list: [{ value: 'GET https://app.theraptly.com/join/PkS8x2Lm9QvT4nR7wZ3b 500' }],
+    });
+
+    expect(JSON.stringify(out)).not.toContain('PkS8x2Lm9QvT4nR7wZ3b');
+  });
+
+  it('bounds depth so a pathological structure cannot hang the walker', () => {
+    let deep: Record<string, unknown> = { value: 'leaf' };
+    for (let i = 0; i < 30; i++) deep = { nested: deep };
+
+    expect(() => sanitizeExceptionProperties(deep)).not.toThrow();
+    expect(JSON.stringify(sanitizeExceptionProperties(deep))).toContain('[TRUNCATED]');
+  });
+
+  it('leaves non-string scalars alone', () => {
+    const out = sanitizeExceptionProperties({ $exception_level: 'error', line: 42, ok: false });
+    expect(out.line).toBe(42);
+    expect(out.ok).toBe(false);
   });
 });

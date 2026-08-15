@@ -36,6 +36,17 @@ const POSTHOG_KEY = process.env.NEXT_PUBLIC_POSTHOG_KEY;
  */
 const globalForPostHog = globalThis as unknown as { posthogServer?: PostHog | null };
 
+/**
+ * The raw client, for the exception path in errors.ts.
+ *
+ * Exposed rather than routed through captureServer() because captureException()
+ * builds its own `$exception` payload — it is not a product event with a
+ * declared property shape, so the typed allowlist does not apply to it.
+ */
+export function getServerClient(): PostHog | null {
+  return getClient();
+}
+
 function getClient(): PostHog | null {
   if (!POSTHOG_KEY) return null;
 
@@ -149,6 +160,12 @@ export function identifyOrganization(params: {
  * like a drop in product usage.
  */
 export async function shutdownAnalytics(): Promise<void> {
+  // The flag client keeps a polling timer that would otherwise hold the event
+  // loop open past shutdown. Imported lazily to keep flags off the capture
+  // path's module graph.
+  const { shutdownFlags } = await import('@/lib/analytics/flags');
+  await shutdownFlags();
+
   const client = globalForPostHog.posthogServer;
   if (!client) return;
 

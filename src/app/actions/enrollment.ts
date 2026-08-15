@@ -33,6 +33,9 @@ import {
   type StageRowInput,
 } from '@/lib/enrollment/assignment';
 import { combineDateAndTime } from '@/lib/reminders/deadline';
+import { captureServer } from '@/lib/analytics/server';
+import { analyticsContextFrom } from '@/lib/analytics/identity';
+import { toCountBand } from '@/lib/analytics/events';
 
 /**
  * F-051 refusal text for the direct assign paths. The assign actions *return*
@@ -827,6 +830,12 @@ async function assignCourseToRoleTargets(
     ...results,
   });
 
+  captureServer(
+    'course_assigned',
+    () => ({ assignee_count_band: toCountBand(holders.length), method: 'role' as const }),
+    { distinctId: session.user.id, organizationId },
+  );
+
   revalidatePath(`/dashboard/training/courses/${courseId}`);
   return { assignmentId, holderCount: holders.length, ...results };
 }
@@ -1149,6 +1158,31 @@ export async function submitQuizAttempt(
     totalQuestions,
   });
 
+  // Score and pass/fail only. The answers, the questions, and anything derived
+  // from the clinical source material stay out — see docs/analytics.md.
+  //
+  // Attribution follows the session that OWNED the enrollment, matched above by
+  // membership: an admin bridged into learner mode holds both cookies, and
+  // picking the wrong one would file a learner's result under the wrong person.
+  const quizActor = enrollment.organizationUserId === workerOrgUserId ? worker : admin;
+  const quizAnalytics = analyticsContextFrom(quizActor);
+  if (quizAnalytics) {
+    captureServer(
+      'quiz_submitted',
+      () => ({
+        course_id: enrollment.courseId,
+        score_percent: score ?? 0,
+        passed,
+        // Reuses the row already fetched above rather than issuing a count.
+        // Retakes create a NEW enrollment (linked by retakeOf), so this counts
+        // attempts within the current one.
+        attempt_number: existingAttempt?.attemptCount ?? 1,
+        duration_seconds: timeTaken ?? null,
+      }),
+      quizAnalytics,
+    );
+  }
+
   revalidatePath(`/dashboard/training`);
 
   return {
@@ -1204,6 +1238,15 @@ export async function requestCourseRetry(enrollmentId: string) {
     courseId: enrollment.courseId,
     organizationUserId: enrollment.organizationUserId,
   });
+
+  // Same dual-session rule as submitQuizAttempt: attribute to whichever session
+  // owns the enrollment, not to whichever cookie happens to exist.
+  const retakeAnalytics = analyticsContextFrom(
+    enrollment.organizationUserId === workerOrgUserId ? worker : admin,
+  );
+  if (retakeAnalytics) {
+    captureServer('retake_assigned', { reason: 'failed_quiz' }, retakeAnalytics);
+  }
 
   const { organizationUser } = enrollment;
   await notifyOrganizationAdmins(organizationUser.organizationId, {

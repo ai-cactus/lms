@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { RefreshCw, TriangleAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { logger } from '@/lib/logger';
+import { captureClientException } from '@/lib/analytics/errors';
 
 interface RouteErrorBoundaryProps {
   /** The error thrown by a descendant, augmented by Next.js with a digest. */
@@ -26,6 +27,10 @@ export default function RouteErrorBoundary({ error, reset, area }: RouteErrorBou
       err: error,
       digest: error.digest,
     });
+    // One call covers every route group: this component is what all four
+    // error.tsx files render. `digest` is the only link back to the real server
+    // stack when a Server Component throws in production.
+    captureClientException(error, { area, digest: error.digest });
   }, [area, error]);
 
   return (

@@ -25,12 +25,20 @@ describe('event allowlist', () => {
     expect(isAllowedEvent('$groupidentify')).toBe(true);
   });
 
+  /**
+   * Admitted only because exception capture is DELIBERATE — autocapture is off
+   * on both clients, so the sole source is an explicit captureException() call,
+   * and the payload takes a structure-preserving scrub on the way out.
+   */
+  it('admits $exception for error tracking', () => {
+    expect(isAllowedEvent('$exception')).toBe(true);
+  });
+
   // The whole point of deny-by-default: things we never reviewed do not pass.
   it.each([
     '$autocapture',
     '$rageclick',
     '$dead_click',
-    '$exception',
     '$web_vitals',
     '$copy_autocapture',
     '$snapshot',

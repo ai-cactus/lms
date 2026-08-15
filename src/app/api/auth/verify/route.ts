@@ -3,6 +3,8 @@ import prisma from '@/lib/prisma';
 import { UserRole } from '@/generated/prisma/enums';
 import { logger } from '@/lib/logger';
 import { ALL_ROLES, DEFAULT_SELF_SERVE_WORKER_ROLE } from '@/lib/rbac/role-utils';
+import { EMAIL_VERIFICATION_EXPIRY_MS } from '@/lib/auth-constants';
+import { captureServer } from '@/lib/analytics/server';
 import type { Role } from '@/types/next-auth';
 
 const getBaseUrl = () => {
@@ -85,8 +87,8 @@ export async function POST(request: NextRequest) {
         ? (pendingRole as UserRole)
         : DEFAULT_SELF_SERVE_WORKER_ROLE;
 
-    await prisma.$transaction(async (tx) => {
-      await tx.user.create({
+    const createdUser = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
         data: {
           email: verificationToken.identifier,
           password: verificationToken.password!,
@@ -95,6 +97,7 @@ export async function POST(request: NextRequest) {
           lastName: verificationToken.lastName!,
           fullName: `${verificationToken.firstName} ${verificationToken.lastName}`,
         },
+        select: { id: true },
       });
 
       await tx.verificationToken.delete({
@@ -105,7 +108,26 @@ export async function POST(request: NextRequest) {
           },
         },
       });
+
+      return user;
     });
+
+    // This is the first moment a User row exists — signup itself only creates a
+    // verification token — so it is the earliest point the funnel can be
+    // attributed server-side. Captured AFTER the transaction commits, so a
+    // rollback cannot leave a verified-but-nonexistent user in PostHog.
+    captureServer(
+      'email_verified',
+      () => ({
+        // The token's lifetime is fixed, so its expiry dates the send. Answers
+        // whether the reminder cadence is aimed at the right window.
+        minutes_since_sent: Math.round(
+          (Date.now() - (verificationToken.expires.getTime() - EMAIL_VERIFICATION_EXPIRY_MS)) /
+            60_000,
+        ),
+      }),
+      { distinctId: createdUser.id },
+    );
 
     return NextResponse.json({ success: true, role: userRole });
   } catch (error) {

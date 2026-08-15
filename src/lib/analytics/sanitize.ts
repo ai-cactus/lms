@@ -162,6 +162,44 @@ export function sanitizeProperties(properties: Record<string, unknown>): Record<
  * values. Emails are masked and any URL-ish substring is reduced to its route
  * shape so a token in a failing request URL cannot ride along.
  */
+/** Depth cap for the exception walker; also what stops a cyclic structure. */
+const MAX_EXCEPTION_DEPTH = 6;
+
+/**
+ * Deep-sanitises an `$exception` payload while PRESERVING its structure.
+ *
+ * Exceptions are the one event that cannot go through sanitizeProperties(),
+ * which drops non-primitives: PostHog's error tracking reads `$exception_list`,
+ * a nested array of frames, and flattening it away would leave an untriageable
+ * error with no stack. So this walks the structure and scrubs every string in
+ * place — frame filenames included, since a source path or a fetch URL can
+ * carry an id or a token.
+ *
+ * Safe to apply broadly because the ONLY source of `$exception` is a deliberate
+ * captureException() call: PostHog's own exception autocapture is disabled on
+ * both the browser and the server client.
+ */
+export function sanitizeExceptionProperties(
+  properties: Record<string, unknown>,
+): Record<string, unknown> {
+  const walk = (value: unknown, depth: number): unknown => {
+    if (typeof value === 'string') return sanitizeErrorText(value);
+    if (value === null || typeof value !== 'object') return value;
+    if (depth >= MAX_EXCEPTION_DEPTH) return '[TRUNCATED]';
+
+    if (Array.isArray(value)) return value.map((entry) => walk(entry, depth + 1));
+
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
+        key,
+        walk(entry, depth + 1),
+      ]),
+    );
+  };
+
+  return walk(properties, 0) as Record<string, unknown>;
+}
+
 export function sanitizeErrorText(text: string): string {
   const withPathsNormalized = text.replace(
     /(?:https?:\/\/[^\s"')]+|\/[A-Za-z0-9._~\-/[\]]+)/g,

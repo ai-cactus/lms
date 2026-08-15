@@ -13,7 +13,11 @@
  */
 import posthog from 'posthog-js';
 import { isAllowedEvent } from '@/lib/analytics/events';
-import { normalizePath, sanitizeProperties } from '@/lib/analytics/sanitize';
+import {
+  normalizePath,
+  sanitizeProperties,
+  sanitizeExceptionProperties,
+} from '@/lib/analytics/sanitize';
 
 const key = process.env.NEXT_PUBLIC_POSTHOG_KEY;
 
@@ -79,6 +83,13 @@ if (key) {
     before_send: (event) => {
       if (!event) return null;
       if (!isAllowedEvent(event.event)) return null;
+
+      // Exceptions take a structure-preserving scrub. The normal sanitiser
+      // drops non-primitives, which would flatten away `$exception_list` and
+      // leave an untriageable error with no stack.
+      if (event.event === '$exception') {
+        return { ...event, properties: sanitizeExceptionProperties(event.properties ?? {}) };
+      }
 
       const properties = sanitizeProperties(event.properties ?? {});
 
