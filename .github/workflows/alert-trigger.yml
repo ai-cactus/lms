@@ -1,8 +1,12 @@
 name: Report
 
+# Manual-only: this used to fire on every PR close (types: [closed]), which
+# meant a job ran on every merge. Policy is now that nothing runs post-merge —
+# PR-time checks gate the merge, the deploy branches only build+deploy. Run it
+# by hand if an activity alert is needed:
+#   gh workflow run alert-trigger.yml
 on:
-  pull_request:
-    types: [closed]
+  workflow_dispatch:
 
 # The called workflow only sends an email; it checks out nothing and needs no
 # write scopes.
