@@ -28,6 +28,7 @@ import {
 } from '@/lib/ai/course-pipeline-v46';
 import { extractTextFromFile } from '@/lib/file-parser';
 import { scanText } from '@/lib/documents/phiScanner';
+import { runWithAiContext } from '@/lib/analytics/ai-context';
 import { recordPhiDecision } from '@/lib/documents/phiDecision';
 import { MAX_DOCUMENT_UPLOAD_BYTES } from '@/lib/documents/upload-config';
 import { checkRateLimit } from '@/lib/rate-limit';
@@ -267,7 +268,18 @@ export async function generateCourseAndQuizV46(
   const jobId = job.id;
   after(async () => {
     try {
-      await processBackgroundV46(jobId, sourceText, docFilename, rawData);
+      // Binds LLM-analytics identity for every Vertex call the pipeline makes,
+      // including the ones several stage functions deep. The Job id doubles as
+      // the trace id, so stages A-E render as one trace in PostHog and that
+      // trace can be tied back to the job row by id.
+      await runWithAiContext(
+        {
+          traceId: jobId,
+          distinctId: userId,
+          organizationId: session.user.organizationId,
+        },
+        () => processBackgroundV46(jobId, sourceText, docFilename, rawData),
+      );
     } catch (err: unknown) {
       const error = err as Error;
       logger.error({

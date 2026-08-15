@@ -192,6 +192,53 @@ export interface AnalyticsEventProperties {
 
   attestation_signed: { course_id: string };
 
+  /* ── LLM analytics ─────────────────────────────────────────────────────────
+   * PostHog's LLM analytics product reads the `$ai_`-prefixed properties on
+   * `$ai_generation` and derives cost, latency and token dashboards from them.
+   *
+   * It is declared HERE, in the same allowlist as every product event, rather
+   * than given its own capture path — so it inherits the same egress guard and
+   * the same sanitiser. That matters more for this event than any other:
+   *
+   * PostHog's schema also defines `$ai_input` and `$ai_output_choices`, which
+   * carry the prompt and completion verbatim. On this app the prompt IS the
+   * source document — the clinical material a facility uploaded. They are
+   * therefore ABSENT from this type by design, which makes sending them a
+   * compile error rather than a decision anyone has to remember not to make.
+   */
+  $ai_generation: {
+    /** Ties stages A-E of one course generation into a single trace. */
+    $ai_trace_id: string;
+    /** Labels this node in PostHog's trace view — carries the pipeline stage. */
+    $ai_span_name: string;
+    $ai_model: string;
+    $ai_provider: 'google';
+    $ai_input_tokens: number;
+    $ai_output_tokens: number;
+    /**
+     * SECONDS, not milliseconds. Verified against PostHog's taxonomy:
+     * "The latency of the request made to the LLM API, in seconds."
+     */
+    $ai_latency: number;
+    $ai_is_error: boolean;
+    /**
+     * Vertex's finishReason (STOP / MAX_TOKENS / SAFETY). A closed vocabulary
+     * from the API, never free text.
+     *
+     * NOTE: `$ai_error` also exists in PostHog's schema and holds the RAW error.
+     * It is deliberately not declared here — a Vertex error body echoes the
+     * request, which on this app is source-document text.
+     */
+    $ai_stop_reason: string | null;
+    /** Classified, never raw. See classifyAiError() in llm.ts. */
+    $ai_error_type: 'timeout' | 'rate_limit' | 'server_error' | 'no_content' | 'unknown' | null;
+    /**
+     * Retry index. The Vertex client retries 429/5xx internally, so a stage that
+     * only succeeds on its third attempt looks healthy in latency alone.
+     */
+    attempt: number;
+  };
+
   /* ── Cross-surface ─────────────────────────────────────────────────────── */
 
   /**
@@ -254,6 +301,7 @@ export const ALLOWED_EVENTS: ReadonlySet<string> = new Set<AnalyticsEvent>([
   'quiz_submitted',
   'certificate_downloaded',
   'attestation_signed',
+  '$ai_generation',
   '$pageview',
 ]);
 

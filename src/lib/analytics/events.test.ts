@@ -88,6 +88,7 @@ describe('event allowlist', () => {
       quiz_submitted: true,
       certificate_downloaded: true,
       attestation_signed: true,
+      $ai_generation: true,
       $pageview: true,
     };
 
