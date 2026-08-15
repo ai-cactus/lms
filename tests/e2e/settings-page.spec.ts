@@ -506,7 +506,14 @@ test.describe('Settings page — Add Facility (multi-facility v3)', () => {
       // dialog-scoped trigger, then query the checkboxes from `page`.
       await addFacilityDialog.getByRole('button', { name: 'Facility type' }).click();
       await page.getByRole('checkbox', { name: 'Private Practice / Group Practice' }).click();
-      await addFacilityDialog.getByRole('button', { name: 'Facility type' }).click();
+      // Close the type panel with Escape rather than re-clicking its trigger:
+      // the trigger click races the popover's dismiss layer on loaded CI
+      // runners (pointerdown-outside closes it, the click reopens it), leaving
+      // the panel open and making the supervisor-popover locator below match
+      // two poppers. Escape always closes exactly the topmost layer.
+      await page.keyboard.press('Escape');
+      await expect(page.locator('[data-radix-popper-content-wrapper]')).toHaveCount(0);
+      await expect(addFacilityDialog).toBeVisible();
       await addFacilityDialog
         .getByPlaceholder('e.g. supervisor@yourfacility.com')
         .fill(unknownEmail);

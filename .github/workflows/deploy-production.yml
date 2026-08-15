@@ -16,17 +16,15 @@ permissions:
   packages: write
 
 jobs:
-  # Quality/security gate (F-070). Before this existed, a push to main went
-  # straight to build-and-deploy with no lint, typecheck, test, audit, or
-  # secret scan. `build` now depends on it, so a red gate stops the deploy.
-  gate:
-    name: Quality Gate
-    uses: ./.github/workflows/quality-gate.yml
-
+  # No quality gate here anymore: main is a protected branch whose required
+  # status checks (ci.yml's Quality Gate / Build Check / E2E) must pass on the
+  # PR BEFORE anything can merge, so re-running them post-merge only paid twice
+  # for one answer. Every commit that lands here has already been vetted; this
+  # workflow's job is purely build + deploy. (Direct pushes are also rejected
+  # by branch protection unless their checks already passed.)
   build:
     name: Build & Push Docker Image
     runs-on: ubuntu-latest
-    needs: gate
     timeout-minutes: 20
 
     outputs:
