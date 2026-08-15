@@ -12,9 +12,9 @@ The integration is built so that it *cannot*, rather than trusted not to. If you
 | --- | --- |
 | Product analytics + funnels | On |
 | Group analytics (per organization) | On |
-| Feature flags + experiments | Planned |
+| Feature flags + experiments | On |
 | LLM analytics (v4.6 Vertex pipeline) | On |
-| Error tracking | Planned |
+| Error tracking | On |
 | Autocapture | **Off, permanently** |
 | Session replay | **Off**, in code and at the project level |
 | Heatmaps / dead clicks / rageclick | **Off** |
@@ -62,7 +62,12 @@ With `NEXT_PUBLIC_POSTHOG_KEY` unset, the SDK never initialises, no request is m
 | `src/lib/analytics/identity.ts` | Session → `{distinctId, organizationId}`. |
 | `src/lib/analytics/llm.ts` | `$ai_generation` for the Vertex pipeline. |
 | `src/lib/analytics/ai-context.ts` | AsyncLocalStorage run context for the AI pipeline. |
+| `src/lib/analytics/flags.ts` | Server-evaluated flags + their local defaults. |
+| `src/lib/analytics/errors.ts` | Browser exception capture. |
+| `src/lib/analytics/errors.server.ts` | Server exception capture. |
 | `instrumentation-client.ts` | Browser init + the `before_send` guard. |
+
+`errors.ts` and `errors.server.ts` are split by **runtime**, not preference. `RouteErrorBoundary` is a client component, and even a dynamic `import('./server')` from it is traced into the client bundle, which trips the `server-only` guard and fails the build. Keep them separate.
 
 ## Adding an event
 
@@ -128,9 +133,43 @@ No banner. `person_profiles: 'identified_only'` means anonymous marketing visito
 Treat a failure in `src/lib/analytics/*.test.ts` as a **security regression**, not a broken unit test.
 
 ```bash
-npx vitest run src/lib/analytics/   # the guards
+npx vitest run src/lib/analytics/   # the guards, in isolation
 npm run test                        # full suite
+
+# The e2e egress guard. BOTH variables are required — see below.
+NEXT_PUBLIC_POSTHOG_KEY=phc_e2e_dummy_key NEXT_PUBLIC_ANALYTICS_E2E=1 \
+  npx playwright test tests/e2e/analytics.spec.ts --workers=1
 ```
+
+The e2e spec catches what unit tests cannot: it intercepts `/ingest/**` in a real browser and asserts no payload contains an email, an invite token, a record id in a URL property, or an autocapture event — after the whole chain of SDK config, `before_send`, path normaliser and sanitiser has run. **It found a real leak** (see below).
+
+Three things make it work, and all three are load-bearing:
+
+1. **`NEXT_PUBLIC_ANALYTICS_E2E=1`.** posthog-js silently discards events from automated browsers (`$internal_or_test_user`), *before* `before_send`. Without this the wire is empty, every negative assertion passes vacuously, and the suite is green while testing nothing.
+2. **Both encodings are decoded.** Capture batches arrive **gzipped**; other endpoints send `data=<base64>`. Searching raw bytes matches nothing.
+3. **The control test.** Every other assertion is a negative, and negatives pass for free on an empty wire. The control asserts a `$pageview` *was* captured, so the suite fails rather than silently going vacuous. Run `--workers=1`: under parallel workers the batch can miss its flush window.
+
+### The leak this spec found
+
+posthog-js evaluates feature flags from the browser, and that request carries `person_properties` including `$initial_current_url` and `$initial_pathname` — **the raw address of the session's first page**. On this app that is routinely `/join/<invite-token>` (a credential) or `/learn/<uuid>`.
+
+Neither guard covered it: `property_denylist` applies to *capture calls* only, and `before_send` sees *events* only. The fix is `advanced_disable_flags: true` — free here, because flags are evaluated server-side and bootstrapped. **Do not re-enable it.**
+
+## Feature flags
+
+Add a key to `FLAG_DEFAULTS` in `flags.ts` — a key not listed cannot be requested, so a typo is a compile error rather than a silently-`false` flag.
+
+**The default is what the app does when PostHog is unreachable.** Choose the *current production* behaviour, not the one you are rolling towards: an outage should look like "the new thing hasn't reached me yet", never like an unreviewed feature switching itself on for every customer at once.
+
+Evaluation falls back on any failure — throw, timeout (1.5s), a variant string from a multivariate flag, a flag that does not exist, or analytics being disabled. A flag lookup may degrade; a page may not.
+
+> ⛔ Infrastructure kill-switches (`VIDEO_SWEEP_ENABLED`, `REMINDER_SWEEP_ENABLED`, `NOTIFICATION_DIGEST_ENABLED`) stay environment variables. They are read at boot in `src/instrumentation.ts` and must work when PostHog is down — a kill-switch that depends on a third party is not a kill-switch. `flags.test.ts` asserts they never appear.
+
+## Error tracking
+
+`captureServerException()` is called **explicitly**, beside an existing `logger.error`. It is deliberately not wired into the logger: the logger also records expected, handled failures (a bounced email, a rate-limited caller), and routing those into error tracking would bury the real incidents.
+
+PostHog's exception autocapture is off on both clients, so every `$exception` is deliberate. That is what makes it safe to allowlist. Its payload takes `sanitizeExceptionProperties()` — a structure-preserving walk — because error tracking needs `$exception_list` to survive as nested data; the normal sanitiser would flatten it and leave an untriageable error with no stack.
 
 ## Project-level settings (must be verified, not assumed)
 

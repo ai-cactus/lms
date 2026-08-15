@@ -33,6 +33,20 @@ if (key) {
     // silently switch on a new default that captures more than we intend.
     defaults: '2026-06-25',
 
+    /**
+     * posthog-js silently discards events from automated browsers — it flags the
+     * session `$internal_or_test_user` and drops them BEFORE before_send runs.
+     * That is correct in production, and it is left on there.
+     *
+     * It also makes the e2e egress guard (tests/e2e/analytics.spec.ts) vacuous:
+     * with no event ever captured, every "this must never be sent" assertion
+     * passes while testing nothing — a green suite that checks nothing is worse
+     * than no suite. This opts out of that filter ONLY when the e2e flag is set,
+     * which no deployed environment sets (it is absent from .env.example's
+     * deploy vars, the Dockerfile build args, and both deploy workflows).
+     */
+    opt_out_useragent_filter: process.env.NEXT_PUBLIC_ANALYTICS_E2E === '1',
+
     // ── The no-PHI posture ──────────────────────────────────────────────────
     // Autocapture reads DOM text and element context. On this app that means
     // staff names and clinically-derived course content, so it is off — this is
@@ -68,7 +82,28 @@ if (key) {
 
     // Drop URL-ish properties the SDK attaches on its own. Belt-and-braces with
     // before_send below, which rewrites the ones we do want to keep.
+    //
+    // NOTE: property_denylist is documented as applying to CAPTURE CALLS. It does
+    // not cover the person_properties the SDK sends on its feature-flag request —
+    // see advanced_disable_flags below, which is what actually closes that hole.
     property_denylist: ['$initial_current_url', '$initial_pathname', '$initial_referrer'],
+
+    /**
+     * ⛔ CLOSES A REAL LEAK, found by tests/e2e/analytics.spec.ts.
+     *
+     * posthog-js evaluates feature flags from the browser, and that request
+     * carries `person_properties` including `$initial_current_url` and
+     * `$initial_pathname` — the RAW address of the first page of the session.
+     * On this app that is routinely `/join/<invite-token>`, i.e. a credential,
+     * or `/learn/<uuid>`. Neither property_denylist (capture calls only) nor
+     * before_send (events only) applies to that request, so the token went out
+     * intact.
+     *
+     * Disabling it costs nothing here: flags are evaluated SERVER-side in
+     * src/lib/analytics/flags.ts and bootstrapped into the client, which is
+     * also the only way to avoid a variant flashing on first render.
+     */
+    advanced_disable_flags: true,
 
     /**
      * Deny-by-default egress guard — the last thing that runs before anything
