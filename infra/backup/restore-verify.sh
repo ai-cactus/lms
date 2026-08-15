@@ -147,12 +147,26 @@ ELAPSED=$((END - START))
 # enrolment record, and the two append-only ledgers that carry the six-year
 # audit obligation. A restore that "succeeds" with an empty audit_logs is a
 # failed restore.
+#
+# Counted via query_to_xml over information_schema rather than a fixed UNION,
+# because a UNION naming a table that does not exist fails at PARSE time — the
+# whole query errors and NO counts are reported. That is not hypothetical:
+# `phi_decisions` arrived in migration 20260809234206, and production last
+# deployed 2026-07-21, so a production backup restored on 2026-08-15 legitimately
+# has no such table. The earlier version of this script would have aborted on
+# exactly the backup it exists to verify.
+#
+# A table that is ABSENT is reported as such and is not automatically a failure;
+# a table that exists but is EMPTY is.
 log "row counts in the restored database:"
 docker exec "$SCRATCH" psql -U verify -d verify -At -F'	' -c "
-  SELECT 'users',         count(*) FROM users
-  UNION ALL SELECT 'enrollments',   count(*) FROM enrollments
-  UNION ALL SELECT 'audit_logs',    count(*) FROM audit_logs
-  UNION ALL SELECT 'phi_decisions', count(*) FROM phi_decisions
+  SELECT t.table_name,
+         (xpath('/row/c/text()',
+                query_to_xml(format('SELECT count(*) AS c FROM public.%I', t.table_name),
+                             false, true, '')))[1]::text::bigint
+  FROM information_schema.tables t
+  WHERE t.table_schema = 'public'
+    AND t.table_name IN ('users','enrollments','audit_logs','phi_decisions')
   ORDER BY 1;
 " | while IFS=$'\t' read -r table count; do
   printf '    %-16s %s\n' "$table" "$count"
@@ -162,6 +176,17 @@ docker exec "$SCRATCH" psql -U verify -d verify -At -F'	' -c "
   if [ "$count" = "0" ]; then
     echo "    ^^ WARNING: ${table} restored empty" >&2
   fi
+done
+
+# Name any of the four that the dump did not contain. Worth surfacing loudly:
+# for `users` or `audit_logs` it means a broken restore, while for
+# `phi_decisions` against a pre-2026-08-09 production dump it is expected.
+docker exec "$SCRATCH" psql -U verify -d verify -At -c "
+  SELECT x.name FROM unnest(ARRAY['users','enrollments','audit_logs','phi_decisions']) AS x(name)
+  WHERE to_regclass('public.'||x.name) IS NULL ORDER BY 1;
+" | while read -r missing; do
+  [ -n "$missing" ] || continue
+  echo "    ${missing}: TABLE ABSENT — expected only if the source predates it" >&2
 done
 
 # Identity is only useful if credentials came back with it — a restore that
