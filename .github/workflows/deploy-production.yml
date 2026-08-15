@@ -16,9 +16,17 @@ permissions:
   packages: write
 
 jobs:
+  # Quality/security gate (F-070). Before this existed, a push to main went
+  # straight to build-and-deploy with no lint, typecheck, test, audit, or
+  # secret scan. `build` now depends on it, so a red gate stops the deploy.
+  gate:
+    name: Quality Gate
+    uses: ./.github/workflows/quality-gate.yml
+
   build:
     name: Build & Push Docker Image
     runs-on: ubuntu-latest
+    needs: gate
     timeout-minutes: 20
 
     outputs:
@@ -49,7 +57,7 @@ jobs:
             type=sha,prefix=production-,format=long
 
       - name: Build and push image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
@@ -66,10 +74,20 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     timeout-minutes: 10
+    # Binds this job to the `production` GitHub environment (F-077).
+    #
+    # IMPORTANT: this line alone does not gate anything. If the environment
+    # does not exist, GitHub creates it on first run with NO protection rules.
+    # To make it an actual approval gate, someone with repo admin must set
+    # Settings → Environments → production → Required reviewers. Until then
+    # this only scopes the deploy and gives it a URL in the run summary.
+    environment:
+      name: production
+      url: https://training.theraptly.com
 
     steps:
       - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.2.0
+        uses: appleboy/ssh-action@v1.2.5
         env:
           ENV_FILE_BASE64: ${{ secrets.PRODUCTION_ENV_BASE64 }}
         with:
@@ -87,7 +105,19 @@ jobs:
             ENV_FILE="${APP_DIR}/.env.production"
 
             echo "==> Creating .env.production from secret..."
-            echo "$ENV_FILE_BASE64" | base64 --decode > "${ENV_FILE}"
+            # tr -d '\r' matches deploy-staging.yml: a secret encoded from a
+            # CRLF file yields values with a trailing CR, which compose passes
+            # through verbatim — GOOGLE_PROJECT_ID would resolve to a project id
+            # ending in CR and fail authentication with no obvious cause.
+            # umask before the redirect, not chmod after: `>` creates the file
+            # with the shell's umask, so between creation and a later chmod the
+            # credentials are briefly world-readable. Setting it here closes
+            # that window and also covers the case where the file does not yet
+            # exist (a rewrite of an existing file keeps its current mode).
+            ( umask 077; echo "$ENV_FILE_BASE64" | base64 --decode | tr -d '\r' > "${ENV_FILE}" )
+            # Existing files were created 0664 by earlier deploys — group- and
+            # world-readable on a host with other accounts. Correct them once.
+            chmod 600 "${ENV_FILE}"
 
             # GITHUB variables need to be explicitly exported inside the script 
             # if passed via envs block to get interpolated inside strings if needed, 
@@ -109,13 +139,32 @@ jobs:
             docker pull "${IMAGE_REF}"
             docker tag "${IMAGE_REF}" "ghcr.io/${GITHUB_REPO}:production-latest"
 
-            if pm2 info lms-production > /dev/null 2>&1; then
-              echo "==> Shutting down legacy PM2 instance 'lms-production' to free port 3000..."
-              pm2 delete lms-production || true
-              pm2 save || true
-            fi
 
-            echo "==> [3/4] Starting production services..."
+            echo "==> [3/5] Starting data services..."
+            # Started first and waited on, so migrations have a healthy database
+            # to talk to. Idempotent: these only restart if their config changed.
+            APP_IMAGE="${IMAGE_REF}" \
+              docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" up -d --wait db redis minio
+
+            echo "==> [4/5] Applying migrations..."
+            # Explicit, and BEFORE the app starts. This used to happen inside the
+            # app container's entrypoint, which required the app's credential to
+            # hold DDL rights and let an unattended restart alter the schema.
+            #
+            # A failure here stops the deploy with the old app still serving —
+            # which is the point: a half-migrated schema behind a new app is a
+            # worse outcome than not deploying.
+            # `timeout` so a hung migration fails in 5 minutes with a clear exit
+            # code instead of consuming the job's 10-minute budget and reporting
+            # only "cancelled" — which is how staging run 31814561810 presented,
+            # and it took reading the raw log to see the real cause.
+            # -T disables TTY allocation, which this non-interactive SSH session
+            # cannot provide.
+            APP_IMAGE="${IMAGE_REF}" \
+              timeout 300 docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" \
+              --profile tools run --rm -T migrate
+
+            echo "==> [5/5] Starting application..."
             APP_IMAGE="${IMAGE_REF}" \
               docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" up -d
 

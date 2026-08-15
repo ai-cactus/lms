@@ -1,0 +1,36 @@
+{
+  "displayName": "LMS VM memory pressure",
+  "documentation": {
+    "content": "Host memory utilisation is sustained high.\n\nThe production app container is capped at 1 GB with a single replica, and background workers run INSIDE that web process (src/instrumentation.ts), so a memory spike from document parsing or a transcode competes directly with request serving. An OOM kill takes both down and stops every sweep until the container restarts.\n\n**First response:** `docker stats` to identify the container, then check whether a large document upload or video transcode is in flight \u2014 those buffer whole files.\n\nNOTE: the filter pins state=\"used\". This metric emits one series PER STATE (used, free, cached, buffered, slab_*), and the condition reduces with MAX across series \u2014 so without the state pin, a mostly-idle host with free memory above the threshold would fire this alert continuously, reporting memory pressure at exactly the moment there is none.",
+    "mimeType": "text/markdown"
+  },
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "LMS VM memory pressure",
+      "conditionThreshold": {
+        "filter": "metric.type=\"workload.googleapis.com/system.memory.utilization\" AND metric.labels.state=\"used\"",
+        "comparison": "COMPARISON_GT",
+        "thresholdValue": 0.9,
+        "duration": "300s",
+        "aggregations": [
+          {
+            "alignmentPeriod": "300s",
+            "perSeriesAligner": "ALIGN_MEAN",
+            "crossSeriesReducer": "REDUCE_MAX"
+          }
+        ],
+        "trigger": {
+          "count": 1
+        }
+      }
+    }
+  ],
+  "notificationChannels": [
+    "REPLACE_WITH_CHANNEL"
+  ],
+  "alertStrategy": {
+    "autoClose": "604800s"
+  },
+  "enabled": true
+}

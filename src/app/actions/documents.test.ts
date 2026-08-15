@@ -31,6 +31,9 @@ const {
     document: { findFirst: vi.fn(), create: vi.fn() },
     documentVersion: { findFirst: vi.fn(), create: vi.fn() },
     phiReport: { create: vi.fn() },
+    // F-092: the accepted path writes its decision row inside this same
+    // transaction, so an accepted document cannot exist without one.
+    phiDecision: { create: vi.fn() },
   };
   const prismaMock = {
     // Supports both forms: interactive (callback) for uploadDocument, and the
@@ -42,6 +45,11 @@ const {
     ),
     _tx: txClient,
     courseVersion: { deleteMany: vi.fn() },
+    // F-092: the BLOCKED paths write their decision row outside any
+    // transaction. This must be mocked, not omitted: recordPhiDecision catches
+    // its own failures by design, so an unmocked client would let the write
+    // fail silently and the assertions below would pass vacuously.
+    phiDecision: { create: vi.fn() },
     // Uploader lookup that feeds the post-upload notification's facility + name —
     // now resolved via the OrganizationUser row, not a flat User.
     organizationUser: { findUnique: vi.fn() },
@@ -162,8 +170,55 @@ describe('uploadDocument — THER-003 PHI gate always fails closed', () => {
     expect(mockSaveFile).not.toHaveBeenCalled();
   });
 
+  // ─── F-092: the rejection must leave durable evidence ───────────────────
+  // A blocked upload creates no DocumentVersion and therefore no PhiReport, so
+  // before the phi_decisions ledger existed a rejection's only trace was a
+  // stdout warning. "Prove you rejected it" is the question that matters.
+
+  it('records a blocked_phi decision row when PHI is detected', async () => {
+    mockScanText.mockResolvedValue({
+      hasPHI: true,
+      decidedBy: 'local_regex',
+      findings: [{ type: 'SSN', offsetStart: 0, offsetEnd: 11, confidence: 1 }],
+    });
+
+    await uploadDocument(null, makeFormData());
+
+    expect(prismaMock.phiDecision.create).toHaveBeenCalledTimes(1);
+    const { data } = prismaMock.phiDecision.create.mock.calls[0][0];
+    expect(data).toMatchObject({
+      source: 'document_upload',
+      outcome: 'blocked_phi',
+      // A local_regex block means nothing was transmitted to Google at all.
+      decidedBy: 'local_regex',
+      findingTypes: ['SSN'],
+      findingCount: 1,
+    });
+    // No version row exists for a rejected upload.
+    expect(data.documentVersionId).toBeNull();
+    // The ledger must not become a store of the thing it rejects.
+    expect(data.contentHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(JSON.stringify(data)).not.toContain('.pdf');
+  });
+
+  it('records a blocked_scan_failed decision, distinct from a detection', async () => {
+    mockScanText.mockResolvedValue({
+      hasPHI: true,
+      scanFailed: true,
+      findings: [],
+      decidedBy: 'ai',
+    });
+
+    await uploadDocument(null, makeFormData());
+
+    expect(prismaMock.phiDecision.create).toHaveBeenCalledTimes(1);
+    const { data } = prismaMock.phiDecision.create.mock.calls[0][0];
+    // A Vertex outage must not read as a wave of PHI uploads.
+    expect(data.outcome).toBe('blocked_scan_failed');
+  });
+
   it('proceeds to storage + DB persistence for a clean (no PHI, scan succeeded) document', async () => {
-    mockScanText.mockResolvedValue({ hasPHI: false, findings: [] });
+    mockScanText.mockResolvedValue({ hasPHI: false, findings: [], decidedBy: 'ai' });
     prismaMock._tx.document.findFirst.mockResolvedValue(null);
     prismaMock._tx.document.create.mockResolvedValue({ id: 'doc-1' });
     prismaMock._tx.documentVersion.create.mockResolvedValue({ id: 'ver-1' });
@@ -172,6 +227,21 @@ describe('uploadDocument — THER-003 PHI gate always fails closed', () => {
 
     expect(mockSaveFile).toHaveBeenCalledOnce();
     expect(result).toEqual({ success: true, phiDetected: false });
+
+    // F-092: the accepted decision is written INSIDE the upload transaction, so
+    // it commits or rolls back with the DocumentVersion — an accepted document
+    // cannot exist without its decision row. Note it goes to the tx client, not
+    // the standalone one, which is what makes it atomic.
+    expect(prismaMock._tx.phiDecision.create).toHaveBeenCalledTimes(1);
+    expect(prismaMock.phiDecision.create).not.toHaveBeenCalled();
+
+    const { data } = prismaMock._tx.phiDecision.create.mock.calls[0][0];
+    expect(data).toMatchObject({
+      source: 'document_upload',
+      outcome: 'allowed',
+      documentVersionId: 'ver-1',
+      findingCount: 0,
+    });
   });
 });
 

@@ -12,6 +12,18 @@
 
 name: lms-dev
 
+# Bounded container logs (F-074). Without an explicit driver config Docker's
+# default json-file driver grows without limit, and every service here writes
+# to the same single-disk VM — an unbounded app log can fill the disk and take
+# Postgres down with it. 10m x 5 keeps ~50 MB of recent history per service,
+# which is enough for local triage; durable retention is Cloud Logging's job
+# (see the OTel collector), not the disk's.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '5'
+
 services:
   # ── PostgreSQL Database ───────────────────────────────────────────────────────
   db:
@@ -21,6 +33,7 @@ services:
     # activate with: CREATE EXTENSION IF NOT EXISTS vector;
     image: pgvector/pgvector:pg16
     restart: unless-stopped
+    logging: *default-logging
     ports:
       - "5433:5432"
     environment:
@@ -49,6 +62,7 @@ services:
     container_name: lms-dev-redis
     image: redis:7-alpine
     restart: unless-stopped
+    logging: *default-logging
     ports:
       - "6380:6379"
     volumes:
@@ -84,6 +98,7 @@ services:
     container_name: lms-dev-minio
     image: minio/minio:latest
     restart: unless-stopped
+    logging: *default-logging
     command: server /data --console-address ":9001"
     ports:
       - "9005:9000" # S3-compatible API  → MINIO_ENDPOINT=localhost, MINIO_PORT=9000
@@ -107,9 +122,12 @@ services:
       - dev-net
 
   mailhog:
-    image: mailhog/mailhog
+    # Pinned to match the CI e2e job's sink (F-044 pattern): a floating tag
+    # means a dev/CI drift can appear as a mail-delivery bug.
+    image: mailhog/mailhog:v1.0.1
     container_name: theraptly-mailhog
     platform: linux/amd64
+    logging: *default-logging
     ports:
       - 1025:1025 # smtp server
       - 8025:8025 # web ui

@@ -34,9 +34,7 @@ export const MAX_STAFF_UPLOAD_BYTES = 5 * 1024 * 1024;
 
 /** Per-row error reasons surfaced in the import preview. */
 export type StaffCsvRowError =
-  | 'Invalid email format'
-  | 'Duplicate in file'
-  | 'Already a member or invited';
+  'Invalid email format' | 'Duplicate in file' | 'Already a member or invited';
 
 export interface StaffCsvRow {
   /** The email as read (lowercased when valid, raw-trimmed when invalid). */

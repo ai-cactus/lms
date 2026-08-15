@@ -10,6 +10,7 @@ import { revalidatePath } from 'next/cache';
 import { notifyOrganizationAdmins } from './notifications';
 import { QuizAttemptResult } from '@/types/quiz';
 import { logger } from '@/lib/logger';
+import { invalidatePlaybackAuthz } from '@/lib/video/playback-cache';
 import type { StaffEntry } from '@/types/enrollment';
 import { RenewalCycle, ReminderStage, UserRole } from '@/generated/prisma/enums';
 import {
@@ -1014,6 +1015,12 @@ export async function removeWorkerAssignment(enrollmentId: string) {
   await prisma.enrollment.delete({
     where: { id: enrollmentId },
   });
+
+  // The video proxy caches the ALLOW verdict for up to 5 minutes; evict it so
+  // the removal takes effect on the learner's next Range request rather than
+  // letting them finish the video. Keyed on the course, so this one call covers
+  // every lesson in it.
+  invalidatePlaybackAuthz(enrollment.organizationUserId, enrollment.courseId);
 
   logger.info({
     msg: '[enrollment] Worker assignment removed',

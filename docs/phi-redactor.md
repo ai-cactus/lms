@@ -14,10 +14,27 @@
 > - **PHI is blocked / rejected, not redacted.** Detected PHI blocks the upload;
 >   the system never redacts or rewrites document text.
 >
-> For the authoritative current-state analysis, see the reports in
-> [`docs/analysis/`](./analysis/) (e.g. `SYSTEM-ANALYSIS-REPORT.md`,
-> `FINDINGS-REGISTER.md`). The embedded code snippets below are retained for
-> historical context and may not match current source.
+> **Further changes since 2026-08-10** — the scan is no longer document-only:
+>
+> - **Every user-supplied ingress is gated**, not just uploads. Lesson bodies typed
+>   into the editor and client-supplied AI context now pass through `assertNoPhi`
+>   (`src/lib/documents/phiGate.ts`), which scans, records and rejects (F-089).
+> - **Short text is checked.** Input under 50 characters previously skipped the
+>   scan *entirely* — the deterministic local pass now runs on every input and
+>   length only short-circuits the AI call (F-099).
+> - **Every decision is recorded**, including rejections, in the append-only
+>   `phi_decisions` ledger, with `buildPhiEvidenceReport` to attest over a period
+>   (F-092). Findings remain value-free: type + offsets + confidence, never the
+>   matched string.
+> - **The consumer Gemini surface is lint-banned** — the `@google/generative-ai`
+>   SDK and `generativelanguage.googleapis.com` fail the build (F-085).
+>
+> For the authoritative current-state view see
+> [`analysis/DATA-CLASSIFICATION.md`](./analysis/DATA-CLASSIFICATION.md) (fields,
+> egress paths, and the invariant) and
+> [`analysis/AUDIT-2026-08.md`](./analysis/AUDIT-2026-08.md). The embedded code
+> snippets below are retained for historical context and do **not** match current
+> source.
 
 ## Overview
 

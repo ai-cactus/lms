@@ -263,3 +263,151 @@ describe('proxy — session/role gates', () => {
     expect(res.headers.get('location')).toBe('http://localhost:3005/reset-password?force=true');
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// F-013: API default-deny.
+//
+// Authentication for /api/** moved from per-handler imperative checks into the
+// middleware, so a route is closed unless explicitly exempted. These tests are
+// the guard against the two ways that change can go wrong: leaving a genuinely
+// public endpoint unreachable (an outage), or exempting something that should
+// have stayed closed (a hole).
+// ─────────────────────────────────────────────────────────────────────────────
+describe('proxy — API default-deny (F-013)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('401s an unauthenticated API request instead of letting the handler run', async () => {
+    const res = await proxy(makeRequest('/api/billing/overview'));
+
+    expect(res.status).toBe(401);
+    await expect(res.json()).resolves.toEqual({ error: 'Unauthorized' });
+    // Never a redirect: these are called by fetch(), and an HTML redirect
+    // surfaces as an unparseable-response bug rather than a 401.
+    expect(res.headers.get('location')).toBeNull();
+  });
+
+  it('allows a request carrying a valid admin session', async () => {
+    mockDecode.mockResolvedValue({ role: 'admin', organizationId: 'org-1' });
+
+    const res = await proxy(makeRequest('/api/billing/overview', ADMIN_COOKIE));
+
+    expect(res.status).toBe(200);
+  });
+
+  it('allows a request carrying a valid worker session', async () => {
+    mockDecode.mockResolvedValue({ role: 'worker', organizationId: 'org-1' });
+
+    const res = await proxy(makeRequest('/api/enrollments/e1/progress', 'worker.session-token'));
+
+    expect(res.status).toBe(200);
+  });
+
+  it('401s when the cookie is present but undecodable', async () => {
+    mockDecode.mockRejectedValue(new Error('bad signature'));
+
+    const res = await proxy(makeRequest('/api/billing/overview', ADMIN_COOKIE));
+
+    expect(res.status).toBe(401);
+  });
+
+  it('401s when decode resolves null', async () => {
+    mockDecode.mockResolvedValue(null);
+
+    const res = await proxy(makeRequest('/api/billing/overview', ADMIN_COOKIE));
+
+    expect(res.status).toBe(401);
+  });
+
+  // Holding one stale cookie and one good one is normal during a session
+  // transition, so a bad admin cookie must not mask a valid worker session.
+  it('accepts a valid worker session even when the admin cookie is malformed', async () => {
+    mockDecode
+      .mockRejectedValueOnce(new Error('bad signature'))
+      .mockResolvedValueOnce({ role: 'worker' });
+
+    const req = makeRequest('/api/enrollments/e1/progress', ADMIN_COOKIE);
+    req.cookies.set('worker.session-token', 'raw-token');
+
+    const res = await proxy(req);
+
+    expect(res.status).toBe(200);
+  });
+
+  describe('exemptions', () => {
+    /**
+     * Each of these MUST stay reachable without a session. A regression here is
+     * an outage, not a hardening win:
+     *   health          — the external uptime check runs before any login
+     *   invite/accept   — the invitee has no account yet
+     *   webhooks/stripe — called by Stripe; signature-authenticated. Blocking it
+     *                     silently stops billing state reconciling
+     *
+     * contact-enterprise is deliberately NOT here: the name suggests a public
+     * marketing form, but its only caller is the authenticated billing tab and
+     * its handler requires `billing.read`. Allow-listing it would have made this
+     * list document something untrue.
+     */
+    const publicRoutes = ['/api/health', '/api/invite/accept', '/api/webhooks/stripe'];
+
+    it.each(publicRoutes)('allows %s without a session', async (path) => {
+      const res = await proxy(makeRequest(path));
+
+      expect(res.status).toBe(200);
+      expect(mockDecode).not.toHaveBeenCalled();
+    });
+
+    // These run before a full session exists by nature.
+    const preSessionAuthRoutes = [
+      '/api/auth/verify',
+      '/api/auth/resend-verification',
+      '/api/auth/mfa/send',
+      '/api/auth/mfa/verify',
+      '/api/auth/signout-all',
+      '/api/auth/callback/credentials',
+      '/api/auth-worker/session',
+    ];
+
+    it.each(preSessionAuthRoutes)('allows %s without a session', async (path) => {
+      const res = await proxy(makeRequest(path));
+      expect(res.status).toBe(200);
+    });
+
+    /**
+     * /api/system/** authenticates with the HMAC system_admin_auth cookie, not a
+     * NextAuth session, so requiring one here would lock the platform console
+     * out entirely. Enforcing it at this layer would mean re-implementing that
+     * HMAC with Web Crypto (the Edge runtime has no node:crypto) — duplicated
+     * security logic, which is worse than the exemption. Unifying the two is
+     * §4.4 of docs/rebuild/09-PLATFORM-ADMIN-SPEC.md.
+     */
+    it('passes /api/system/** through to its own auth mechanism', async () => {
+      const res = await proxy(makeRequest('/api/system/manual'));
+
+      expect(res.status).toBe(200);
+      expect(mockDecode).not.toHaveBeenCalled();
+    });
+
+    // Exemption is by exact path, not prefix, so a nested route under a public
+    // one does not inherit the exemption.
+    it('does NOT exempt a nested path under a public route', async () => {
+      const res = await proxy(makeRequest('/api/health/secrets'));
+      expect(res.status).toBe(401);
+    });
+  });
+
+  // Named like a public form, but authenticated: only the billing tab calls it
+  // and the handler requires billing.read.
+  it('gates /api/billing/contact-enterprise despite its public-sounding name', async () => {
+    const res = await proxy(makeRequest('/api/billing/contact-enterprise'));
+    expect(res.status).toBe(401);
+  });
+
+  it('stamps a correlation ID on the 401 as well', async () => {
+    const res = await proxy(makeRequest('/api/billing/overview'));
+
+    expect(res.status).toBe(401);
+    expect(res.headers.get('x-correlation-id')).toBeTruthy();
+  });
+});

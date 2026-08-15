@@ -1,0 +1,50 @@
+name: Setup Node and dependencies
+description: >-
+  Sets up Node 24 and restores node_modules from cache, running `npm ci` only
+  on a cache miss.
+
+  Why this exists: the repository is private on a Free plan, so Actions
+  minutes are metered (2,000/month). Six gate jobs each running a full
+  `npm ci` burned ~60-90s apiece on identical work. Keying a node_modules
+  cache on the lockfile hash turns that into a ~10s restore while keeping the
+  jobs parallel — cheaper than serialising them into one job, which would
+  have traded wall-clock for minutes.
+
+inputs:
+  prisma:
+    description: Also generate the Prisma client (needed for typecheck, tests, build).
+    required: false
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '24'
+        # Caches the npm download cache, which still helps on a
+        # node_modules cache miss.
+        cache: 'npm'
+
+    - name: Restore node_modules
+      id: node-modules-cache
+      uses: actions/cache@v4
+      with:
+        path: node_modules
+        # Exact-hash key with no restore-keys on purpose: a partial restore
+        # from a different lockfile would leave a subtly wrong tree, and a
+        # wrong dependency tree is worse than a slow install.
+        key: node-modules-${{ runner.os }}-node24-${{ hashFiles('package-lock.json') }}
+
+    - name: Install dependencies
+      if: steps.node-modules-cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: npm ci --legacy-peer-deps
+
+    # The Prisma client is generated to ./generated/prisma (see
+    # prisma/schema.prisma `output`), which is outside node_modules and so is
+    # not covered by the cache above. It is fast, so it just re-runs.
+    - name: Generate Prisma client
+      if: inputs.prisma == 'true'
+      shell: bash
+      run: npx prisma generate

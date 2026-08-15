@@ -9,15 +9,22 @@
 tunnel: d2f87791-8003-45d9-a8f3-1de7c220601a
 credentials-file: /home/deploy/.cloudflared/d2f87791-8003-45d9-a8f3-1de7c220601a.json
 
-# Route through the host nginx (port 80) instead of straight to the app ports,
-# so nginx's routing, body-size limits, real-IP handling and security headers
-# actually apply. cloudflared forwards the original Host header, so nginx picks
-# the matching server block by server_name (see lms2_nginx.conf):
-#   training.theraptly.com     → nginx prod block    → 127.0.0.1:3000
-#   staging-lms.theraptly.com  → nginx staging block → 127.0.0.1:3001
+# Ingress goes STRAIGHT to the app ports — nginx is not in the request path, and
+# as of 2026-08-10 nginx is not used at all (its config was deleted; see
+# docs/deployment.md §2.3). Routing, body-size limits, real-IP handling and
+# security headers are therefore the app's or Cloudflare's responsibility:
+# security headers ship from next.config.ts, upload caps from
+# MAX_DOCUMENT_UPLOAD_BYTES, and the client IP from the x-forwarded-for header
+# Cloudflare sets (see getClientContext in src/lib/audit.ts).
+#   training.theraptly.com     → app container on 127.0.0.1:3000 (production)
+#   staging-lms.theraptly.com  → app container on 127.0.0.1:3001 (staging)
+#
+# NOTE: this file is hand-applied on the VM (copied to the cloudflared service's
+# config path, then `systemctl restart cloudflared`). No deploy workflow copies
+# it, so editing it here does NOT change the live tunnel.
 ingress:
   - hostname: training.theraptly.com
-    service: http://localhost:80
+    service: http://localhost:3000
   - hostname: staging-lms.theraptly.com
-    service: http://localhost:80
+    service: http://localhost:3001
   - service: http_status:404
