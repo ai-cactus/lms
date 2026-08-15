@@ -55,8 +55,14 @@ describe('StaffProfileClient — Assign Course button', () => {
     ).toBeInTheDocument();
   });
 
-  it('renders for a clinical director, who may assign training without user.edit', () => {
+  it('is hidden for a clinical director — view-only on staff despite assignment.create', () => {
     renderFor('clinical_director');
+
+    expect(screen.queryByRole('button', { name: /Assign Course/ })).not.toBeInTheDocument();
+  });
+
+  it('renders for HR, who holds both user.edit and assignment.create', () => {
+    renderFor('hr');
 
     expect(screen.getByRole('button', { name: /Assign Course/ })).toBeInTheDocument();
   });
