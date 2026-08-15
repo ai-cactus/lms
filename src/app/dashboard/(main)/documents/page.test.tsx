@@ -7,11 +7,10 @@
  * access-denied card instead of the real Document Hub, mirroring the
  * Billing/Settings routes' gate pattern (see ../billing/page.test.tsx).
  *
- * `canCreate`/`canEdit`/`canDelete` are derived from the registry
- * (`document.create` / `document.edit` / `document.delete`) and threaded
- * through to `<UploadSection />` and `<DocumentListClient />` — HR holds
- * `document.read` only, so it must reach the real hub with no Upload button
- * and every list prop false.
+ * `canCreate`/`canDelete` are derived from the registry (`document.create` /
+ * `document.delete`) and threaded through to `<UploadSection />` and
+ * `<DocumentListClient />` — a read-only role must reach the real hub with no
+ * Upload button and every list prop false.
  *
  * The expected role partition is derived from the live permission registry
  * rather than hardcoded, so this suite tracks the registry automatically if
@@ -23,35 +22,41 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { can } from '@/lib/rbac/permissions';
 import { ALL_ROLES, dbRoleToRoleKey } from '@/lib/rbac/role-utils';
 
-const { mockAuth, prismaMock, mockRedirect } = vi.hoisted(() => ({
+const { mockAuth, prismaMock, mockRedirect, mockGetDocumentCategories } = vi.hoisted(() => ({
   mockAuth: vi.fn(),
   prismaMock: { document: { findMany: vi.fn() } },
   mockRedirect: vi.fn(() => {
     throw new Error('NEXT_REDIRECT');
   }),
+  mockGetDocumentCategories: vi.fn(),
 }));
 
 vi.mock('@/auth', () => ({ auth: mockAuth }));
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock, default: prismaMock }));
 vi.mock('next/navigation', () => ({ redirect: mockRedirect }));
+vi.mock('@/app/actions/document-categories', () => ({
+  getDocumentCategories: mockGetDocumentCategories,
+}));
 vi.mock('./upload-section', () => ({
-  default: () => <div data-testid="upload-section">Upload New</div>,
+  default: ({ categories }: { categories: string[] }) => (
+    <div data-testid="upload-section">Upload file / categories {categories.join(',')}</div>
+  ),
 }));
 vi.mock('./DocumentListClient', () => ({
   default: ({
     initialDocs,
     canUpload,
-    canEdit,
     canDelete,
+    categories,
   }: {
     initialDocs: unknown[];
     canUpload: boolean;
-    canEdit: boolean;
     canDelete: boolean;
+    categories: string[];
   }) => (
     <div data-testid="document-list-client">
-      docs {initialDocs.length} / canUpload {String(canUpload)} / canEdit {String(canEdit)} /
-      canDelete {String(canDelete)}
+      docs {initialDocs.length} / canUpload {String(canUpload)} / canDelete {String(canDelete)} /
+      categories {categories.join(',')}
     </div>
   ),
 }));
@@ -109,6 +114,7 @@ describe('documents registry partition (guards against silent drift)', () => {
 beforeEach(() => {
   vi.clearAllMocks();
   prismaMock.document.findMany.mockResolvedValue([]);
+  mockGetDocumentCategories.mockResolvedValue([]);
 });
 
 describe('DocumentsPageRoute — document.read gate', () => {
@@ -120,7 +126,7 @@ describe('DocumentsPageRoute — document.read gate', () => {
 
     expect(screen.getByTestId('upload-section')).toBeInTheDocument();
     expect(screen.getByTestId('document-list-client')).toHaveTextContent(
-      'canUpload true / canEdit true / canDelete true',
+      'canUpload true / canDelete true',
     );
     expect(screen.queryByText(/don.t have access to documents/i)).not.toBeInTheDocument();
   });
@@ -135,7 +141,7 @@ describe('DocumentsPageRoute — document.read gate', () => {
 
       expect(screen.getByTestId('upload-section')).toBeInTheDocument();
       expect(screen.getByTestId('document-list-client')).toHaveTextContent(
-        'canUpload true / canEdit true / canDelete false',
+        'canUpload true / canDelete false',
       );
       expect(screen.queryByText(/don.t have access to documents/i)).not.toBeInTheDocument();
     },
@@ -149,7 +155,7 @@ describe('DocumentsPageRoute — document.read gate', () => {
 
     expect(screen.queryByTestId('upload-section')).not.toBeInTheDocument();
     expect(screen.getByTestId('document-list-client')).toHaveTextContent(
-      'canUpload false / canEdit false / canDelete false',
+      'canUpload false / canDelete false',
     );
     expect(screen.queryByText(/don.t have access to documents/i)).not.toBeInTheDocument();
   });
@@ -187,6 +193,32 @@ describe('DocumentsPageRoute — document.read gate', () => {
 
     expect(mockRedirect).toHaveBeenCalledExactlyOnceWith('/login');
     expect(prismaMock.document.findMany).not.toHaveBeenCalled();
+  });
+
+  it("threads the organization's own category vocabulary into the upload modal and the filter", async () => {
+    mockGetDocumentCategories.mockResolvedValueOnce(['Clinical', 'HR', 'Other']);
+    mockAuth.mockResolvedValueOnce({
+      user: { id: 'user-1', role: 'owner', organizationId: 'org-1' },
+    });
+
+    const element = await DocumentsPageRoute();
+    render(element);
+
+    expect(screen.getByTestId('upload-section')).toHaveTextContent('categories Clinical,HR,Other');
+    expect(screen.getByTestId('document-list-client')).toHaveTextContent(
+      'categories Clinical,HR,Other',
+    );
+  });
+
+  it('never fetches categories for a role that fails the document.read gate', async () => {
+    mockAuth.mockResolvedValueOnce({
+      user: { id: 'user-1', role: 'finance', organizationId: 'org-1' },
+    });
+
+    const element = await DocumentsPageRoute();
+    render(element);
+
+    expect(mockGetDocumentCategories).not.toHaveBeenCalled();
   });
 
   it('scopes the document query to the caller organization and passes docs through', async () => {

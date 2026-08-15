@@ -48,10 +48,10 @@ function renderModal(onClose = vi.fn()) {
 }
 
 describe('ChangeFacilityModal', () => {
-  it('disables Continue until a target facility is selected', () => {
+  it('disables Change facility until a target facility is selected', () => {
     renderModal();
 
-    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Change facility' })).toBeDisabled();
   });
 
   it('moves through select -> confirm -> calls setStaffFacilities with exactly one facility id', async () => {
@@ -60,7 +60,7 @@ describe('ChangeFacilityModal', () => {
     renderModal();
 
     await user.click(screen.getByRole('radio', { name: /Beta Site/ }));
-    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.click(screen.getByRole('button', { name: 'Change facility' }));
 
     expect(screen.getByRole('button', { name: 'Switch facility' })).toBeInTheDocument();
 
@@ -75,7 +75,7 @@ describe('ChangeFacilityModal', () => {
     const { onClose } = renderModal();
 
     await user.click(screen.getByRole('radio', { name: /Beta Site/ }));
-    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.click(screen.getByRole('button', { name: 'Change facility' }));
     await user.click(screen.getByRole('button', { name: 'Switch facility' }));
 
     expect(onClose).toHaveBeenCalled();
@@ -88,14 +88,14 @@ describe('ChangeFacilityModal', () => {
     const { onClose } = renderModal();
 
     await user.click(screen.getByRole('radio', { name: /Beta Site/ }));
-    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.click(screen.getByRole('button', { name: 'Change facility' }));
     await user.click(screen.getByRole('button', { name: 'Switch facility' }));
 
     expect(await screen.findByText('Forbidden')).toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
     expect(mockRefresh).not.toHaveBeenCalled();
-    // Back on the select step (radio group + Continue button visible again).
-    expect(screen.getByRole('button', { name: 'Continue' })).toBeInTheDocument();
+    // Back on the select step (radio group + Change facility button visible again).
+    expect(screen.getByRole('button', { name: 'Change facility' })).toBeInTheDocument();
   });
 
   it('lets Cancel from the confirm step return to select without submitting', async () => {
@@ -103,10 +103,10 @@ describe('ChangeFacilityModal', () => {
     renderModal();
 
     await user.click(screen.getByRole('radio', { name: /Beta Site/ }));
-    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.click(screen.getByRole('button', { name: 'Change facility' }));
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
 
-    expect(screen.getByRole('button', { name: 'Continue' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Change facility' })).toBeInTheDocument();
     expect(mockSetStaffFacilities).not.toHaveBeenCalled();
   });
 });

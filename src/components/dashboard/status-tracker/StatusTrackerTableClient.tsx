@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useMemo, useState } from 'react';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import EmptyTableState from '@/components/ui/EmptyTableState';
 import {
@@ -34,6 +34,8 @@ export interface StatusTrackerRowView {
   workerEmail: string;
   courseId: string;
   courseTitle: string;
+  /** Facility stamped on the enrollment at assignment time; null when none. */
+  facilityName: string | null;
   dueAt: string;
   daysOverdue: number | null;
   daysUntilDue: number | null;
@@ -92,6 +94,7 @@ export function DeadlineBadge({ row }: { row: StatusTrackerRowView }) {
  * this component only slices the already-loaded rows into pages.
  */
 export default function StatusTrackerTableClient({ rows }: Props) {
+  const router = useRouter();
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
@@ -123,7 +126,12 @@ export default function StatusTrackerTableClient({ rows }: Props) {
       <Table className="table-fixed">
         <TableHeader>
           <TableRow className="border-0 hover:bg-transparent">
-            <TableHead className={cn(tableHeadClass, 'rounded-l-[9px] px-2 sm:px-[18px]')}>
+            <TableHead
+              className={cn(
+                tableHeadClass,
+                'rounded-l-[9px] rounded-r-[9px] px-2 sm:rounded-r-none sm:px-[18px]',
+              )}
+            >
               Staff Name
             </TableHead>
             <TableHead
@@ -132,32 +140,33 @@ export default function StatusTrackerTableClient({ rows }: Props) {
               Course
             </TableHead>
             <TableHead
-              className={cn(tableHeadClass, 'hidden px-[18px] xl:table-cell xl:w-[191px]')}
+              className={cn(tableHeadClass, 'hidden px-[18px] xl:table-cell xl:w-[151px]')}
             >
               Deadline
             </TableHead>
             <TableHead
-              className={cn(
-                tableHeadClass,
-                'hidden px-[18px] sm:table-cell sm:w-[190px] xl:w-[211px]',
-              )}
+              className={cn(tableHeadClass, 'hidden px-[18px] xl:table-cell xl:w-[180px]')}
             >
-              Status
+              Facility
             </TableHead>
             <TableHead
               className={cn(
                 tableHeadClass,
-                'w-[58px] rounded-r-[9px] px-1 text-center sm:w-[92px] sm:px-2 xl:w-[78px]',
+                'hidden px-[18px] sm:table-cell sm:w-[190px] sm:rounded-r-[9px] xl:w-[211px]',
               )}
             >
-              Action
+              Status
             </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {pagedRows.length > 0 ? (
             pagedRows.map((row) => (
-              <TableRow key={row.enrollmentId} className="h-[71px]">
+              <TableRow
+                key={row.enrollmentId}
+                onClick={() => router.push(`/dashboard/staff/${row.userId}`)}
+                className="h-[71px] cursor-pointer"
+              >
                 <TableCell className="px-2 py-3 sm:px-[18px]">
                   <div className="flex items-center gap-2.5 sm:gap-[18px]">
                     <span
@@ -192,18 +201,17 @@ export default function StatusTrackerTableClient({ rows }: Props) {
                   {formatDate(row.dueAt)}
                 </TableCell>
 
-                <TableCell className="hidden px-[18px] py-3 sm:table-cell">
-                  <DeadlineBadge row={row} />
+                <TableCell className="hidden px-[18px] py-0 xl:table-cell">
+                  <span
+                    className="block truncate text-[15.5px] font-medium text-[#0d0d12]"
+                    title={row.facilityName ?? undefined}
+                  >
+                    {row.facilityName ?? '—'}
+                  </span>
                 </TableCell>
 
-                <TableCell className="px-1 py-0 text-center sm:px-2">
-                  <Link
-                    href={`/dashboard/staff/${row.userId}`}
-                    className="inline-flex items-center justify-center rounded-[8px] px-1 py-2.5 text-[14px] font-semibold text-primary hover:underline sm:px-4 sm:text-[15px]"
-                  >
-                    View
-                    <span className="sr-only"> {row.workerName}</span>
-                  </Link>
+                <TableCell className="hidden px-[18px] py-3 sm:table-cell">
+                  <DeadlineBadge row={row} />
                 </TableCell>
               </TableRow>
             ))

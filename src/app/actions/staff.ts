@@ -57,6 +57,11 @@ export async function getStaffDetails(organizationUserId: string) {
         managerId: true,
         user: { select: { email: true, fullName: true, avatarUrl: true } },
         manager: { select: { user: { select: { email: true, fullName: true } } } },
+        facilities: {
+          where: { active: true },
+          take: 1,
+          select: { facility: { select: { name: true } } },
+        },
         enrollments: {
           orderBy: { startedAt: 'desc' },
           select: {
@@ -136,6 +141,7 @@ export async function getStaffDetails(organizationUserId: string) {
         avatarUrl: orgUser.user.avatarUrl ?? null,
         role: orgUser.role,
         jobTitle: orgUser.jobTitle || 'Staff Member',
+        facilityName: orgUser.facilities[0]?.facility.name ?? null,
         managerId: orgUser.managerId ?? null,
         managerName: orgUser.manager
           ? (orgUser.manager.user.fullName ?? orgUser.manager.user.email)

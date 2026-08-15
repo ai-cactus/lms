@@ -44,8 +44,10 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { CourseWithStats } from '@/types/course';
 import { checkCourseGenerationJobV46 } from '@/app/actions/course-ai-v4.6';
-import { deleteCourse, duplicateCourse, updateCourse } from '@/app/actions/course';
+import { clearPendingGeneration, readPendingGeneration } from '@/lib/course/pending-generation';
+import { deleteCourse, updateCourse } from '@/app/actions/course';
 import BillingGateModal from '@/components/dashboard/billing/BillingGateModal';
+import AssignCourseModal from './AssignCourseModal';
 import {
   Plus,
   Search,
@@ -59,23 +61,11 @@ import {
   X,
   UserPlus,
   FileText,
-  CopyPlus,
-  Library,
 } from 'lucide-react';
-import CourseTypeIcon from '@/components/dashboard/courses/CourseTypeIcon';
 import { cn } from '@/lib/utils';
 import { can } from '@/lib/rbac/permissions';
 import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
 import type { Role } from '@/types/next-auth';
-
-const PENDING_KEY = 'lms_pending_generation';
-const STALE_THRESHOLD_MS = 60 * 60 * 1000; // 1 hour
-
-interface PendingGeneration {
-  jobId: string;
-  formData: Record<string, unknown>;
-  timestamp: number;
-}
 
 type BannerState = 'generating' | 'done' | 'failed' | 'hidden';
 
@@ -91,50 +81,34 @@ const cellCls = 'h-[71px] px-5 text-[17.5px] font-medium tracking-[0.35px] text-
 
 function PendingGenerationBanner() {
   const [banner, setBanner] = useState<BannerState>('hidden');
-  const [pending, setPending] = useState<PendingGeneration | null>(null);
 
   const dismiss = useCallback(() => {
-    localStorage.removeItem(PENDING_KEY);
+    clearPendingGeneration();
     setBanner('hidden');
   }, []);
 
   useEffect(() => {
-    let raw: string | null = null;
-    try {
-      raw = localStorage.getItem(PENDING_KEY);
-    } catch {
-      return; // localStorage unavailable
-    }
-    if (!raw) return;
-
-    let parsed: PendingGeneration;
-    try {
-      parsed = JSON.parse(raw) as PendingGeneration;
-    } catch {
-      localStorage.removeItem(PENDING_KEY);
-      return;
-    }
-
-    // Discard entries older than 1 hour
-    if (Date.now() - parsed.timestamp > STALE_THRESHOLD_MS) {
-      localStorage.removeItem(PENDING_KEY);
-      return;
-    }
+    // Discards anything unresumable — unparseable, stale, or written by the
+    // pre-module single-job payload shape.
+    const pending = readPendingGeneration();
+    if (!pending) return;
 
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Intentional: initialising banner state from localStorage inside effect
-    setPending(parsed);
-
     setBanner('generating');
 
+    // A multi-module generation is only done when every module's job is done,
+    // and any failed module makes the whole run unusable for review.
     const interval = setInterval(async () => {
       try {
-        const res = await checkCourseGenerationJobV46(parsed.jobId);
-        if (res.status === 'completed') {
-          clearInterval(interval);
-          setBanner('done');
-        } else if (res.status === 'failed' || res.error) {
+        const results = await Promise.all(
+          pending.jobs.map((job) => checkCourseGenerationJobV46(job.jobId)),
+        );
+        if (results.some((res) => res.status === 'failed' || res.error)) {
           clearInterval(interval);
           setBanner('failed');
+        } else if (results.every((res) => res.status === 'completed')) {
+          clearInterval(interval);
+          setBanner('done');
         }
       } catch {
         // network blip — keep polling
@@ -144,7 +118,7 @@ function PendingGenerationBanner() {
     return () => clearInterval(interval);
   }, []);
 
-  if (banner === 'hidden' || !pending) return null;
+  if (banner === 'hidden') return null;
 
   return (
     <div
@@ -274,7 +248,7 @@ interface CoursesListClientProps {
   viewerRole: Role;
 }
 
-/** Design maps the platform's two course types onto Video / Slides tabs. */
+/** Design maps the platform's two course types onto Video / Reading Course tabs. */
 type CourseTypeTab = 'video' | 'slides';
 
 const COURSE_TYPE_BY_TAB: Record<CourseTypeTab, string> = {
@@ -284,6 +258,9 @@ const COURSE_TYPE_BY_TAB: Record<CourseTypeTab, string> = {
 
 const TAB_TRIGGER_CLASS =
   '-mb-px flex-none rounded-none border-0 border-b-2 border-transparent bg-transparent px-0.5 pb-2.5 text-sm font-medium text-[#818898] shadow-none after:hidden hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:font-semibold data-[state=active]:text-primary data-[state=active]:shadow-none';
+
+const TAB_COUNT_CLASS =
+  'rounded-full bg-[#f0f2f5] px-1.5 py-0.5 text-xs leading-none font-medium text-[#666d80]';
 
 /**
  * Build a compact pagination range with ellipses, e.g. [1, 2, 3, '…', 9].
@@ -318,8 +295,8 @@ export default function CoursesListClient({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<CourseWithStats | null>(null);
-  const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
   const [courseToRename, setCourseToRename] = useState<{ id: string; title: string } | null>(null);
+  const [courseToAssign, setCourseToAssign] = useState<{ id: string; title: string } | null>(null);
   const [, startTransition] = useTransition();
 
   // Every row affordance is derived from the registry, never from a role list —
@@ -360,23 +337,6 @@ export default function CoursesListClient({
       });
     },
     [startTransition],
-  );
-
-  const handleDuplicate = useCallback(
-    (course: CourseWithStats) => {
-      setDuplicatingId(course.id);
-      setActionError(null);
-      startTransition(async () => {
-        try {
-          await duplicateCourse(course.id);
-          router.refresh();
-        } catch (err) {
-          setActionError(err instanceof Error ? err.message : 'Failed to duplicate course.');
-        }
-        setDuplicatingId(null);
-      });
-    },
-    [router, startTransition],
   );
 
   const handleRenamed = useCallback((courseId: string, newTitle: string) => {
@@ -438,26 +398,23 @@ export default function CoursesListClient({
       actions.push({
         label: 'Assign to staff',
         icon: <UserPlus className="size-4" />,
-        onSelect: () => router.push(`/dashboard/training/courses/${course.id}/assign`),
+        onSelect: () => setCourseToAssign({ id: course.id, title: course.title }),
       });
     }
 
-    // Forked courses (duplicates, adopted prebuilts) carry no CourseVersion, so
-    // there is no source document to open.
-    if (canReadDocuments && course.sourceDocumentId) {
+    // Always listed per the design; forked courses (duplicates, adopted
+    // prebuilts) carry no CourseVersion, so the item is disabled rather than
+    // hidden when there is no source document to open.
+    if (canReadDocuments) {
       actions.push({
         label: 'View Source Document',
         icon: <FileText className="size-4" />,
-        onSelect: () => router.push(`/dashboard/documents/${course.sourceDocumentId}`),
-      });
-    }
-
-    if (canCreateCourse) {
-      actions.push({
-        label: duplicatingId === course.id ? 'Duplicating…' : 'Duplicate',
-        icon: <CopyPlus className="size-4" />,
-        disabled: duplicatingId === course.id,
-        onSelect: () => handleDuplicate(course),
+        disabled: !course.sourceDocumentId,
+        onSelect: () => {
+          if (course.sourceDocumentId) {
+            router.push(`/dashboard/documents/${course.sourceDocumentId}`);
+          }
+        },
       });
     }
 
@@ -495,6 +452,14 @@ export default function CoursesListClient({
             handleRenamed(courseToRename.id, newTitle);
             setCourseToRename(null);
           }}
+        />
+      )}
+
+      {courseToAssign && (
+        <AssignCourseModal
+          courseId={courseToAssign.id}
+          courseTitle={courseToAssign.title}
+          onClose={() => setCourseToAssign(null)}
         />
       )}
 
@@ -536,26 +501,15 @@ export default function CoursesListClient({
             Courses
           </h1>
           {hasCourses && canCreateCourse && (
-            <div className="flex shrink-0 items-center gap-2 md:gap-3">
-              <Button
-                variant="outline"
-                size="lg"
-                onClick={startPrebuiltCatalog}
-                className="hidden h-10 gap-1.5 rounded-[10px] border-[#d4d4d4] px-4 text-[13px] font-semibold tracking-[-0.31px] text-primary hover:text-primary has-[>svg]:px-4 sm:inline-flex md:h-12 md:gap-2 md:rounded-[12px] md:px-6 md:text-[15.5px] md:has-[>svg]:px-6"
-              >
-                <Library className="size-5 md:size-[23px]" aria-hidden="true" />
-                Prebuilt Courses
-              </Button>
-              <Button
-                id="create-course-btn"
-                size="lg"
-                onClick={startCreateCourse}
-                className="h-10 gap-1.5 rounded-[10px] px-4 text-[13px] font-semibold tracking-[-0.31px] has-[>svg]:px-4 md:h-12 md:gap-2 md:rounded-[12px] md:px-6 md:text-[15.5px] md:has-[>svg]:px-6"
-              >
-                <Plus className="size-5 md:size-[25px]" aria-hidden="true" />
-                Create Course
-              </Button>
-            </div>
+            <Button
+              id="create-course-btn"
+              size="lg"
+              onClick={startCreateCourse}
+              className="h-10 shrink-0 gap-1.5 rounded-[10px] px-4 text-[13px] font-semibold tracking-[-0.31px] has-[>svg]:px-4 md:h-12 md:gap-2 md:rounded-[12px] md:px-6 md:text-[15.5px] md:has-[>svg]:px-6"
+            >
+              <Plus className="size-5 md:size-[25px]" aria-hidden="true" />
+              Create Course
+            </Button>
           )}
         </div>
       </header>
@@ -591,10 +545,10 @@ export default function CoursesListClient({
                 className="h-auto w-full justify-start gap-8 rounded-none border-b border-[#f0f2f5] bg-transparent p-0"
               >
                 <TabsTrigger value="video" className={TAB_TRIGGER_CLASS}>
-                  Video ({tabCounts.video})
+                  Video <span className={TAB_COUNT_CLASS}>{tabCounts.video}</span>
                 </TabsTrigger>
                 <TabsTrigger value="slides" className={TAB_TRIGGER_CLASS}>
-                  Slides ({tabCounts.slides})
+                  Reading Course <span className={TAB_COUNT_CLASS}>{tabCounts.slides}</span>
                 </TabsTrigger>
               </TabsList>
             </Tabs>
@@ -617,22 +571,18 @@ export default function CoursesListClient({
           <Table className="table-fixed">
             <TableHeader>
               <TableRow className="border-0 hover:bg-transparent">
-                <TableHead className={cn(headCls, 'rounded-l-[9px] md:w-[32%]')}>
+                <TableHead className={cn(headCls, 'rounded-l-[9px] md:w-[34%]')}>
                   Course Name
                 </TableHead>
-                <TableHead className={cn(headCls, 'hidden lg:table-cell lg:w-[7%]')}>
-                  Type
-                </TableHead>
-                <TableHead className={cn(headCls, 'hidden md:table-cell md:w-[15%]')}>
+                <TableHead className={cn(headCls, 'hidden md:table-cell md:w-[12%]')}>
                   Assigned Staff
                 </TableHead>
-                <TableHead className={cn(headCls, 'hidden lg:table-cell lg:w-[16%]')}>
-                  Role
+                <TableHead className={cn(headCls, 'hidden lg:table-cell lg:w-[42%]')}>
+                  Description
                 </TableHead>
-                <TableHead className={cn(headCls, 'hidden xl:table-cell xl:w-[16%]')}>
-                  Date Created
-                </TableHead>
-                <TableHead className={cn(headCls, 'w-[56px] rounded-r-[9px] md:w-[14%]')}>
+                <TableHead
+                  className={cn(headCls, 'w-[56px] rounded-r-[9px] text-right md:w-[12%]')}
+                >
                   Action
                 </TableHead>
               </TableRow>
@@ -663,31 +613,27 @@ export default function CoursesListClient({
                           </span>
                         </div>
                       </TableCell>
-                      <TableCell className={cn(cellCls, 'hidden px-[18px] lg:table-cell')}>
-                        <CourseTypeIcon type={course.type} className="size-[21px]" />
-                      </TableCell>
                       <TableCell className={cn(cellCls, 'hidden md:table-cell')}>
                         {course.enrollmentsCount}
                       </TableCell>
-                      <TableCell className={cn(cellCls, 'hidden lg:table-cell')}>General</TableCell>
-                      <TableCell className={cn(cellCls, 'hidden whitespace-nowrap xl:table-cell')}>
-                        {new Date(course.createdAt).toLocaleDateString('en-US', {
-                          month: 'short',
-                          day: '2-digit',
-                          year: 'numeric',
-                        })}
+                      <TableCell
+                        className={cn(
+                          cellCls,
+                          'hidden px-[18px] text-text-secondary lg:table-cell',
+                        )}
+                      >
+                        <span
+                          className="block truncate"
+                          title={course.description?.trim() || undefined}
+                        >
+                          {course.description?.trim() || '—'}
+                        </span>
                       </TableCell>
                       <TableCell
-                        className={cn(cellCls, 'px-1 md:px-[18px]')}
+                        className={cn(cellCls, 'overflow-hidden px-1 md:px-2 md:pr-[18px]')}
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <div className="flex items-center gap-1 md:gap-3">
-                          <Link
-                            href={`/dashboard/training/courses/${course.id}`}
-                            className="hidden px-4 py-2.5 text-[16px] font-semibold text-primary hover:underline sm:inline-flex"
-                          >
-                            View
-                          </Link>
+                        <div className="flex items-center justify-end gap-1 md:gap-2">
                           {rowActions.length > 0 && (
                             <RowActionsMenu
                               className="size-8 rounded-[8px] border border-[#ece4e4] bg-white text-[#0d0d12] [&_svg]:size-4"
@@ -703,7 +649,7 @@ export default function CoursesListClient({
                 <EmptyTableState
                   message="No courses found."
                   subMessage="Try adjusting your search or create a new course."
-                  colSpan={6}
+                  colSpan={4}
                   asTableRow
                 />
               )}

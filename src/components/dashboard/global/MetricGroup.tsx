@@ -4,6 +4,8 @@ import { cn } from '@/lib/utils';
 
 export interface MetricCardData {
   label: string;
+  /** Glossary definition, surfaced as the label's hover/assistive help text. */
+  description?: string;
   value: string;
   icon: LucideIcon;
   /** Background utility for the icon medallion (the metric's accent colour). */
@@ -62,7 +64,7 @@ export default function MetricGroup({ title, metrics }: MetricGroupProps) {
           metrics.length >= 3 ? 'sm:grid-cols-2 lg:grid-cols-3' : 'sm:grid-cols-2',
         )}
       >
-        {metrics.map(({ label, value, icon: Icon, iconSurface, tone, ...trend }) => (
+        {metrics.map(({ label, description, value, icon: Icon, iconSurface, tone, ...trend }) => (
           <div key={label} className="flex flex-col gap-4 bg-background p-4 md:p-5">
             <div className="flex items-start justify-between gap-3">
               <span
@@ -76,7 +78,12 @@ export default function MetricGroup({ title, metrics }: MetricGroupProps) {
               <TrendChip {...trend} />
             </div>
             <div className="flex flex-col gap-1.5">
-              <p className="text-[13px] font-medium text-text-secondary md:text-sm">{label}</p>
+              <p
+                className="text-[13px] font-medium text-text-secondary md:text-sm"
+                title={description}
+              >
+                {label}
+              </p>
               <p
                 className={cn(
                   'text-2xl font-bold md:text-[28px]',

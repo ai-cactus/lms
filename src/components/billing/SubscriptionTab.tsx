@@ -591,7 +591,9 @@ export default function SubscriptionTab({
                   </div>
                   <p
                     className={cn(
-                      'text-[15.1px] leading-[22px] tracking-[0.2px]',
+                      // Fixed 3-line slot so the price row and Subscribe button sit at
+                      // the same height on every card regardless of description length.
+                      'min-h-[66px] text-[15.1px] leading-[22px] tracking-[0.2px]',
                       isFeatured ? 'text-[#e6eaff]' : 'text-[#707070]',
                     )}
                   >
@@ -676,9 +678,11 @@ export default function SubscriptionTab({
                       planButtonClass,
                       isCurrent
                         ? 'cursor-default bg-[#e2e8f0] text-[#64748b]'
-                        : currentPlan
-                          ? 'border border-[#cddfff] bg-white text-primary hover:bg-primary/5'
-                          : 'bg-primary text-primary-foreground hover:bg-primary/90',
+                        : isFeatured
+                          ? 'bg-white text-primary hover:bg-white/90'
+                          : currentPlan
+                            ? 'border border-[#cddfff] bg-white text-primary hover:bg-primary/5'
+                            : 'bg-primary text-primary-foreground hover:bg-primary/90',
                     )}
                     disabled={
                       isCurrent ||

@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { SquareArrowOutUpRight } from 'lucide-react';
 import EmptyTableState from '@/components/ui/EmptyTableState';
 import {
@@ -38,6 +39,7 @@ const MAX_ROWS = 5;
  * rows from the server page; performs no data fetching.
  */
 export default function StatusTrackerOverview({ rows }: Props) {
+  const router = useRouter();
   const topRows = rows.slice(0, MAX_ROWS);
 
   return (
@@ -62,7 +64,12 @@ export default function StatusTrackerOverview({ rows }: Props) {
       <Table className="table-fixed">
         <TableHeader>
           <TableRow className="border-0 hover:bg-transparent">
-            <TableHead className={cn(tableHeadClass, 'rounded-l-[9px] px-2 sm:px-[18px]')}>
+            <TableHead
+              className={cn(
+                tableHeadClass,
+                'rounded-l-[9px] rounded-r-[9px] px-2 sm:rounded-r-none sm:px-[18px]',
+              )}
+            >
               Staff Name
             </TableHead>
             <TableHead
@@ -78,25 +85,21 @@ export default function StatusTrackerOverview({ rows }: Props) {
             <TableHead
               className={cn(
                 tableHeadClass,
-                'hidden px-[18px] sm:table-cell sm:w-[190px] xl:w-[211px]',
+                'hidden px-[18px] sm:table-cell sm:w-[190px] sm:rounded-r-[9px] xl:w-[211px]',
               )}
             >
               Status
-            </TableHead>
-            <TableHead
-              className={cn(
-                tableHeadClass,
-                'w-[58px] rounded-r-[9px] px-1 text-center sm:w-[92px] sm:px-2 xl:w-[78px]',
-              )}
-            >
-              Action
             </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {topRows.length > 0 ? (
             topRows.map((row) => (
-              <TableRow key={row.enrollmentId} className="h-[71px]">
+              <TableRow
+                key={row.enrollmentId}
+                onClick={() => router.push(`/dashboard/staff/${row.userId}`)}
+                className="h-[71px] cursor-pointer"
+              >
                 <TableCell className="px-2 py-3 sm:px-[18px]">
                   <div className="flex items-center gap-2.5 sm:gap-[18px]">
                     <span
@@ -134,23 +137,13 @@ export default function StatusTrackerOverview({ rows }: Props) {
                 <TableCell className="hidden px-[18px] py-3 sm:table-cell">
                   <DeadlineBadge row={row} />
                 </TableCell>
-
-                <TableCell className="px-1 py-0 text-center sm:px-2">
-                  <Link
-                    href={`/dashboard/staff/${row.userId}`}
-                    className="inline-flex items-center justify-center rounded-[8px] px-1 py-2.5 text-[14px] font-semibold text-primary hover:underline sm:px-4 sm:text-[15px]"
-                  >
-                    View
-                    <span className="sr-only"> {row.workerName}</span>
-                  </Link>
-                </TableCell>
               </TableRow>
             ))
           ) : (
             <EmptyTableState
               message="All caught up — no overdue training"
               subMessage="No worker has training past its deadline or coming due in the next 7 days."
-              colSpan={5}
+              colSpan={4}
               asTableRow
             />
           )}

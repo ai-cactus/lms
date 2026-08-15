@@ -3,9 +3,9 @@ import { DEFAULT_TZ } from './time';
 /**
  * US state → representative IANA timezone.
  *
- * Keyed by the 2-letter state code that the onboarding state dropdown stores
- * (`src/app/onboarding/step1/page.tsx`) and the org-settings form persists
- * (`src/components/dashboard/OrganizationForm.tsx`) — both use `value: 'NY'`,
+ * Keyed by the 2-letter state code in `US_STATES`
+ * (`src/lib/constants/location-options.ts`), which backs both the onboarding
+ * state dropdown and the My Organization panel — both use `value: 'NY'`,
  * `value: 'CA'`, etc.
  *
  * States spanning multiple zones are mapped to their most-populous zone; an

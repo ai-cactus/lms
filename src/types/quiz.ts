@@ -14,6 +14,8 @@ export interface QuizQuestion {
     moduleSectionHeading: string;
   };
   moduleTitle?: string;
+  /** Wizard module this question was generated from, in course order. */
+  moduleIndex?: number;
   qualityFlags?: string[];
 }
 

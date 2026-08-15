@@ -1,5 +1,5 @@
 import React, { FC } from 'react';
-import { isAdminRole, dbRoleToRoleKey } from '@/lib/rbac/role-utils';
+import { isAdminRole, dbRoleToRoleKey, getRoleDisplayName } from '@/lib/rbac/role-utils';
 import { can } from '@/lib/rbac/permissions';
 import type { Role } from '@/types/next-auth';
 import { auth } from '@/auth';
@@ -14,6 +14,8 @@ import StatusTrackerAlertBanner from '@/components/dashboard/StatusTrackerAlertB
 import { getPauseState } from '@/lib/billing';
 import { getStatusTrackerSummaryForOrg } from '@/lib/reminders/status-tracker';
 import { resolveActiveMembership } from '@/lib/auth/membership';
+import { isOrgWideFacilityRole } from '@/lib/facility/scope';
+import { resolveMemberFacilityId } from '@/lib/facility/member-facility';
 import { WithChildren } from '@/types/react';
 
 const DashboardLayout: FC<WithChildren> = async ({ children }) => {
@@ -37,6 +39,24 @@ const DashboardLayout: FC<WithChildren> = async ({ children }) => {
   const organizationId = membership?.organizationId;
 
   const fullName = user?.fullName || session.user.name || session.user.email || 'User';
+  const roleDisplayName = role ? getRoleDisplayName(role as Role) : undefined;
+
+  // Only facility-bound roles (supervisor + workers) have one site to name in the
+  // top bar — an org-wide role spans every facility, so naming one would mislead.
+  // Facility stays out of the JWT by design (see lib/facility/scope), so it is
+  // re-derived here and passed down as a prop.
+  const memberFacilityId =
+    membership && role && !isOrgWideFacilityRole(role as Role)
+      ? await resolveMemberFacilityId(prisma, membership.organizationUserId)
+      : null;
+  const facilityName = memberFacilityId
+    ? ((
+        await prisma.facility.findUnique({
+          where: { id: memberFacilityId },
+          select: { name: true },
+        })
+      )?.name ?? null)
+    : null;
 
   // Surface a site-wide banner to admins while billing is paused.
   const subscription = organizationId
@@ -66,7 +86,13 @@ const DashboardLayout: FC<WithChildren> = async ({ children }) => {
         {/* Full-viewport shell: the two dashboard layouts own their own scroll
             container, so the page frame itself never scrolls. */}
         <div className="h-screen w-full overflow-hidden">
-          <DashboardLayoutClient fullName={fullName} role={role || undefined}>
+          <DashboardLayoutClient
+            fullName={fullName}
+            role={role || undefined}
+            organizationName={membership?.organizationName}
+            roleDisplayName={roleDisplayName}
+            facilityName={facilityName}
+          >
             {pauseState !== 'none' && (
               <BillingPausedBanner
                 pauseState={pauseState}

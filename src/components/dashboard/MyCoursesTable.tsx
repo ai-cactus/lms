@@ -75,9 +75,8 @@ export default function MyCoursesTable({ courses, maxItems = 5 }: MyCoursesTable
             <TableHead className={`${headCls} hidden md:table-cell`}>Type</TableHead>
             <TableHead className={`${headCls} hidden md:table-cell`}>Assigned Staff</TableHead>
             <TableHead className={`${headCls} hidden md:table-cell`}>Completion Rate</TableHead>
-            <TableHead className={`${headCls} hidden md:table-cell`}>Date Created</TableHead>
-            <TableHead className={`${headCls} hidden rounded-r-[9px] text-right md:table-cell`}>
-              Action
+            <TableHead className={`${headCls} hidden rounded-r-[9px] md:table-cell`}>
+              Date Created
             </TableHead>
           </TableRow>
         </TableHeader>
@@ -128,24 +127,13 @@ export default function MyCoursesTable({ courses, maxItems = 5 }: MyCoursesTable
                     year: 'numeric',
                   })}
                 </TableCell>
-                <TableCell
-                  className={`${cellCls} hidden text-right md:table-cell`}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <Link
-                    href={`/dashboard/training/courses/${course.id}`}
-                    className="text-[16.5px] font-semibold text-primary hover:underline"
-                  >
-                    View Course
-                  </Link>
-                </TableCell>
               </TableRow>
             ))
           ) : (
             <EmptyTableState
               message="No courses found."
               subMessage="Create a course to get started."
-              colSpan={6}
+              colSpan={5}
               asTableRow
             />
           )}

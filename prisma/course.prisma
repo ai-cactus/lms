@@ -86,14 +86,17 @@ model Course {
 }
 
 model CourseModule {
-  id        String   @id @default(uuid())
-  courseId  String   @map("course_id")
-  title     String
-  order     Int
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  lessons   Lesson[]
+  id                     String          @id @default(uuid())
+  courseId               String          @map("course_id")
+  title                  String
+  objective              String?
+  order                  Int
+  completionDeadlineDays Int?            @map("completion_deadline_days")
+  createdAt              DateTime        @default(now()) @map("created_at")
+  updatedAt              DateTime        @updatedAt @map("updated_at")
+  course                 Course          @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lessons                Lesson[]
+  versions               CourseVersion[]
 
   @@index([courseId])
   @@map("course_modules")
@@ -144,13 +147,18 @@ model CourseVersion {
   id                String          @id @default(uuid())
   courseId          String          @map("course_id")
   documentVersionId String          @map("document_version_id")
+  /// Which module this source document feeds. Null = legacy single-document
+  /// course authored before per-module sources existed.
+  moduleId          String?         @map("module_id")
   version           Int
   publishedAt       DateTime        @default(now()) @map("published_at")
   course            Course          @relation(fields: [courseId], references: [id], onDelete: Cascade)
   documentVersion   DocumentVersion @relation(fields: [documentVersionId], references: [id])
+  module            CourseModule?   @relation(fields: [moduleId], references: [id], onDelete: SetNull)
 
   @@index([courseId])
   @@index([documentVersionId])
+  @@index([moduleId])
   @@map("course_versions")
 }
 
@@ -159,7 +167,11 @@ model CourseAssignment {
   organizationId    String                    @map("organization_id")
   courseId          String                    @map("course_id")
   assignedByAdminId String                    @map("assigned_by_admin_id")
+  /// @deprecated Superseded by `targetRoles`. Retained for read-compatibility
+  /// with rows written before multi-role targeting; new writes populate
+  /// `targetRoles` instead.
   targetRole        UserRole?                 @map("target_role")
+  targetRoles       UserRole[]                @default([]) @map("target_roles")
   scheduleAt        DateTime?                 @map("schedule_at")
   dueAt             DateTime?                 @map("due_at")
   dueWindowDays     Int?                      @map("due_window_days")
@@ -174,7 +186,6 @@ model CourseAssignment {
 
   @@index([organizationId])
   @@index([courseId])
-  @@index([organizationId, targetRole])
   @@map("course_assignments")
 }
 

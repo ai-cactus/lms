@@ -35,6 +35,13 @@ import prisma from '@/lib/prisma';
 import { auth } from '@/auth';
 import { JobResponse } from '@/types/job';
 import { Prisma } from '@/generated/prisma/client';
+import {
+  buildModuleGenerationFormData,
+  distributeQuestionCount,
+  type ModuleGenerationJob,
+  type ModuleGenerationRequest,
+} from '@/lib/course/module-generation';
+import type { CourseWizardData } from '@/types/course';
 
 // Token budget for source content
 const MAX_SOURCE_TOKENS = 100000;
@@ -837,6 +844,57 @@ export async function generateCourseAndQuizV46(
     msg: `[v4.6] Returning jobId ${jobId} to client. Background work scheduled via after().`,
   });
   return { jobId };
+}
+
+/**
+ * Starts one v4.6 generation job per wizard module and returns the jobs in the
+ * order they were requested. Each module generates from its own source document
+ * through the unchanged single-document pipeline — this action only fans the
+ * work out and hands the course-level settings to every module.
+ *
+ * A module that fails to start is reported in its own entry rather than failing
+ * the batch, so the wizard can retry just that module.
+ */
+export async function startModuleGenerationJobs(
+  courseData: CourseWizardData,
+  modules: ModuleGenerationRequest[],
+): Promise<{ jobs: ModuleGenerationJob[]; error?: string }> {
+  if (modules.length === 0) {
+    return { jobs: [], error: 'No modules to generate. Please add at least one module.' };
+  }
+
+  // The course-level question total is split across the batch; a retry of a
+  // single module carries its original share so the total never drifts.
+  const shares = distributeQuestionCount(
+    parseInt(courseData.quizQuestionCount, 10) || 0,
+    modules.length,
+  );
+
+  const jobs: ModuleGenerationJob[] = [];
+
+  // Sequential rather than parallel: each call creates a Job row and schedules
+  // its own background pipeline, and the per-user generation rate limit is
+  // consumed one module at a time.
+  for (const [batchIndex, mod] of modules.entries()) {
+    const moduleFormData = buildModuleGenerationFormData(
+      courseData,
+      mod,
+      mod.quizQuestionCount ?? shares[batchIndex],
+    );
+
+    const { jobId, error } = await generateCourseAndQuizV46(moduleFormData);
+    jobs.push({ moduleIndex: mod.moduleIndex, jobId, error });
+  }
+
+  const started = jobs.filter((j) => j.jobId).length;
+  logger.info({
+    msg: '[v4.6] Module generation batch started',
+    modules: modules.length,
+    started,
+    failed: jobs.length - started,
+  });
+
+  return { jobs };
 }
 
 async function processBackgroundV46(

@@ -5,6 +5,10 @@ import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { logger } from '@/lib/logger';
 import { ADMIN_ROLES } from '@/lib/rbac/role-utils';
+import {
+  isInAppEnabledForMembership,
+  isNotificationChannelEnabled,
+} from '@/lib/notifications/category-preferences';
 
 // Helper: resolve the active session from either auth instance
 async function resolveSession() {
@@ -231,7 +235,8 @@ async function isTypeEnabled(organizationUserId: string, type: string) {
 
 /**
  * Internal helper to create a notification. Not exposed directly to client.
- * Respects the recipient's per-type opt-out preference.
+ * Respects both the organization's per-category in-app switch and the
+ * recipient's own per-type opt-out.
  */
 export async function createNotification(data: {
   /** The membership that receives it — notifications are per-org, not per-identity. */
@@ -243,6 +248,7 @@ export async function createNotification(data: {
   metadata?: Record<string, unknown>;
 }) {
   try {
+    if (!(await isInAppEnabledForMembership(data.organizationUserId, data.type))) return;
     if (!(await isTypeEnabled(data.organizationUserId, data.type))) return;
 
     await prisma.notification.create({
@@ -262,8 +268,9 @@ export async function createNotification(data: {
 }
 
 /**
- * Create notification for all admins of a specific organization, skipping any
- * admin who has opted out of this notification type.
+ * Create notification for all admins of a specific organization, skipping the
+ * whole send when the organization has switched the type's category off in-app,
+ * and skipping any admin who has opted out of this notification type.
  */
 export async function notifyOrganizationAdmins(
   organizationId: string,
@@ -276,6 +283,8 @@ export async function notifyOrganizationAdmins(
   },
 ) {
   try {
+    if (!(await isNotificationChannelEnabled(organizationId, data.type, 'inApp'))) return;
+
     const admins = await prisma.organizationUser.findMany({
       where: {
         organizationId,

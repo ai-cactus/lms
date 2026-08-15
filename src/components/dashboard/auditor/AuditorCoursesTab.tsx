@@ -1,9 +1,9 @@
 'use client';
 
 import Image from 'next/image';
-import { useState, useEffect, useTransition } from 'react';
-import { Search, Download, GraduationCap } from 'lucide-react';
-import EmptyTableState from '@/components/ui/EmptyTableState';
+import { useState, useEffect, useMemo, useTransition } from 'react';
+import { Search, Upload, GraduationCap } from 'lucide-react';
+import AuditEmptyState from './AuditEmptyState';
 import {
   Table,
   TableBody,
@@ -17,7 +17,8 @@ import { Button } from '@/components/ui/button';
 import { getAuditorCourses } from '@/app/actions/auditor';
 import type { AuditorCourseRow } from '@/app/actions/auditor';
 import { useExportJobs } from './ExportJobsProvider';
-import { useAuditFilter, toRangeInput } from './AuditFilterProvider';
+import AuditExportRangeModal, { type AuditExportRange } from './AuditExportRangeModal';
+import AuditTablePagination, { AUDIT_DEFAULT_PAGE_SIZE } from './AuditTablePagination';
 import {
   auditCard,
   auditCardHeader,
@@ -33,37 +34,65 @@ import {
 } from './audit-ui';
 import { cn } from '@/lib/utils';
 
-export default function AuditorCoursesTab() {
+interface AuditorCoursesTabProps {
+  /** Population an "Export all" covers — every published course in the org. */
+  totalCourses: number;
+}
+
+interface PendingExport {
+  scopeId?: string;
+  label: string;
+  count: number;
+}
+
+export default function AuditorCoursesTab({ totalCourses }: AuditorCoursesTabProps) {
   const [courses, setCourses] = useState<AuditorCourseRow[]>([]);
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(AUDIT_DEFAULT_PAGE_SIZE);
+  const [pending, setPending] = useState<PendingExport | null>(null);
   const [isPending, startTransition] = useTransition();
-  const { range } = useAuditFilter();
+  const { activeJob, startExport } = useExportJobs();
 
   useEffect(() => {
     const timer = setTimeout(() => {
       startTransition(async () => {
-        const data = await getAuditorCourses(search || undefined, toRangeInput(range));
+        const data = await getAuditorCourses(search || undefined);
         setCourses(data);
+        setPage(1);
       });
     }, 300);
     return () => clearTimeout(timer);
-  }, [search, range]);
+  }, [search]);
 
-  const { startExport } = useExportJobs();
-  const handleExportAll = () => {
-    startExport({ scope: 'all-courses', label: 'All courses report', ...toRangeInput(range) });
+  const visible = useMemo(
+    () => courses.slice((page - 1) * pageSize, page * pageSize),
+    [courses, page, pageSize],
+  );
+
+  const handleGenerate = (range: AuditExportRange) => {
+    if (!pending) return;
+    startExport({
+      scope: pending.scopeId ? 'course' : 'all-courses',
+      scopeId: pending.scopeId,
+      label: pending.label,
+      entity: 'course',
+      count: pending.count,
+      ...range,
+    });
+    setPending(null);
   };
 
   return (
     <div className={auditCard}>
       <div className={auditCardHeader}>
         <h2 className={auditCardTitle}>All Courses</h2>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className={auditSearchWrap}>
             <Input
               type="search"
               className={auditSearch}
-              placeholder="Search courses…"
+              placeholder="Search courses..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               aria-label="Search courses"
@@ -72,11 +101,11 @@ export default function AuditorCoursesTab() {
           </div>
           <Button
             variant="outline"
-            className={auditOutlineButton}
-            onClick={handleExportAll}
-            title="Export all (PDF)"
+            className={cn(auditOutlineButton, 'shrink-0 text-primary')}
+            disabled={Boolean(activeJob)}
+            onClick={() => setPending({ label: 'All courses report', count: totalCourses })}
           >
-            <Download className="size-3.5" />
+            <Upload className="size-3.5" />
             Export all
           </Button>
         </div>
@@ -87,92 +116,126 @@ export default function AuditorCoursesTab() {
           <p className="text-[14px] text-[#64748b]">Loading courses&hellip;</p>
         </div>
       ) : courses.length === 0 ? (
-        <EmptyTableState
-          message={search ? 'No Results' : 'No courses found.'}
+        <AuditEmptyState
+          message={search ? 'No Results' : 'No course yet.'}
           subMessage={
             search
               ? `No results matching ‘${search}’`
-              : 'No published courses in your organization yet.'
+              : 'Courses will appear here once staff finish assigned courses.'
           }
         />
       ) : (
-        <Table>
-          <TableHeader className={auditHeaderGroup}>
-            <TableRow className="border-0 hover:bg-transparent">
-              <TableHead className={cn(auditHead, 'w-full sm:w-[360px]')}>Course Name</TableHead>
-              <TableHead className={cn(auditHead, 'hidden sm:table-cell sm:w-[240px]')}>
-                Assigned Staff
-              </TableHead>
-              <TableHead className={cn(auditHead, 'hidden md:table-cell md:w-[170px]')}>
-                Completion Rate
-              </TableHead>
-              <TableHead className={cn(auditHead, 'hidden lg:table-cell lg:w-[163px]')}>
-                Assigned Date
-              </TableHead>
-              <TableHead className={auditHead}>Action</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {courses.map((course) => (
-              <TableRow key={course.id} className={auditRow}>
-                <TableCell className={auditCell}>
-                  <div className="flex items-center gap-[18px]">
-                    <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-[#1e293b]">
-                      {course.thumbnail ? (
-                        <Image
-                          src={course.thumbnail}
-                          alt={course.title}
-                          width={40}
-                          height={40}
-                          className="size-full object-cover"
-                        />
-                      ) : (
-                        <GraduationCap className="size-5 text-white/70" />
-                      )}
-                    </div>
-                    <span className="truncate text-[15.5px] font-medium tracking-[0.31px] text-[#1e1e1e]">
-                      {course.title}
-                    </span>
-                  </div>
-                </TableCell>
-                <TableCell className={cn(auditCell, 'hidden sm:table-cell')}>
-                  {course.assignedStaff}
-                </TableCell>
-                <TableCell className={cn(auditCell, 'hidden font-semibold md:table-cell')}>
-                  {course.completionRate}%
-                </TableCell>
-                <TableCell
-                  className={cn(auditCell, 'hidden whitespace-nowrap text-[#64748b] lg:table-cell')}
-                >
-                  {course.assignedDate.toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
-                </TableCell>
-                <TableCell className={auditCell}>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      startExport({
-                        scope: 'course',
-                        scopeId: course.id,
-                        label: `Course: ${course.title}`,
-                        ...toRangeInput(range),
-                      })
-                    }
-                    className={auditRowAction}
-                  >
-                    Export
-                  </button>
-                </TableCell>
+        <>
+          {/* table-fixed keeps the long course titles from setting a min-content
+              width that scrolls the table sideways: every other column is sized
+              explicitly and the flexible Course Name column absorbs the rest,
+              truncating instead of pushing. */}
+          <Table className="table-fixed">
+            <TableHeader className={auditHeaderGroup}>
+              <TableRow className="border-0 hover:bg-transparent">
+                <TableHead className={auditHead}>Course Name</TableHead>
+                <TableHead className={cn(auditHead, 'hidden @md:table-cell @md:w-[170px]')}>
+                  Assigned Staff
+                </TableHead>
+                <TableHead className={cn(auditHead, 'hidden @xl:table-cell @xl:w-[170px]')}>
+                  Completion Rate
+                </TableHead>
+                <TableHead className={cn(auditHead, 'hidden @3xl:table-cell @3xl:w-[180px]')}>
+                  Assigned Date
+                </TableHead>
+                <TableHead className={cn(auditHead, 'w-[92px] @md:w-[110px]')}>Action</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {visible.map((course) => (
+                <TableRow key={course.id} className={auditRow}>
+                  <TableCell className={auditCell}>
+                    {/* min-w-0: a flex item will not shrink below its content
+                        width, so without it the title never ellipsizes. */}
+                    <div className="flex min-w-0 items-center gap-[18px]">
+                      <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-[#1e293b]">
+                        {course.thumbnail ? (
+                          <Image
+                            src={course.thumbnail}
+                            alt=""
+                            width={40}
+                            height={40}
+                            className="size-full object-cover"
+                          />
+                        ) : (
+                          <GraduationCap className="size-5 text-white/70" />
+                        )}
+                      </div>
+                      <span
+                        className="min-w-0 truncate text-[15.5px] font-medium tracking-[0.31px] text-[#1e1e1e]"
+                        title={course.title}
+                      >
+                        {course.title}
+                      </span>
+                    </div>
+                  </TableCell>
+                  <TableCell className={cn(auditCell, 'hidden @md:table-cell')}>
+                    {course.assignedStaff}
+                  </TableCell>
+                  <TableCell className={cn(auditCell, 'hidden font-semibold @xl:table-cell')}>
+                    {course.completionRate}%
+                  </TableCell>
+                  <TableCell
+                    className={cn(
+                      auditCell,
+                      'hidden whitespace-nowrap text-[#64748b] @3xl:table-cell',
+                    )}
+                  >
+                    {course.assignedDate.toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </TableCell>
+                  <TableCell className={auditCell}>
+                    <button
+                      type="button"
+                      disabled={Boolean(activeJob)}
+                      onClick={() =>
+                        setPending({
+                          scopeId: course.id,
+                          label: `Course: ${course.title}`,
+                          count: 1,
+                        })
+                      }
+                      className={auditRowAction}
+                    >
+                      Export
+                    </button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+
+          <AuditTablePagination
+            page={page}
+            pageSize={pageSize}
+            totalEntries={courses.length}
+            onPageChange={setPage}
+            onPageSizeChange={(next) => {
+              setPageSize(next);
+              setPage(1);
+            }}
+            label="Courses per page"
+          />
+        </>
       )}
+
+      <AuditExportRangeModal
+        open={pending !== null}
+        onOpenChange={(open) => {
+          if (!open) setPending(null);
+        }}
+        onGenerate={handleGenerate}
+      />
     </div>
   );
 }

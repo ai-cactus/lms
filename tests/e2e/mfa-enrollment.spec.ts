@@ -8,7 +8,7 @@
  * try/catch returning a typed { success:false, error } instead of throwing.
  *
  * Journey under test (src/components/dashboard/TwoFactorAuthTab.tsx, rendered
- * on the "TWO FACTOR AUTH (2FA)" tab at /dashboard/profile):
+ * on the "Two-factor Authentication" section at /dashboard/profile):
  *   1. An admin-tier user with no 2FA set up requests an email OTP.
  *   2. A wrong code shows a clean, specific error (not a crash) and stays in
  *      setup mode.
@@ -122,10 +122,9 @@ async function cleanupMfaTestUser(seeded: SeededUser): Promise<void> {
   try {
     await db.query(`DELETE FROM mfa_recovery_codes WHERE user_id = $1`, [seeded.userId]);
     await db.query(`DELETE FROM mfa_factors WHERE user_id = $1`, [seeded.userId]);
-    await db.query(
-      `DELETE FROM organization_user_facilities WHERE organization_user_id = $1`,
-      [seeded.orgUserId],
-    );
+    await db.query(`DELETE FROM organization_user_facilities WHERE organization_user_id = $1`, [
+      seeded.orgUserId,
+    ]);
     await db.query(`DELETE FROM organization_users WHERE id = $1`, [seeded.orgUserId]);
     await db.query(`DELETE FROM users WHERE id = $1`, [seeded.userId]);
     await db.query(`DELETE FROM facilities WHERE id = $1`, [seeded.facilityId]);
@@ -261,7 +260,7 @@ test.describe.serial('THER-016: MFA email enrollment + login step-up', () => {
     await page.goto('/dashboard/profile');
     await page.waitForLoadState('networkidle');
 
-    await page.getByRole('tab', { name: /two factor auth/i }).click();
+    await page.getByRole('tab', { name: 'Two-factor Authentication' }).click();
     await page.getByRole('button', { name: /set up 2fa/i }).click();
 
     await expect(page.getByRole('heading', { name: /check your email/i })).toBeVisible({
@@ -277,9 +276,9 @@ test.describe.serial('THER-016: MFA email enrollment + login step-up', () => {
     const wrongCode = flipLastDigit(realCode);
     await page.getByPlaceholder('Enter code').fill(wrongCode);
     await page.getByRole('button', { name: /enable 2fa/i }).click();
-    await expect(
-      page.getByText('Invalid verification code. Please try again.'),
-    ).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Invalid verification code. Please try again.')).toBeVisible({
+      timeout: 10000,
+    });
     // Still in setup mode — 2FA was not enabled by the wrong code.
     await expect(page.getByRole('heading', { name: /check your email/i })).toBeVisible();
 

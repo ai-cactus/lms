@@ -33,8 +33,15 @@ const {
     phiReport: { create: vi.fn() },
   };
   const prismaMock = {
-    $transaction: vi.fn(async (cb: (tx: typeof txClient) => Promise<unknown>) => cb(txClient)),
+    // Supports both forms: interactive (callback) for uploadDocument, and the
+    // batch array form deleteDocument uses to sever course lineage atomically.
+    $transaction: vi.fn(async (arg: unknown) =>
+      Array.isArray(arg)
+        ? Promise.all(arg)
+        : (arg as (tx: typeof txClient) => Promise<unknown>)(txClient),
+    ),
     _tx: txClient,
+    courseVersion: { deleteMany: vi.fn() },
     // Uploader lookup that feeds the post-upload notification's facility + name —
     // now resolved via the OrganizationUser row, not a flat User.
     organizationUser: { findUnique: vi.fn() },

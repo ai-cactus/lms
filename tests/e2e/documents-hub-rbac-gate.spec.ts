@@ -112,10 +112,9 @@ async function cleanup(seeded: SeededFinance): Promise<void> {
   await client.connect();
   try {
     await client.query(`DELETE FROM subscriptions WHERE id = $1`, [seeded.subscriptionId]);
-    await client.query(
-      `DELETE FROM organization_user_facilities WHERE organization_user_id = $1`,
-      [seeded.orgUserId],
-    );
+    await client.query(`DELETE FROM organization_user_facilities WHERE organization_user_id = $1`, [
+      seeded.orgUserId,
+    ]);
     await client.query(`DELETE FROM organization_users WHERE id = $1`, [seeded.orgUserId]);
     await client.query(`DELETE FROM users WHERE id = $1`, [seeded.userId]);
     await client.query(`DELETE FROM facilities WHERE id = $1`, [seeded.facilityId]);
@@ -145,7 +144,7 @@ test.describe('Documents Hub — document.read RBAC gate', () => {
     await page.goto('/dashboard/documents');
     await page.waitForLoadState('networkidle');
 
-    await expect(page.getByRole('button', { name: /upload new/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /upload file/i })).toBeVisible();
     await expect(page.getByRole('row', { name: /e2e-compliance-policy\.pdf/i })).toBeVisible();
     await expect(page.getByText(/don.t have access to documents/i)).toHaveCount(0);
   });
@@ -163,7 +162,7 @@ test.describe('Documents Hub — document.read RBAC gate', () => {
       await page.waitForLoadState('networkidle');
 
       await expect(page.getByText(/don.t have access to documents/i)).toBeVisible();
-      await expect(page.getByRole('button', { name: /upload new/i })).toHaveCount(0);
+      await expect(page.getByRole('button', { name: /upload file/i })).toHaveCount(0);
       await expect(page.getByRole('table')).toHaveCount(0);
 
       await page.getByRole('link', { name: /back to dashboard/i }).click();

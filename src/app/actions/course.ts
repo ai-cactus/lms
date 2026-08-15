@@ -2,7 +2,7 @@
 
 import prisma from '@/lib/prisma';
 import type { Prisma } from '@/generated/prisma/client';
-import { dbRoleToRoleKey, WORKER_ROLES } from '@/lib/rbac/role-utils';
+import { dbRoleToRoleKey, isAdminRole, WORKER_ROLES } from '@/lib/rbac/role-utils';
 import { can } from '@/lib/rbac/permissions';
 import { hasActiveBilling } from '@/lib/billing';
 import { auth as adminAuth } from '@/auth';
@@ -19,6 +19,7 @@ import { forkCourse } from '@/lib/course/fork-course';
 import { resolveOnCompletion } from '@/lib/reminders/sweep';
 import { combineDateAndTime } from '@/lib/reminders/deadline';
 import { enrollUsers } from './enrollment';
+import { defaultStageRows, upsertCourseAssignment } from '@/lib/enrollment/assignment';
 
 // Helper: resolve the active session from either auth instance
 async function resolveSession() {
@@ -75,7 +76,19 @@ export async function getCourses(): Promise<CourseWithStats[]> {
       ? prisma.orgCourseOffering.findMany({
           where: { organizationId },
           orderBy: { createdAt: 'desc' },
-          select: { course: { select: courseCardSelect } },
+          select: {
+            course: {
+              select: {
+                ...courseCardSelect,
+                versions: {
+                  select: { documentVersion: { select: { documentId: true } } },
+                  orderBy: { version: 'desc' },
+                  take: 1,
+                },
+                creator: { select: { organizationId: true } },
+              },
+            },
+          },
         })
       : Promise.resolve([]),
   ]);
@@ -149,8 +162,6 @@ export async function getCourses(): Promise<CourseWithStats[]> {
     updatedAt: course.updatedAt,
     lessonsCount: course._count.lessons,
     enrollmentsCount: counts.total,
-    // Adopted offerings deliberately resolve to null: their source document
-    // belongs to the publishing org and must never be linked from this tenant.
     sourceDocumentId: course.versions?.[0]?.documentVersion.documentId ?? null,
     completionRate: counts.total > 0 ? Math.round((counts.completed / counts.total) * 100) : 0,
   });
@@ -158,8 +169,15 @@ export async function getCourses(): Promise<CourseWithStats[]> {
   const own = ownCourses.map((course) =>
     toStats(course, ownCountMap.get(course.id) ?? { total: 0, completed: 0 }),
   );
+  // Offerings from a SAME-ORG creator keep their source-document lineage (an
+  // admin/HR must be able to open a colleague's source doc — COU-004). Only
+  // cross-tenant offerings null it out: their document belongs to the
+  // publishing org and must never be linked from this tenant.
   const adopted = adoptedCourses.map((course) =>
-    toStats(course, adoptedCountMap.get(course.id) ?? { total: 0, completed: 0 }),
+    toStats(
+      course.creator.organizationId === organizationId ? course : { ...course, versions: [] },
+      adoptedCountMap.get(course.id) ?? { total: 0, completed: 0 },
+    ),
   );
 
   // De-dupe in case the admin both created and adopted the same course id.
@@ -182,11 +200,20 @@ export async function getCourseById(courseId: string): Promise<CourseWithRelatio
     throw new Error('Course not found');
   }
 
-  // Allow access if user is the creator OR is enrolled in the course
+  // Allow access if the user is the creator, is enrolled, or is an admin-tier
+  // member of the course's organization holding course.read — owners/admins/HR/
+  // clinical and read-only supervisors must be able to open every course in their
+  // org, not just their own (COU-002/COU-004). Workers stay enrollment-gated
+  // (course.read in workerPermissions covers only their own enrolled courses),
+  // and cross-org access stays denied.
   const isCreator = course.creator.userId === session.user.id;
   const isEnrolled = course.enrollments.some((e) => e.organizationUser.userId === session.user.id);
+  const isSameOrgManager =
+    course.creator.organizationId === session.user.organizationId &&
+    isAdminRole(session.user.role) &&
+    can(dbRoleToRoleKey(session.user.role), 'course.read');
 
-  if (!isCreator && !isEnrolled) {
+  if (!isCreator && !isEnrolled && !isSameOrgManager) {
     throw new Error('Course not found');
   }
 
@@ -799,31 +826,66 @@ export async function getDashboardData(requestedFacilityId?: string | null) {
   };
 }
 
-export async function assignCourseToUsers(courseId: string, emails: string[]) {
+/**
+ * Emails that matched no active member of the caller's organization are always
+ * reported, whether or not anyone else was assigned. `count` is the number of
+ * enrollments newly CREATED — `skipDuplicates` absorbs members who already hold
+ * the course, so a matched member can yield a count of 0.
+ */
+export type AssignCourseToUsersResult =
+  | { success: false; message: string; notFound: string[] }
+  | { success: true; count: number; notFound: string[] };
+
+/**
+ * Assign a course to existing org members by email.
+ *
+ * @param dueAt Optional completion deadline. Persisted on the org's
+ *   {@link CourseAssignment} for the course and stamped on every enrollment
+ *   created here, matching the shape `enrollUsers` writes.
+ */
+export async function assignCourseToUsers(
+  courseId: string,
+  emails: string[],
+  dueAt?: string | Date | null,
+): Promise<AssignCourseToUsersResult> {
   const session = await resolveSession();
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
   }
 
-  // 1. Verify Course Ownership
+  // Assigning is a registry-gated write, never a creator privilege: an org's
+  // admins/HR must be able to assign any course their organization owns, not
+  // only the ones they personally created (COU-004 family). Mirrors the
+  // same-org ruling `getCourseById` applies for reads.
+  if (!can(dbRoleToRoleKey(session.user.role), 'assignment.create')) {
+    logger.warn({
+      msg: '[course] assignCourseToUsers denied — missing assignment.create',
+      courseId,
+      userId: session.user.id,
+      role: session.user.role,
+    });
+    throw new Error('Forbidden');
+  }
+
+  const organizationId = session.user.organizationId;
+  if (!organizationId) {
+    throw new Error('You must belong to an organization to assign courses');
+  }
+
   const course = await prisma.course.findUnique({
     where: { id: courseId },
-    select: { createdByOrgUserId: true, title: true },
+    select: { title: true, creator: { select: { organizationId: true } } },
   });
 
-  if (!course || course.createdByOrgUserId !== session.user.organizationUserId) {
+  // Tenancy: the course must belong to the caller's own organization. Kept as a
+  // "not found" response so a cross-tenant probe cannot confirm a course exists.
+  if (!course || course.creator.organizationId !== organizationId) {
     logger.warn({
       msg: '[course] assignCourseToUsers: not found or unauthorized',
       courseId,
       userId: session.user.id,
     });
     throw new Error('Course not found or unauthorized');
-  }
-
-  // 2. Get Current Org's billing status to ensure we only assign to own staff
-  const organizationId = session.user.organizationId;
-  if (!organizationId) {
-    throw new Error('You must belong to an organization to assign courses');
   }
 
   const organization = await prisma.organization.findUnique({
@@ -843,26 +905,56 @@ export async function assignCourseToUsers(courseId: string, emails: string[]) {
     throw new Error('Your organization needs an active subscription to assign courses.');
   }
 
-  // 3. Find Staff Memberships by Email (filtered by Org)
+  // Emails are stored lowercased, and Prisma's `in` is case-sensitive — normalise
+  // so a mixed-case entry still resolves to its membership.
+  const normalizedEmails = [
+    ...new Set(emails.map((email) => email.trim().toLowerCase()).filter(Boolean)),
+  ];
+
   const membersToAssign = await prisma.organizationUser.findMany({
     where: {
       organizationId,
       active: true,
-      user: { email: { in: emails } },
+      user: { email: { in: normalizedEmails } },
     },
     select: { id: true, user: { select: { email: true } } },
   });
+
+  const matched = new Set(membersToAssign.map((m) => m.user.email.toLowerCase()));
+  const notFound = normalizedEmails.filter((email) => !matched.has(email));
 
   if (membersToAssign.length === 0) {
     logger.warn({
       msg: '[course] assignCourseToUsers: no valid users found',
       courseId,
-      emailCount: emails.length,
+      emailCount: normalizedEmails.length,
     });
-    return { success: false, message: 'No valid users found to assign.' };
+    return { success: false, message: 'No valid users found to assign.', notFound };
   }
 
-  // 4. Create Enrollments (skip duplicates)
+  const deadline = dueAt ? new Date(dueAt) : null;
+  if (deadline && Number.isNaN(deadline.getTime())) {
+    throw new Error('Invalid completion deadline');
+  }
+
+  // Persist the deadline on the org's CourseAssignment for this course so the
+  // reminder ladder and the assign page read the same row every other
+  // assignment path writes. `targetRole` stays untouched (undefined): assigning
+  // named individuals must never clear a course's role targeting.
+  const assignmentId = deadline
+    ? await upsertCourseAssignment({
+        organizationId,
+        courseId,
+        assignedByAdminId: session.user.id,
+        scheduleAt: null,
+        dueAt: deadline,
+        dueWindowDays: null,
+        remindersEnabled: true,
+        renewalCycle: 'none',
+        stageRows: defaultStageRows(),
+      })
+    : null;
+
   const facilityByMember = await resolveMemberFacilityIds(
     prisma,
     membersToAssign.map((m) => m.id),
@@ -875,6 +967,8 @@ export async function assignCourseToUsers(courseId: string, emails: string[]) {
     status: 'enrolled' as const,
     progress: 0,
     startedAt: new Date(),
+    assignmentId,
+    dueAt: deadline,
   }));
 
   const results = await prisma.enrollment.createMany({
@@ -887,9 +981,133 @@ export async function assignCourseToUsers(courseId: string, emails: string[]) {
     courseId,
     userId: session.user.id,
     enrolled: results.count,
+    notFoundCount: notFound.length,
+    hasDeadline: deadline !== null,
   });
   revalidatePath('/dashboard/training');
-  return { success: true, count: results.count };
+  return { success: true, count: results.count, notFound };
+}
+
+export interface AssignCoursesToUserResult {
+  /** Courses whose enrollment was newly CREATED by this call. */
+  assigned: number;
+  /** Courses the staff member was already enrolled in — skipped, never re-created. */
+  alreadyAssigned: number;
+  failed: number;
+  /** First failure message, surfaced when nothing could be assigned. */
+  error?: string;
+}
+
+/**
+ * Assign one or more courses to a SINGLE staff member — the staff-profile
+ * "Assign Course" flow — with one optional completion deadline shared by them all.
+ *
+ * Gated on `assignment.create` and strictly scoped to a member of the caller's
+ * own organization, then delegated per course to {@link assignCourseToUsers} —
+ * the same machinery the courses-list assign modal uses. Delegating there rather
+ * than to `enrollUsers` is deliberate: only `assignCourseToUsers` applies the
+ * COU-004 ruling that a course belongs to the ORG, so an admin/HR can assign a
+ * colleague's course. `enrollUsers` still authorizes on creator identity and
+ * rejects those with "Course not found".
+ *
+ * Courses are assigned independently rather than in one transaction: a course
+ * that fails never rolls back the ones that landed, and `assigned` counts only
+ * enrollments this call newly created (`createMany`'s `skipDuplicates` absorbs
+ * the rest, which are reported as `alreadyAssigned`).
+ */
+export async function assignCoursesToUser(
+  staffOrgUserId: string,
+  courseIds: string[],
+  dueAt?: string | Date | null,
+): Promise<AssignCoursesToUserResult> {
+  const session = await resolveSession();
+  if (!session?.user?.id) {
+    throw new Error('Unauthorized');
+  }
+
+  if (!can(dbRoleToRoleKey(session.user.role), 'assignment.create')) {
+    logger.warn({
+      msg: '[course] assignCoursesToUser denied — missing assignment.create',
+      staffOrgUserId,
+      userId: session.user.id,
+      role: session.user.role,
+    });
+    throw new Error('Forbidden');
+  }
+
+  const organizationId = session.user.organizationId;
+  if (!organizationId) {
+    throw new Error('You must belong to an organization to assign courses');
+  }
+
+  const uniqueCourseIds = [...new Set(courseIds.filter(Boolean))];
+  if (uniqueCourseIds.length === 0) {
+    throw new Error('Select at least one course to assign');
+  }
+
+  const target = await prisma.organizationUser.findUnique({
+    where: { id: staffOrgUserId },
+    select: { organizationId: true, user: { select: { email: true } } },
+  });
+
+  // Tenancy: the target must be a member of the caller's own organization. Kept
+  // as a "not found" response so a cross-tenant probe cannot confirm a
+  // membership exists.
+  if (!target || target.organizationId !== organizationId) {
+    logger.warn({
+      msg: '[course] assignCoursesToUser: staff member not found or unauthorized',
+      staffOrgUserId,
+      userId: session.user.id,
+    });
+    throw new Error('Staff member not found or unauthorized');
+  }
+
+  const deadline = dueAt ? new Date(dueAt) : null;
+  if (deadline && Number.isNaN(deadline.getTime())) {
+    throw new Error('Invalid completion deadline');
+  }
+
+  const result: AssignCoursesToUserResult = { assigned: 0, alreadyAssigned: 0, failed: 0 };
+
+  for (const courseId of uniqueCourseIds) {
+    try {
+      const outcome = await assignCourseToUsers(courseId, [target.user.email], deadline);
+      if (!outcome.success) {
+        result.failed += 1;
+        result.error ??= outcome.message;
+      } else if (outcome.count > 0) {
+        result.assigned += 1;
+      } else {
+        // The member matched but no row was written — `skipDuplicates` absorbed
+        // an existing enrollment, so they already hold this course.
+        result.alreadyAssigned += 1;
+      }
+    } catch (err) {
+      result.failed += 1;
+      result.error ??= err instanceof Error ? err.message : 'Failed to assign the course.';
+      logger.error({
+        msg: '[course] assignCoursesToUser: course assignment failed',
+        err,
+        courseId,
+        staffOrgUserId,
+        userId: session.user.id,
+      });
+    }
+  }
+
+  logger.info({
+    msg: '[course] Courses assigned to staff member',
+    staffOrgUserId,
+    userId: session.user.id,
+    requested: uniqueCourseIds.length,
+    assigned: result.assigned,
+    alreadyAssigned: result.alreadyAssigned,
+    failed: result.failed,
+    hasDeadline: deadline !== null,
+  });
+
+  revalidatePath(`/dashboard/staff/${staffOrgUserId}`);
+  return result;
 }
 
 // Outcome of the server-side course quality assessment used by the publish-review
@@ -898,6 +1116,15 @@ export async function assignCourseToUsers(courseId: string, emails: string[]) {
 interface CourseQualityAssessment {
   reviewRequired: boolean;
   qualityWarnings: string[];
+}
+
+/** A wizard module as it reaches persistence. */
+interface CourseModuleInput {
+  title: string;
+  objective?: string | null;
+  completionDeadlineDays?: number | null;
+  /** Document the module was generated from, linked via `CourseVersion`. */
+  documentId?: string | null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -924,6 +1151,12 @@ function assessCourseQuality(input: {
   rawSlidesJson?: unknown;
   rawJudgeJson?: unknown;
   rawArticleMeta?: unknown;
+  /**
+   * Per-module content counts for a multi-module course. A course-level total
+   * can look healthy while one module generated nothing, so each module is
+   * assessed on its own as well.
+   */
+  modules?: { title: string; questionCount: number; slideCount: number }[];
 }): CourseQualityAssessment {
   const qualityWarnings: string[] = [];
 
@@ -985,7 +1218,108 @@ function assessCourseQuality(input: {
     }
   }
 
+  // 5. Per-module shortfall — a module with no questions or no slides leaves a
+  //    hole in the course even when the course-level totals look healthy.
+  for (const mod of input.modules ?? []) {
+    if (mod.questionCount === 0) {
+      qualityWarnings.push(`No quiz questions were generated for the module “${mod.title}”.`);
+    }
+    if (isV46 && mod.slideCount === 0) {
+      qualityWarnings.push(`No slides were generated for the module “${mod.title}”.`);
+    }
+  }
+
   return { reviewRequired: qualityWarnings.length > 0, qualityWarnings };
+}
+
+/** Slides the merged v4.6 artifact attributes to a given module. */
+function countModuleSlides(rawSlidesJson: unknown, moduleIndex: number): number {
+  if (!isRecord(rawSlidesJson) || !Array.isArray(rawSlidesJson.slides)) return 0;
+  return rawSlidesJson.slides.filter(
+    (slide) => isRecord(slide) && (slide.moduleIndex ?? 0) === moduleIndex,
+  ).length;
+}
+
+/**
+ * Writes the per-module structure of a generated course: a `CourseModule` row
+ * per wizard module, each owning its lessons and pointing at the document
+ * version it was generated from.
+ *
+ * Lessons are matched by their `order`, which is the position they were created
+ * in — the same order the caller passed them in.
+ */
+async function persistCourseModules(
+  courseId: string,
+  courseModules: CourseModuleInput[],
+  lessons: { moduleIndex?: number }[],
+): Promise<void> {
+  const createdModules: { id: string }[] = [];
+  for (const [order, mod] of courseModules.entries()) {
+    createdModules.push(
+      await prisma.courseModule.create({
+        data: {
+          courseId,
+          title: mod.title,
+          order,
+          objective: mod.objective ?? null,
+          completionDeadlineDays: mod.completionDeadlineDays ?? null,
+        },
+      }),
+    );
+  }
+
+  for (const [moduleIndex, module] of createdModules.entries()) {
+    const lessonOrders = lessons
+      .map((lesson, order) => ({ lesson, order }))
+      .filter(({ lesson }) => (lesson.moduleIndex ?? 0) === moduleIndex)
+      .map(({ order }) => order);
+
+    if (lessonOrders.length === 0) continue;
+
+    await prisma.lesson.updateMany({
+      where: { courseId, order: { in: lessonOrders } },
+      data: { moduleId: module.id },
+    });
+  }
+
+  const documentIds = [
+    ...new Set(courseModules.map((mod) => mod.documentId).filter((id): id is string => !!id)),
+  ];
+  if (documentIds.length === 0) return;
+
+  // One query for every module's document, newest version first, so the fan-out
+  // never turns into an N+1.
+  const documentVersions = await prisma.documentVersion.findMany({
+    where: { documentId: { in: documentIds } },
+    orderBy: [{ documentId: 'asc' }, { version: 'desc' }],
+    select: { id: true, documentId: true },
+  });
+
+  const latestVersionByDocument = new Map<string, string>();
+  for (const version of documentVersions) {
+    if (!latestVersionByDocument.has(version.documentId)) {
+      latestVersionByDocument.set(version.documentId, version.id);
+    }
+  }
+
+  const courseVersions = courseModules
+    .map((mod, moduleIndex) => {
+      const documentVersionId = mod.documentId
+        ? latestVersionByDocument.get(mod.documentId)
+        : undefined;
+      if (!documentVersionId) return null;
+      return {
+        courseId,
+        documentVersionId,
+        moduleId: createdModules[moduleIndex].id,
+        version: 1,
+      };
+    })
+    .filter((row): row is NonNullable<typeof row> => row !== null);
+
+  if (courseVersions.length > 0) {
+    await prisma.courseVersion.createMany({ data: courseVersions });
+  }
 }
 
 export async function createFullCourse(data: {
@@ -995,7 +1329,20 @@ export async function createFullCourse(data: {
   duration: string;
   categoryId?: string;
   objectives?: string[];
-  modules: { title: string; content: string; slideContent?: string; duration: string }[];
+  /**
+   * Lessons, flattened in course order. `moduleIndex` points at the entry in
+   * `courseModules` the lesson belongs to; it is absent for single-document
+   * courses, which have no modules.
+   */
+  modules: {
+    title: string;
+    content: string;
+    slideContent?: string;
+    duration: string;
+    moduleIndex?: number;
+  }[];
+  /** Wizard modules, in course order. Each becomes a `CourseModule` row. */
+  courseModules?: CourseModuleInput[];
   quiz: QuizQuestion[];
   assignments: string[];
   dueDate?: Date;
@@ -1037,6 +1384,11 @@ export async function createFullCourse(data: {
     rawSlidesJson: data.rawSlidesJson,
     rawJudgeJson: data.rawJudgeJson,
     rawArticleMeta: data.rawArticleMeta,
+    modules: data.courseModules?.map((mod, moduleIndex) => ({
+      title: mod.title,
+      questionCount: data.quiz.filter((q) => (q.moduleIndex ?? 0) === moduleIndex).length,
+      slideCount: countModuleSlides(data.rawSlidesJson, moduleIndex),
+    })),
   });
 
   // 1. Create Course, Lessons, Quiz in one transaction (nested write)
@@ -1090,7 +1442,16 @@ export async function createFullCourse(data: {
                         // v3.1 embedded fields
                         explanation: q.explanation?.correctExplanation || undefined,
                         archetype: q.archetype || undefined,
-                        evidence: q.evidence || undefined,
+                        // The module is tagged by position rather than id: the
+                        // CourseModule rows do not exist until the course does.
+                        evidence:
+                          q.moduleIndex === undefined
+                            ? q.evidence || undefined
+                            : {
+                                ...(q.evidence ?? {}),
+                                moduleIndex: q.moduleIndex,
+                                moduleTitle: q.moduleTitle ?? null,
+                              },
                       })),
                     },
                   },
@@ -1101,8 +1462,15 @@ export async function createFullCourse(data: {
     },
   });
 
-  // 1.5 Link Document if provided
-  if (data.documentId) {
+  // 1.5 Per-module structure: modules own their lessons and their source
+  // document. Only the wizard's multi-module path supplies these.
+  if (data.courseModules && data.courseModules.length > 0) {
+    await persistCourseModules(course.id, data.courseModules, data.modules);
+  }
+
+  // 1.6 Link Document if provided (single-document courses only — a
+  // multi-module course links one document version per module above).
+  if (data.documentId && !data.courseModules?.length) {
     // Find latest version of the document
     const latestDocVersion = await prisma.documentVersion.findFirst({
       where: { documentId: data.documentId },

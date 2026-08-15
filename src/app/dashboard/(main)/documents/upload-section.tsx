@@ -5,7 +5,7 @@ import UploadModal from './upload-modal';
 import { Button } from '@/components/ui/button';
 import { Plus } from 'lucide-react';
 
-export default function UploadSection() {
+export default function UploadSection({ categories }: { categories: string[] }) {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
@@ -15,9 +15,9 @@ export default function UploadSection() {
         className="h-12 shrink-0 gap-2 rounded-xl px-[23px] text-[15.5px] font-semibold tracking-[-0.02em]"
       >
         <Plus className="size-[25px]" />
-        Upload New
+        Upload file
       </Button>
-      {isOpen && <UploadModal onClose={() => setIsOpen(false)} />}
+      {isOpen && <UploadModal categories={categories} onClose={() => setIsOpen(false)} />}
     </>
   );
 }

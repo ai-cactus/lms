@@ -10,7 +10,8 @@ import {
   UserRoundMinus,
 } from 'lucide-react';
 import FacilityScopeSwitcher from '@/components/dashboard/FacilityScopeSwitcher';
-import { EXPIRING_CREDENTIALS_WINDOW_DAYS } from '@/lib/facility/metrics';
+import { EXPIRING_CREDENTIALS_WINDOW_DAYS, METRIC_DEFINITIONS } from '@/lib/facility/metrics';
+import { buildFacilityComparison } from '@/lib/facility/comparison';
 import type { GlobalDashboardData } from '@/app/actions/dashboard-facility';
 import MetricGroup from './MetricGroup';
 import PriorityRisksTable from './PriorityRisksTable';
@@ -20,15 +21,29 @@ interface GlobalDashboardViewProps {
   data: GlobalDashboardData;
   /** Display name for the greeting; falls back to a generic welcome when absent. */
   userName?: string | null;
+  /** Facilities to compare; fewer than two accessible ids keeps the full view. */
+  comparedFacilityIds?: string[];
 }
 
 /**
  * The all-facilities ("Global View") dashboard: enterprise footprint, training
  * velocity and risk KPIs above two facility-level tables. Purely presentational —
- * every figure arrives pre-aggregated from `getGlobalDashboardData`.
+ * every figure arrives pre-aggregated from `getGlobalDashboardData`, and a
+ * comparison is a projection of that same payload.
  */
-export default function GlobalDashboardView({ data, userName }: GlobalDashboardViewProps) {
-  const { enterpriseFootprint, trainingVelocity, riskCompliance } = data;
+export default function GlobalDashboardView({
+  data,
+  userName,
+  comparedFacilityIds = [],
+}: GlobalDashboardViewProps) {
+  const comparison = buildFacilityComparison(data, comparedFacilityIds);
+  const { enterpriseFootprint, trainingVelocity, riskCompliance } = comparison ?? data;
+  const facilitiesOverview = comparison?.facilitiesOverview ?? data.facilitiesOverview;
+  const priorityRisks = comparison?.priorityRisks ?? data.priorityRisks;
+
+  const completionPercentByFacilityId = Object.fromEntries(
+    data.facilitiesOverview.map((row) => [row.facilityId, row.completionPercent]),
+  );
 
   return (
     <div className="mx-auto flex w-full max-w-[1400px] flex-1 flex-col gap-6">
@@ -42,7 +57,11 @@ export default function GlobalDashboardView({ data, userName }: GlobalDashboardV
             Here is an overview across all your facilities
           </p>
         </div>
-        <FacilityScopeSwitcher facilities={data.facilities} selectedFacilityId={null} />
+        <FacilityScopeSwitcher
+          facilities={data.facilities}
+          selectedFacilityIds={comparison?.facilityIds ?? []}
+          completionPercentByFacilityId={completionPercentByFacilityId}
+        />
       </div>
 
       <MetricGroup
@@ -71,11 +90,12 @@ export default function GlobalDashboardView({ data, userName }: GlobalDashboardV
         title="Training Velocity"
         metrics={[
           {
-            label: 'Active Workers in Training',
-            value: String(trainingVelocity.activeWorkersInTraining.value),
+            label: 'Active Learners',
+            description: METRIC_DEFINITIONS.activeLearners,
+            value: String(trainingVelocity.activeLearners.value),
             icon: GraduationCap,
             iconSurface: 'bg-[#7c3aed]',
-            trendPercent: trainingVelocity.activeWorkersInTraining.trendPercent,
+            trendPercent: trainingVelocity.activeLearners.trendPercent,
             higherIsBetter: true,
           },
           {
@@ -101,24 +121,27 @@ export default function GlobalDashboardView({ data, userName }: GlobalDashboardV
         title="Risk, Compliance & Deadlines (Urgent Attention Needed)"
         metrics={[
           {
-            label: 'Missing Training Deadlines',
-            value: String(riskCompliance.missingTrainingDeadlines.value),
+            label: 'Overdue Trainings',
+            description: METRIC_DEFINITIONS.overdueTrainings,
+            value: String(riskCompliance.overdueTrainings.value),
             icon: TriangleAlert,
             iconSurface: 'bg-[#dc2626]',
-            trendPercent: riskCompliance.missingTrainingDeadlines.trendPercent,
+            trendPercent: riskCompliance.overdueTrainings.trendPercent,
             higherIsBetter: false,
             tone: 'critical',
           },
           {
-            label: 'Inactive Staff',
-            value: String(riskCompliance.inactiveStaff.value),
+            label: 'Dormant Staff',
+            description: METRIC_DEFINITIONS.dormantStaff,
+            value: String(riskCompliance.dormantStaff.value),
             icon: UserRoundMinus,
             iconSurface: 'bg-[#f59e0b]',
-            trendPercent: riskCompliance.inactiveStaff.trendPercent,
+            trendPercent: riskCompliance.dormantStaff.trendPercent,
             higherIsBetter: false,
           },
           {
             label: `Expiring Credentials (Next ${EXPIRING_CREDENTIALS_WINDOW_DAYS} Days)`,
+            description: METRIC_DEFINITIONS.expiringCredentials,
             value: String(riskCompliance.expiringCredentials.value),
             icon: ClipboardClock,
             iconSurface: 'bg-[#dc2626]',
@@ -128,8 +151,11 @@ export default function GlobalDashboardView({ data, userName }: GlobalDashboardV
         ]}
       />
 
-      <PriorityRisksTable rows={data.priorityRisks} />
-      <FacilitiesOverviewTable rows={data.facilitiesOverview} />
+      <FacilitiesOverviewTable
+        rows={facilitiesOverview}
+        comparisonTotal={comparison?.totalFacilityCount}
+      />
+      <PriorityRisksTable rows={priorityRisks} comparisonTotal={comparison?.totalFacilityCount} />
     </div>
   );
 }

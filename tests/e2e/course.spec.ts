@@ -77,18 +77,21 @@ test.describe('Course Flows', () => {
     await page.goto('/dashboard/courses');
     await page.getByRole('button', { name: 'Create Course' }).click();
     await page.waitForURL('**/dashboard/courses/create');
-    await expect(page.getByText(/step 1 of 7/i)).toBeVisible();
+    await expect(page.getByText(/step 1 of 9/i)).toBeVisible();
 
     // Step 1 — pick a (system) category so "Next Step" enables.
     await page.getByRole('combobox').first().click();
     await page.getByRole('option').first().click();
     await page.getByRole('button', { name: 'Next Step' }).click();
 
-    // Step 2 — the document picker (shadcn Checkbox). Select the seeded doc.
-    // We intentionally do NOT advance past Step 2 (that triggers AI document
-    // analysis, which is unavailable in CI).
-    await expect(page.getByText(/step 2 of 7/i)).toBeVisible();
-    await page.getByRole('checkbox').first().click();
+    // Step 2 — the multi-module builder (Step2Modules): a module title field
+    // plus a PHI-attestation checkbox gating the upload dropzone. Leave a
+    // half-filled module in progress; we intentionally do NOT complete or
+    // advance past it (uploading, and the auto-analysis Next triggers, need
+    // AI/PHI-scan calls unavailable in this environment).
+    await expect(page.getByText(/step 2 of 9/i)).toBeVisible();
+    await page.getByLabel(/module title/i).fill('Draft module left behind on exit');
+    await page.getByLabel(/verify this document contains no/i).click();
 
     // Leave the wizard (unmount) without finishing, then reopen it.
     await page.goto('/dashboard/courses');
@@ -96,8 +99,14 @@ test.describe('Course Flows', () => {
     await page.waitForURL('**/dashboard/courses/create');
 
     // ENG-024 fix: reopening starts a fresh wizard at Step 1 rather than
-    // silently resuming at Step 2.
-    await expect(page.getByText(/step 1 of 7/i)).toBeVisible();
+    // silently resuming at Step 2 with the half-filled module intact.
+    await expect(page.getByText(/step 1 of 9/i)).toBeVisible();
+    await page.getByRole('combobox').first().click();
+    await page.getByRole('option').first().click();
+    await page.getByRole('button', { name: 'Next Step' }).click();
+    await expect(page.getByText(/step 2 of 9/i)).toBeVisible();
+    await expect(page.getByLabel(/module title/i)).toHaveValue('');
+    await expect(page.getByLabel(/verify this document contains no/i)).not.toBeChecked();
   });
 });
 
@@ -260,7 +269,7 @@ async function loginAs(page: Page, email: string, password: string): Promise<voi
   await page.waitForURL('**/dashboard**', { timeout: 15000 });
 }
 
-test.describe('Courses list — Video/Slides tabs and role-gated row actions', () => {
+test.describe('Courses list — Video/Reading Course tabs and role-gated row actions', () => {
   test('owner sees both tabs with correct counts, filtered by the active tab', async ({ page }) => {
     const seeded = await seedCourseTabsFixture();
     try {
@@ -268,12 +277,12 @@ test.describe('Courses list — Video/Slides tabs and role-gated row actions', (
       await page.goto('/dashboard/courses');
       await page.waitForLoadState('networkidle');
 
-      await expect(page.getByRole('tab', { name: 'Video (1)' })).toBeVisible();
-      await expect(page.getByRole('tab', { name: 'Slides (1)' })).toBeVisible();
+      await expect(page.getByRole('tab', { name: 'Video 1' })).toBeVisible();
+      await expect(page.getByRole('tab', { name: 'Reading Course 1' })).toBeVisible();
       await expect(page.getByText(seeded.videoCourseTitle)).toBeVisible();
       await expect(page.getByText(seeded.slidesCourseTitle)).not.toBeVisible();
 
-      await page.getByRole('tab', { name: 'Slides (1)' }).click();
+      await page.getByRole('tab', { name: 'Reading Course 1' }).click();
       await expect(page.getByText(seeded.slidesCourseTitle)).toBeVisible();
       await expect(page.getByText(seeded.videoCourseTitle)).not.toBeVisible();
     } finally {
@@ -292,11 +301,25 @@ test.describe('Courses list — Video/Slides tabs and role-gated row actions', (
 
       const row = page.getByRole('row', { name: new RegExp(seeded.videoCourseTitle) });
       await expect(row).toBeVisible();
-      // Neither a source document nor a Row Actions trigger — this seeded
-      // course has no sourceDocumentId (it wasn't AI-generated), so a
-      // read-only supervisor's buildRowActions() resolves to an empty list
-      // and CoursesListClient renders no menu trigger for the row at all.
-      await expect(row.getByRole('button', { name: 'Row actions' })).not.toBeVisible();
+      // buildRowActions() (CoursesListClient.tsx) now always lists "View
+      // Source Document" for anyone with document.read — supervisors included
+      // — disabling it rather than hiding it when the course has no
+      // sourceDocumentId (this seeded course wasn't AI-generated). So the
+      // trigger DOES render for a read-only supervisor; only its one item is
+      // disabled, and none of the write actions (Assign to staff, Rename,
+      // Delete) appear.
+      const rowActionsButton = row.getByRole('button', { name: 'Row actions' });
+      await expect(rowActionsButton).toBeVisible();
+      await rowActionsButton.click();
+      const menu = page.getByRole('menu');
+      await expect(menu.getByRole('menuitem', { name: 'View Source Document' })).toHaveAttribute(
+        'data-disabled',
+        '',
+      );
+      await expect(menu.getByRole('menuitem', { name: 'Assign to staff' })).toHaveCount(0);
+      await expect(menu.getByRole('menuitem', { name: 'Rename' })).toHaveCount(0);
+      await expect(menu.getByRole('menuitem', { name: 'Delete' })).toHaveCount(0);
+      await page.keyboard.press('Escape');
       await expect(page.getByRole('button', { name: 'Create Course' })).not.toBeVisible();
     } finally {
       await cleanupCourseTabsFixture(seeded);

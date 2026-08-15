@@ -1,13 +1,13 @@
 # Slide View & Article View Technical Documentation
 
-This document explicitly details the technical implementation, UX/UI specifications, and structural hierarchy of the **Slide View** and **Article View** components within the Course Wizard (Step 5).
+This document explicitly details the technical implementation, UX/UI specifications, and structural hierarchy of the **Slide View** and **Article View** components within the Course Wizard (the generation/review screen, steps 6–7 of the 9-step wizard).
 
 ## 1. Component Architecture
 
-**Parent Component:** `Step5Review.tsx`
+**Parent Component:** `GenerationController.tsx` (formerly `Step5Review.tsx`)
 **Styling Module:** `CourseWizard.module.css`
 
-The `Step5Review` component manages the state for toggling between two view modes:
+The `GenerationController` component manages the state for toggling between two view modes:
 - `'article'`: The default editor view using React Quill.
 - `'slides'`: A preview mode simulating a slide deck presentation.
 

@@ -3,10 +3,10 @@
  *
  * Priorities: the `assignment.read` RBAC gate, supervisor narrowing to their
  * accessible facilities (vs org-wide roles aggregating everything), the
- * zero-facility early exit, and that the 14-query Promise.all result is wired
+ * zero-facility early exit, and that the fixed-size Promise.all result is wired
  * into the right output buckets without any facility-by-facility looping.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const {
   mockAuth,
@@ -61,6 +61,37 @@ import { getGlobalDashboardData } from './dashboard-facility';
 const FACILITY_A = { id: 'fac-a', name: 'Alpha', type: 'clinic', city: 'Austin' };
 const FACILITY_B = { id: 'fac-b', name: 'Beta', type: 'clinic', city: 'Dallas' };
 
+/** Frozen clock so each query's date cutoffs are exact, identifiable values. */
+const NOW = new Date('2026-06-15T12:00:00.000Z');
+
+type GroupByArgs = {
+  by: string[];
+  where: {
+    dueAt?: { lt?: Date; gte?: Date; lte?: Date; not?: null };
+    assignment?: unknown;
+    completedAt?: unknown;
+    status?: unknown;
+  };
+};
+
+/**
+ * Names the facility-grouped enrollment query behind a `groupBy` call from its
+ * `where` shape. The module fires many groupBys in one Promise.all, so their
+ * array position is an implementation detail — tests match on intent instead.
+ */
+function facilityGroupByKind(args: GroupByArgs): string | null {
+  if (!(args.by.length === 1 && args.by[0] === 'facilityId')) return null;
+
+  const { dueAt, assignment, completedAt } = args.where;
+  if (dueAt?.not === null) return completedAt ? 'onTime' : 'withDeadline';
+  if (dueAt?.gte && dueAt?.lte) return assignment ? 'expiringCredentials' : 'approaching';
+  if (dueAt?.lt) {
+    if (assignment) return 'expiredCredentials';
+    return dueAt.lt.getTime() < NOW.getTime() ? 'overdueBeyondGrace' : 'overdue';
+  }
+  return null;
+}
+
 /**
  * Wires every enrollment.groupBy/count call by inspecting its `by`/`where`
  * shape rather than call order, since the module fires many groupBys in one
@@ -69,6 +100,16 @@ const FACILITY_B = { id: 'fac-b', name: 'Beta', type: 'clinic', city: 'Dallas' }
 function wireEmptyEnrollmentQueries() {
   mockEnrollmentGroupBy.mockResolvedValue([]);
   mockEnrollmentCount.mockResolvedValue(0);
+}
+
+/** Resolves each facility-grouped query from `rowsByKind`, everything else empty. */
+function wireFacilityGroupBys(
+  rowsByKind: Record<string, { facilityId: string | null; _count: { _all: number } }[]>,
+) {
+  mockEnrollmentGroupBy.mockImplementation((args: GroupByArgs) => {
+    const kind = facilityGroupByKind(args);
+    return Promise.resolve(kind ? (rowsByKind[kind] ?? []) : []);
+  });
 }
 
 function baseSession(overrides: Partial<Record<string, unknown>> = {}) {
@@ -84,12 +125,18 @@ function baseSession(overrides: Partial<Record<string, unknown>> = {}) {
 }
 
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(NOW);
   vi.clearAllMocks();
   mockFacilityCount.mockResolvedValue(0);
   mockOrgUserCount.mockResolvedValue(0);
   mockOrgUserFacilityGroupBy.mockResolvedValue([]);
   mockQuizFindMany.mockResolvedValue([]);
   wireEmptyEnrollmentQueries();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe('getGlobalDashboardData — auth & RBAC gate', () => {
@@ -193,27 +240,98 @@ describe('getGlobalDashboardData — aggregation wiring', () => {
     mockListAccessibleFacilities.mockResolvedValue([FACILITY_A, FACILITY_B]);
   });
 
-  it('computes priorityRisks sorted most-at-risk-first from the overdue groupBy', async () => {
-    mockEnrollmentGroupBy.mockImplementation(
-      (args: { by: string[]; where: Record<string, unknown> }) => {
-        const dueAt = args.where.dueAt as { lt?: Date } | undefined;
-        if (args.by.includes('facilityId') && args.by.length === 1 && dueAt?.lt) {
-          // overdue-by-facility query
-          return Promise.resolve([
-            { facilityId: 'fac-a', _count: { _all: 2 } }, // low risk
-            { facilityId: 'fac-b', _count: { _all: 12 } }, // high risk
-          ]);
-        }
-        return Promise.resolve([]);
-      },
-    );
+  it('computes priorityRisks sorted most-at-risk-first from the overdue groupBys', async () => {
+    wireFacilityGroupBys({
+      overdue: [
+        { facilityId: 'fac-a', _count: { _all: 2 } },
+        { facilityId: 'fac-b', _count: { _all: 12 } },
+      ],
+      // Only Beta's overdue work has aged past the grace period.
+      overdueBeyondGrace: [{ facilityId: 'fac-b', _count: { _all: 3 } }],
+    });
 
     const result = await getGlobalDashboardData();
 
     expect(result.priorityRisks[0].facilityId).toBe('fac-b');
     expect(result.priorityRisks[0].riskLevel).toBe('high');
     expect(result.priorityRisks[1].facilityId).toBe('fac-a');
-    expect(result.priorityRisks[1].riskLevel).toBe('low');
+    expect(result.priorityRisks[1].riskLevel).toBe('medium');
+  });
+
+  it('reports approaching deadlines per facility from its own 14-day-window groupBy', async () => {
+    wireFacilityGroupBys({
+      approaching: [{ facilityId: 'fac-b', _count: { _all: 7 } }],
+      overdue: [{ facilityId: 'fac-b', _count: { _all: 1 } }],
+    });
+
+    const result = await getGlobalDashboardData();
+    const beta = result.priorityRisks.find((row) => row.facilityId === 'fac-b');
+    const alpha = result.priorityRisks.find((row) => row.facilityId === 'fac-a');
+
+    expect(beta?.approachingDeadlines).toBe(7);
+    expect(beta?.overdueTrainings).toBe(1);
+    expect(alpha?.approachingDeadlines).toBe(0);
+  });
+
+  it('queries approaching deadlines over the next 14 days, excluding completed enrollments', async () => {
+    await getGlobalDashboardData();
+
+    const approachingCall = mockEnrollmentGroupBy.mock.calls.find(
+      (call) => facilityGroupByKind(call[0]) === 'approaching',
+    );
+
+    expect(approachingCall?.[0].where.dueAt).toEqual({
+      gte: NOW,
+      lte: new Date('2026-06-29T12:00:00.000Z'),
+    });
+    expect(approachingCall?.[0].where.status).toEqual({ notIn: ['completed', 'attested'] });
+  });
+
+  it('raises risk to high on an expired credential alone, with no overdue training past grace', async () => {
+    wireFacilityGroupBys({
+      overdue: [{ facilityId: 'fac-a', _count: { _all: 1 } }],
+      expiredCredentials: [{ facilityId: 'fac-a', _count: { _all: 1 } }],
+    });
+
+    const result = await getGlobalDashboardData();
+    const alpha = result.facilitiesOverview.find((row) => row.facilityId === 'fac-a');
+
+    expect(alpha?.riskLevel).toBe('high');
+    expect(alpha?.auditReadiness).toBe('critical');
+  });
+
+  it('leaves a facility with nothing assigned at low risk and audit ready', async () => {
+    const result = await getGlobalDashboardData();
+
+    expect(result.facilitiesOverview[0].riskLevel).toBe('low');
+    expect(result.facilitiesOverview[0].auditReadiness).toBe('audit_ready');
+  });
+
+  it('reports staff count per facility on the overview rows', async () => {
+    mockOrgUserFacilityGroupBy.mockResolvedValue([{ facilityId: 'fac-b', _count: { _all: 11 } }]);
+
+    const result = await getGlobalDashboardData();
+
+    expect(result.facilitiesOverview.find((row) => row.facilityId === 'fac-b')?.staffCount).toBe(
+      11,
+    );
+    expect(result.facilitiesOverview.find((row) => row.facilityId === 'fac-a')?.staffCount).toBe(0);
+  });
+
+  it('totals overdue trainings org-wide, including the null-facility bucket', async () => {
+    wireFacilityGroupBys({
+      overdue: [
+        { facilityId: 'fac-a', _count: { _all: 2 } },
+        { facilityId: null, _count: { _all: 5 } },
+      ],
+    });
+
+    const result = await getGlobalDashboardData();
+
+    expect(result.riskCompliance.overdueTrainings.value).toBe(7);
+    expect(result.priorityRisks.find((row) => row.facilityId === 'fac-a')?.overdueTrainings).toBe(
+      2,
+    );
   });
 
   it('sorts facilitiesOverview alphabetically by name', async () => {

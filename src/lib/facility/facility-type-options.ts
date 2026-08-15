@@ -11,7 +11,7 @@ export const FACILITY_TYPE_OPTIONS = [
   'Behavioral Health Hospital / Psychiatric Hospital',
   'Integrated Primary Care with Behavioral Health (e.g., FQHC)',
   'Private Practice / Group Practice',
-  'Telehealth-Only Behavioral Health Provider',
+  'Telehealth Behavioral Health Provider',
   'School- or Campus-Based Behavioral Health Program',
   'Correctional / Justice-Involved Behavioral Health Program',
 ] as const;

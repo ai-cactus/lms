@@ -2,9 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Library } from 'lucide-react';
-import { getCategories, createCustomCategory } from '@/app/actions/categories';
-import { Button } from '@/components/ui/button';
+import { ChevronDown, Library } from 'lucide-react';
+import { getCategories } from '@/app/actions/categories';
 import {
   Select,
   SelectContent,
@@ -14,6 +13,8 @@ import {
 } from '@/components/ui/select';
 import { wizardControlClass, wizardInputClass, wizardTitleClass } from './wizardFormClasses';
 import { logger } from '@/lib/logger';
+
+const CUSTOM_OPTION_VALUE = 'custom';
 
 interface Category {
   id: string;
@@ -25,14 +26,21 @@ interface Category {
 interface Step1CategoryProps {
   selectedCategoryId: string;
   onSelect: (categoryId: string) => void;
+  customCategoryName: string;
+  onCustomCategoryNameChange: (name: string) => void;
 }
 
-export default function Step1Category({ selectedCategoryId, onSelect }: Step1CategoryProps) {
+export default function Step1Category({
+  selectedCategoryId,
+  onSelect,
+  customCategoryName,
+  onCustomCategoryNameChange,
+}: Step1CategoryProps) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isCreating, setIsCreating] = useState(false);
-  const [customName, setCustomName] = useState('');
-  const [customDesc, setCustomDesc] = useState('');
+  // Custom entry is a mode, not a derived value: the field stays in free-text
+  // mode after "Others (Custom)" is picked and before anything is typed.
+  const [isCustom, setIsCustom] = useState(customCategoryName !== '');
 
   useEffect(() => {
     async function loadCategories() {
@@ -40,7 +48,7 @@ export default function Step1Category({ selectedCategoryId, onSelect }: Step1Cat
         const data = await getCategories();
         setCategories(data);
       } catch (err) {
-        logger.error({ msg: 'Failed to load categories', err: err });
+        logger.error({ msg: '[course] Failed to load categories', err });
       } finally {
         setLoading(false);
       }
@@ -48,20 +56,20 @@ export default function Step1Category({ selectedCategoryId, onSelect }: Step1Cat
     loadCategories();
   }, []);
 
-  const handleCreateCustom = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!customName.trim()) return;
-
-    try {
-      const newCat = await createCustomCategory(customName, customDesc);
-      setCategories((prev) => [...prev, newCat]);
-      onSelect(newCat.id);
-      setIsCreating(false);
-      setCustomName('');
-      setCustomDesc('');
-    } catch (err) {
-      logger.error({ msg: 'Failed to create custom category', err: err });
+  const handleSelectChange = (value: string) => {
+    if (value === CUSTOM_OPTION_VALUE) {
+      setIsCustom(true);
+      onSelect('');
+      return;
     }
+    setIsCustom(false);
+    onCustomCategoryNameChange('');
+    onSelect(value);
+  };
+
+  const handleReopenList = () => {
+    setIsCustom(false);
+    onCustomCategoryNameChange('');
   };
 
   if (loading) {
@@ -70,44 +78,53 @@ export default function Step1Category({ selectedCategoryId, onSelect }: Step1Cat
     );
   }
 
-  const options = categories.map((cat) => ({
-    label: cat.name,
-    value: cat.id,
-  }));
-  options.push({ label: 'Others (Custom)', value: 'custom' });
-
-  const handleSelectChange = (val: string) => {
-    if (val === 'custom') {
-      setIsCreating(true);
-    } else {
-      setIsCreating(false);
-      onSelect(val);
-    }
-  };
-
   return (
     <div className="flex w-full flex-col gap-10 md:gap-14">
       <h2 className={wizardTitleClass}>What category best fits the course you&apos;re creating?</h2>
 
       <div className="flex flex-col gap-[11px] md:px-[120px]">
-        <label className="flex items-center gap-1.5 text-base font-medium tracking-[0.36px] text-black md:text-[18px]">
+        <label
+          htmlFor="course-category"
+          className="flex items-center gap-1.5 text-base font-medium tracking-[0.36px] text-black md:text-[18px]"
+        >
           Category <span className="text-[#4254e3]">*</span>
         </label>
-        <Select
-          value={isCreating ? 'custom' : selectedCategoryId}
-          onValueChange={handleSelectChange}
-        >
-          <SelectTrigger className={wizardControlClass}>
-            <SelectValue placeholder="Select an option" />
-          </SelectTrigger>
-          <SelectContent>
-            {options.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+
+        {isCustom ? (
+          <div className="relative">
+            <input
+              id="course-category"
+              type="text"
+              autoFocus
+              value={customCategoryName}
+              onChange={(e) => onCustomCategoryNameChange(e.target.value)}
+              placeholder="Enter a category name"
+              className={`${wizardInputClass} border-primary pr-12`}
+            />
+            <button
+              type="button"
+              onClick={handleReopenList}
+              aria-label="Choose from the category list"
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-[#0a0a0a] opacity-50 transition-opacity hover:opacity-100"
+            >
+              <ChevronDown className="size-4" aria-hidden="true" />
+            </button>
+          </div>
+        ) : (
+          <Select value={selectedCategoryId} onValueChange={handleSelectChange}>
+            <SelectTrigger id="course-category" className={wizardControlClass}>
+              <SelectValue placeholder="Select an option" />
+            </SelectTrigger>
+            <SelectContent>
+              {categories.map((category) => (
+                <SelectItem key={category.id} value={category.id}>
+                  {category.name}
+                </SelectItem>
+              ))}
+              <SelectItem value={CUSTOM_OPTION_VALUE}>Others (Custom)</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
 
         <Link
           href="/dashboard/courses/prebuilt"
@@ -117,49 +134,6 @@ export default function Step1Category({ selectedCategoryId, onSelect }: Step1Cat
           Or choose a prebuilt course on Theraptly
         </Link>
       </div>
-
-      {isCreating && (
-        <div className="rounded-[12px] border-[1.5px] border-[#e5e7ea] bg-bg-secondary p-6 md:mx-[120px]">
-          <h3 className="mb-5 text-base font-semibold text-foreground md:text-[18px]">
-            Create Custom Category
-          </h3>
-          <form onSubmit={handleCreateCustom}>
-            <div className="mb-4 flex flex-col gap-[11px]">
-              <label className="text-base font-medium tracking-[0.36px] text-black md:text-[18px]">
-                Category Name
-              </label>
-              <input
-                type="text"
-                className={wizardInputClass}
-                value={customName}
-                onChange={(e) => setCustomName(e.target.value)}
-                placeholder="e.g. Specialized Tool Training"
-                required
-              />
-            </div>
-            <div className="mb-4 flex flex-col gap-[11px]">
-              <label className="text-base font-medium tracking-[0.36px] text-black md:text-[18px]">
-                Description (Optional)
-              </label>
-              <textarea
-                className={`${wizardInputClass} min-h-[96px] resize-y`}
-                rows={2}
-                value={customDesc}
-                onChange={(e) => setCustomDesc(e.target.value)}
-                placeholder="Briefly describe this category"
-              />
-            </div>
-            <div className="flex justify-end gap-3 pt-2">
-              <Button type="button" variant="ghost" onClick={() => setIsCreating(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" variant="default" disabled={!customName.trim()}>
-                Save Category
-              </Button>
-            </div>
-          </form>
-        </div>
-      )}
     </div>
   );
 }

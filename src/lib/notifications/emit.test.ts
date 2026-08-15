@@ -14,15 +14,22 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { prismaMock, mockCreateNotification, mockSendInstantEmail, mockResolveRoleRecipients } =
-  vi.hoisted(() => ({
-    prismaMock: {
-      notificationEvent: { create: vi.fn(), update: vi.fn(), findFirst: vi.fn() },
-    },
-    mockCreateNotification: vi.fn(),
-    mockSendInstantEmail: vi.fn(),
-    mockResolveRoleRecipients: vi.fn(),
-  }));
+const {
+  prismaMock,
+  mockCreateNotification,
+  mockSendInstantEmail,
+  mockResolveRoleRecipients,
+  mockIsChannelEnabled,
+} = vi.hoisted(() => ({
+  prismaMock: {
+    notificationEvent: { create: vi.fn(), update: vi.fn(), findFirst: vi.fn() },
+    organization: { findUnique: vi.fn() },
+  },
+  mockCreateNotification: vi.fn(),
+  mockSendInstantEmail: vi.fn(),
+  mockResolveRoleRecipients: vi.fn(),
+  mockIsChannelEnabled: vi.fn(),
+}));
 
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock, default: prismaMock }));
 vi.mock('@/lib/logger', () => ({
@@ -32,6 +39,9 @@ vi.mock('@/lib/logger', () => ({
 vi.mock('@/app/actions/notifications', () => ({ createNotification: mockCreateNotification }));
 vi.mock('@/lib/email', () => ({ sendInstantNotificationEmail: mockSendInstantEmail }));
 vi.mock('./recipients', () => ({ resolveRoleRecipients: mockResolveRoleRecipients }));
+vi.mock('./category-preferences', () => ({
+  isNotificationChannelEnabled: mockIsChannelEnabled,
+}));
 
 import { emitNotificationEvent } from './emit';
 
@@ -64,6 +74,9 @@ beforeEach(() => {
   mockCreateNotification.mockResolvedValue(undefined);
   mockSendInstantEmail.mockResolvedValue({ success: true, messageId: 'msg-1' });
   mockResolveRoleRecipients.mockResolvedValue(NO_RECIPIENTS);
+  mockIsChannelEnabled.mockResolvedValue(true);
+  // Default cadence: batched, so digest-tier events stay pending.
+  prismaMock.organization.findUnique.mockResolvedValue({ notificationDigestFrequency: 'daily' });
 });
 
 const baseInput = {
@@ -151,6 +164,72 @@ describe('emitNotificationEvent — instant tier', () => {
     });
     expect(result.status).toBe('dispatched');
     expect(result.recipientCount).toBe(1);
+  });
+});
+
+/**
+ * SET-004: an organization on the `realtime` cadence has opted out of batching,
+ * so a digest-tier event must be delivered exactly like Tier 1 — nothing is
+ * left behind for the digest worker to pick up.
+ */
+describe('emitNotificationEvent — realtime cadence', () => {
+  beforeEach(() => {
+    prismaMock.organization.findUnique.mockResolvedValue({
+      notificationDigestFrequency: 'realtime',
+    });
+    mockResolveRoleRecipients.mockResolvedValue(recipients(['hr-1']));
+  });
+
+  it('records a digest-tier event as instant, emails it, and marks it dispatched', async () => {
+    const result = await emitNotificationEvent({ ...baseInput, type: 'STAFF_ADDED' });
+
+    expect(prismaMock.notificationEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ tier: 'instant' }) }),
+    );
+    expect(mockSendInstantEmail).toHaveBeenCalledOnce();
+    expect(prismaMock.notificationEvent.update).toHaveBeenCalledWith({
+      where: { id: 'event-1' },
+      data: { status: 'dispatched', dispatchedAt: expect.any(Date) },
+    });
+    expect(result.status).toBe('dispatched');
+  });
+
+  it('leaves a digest-tier event pending on the daily cadence', async () => {
+    prismaMock.organization.findUnique.mockResolvedValue({
+      notificationDigestFrequency: 'daily',
+    });
+
+    const result = await emitNotificationEvent({ ...baseInput, type: 'STAFF_ADDED' });
+
+    expect(prismaMock.notificationEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ tier: 'digest' }) }),
+    );
+    expect(mockSendInstantEmail).not.toHaveBeenCalled();
+    expect(result.status).toBe('pending');
+  });
+
+  it('never re-reads the cadence for an event that is already instant-tier', async () => {
+    await emitNotificationEvent({ ...baseInput, type: 'ROLE_FALLBACK_TRIGGERED' });
+
+    expect(prismaMock.organization.findUnique).not.toHaveBeenCalled();
+  });
+});
+
+describe('emitNotificationEvent — category email switch', () => {
+  it('still writes the bell row but sends no email when the category is off for email', async () => {
+    mockResolveRoleRecipients.mockResolvedValue(recipients(['owner-1']));
+    mockIsChannelEnabled.mockResolvedValue(false);
+
+    const result = await emitNotificationEvent({
+      ...baseInput,
+      type: 'ROLE_FALLBACK_TRIGGERED',
+    });
+
+    expect(mockCreateNotification).toHaveBeenCalledOnce();
+    expect(mockSendInstantEmail).not.toHaveBeenCalled();
+    // The outbox row is still closed out — suppression is a delivery choice,
+    // not a failure to deliver.
+    expect(result.status).toBe('dispatched');
   });
 });
 

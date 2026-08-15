@@ -122,7 +122,7 @@ describe('assignCourseToRole — enrolls only current holders of the role, in th
 
     expect(mockOrgUserFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { organizationId: ORG_ID, role: 'nurse', active: true },
+        where: { organizationId: ORG_ID, role: { in: ['nurse'] }, active: true },
       }),
     );
     expect(mockCreateEnrollmentForUser).toHaveBeenCalledTimes(2);

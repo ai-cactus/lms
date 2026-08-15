@@ -1,26 +1,37 @@
+/**
+ * Status now describes the UPLOAD, not the course pipeline: "In progress" while
+ * a file's bytes are still going up, "Completed" once it is persisted. The old
+ * Uploaded/Converted-to-Course pair is gone from the list; "Converted to Course"
+ * survives as detail-page-only wording.
+ */
 import { describe, it, expect } from 'vitest';
-import { deriveDocumentStatus, DOCUMENT_STATUS_LABELS } from './status';
+import {
+  DOCUMENT_STATUS_LABELS,
+  DOCUMENT_CONVERTED_LABEL,
+  type DocumentLifecycleStatus,
+} from './status';
 
-describe('deriveDocumentStatus', () => {
-  it('returns "uploaded" when the document has no linked course', () => {
-    expect(deriveDocumentStatus(false)).toBe('uploaded');
+describe('DOCUMENT_STATUS_LABELS', () => {
+  it('provides the exact upload-lifecycle copy the list renders', () => {
+    expect(DOCUMENT_STATUS_LABELS.in_progress).toBe('In progress');
+    expect(DOCUMENT_STATUS_LABELS.completed).toBe('Completed');
   });
 
-  it('returns "converted" when the document has at least one linked course', () => {
-    expect(deriveDocumentStatus(true)).toBe('converted');
+  it('has a label for every lifecycle status', () => {
+    const statuses: DocumentLifecycleStatus[] = ['in_progress', 'completed'];
+    for (const status of statuses) {
+      expect(DOCUMENT_STATUS_LABELS[status]).toBeTruthy();
+    }
+  });
+
+  it('carries no course-pipeline status — that is not what Status means any more', () => {
+    expect(Object.keys(DOCUMENT_STATUS_LABELS).sort()).toEqual(['completed', 'in_progress']);
+    expect(Object.values(DOCUMENT_STATUS_LABELS)).not.toContain('Converted to Course');
   });
 });
 
-describe('DOCUMENT_STATUS_LABELS', () => {
-  it('provides the exact copy shared by the document list and detail page', () => {
-    expect(DOCUMENT_STATUS_LABELS.uploaded).toBe('Uploaded');
-    expect(DOCUMENT_STATUS_LABELS.converted).toBe('Converted to Course');
-  });
-
-  it('has a label for every possible deriveDocumentStatus() output', () => {
-    const outputs = [deriveDocumentStatus(true), deriveDocumentStatus(false)] as const;
-    for (const status of outputs) {
-      expect(DOCUMENT_STATUS_LABELS[status]).toBeTruthy();
-    }
+describe('DOCUMENT_CONVERTED_LABEL', () => {
+  it('keeps the converted-to-course wording for the document detail page', () => {
+    expect(DOCUMENT_CONVERTED_LABEL).toBe('Converted to Course');
   });
 });

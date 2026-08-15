@@ -25,7 +25,7 @@ const {
   mockRedirect,
   mockGetGlobalDashboardData,
   mockListAccessibleFacilities,
-  mockResolveFacilityScope,
+  mockResolveFacilityScopeSelection,
 } = vi.hoisted(() => ({
   mockAuth: vi.fn(),
   prismaMock: { organization: { findUnique: vi.fn() } },
@@ -37,7 +37,7 @@ const {
   }),
   mockGetGlobalDashboardData: vi.fn(),
   mockListAccessibleFacilities: vi.fn(),
-  mockResolveFacilityScope: vi.fn(),
+  mockResolveFacilityScopeSelection: vi.fn(),
 }));
 
 vi.mock('@/auth', () => ({ auth: mockAuth }));
@@ -53,10 +53,13 @@ vi.mock('@/app/actions/dashboard-facility', () => ({
 }));
 vi.mock('@/lib/facility/scope', () => ({
   listAccessibleFacilities: mockListAccessibleFacilities,
-  resolveFacilityScope: mockResolveFacilityScope,
+  resolveFacilityScopeSelection: mockResolveFacilityScopeSelection,
 }));
+const mockGlobalDashboardView = vi.fn<(props: unknown) => JSX.Element>(() => (
+  <div data-testid="global-dashboard" />
+));
 vi.mock('@/components/dashboard/global/GlobalDashboardView', () => ({
-  default: () => <div data-testid="global-dashboard" />,
+  default: (props: unknown) => mockGlobalDashboardView(props),
 }));
 vi.mock('@/components/dashboard/FacilityScopeSwitcher', () => ({
   default: () => <div data-testid="facility-switcher" />,
@@ -101,7 +104,7 @@ beforeEach(() => {
     stats: { totalCourses: 0, totalStaffAssigned: 0, averageGrade: 0 },
   });
   mockHasActiveBilling.mockReturnValue(false);
-  mockResolveFacilityScope.mockResolvedValue({ mode: 'all' });
+  mockResolveFacilityScopeSelection.mockResolvedValue({ mode: 'all' });
   mockListAccessibleFacilities.mockResolvedValue([]);
   // No facilities => the page keeps the organisation-wide dashboard, which is
   // the surface these tests exercise.
@@ -221,5 +224,66 @@ describe('DashboardPage — Status Tracker data wiring', () => {
 
     expect(mockGetStatusTrackerSummaryForOrg).not.toHaveBeenCalled();
     expect(screen.queryByTestId('status-tracker-overview')).not.toBeInTheDocument();
+  });
+});
+
+describe('DashboardPage — facility scope wiring', () => {
+  const FACILITY_A = { id: 'fac-a', name: 'Alpha Site', type: 'clinic', city: 'Austin' };
+  const FACILITY_B = { id: 'fac-b', name: 'Beta Site', type: 'clinic', city: 'Dallas' };
+
+  it('hands the raw ?facility= value to the resolver rather than pre-parsing it', async () => {
+    render(await DashboardPage({ searchParams: Promise.resolve({ facility: 'fac-a,fac-b' }) }));
+
+    expect(mockResolveFacilityScopeSelection).toHaveBeenCalledWith(ADMIN_SESSION, 'fac-a,fac-b');
+  });
+
+  it('renders the Global View with no comparison for an unscoped request', async () => {
+    mockGetGlobalDashboardData.mockResolvedValue({ facilities: [FACILITY_A, FACILITY_B] });
+
+    render(await DashboardPage(noSearchParams()));
+
+    expect(screen.getByTestId('global-dashboard')).toBeInTheDocument();
+    expect(mockGlobalDashboardView).toHaveBeenCalledWith(
+      expect.objectContaining({ comparedFacilityIds: [] }),
+    );
+  });
+
+  it('renders the Global View narrowed to the compared facilities', async () => {
+    mockResolveFacilityScopeSelection.mockResolvedValue({
+      mode: 'compare',
+      facilities: [FACILITY_A, FACILITY_B],
+    });
+    mockGetGlobalDashboardData.mockResolvedValue({ facilities: [FACILITY_A, FACILITY_B] });
+
+    render(await DashboardPage({ searchParams: Promise.resolve({ facility: 'fac-a,fac-b' }) }));
+
+    expect(mockGlobalDashboardView).toHaveBeenCalledWith(
+      expect.objectContaining({ comparedFacilityIds: ['fac-a', 'fac-b'] }),
+    );
+  });
+
+  it('keeps the single-facility dashboard for a drill-down request', async () => {
+    mockResolveFacilityScopeSelection.mockResolvedValue({ mode: 'single', facility: FACILITY_A });
+    mockListAccessibleFacilities.mockResolvedValue([FACILITY_A, FACILITY_B]);
+
+    render(await DashboardPage({ searchParams: Promise.resolve({ facility: 'fac-a' }) }));
+
+    expect(screen.queryByTestId('global-dashboard')).not.toBeInTheDocument();
+    expect(screen.getByTestId('facility-switcher')).toBeInTheDocument();
+    expect(mockGetDashboardData).toHaveBeenCalledWith('fac-a');
+    expect(mockGetGlobalDashboardData).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the organisation dashboard when a comparison has no facilities to show', async () => {
+    mockResolveFacilityScopeSelection.mockResolvedValue({
+      mode: 'compare',
+      facilities: [FACILITY_A, FACILITY_B],
+    });
+    mockGetGlobalDashboardData.mockResolvedValue({ facilities: [] });
+
+    render(await DashboardPage({ searchParams: Promise.resolve({ facility: 'fac-a,fac-b' }) }));
+
+    expect(screen.queryByTestId('global-dashboard')).not.toBeInTheDocument();
+    expect(screen.getByTestId('my-courses')).toBeInTheDocument();
   });
 });

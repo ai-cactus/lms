@@ -10,15 +10,36 @@ interface DatePickerProps {
   value: string; // YYYY-MM-DD
   onChange: (date: string) => void;
   placeholder?: string;
+  /** Accessible name for the trigger button. */
   label?: string;
   minDate?: Date; // Dates before this are disabled
+  /** Which side of the trigger the calendar icon sits on. */
+  iconPosition?: 'start' | 'end';
+  /** Adds a year dropdown above the grid so distant dates need no month-paging. */
+  showYearSelect?: boolean;
+  /**
+   * Where the calendar opens relative to the trigger. 'top-end' anchors the
+   * popover's bottom-right corner above the trigger's top-right — for triggers
+   * near the bottom of a dialog/viewport where 'bottom-start' would clip.
+   */
+  placement?: 'bottom-start' | 'top-end';
+  /** Extra classes for the trigger button (height/typography overrides). */
+  className?: string;
 }
+
+/** Years offered by the optional year dropdown, counting forward from the minimum. */
+const YEAR_SELECT_SPAN = 11;
 
 export default function DatePicker({
   value,
   onChange,
   placeholder = 'Select date',
+  label,
   minDate,
+  iconPosition = 'end',
+  showYearSelect = false,
+  placement = 'bottom-start',
+  className,
 }: DatePickerProps) {
   // Default minDate to start of today if not provided
   const effectiveMinDate =
@@ -55,11 +76,19 @@ export default function DatePicker({
       const updatePosition = () => {
         if (containerRef.current) {
           const rect = containerRef.current.getBoundingClientRect();
-          setPosition({
-            top: rect.bottom + window.scrollY,
-            left: rect.left + window.scrollX,
-            width: rect.width,
-          });
+          setPosition(
+            placement === 'top-end'
+              ? {
+                  top: rect.top + window.scrollY,
+                  left: rect.right + window.scrollX,
+                  width: rect.width,
+                }
+              : {
+                  top: rect.bottom + window.scrollY,
+                  left: rect.left + window.scrollX,
+                  width: rect.width,
+                },
+          );
         }
       };
       updatePosition();
@@ -72,7 +101,7 @@ export default function DatePicker({
         window.removeEventListener('resize', updatePosition);
       };
     }
-  }, [isOpen]);
+  }, [isOpen, placement]);
 
   const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
   const getFirstDayOfMonth = (year: number, month: number) => new Date(year, month, 1).getDay();
@@ -124,29 +153,55 @@ export default function DatePicker({
 
   const dayLabels = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
+  const icon = <Calendar className="size-[18px] shrink-0 text-text-tertiary" aria-hidden="true" />;
+  const triggerLabel = (
+    <span
+      className={cn(
+        'truncate text-base',
+        value ? 'font-medium text-foreground' : 'text-muted-foreground',
+      )}
+    >
+      {value ? formatDateDisplay(value) : placeholder}
+    </span>
+  );
+
+  const minYear = effectiveMinDate.getFullYear();
+  const yearOptions = Array.from({ length: YEAR_SELECT_SPAN }, (_, i) => minYear + i);
+  // A year already selected (or paged to) outside the forward span must stay
+  // selectable, otherwise the dropdown would silently jump the view.
+  if (!yearOptions.includes(currentYear)) {
+    yearOptions.push(currentYear);
+    yearOptions.sort((a, b) => a - b);
+  }
+
   return (
     <div className="relative w-full" ref={containerRef}>
       <button
         type="button"
+        aria-label={label}
         className={cn(
-          'flex h-14 w-full select-none items-center justify-between rounded-[10px] border bg-background px-4 text-left transition-colors',
+          'flex h-14 w-full select-none items-center gap-3 rounded-[10px] border bg-background px-4 text-left transition-colors',
+          iconPosition === 'start' ? 'justify-start' : 'justify-between',
           isOpen
             ? 'border-ring ring-[3px] ring-ring/50'
             : 'border-input hover:border-ring/60 hover:bg-background-secondary',
+          className,
         )}
         onClick={() => setIsOpen(!isOpen)}
         aria-haspopup="dialog"
         aria-expanded={isOpen}
       >
-        <span
-          className={cn(
-            'text-base',
-            value ? 'font-medium text-foreground' : 'text-muted-foreground',
-          )}
-        >
-          {value ? formatDateDisplay(value) : placeholder}
-        </span>
-        <Calendar className="size-[18px] text-text-tertiary" aria-hidden="true" />
+        {iconPosition === 'start' ? (
+          <>
+            {icon}
+            {triggerLabel}
+          </>
+        ) : (
+          <>
+            {triggerLabel}
+            {icon}
+          </>
+        )}
       </button>
 
       {isOpen &&
@@ -159,8 +214,20 @@ export default function DatePicker({
             className="absolute z-[9999] w-80 max-w-[calc(100vw-32px)] rounded-xl border border-border bg-background p-4 shadow-lg"
             style={{
               position: 'absolute',
-              top: position.top + 8,
-              left: position.left,
+              // 'top-end' anchors via transform so the popover's own height
+              // never needs measuring before first paint.
+              ...(placement === 'top-end'
+                ? {
+                    top: position.top - 8,
+                    left: position.left,
+                    transform: 'translate(-100%, -100%)',
+                  }
+                : { top: position.top + 8, left: position.left }),
+              // Re-enable interaction when the trigger sits inside a Radix
+              // Dialog: the dialog sets `pointer-events: none` inline on <body>
+              // and this popover portals outside its content subtree. Set
+              // inline (not via a utility) so it wins regardless of stylesheet.
+              pointerEvents: 'auto',
             }}
           >
             <div className="mb-5 flex items-center justify-between">
@@ -174,6 +241,24 @@ export default function DatePicker({
                 <ChevronRight className="size-4" aria-hidden="true" />
               </Button>
             </div>
+
+            {showYearSelect && (
+              // Deliberately a native select: Radix `Select` portals its listbox
+              // outside `#date-picker-popover`, so clicking an option would trip
+              // this popover's outside-click handler and close the calendar.
+              <select
+                aria-label="Year"
+                value={currentYear}
+                onChange={(e) => setViewDate(new Date(Number(e.target.value), currentMonth, 1))}
+                className="mb-4 h-10 w-full rounded-[10px] border border-input bg-background px-3 text-sm font-medium text-foreground outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              >
+                {yearOptions.map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
+                ))}
+              </select>
+            )}
 
             <div className="grid grid-cols-7 gap-1 text-center">
               {dayLabels.map((day) => (

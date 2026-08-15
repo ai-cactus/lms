@@ -1,23 +1,23 @@
 /**
- * E2E spec: "Your Facility" tab — permission-gated visibility, read-only content.
+ * E2E spec: the facilities section on Profile Settings — permission-gated
+ * visibility and the two nav variants in the Figma mocks.
  *
  * Acceptance criteria:
- *   - Owner sees the "Your Facility" tab on /dashboard/profile.
- *   - Supervisor sees the "Your Facility" tab on /dashboard/profile.
- *   - HR sees the "Your Facility" tab (every manager role has facility.read —
- *     see src/lib/rbac/permissions.ts and permissions.test.ts:140).
- *   - The facility tab's fields (e.g. phone) are disabled/read-only for every
- *     role, and there is no Save/submit control for the facility form —
- *     editing moved to the owner-only Settings page (see settings-page.spec.ts).
+ *   - An org-wide admin seat (Owner, HR) sees a "My Facilities" nav item listing
+ *     every facility in the organization, read-only, with the banner pointing at
+ *     Settings for edits.
+ *   - A facility Supervisor sees "Assigned Facilities" instead — only the sites
+ *     on their own assignments — and each card carries its own Edit control
+ *     (PROF-002: supervisors may edit their own facility's details).
+ *   - A Supervisor has no "My Organization" nav item; an org-wide seat does.
  *
  * Pre-conditions:
  *   - App is running on http://localhost:3005.
  *   - DATABASE_URL reachable for direct DB seeding.
  *
- * Note: the tab visibility is gated purely on can(roleKey, 'facility.read')
- * (src/app/dashboard/(main)/profile/page.tsx:29); FacilityForm itself
- * (src/components/dashboard/FacilityForm.tsx) renders every field disabled
- * regardless of role, with no save flow.
+ * Nav visibility is derived in src/app/dashboard/(main)/profile/page.tsx from
+ * can(roleKey, 'facility.read') plus isOrgWideFacilityRole(role); the panels
+ * themselves live in src/components/dashboard/profile/.
  */
 
 import { test, expect } from '@playwright/test';
@@ -135,42 +135,44 @@ async function loginAndGoToProfile(
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-test.describe('"Your Facility" tab — visibility per role', () => {
-  test('owner sees the "Your Facility" tab on the profile page', async ({ page }) => {
+test.describe('Profile Settings — facilities nav per role', () => {
+  test('owner sees the org-wide "My Facilities" section', async ({ page }) => {
     const email = uid('owner');
     const seeded = await seedWithRole('owner', email, 'Owne!r99xP');
     try {
       await loginAndGoToProfile(page, email, 'Owne!r99xP');
-      // The tab should be visible — ProfileForm renders tabs as <button> elements (no role="tab")
-      await expect(page.getByRole('tab', { name: /your facility/i })).toBeVisible({
+      await expect(page.getByRole('tab', { name: 'My Facilities' })).toBeVisible({
         timeout: 10000,
       });
+      await expect(page.getByRole('tab', { name: 'Assigned Facilities' })).toHaveCount(0);
     } finally {
       await cleanup(seeded);
     }
   });
 
-  test('supervisor sees the "Your Facility" tab on the profile page', async ({ page }) => {
-    const email = uid('supervisor');
-    const seeded = await seedWithRole('supervisor', email, 'Sup3rv!s0r');
-    try {
-      await loginAndGoToProfile(page, email, 'Sup3rv!s0r');
-      await expect(page.getByRole('tab', { name: /your facility/i })).toBeVisible({
-        timeout: 10000,
-      });
-    } finally {
-      await cleanup(seeded);
-    }
-  });
-
-  test('hr sees the "Your Facility" tab (hr has facility.read)', async ({ page }) => {
+  test('hr sees the org-wide "My Facilities" section (hr has facility.read)', async ({ page }) => {
     const email = uid('hr');
     const seeded = await seedWithRole('hr', email, 'Hr!Pass99x');
     try {
       await loginAndGoToProfile(page, email, 'Hr!Pass99x');
-      await expect(page.getByRole('tab', { name: /your facility/i })).toBeVisible({
+      await expect(page.getByRole('tab', { name: 'My Facilities' })).toBeVisible({
         timeout: 10000,
       });
+    } finally {
+      await cleanup(seeded);
+    }
+  });
+
+  test('supervisor sees "Assigned Facilities" and no organization section', async ({ page }) => {
+    const email = uid('supervisor');
+    const seeded = await seedWithRole('supervisor', email, 'Sup3rv!s0r');
+    try {
+      await loginAndGoToProfile(page, email, 'Sup3rv!s0r');
+      await expect(page.getByRole('tab', { name: 'Assigned Facilities' })).toBeVisible({
+        timeout: 10000,
+      });
+      await expect(page.getByRole('tab', { name: 'My Organization' })).toHaveCount(0);
+      await expect(page.getByRole('tab', { name: 'My Facilities' })).toHaveCount(0);
     } finally {
       await cleanup(seeded);
     }
@@ -180,33 +182,52 @@ test.describe('"Your Facility" tab — visibility per role', () => {
   // loginAndGoToProfile() here — src/app/actions/auth.ts redirects any
   // isWorkerRole() user straight to /worker regardless of which login portal
   // was used, so it never reaches /dashboard/profile at all. That is already
-  // covered at the routing layer by tests/e2e/rbac-roles.spec.ts (worker-category
-  // login lands at /worker); asserting tab *invisibility* for a role that can't
-  // reach the page would be redundant with that routing guard.
+  // covered at the routing layer by tests/e2e/rbac-roles.spec.ts.
 });
 
-test.describe('"Your Facility" tab — read-only content', () => {
-  test('owner sees the facility tab rendered read-only with no save control', async ({
+test.describe('Profile Settings — facility card content', () => {
+  test('owner gets read-only cards pointing at Settings, with no per-card Edit', async ({
     page,
   }) => {
     const email = uid('owner-readonly');
     const seeded = await seedWithRole('owner', email, 'Owne!r99xP');
     try {
       await loginAndGoToProfile(page, email, 'Owne!r99xP');
+      await page.getByRole('tab', { name: 'My Facilities' }).click();
 
-      // Click the "Your Facility" tab — ProfileForm renders tabs as <button> elements (no role="tab")
-      await page.getByRole('tab', { name: /your facility/i }).click();
-      await page.waitForLoadState('networkidle');
+      await expect(page.getByRole('heading', { name: 'My facilities' })).toBeVisible({
+        timeout: 10000,
+      });
+      await expect(page.getByRole('link', { name: /settings/i })).toBeVisible();
+      // Editing a facility from here moved to the owner-only Settings page.
+      await expect(page.getByRole('button', { name: /^edit$/i })).toHaveCount(0);
+    } finally {
+      await cleanup(seeded);
+    }
+  });
 
-      // PhoneInput renders <input type="tel"> — there is no htmlFor/id link so
-      // getByLabel() won't find it. Target by type instead.
-      const phoneInput = page.locator('input[type="tel"]').first();
-      await expect(phoneInput).toBeVisible();
-      await expect(phoneInput).toBeDisabled();
+  test('supervisor gets an Edit control that opens the facility form, name first', async ({
+    page,
+  }) => {
+    const email = uid('supervisor-edit');
+    const seeded = await seedWithRole('supervisor', email, 'Sup3rv!s0r');
+    try {
+      await loginAndGoToProfile(page, email, 'Sup3rv!s0r');
+      await page.getByRole('tab', { name: 'Assigned Facilities' }).click();
 
-      // Editing moved to the owner-only Settings page — the profile facility
-      // tab has no Save/submit control of its own.
-      await expect(page.getByRole('button', { name: /save/i })).toHaveCount(0);
+      await expect(page.getByRole('heading', { name: 'Assigned facilities' })).toBeVisible({
+        timeout: 10000,
+      });
+      await page
+        .getByRole('button', { name: /^edit$/i })
+        .first()
+        .click();
+
+      // PROF-003: the facility name is the first field on the form.
+      await expect(page.getByLabel('Facility name')).toBeVisible();
+      await expect(page.getByRole('button', { name: /^save$/i })).toBeVisible();
+      // A supervisor never reassigns their facility, so no supervisor field.
+      await expect(page.getByLabel(/supervisor/i)).toHaveCount(0);
     } finally {
       await cleanup(seeded);
     }

@@ -2,6 +2,7 @@ import React from 'react';
 import { getStaffDetails } from '@/app/actions/staff';
 import StaffProfileClient from '@/components/dashboard/staff/StaffProfileClient';
 import { auth } from '@/auth';
+import { listAccessibleFacilities } from '@/lib/facility/scope';
 import { notFound } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
@@ -18,5 +19,9 @@ export default async function StaffProfilePage({ params }: PageProps) {
     notFound();
   }
 
-  return <StaffProfileClient staff={staff} viewerRole={session.user.role} />;
+  const facilities = await listAccessibleFacilities(session);
+
+  return (
+    <StaffProfileClient staff={staff} viewerRole={session.user.role} facilities={facilities} />
+  );
 }

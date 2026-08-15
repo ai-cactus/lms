@@ -4,6 +4,9 @@ import { auth } from '@/auth';
 import { getStatusTrackerSummaryForOrg } from '@/lib/reminders/status-tracker';
 import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
 import { can } from '@/lib/rbac/permissions';
+import { listAccessibleFacilities, resolveFacilityScopeSelection } from '@/lib/facility/scope';
+import { FACILITY_SCOPE_PARAM } from '@/lib/facility/scope-param';
+import FacilityScopeSwitcher from '@/components/dashboard/FacilityScopeSwitcher';
 import type { Role } from '@/types/next-auth';
 import StatusTrackerTableClient, {
   type StatusTrackerRowView,
@@ -16,7 +19,11 @@ export const metadata = {
   description: 'Workers with overdue training that needs attention.',
 };
 
-export default async function StatusTrackerPage() {
+interface StatusTrackerPageProps {
+  searchParams: Promise<{ [FACILITY_SCOPE_PARAM]?: string | string[] }>;
+}
+
+export default async function StatusTrackerPage({ searchParams }: StatusTrackerPageProps) {
   const session = await auth();
   if (!session?.user?.id) {
     redirect('/login');
@@ -30,8 +37,24 @@ export default async function StatusTrackerPage() {
     redirect('/dashboard');
   }
 
+  // Scope is URL state, mirroring the dashboard: the selection is re-validated
+  // against the caller's accessible facilities on every request.
+  const { facility: facilityParam } = await searchParams;
+  const scope = await resolveFacilityScopeSelection(session, facilityParam);
+  const scopedFacilityIds =
+    scope.mode === 'single'
+      ? [scope.facility.id]
+      : scope.mode === 'compare'
+        ? scope.facilities.map((facility) => facility.id)
+        : [];
+  const facilities = await listAccessibleFacilities(session);
+
   const summary = organizationId
-    ? await getStatusTrackerSummaryForOrg(organizationId)
+    ? await getStatusTrackerSummaryForOrg(
+        organizationId,
+        undefined,
+        scopedFacilityIds.length > 0 ? scopedFacilityIds : undefined,
+      )
     : {
         overdueCount: 0,
         hardEscalationCount: 0,
@@ -49,6 +72,7 @@ export default async function StatusTrackerPage() {
       workerEmail: row.workerEmail,
       courseId: row.courseId,
       courseTitle: row.courseTitle,
+      facilityName: row.facilityName,
       dueAt: row.dueAt.toISOString(),
       daysOverdue: row.daysOverdue,
       daysUntilDue: null,
@@ -60,6 +84,7 @@ export default async function StatusTrackerPage() {
       workerEmail: row.workerEmail,
       courseId: row.courseId,
       courseTitle: row.courseTitle,
+      facilityName: row.facilityName,
       dueAt: row.dueAt.toISOString(),
       daysOverdue: null,
       daysUntilDue: row.daysUntilDue,
@@ -77,12 +102,7 @@ export default async function StatusTrackerPage() {
           <h1 className="min-w-0 flex-1 text-[28px] leading-[1.31] font-semibold tracking-[-0.04em] text-[#272b30] sm:text-[33.5px]">
             Status Tracker
           </h1>
-          {rows.length > 0 && (
-            <span className="inline-flex shrink-0 items-center gap-[7px] rounded-full bg-[#fee4e2] px-[14px] py-1.5 text-[13px] font-semibold whitespace-nowrap text-[#b42318] sm:text-[14.4px]">
-              <span aria-hidden="true" className="size-[7px] shrink-0 rounded-full bg-[#d92d20]" />
-              {rows.length} at risk
-            </span>
-          )}
+          <FacilityScopeSwitcher facilities={facilities} selectedFacilityIds={scopedFacilityIds} />
         </div>
       </header>
 
