@@ -69,8 +69,7 @@ export type FacilityScope = { mode: 'all' } | { mode: 'single'; facility: Access
  * a single survivor is an ordinary single-facility scope, none is org-wide.
  */
 export type FacilityScopeSelection =
-  | FacilityScope
-  | { mode: 'compare'; facilities: AccessibleFacility[] };
+  FacilityScope | { mode: 'compare'; facilities: AccessibleFacility[] };
 
 /** The session fields this module reads — satisfied by a full NextAuth session. */
 type FacilityScopeSession = {

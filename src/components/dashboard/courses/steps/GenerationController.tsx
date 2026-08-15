@@ -259,9 +259,7 @@ function splitMarkdownSections(markdown: string): { title: string; content: stri
  */
 const adaptModulesForRenderingV46 = (
   articleMeta:
-    | { sections: { title: string; sectionId: string; keyPoints?: string[] }[] }
-    | null
-    | undefined,
+    { sections: { title: string; sectionId: string; keyPoints?: string[] }[] } | null | undefined,
   articleMarkdown: string,
   slidesJson: { slides: RichSlide[] } | null | undefined,
   estimatedDurationMinutes?: number,
