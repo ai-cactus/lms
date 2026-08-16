@@ -123,6 +123,42 @@ describe('sanitizeProperties', () => {
     expect(out.analytics_dropped_keys).toBe('sourceDocument,answers');
   });
 
+  /**
+   * Regression: URL-bearing keys were enumerated by name, and posthog-js has at
+   * least THREE families of them. Each leaked in turn. Matching on shape is what
+   * stops the next SDK release from adding a fourth.
+   */
+  it.each([
+    '$current_url',
+    '$pathname',
+    '$referrer',
+    '$initial_current_url',
+    '$initial_pathname',
+    '$session_entry_url',
+    '$session_entry_pathname',
+    '$session_entry_referrer',
+    'path',
+  ])('reduces the URL-bearing property %s to a route shape', (key) => {
+    const out = sanitizeProperties({
+      [key]: 'https://app.theraptly.com/join/PkS8x2Lm9QvT4nR7wZ3b',
+    });
+    expect(out[key]).toBe('/join/[token]');
+  });
+
+  it('strips a query string from any URL-bearing property', () => {
+    const out = sanitizeProperties({
+      $session_entry_url:
+        'http://localhost:3005/?email=nurse@clinic.com&token=PkS8x2Lm9QvT4nR7wZ3b',
+    });
+    expect(out.$session_entry_url).toBe('/');
+  });
+
+  it('leaves a non-URL string property alone', () => {
+    const out = sanitizeProperties({ portal: 'marketing', from_role: 'nurse' });
+    expect(out.portal).toBe('marketing');
+    expect(out.from_role).toBe('nurse');
+  });
+
   it('never lets nested content survive as a serialised string', () => {
     const out = sanitizeProperties({ payload: { phi: 'diagnosis: F41.1' } });
     expect(JSON.stringify(out)).not.toContain('F41.1');

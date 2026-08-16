@@ -1181,6 +1181,23 @@ export async function submitQuizAttempt(
       }),
       quizAnalytics,
     );
+
+    // Passing the quiz is when the LEARNING is finished. Attestation is a
+    // separate compliance act with its own event, so the two are not
+    // duplicates fired at the same moment.
+    if (passed) {
+      captureServer(
+        'course_completed',
+        () => ({
+          course_id: enrollment.courseId,
+          total_minutes: enrollment.startedAt
+            ? Math.round((Date.now() - enrollment.startedAt.getTime()) / 60_000)
+            : null,
+          is_retake: Boolean(enrollment.retakeOf),
+        }),
+        quizAnalytics,
+      );
+    }
   }
 
   revalidatePath(`/dashboard/training`);

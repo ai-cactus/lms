@@ -32,6 +32,17 @@ function portalFor(path: string): PortalName {
   return 'marketing';
 }
 
+/** The referring host, or null when there is no cross-origin referrer. */
+function referrerHost(): string | null {
+  if (typeof document === 'undefined' || !document.referrer) return null;
+  try {
+    const host = new URL(document.referrer).host;
+    return host === window.location.host ? null : host;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Manual pageview capture.
  *
@@ -52,7 +63,13 @@ export const PostHogPageview: FC = () => {
 
   useEffect(() => {
     if (!pathname) return;
-    capture('$pageview', { path: normalizePath(pathname), portal: portalFor(pathname) });
+    capture('$pageview', {
+      path: normalizePath(pathname),
+      portal: portalFor(pathname),
+      // Host only. A full referrer can carry another site's query parameters,
+      // and document.referrer is empty on same-origin navigations anyway.
+      referrer_host: referrerHost(),
+    });
   }, [pathname]);
 
   return null;

@@ -153,6 +153,7 @@ export async function authenticate(
     if (lookupUser.mfaEnabled) {
       const challengeToken = await createMfaChallenge(lookupUser.id, role);
       mfaRedirect = `/mfa/verify?challenge=${challengeToken}`;
+      captureServer('mfa_challenge_sent', { portal: role }, { distinctId: lookupUser.id });
     }
 
     // Two or more active memberships and no remembered org — land on the picker

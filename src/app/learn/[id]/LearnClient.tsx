@@ -23,6 +23,7 @@ import { isQuizUnlocked } from '@/lib/video/gating';
 import { isWholeCourse } from '@/lib/course/structure';
 import { sanitizeHtml } from '@/lib/sanitize';
 import { logger } from '@/lib/logger';
+import { capture } from '@/lib/analytics/client';
 import type { LearnPayload } from '@/lib/learn/get-learn-payload';
 
 interface Lesson {
@@ -425,6 +426,20 @@ export default function LearnClient({ initialData }: LearnClientProps) {
           body: JSON.stringify({ progress }),
         });
         setEnrollment((prev) => (prev ? { ...prev, progress } : prev));
+
+        // Captured client-side because only the browser knows WHICH lesson was
+        // finished — the progress endpoint receives a percentage. Guarded by the
+        // forward-progress check above, so re-reading a lesson does not re-fire.
+        const lesson = course.lessons[idx];
+        capture('lesson_completed', {
+          course_id: course.id,
+          lesson_index: idx,
+          content_type: lesson?.videoStorageUri
+            ? 'video'
+            : lesson?.slideContent
+              ? 'slides'
+              : 'article',
+        });
       } catch (err) {
         logger.error({ msg: 'Failed to update progress', err: err });
       }
@@ -597,6 +612,12 @@ export default function LearnClient({ initialData }: LearnClientProps) {
       if (!res.ok) {
         throw new Error(await readQuizErrorMessage(res, START_QUIZ_FALLBACK));
       }
+
+      capture('quiz_started', {
+        course_id: course.id,
+        question_count: course.quiz.questions.length,
+        attempt_number: (quizResults?.attemptsUsed ?? 0) + 1,
+      });
 
       setQuizStep('active');
       setCurrentQuestionIndex(0);

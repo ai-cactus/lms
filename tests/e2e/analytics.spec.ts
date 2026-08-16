@@ -271,14 +271,41 @@ test.describe('PostHog egress guard', () => {
   test('never puts a record id in a URL property', async ({ page }) => {
     const bodies = collectIngestBodies(page);
 
-    await page.goto(`/learn/${'3f2b8c1e-4a5d-4b7e-9c0f-1a2b3c4d5e6f'}`, {
-      waitUntil: 'domcontentloaded',
-    }).catch(() => {});
+    await page
+      .goto(`/learn/${'3f2b8c1e-4a5d-4b7e-9c0f-1a2b3c4d5e6f'}`, {
+        waitUntil: 'domcontentloaded',
+      })
+      .catch(() => {});
     await flushAnalytics(page);
 
     for (const value of urlPropertyValues(bodies)) {
       expect(value, `URL property leaked a record id: ${value}`).not.toMatch(UUID_PATTERN);
     }
+  });
+
+  /**
+   * Regression: `$set`/`$set_once` are SIBLINGS of `properties` on the event, so
+   * sanitising `properties` alone left them untouched. They carried
+   * `$initial_current_url` — the session's first URL verbatim, query string and
+   * all — which on this app is the /join invite credential.
+   */
+  test('never sends person-property blocks carrying the session entry URL', async ({ page }) => {
+    const bodies = collectIngestBodies(page);
+
+    await page.goto('/?email=nurse@clinic.com&token=PkS8x2Lm9QvT4nR7wZ3b');
+    await page.waitForLoadState('networkidle');
+    await flushAnalytics(page);
+
+    const combined = bodies.join('\n');
+    // Matches the BLOCK, not the bare name: the sanitiser legitimately reports
+    // "$set,$set_once" in analytics_dropped_keys, which a substring check on the
+    // name alone would flag as a leak.
+    expect(combined, '$set_once block leaks initial person info').not.toMatch(
+      /"\$set_once"\s*:\s*\{/,
+    );
+    expect(combined).not.toContain('$initial_current_url');
+    expect(combined).not.toContain('$initial_pathname');
+    expect(combined).not.toContain('PkS8x2Lm9QvT4nR7wZ3b');
   });
 
   /**

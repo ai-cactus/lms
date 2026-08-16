@@ -108,6 +108,24 @@ export function normalizePath(input: string): string {
 }
 
 /**
+ * Does this property name hold a URL, a path, or a referrer?
+ *
+ * Matched by SHAPE rather than an exact list because posthog-js attaches at
+ * least three families of URL-bearing properties — `$current_url`/`$pathname`,
+ * `$initial_current_url`/`$initial_pathname`, and
+ * `$session_entry_url`/`$session_entry_pathname` — and adds more between
+ * versions. Every one of them carries the session's raw address, which on this
+ * app is `/join/<invite-token>` (a credential) or a record id.
+ *
+ * Each of those three families leaked in turn while this was a hardcoded list;
+ * an exact-name denylist will always trail the SDK by one release.
+ */
+function isUrlLikeKey(key: string): boolean {
+  const k = key.toLowerCase();
+  return k.endsWith('url') || k.endsWith('pathname') || k.endsWith('referrer') || k === 'path';
+}
+
+/**
  * Property values are restricted to primitives.
  *
  * An object or array is a channel for free text, and free text on this app means
@@ -139,11 +157,15 @@ export function sanitizeProperties(properties: Record<string, unknown>): Record<
   const dropped: string[] = [];
 
   for (const [key, value] of Object.entries(properties)) {
-    if (isAllowedValue(value)) {
-      allowed[key] = value;
-    } else {
+    if (!isAllowedValue(value)) {
       dropped.push(key);
+      continue;
     }
+
+    // URL-ish values are reduced to their route shape HERE rather than at the
+    // call site, so every capture path — browser and server — is covered by one
+    // rule (see isUrlLikeKey for why it matches on shape, not an exact list).
+    allowed[key] = typeof value === 'string' && isUrlLikeKey(key) ? normalizePath(value) : value;
   }
 
   const redacted = redactLogPayload(allowed);

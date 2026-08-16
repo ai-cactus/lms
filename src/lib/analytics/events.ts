@@ -39,13 +39,6 @@ export interface AnalyticsEventProperties {
    * until the visitor signs up and the session is aliased.
    */
 
-  /** Which acquisition surfaces actually lead anywhere. */
-  marketing_page_viewed: {
-    /** Route SHAPE only — always via normalizePath(). */
-    path: string;
-    referrer_host: string | null;
-  };
-
   /** The top of the sales funnel; the conversion the marketing site exists for. */
   demo_requested: {
     /** Bucketed, never the raw count, so it cannot fingerprint one org. */
@@ -99,7 +92,12 @@ export interface AnalyticsEventProperties {
   };
 
   mfa_challenge_sent: { portal: 'admin' | 'worker' };
-  mfa_verified: { portal: 'admin' | 'worker'; attempts: number };
+  /**
+   * `used_recovery_code` rather than an attempt count: attempts are not tracked
+   * anywhere, and recovery-code usage is the more actionable signal — it means
+   * a user could not reach their email OTP.
+   */
+  mfa_verified: { portal: 'admin' | 'worker'; used_recovery_code: boolean };
 
   /** Multi-org users: how often identity switching actually happens. */
   organization_selected: { membership_count: number };
@@ -127,9 +125,15 @@ export interface AnalyticsEventProperties {
     source: 'document' | 'topic' | 'video';
     requested_quiz_count: number;
   };
+  /**
+   * Counts describe what the v4.6 pipeline actually emits — an article split
+   * into sections, a slide deck, and a quiz. It does NOT produce lessons; those
+   * are assembled later when the generated material is turned into a course.
+   */
   course_generation_completed: {
     duration_seconds: number;
-    lesson_count: number;
+    section_count: number;
+    slide_count: number;
     quiz_count: number;
   };
   course_generation_failed: {
@@ -153,7 +157,7 @@ export interface AnalyticsEventProperties {
   staff_role_changed: { from_role: string; to_role: string };
 
   /** The compliance deliverable — the reason a facility buys this product. */
-  audit_report_exported: { format: 'pdf' | 'xlsx' | 'docx'; range_days: number | null };
+  audit_report_exported: { format: 'csv' | 'pdf' | 'xlsx' | 'docx'; range_days: number | null };
 
   billing_plan_change_started: {
     from_plan: string;
@@ -250,6 +254,15 @@ export interface AnalyticsEventProperties {
     /** Route SHAPE only — always via normalizePath(). */
     path: string;
     portal: 'marketing' | 'auth' | 'admin' | 'worker' | 'onboarding' | 'system';
+    /**
+     * Referring HOST only, never the full referrer — a referrer URL can carry
+     * another site's query parameters.
+     *
+     * Lives here rather than on a separate marketing event: `portal: 'marketing'`
+     * already identifies acquisition pageviews, so a second event per marketing
+     * page would double the volume to carry one extra property.
+     */
+    referrer_host: string | null;
   };
 }
 
@@ -265,7 +278,6 @@ export type AnalyticsEvent = keyof AnalyticsEventProperties;
  * typed helpers at all.
  */
 export const ALLOWED_EVENTS: ReadonlySet<string> = new Set<AnalyticsEvent>([
-  'marketing_page_viewed',
   'demo_requested',
   'help_search_performed',
   'help_article_viewed',

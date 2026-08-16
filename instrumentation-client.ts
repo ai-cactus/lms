@@ -13,11 +13,7 @@
  */
 import posthog from 'posthog-js';
 import { isAllowedEvent } from '@/lib/analytics/events';
-import {
-  normalizePath,
-  sanitizeProperties,
-  sanitizeExceptionProperties,
-} from '@/lib/analytics/sanitize';
+import { sanitizeProperties, sanitizeExceptionProperties } from '@/lib/analytics/sanitize';
 
 const key = process.env.NEXT_PUBLIC_POSTHOG_KEY;
 
@@ -126,16 +122,26 @@ if (key) {
         return { ...event, properties: sanitizeExceptionProperties(event.properties ?? {}) };
       }
 
+      // sanitizeProperties also reduces every URL-ish property to its route
+      // shape, so tokens and record ids never leave while funnels still work.
       const properties = sanitizeProperties(event.properties ?? {});
 
-      // URL-bearing properties are route-shaped rather than dropped, so funnels
-      // still work while tokens and record ids never leave.
-      for (const urlKey of ['$current_url', '$pathname', '$referrer', 'path'] as const) {
-        const value = properties[urlKey];
-        if (typeof value === 'string') properties[urlKey] = normalizePath(value);
-      }
-
-      return { ...event, properties };
+      /**
+       * ⛔ CLOSES A REAL LEAK, found by tests/e2e/analytics.spec.ts.
+       *
+       * `$set` and `$set_once` are SIBLINGS of `properties` on the event, not
+       * entries within it, so sanitizing `properties` never touched them. They
+       * carry the SDK's initial person info — `$initial_current_url` and
+       * `$initial_pathname` — which is the session's first URL verbatim, query
+       * string included. On this app that is `/join/<invite-token>` (a
+       * credential) or a raw record id.
+       *
+       * `property_denylist` does not cover them either; it filters `properties`.
+       * They are dropped wholesale rather than scrubbed: person properties are
+       * not something this integration sets from the browser at all — identity
+       * is set deliberately in client.ts, with only a role.
+       */
+      return { ...event, properties, $set: undefined, $set_once: undefined };
     },
   });
 }

@@ -60,7 +60,6 @@ describe('event allowlist', () => {
    */
   it('keeps the runtime allowlist in step with the declared event types', () => {
     const declared: Record<AnalyticsEvent, true> = {
-      marketing_page_viewed: true,
       demo_requested: true,
       help_search_performed: true,
       help_article_viewed: true,
