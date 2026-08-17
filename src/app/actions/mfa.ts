@@ -21,8 +21,7 @@ import { audit, getClientContext } from '@/lib/audit';
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type MfaActionResult =
-  | { success: true; data?: Record<string, unknown> }
-  | { success: false; error: string };
+  { success: true; data?: Record<string, unknown> } | { success: false; error: string };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

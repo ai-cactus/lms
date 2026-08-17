@@ -23,8 +23,7 @@ export interface OnboardingDocumentMeta {
 }
 
 type UploadResult =
-  | { success: true; document: OnboardingDocumentMeta }
-  | { success: false; error: string };
+  { success: true; document: OnboardingDocumentMeta } | { success: false; error: string };
 
 export async function uploadOnboardingDocument(formData: FormData): Promise<UploadResult> {
   const session = await auth();
