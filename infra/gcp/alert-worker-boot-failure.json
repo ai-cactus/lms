@@ -9,7 +9,7 @@
     {
       "displayName": "worker boot failure",
       "conditionMatchedLog": {
-        "filter": "jsonPayload.msg=~\"Failed to start background workers\""
+        "filter": "labels.msg=~\"Failed to start background workers\""
       }
     }
   ],

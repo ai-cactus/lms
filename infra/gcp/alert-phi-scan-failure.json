@@ -9,7 +9,7 @@
     {
       "displayName": "PHI scanner fail-closed entries",
       "conditionMatchedLog": {
-        "filter": "jsonPayload.msg=~\"PHI scan\" AND severity>=WARNING AND jsonPayload.service=~\"lms-\""
+        "filter": "labels.msg=~\"PHI scan\" AND severity>=WARNING AND labels.service=~\"lms-\""
       }
     }
   ],

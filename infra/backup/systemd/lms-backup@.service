@@ -1,0 +1,24 @@
+[Unit]
+# Nightly logical backup for one environment. Instantiate per environment:
+#   systemctl enable --now lms-backup@production.timer
+Description=LMS Postgres + Redis backup (%i)
+Documentation=https://github.com/ai-cactus/lms/blob/dev/infra/backup/README.md
+After=docker.service
+Requires=docker.service
+# A failed backup must be loud. Without this the unit fails quietly into the
+# journal and the first anyone hears of it is during a restore.
+OnFailure=lms-backup-failure@%i.service
+
+[Service]
+Type=oneshot
+User=deploy
+# Long enough for a large dump plus upload; short enough that a wedged run is
+# killed before it overlaps the next night's.
+TimeoutStartSec=3h
+ExecStart=/home/deploy/apps/lms-%i/infra/backup/pg-backup.sh %i
+# Redis is a separate ExecStart so a Redis failure still leaves the database
+# backup done and recorded. Ordering matters: the database is what must survive.
+ExecStart=/home/deploy/apps/lms-%i/infra/backup/redis-backup.sh %i
+
+[Install]
+WantedBy=multi-user.target

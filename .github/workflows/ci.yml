@@ -1,12 +1,13 @@
 name: CI
 
+# PR-only by design: branch protection marks these checks as required, so a
+# PR cannot merge until they all pass — which makes re-running them on the
+# post-merge push pure duplicate spend. There is deliberately NO `push`
+# trigger; once a PR merges, nothing in this workflow runs again.
 on:
-  push:
-    branches:
-      - dev
   pull_request:
     # main and staging are included so the gate runs on the PRs that promote
-    # code into the deploying branches — these are the checks to mark as
+    # code into the deploying branches — these are the checks marked as
     # required in branch protection (F-070).
     branches:
       - dev
@@ -166,6 +167,14 @@ jobs:
       MINIO_ACCESS_KEY: lms_minio_ci
       MINIO_SECRET_KEY: lms_minio_secret_ci
       MINIO_BUCKET: lms-documents
+      # Dummy, like every other external credential above. ai-client.ts requires
+      # this and no longer falls back to a default — that default named the
+      # PRODUCTION project, so before it was removed these e2e runs resolved
+      # their Vertex calls against production. The calls still fail here (there
+      # are no Google credentials on the runner, by design), but they now fail at
+      # auth rather than at config, which is the behaviour the AI-degradation
+      # specs assert against.
+      GOOGLE_PROJECT_ID: ci-dummy-project-not-real
 
     steps:
       - uses: actions/checkout@v4
@@ -213,7 +222,7 @@ jobs:
 
       - name: Upload Playwright report
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-report
           path: playwright-report/

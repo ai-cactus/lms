@@ -50,9 +50,30 @@ receivers:
     root_path: /hostfs
     scrapers:
       cpu:
-      memory:
       load:
+      # `system.memory.utilization` and `system.filesystem.utilization` are
+      # OPTIONAL metrics in this receiver and are NOT emitted unless enabled
+      # here. Both alert policies in infra/gcp/ filter on exactly those two
+      # metric types, so without these blocks the disk- and memory-pressure
+      # alerts reference series that never exist — permanently silent, and
+      # indistinguishable from "nothing is wrong". Verified against
+      # otel/opentelemetry-collector-contrib:0.114.0 on 2026-08-14: with the
+      # scrapers alone the receiver emits only *.usage.
+      memory:
+        metrics:
+          system.memory.utilization:
+            enabled: true
       filesystem:
+        metrics:
+          system.filesystem.utilization:
+            enabled: true
+        # Pseudo filesystems sit at or near 100% by design (a squashfs snap is
+        # always exactly full). The disk alert takes the MAX across mount
+        # points, so leaving these in guarantees a permanently-firing alert
+        # that everyone learns to ignore.
+        exclude_fs_types:
+          fs_types: ['squashfs', 'tmpfs', 'devtmpfs', 'overlay', 'ramfs', 'iso9660', 'autofs', 'nsfs']
+          match_type: strict
         exclude_mount_points:
           mount_points: ['/var/lib/docker/*', '/snap/*']
           match_type: regexp
@@ -135,6 +156,12 @@ service:
       processors: [memory_limiter, resource, batch]
       exporters: [googlecloud]
 
+    # Wired but INERT by default: no app pushes to the otlp receiver, because
+    # OTEL_EXPORTER_OTLP_ENDPOINT is intentionally unset in both compose files
+    # (see the reasoning there). Unlike filelog and hostmetrics, which this
+    # collector pulls out of process, traces are pushed from inside the app and
+    # would be unsampled at OTel's parentbased_always_on default. Kept here so
+    # re-enabling is an env var plus a sampler, not a config change.
     traces:
       receivers: [otlp]
       processors: [memory_limiter, resource, batch]

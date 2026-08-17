@@ -134,7 +134,6 @@ async function seedCourseFixture(): Promise<CourseFixture> {
     const orgId = crypto.randomUUID();
     const facilityId = crypto.randomUUID();
     const creatorUserId = crypto.randomUUID();
-    const creatorOrgUserId = crypto.randomUUID();
     const courseId = crypto.randomUUID();
     const lessonAId = crypto.randomUUID();
     const lessonBId = crypto.randomUUID();
@@ -169,18 +168,12 @@ async function seedCourseFixture(): Promise<CourseFixture> {
       [facilityId, orgId, `Video Playback Facility ${slug}`],
     );
 
-    // Course creator — an org user, never logged in; only needed to satisfy
-    // courses.created_by_org_user_id.
+    // Course creator — never logged in; only needed to satisfy courses.created_by.
     const creatorEmail = uid('creator');
     await client.query(
-      `INSERT INTO users (id, email, password, email_verified, auth_provider, first_name, last_name, full_name, created_at, updated_at)
-       VALUES ($1, $2, $3, true, 'credentials', 'Video', 'Creator', 'Video Creator', NOW(), NOW())`,
-      [creatorUserId, creatorEmail, await bcrypt.hash('unused-not-logged-in', 10)],
-    );
-    await client.query(
-      `INSERT INTO organization_users (id, user_id, organization_id, role, active, joined_at, role_assigned_at, created_at, updated_at)
-       VALUES ($1, $2, $3, 'owner'::"UserRole", true, NOW(), NOW(), NOW(), NOW())`,
-      [creatorOrgUserId, creatorUserId, orgId],
+      `INSERT INTO users (id, email, password, email_verified, auth_provider, role, organization_id, facility_id, first_name, last_name, full_name, created_at, updated_at)
+       VALUES ($1, $2, $3, true, 'credentials', 'owner'::"UserRole", $4, $5, 'Video', 'Creator', 'Video Creator', NOW(), NOW())`,
+      [creatorUserId, creatorEmail, await bcrypt.hash('unused-not-logged-in', 10), orgId, facilityId],
     );
 
     const subPeriodEnd = new Date();
@@ -202,9 +195,9 @@ async function seedCourseFixture(): Promise<CourseFixture> {
     );
 
     await client.query(
-      `INSERT INTO courses (id, title, status, created_by_org_user_id, type, is_global, created_at, updated_at)
+      `INSERT INTO courses (id, title, status, created_by, type, is_global, created_at, updated_at)
        VALUES ($1, $2, 'published'::"CourseStatus", $3, 'video'::"CourseType", false, NOW(), NOW())`,
-      [courseId, `Video Playback E2E Course ${slug}`, creatorOrgUserId],
+      [courseId, `Video Playback E2E Course ${slug}`, creatorUserId],
     );
 
     // Two video lessons — B exists solely so the "only the active player
@@ -256,13 +249,6 @@ async function cleanupCourseFixture(fixture: CourseFixture): Promise<void> {
     await client.query(`DELETE FROM lessons WHERE course_id = $1`, [fixture.courseId]);
     await client.query(`DELETE FROM courses WHERE id = $1`, [fixture.courseId]);
     await client.query(`DELETE FROM subscriptions WHERE organization_id = $1`, [fixture.orgId]);
-    // Delete the user's org membership before the user row itself — but capture
-    // creatorUserId up front (returned from seedCourseFixture) rather than
-    // re-deriving it via a subquery here, since that subquery would already see
-    // an empty organization_users table if run after the line above.
-    await client.query(`DELETE FROM organization_users WHERE organization_id = $1`, [
-      fixture.orgId,
-    ]);
     await client.query(`DELETE FROM users WHERE id = $1`, [fixture.creatorUserId]);
     await client.query(`DELETE FROM facilities WHERE id = $1`, [fixture.facilityId]);
     await client.query(`DELETE FROM organizations WHERE id = $1`, [fixture.orgId]);
@@ -287,7 +273,6 @@ async function cleanupCourseFixture(fixture: CourseFixture): Promise<void> {
 
 interface Learner {
   workerId: string;
-  workerOrgUserId: string;
   enrollmentId: string;
   email: string;
   password: string;
@@ -301,31 +286,20 @@ async function seedLearner(fixture: CourseFixture): Promise<Learner> {
     const password = 'VideoE2E!Watch9';
     const hashed = await bcrypt.hash(password, 10);
     const workerId = crypto.randomUUID();
-    const workerOrgUserId = crypto.randomUUID();
     const enrollmentId = crypto.randomUUID();
 
     await client.query(
-      `INSERT INTO users (id, email, password, email_verified, auth_provider, first_name, last_name, full_name, created_at, updated_at)
-       VALUES ($1, $2, $3, true, 'credentials', 'Video', 'Learner', 'Video Learner', NOW(), NOW())`,
-      [workerId, email, hashed],
+      `INSERT INTO users (id, email, password, email_verified, auth_provider, role, organization_id, facility_id, first_name, last_name, full_name, created_at, updated_at)
+       VALUES ($1, $2, $3, true, 'credentials', 'front_desk_admin'::"UserRole", $4, $5, 'Video', 'Learner', 'Video Learner', NOW(), NOW())`,
+      [workerId, email, hashed, fixture.orgId, fixture.facilityId],
     );
     await client.query(
-      `INSERT INTO organization_users (id, user_id, organization_id, role, active, joined_at, role_assigned_at, created_at, updated_at)
-       VALUES ($1, $2, $3, 'front_desk_admin'::"UserRole", true, NOW(), NOW(), NOW(), NOW())`,
-      [workerOrgUserId, workerId, fixture.orgId],
-    );
-    await client.query(
-      `INSERT INTO organization_user_facilities (id, organization_user_id, facility_id, active, joined_at)
-       VALUES ($1, $2, $3, true, NOW())`,
-      [crypto.randomUUID(), workerOrgUserId, fixture.facilityId],
-    );
-    await client.query(
-      `INSERT INTO enrollments (id, organization_user_id, course_id, facility_id, status, progress, video_position_seconds, started_at)
-       VALUES ($1, $2, $3, $4, 'in_progress'::"EnrollmentStatus", 0, 0, NOW())`,
-      [enrollmentId, workerOrgUserId, fixture.courseId, fixture.facilityId],
+      `INSERT INTO enrollments (id, user_id, course_id, status, progress, video_position_seconds, started_at)
+       VALUES ($1, $2, $3, 'in_progress'::"EnrollmentStatus", 0, 0, NOW())`,
+      [enrollmentId, workerId, fixture.courseId],
     );
 
-    return { workerId, workerOrgUserId, enrollmentId, email, password };
+    return { workerId, enrollmentId, email, password };
   } finally {
     await client.end();
   }
@@ -338,10 +312,6 @@ async function cleanupLearner(learner: Learner): Promise<void> {
       learner.enrollmentId,
     ]);
     await client.query(`DELETE FROM enrollments WHERE id = $1`, [learner.enrollmentId]);
-    await client.query(`DELETE FROM organization_user_facilities WHERE organization_user_id = $1`, [
-      learner.workerOrgUserId,
-    ]);
-    await client.query(`DELETE FROM organization_users WHERE id = $1`, [learner.workerOrgUserId]);
     await client.query(`DELETE FROM users WHERE id = $1`, [learner.workerId]);
   } finally {
     await client.end();

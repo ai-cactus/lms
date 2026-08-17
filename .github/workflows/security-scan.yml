@@ -83,7 +83,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
@@ -120,7 +120,7 @@ jobs:
 
       - name: Upload Semgrep report
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: semgrep-report
           path: semgrep.sarif
@@ -165,7 +165,7 @@ jobs:
 
       - name: Upload Trivy report
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: trivy-report
           path: trivy-results.json
@@ -190,7 +190,11 @@ jobs:
     name: Secret Scan (full history)
     runs-on: ubuntu-latest
     if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
-    timeout-minutes: 20
+    # 20 minutes was not enough: the 2026-08-14 dispatch was killed mid-scan
+    # (exit 143) with the report step skipped, so the run proved nothing. A
+    # truncated history scan is worse than none — it reads like a result.
+    # Schedule/dispatch only, so the extra ceiling costs nothing per PR.
+    timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@v4
@@ -207,19 +211,25 @@ jobs:
           gitleaks version
 
       - name: Scan full history for secrets
+        # Never gates: history cannot be rewritten away, and for anything that
+        # was public the fix is rotation, not a red build. The SARIF artifact is
+        # the deliverable — read it, don't watch this step's colour.
         continue-on-error: true
         run: |
+          # --verbose dropped deliberately: a single 137KB Figma export in
+          # history (figma_form.json, 517fdf4, deleted since) yields a wall of
+          # generic-api-key hits, and printing each one is a large part of why
+          # the 20-minute run never finished. The SARIF still records them all.
           gitleaks detect \
             --source . \
             --config .gitleaks.toml \
             --redact \
             --report-format sarif \
-            --report-path gitleaks-history.sarif \
-            --verbose
+            --report-path gitleaks-history.sarif
 
       - name: Upload history scan report
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: gitleaks-history-report
           path: gitleaks-history.sarif
@@ -251,7 +261,7 @@ jobs:
           output-file: sbom-cyclonedx.json
 
       - name: Upload SBOM
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: sbom
           path: sbom-cyclonedx.json

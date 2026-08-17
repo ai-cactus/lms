@@ -26,6 +26,25 @@ x-logging: &default-logging
     max-size: '10m'
     max-file: '5'
 
+# Resource ceilings exist because staging is CO-RESIDENT with production on one
+# VM, sharing its RAM, CPU and disk. Production's app is capped at 1g while this
+# stack was unbounded — inverted, since staging is where load tests, migration
+# rehearsals and AI-pipeline experiments run. Unbounded staging can drive the VM
+# into system-wide OOM, where the kernel picks a victim by RSS and may choose a
+# production container.
+#
+# Sized from MEASURED usage on the real host (2 vCPU / 7.9 GB, 2026-08-11), not
+# from estimates — an earlier draft capped minio at 192m against an actual 255 MiB
+# and would have been OOM-killed on deploy. Observed at rest: app 480 MiB,
+# minio 255 MiB, db 31 MiB, redis 6 MiB. Limits give each roughly 2x that.
+#
+# Aggregate 2560m / 1.40 vCPU — about a third of the box, leaving production its
+# 1g app cap plus uncapped db/redis/minio and ~2 GB of page-cache headroom.
+# Production is deliberately left CPU-uncapped, so under contention the scheduler
+# favours it: staging is throttled, production is not.
+#
+# Re-measure with `docker stats --no-stream` before tightening any of these. A
+# limit below real usage is not a guardrail, it is an outage.
 services:
   # ── Next.js Application ──────────────────────────────────────────────────────
   app:
@@ -48,9 +67,29 @@ services:
       # Stamped onto every structured log line so entries are
       # attributable in Cloud Logging (container paths carry only an id).
       OTEL_SERVICE_NAME: lms-staging
-      # Presence of this var is what ENABLES tracing (see registerTracing in
-      # src/instrumentation.ts). Internal Docker network only.
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      # TRACING IS DELIBERATELY OFF. Presence of OTEL_EXPORTER_OTLP_ENDPOINT is
+      # what enables it (registerTracing returns early without it, see
+      # src/instrumentation.ts:20) — so leaving it unset disables tracing with
+      # no code change.
+      #
+      # Why: unlike the logs and hostmetrics pipelines, which the collector PULLS
+      # (it tails Docker's *-json.log files and scrapes the host every 60s, both
+      # out of process and free to the request path), traces are PUSHED from
+      # inside the app. Next.js auto-instrumentation spans every request, render,
+      # route handler and outbound fetch, and no sampler is configured, so the
+      # OTel default of parentbased_always_on would trace 100% of traffic. On a
+      # shared 2-vCPU host where production's app already sits at ~590 MiB of its
+      # 1g cap, that allocation churn is a cost with no current question behind it:
+      # every incident to date (zone hijack, disk exhaustion, cross-project Vertex
+      # calls) was a logs-and-metrics problem, not a latency one.
+      #
+      # Logs are UNAFFECTED — logger.ts reads OTEL_SERVICE_NAME independently
+      # (src/lib/logger.ts:254) for the `service` field, so attribution survives.
+      #
+      # To re-enable, uncomment and add a sampler rather than defaulting to 100%:
+      #   OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      #   OTEL_TRACES_SAMPLER: parentbased_traceidratio
+      #   OTEL_TRACES_SAMPLER_ARG: '0.1'
       PORT: '3001'
       # Override REDIS_URL to point to the Docker redis service.
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
@@ -73,6 +112,55 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 1024m
+          cpus: '0.5'
+
+  # ── Schema migrations (one-shot, never part of `up -d`) ──────────────────────
+  #
+  # Migrations used to run in the app container's entrypoint on every start. That
+  # guaranteed schema and code matched, but it also meant the app's own database
+  # credential had to be able to run DDL — and a container restart at 3am could
+  # alter the schema unattended.
+  #
+  # The deploy workflow now runs this explicitly between "database is healthy"
+  # and "start the app". `profiles: [tools]` keeps it out of `up -d`, so it only
+  # runs when asked for by name.
+  #
+  # MIGRATE_DATABASE_URL is the credential split this exists to enable: set it
+  # and migrations use a DDL-capable role while the app keeps a least-privilege
+  # one (F-093 / lms_app). Unset, it falls back to DATABASE_URL from
+  # .env.staging, so this is behaviour-preserving until that role exists.
+  #
+  # ⚠️ Migrations no longer run automatically. Anything starting this stack
+  # outside the deploy workflow must run this service first, or the app boots
+  # against an unmigrated schema.
+  migrate:
+    profiles: ['tools']
+    container_name: lms-staging-migrate
+    image: ${APP_IMAGE:?APP_IMAGE must be set. Run via the deploy workflow or set manually.}
+    logging: *default-logging
+    # entrypoint is overridden explicitly rather than relying on the image's
+    # ENTRYPOINT to honour a command override. Docker passes `command` as
+    # ARGUMENTS to ENTRYPOINT, so an entrypoint that ignores "$@" silently runs
+    # the web server instead — which never exits, hanging the deploy until its
+    # timeout (staging run 31814561810, 2026-08-14). docker-entrypoint.sh now
+    # handles this correctly; this line means the migrate path does not depend
+    # on that staying true.
+    entrypoint: ['./node_modules/.bin/prisma']
+    command: ['migrate', 'deploy']
+    env_file:
+      - .env.staging
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${MIGRATE_DATABASE_URL:-${DATABASE_URL}}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - staging-net
 
   # ── PostgreSQL Database ───────────────────────────────────────────────────────
   db:
@@ -96,6 +184,11 @@ services:
       timeout: 5s
       retries: 10
       start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: '0.3'
     networks:
       - staging-net
 
@@ -105,8 +198,25 @@ services:
     image: redis:7-alpine
     restart: unless-stopped
     logging: *default-logging
-    # requirepass enforces auth even on the internal network (defence in depth)
-    command: redis-server --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env.staging} --appendonly yes
+    # requirepass enforces auth even on the internal network (defence in depth).
+    #
+    # maxmemory sits below the cgroup limit so Redis refuses writes itself rather
+    # than being OOM-killed by the kernel with its AOF mid-write. The policy is
+    # noeviction because these keys are BullMQ jobs, not cache — an LRU policy
+    # would silently discard queued work and look like a job that never ran.
+    #
+    # It is deliberately HALF the limit, not the ~75% that looks sufficient.
+    # Two effects stack above the configured ceiling, both measured on this image:
+    # maxmemory is only checked when a command STARTS, so one multi-write Lua
+    # script (BullMQ uses them for atomic queue ops) overshot it by ~18 MB; and
+    # RSS then runs a further ~11 MB above Redis's own used_memory accounting
+    # through allocator fragmentation. An AOF rewrite forks on top of that. At a
+    # 75% ratio the container sat at 125 MiB of a 128 MiB limit — one rewrite from
+    # being killed. 128mb in 256m keeps that ratio. Real usage here is ~6 MiB;
+    # the ceiling exists for a runaway queue, not for steady state.
+    command:
+      redis-server --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env.staging}
+      --appendonly yes --maxmemory 128mb --maxmemory-policy noeviction
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
     volumes:
@@ -119,6 +229,11 @@ services:
       timeout: 5s
       retries: 10
       start_period: 5s
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          cpus: '0.15'
     networks:
       - staging-net
 
@@ -146,6 +261,11 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: '0.3'
     networks:
       - staging-net
 
@@ -160,6 +280,14 @@ services:
   otel-collector:
     container_name: lms-staging-otel-collector
     image: otel/opentelemetry-collector-contrib:0.114.0
+    # Runs as root because the filelog receiver tails /var/lib/docker/containers,
+    # which Docker keeps 0700 root:root. The image's default UID 10001 cannot
+    # traverse it and the logs pipeline silently collects nothing:
+    #   find files with '/var/lib/docker/containers/*/*-json.log': permission denied
+    # Loosening that directory is not an option — it is Docker's internal state.
+    # Both host mounts are :ro, and this is the same approach the upstream
+    # Docker-logs examples take.
+    user: '0:0'
     restart: unless-stopped
     logging: *default-logging
     command: ['--config=/etc/otel/collector-config.yaml']
@@ -173,7 +301,22 @@ services:
       OTEL_ENVIRONMENT: staging
     volumes:
       - ./infra/otel/collector-config.yaml:/etc/otel/collector-config.yaml:ro
-      # Hand-placed on the VM, mode 0400, owned by the deploy user. Not in git.
+      # Hand-placed on the VM, mode 0400, owned by UID 10001. Not in git.
+      #
+      # 10001, NOT `deploy`: this image is distroless and runs as UID 10001, and
+      # bind mounts map ownership numerically — a key owned by `deploy` is
+      # unreadable to the container and the collector crash-loops with
+      # "open /etc/otel/sa-key.json: permission denied". Note that is *permission
+      # denied*, not *no such file*: the former means the mount worked and the
+      # mode is wrong, the latter means Docker created a directory at a missing
+      # source path. They need different fixes.
+      #
+      #   sudo install -o 10001 -g 10001 -m 0400 otel-sa-<env>.json \
+      #     /home/deploy/secrets/otel-sa-<env>.json
+      #   sudo chmod 0711 /home/deploy/secrets     # container must traverse it
+      #
+      # This is also tighter than owning it as `deploy`: no host user except
+      # root can read a service-account key.
       - /home/deploy/secrets/otel-sa-staging.json:/etc/otel/sa-key.json:ro
       # Read-only: the collector reads container logs and must never mutate them.
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
@@ -185,6 +328,7 @@ services:
       resources:
         limits:
           memory: 256m
+          cpus: '0.15'
     networks:
       - staging-net
 
