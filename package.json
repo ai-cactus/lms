@@ -58,7 +58,7 @@
     "dompurify": "^3.4.11",
     "dotenv": "^17.4.2",
     "framer-motion": "^12.33.0",
-    "google-auth-library": "^10.6.2",
+    "google-auth-library": "^11.0.2",
     "html-to-image": "^1.11.13",
     "ioredis": "^5.10.1",
     "isomorphic-dompurify": "^3.5.1",
