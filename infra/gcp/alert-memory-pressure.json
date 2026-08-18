@@ -9,7 +9,7 @@
     {
       "displayName": "LMS VM memory pressure",
       "conditionThreshold": {
-        "filter": "metric.type=\"workload.googleapis.com/system.memory.utilization\" AND metric.labels.state=\"used\"",
+        "filter": "metric.type=\"workload.googleapis.com/system.memory.utilization\" AND resource.type=\"generic_node\" AND metric.labels.state=\"used\"",
         "comparison": "COMPARISON_GT",
         "thresholdValue": 0.9,
         "duration": "300s",

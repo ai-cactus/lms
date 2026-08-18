@@ -22,8 +22,8 @@ Requires `roles/monitoring.editor`. Use the script — it is idempotent by displ
 name, so re-running after a partial failure will not create duplicates:
 
 ```bash
-./apply.sh production ops@theraptly.com --with-uptime
-./apply.sh staging    ops@theraptly.com
+./apply.sh production admin@theraptly.com --with-uptime
+./apply.sh staging    admin@theraptly.com
 ```
 
 It creates (or reuses) the notification channel, the four log-based metrics, the
@@ -40,7 +40,8 @@ verification steps that turn this from applied into proven.
 >
 > **A collector running the old config leaves both alerts permanently silent**,
 > which looks exactly like "nothing is wrong". Redeploy the collector before
-> trusting them, and confirm with the `time-series list` check the script prints.
+> trusting them, and confirm with the `timeSeries` API check the script prints
+> (there is no `gcloud monitoring time-series` command).
 
 > ⚠️ **`system.memory.utilization` emits one series per state** (used, free,
 > cached, buffered, slab_\*), and the condition reduces with MAX across series.
@@ -55,25 +56,72 @@ piece by hand.
 PROJECT_ID=your-project-id
 
 # 1. Notification channel — do this first; policies reference it.
-gcloud alpha monitoring channels create \
+gcloud beta monitoring channels create \
   --display-name="LMS ops email" \
   --type=email \
-  --channel-labels=email_address=ops@theraptly.com \
+  --channel-labels=email_address=admin@theraptly.com \
   --project="$PROJECT_ID"
 
 # Note the returned channel id.
 CHANNEL=projects/$PROJECT_ID/notificationChannels/REPLACE_ME
 
 # 2. Uptime check.
-sed "s/REPLACE_WITH_PROJECT_ID/$PROJECT_ID/" uptime-check-production.json > /tmp/uptime.json
-gcloud monitoring uptime create --config-from-file=/tmp/uptime.json --project="$PROJECT_ID"
+# NOTE: `gcloud monitoring uptime create` takes FLAGS — it has no
+# --config-from-file (that exists only for `alpha monitoring policies create`).
+# uptime-check-production.json below is the readable spec for WHAT this check
+# asserts; these flags are how it is actually applied. Keep the two in step.
+# Region names are the CLI's enum, not the API's: usa-oregon / europe /
+# asia-pacific, and at least 3 are required.
+gcloud monitoring uptime create "LMS production — reachable and serving our own app" \
+  --project="$PROJECT_ID" \
+  --resource-type=uptime-url \
+  --resource-labels=host=training.theraptly.com,project_id="$PROJECT_ID" \
+  --protocol=https --port=443 --path=/api/health \
+  --validate-ssl=true --status-codes=200 \
+  --matcher-content='"status":"ok"' --matcher-type=contains-string \
+  --period=1 --timeout=10 \
+  --regions=usa-oregon,europe,asia-pacific
 
 # 3. Alert policies.
 for f in alert-*.json; do
   sed -e "s|REPLACE_WITH_CHANNEL|$CHANNEL|" -e "s/REPLACE_WITH_PROJECT_ID/$PROJECT_ID/" "$f" > /tmp/policy.json
-  gcloud alpha monitoring policies create --policy-from-file=/tmp/policy.json --project="$PROJECT_ID"
+  gcloud monitoring policies create --policy-from-file=/tmp/policy.json --project="$PROJECT_ID"
 done
 ```
+
+## Why the host-metric filters pin `resource.type="generic_node"`
+
+The API rejects any `conditionThreshold.filter` on a `workload.googleapis.com/*`
+metric that does not restrict `resource.type`:
+
+```
+Field alert_policy.conditions[0].condition_threshold.filter had an invalid value
+of "metric.type=\"workload.googleapis.com/system.filesystem.utilization\"":
+must specify a restriction on "resource.type" in the filter
+```
+
+The restriction must be `generic_node`, **not** `gce_instance`. These series come
+from the OTel collector's `hostmetrics` receiver (infra/otel/collector-config.yaml),
+which runs no `resourcedetection` processor — so the `googlecloud` exporter has no
+GCP platform attributes to map and falls back to the generic monitored resource,
+with `location=global` and empty `namespace`/`node_id`. Confirmed against the live
+series on 2026-08-18.
+
+`gce_instance` would be accepted by the API and would match nothing: a policy that
+can never fire, and looks identical to one that simply has nothing to report. Before
+changing either filter, check what the data actually carries:
+
+```bash
+TOKEN=$(gcloud auth print-access-token)
+curl -s --get "https://monitoring.googleapis.com/v3/projects/$PROJECT_ID/timeSeries" \
+  -H "Authorization: Bearer $TOKEN" \
+  --data-urlencode 'filter=metric.type="workload.googleapis.com/system.memory.utilization"' \
+  --data-urlencode "interval.startTime=$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ)" \
+  --data-urlencode "interval.endTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  --data-urlencode 'view=HEADERS'
+```
+
+An empty `timeSeries` means the filter matches nothing — fix it before applying.
 
 ## Verifying the content matcher actually works
 

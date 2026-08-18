@@ -51,9 +51,15 @@ log "project=${PROJECT} service=${SERVICE} email=${ALERT_EMAIL}"
 # Everything else references this, so it goes first. Reused if it already
 # exists — re-running must not create a second channel that half the policies
 # point at.
+# String literals in a Monitoring filter MUST be quoted. Unquoted, `email` is
+# read as a field reference and the API rejects the whole filter:
+#   ambiguous use of email on the right-hand side of the '=' operator
+# This only surfaces once a channel EXISTS — with none, the filter merely warns
+# that the keys are absent and returns nothing, so the first run creates one and
+# every run after it dies. Exactly the re-run this block exists to make safe.
 CHANNEL="$(gcloud beta monitoring channels list \
   --project="$PROJECT" \
-  --filter="type=email AND labels.email_address=${ALERT_EMAIL}" \
+  --filter="type=\"email\" AND labels.email_address=\"${ALERT_EMAIL}\"" \
   --format='value(name)' | head -1)"
 
 if [ -z "$CHANNEL" ]; then
@@ -112,17 +118,45 @@ create_metric "lms_audit_write_failures" \
 # hijacked and served a 301 to a phishing page. A status-code-only check stayed
 # green throughout. Asserting the body is OUR app is what catches that.
 if [ "$WITH_UPTIME" = "--with-uptime" ]; then
+  # `gcloud monitoring uptime create` takes FLAGS — it has no --config-from-file
+  # (that exists for `alpha monitoring policies create`, which is why the two
+  # looked symmetric and were not). The settings below are the ones this check
+  # is built around; keep them together if they change.
+  UPTIME_NAME="LMS production — reachable and serving our own app"
+  UPTIME_HOST="training.theraptly.com"
+
+  # Matched by exact display name. An approximate match here silently creates a
+  # DUPLICATE check on every run instead of skipping.
   if gcloud monitoring uptime list-configs --project="$PROJECT" \
-    --format='value(displayName)' 2>/dev/null | grep -q "LMS production health"; then
+    --format='value(displayName)' 2>/dev/null | grep -qF "$UPTIME_NAME"; then
     log "uptime check exists, skipping"
   else
     log "creating uptime check"
-    sed "s/REPLACE_WITH_PROJECT_ID/${PROJECT}/g" uptime-check-production.json >/tmp/lms-uptime.json
-    gcloud monitoring uptime create --config-from-file=/tmp/lms-uptime.json --project="$PROJECT"
-    rm -f /tmp/lms-uptime.json
+    # Region names are the CLI's own enum, NOT the API's: usa-oregon /
+    # europe / asia-pacific, not USA_OREGON / EUROPE_IRELAND /
+    # ASIA_PACIFIC_SINGAPORE. At least 3 are required.
+    gcloud monitoring uptime create "$UPTIME_NAME" \
+      --project="$PROJECT" \
+      --resource-type=uptime-url \
+      --resource-labels=host="${UPTIME_HOST}",project_id="$PROJECT" \
+      --protocol=https \
+      --port=443 \
+      --path=/api/health \
+      --validate-ssl=true \
+      --status-codes=200 \
+      --matcher-content='"status":"ok"' \
+      --matcher-type=contains-string \
+      --period=1 \
+      --timeout=10 \
+      --regions=usa-oregon,europe,asia-pacific
   fi
 fi
 
+# `gcloud monitoring policies` is the GA surface and takes the same
+# --policy-from-file. It is used deliberately in place of `gcloud alpha ...`:
+# alpha is NOT installed by default, and on a machine without it gcloud stops to
+# ask "Do you want to continue (Y/n)?" — a prompt that is invisible from inside
+# a script, so the run simply appears to hang forever.
 # ── 4. Alert policies ────────────────────────────────────────────────────────
 for f in alert-*.json; do
   # The uptime policy is meaningless without the check that feeds it.
@@ -132,7 +166,7 @@ for f in alert-*.json; do
   fi
 
   DISPLAY="$(python3 -c "import json,sys; print(json.load(open('$f'))['displayName'])")"
-  if gcloud alpha monitoring policies list --project="$PROJECT" \
+  if gcloud monitoring policies list --project="$PROJECT" \
     --format='value(displayName)' 2>/dev/null | grep -Fqx "$DISPLAY"; then
     log "policy '${DISPLAY}' exists, skipping"
     continue
@@ -142,7 +176,7 @@ for f in alert-*.json; do
   sed -e "s|REPLACE_WITH_CHANNEL|${CHANNEL}|g" \
     -e "s|REPLACE_WITH_PROJECT_ID|${PROJECT}|g" \
     "$f" >/tmp/lms-policy.json
-  gcloud alpha monitoring policies create --policy-from-file=/tmp/lms-policy.json --project="$PROJECT"
+  gcloud monitoring policies create --policy-from-file=/tmp/lms-policy.json --project="$PROJECT"
   rm -f /tmp/lms-policy.json
 done
 
@@ -157,24 +191,27 @@ cat <<EOF
 
 Next, and it is not optional:
 
-  1. Confirm the email channel is VERIFIED. Google sends a confirmation mail;
-     until it is accepted, every policy below points at nothing.
-       gcloud beta monitoring channels describe ${CHANNEL} \\
-         --project=${PROJECT} --format='value(verificationStatus)'
+  1. Confirm the disk/memory metrics actually exist. Both policies depend on
+     the OPTIONAL hostmetrics utilization metrics enabled in
+     infra/otel/collector-config.yaml on 2026-08-14 — a collector predating
+     that change publishes only *.usage, and both policies stay silent.
+     There is no "gcloud monitoring time-series" command; query the API:
+       TOKEN=\$(gcloud auth print-access-token)
+       curl -s --get "https://monitoring.googleapis.com/v3/projects/${PROJECT}/timeSeries" \\
+         -H "Authorization: Bearer \$TOKEN" \\
+         --data-urlencode 'filter=metric.type="workload.googleapis.com/system.memory.utilization" AND resource.type="generic_node"' \\
+         --data-urlencode "interval.startTime=\$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ)" \\
+         --data-urlencode "interval.endTime=\$(date -u +%Y-%m-%dT%H:%M:%SZ)" \\
+         --data-urlencode 'view=HEADERS'
+     An empty timeSeries means the collector has not been redeployed with the
+     new config. Restart it, then re-check.
 
-  2. Trigger ONE alert end to end and confirm the mail arrives. An alert
-     policy nobody has ever seen fire is decoration.
+  2. Trigger ONE alert end to end and confirm the mail arrives at
+     ${ALERT_EMAIL}. This is the ONLY proof the channel delivers. The
+     API does not return verificationStatus for an API-created email channel — the field
+     is simply absent — so a channel that delivers and one that does not look
+     identical from the CLI. An alert policy nobody has ever seen fire is
+     decoration.
      Safe method: point a check at staging and break the staging health
      response, never production.
-
-  3. Confirm the disk/memory metrics actually exist. They depend on the
-     OPTIONAL hostmetrics utilization metrics enabled in
-     infra/otel/collector-config.yaml on 2026-08-14 — a collector predating
-     that change publishes only *.usage, and both policies stay silent:
-       gcloud monitoring time-series list \\
-         --project=${PROJECT} \\
-         --filter='metric.type="workload.googleapis.com/system.memory.utilization"' \\
-         --format='value(metric.type)' --limit=1
-     Empty output means the collector has not been redeployed with the new
-     config. Restart it, then re-check.
 EOF
