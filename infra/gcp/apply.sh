@@ -112,14 +112,37 @@ create_metric "lms_audit_write_failures" \
 # hijacked and served a 301 to a phishing page. A status-code-only check stayed
 # green throughout. Asserting the body is OUR app is what catches that.
 if [ "$WITH_UPTIME" = "--with-uptime" ]; then
+  # `gcloud monitoring uptime create` takes FLAGS — it has no --config-from-file
+  # (that exists for `alpha monitoring policies create`, which is why the two
+  # looked symmetric and were not). The settings below are the ones this check
+  # is built around; keep them together if they change.
+  UPTIME_NAME="LMS production — reachable and serving our own app"
+  UPTIME_HOST="training.theraptly.com"
+
+  # Matched by exact display name. An approximate match here silently creates a
+  # DUPLICATE check on every run instead of skipping.
   if gcloud monitoring uptime list-configs --project="$PROJECT" \
-    --format='value(displayName)' 2>/dev/null | grep -q "LMS production health"; then
+    --format='value(displayName)' 2>/dev/null | grep -qF "$UPTIME_NAME"; then
     log "uptime check exists, skipping"
   else
     log "creating uptime check"
-    sed "s/REPLACE_WITH_PROJECT_ID/${PROJECT}/g" uptime-check-production.json >/tmp/lms-uptime.json
-    gcloud monitoring uptime create --config-from-file=/tmp/lms-uptime.json --project="$PROJECT"
-    rm -f /tmp/lms-uptime.json
+    # Region names are the CLI's own enum, NOT the API's: usa-oregon /
+    # europe / asia-pacific, not USA_OREGON / EUROPE_IRELAND /
+    # ASIA_PACIFIC_SINGAPORE. At least 3 are required.
+    gcloud monitoring uptime create "$UPTIME_NAME" \
+      --project="$PROJECT" \
+      --resource-type=uptime-url \
+      --resource-labels=host="${UPTIME_HOST}",project_id="$PROJECT" \
+      --protocol=https \
+      --port=443 \
+      --path=/api/health \
+      --validate-ssl=true \
+      --status-codes=200 \
+      --matcher-content='"status":"ok"' \
+      --matcher-type=contains-string \
+      --period=1 \
+      --timeout=10 \
+      --regions=usa-oregon,europe,asia-pacific
   fi
 fi
 

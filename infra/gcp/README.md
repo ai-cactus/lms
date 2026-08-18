@@ -22,8 +22,8 @@ Requires `roles/monitoring.editor`. Use the script — it is idempotent by displ
 name, so re-running after a partial failure will not create duplicates:
 
 ```bash
-./apply.sh production ops@theraptly.com --with-uptime
-./apply.sh staging    ops@theraptly.com
+./apply.sh production admin@theraptly.com --with-uptime
+./apply.sh staging    admin@theraptly.com
 ```
 
 It creates (or reuses) the notification channel, the four log-based metrics, the
@@ -58,15 +58,28 @@ PROJECT_ID=your-project-id
 gcloud alpha monitoring channels create \
   --display-name="LMS ops email" \
   --type=email \
-  --channel-labels=email_address=ops@theraptly.com \
+  --channel-labels=email_address=admin@theraptly.com \
   --project="$PROJECT_ID"
 
 # Note the returned channel id.
 CHANNEL=projects/$PROJECT_ID/notificationChannels/REPLACE_ME
 
 # 2. Uptime check.
-sed "s/REPLACE_WITH_PROJECT_ID/$PROJECT_ID/" uptime-check-production.json > /tmp/uptime.json
-gcloud monitoring uptime create --config-from-file=/tmp/uptime.json --project="$PROJECT_ID"
+# NOTE: `gcloud monitoring uptime create` takes FLAGS — it has no
+# --config-from-file (that exists only for `alpha monitoring policies create`).
+# uptime-check-production.json below is the readable spec for WHAT this check
+# asserts; these flags are how it is actually applied. Keep the two in step.
+# Region names are the CLI's enum, not the API's: usa-oregon / europe /
+# asia-pacific, and at least 3 are required.
+gcloud monitoring uptime create "LMS production — reachable and serving our own app" \
+  --project="$PROJECT_ID" \
+  --resource-type=uptime-url \
+  --resource-labels=host=training.theraptly.com,project_id="$PROJECT_ID" \
+  --protocol=https --port=443 --path=/api/health \
+  --validate-ssl=true --status-codes=200 \
+  --matcher-content='"status":"ok"' --matcher-type=contains-string \
+  --period=1 --timeout=10 \
+  --regions=usa-oregon,europe,asia-pacific
 
 # 3. Alert policies.
 for f in alert-*.json; do
