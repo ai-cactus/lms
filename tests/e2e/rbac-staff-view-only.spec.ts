@@ -16,17 +16,27 @@
  * full-stack browser behavior instead of re-testing the pure gate logic).
  *
  * NOTE: the staff profile header was reworked to the Figma design and now
- * carries a single action — "Assign Course". Edit Profile, Remove Staff and
- * the manager select no longer exist on that page, so the profile-level
- * assertions below cover only Assign Course. `updateStaffDetails`,
+ * carries a single action — "Assign Course" (multi-course-assign-batched-email:
+ * `AssignCoursesModal`, opened from `StaffProfileClient`). Edit Profile, Remove
+ * Staff and the manager select no longer exist on that page, so the
+ * profile-level assertions below cover only Assign Course. `updateStaffDetails`,
  * `removeStaff` and `setStaffManager` remain gated and unit-covered in
  * `src/app/actions/staff.test.ts`; the roster-list "Remove Staff" affordance
  * is still asserted here.
  *
+ * Clinical Director gates Assign Course on `assignment.create` (see
+ * `assignCoursesToStaffMember`, `src/app/actions/staff.ts`), a permission the
+ * role legitimately holds — it "assigns clinical training paths" per its own
+ * RBAC description — so it is a POSITIVE case here, unlike its `user.edit`-only
+ * predecessor `assignCourseToStaffMember`. Finance holds neither `user.edit` nor
+ * `assignment.create` and stays denied.
+ *
  * Scenarios:
- *   - Finance / Clinical Director: no Assign Course on a staff profile; no
- *     row-level Remove Staff action in the staff list; no kebab at all on a
- *     pending-invite row (no invite.edit/invite.delete).
+ *   - Finance: no Assign Course on a staff profile; no row-level Remove Staff
+ *     action in the staff list; no kebab at all on a pending-invite row (no
+ *     invite.edit/invite.delete).
+ *   - Clinical Director: same roster/invite-row denials as Finance, but DOES
+ *     see Assign Course on a staff profile (assignment.create).
  *   - HR: retains every affordance above (regression against the coarse
  *     isAdminRole() gate that used to grant this implicitly).
  *   - Owner: retains every affordance above (regression / control group).
@@ -161,7 +171,10 @@ async function loginAs(page: Page, email: string, password: string): Promise<voi
 
 test.describe('RBAC matrix realignment — Finance / Clinical Director are view-only on staff', () => {
   for (const role of ['finance', 'clinical_director'] as const) {
-    test(`${role}: no mutating staff affordances on the list or a profile`, async ({ page }) => {
+    // Assign Course is the one affordance that now diverges between these two
+    // roles (assignment.create), so it is asserted per-role below rather than
+    // shared in this block.
+    test(`${role}: no roster-mutation or invite-row affordances`, async ({ page }) => {
       test.setTimeout(90_000);
       const viewerEmail = uid(`viewer-${role}`);
       const viewerPassword = 'V13w0nly!Pwd9';
@@ -203,19 +216,69 @@ test.describe('RBAC matrix realignment — Finance / Clinical Director are view-
         });
         await expect(page.getByRole('menuitem', { name: 'Remove Staff' })).not.toBeVisible();
         await page.keyboard.press('Escape');
-
-        // Staff profile page — navigate directly rather than clicking the row:
-        // this scenario is about profile-level permission gating, not row-click
-        // behavior — a direct nav decouples it from list/HMR timing.
-        await page.goto(`/dashboard/staff/${seeded.targetId}`);
-
-        await expect(page.getByRole('heading', { name: 'Trainings' })).toBeVisible();
-        await expect(page.getByRole('button', { name: 'Assign Course' })).not.toBeVisible();
       } finally {
         await cleanupScenario(seeded);
       }
     });
   }
+
+  test('finance: no Assign Course on a staff profile (holds neither user.edit nor assignment.create)', async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    const viewerEmail = uid('viewer-finance');
+    const viewerPassword = 'V13w0nly!Pwd9';
+    const targetEmail = uid('target-nurse');
+    const inviteEmail = uid('pending-invite');
+
+    const seeded = await seedScenario(
+      'finance',
+      viewerEmail,
+      viewerPassword,
+      targetEmail,
+      inviteEmail,
+    );
+    try {
+      await loginAs(page, viewerEmail, viewerPassword);
+
+      // Navigate directly rather than clicking the row: this scenario is
+      // about profile-level permission gating, not row-click behavior — a
+      // direct nav decouples it from list/HMR timing.
+      await page.goto(`/dashboard/staff/${seeded.targetId}`);
+
+      await expect(page.getByRole('heading', { name: 'Trainings' })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Assign Course' })).not.toBeVisible();
+    } finally {
+      await cleanupScenario(seeded);
+    }
+  });
+
+  test('clinical_director: DOES see Assign Course on a staff profile — assignment.create legitimately grants this affordance', async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    const viewerEmail = uid('viewer-clinical-director');
+    const viewerPassword = 'V13w0nly!Pwd9';
+    const targetEmail = uid('target-nurse');
+    const inviteEmail = uid('pending-invite');
+
+    const seeded = await seedScenario(
+      'clinical_director',
+      viewerEmail,
+      viewerPassword,
+      targetEmail,
+      inviteEmail,
+    );
+    try {
+      await loginAs(page, viewerEmail, viewerPassword);
+      await page.goto(`/dashboard/staff/${seeded.targetId}`);
+
+      await expect(page.getByRole('heading', { name: 'Trainings' })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Assign Course' })).toBeVisible();
+    } finally {
+      await cleanupScenario(seeded);
+    }
+  });
 
   test('hr: retains full staff CRUD affordances (regression against the old coarse isAdminRole gate)', async ({
     page,

@@ -322,3 +322,97 @@ describe('createEnrollmentForUser — existing org member', () => {
     expect(mockSendCourseInviteEmail).not.toHaveBeenCalled();
   });
 });
+
+describe('createEnrollmentForUser — deferWorkerNotification', () => {
+  it('flag unset: notifies and emails inline exactly once each, and returns no `deferred` — regression lock for every existing caller', async () => {
+    prismaMock.user.findUnique.mockResolvedValue({
+      id: 'user-1',
+      email: 'staff@example.com',
+      organizationId: 'org-1',
+      profile: { fullName: 'Staff One' },
+    });
+
+    const outcome = await createEnrollmentForUser(
+      { email: 'staff@example.com' },
+      { ...BASE_CTX, assignmentDueAt: new Date('2026-09-01T00:00:00Z') },
+    );
+
+    expect(mockCreateNotification).toHaveBeenCalledTimes(1);
+    expect(mockCreateNotification).toHaveBeenCalledWith({
+      userId: 'user-1',
+      type: 'COURSE_ASSIGNED',
+      title: 'New Required Training Assigned',
+      message: 'You have been assigned a new course: Safety Training',
+      linkUrl: '/worker/trainings',
+      metadata: { courseId: 'course-1' },
+    });
+    expect(mockSendCourseLaunchEmail).toHaveBeenCalledTimes(1);
+    expect(outcome).not.toHaveProperty('deferred');
+  });
+
+  it('flag set: skips the inline notification and email, still writes the enrollment and seeds INITIAL_LAUNCH, and returns a `deferred` payload with the persisted due date', async () => {
+    prismaMock.user.findUnique.mockResolvedValue({
+      id: 'user-1',
+      email: 'staff@example.com',
+      organizationId: 'org-1',
+      profile: { fullName: 'Staff One' },
+    });
+    const dueAt = new Date('2026-09-01T00:00:00Z');
+
+    const outcome = await createEnrollmentForUser(
+      { email: 'staff@example.com' },
+      { ...BASE_CTX, assignmentDueAt: dueAt, deferWorkerNotification: true },
+    );
+
+    expect(mockCreateNotification).not.toHaveBeenCalled();
+    expect(mockSendCourseLaunchEmail).not.toHaveBeenCalled();
+    expect(prismaMock.enrollment.create).toHaveBeenCalled();
+    expect(prismaMock.reminderLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ stage: 'INITIAL_LAUNCH' }) }),
+    );
+    expect(outcome).toMatchObject({
+      status: 'enrolled',
+      userId: 'user-1',
+      deferred: {
+        userId: 'user-1',
+        email: 'staff@example.com',
+        recipientName: 'Staff One',
+        courseId: 'course-1',
+        courseTitle: 'Safety Training',
+        organizationName: 'Acme Corp',
+        dueAt,
+      },
+    });
+  });
+
+  it('flag set + already enrolled: reports alreadyEnrolled with no `deferred`', async () => {
+    prismaMock.user.findUnique.mockResolvedValue({
+      id: 'user-1',
+      email: 'staff@example.com',
+      organizationId: 'org-1',
+      profile: null,
+    });
+    prismaMock.enrollment.findFirst.mockResolvedValue({ id: 'existing-enrollment' });
+
+    const outcome = await createEnrollmentForUser(
+      { email: 'staff@example.com' },
+      { ...BASE_CTX, deferWorkerNotification: true },
+    );
+
+    expect(outcome).toEqual({ status: 'alreadyEnrolled', email: 'staff@example.com' });
+    expect(mockCreateNotification).not.toHaveBeenCalled();
+    expect(mockSendCourseLaunchEmail).not.toHaveBeenCalled();
+  });
+
+  it('flag set + unknown email: the /join invite email still sends inline — an invited address has no account to batch against', async () => {
+    prismaMock.user.findUnique.mockResolvedValue(null);
+
+    const outcome = await createEnrollmentForUser(
+      { email: 'new@example.com' },
+      { ...BASE_CTX, deferWorkerNotification: true },
+    );
+
+    expect(outcome).toEqual({ status: 'invited', email: 'new@example.com' });
+    expect(mockSendCourseInviteEmail).toHaveBeenCalledTimes(1);
+  });
+});

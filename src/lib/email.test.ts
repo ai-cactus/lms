@@ -33,7 +33,13 @@ vi.mock('@/lib/logger', () => ({
 
 // ─── Module under test ────────────────────────────────────────────────────────
 
-import { sendInviteEmail, sendPartnerApplicationEmail, sendMfaOtpEmail } from './email';
+import {
+  sendInviteEmail,
+  sendPartnerApplicationEmail,
+  sendMfaOtpEmail,
+  sendCoursesAssignedEmail,
+  sendCourseLaunchEmail,
+} from './email';
 import { OTP_EXPIRY_MINUTES } from './mfa';
 
 // ─── Setup ────────────────────────────────────────────────────────────────────
@@ -177,6 +183,108 @@ describe('sendMfaOtpEmail — expiry copy is single-sourced from OTP_EXPIRY_MINU
 
     const html = mockSendMail.mock.calls[0][0].html as string;
     expect(html).toContain('654321');
+  });
+});
+
+/**
+ * Unit tests for sendCoursesAssignedEmail — the unified 1..N Stage 1 launch
+ * email — and its sendCourseLaunchEmail delegator. The one-course rendering
+ * must stay byte-identical to the long-standing single-course email, since
+ * sendCourseLaunchEmail's second caller (the reminder sweep's renewal launch)
+ * and existing recipients both depend on it.
+ */
+describe('sendCoursesAssignedEmail / sendCourseLaunchEmail', () => {
+  const dueAt = new Date('2026-09-01T00:00:00Z');
+
+  it('1 course: subject is exactly the pre-batch single-course subject', async () => {
+    mockSendMail.mockResolvedValue({ messageId: 'mid-course-1' });
+
+    const result = await sendCoursesAssignedEmail(
+      'staff@example.com',
+      'Staff One',
+      [{ title: 'Safety Training', dueAt }],
+      'Acme Corp',
+    );
+
+    expect(result).toEqual(expect.objectContaining({ success: true }));
+    const call = mockSendMail.mock.calls[0][0];
+    expect(call.subject).toBe('📋 New Required Training Assigned: Safety Training');
+    expect(prismaMock.emailMessage.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ toEmail: 'staff@example.com', kind: 'course_launch' }),
+    });
+  });
+
+  it('3 courses: subject names the count, and the body lists all 3 escaped titles with their due dates', async () => {
+    mockSendMail.mockResolvedValue({ messageId: 'mid-course-3' });
+
+    await sendCoursesAssignedEmail(
+      'staff@example.com',
+      'Staff One',
+      [
+        { title: 'Safety Training', dueAt: new Date('2026-09-01T00:00:00Z') },
+        { title: '<script>alert(1)</script>', dueAt: new Date('2026-10-01T00:00:00Z') },
+        { title: 'Fire Safety', dueAt: null },
+      ],
+      'Acme Corp',
+    );
+
+    const call = mockSendMail.mock.calls[0][0];
+    expect(call.subject).toBe('📋 3 New Required Trainings Assigned');
+
+    const html = call.html as string;
+    expect(html).toContain('Safety Training');
+    expect(html).toContain('Fire Safety');
+    // <script> title is escaped in the HTML body...
+    expect(html).not.toContain('<script>alert(1)</script>');
+    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+    // ...but the subject line is never escapeHtml'd (see the file's docstring).
+    expect(call.subject).not.toContain('&lt;');
+    expect(html).toContain('September 1, 2026');
+    expect(html).toContain('October 1, 2026');
+  });
+
+  it('omits the due-date line for a course whose dueAt is null', async () => {
+    mockSendMail.mockResolvedValue({ messageId: 'mid-course-null-due' });
+
+    await sendCoursesAssignedEmail(
+      'staff@example.com',
+      'Staff One',
+      [{ title: 'Fire Safety', dueAt: null }],
+      'Acme Corp',
+    );
+
+    const html = mockSendMail.mock.calls[0][0].html as string;
+    expect(html).not.toContain('Due by');
+  });
+
+  it('empty course list: warns and sends nothing', async () => {
+    const result = await sendCoursesAssignedEmail(
+      'staff@example.com',
+      'Staff One',
+      [],
+      'Acme Corp',
+    );
+
+    expect(result).toEqual({ success: false, error: 'No courses to announce' });
+    expect(mockSendMail).not.toHaveBeenCalled();
+  });
+
+  it('sendCourseLaunchEmail delegates to the same path and yields an identical single-course result', async () => {
+    mockSendMail.mockResolvedValue({ messageId: 'mid-delegate' });
+
+    const result = await sendCourseLaunchEmail(
+      'staff@example.com',
+      'Staff One',
+      'Safety Training',
+      'Acme Corp',
+      dueAt,
+    );
+
+    expect(result).toEqual(expect.objectContaining({ success: true }));
+    const call = mockSendMail.mock.calls[0][0];
+    expect(call.subject).toBe('📋 New Required Training Assigned: Safety Training');
+    expect(call.html).toContain('Safety Training');
+    expect(call.html).toContain('September 1, 2026');
   });
 });
 
