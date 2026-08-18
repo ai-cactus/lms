@@ -51,9 +51,15 @@ log "project=${PROJECT} service=${SERVICE} email=${ALERT_EMAIL}"
 # Everything else references this, so it goes first. Reused if it already
 # exists — re-running must not create a second channel that half the policies
 # point at.
+# String literals in a Monitoring filter MUST be quoted. Unquoted, `email` is
+# read as a field reference and the API rejects the whole filter:
+#   ambiguous use of email on the right-hand side of the '=' operator
+# This only surfaces once a channel EXISTS — with none, the filter merely warns
+# that the keys are absent and returns nothing, so the first run creates one and
+# every run after it dies. Exactly the re-run this block exists to make safe.
 CHANNEL="$(gcloud beta monitoring channels list \
   --project="$PROJECT" \
-  --filter="type=email AND labels.email_address=${ALERT_EMAIL}" \
+  --filter="type=\"email\" AND labels.email_address=\"${ALERT_EMAIL}\"" \
   --format='value(name)' | head -1)"
 
 if [ -z "$CHANNEL" ]; then
