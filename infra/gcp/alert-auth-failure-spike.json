@@ -17,6 +17,9 @@
     "REPLACE_WITH_CHANNEL"
   ],
   "alertStrategy": {
+    "notificationRateLimit": {
+      "period": "300s"
+    },
     "autoClose": "604800s"
   },
   "enabled": true
