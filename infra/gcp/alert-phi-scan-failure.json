@@ -1,0 +1,23 @@
+{
+  "displayName": "LMS PHI scan failing",
+  "documentation": {
+    "content": "The PHI scanner fails CLOSED, so this does not mean PHI leaked \u2014 it means uploads are being REJECTED because the scan could not complete. Users see 'we could not verify this document'.\n\nSustained firing means Vertex AI is unreachable or the response shape changed, and document upload plus course generation are effectively down.\n\n**First response:** check Vertex AI status and quota, then query phi_decisions for outcome='blocked_scan_failed' to size the impact.",
+    "mimeType": "text/markdown"
+  },
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "PHI scanner fail-closed entries",
+      "conditionMatchedLog": {
+        "filter": "labels.msg=~\"PHI scan\" AND severity>=WARNING AND labels.service=~\"lms-\""
+      }
+    }
+  ],
+  "notificationChannels": [
+    "REPLACE_WITH_CHANNEL"
+  ],
+  "alertStrategy": {
+    "autoClose": "604800s"
+  },
+  "enabled": true
+}

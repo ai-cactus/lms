@@ -41,6 +41,16 @@ model Course {
   previewVideoStorageUri      String?             @map("preview_video_storage_uri")
   previewVideoDurationSeconds Int?                @map("preview_video_duration_seconds")
   previewMediaStatus          MediaStatus?        @map("preview_media_status")
+  /// Encode generation of the normalized preview video (see
+  /// src/lib/video/encoding.ts). Null means it predates the profile, which is
+  /// how un-migrated assets are identified for a possible later backfill.
+  previewVideoEncodingVersion Int?                @map("preview_video_encoding_version")
+  /// Storage URI of the still frame extracted from the normalized preview video
+  /// (see scripts/transcode-worker.ts). Serving this instead of mounting a
+  /// <video preload="metadata"> is what stops a catalog card costing hundreds of
+  /// KB of MP4 before the viewer clicks anything. Null until the transcode (or
+  /// scripts/backfill-video-posters.ts) has produced one.
+  previewPosterStorageUri     String?             @map("preview_poster_storage_uri")
   createdAt                   DateTime            @default(now()) @map("created_at")
   updatedAt                   DateTime            @updatedAt @map("updated_at")
   promptVersion               String?             @map("prompt_version")
@@ -68,6 +78,7 @@ model Course {
   modules                     CourseModule[]
   quiz                        Quiz?
   assignments                 CourseAssignment[]
+  inviteCourseAssignments     InviteCourseAssignment[]
 
   @@index([createdBy])
   @@index([status])
@@ -92,23 +103,32 @@ model CourseModule {
 }
 
 model Lesson {
-  id                   String        @id @default(uuid())
-  courseId             String        @map("course_id")
-  title                String
-  content              String
-  slideContent         String?       @map("slide_content")
-  order                Int
-  duration             Int?
-  videoProvider        String?       @map("video_provider")
-  videoStorageUri      String?       @map("video_storage_uri")
-  videoDurationSeconds Int?          @map("video_duration_seconds")
-  mediaStatus          MediaStatus   @default(ready) @map("media_status")
-  createdAt            DateTime      @default(now()) @map("created_at")
-  updatedAt            DateTime      @updatedAt @map("updated_at")
-  course               Course        @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  quiz                 Quiz?
-  moduleId             String?       @map("module_id")
-  module               CourseModule? @relation(fields: [moduleId], references: [id], onDelete: SetNull)
+  id                    String        @id @default(uuid())
+  courseId              String        @map("course_id")
+  title                 String
+  content               String
+  slideContent          String?       @map("slide_content")
+  order                 Int
+  duration              Int?
+  videoProvider         String?       @map("video_provider")
+  videoStorageUri       String?       @map("video_storage_uri")
+  videoDurationSeconds  Int?          @map("video_duration_seconds")
+  /// Encode generation of the normalized lesson video (see
+  /// src/lib/video/encoding.ts). Null means it predates the profile, which is
+  /// how un-migrated assets are identified for a possible later backfill.
+  videoEncodingVersion  Int?          @map("video_encoding_version")
+  /// Storage URI of the still frame extracted from the normalized lesson video
+  /// (see scripts/transcode-worker.ts). Null until the transcode (or
+  /// scripts/backfill-video-posters.ts) has produced one; the player simply
+  /// renders no poster in that case.
+  videoPosterStorageUri String?       @map("video_poster_storage_uri")
+  mediaStatus           MediaStatus   @default(ready) @map("media_status")
+  createdAt             DateTime      @default(now()) @map("created_at")
+  updatedAt             DateTime      @updatedAt @map("updated_at")
+  course                Course        @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  quiz                  Quiz?
+  moduleId              String?       @map("module_id")
+  module                CourseModule? @relation(fields: [moduleId], references: [id], onDelete: SetNull)
 
   @@index([courseId])
   @@index([moduleId])

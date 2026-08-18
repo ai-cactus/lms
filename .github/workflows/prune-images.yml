@@ -1,0 +1,113 @@
+name: Prune Container Images
+
+# Reclaims GHCR storage for the `lms` container package.
+#
+# Why this is needed: private packages count against the Free plan's 500 MB
+# GitHub Packages allowance (public packages were free and unlimited). The
+# runtime image carries ffmpeg and poppler-utils on a Node base, so it is
+# roughly 0.7-1.5 GB — one image exceeds the allowance on its own — and every
+# deploy pushes a new `production-<sha>` tag that accumulates forever.
+#
+# ── Why this is manual and not scheduled ─────────────────────────────────────
+# This repository has lost production data twice to an automated sweeper that
+# deleted objects it believed were orphaned (see the SAFETY block in
+# src/lib/queue/video-sweep-worker.ts). The lesson recorded there is that a
+# scheduled deleter holding real credentials is a loaded gun, and that
+# code-level interlocks are a backstop rather than a substitute for a human
+# deciding.
+#
+# So: dispatch-only, defaults to untagged versions, and never touches
+# `production-latest` or `staging-latest`. Deleting a `production-<sha>` tag
+# also destroys the ability to roll back to it, which is why tagged pruning is
+# opt-in per run and keeps a generous floor.
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: What to prune.
+        required: true
+        type: choice
+        default: untagged-only
+        options:
+          - untagged-only
+          - untagged-and-old-tags
+      keep:
+        description: >-
+          Minimum number of versions to retain. Applies to whichever set is
+          being pruned. Keep enough tagged builds to roll back through.
+        required: true
+        type: string
+        default: '15'
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: prune-images
+  cancel-in-progress: false
+
+jobs:
+  prune-untagged:
+    name: Prune untagged versions
+    runs-on: ubuntu-latest
+    steps:
+      # Untagged versions are superseded manifests and layer blobs no tag
+      # points at any more. Nothing can be pulled by name from them, so
+      # removing them cannot break a deploy or a rollback. This is the safe
+      # majority of the reclaimable space.
+      - name: Delete untagged versions
+        uses: actions/delete-package-versions@v5
+        with:
+          package-name: lms
+          package-type: container
+          owner: ai-cactus
+          delete-only-untagged-versions: 'true'
+          min-versions-to-keep: 5
+
+  prune-old-tags:
+    name: Prune old tagged versions
+    runs-on: ubuntu-latest
+    needs: prune-untagged
+    if: ${{ inputs.target == 'untagged-and-old-tags' }}
+    steps:
+      # `*-latest` is what the running containers were tagged from, so it is
+      # excluded. Everything else is a dated `*-<sha>` build kept only for
+      # rollback.
+      #
+      # CAVEAT: for container packages a "version" is a digest and tags are
+      # separate metadata, so it is not guaranteed that `ignore-versions`
+      # matches on the tag rather than the digest. Do not rely on it alone.
+      # The real protection is `min-versions-to-keep`: `*-latest` always points
+      # at the newest build, so a generous floor keeps it regardless. Verify
+      # against the package UI after the first run before raising the target.
+      - name: Delete old tagged versions
+        uses: actions/delete-package-versions@v5
+        with:
+          package-name: lms
+          package-type: container
+          owner: ai-cactus
+          min-versions-to-keep: ${{ inputs.keep }}
+          ignore-versions: '^(production|staging)-latest$'
+
+  report:
+    name: Report remaining usage
+    runs-on: ubuntu-latest
+    needs: [prune-untagged, prune-old-tags]
+    if: ${{ always() }}
+    steps:
+      - name: Summarise
+        env:
+          TARGET: ${{ inputs.target }}
+          KEEP: ${{ inputs.keep }}
+        run: |
+          {
+            echo "### Container image prune"
+            echo
+            echo "- Target: \`${TARGET}\`"
+            echo "- Minimum versions kept: \`${KEEP}\`"
+            echo
+            echo "Check remaining storage under Organization → Settings → Billing."
+            echo "Package versions: https://github.com/orgs/ai-cactus/packages/container/package/lms"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -83,12 +83,14 @@ function input(overrides: Partial<ClassifyPlanChangeInput> = {}): ClassifyPlanCh
 // ── PLAN_TIER_ORDER ──────────────────────────────────────────────────────────
 
 describe('PLAN_TIER_ORDER', () => {
-  it('ranks starter < professional < enterprise', () => {
+  it('ranks starter < growth < pro < enterprise', () => {
     expect(PLAN_TIER_ORDER.starter).toBe(1);
-    expect(PLAN_TIER_ORDER.professional).toBe(2);
-    expect(PLAN_TIER_ORDER.enterprise).toBe(3);
-    expect(PLAN_TIER_ORDER.starter).toBeLessThan(PLAN_TIER_ORDER.professional);
-    expect(PLAN_TIER_ORDER.professional).toBeLessThan(PLAN_TIER_ORDER.enterprise);
+    expect(PLAN_TIER_ORDER.growth).toBe(2);
+    expect(PLAN_TIER_ORDER.pro).toBe(3);
+    expect(PLAN_TIER_ORDER.enterprise).toBe(4);
+    expect(PLAN_TIER_ORDER.starter).toBeLessThan(PLAN_TIER_ORDER.growth);
+    expect(PLAN_TIER_ORDER.growth).toBeLessThan(PLAN_TIER_ORDER.pro);
+    expect(PLAN_TIER_ORDER.pro).toBeLessThan(PLAN_TIER_ORDER.enterprise);
   });
 });
 
@@ -159,7 +161,7 @@ describe('isLessThanOneMonthRemaining', () => {
 // ── classifyPlanChange — same tier ──────────────────────────────────────────
 
 describe('classifyPlanChange — same tier, same cycle (no_op)', () => {
-  it.each<PlanKey>(['starter', 'professional', 'enterprise'])(
+  it.each<PlanKey>(['starter', 'growth', 'pro', 'enterprise'])(
     'is a no_op for %s with an unchanged cycle',
     (plan) => {
       const result = classifyPlanChange(
@@ -181,8 +183,8 @@ describe('classifyPlanChange — same tier, same cycle (no_op)', () => {
   it('is a no_op regardless of how little time remains in the period', () => {
     const result = classifyPlanChange(
       input({
-        currentPlanKey: 'professional',
-        targetPlanKey: 'professional',
+        currentPlanKey: 'growth',
+        targetPlanKey: 'growth',
         currentCycle: 'monthly',
         targetCycle: 'monthly',
         currentPeriodEnd: new Date('2026-07-18T12:00:00Z'), // 1 day left
@@ -212,8 +214,8 @@ describe('classifyPlanChange — same tier, cycle change (scheduled)', () => {
   it('schedules a cycle downgrade (yearly -> monthly)', () => {
     const result = classifyPlanChange(
       input({
-        currentPlanKey: 'professional',
-        targetPlanKey: 'professional',
+        currentPlanKey: 'growth',
+        targetPlanKey: 'growth',
         currentCycle: 'yearly',
         targetCycle: 'monthly',
       }),
@@ -254,10 +256,10 @@ describe('classifyPlanChange — same tier, cycle change (scheduled)', () => {
 // ── classifyPlanChange — downgrades (always scheduled) ──────────────────────
 
 describe('classifyPlanChange — tier downgrade (always scheduled, regardless of time remaining)', () => {
-  it('schedules professional -> starter with the same cycle', () => {
+  it('schedules growth -> starter with the same cycle', () => {
     const result = classifyPlanChange(
       input({
-        currentPlanKey: 'professional',
+        currentPlanKey: 'growth',
         targetPlanKey: 'starter',
         currentCycle: 'monthly',
         targetCycle: 'monthly',
@@ -270,10 +272,10 @@ describe('classifyPlanChange — tier downgrade (always scheduled, regardless of
     });
   });
 
-  it('schedules professional -> starter with LOTS of time remaining', () => {
+  it('schedules growth -> starter with LOTS of time remaining', () => {
     const result = classifyPlanChange(
       input({
-        currentPlanKey: 'professional',
+        currentPlanKey: 'growth',
         targetPlanKey: 'starter',
         currentPeriodEnd: new Date('2027-07-17T12:00:00Z'),
       }),
@@ -281,10 +283,10 @@ describe('classifyPlanChange — tier downgrade (always scheduled, regardless of
     expect(result.classification).toBe('scheduled');
   });
 
-  it('schedules professional -> starter with almost no time remaining', () => {
+  it('schedules growth -> starter with almost no time remaining', () => {
     const result = classifyPlanChange(
       input({
-        currentPlanKey: 'professional',
+        currentPlanKey: 'growth',
         targetPlanKey: 'starter',
         currentPeriodEnd: new Date('2026-07-18T12:00:00Z'), // 1 day left
       }),
@@ -292,9 +294,9 @@ describe('classifyPlanChange — tier downgrade (always scheduled, regardless of
     expect(result.classification).toBe('scheduled');
   });
 
-  it('schedules enterprise -> professional (downgrade from the top tier)', () => {
+  it('schedules enterprise -> growth (downgrade from the top tier)', () => {
     const result = classifyPlanChange(
-      input({ currentPlanKey: 'enterprise', targetPlanKey: 'professional' }),
+      input({ currentPlanKey: 'enterprise', targetPlanKey: 'growth' }),
     );
     expect(result).toEqual({
       classification: 'scheduled',
@@ -306,7 +308,7 @@ describe('classifyPlanChange — tier downgrade (always scheduled, regardless of
   it('schedules a combined downgrade + cycle change — tier dominates over the cycle dimension', () => {
     const result = classifyPlanChange(
       input({
-        currentPlanKey: 'professional',
+        currentPlanKey: 'growth',
         targetPlanKey: 'starter',
         currentCycle: 'monthly',
         targetCycle: 'yearly',
@@ -318,6 +320,138 @@ describe('classifyPlanChange — tier downgrade (always scheduled, regardless of
       classification: 'scheduled',
       tierDirection: 'downgrade',
       cycleChanged: true,
+    });
+  });
+});
+
+// ── classifyPlanChange — `pro` tier (new 4th tier, inserted between growth
+// and enterprise) — upgrade/downgrade classification in both directions ────
+
+describe('classifyPlanChange — pro tier transitions', () => {
+  it('classifies growth -> pro as an upgrade', () => {
+    const result = classifyPlanChange(
+      input({
+        currentPlanKey: 'growth',
+        targetPlanKey: 'pro',
+        currentCycle: 'monthly',
+        targetCycle: 'monthly',
+      }),
+    );
+    expect(result.tierDirection).toBe('upgrade');
+  });
+
+  it('classifies pro -> growth as a downgrade, always scheduled regardless of time remaining', () => {
+    const result = classifyPlanChange(
+      input({
+        currentPlanKey: 'pro',
+        targetPlanKey: 'growth',
+        currentCycle: 'monthly',
+        targetCycle: 'monthly',
+        currentPeriodEnd: new Date('2027-07-17T12:00:00Z'), // lots of time — irrelevant for downgrades
+      }),
+    );
+    expect(result).toEqual({
+      classification: 'scheduled',
+      tierDirection: 'downgrade',
+      cycleChanged: false,
+    });
+  });
+
+  it('classifies pro -> starter as a downgrade (skips two tiers, still scheduled)', () => {
+    const result = classifyPlanChange(
+      input({
+        currentPlanKey: 'pro',
+        targetPlanKey: 'starter',
+        currentCycle: 'yearly',
+        targetCycle: 'yearly',
+      }),
+    );
+    expect(result).toEqual({
+      classification: 'scheduled',
+      tierDirection: 'downgrade',
+      cycleChanged: false,
+    });
+  });
+
+  it('classifies pro -> enterprise as an upgrade', () => {
+    const result = classifyPlanChange(
+      input({
+        currentPlanKey: 'pro',
+        targetPlanKey: 'enterprise',
+        currentCycle: 'yearly',
+        targetCycle: 'yearly',
+      }),
+    );
+    expect(result.tierDirection).toBe('upgrade');
+  });
+
+  it('classifies enterprise -> pro as a downgrade', () => {
+    const result = classifyPlanChange(
+      input({
+        currentPlanKey: 'enterprise',
+        targetPlanKey: 'pro',
+        currentCycle: 'monthly',
+        targetCycle: 'monthly',
+      }),
+    );
+    expect(result).toEqual({
+      classification: 'scheduled',
+      tierDirection: 'downgrade',
+      cycleChanged: false,
+    });
+  });
+
+  it('is a no_op for pro with an unchanged cycle', () => {
+    const result = classifyPlanChange(
+      input({
+        currentPlanKey: 'pro',
+        targetPlanKey: 'pro',
+        currentCycle: 'yearly',
+        targetCycle: 'yearly',
+      }),
+    );
+    expect(result).toEqual({
+      classification: 'no_op',
+      tierDirection: 'same',
+      cycleChanged: false,
+    });
+  });
+
+  it('schedules a starter -> pro monthly upgrade (charged at renewal, never mid-month proration)', () => {
+    const proMonthlyPeriodEnd = periodEndFor(SUBSCRIPTION_START, 'monthly');
+    const result = classifyPlanChange(
+      input({
+        currentPlanKey: 'starter',
+        targetPlanKey: 'pro',
+        currentCycle: 'monthly',
+        targetCycle: 'monthly',
+        currentPeriodEnd: proMonthlyPeriodEnd,
+        now: addDays(SUBSCRIPTION_START, 3),
+      }),
+    );
+    expect(result).toEqual({
+      classification: 'scheduled',
+      tierDirection: 'upgrade',
+      cycleChanged: false,
+    });
+  });
+
+  it('charges immediately for a growth -> pro yearly upgrade early in the period', () => {
+    const proYearlyPeriodEnd = periodEndFor(SUBSCRIPTION_START, 'yearly');
+    const result = classifyPlanChange(
+      input({
+        currentPlanKey: 'growth',
+        targetPlanKey: 'pro',
+        currentCycle: 'yearly',
+        targetCycle: 'yearly',
+        currentPeriodEnd: proYearlyPeriodEnd,
+        now: addDays(SUBSCRIPTION_START, 3),
+      }),
+    );
+    expect(result).toEqual({
+      classification: 'immediate_prorate',
+      tierDirection: 'upgrade',
+      cycleChanged: false,
     });
   });
 });
@@ -341,32 +475,29 @@ describe('classifyPlanChange — monthly tier upgrade always schedules to period
     ['1 second after period start', new Date(SUBSCRIPTION_START.getTime() + 1000)],
     ['3 days into the period', addDays(SUBSCRIPTION_START, 3)],
     ['20 days into the period (past the midpoint)', addDays(SUBSCRIPTION_START, 20)],
-  ])(
-    'schedules starter -> professional (monthly) at %s — never immediate_prorate',
-    (_label, now) => {
-      const result = classifyPlanChange(
-        input({
-          currentPlanKey: 'starter',
-          targetPlanKey: 'professional',
-          currentCycle: 'monthly',
-          targetCycle: 'monthly',
-          currentPeriodEnd: monthlyPeriodEnd,
-          now,
-        }),
-      );
-      expect(result).toEqual({
-        classification: 'scheduled',
-        tierDirection: 'upgrade',
-        cycleChanged: false,
-      });
-    },
-  );
+  ])('schedules starter -> growth (monthly) at %s — never immediate_prorate', (_label, now) => {
+    const result = classifyPlanChange(
+      input({
+        currentPlanKey: 'starter',
+        targetPlanKey: 'growth',
+        currentCycle: 'monthly',
+        targetCycle: 'monthly',
+        currentPeriodEnd: monthlyPeriodEnd,
+        now,
+      }),
+    );
+    expect(result).toEqual({
+      classification: 'scheduled',
+      tierDirection: 'upgrade',
+      cycleChanged: false,
+    });
+  });
 
   it('schedules a monthly upgrade even when it is ALSO a cycle change to yearly (target cycle never grants immediate_prorate)', () => {
     const result = classifyPlanChange(
       input({
         currentPlanKey: 'starter',
-        targetPlanKey: 'professional',
+        targetPlanKey: 'growth',
         currentCycle: 'monthly',
         targetCycle: 'yearly',
         currentPeriodEnd: monthlyPeriodEnd,
@@ -380,10 +511,10 @@ describe('classifyPlanChange — monthly tier upgrade always schedules to period
     });
   });
 
-  it('schedules enterprise-bound monthly upgrades too (professional -> enterprise, monthly)', () => {
+  it('schedules enterprise-bound monthly upgrades too (growth -> enterprise, monthly)', () => {
     const result = classifyPlanChange(
       input({
-        currentPlanKey: 'professional',
+        currentPlanKey: 'growth',
         targetPlanKey: 'enterprise',
         currentCycle: 'monthly',
         targetCycle: 'monthly',
@@ -400,11 +531,11 @@ describe('classifyPlanChange — monthly tier upgrade always schedules to period
 describe('classifyPlanChange — quarterly tier upgrade (immediate_prorate early, scheduled once inside the final month)', () => {
   const quarterlyPeriodEnd = periodEndFor(SUBSCRIPTION_START, 'quarterly'); // 2026-10-01T00:00:00Z
 
-  it('charges immediately for starter -> professional (quarterly) early in the period, ~3 months remaining', () => {
+  it('charges immediately for starter -> growth (quarterly) early in the period, ~3 months remaining', () => {
     const result = classifyPlanChange(
       input({
         currentPlanKey: 'starter',
-        targetPlanKey: 'professional',
+        targetPlanKey: 'growth',
         currentCycle: 'quarterly',
         targetCycle: 'quarterly',
         currentPeriodEnd: quarterlyPeriodEnd,
@@ -418,11 +549,11 @@ describe('classifyPlanChange — quarterly tier upgrade (immediate_prorate early
     });
   });
 
-  it('charges immediately for a combined quarterly upgrade + cycle change (starter/quarterly -> professional/monthly), ~3 months remaining', () => {
+  it('charges immediately for a combined quarterly upgrade + cycle change (starter/quarterly -> growth/monthly), ~3 months remaining', () => {
     const result = classifyPlanChange(
       input({
         currentPlanKey: 'starter',
-        targetPlanKey: 'professional',
+        targetPlanKey: 'growth',
         currentCycle: 'quarterly',
         targetCycle: 'monthly',
         currentPeriodEnd: quarterlyPeriodEnd,
@@ -441,7 +572,7 @@ describe('classifyPlanChange — quarterly tier upgrade (immediate_prorate early
     const result = classifyPlanChange(
       input({
         currentPlanKey: 'starter',
-        targetPlanKey: 'professional',
+        targetPlanKey: 'growth',
         currentCycle: 'quarterly',
         targetCycle: 'quarterly',
         currentPeriodEnd: quarterlyPeriodEnd,
@@ -451,11 +582,11 @@ describe('classifyPlanChange — quarterly tier upgrade (immediate_prorate early
     expect(result.classification).toBe('immediate_prorate');
   });
 
-  it('schedules starter -> professional (quarterly) once inside the final month, < 1 month remaining', () => {
+  it('schedules starter -> growth (quarterly) once inside the final month, < 1 month remaining', () => {
     const result = classifyPlanChange(
       input({
         currentPlanKey: 'starter',
-        targetPlanKey: 'professional',
+        targetPlanKey: 'growth',
         currentCycle: 'quarterly',
         targetCycle: 'quarterly',
         currentPeriodEnd: quarterlyPeriodEnd,
@@ -475,10 +606,10 @@ describe('classifyPlanChange — quarterly tier upgrade (immediate_prorate early
 describe('classifyPlanChange — yearly tier upgrade (immediate_prorate early, scheduled once inside the final month)', () => {
   const yearlyPeriodEnd = periodEndFor(SUBSCRIPTION_START, 'yearly'); // 2027-07-01T00:00:00Z
 
-  it('charges immediately for professional -> enterprise (yearly) early in the period, ~12 months remaining', () => {
+  it('charges immediately for growth -> enterprise (yearly) early in the period, ~12 months remaining', () => {
     const result = classifyPlanChange(
       input({
-        currentPlanKey: 'professional',
+        currentPlanKey: 'growth',
         targetPlanKey: 'enterprise',
         currentCycle: 'yearly',
         targetCycle: 'yearly',
@@ -493,10 +624,10 @@ describe('classifyPlanChange — yearly tier upgrade (immediate_prorate early, s
     });
   });
 
-  it('schedules professional -> enterprise (yearly) once inside the final month, < 1 month remaining', () => {
+  it('schedules growth -> enterprise (yearly) once inside the final month, < 1 month remaining', () => {
     const result = classifyPlanChange(
       input({
-        currentPlanKey: 'professional',
+        currentPlanKey: 'growth',
         targetPlanKey: 'enterprise',
         currentCycle: 'yearly',
         targetCycle: 'yearly',
@@ -514,7 +645,7 @@ describe('classifyPlanChange — yearly tier upgrade (immediate_prorate early, s
   it('schedules a combined yearly upgrade + cycle change once inside the final month (tier upgrade is real but time-limited, cycle change is incidental)', () => {
     const result = classifyPlanChange(
       input({
-        currentPlanKey: 'professional',
+        currentPlanKey: 'growth',
         targetPlanKey: 'enterprise',
         currentCycle: 'yearly',
         targetCycle: 'monthly',
@@ -542,7 +673,7 @@ describe('classifyPlanChange — now defaulting', () => {
     const result = classifyPlanChange({
       currentPlanKey: 'starter',
       currentCycle: 'yearly',
-      targetPlanKey: 'professional',
+      targetPlanKey: 'growth',
       targetCycle: 'yearly',
       currentPeriodEnd: new Date(Date.now() + 1000 * 60 * 60 * 24 * 300), // ~300 days out
     });

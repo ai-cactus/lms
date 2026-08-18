@@ -1,6 +1,7 @@
 import { prisma } from '@/db/index';
 import { UserRole } from '@/generated/prisma/enums';
 import bcrypt from 'bcryptjs';
+import { BCRYPT_COST } from '@/lib/bcrypt-config';
 
 async function main() {
   try {
@@ -18,7 +19,7 @@ async function main() {
       return;
     }
 
-    const hashedPassword = await bcrypt.hash(adminPassword, 10);
+    const hashedPassword = await bcrypt.hash(adminPassword, BCRYPT_COST);
 
     const admin = await prisma.user.upsert({
       where: { email: adminEmail },

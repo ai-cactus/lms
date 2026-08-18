@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { wizardControlClass, wizardSubtitleClass, wizardTitleClass } from './wizardFormClasses';
 import Link from 'next/link';
 
 import { CourseDocument } from '@/types/course';
@@ -19,7 +20,7 @@ interface Step2DocumentsProps {
   documents: CourseDocument[];
   onToggleSelect: (id: string) => void;
   onDelete?: (id: string) => void;
-  onUpload?: (files: File[]) => void;
+  onUpload?: (files: File[], phiAttested: boolean) => void;
   isAnalyzing?: boolean;
   progress?: number;
   error?: string | null;
@@ -37,6 +38,10 @@ export default function Step2Documents({
   isScanningPhi,
 }: Step2DocumentsProps) {
   const [source, setSource] = React.useState('uploaded');
+  // The server action rejects any upload without this attestation
+  // (src/app/actions/documents.ts). It is the user's declaration, so it is
+  // carried up to the caller rather than hardcoded at the call site.
+  const [phiAttested, setPhiAttested] = React.useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const sourceOptions = [
@@ -44,16 +49,20 @@ export default function Step2Documents({
     { label: 'Browse Computer', value: 'computer' },
   ];
 
+  const uploadDisabled = isAnalyzing || !phiAttested;
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (uploadDisabled) return;
     if (e.target.files && e.target.files.length > 0 && onUpload) {
-      onUpload(Array.from(e.target.files));
+      onUpload(Array.from(e.target.files), phiAttested);
     }
   };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
+    if (uploadDisabled) return;
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0 && onUpload) {
-      onUpload(Array.from(e.dataTransfer.files));
+      onUpload(Array.from(e.dataTransfer.files), phiAttested);
     }
   };
 
@@ -65,20 +74,22 @@ export default function Step2Documents({
   }, [documents, source]);
 
   return (
-    <div className="relative z-50 flex w-full max-w-[800px] flex-col items-center transition-[max-width] duration-300">
-      <h2 className="mb-5 shrink-0 text-center text-[32px] font-bold tracking-[-0.5px] text-[#1a202c] [font-family:var(--font-heading)]">
-        Upload Training Documents
-      </h2>
-      <p className="mb-[30px] shrink-0 max-w-[600px] text-center text-base leading-normal text-[#4a5568]">
-        Upload your policy or compliance documents. We will analyze them and convert them into
-        courses and quizzes automatically.
-      </p>
+    <div className="flex w-full flex-col gap-10 md:gap-14">
+      <div className="flex flex-col items-center gap-3">
+        <h2 className={wizardTitleClass}>Upload Training Documents</h2>
+        <p className={wizardSubtitleClass}>
+          Upload your policy or compliance documents. We will analyze them and convert them into
+          courses and quizzes automatically.
+        </p>
+      </div>
 
-      <div className="relative z-30 flex min-h-0 w-full max-w-[500px] flex-1 flex-col">
-        <label className="mb-2 block shrink-0 text-sm text-[#718096]">Select file(s) from;</label>
+      <div className="relative z-30 mx-auto flex w-full max-w-[640px] flex-col">
+        <label className="mb-[11px] block text-base font-medium tracking-[0.36px] text-black md:text-[18px]">
+          Select file(s) from
+        </label>
         <div className="mb-10">
           <Select value={source} onValueChange={(val) => setSource(val)}>
-            <SelectTrigger className="w-full">
+            <SelectTrigger className={wizardControlClass}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -93,14 +104,28 @@ export default function Step2Documents({
 
         {source === 'computer' ? (
           <div>
+            <div className="mb-4 flex items-start gap-2 text-sm text-text-secondary">
+              <Checkbox
+                id="wizard-phi-agree"
+                checked={phiAttested}
+                onCheckedChange={(checked) => setPhiAttested(checked === true)}
+                disabled={isAnalyzing}
+                className="mt-0.5"
+              />
+              <label htmlFor="wizard-phi-agree" className="cursor-pointer">
+                I verify this document contains no Personal Health Information (PHI).
+              </label>
+            </div>
+
             <div
-              className="flex h-[180px] w-full shrink-0 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-[#e2e8f0] bg-[#fafcfe] transition-all hover:border-[#4c6ef5] hover:bg-[#f8fafc]"
-              onClick={() => !isAnalyzing && fileInputRef.current?.click()}
+              className="flex h-[220px] w-full shrink-0 cursor-pointer flex-col items-center justify-center rounded-[12px] border-[1.5px] border-dashed border-[#e5e7ea] bg-[#fafcfe] transition-all hover:border-primary hover:bg-[#f8fafc]"
+              onClick={() => !uploadDisabled && fileInputRef.current?.click()}
               onDragOver={(e) => e.preventDefault()}
               onDrop={handleDrop}
+              aria-disabled={uploadDisabled}
               style={{
-                opacity: isAnalyzing ? 0.7 : 1,
-                pointerEvents: isAnalyzing ? 'none' : 'auto',
+                opacity: uploadDisabled ? 0.7 : 1,
+                pointerEvents: uploadDisabled ? 'none' : 'auto',
               }}
             >
               <input
@@ -130,7 +155,9 @@ export default function Step2Documents({
               <p className="text-balance text-center text-sm text-[#718096]">
                 {isAnalyzing
                   ? 'Analyzing document structure and content...'
-                  : 'PDF, DOCX. Single file upload.'}
+                  : phiAttested
+                    ? 'PDF, DOCX. Single file upload.'
+                    : 'Confirm the statement above to enable uploading.'}
               </p>
 
               {isAnalyzing && (
@@ -156,7 +183,7 @@ export default function Step2Documents({
         ) : (
           <div>
             {documents.length > 0 ? (
-              <div className="mt-6 max-h-none min-h-0 w-full flex-1 overflow-y-auto rounded-xl border-2 border-dashed border-[#e2e8f0] bg-white px-6 py-2">
+              <div className="max-h-none min-h-0 w-full flex-1 overflow-y-auto rounded-[12px] border-[1.5px] border-dashed border-[#e5e7ea] bg-white px-6 py-2">
                 {documents.slice(0, 4).map((doc) => (
                   <div
                     key={doc.id}
@@ -170,8 +197,8 @@ export default function Step2Documents({
                         />
                       </div>
                       <div className="flex flex-col gap-1">
-                        <span className="text-sm font-semibold text-[#1a202c]">{doc.name}</span>
-                        <span className="text-[13px] text-[#718096]">
+                        <span className="text-base font-semibold text-[#0a0a0a]">{doc.name}</span>
+                        <span className="text-sm text-[#666d80]">
                           {doc.file ? `${(doc.file.size / 1024 / 1024).toFixed(2)} MB` : ''}
                         </span>
                       </div>
@@ -211,7 +238,7 @@ export default function Step2Documents({
                 )}
               </div>
             ) : (
-              <p className="text-center text-slate-500 mt-10">
+              <p className="rounded-[12px] border-[1.5px] border-dashed border-[#e5e7ea] bg-[#fafcfe] py-12 text-center text-base text-[#666d80]">
                 No previously uploaded documents found.
               </p>
             )}

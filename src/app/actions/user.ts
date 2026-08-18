@@ -7,7 +7,9 @@ import { revalidatePath } from 'next/cache';
 
 import { headers } from 'next/headers';
 import { logger } from '@/lib/logger';
+import { invalidateRevalidationCache } from '@/lib/auth/session-revalidation-cache';
 import bcrypt from 'bcryptjs';
+import { BCRYPT_COST } from '@/lib/bcrypt-config';
 
 // Helper: resolve the active session from either auth instance
 async function resolveSession() {
@@ -36,12 +38,9 @@ export async function getStaffUsers() {
     throw new Error('Unauthorized');
   }
 
-  const currentUser = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { organizationId: true },
-  });
-
-  if (!currentUser?.organizationId) {
+  // Org is authoritative on the DB-revalidated session — no re-query.
+  const organizationId = session.user.organizationId;
+  if (!organizationId) {
     return [];
   }
 
@@ -49,7 +48,7 @@ export async function getStaffUsers() {
     const [users, invites] = await Promise.all([
       prisma.user.findMany({
         where: {
-          organizationId: currentUser.organizationId,
+          organizationId,
           // Show every seat-consuming staff member (all roles except owner).
           role: { not: 'owner' },
         },
@@ -58,7 +57,7 @@ export async function getStaffUsers() {
       }),
       prisma.invite.findMany({
         where: {
-          organizationId: currentUser.organizationId,
+          organizationId,
           status: 'pending',
         },
         orderBy: { createdAt: 'desc' },
@@ -115,12 +114,9 @@ export async function searchStaffUsers(query: string) {
     return [];
   }
 
-  const currentUser = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { organizationId: true },
-  });
-
-  if (!currentUser?.organizationId) {
+  // Org is authoritative on the DB-revalidated session — no re-query.
+  const organizationId = session.user.organizationId;
+  if (!organizationId) {
     return [];
   }
 
@@ -129,7 +125,7 @@ export async function searchStaffUsers(query: string) {
   try {
     const users = await prisma.user.findMany({
       where: {
-        organizationId: currentUser.organizationId,
+        organizationId,
         role: { not: 'owner' },
         OR: [
           { email: { contains: query, mode: 'insensitive' } },
@@ -310,7 +306,7 @@ export async function changePassword(data: { currentPassword?: string; newPasswo
       return { success: false, error: 'New password must be at least 12 characters long.' };
     }
 
-    const hashedNewPassword = await bcrypt.hash(newPassword, 12);
+    const hashedNewPassword = await bcrypt.hash(newPassword, BCRYPT_COST);
 
     // F-059: bump sessionVersion so changing the password also invalidates every
     // other existing session (the jwt callback compares the token's version on
@@ -323,6 +319,10 @@ export async function changePassword(data: { currentPassword?: string; newPasswo
         sessionVersion: { increment: 1 },
       },
     });
+
+    // The password change bumped sessionVersion; evict the cached revalidation
+    // snapshot so every other live session is invalidated on its next decode.
+    await invalidateRevalidationCache(session.user.id);
 
     logger.info({ msg: 'User changed password successfully', userId: session.user.id });
     return { success: true };

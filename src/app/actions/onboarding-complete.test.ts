@@ -64,7 +64,11 @@ const BASE_DATA: OnboardingData = {
     staffCount: '25',
   },
   step2: { hipaaCompliant: 'yes', licenseNumber: 'LIC-1' },
-  step3: { primaryBusinessType: 'home-health', services: ['skilled-nursing'] },
+  step3: {
+    primaryBusinessType: 'home-health',
+    additionalBusinessTypes: ['outpatient_services', 'crisis_stabilization'],
+    services: ['skilled-nursing'],
+  },
   step4: { managerInvites: [] },
   step5: { workerEmails: [] },
 };
@@ -123,6 +127,12 @@ describe('completeOnboarding — Organization/Facility split', () => {
     expect(orgData.name).toBe('Acme Health');
     expect(orgData.isHipaaCompliant).toBe(true);
     expect(orgData.primaryBusinessType).toBe('home-health');
+    // Regression: additionalBusinessTypes (canonical ids from step3) must
+    // reach Organization.create — previously never asserted anywhere.
+    expect(orgData.additionalBusinessTypes).toEqual([
+      'outpatient_services',
+      'crisis_stabilization',
+    ]);
   });
 
   it('falls back to DEFAULT_TZ (America/New_York) when step1.state is omitted', async () => {
@@ -483,5 +493,89 @@ describe('completeOnboarding — step2 compliance documents', () => {
     await completeOnboarding(BASE_DATA);
 
     expect(txMock.facilityDocument.createMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('completeOnboarding — step3 business type / services storage shape', () => {
+  it('passes step3.primaryBusinessType through to Organization.create as-is, whatever its shape', async () => {
+    // The action trusts the client-resolved value verbatim — it may be a
+    // canonical id or, for "Other (Specify)", raw free text; the action does
+    // not know or care which.
+    await completeOnboarding({
+      ...BASE_DATA,
+      step3: { ...BASE_DATA.step3, primaryBusinessType: 'A Very Custom Provider Type' },
+    });
+
+    const orgData = txMock.organization.create.mock.calls[0][0].data;
+    expect(orgData.primaryBusinessType).toBe('A Very Custom Provider Type');
+  });
+
+  it('passes free-text "Other" values inside additionalBusinessTypes through to Organization.create verbatim', async () => {
+    await completeOnboarding({
+      ...BASE_DATA,
+      step3: {
+        ...BASE_DATA.step3,
+        additionalBusinessTypes: ['outpatient_services', 'A Custom Additional Type'],
+      },
+    });
+
+    const orgData = txMock.organization.create.mock.calls[0][0].data;
+    expect(orgData.additionalBusinessTypes).toEqual([
+      'outpatient_services',
+      'A Custom Additional Type',
+    ]);
+  });
+
+  it('passes free-text "Other" values inside services through to Facility.programServices verbatim', async () => {
+    await completeOnboarding({
+      ...BASE_DATA,
+      step3: {
+        ...BASE_DATA.step3,
+        services: ['aging', 'A Custom Program Service'],
+      },
+    });
+
+    const facilityData = txMock.facility.create.mock.calls[0][0].data;
+    expect(facilityData.programServices).toEqual(['aging', 'A Custom Program Service']);
+  });
+
+  it('tolerates the legacy singular step3.additionalBusinessType field, wrapping it into a one-element array', async () => {
+    const { additionalBusinessTypes: _omit, ...step3WithoutPlural } = BASE_DATA.step3!;
+    void _omit;
+
+    const result = await completeOnboarding({
+      ...BASE_DATA,
+      step3: { ...step3WithoutPlural, additionalBusinessType: 'clinic' },
+    });
+
+    expect(result.success).toBe(true);
+    const orgData = txMock.organization.create.mock.calls[0][0].data;
+    expect(orgData.additionalBusinessTypes).toEqual(['clinic']);
+  });
+
+  it('prefers the legacy singular additionalBusinessType over the plural array when both are present', async () => {
+    await completeOnboarding({
+      ...BASE_DATA,
+      step3: {
+        ...BASE_DATA.step3,
+        additionalBusinessType: 'legacy-singular',
+        additionalBusinessTypes: ['outpatient_services'],
+      },
+    });
+
+    const orgData = txMock.organization.create.mock.calls[0][0].data;
+    expect(orgData.additionalBusinessTypes).toEqual(['legacy-singular']);
+  });
+
+  it('defaults additionalBusinessTypes to an empty array when step3 is entirely absent', async () => {
+    const { step3: _step3, ...withoutStep3 } = BASE_DATA;
+    void _step3;
+
+    const result = await completeOnboarding(withoutStep3);
+
+    expect(result.success).toBe(true);
+    const orgData = txMock.organization.create.mock.calls[0][0].data;
+    expect(orgData.additionalBusinessTypes).toEqual([]);
+    expect(orgData.primaryBusinessType).toBeUndefined();
   });
 });

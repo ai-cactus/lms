@@ -29,6 +29,10 @@ const envSchema = z.object({
   NEXTAUTH_SECRET: requiredString('NEXTAUTH_SECRET'),
   AUTH_SECRET: requiredString('AUTH_SECRET'),
   REDIS_URL: requiredString('REDIS_URL'),
+  // Required because ai-client.ts deliberately has no default for it. It used to
+  // fall back to the production project, so an environment missing this variable
+  // sent its Vertex traffic to production while looking correctly configured.
+  GOOGLE_PROJECT_ID: requiredString('GOOGLE_PROJECT_ID'),
   // STRIPE_SECRET_KEY: requiredString('STRIPE_SECRET_KEY'),
   // STRIPE_WEBHOOK_SECRET: requiredString('STRIPE_WEBHOOK_SECRET'),
 });

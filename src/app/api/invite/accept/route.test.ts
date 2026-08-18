@@ -10,7 +10,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { NextRequest } from 'next/server';
 
-const { prismaMock, mockLogger, mockBcryptHash } = vi.hoisted(() => ({
+const {
+  prismaMock,
+  mockLogger,
+  mockBcryptHash,
+  mockEnrollUserForRoleTargets,
+  mockEnrollInviteCourses,
+} = vi.hoisted(() => ({
   prismaMock: {
     invite: { findUnique: vi.fn(), update: vi.fn() },
     user: { findUnique: vi.fn(), create: vi.fn() },
@@ -19,6 +25,8 @@ const { prismaMock, mockLogger, mockBcryptHash } = vi.hoisted(() => ({
   },
   mockLogger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
   mockBcryptHash: vi.fn().mockResolvedValue('hashed-password'),
+  mockEnrollUserForRoleTargets: vi.fn(),
+  mockEnrollInviteCourses: vi.fn(),
 }));
 
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock, default: prismaMock }));
@@ -42,8 +50,21 @@ vi.mock('@/lib/seat-limits', () => ({
   SeatLimitError: class SeatLimitError extends Error {},
 }));
 vi.mock('@/lib/audit', () => ({ audit: vi.fn(), getClientContext: () => ({}) }));
+// Live auto-enroll hooks are exercised by their own suites (role-targets.test.ts
+// [n/a here], invite-courses.test.ts) — assert only that this route CALLS them
+// with the right args, after enrollUserForRoleTargets, per the accept flow.
+vi.mock('@/lib/enrollment/role-targets', () => ({
+  enrollUserForRoleTargets: mockEnrollUserForRoleTargets,
+}));
+vi.mock('@/lib/enrollment/invite-courses', () => ({
+  enrollInviteCourses: mockEnrollInviteCourses,
+}));
+vi.mock('@/lib/notifications/emit', () => ({ emitNotificationEvent: vi.fn() }));
 
 import { POST } from './route';
+import { emitNotificationEvent } from '@/lib/notifications/emit';
+
+const mockEmitNotificationEvent = vi.mocked(emitNotificationEvent);
 
 const VALID_PASSWORD = 'StrongPass1!';
 const FUTURE = new Date(Date.now() + 24 * 60 * 60 * 1000);
@@ -67,6 +88,8 @@ beforeEach(() => {
     }),
   );
   prismaMock.user.create.mockResolvedValue({ id: 'new-user-1' });
+  mockEnrollUserForRoleTargets.mockResolvedValue(undefined);
+  mockEnrollInviteCourses.mockResolvedValue(undefined);
 });
 
 describe('POST /api/invite/accept — missing/blank token', () => {
@@ -172,6 +195,36 @@ describe('POST /api/invite/accept — valid token', () => {
     });
   });
 
+  it('materialises any invite-parked courses after enrolling the new user', async () => {
+    prismaMock.invite.findUnique.mockResolvedValueOnce({
+      id: 'invite-correct',
+      token: 'tok-correct',
+      email: 'newhire@acme.com',
+      organizationId: 'org-correct',
+      role: 'nurse',
+      expiresAt: FUTURE,
+    });
+
+    await POST(
+      makeReq({
+        token: 'tok-correct',
+        firstName: 'Jane',
+        lastName: 'Doe',
+        password: VALID_PASSWORD,
+      }),
+    );
+
+    expect(mockEnrollUserForRoleTargets).toHaveBeenCalledExactlyOnceWith(
+      'new-user-1',
+      'org-correct',
+    );
+    expect(mockEnrollInviteCourses).toHaveBeenCalledExactlyOnceWith('new-user-1', 'invite-correct');
+    // Role-target enrollment happens before invite-parked-course enrollment.
+    const roleTargetsOrder = mockEnrollUserForRoleTargets.mock.invocationCallOrder[0];
+    const inviteCoursesOrder = mockEnrollInviteCourses.mock.invocationCallOrder[0];
+    expect(roleTargetsOrder).toBeLessThan(inviteCoursesOrder);
+  });
+
   it('rejects when a user already exists for the invite email in a DIFFERENT org, without relinking it', async () => {
     prismaMock.invite.findUnique.mockResolvedValueOnce({
       id: 'invite-1',
@@ -194,6 +247,101 @@ describe('POST /api/invite/accept — valid token', () => {
     expect(res.status).toBe(400);
     expect(body.error).toMatch(/already exists/i);
     expect(prismaMock.user.create).not.toHaveBeenCalled();
+  });
+});
+
+// ── STAFF_ADDED notification wiring (§2.1/§2.2 routing) ─────────────────────
+
+describe('POST /api/invite/accept — STAFF_ADDED notification wiring', () => {
+  it('emits STAFF_ADDED with the inviter as actor when invite.invitedBy resolves to a real user', async () => {
+    prismaMock.invite.findUnique.mockResolvedValueOnce({
+      id: 'invite-correct',
+      token: 'tok-correct',
+      email: 'newhire@acme.com',
+      organizationId: 'org-correct',
+      role: 'nurse',
+      invitedBy: 'inviter-1',
+      expiresAt: FUTURE,
+    });
+    // 1st call: existingUser check (none). 2nd call: inviter lookup.
+    prismaMock.user.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 'inviter-1', role: 'hr' });
+
+    await POST(
+      makeReq({
+        token: 'tok-correct',
+        firstName: 'Jane',
+        lastName: 'Doe',
+        password: VALID_PASSWORD,
+      }),
+    );
+
+    expect(mockEmitNotificationEvent).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        organizationId: 'org-correct',
+        type: 'STAFF_ADDED',
+        actor: { userId: 'inviter-1', role: 'hr' },
+        subjectUserId: 'new-user-1',
+        context: expect.objectContaining({ addedVia: 'invite' }),
+      }),
+    );
+  });
+
+  it('emits STAFF_ADDED with a null actor when the invite has no invitedBy (no inviter lookup performed)', async () => {
+    prismaMock.invite.findUnique.mockResolvedValueOnce({
+      id: 'invite-no-inviter',
+      token: 'tok-no-inviter',
+      email: 'newhire2@acme.com',
+      organizationId: 'org-correct',
+      role: 'nurse',
+      invitedBy: null,
+      expiresAt: FUTURE,
+    });
+    prismaMock.user.findUnique.mockResolvedValueOnce(null); // existingUser check only
+
+    await POST(
+      makeReq({
+        token: 'tok-no-inviter',
+        firstName: 'Jane',
+        lastName: 'Doe',
+        password: VALID_PASSWORD,
+      }),
+    );
+
+    expect(mockEmitNotificationEvent).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ actor: null }),
+    );
+    // Only the existingUser lookup — no second findUnique for a nonexistent inviter.
+    expect(prismaMock.user.findUnique).toHaveBeenCalledTimes(1);
+  });
+
+  it('passes the inviter role through unchanged for a non-HR inviter (e.g. supervisor)', async () => {
+    prismaMock.invite.findUnique.mockResolvedValueOnce({
+      id: 'invite-sup',
+      token: 'tok-sup',
+      email: 'newhire3@acme.com',
+      organizationId: 'org-correct',
+      role: 'nurse',
+      invitedBy: 'inviter-2',
+      expiresAt: FUTURE,
+    });
+    prismaMock.user.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 'inviter-2', role: 'supervisor' });
+
+    await POST(
+      makeReq({
+        token: 'tok-sup',
+        firstName: 'Jane',
+        lastName: 'Doe',
+        password: VALID_PASSWORD,
+      }),
+    );
+
+    expect(mockEmitNotificationEvent).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ actor: { userId: 'inviter-2', role: 'supervisor' } }),
+    );
   });
 });
 
@@ -270,5 +418,13 @@ describe('POST /api/invite/accept — relinking an org-less existing account', (
       where: { id: 'invite-relink' },
       data: { status: 'accepted' },
     });
+    expect(mockEnrollUserForRoleTargets).toHaveBeenCalledExactlyOnceWith(
+      'removed-user-1',
+      'org-new',
+    );
+    expect(mockEnrollInviteCourses).toHaveBeenCalledExactlyOnceWith(
+      'removed-user-1',
+      'invite-relink',
+    );
   });
 });

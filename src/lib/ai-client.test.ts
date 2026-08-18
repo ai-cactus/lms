@@ -1,6 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { estimateTokens, truncateToContext, callVertexAI } from './ai-client';
+import {
+  estimateTokens,
+  truncateToContext,
+  callVertexAI,
+  generateBatchEmbeddings,
+} from './ai-client';
 
 vi.mock('google-auth-library', () => {
   return {
@@ -177,6 +182,9 @@ describe('ai-client utilities', () => {
       vi.stubGlobal('fetch', vi.fn());
       vi.useFakeTimers();
       process.env = { ...originalEnv };
+      // Set explicitly: these tests previously passed only because the client
+      // fell back to the hardcoded production project when this was unset.
+      process.env.GOOGLE_PROJECT_ID = 'test-project';
     });
 
     afterEach(() => {
@@ -443,6 +451,72 @@ describe('ai-client utilities', () => {
       const fetchBody = JSON.parse(fetchCall[1].body);
       expect(fetchBody.generationConfig.maxOutputTokens).toBe(1000);
       expect(fetchBody.generationConfig.temperature).toBe(0.2);
+    });
+  });
+
+  describe('GOOGLE_PROJECT_ID is required (no production fallback)', () => {
+    const originalEnv = process.env;
+
+    beforeEach(() => {
+      vi.stubGlobal('fetch', vi.fn());
+      process.env = { ...originalEnv };
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+      process.env = originalEnv;
+    });
+
+    /**
+     * Regression guard. `ai-client.ts` used to read
+     *   process.env.GOOGLE_PROJECT_ID || 'theraptly-lms'
+     * so any environment without the variable set silently issued its Vertex
+     * calls against the PRODUCTION project, authenticated by the host's
+     * Application Default Credentials. Nothing in the env files revealed it.
+     */
+    it('callVertexAI throws when GOOGLE_PROJECT_ID is unset, rather than defaulting', async () => {
+      delete process.env.GOOGLE_PROJECT_ID;
+
+      await expect(callVertexAI('prompt')).rejects.toThrow(/GOOGLE_PROJECT_ID is not set/);
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+    it('callVertexAI throws when GOOGLE_PROJECT_ID is empty', async () => {
+      process.env.GOOGLE_PROJECT_ID = '';
+
+      await expect(callVertexAI('prompt')).rejects.toThrow(/GOOGLE_PROJECT_ID is not set/);
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+    it('generateBatchEmbeddings throws when GOOGLE_PROJECT_ID is unset', async () => {
+      delete process.env.GOOGLE_PROJECT_ID;
+
+      await expect(generateBatchEmbeddings(['some text'])).rejects.toThrow(
+        /GOOGLE_PROJECT_ID is not set/,
+      );
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+    it('never falls back to the production project name', async () => {
+      delete process.env.GOOGLE_PROJECT_ID;
+
+      const error = await callVertexAI('prompt').catch((e: Error) => e);
+      expect((error as Error).message).not.toContain('theraptly-lms');
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+    it('uses the configured project in the request URL when set', async () => {
+      process.env.GOOGLE_PROJECT_ID = 'theraptly-lms-staging';
+      vi.mocked(global.fetch).mockResolvedValue({
+        ok: true,
+        json: async () => ({ candidates: [{ content: { parts: [{ text: 'ok' }] } }] }),
+      } as any);
+
+      await callVertexAI('prompt');
+
+      const url = (global.fetch as any).mock.calls[0][0] as string;
+      expect(url).toContain('/projects/theraptly-lms-staging/');
+      expect(url).not.toContain('/projects/theraptly-lms/');
     });
   });
 });

@@ -89,6 +89,7 @@ model Invite {
   createdAt      DateTime     @default(now()) @map("created_at")
   invitedBy      String?      @map("invited_by")
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  courseAssignments InviteCourseAssignment[]
 
   @@index([email])
   @@index([token])

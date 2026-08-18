@@ -123,7 +123,7 @@ test.describe('Staff invite — 2-step modal, submit to success', () => {
       await page.goto('/dashboard/staff');
       await page.waitForLoadState('networkidle');
 
-      await page.getByRole('button', { name: /add workers?/i }).first().click();
+      await page.getByRole('button', { name: /add staff/i }).first().click();
       await page.waitForSelector('[role="dialog"]', { timeout: 5000 });
 
       // Step 1 — email entry.
@@ -189,7 +189,7 @@ test.describe('Staff invite — 2-step modal, submit to success', () => {
       await page.goto('/dashboard/staff');
       await page.waitForLoadState('networkidle');
 
-      await page.getByRole('button', { name: /add workers?/i }).first().click();
+      await page.getByRole('button', { name: /add staff/i }).first().click();
       await page.waitForSelector('[role="dialog"]', { timeout: 5000 });
 
       await page.getByPlaceholder(/enter emails separated by/i).fill(`${emailA}, ${emailB}`);
@@ -259,7 +259,7 @@ test.describe('Staff invite — 2-step modal, submit to success', () => {
       await page.goto('/dashboard/staff');
       await page.waitForLoadState('networkidle');
 
-      await page.getByRole('button', { name: /add workers?/i }).first().click();
+      await page.getByRole('button', { name: /add staff/i }).first().click();
       await page.waitForSelector('[role="dialog"]', { timeout: 5000 });
       await page.getByPlaceholder(/enter emails separated by/i).fill(email);
       await page.getByRole('button', { name: /^continue$/i }).click();
@@ -267,6 +267,69 @@ test.describe('Staff invite — 2-step modal, submit to success', () => {
       await expect(page.getByText(/1 contact found\./i)).toBeVisible();
     } finally {
       await cleanup(seeded, email);
+    }
+  });
+
+  test('uploading a CSV file parses and imports its contacts (Tier 3 5.2 — dynamic xlsx import)', async ({
+    page,
+  }) => {
+    // readStaffSpreadsheetRows() (src/lib/staff-csv.ts) switched from a static
+    // `import * as XLSX` to `const XLSX = await import('xlsx')` inside the
+    // function body. This drives that exact code path end-to-end in a real
+    // browser, proving the lazy chunk still loads and parses correctly.
+    test.setTimeout(90_000);
+    const seeded = await seedOwner();
+    const inviteeEmail = `csv-import-${crypto.randomBytes(4).toString('hex')}@staff-invite-e2e.invalid`;
+
+    try {
+      await login(page, seeded.email, seeded.password);
+      await page.goto('/dashboard/staff');
+      await page.waitForLoadState('networkidle');
+
+      await page.getByRole('button', { name: /add staff/i }).first().click();
+      const dialog = page.getByRole('dialog');
+      await expect(dialog).toBeVisible();
+      await expect(page.getByText('Invite New Staffs')).toBeVisible();
+
+      await dialog.locator('input[type="file"]').setInputFiles({
+        name: 'staff-import.csv',
+        mimeType: 'text/csv',
+        buffer: Buffer.from(`email,role\n${inviteeEmail},nurse\n`),
+      });
+
+      // The uploaded-file badge (filename + parsed-contact count) only appears
+      // once readStaffSpreadsheetRows()'s dynamic import has resolved and the
+      // rows were parsed successfully.
+      await expect(page.getByText('staff-import.csv')).toBeVisible({ timeout: 10000 });
+      await expect(page.getByText('1 contact imported')).toBeVisible();
+
+      await page.getByRole('button', { name: /^continue$/i }).click();
+      await expect(page.getByText('Assign roles')).toBeVisible();
+      await expect(page.getByText(inviteeEmail)).toBeVisible();
+
+      // The CSV's `role` column ('nurse') pre-fills the per-contact Select, so
+      // Continue is already enabled without picking a role manually.
+      const continueBtn = page.getByRole('button', { name: /^continue$/i });
+      await expect(continueBtn).toBeEnabled();
+      await continueBtn.click();
+
+      await expect(page.getByText('Invite sent')).toBeVisible({ timeout: 10000 });
+      await page.getByRole('button', { name: /^done$/i }).click();
+
+      const client = new Client({ connectionString: DB_URL });
+      await client.connect();
+      try {
+        const res = await client.query(
+          `SELECT role, status FROM invites WHERE email = $1 AND organization_id = $2`,
+          [inviteeEmail, seeded.orgId],
+        );
+        expect(res.rows).toHaveLength(1);
+        expect(res.rows[0]).toMatchObject({ role: 'nurse', status: 'pending' });
+      } finally {
+        await client.end();
+      }
+    } finally {
+      await cleanup(seeded, inviteeEmail);
     }
   });
 });

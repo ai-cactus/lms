@@ -12,6 +12,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { PhoneInput } from '@/components/ui';
+import { OTHER_OPTION_ID, PROGRAM_SERVICES } from '@/lib/constants/onboarding-options';
+import { panelLabelClass, sectionHeadingClass } from './profile-tab-styles';
 
 interface FacilityData {
   id: string;
@@ -98,17 +100,13 @@ const STATE_OPTIONS = [
   { label: 'Wyoming', value: 'WY' },
 ];
 
-const PROGRAM_SERVICES = [
-  { id: 'aging', label: 'Aging Services' },
-  { id: 'behavioral', label: 'Behavioral Health' },
-  { id: 'child-youth', label: 'Child & Youth Services' },
-  { id: 'employment', label: 'Employment & Community Services' },
-  { id: 'medical-rehab', label: 'Medical Rehabilitation' },
-  { id: 'opioid', label: 'Opioid Treatment Program' },
-  { id: 'vision', label: 'Vision Rehabilitation Services' },
-];
+// "Other" is a free-text escape hatch during onboarding, so it is never stored
+// as an id — the typed value is. It therefore gets no checkbox of its own.
+const SELECTABLE_PROGRAM_SERVICES = PROGRAM_SERVICES.filter(
+  (service) => service.id !== OTHER_OPTION_ID,
+);
+const KNOWN_PROGRAM_SERVICE_IDS = new Set(SELECTABLE_PROGRAM_SERVICES.map((s) => s.id));
 
-const labelClass = 'mb-2 block text-sm font-medium text-foreground';
 const optionalClass = 'text-text-tertiary font-normal';
 
 /** Read-only shadcn select that displays the selected option's label. */
@@ -140,7 +138,7 @@ function ReadOnlySelect({
 export default function FacilityForm({ initialData }: FacilityFormProps) {
   if (!initialData) {
     return (
-      <div className="flex min-h-[400px] items-center justify-center p-6">
+      <div className="flex min-h-[400px] items-center justify-center">
         <div className="flex max-w-[420px] flex-col items-center text-center">
           <div className="mb-4 flex size-16 items-center justify-center rounded-full bg-primary/10 text-primary">
             <Building2 className="size-8" aria-hidden="true" />
@@ -155,19 +153,19 @@ export default function FacilityForm({ initialData }: FacilityFormProps) {
   }
 
   const programServices = initialData.programServices || [];
+  const otherProgramServices = programServices.filter(
+    (service) => !KNOWN_PROGRAM_SERVICE_IDS.has(service),
+  );
 
   return (
-    <div className="flex flex-col gap-10 p-6 md:p-10">
+    <div className="flex w-full flex-col gap-10">
       {/* Section 1: Facility Information */}
-      <div className="flex flex-col gap-6">
-        <div className="flex items-center gap-2 text-base font-semibold text-foreground">
-          <span className="text-primary">1.</span>
-          <span>Facility Information</span>
-        </div>
+      <div className="flex flex-col gap-[27.639px]">
+        <div className={sectionHeadingClass}>1. Facility Information</div>
 
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-x-[16.584px] gap-y-[27.639px] sm:grid-cols-2">
           <div>
-            <label className={labelClass}>
+            <label className={panelLabelClass}>
               Number of Staff <span className={optionalClass}>(optional)</span>
             </label>
             <ReadOnlySelect
@@ -177,7 +175,7 @@ export default function FacilityForm({ initialData }: FacilityFormProps) {
             />
           </div>
           <div>
-            <label className={labelClass}>
+            <label className={panelLabelClass}>
               Country <span className={optionalClass}>(optional)</span>
             </label>
             <ReadOnlySelect
@@ -188,9 +186,9 @@ export default function FacilityForm({ initialData }: FacilityFormProps) {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-x-[16.584px] gap-y-[27.639px] sm:grid-cols-2">
           <div>
-            <label className={labelClass}>
+            <label className={panelLabelClass}>
               Phone Number <span className={optionalClass}>(optional)</span>
             </label>
             <PhoneInput
@@ -201,7 +199,7 @@ export default function FacilityForm({ initialData }: FacilityFormProps) {
             />
           </div>
           <div>
-            <label className={labelClass}>
+            <label className={panelLabelClass}>
               Zip Code <span className={optionalClass}>(optional)</span>
             </label>
             <Input
@@ -215,7 +213,7 @@ export default function FacilityForm({ initialData }: FacilityFormProps) {
         </div>
 
         <div>
-          <label className={labelClass}>
+          <label className={panelLabelClass}>
             Street Address <span className={optionalClass}>(optional)</span>
           </label>
           <Input
@@ -227,9 +225,9 @@ export default function FacilityForm({ initialData }: FacilityFormProps) {
           />
         </div>
 
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-x-[16.584px] gap-y-[27.639px] sm:grid-cols-2">
           <div>
-            <label className={labelClass}>
+            <label className={panelLabelClass}>
               City <span className={optionalClass}>(optional)</span>
             </label>
             <Input
@@ -241,7 +239,7 @@ export default function FacilityForm({ initialData }: FacilityFormProps) {
             />
           </div>
           <div>
-            <label className={labelClass}>
+            <label className={panelLabelClass}>
               State <span className={optionalClass}>(optional)</span>
             </label>
             <ReadOnlySelect
@@ -254,14 +252,11 @@ export default function FacilityForm({ initialData }: FacilityFormProps) {
       </div>
 
       {/* Section 2: Credentialing & Documentation */}
-      <div className="flex flex-col gap-6">
-        <div className="flex items-center gap-2 text-base font-semibold text-foreground">
-          <span className="text-primary">2.</span>
-          <span>Credentialing &amp; Documentation</span>
-        </div>
+      <div className="flex flex-col gap-[27.639px]">
+        <div className={sectionHeadingClass}>2. Credentialing &amp; Documentation</div>
 
         <div>
-          <label className={labelClass}>
+          <label className={panelLabelClass}>
             State Healthcare License Number <span className={optionalClass}>(optional)</span>
           </label>
           <Input
@@ -275,7 +270,7 @@ export default function FacilityForm({ initialData }: FacilityFormProps) {
 
         {initialData.complianceDocumentName && (
           <div>
-            <label className={labelClass}>
+            <label className={panelLabelClass}>
               Compliance certifications <span className={optionalClass}>(optional)</span>
             </label>
             <div className="flex items-center gap-4">
@@ -300,16 +295,13 @@ export default function FacilityForm({ initialData }: FacilityFormProps) {
       </div>
 
       {/* Section 3: Facility Services */}
-      <div className="flex flex-col gap-6">
-        <div className="flex items-center gap-2 text-base font-semibold text-foreground">
-          <span className="text-primary">3.</span>
-          <span>Facility Services</span>
-        </div>
+      <div className="flex flex-col gap-[27.639px]">
+        <div className={sectionHeadingClass}>3. Facility Services</div>
 
         <div>
-          <label className={`${labelClass} mb-4`}>Program Services</label>
+          <label className={panelLabelClass}>Program Services</label>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {PROGRAM_SERVICES.map((service) => (
+            {SELECTABLE_PROGRAM_SERVICES.map((service) => (
               <div key={service.id} className="flex items-center gap-2">
                 <Checkbox
                   id={`facility-program-${service.id}`}
@@ -325,6 +317,16 @@ export default function FacilityForm({ initialData }: FacilityFormProps) {
               </div>
             ))}
           </div>
+
+          {otherProgramServices.length > 0 && (
+            <div className="mt-4 flex flex-col gap-2">
+              {otherProgramServices.map((service) => (
+                <span key={service} className="text-sm text-foreground">
+                  Other: {service}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

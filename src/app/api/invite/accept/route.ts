@@ -10,6 +10,9 @@ import { assertSeatAvailable, SeatLimitError } from '@/lib/seat-limits';
 import { audit, getClientContext } from '@/lib/audit';
 import { BCRYPT_COST } from '@/lib/bcrypt-config';
 import { enrollUserForRoleTargets } from '@/lib/enrollment/role-targets';
+import { enrollInviteCourses } from '@/lib/enrollment/invite-courses';
+import { emitNotificationEvent } from '@/lib/notifications/emit';
+import { getRoleDisplayName } from '@/lib/rbac/role-utils';
 
 const acceptInviteSchema = z.object({
   token: z.string().min(1, 'Token is required'),
@@ -184,6 +187,34 @@ export async function POST(req: Request) {
     // Live auto-enroll: a new account just joined the org with a role — enroll it
     // in any active role-target assignments for that role. Never throws.
     await enrollUserForRoleTargets(newUser.id, invite.organizationId);
+
+    // Materialise any courses parked on this invite (assigned to the email before
+    // the account existed) into real enrollments. Never throws.
+    await enrollInviteCourses(newUser.id, invite.id);
+
+    // Staff addition is recorded at acceptance, not at invite creation — an
+    // invite is intent, an accepted invite is a real member. The inviter is the
+    // actor, which is what routes an HR-sent invite to the owner and everyone
+    // else's to HR (falling back to the owner). Never throws.
+    const inviter = invite.invitedBy
+      ? await prisma.user.findUnique({
+          where: { id: invite.invitedBy },
+          select: { id: true, role: true },
+        })
+      : null;
+
+    const roleLabel = getRoleDisplayName(invite.role);
+    await emitNotificationEvent({
+      organizationId: invite.organizationId,
+      type: 'STAFF_ADDED',
+      title: 'New staff member added',
+      message: `${fullName} joined as ${roleLabel} via invitation.`,
+      actor: inviter ? { userId: inviter.id, role: inviter.role } : null,
+      subjectUserId: newUser.id,
+      facilityId: newUser.facilityId,
+      linkUrl: `/dashboard/staff/${newUser.id}`,
+      context: { workerName: fullName, roleLabel, addedVia: 'invite' },
+    });
 
     return NextResponse.json({ success: true, userId: newUser.id });
   } catch (error: unknown) {

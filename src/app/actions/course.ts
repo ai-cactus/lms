@@ -1,13 +1,16 @@
 'use server';
 
 import prisma from '@/lib/prisma';
-import { isAdminRole, WORKER_ROLES } from '@/lib/rbac/role-utils';
+import type { Prisma } from '@/generated/prisma/client';
+import { isAdminRole, dbRoleToRoleKey, WORKER_ROLES } from '@/lib/rbac/role-utils';
+import { assertNoPhi } from '@/lib/documents/phiGate';
+import { can } from '@/lib/rbac/permissions';
 import { hasActiveBilling } from '@/lib/billing';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
 import { notifyOrganizationAdmins } from './notifications';
-import { CourseWithStats, CourseWithRelations } from '@/types/course';
+import { CourseWithStats, CourseWithRelations, courseDetailSelect } from '@/types/course';
 import { QuizQuestion } from '@/types/quiz';
 import type { StaffEntry } from '@/types/enrollment';
 import { logger } from '@/lib/logger';
@@ -29,52 +32,103 @@ export async function getCourses(): Promise<CourseWithStats[]> {
     throw new Error('Unauthorized');
   }
 
-  const currentUser = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { organizationId: true },
-  });
+  // Org/role are authoritative on the DB-revalidated session — no re-query.
+  const organizationId = session.user.organizationId;
+
+  // Course structure only — lesson/enrollment tallies come from grouped
+  // aggregation below, not from materializing every enrollment row per course.
+  const courseCardSelect = {
+    id: true,
+    title: true,
+    description: true,
+    thumbnail: true,
+    status: true,
+    type: true,
+    duration: true,
+    createdAt: true,
+    updatedAt: true,
+    _count: { select: { lessons: true } },
+    // Source-document lineage for the row's "view source document" action. Only
+    // the earliest version is needed — that is the document the course was
+    // generated from.
+    versions: {
+      select: { documentVersion: { select: { documentId: true } } },
+      orderBy: { version: 'asc' },
+      take: 1,
+    },
+  } satisfies Prisma.CourseSelect;
 
   const [ownCourses, offerings] = await Promise.all([
     prisma.course.findMany({
       where: { createdBy: session.user.id },
-      include: {
-        lessons: { select: { id: true } },
-        enrollments: { select: { status: true } },
-      },
+      select: courseCardSelect,
       orderBy: { createdAt: 'desc' },
     }),
-    currentUser?.organizationId
+    organizationId
       ? prisma.orgCourseOffering.findMany({
-          where: { organizationId: currentUser.organizationId },
+          where: { organizationId },
           orderBy: { createdAt: 'desc' },
-          include: {
-            course: {
-              include: {
-                lessons: { select: { id: true } },
-                enrollments: {
-                  where: { user: { organizationId: currentUser.organizationId } },
-                  select: { status: true },
-                },
-              },
-            },
-          },
+          select: { course: { select: courseCardSelect } },
         })
       : Promise.resolve([]),
   ]);
 
-  const toStats = (course: {
-    id: string;
-    title: string;
-    description: string | null;
-    thumbnail: string | null;
-    status: string;
-    type: string;
-    duration: number | null;
-    createdAt: Date;
-    updatedAt: Date;
-    lessons: { id: string }[];
-    enrollments: { status: string }[];
-  }): CourseWithStats => ({
+  const adoptedCourses = offerings.map((o) => o.course);
+  const adoptedCourseIds = adoptedCourses.map((c) => c.id);
+
+  // Per-course enrollment totals + completed/attested tallies via grouped
+  // aggregation (F-028 pattern). Own courses count ALL enrollments (unscoped,
+  // matching the prior behavior); adopted courses count only THIS org's staff.
+  const [ownCounts, adoptedCounts] = await Promise.all([
+    prisma.enrollment.groupBy({
+      by: ['courseId', 'status'],
+      where: { course: { createdBy: session.user.id } },
+      _count: { _all: true },
+    }),
+    organizationId && adoptedCourseIds.length
+      ? prisma.enrollment.groupBy({
+          by: ['courseId', 'status'],
+          where: { courseId: { in: adoptedCourseIds }, user: { organizationId } },
+          _count: { _all: true },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const toCountMap = (
+    rows: { courseId: string; status: string; _count: { _all: number } }[],
+  ): Map<string, { total: number; completed: number }> => {
+    const map = new Map<string, { total: number; completed: number }>();
+    for (const row of rows) {
+      const entry = map.get(row.courseId) ?? { total: 0, completed: 0 };
+      entry.total += row._count._all;
+      if (row.status === 'completed' || row.status === 'attested') {
+        entry.completed += row._count._all;
+      }
+      map.set(row.courseId, entry);
+    }
+    return map;
+  };
+
+  const ownCountMap = toCountMap(ownCounts);
+  const adoptedCountMap = toCountMap(adoptedCounts);
+
+  const toStats = (
+    course: {
+      id: string;
+      title: string;
+      description: string | null;
+      thumbnail: string | null;
+      status: string;
+      type: string;
+      duration: number | null;
+      createdAt: Date;
+      updatedAt: Date;
+      _count: { lessons: number };
+      versions?: { documentVersion: { documentId: string } }[];
+    },
+    counts: { total: number; completed: number },
+    options?: { includeSourceDocument?: boolean },
+  ): CourseWithStats => ({
     id: course.id,
     title: course.title,
     description: course.description,
@@ -84,21 +138,24 @@ export async function getCourses(): Promise<CourseWithStats[]> {
     duration: course.duration,
     createdAt: course.createdAt,
     updatedAt: course.updatedAt,
-    lessonsCount: course.lessons.length,
-    enrollmentsCount: course.enrollments.length,
-    completionRate:
-      course.enrollments.length > 0
-        ? Math.round(
-            (course.enrollments.filter((e) => e.status === 'completed' || e.status === 'attested')
-              .length /
-              course.enrollments.length) *
-              100,
-          )
-        : 0,
+    lessonsCount: course._count.lessons,
+    enrollmentsCount: counts.total,
+    sourceDocumentId: options?.includeSourceDocument
+      ? (course.versions?.[0]?.documentVersion.documentId ?? null)
+      : null,
+    completionRate: counts.total > 0 ? Math.round((counts.completed / counts.total) * 100) : 0,
   });
 
-  const own = ownCourses.map(toStats);
-  const adopted = offerings.map((o) => toStats(o.course));
+  const own = ownCourses.map((course) =>
+    toStats(course, ownCountMap.get(course.id) ?? { total: 0, completed: 0 }, {
+      includeSourceDocument: true,
+    }),
+  );
+  // Adopted offerings are another tenant's course — their source document
+  // belongs to that tenant and must never be linkable from here.
+  const adopted = adoptedCourses.map((course) =>
+    toStats(course, adoptedCountMap.get(course.id) ?? { total: 0, completed: 0 }),
+  );
 
   // De-dupe in case the admin both created and adopted the same course id.
   const seen = new Set(own.map((c) => c.id));
@@ -113,41 +170,7 @@ export async function getCourseById(courseId: string): Promise<CourseWithRelatio
 
   const course = await prisma.course.findUnique({
     where: { id: courseId },
-    include: {
-      modules: {
-        orderBy: { order: 'asc' },
-        include: {
-          lessons: {
-            orderBy: { order: 'asc' },
-            include: {
-              quiz: {
-                include: { questions: { orderBy: { order: 'asc' } } },
-              },
-            },
-          },
-        },
-      },
-      quiz: {
-        include: { questions: { orderBy: { order: 'asc' } } },
-      },
-      lessons: {
-        orderBy: { order: 'asc' },
-        include: {
-          quiz: {
-            include: { questions: { orderBy: { order: 'asc' } } },
-          },
-        },
-      },
-      enrollments: {
-        include: {
-          user: { include: { profile: true } },
-          certificate: true,
-        },
-      },
-      creator: {
-        include: { profile: true },
-      },
-    },
+    select: courseDetailSelect,
   });
 
   if (!course) {
@@ -162,7 +185,19 @@ export async function getCourseById(courseId: string): Promise<CourseWithRelatio
     throw new Error('Course not found');
   }
 
-  return course;
+  // Only the creator or an org admin may receive the full enrolled-staff roster.
+  // A non-privileged enrolled worker must never get other staff's enrollment PII
+  // (email/role/name/certificate) back from this action — the worker page discards
+  // it client-side, but a direct server-action call would otherwise leak it (IDOR).
+  const isPrivileged = isCreator || isAdminRole(session.user.role);
+  if (isPrivileged) {
+    return course;
+  }
+
+  return {
+    ...course,
+    enrollments: course.enrollments.filter((e) => e.userId === session.user.id),
+  };
 }
 
 /**
@@ -181,38 +216,21 @@ export async function getCourseForOrgView(courseId: string): Promise<CourseWithR
     throw new Error('Unauthorized');
   }
 
-  const currentUser = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { organizationId: true },
-  });
-  if (!currentUser?.organizationId) {
+  // Org is authoritative on the DB-revalidated session — no re-query.
+  const organizationId = session.user.organizationId;
+  if (!organizationId) {
     throw new Error('Course not found');
   }
-  const organizationId = currentUser.organizationId;
 
   const course = await prisma.course.findFirst({
     where: { id: courseId, type: 'video', isGlobal: true, status: 'published' },
-    include: {
-      modules: {
-        orderBy: { order: 'asc' },
-        include: {
-          lessons: {
-            orderBy: { order: 'asc' },
-            include: { quiz: { include: { questions: { orderBy: { order: 'asc' } } } } },
-          },
-        },
-      },
-      quiz: { include: { questions: { orderBy: { order: 'asc' } } } },
-      lessons: {
-        orderBy: { order: 'asc' },
-        include: { quiz: { include: { questions: { orderBy: { order: 'asc' } } } } },
-      },
+    select: {
+      ...courseDetailSelect,
       // Scope enrolled staff to the caller's org — never leak other orgs' users.
       enrollments: {
+        ...courseDetailSelect.enrollments,
         where: { user: { organizationId } },
-        include: { user: { include: { profile: true } }, certificate: true },
       },
-      creator: { include: { profile: true } },
     },
   });
 
@@ -227,6 +245,23 @@ export async function createCourse(data: { title: string; description?: string }
   const session = await resolveSession();
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
+  }
+
+  if (!session.user.organizationId) {
+    throw new Error('You must belong to an organization to create courses');
+  }
+
+  // F-034: registry permission check. These mutators previously validated only
+  // that SOME session existed plus `createdBy` ownership, so any authenticated
+  // member of the org — a worker included — could reach them. Ownership is not
+  // authorization.
+  if (!can(dbRoleToRoleKey(session.user.role), 'course.create')) {
+    logger.warn({
+      msg: '[course] createCourse denied — missing course.create',
+      userId: session.user.id,
+      role: session.user.role,
+    });
+    throw new Error('Insufficient permissions');
   }
 
   const course = await prisma.course.create({
@@ -254,6 +289,16 @@ export async function updateCourse(
   const session = await resolveSession();
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
+  }
+
+  if (!can(dbRoleToRoleKey(session.user.role), 'course.edit')) {
+    logger.warn({
+      msg: '[course] updateCourse denied — missing course.edit',
+      courseId,
+      userId: session.user.id,
+      role: session.user.role,
+    });
+    throw new Error('Insufficient permissions');
   }
 
   const existing = await prisma.course.findUnique({ where: { id: courseId } });
@@ -286,6 +331,16 @@ export async function publishCourse(courseId: string, opts?: { acknowledgeWarnin
   const session = await resolveSession();
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
+  }
+
+  if (!can(dbRoleToRoleKey(session.user.role), 'course.edit')) {
+    logger.warn({
+      msg: '[course] publishCourse denied — missing course.edit',
+      courseId,
+      userId: session.user.id,
+      role: session.user.role,
+    });
+    throw new Error('Insufficient permissions');
   }
 
   const existing = await prisma.course.findUnique({ where: { id: courseId } });
@@ -343,6 +398,16 @@ export async function deleteCourse(courseId: string) {
     throw new Error('Unauthorized');
   }
 
+  if (!can(dbRoleToRoleKey(session.user.role), 'course.delete')) {
+    logger.warn({
+      msg: '[course] deleteCourse denied — missing course.delete',
+      courseId,
+      userId: session.user.id,
+      role: session.user.role,
+    });
+    throw new Error('Insufficient permissions');
+  }
+
   const existing = await prisma.course.findUnique({ where: { id: courseId } });
   if (!existing || existing.createdBy !== session.user.id) {
     logger.warn({
@@ -374,60 +439,51 @@ export async function getDashboardData() {
   // { courseId, score, completedAt } projection — for the average / monthly /
   // pass-fail stats that genuinely need row-level scores.
   const createdBy = session.user.id;
-  const [coursesRaw, courseStatusCounts, userStatusCounts, scoredEnrollments, currentUser] =
-    await Promise.all([
-      prisma.course.findMany({
-        where: { createdBy },
-        select: {
-          id: true,
-          title: true,
-          description: true,
-          thumbnail: true,
-          status: true,
-          type: true,
-          duration: true,
-          createdAt: true,
-          updatedAt: true,
-          lessons: { select: { quiz: { select: { passingScore: true } } } },
-        },
-        orderBy: { createdAt: 'desc' },
-      }),
-      // Per-course enrollment totals + completed/attested tallies.
-      prisma.enrollment.groupBy({
-        by: ['courseId', 'status'],
-        where: { course: { createdBy } },
-        _count: { _all: true },
-      }),
-      // Per-user status tallies for training coverage + distinct staff assigned.
-      prisma.enrollment.groupBy({
-        by: ['userId', 'status'],
-        where: { course: { createdBy } },
-        _count: { _all: true },
-      }),
-      // Only scored enrollments, narrow projection — used for average grade,
-      // monthly performance and per-course pass/fail distribution.
-      prisma.enrollment.findMany({
-        where: { course: { createdBy }, score: { not: null } },
-        select: { courseId: true, score: true, completedAt: true },
-      }),
-      prisma.user.findUnique({
-        where: { id: session.user.id },
-        select: { organizationId: true },
-      }),
-    ]);
-
-  if (!currentUser?.organizationId) {
-    // User authenticated but has no organization. We no longer force redirect here.
-    // The client-side OrganizationActivationModal will show a welcome message for 60 seconds
-    // and then auto-redirect if they don't click anything.
-  }
+  // Org is authoritative on the DB-revalidated session — no re-query.
+  const organizationId = session.user.organizationId;
+  const [coursesRaw, courseStatusCounts, userStatusCounts, scoredEnrollments] = await Promise.all([
+    prisma.course.findMany({
+      where: { createdBy },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        thumbnail: true,
+        status: true,
+        type: true,
+        duration: true,
+        createdAt: true,
+        updatedAt: true,
+        lessons: { select: { quiz: { select: { passingScore: true } } } },
+      },
+      orderBy: { createdAt: 'desc' },
+    }),
+    // Per-course enrollment totals + completed/attested tallies.
+    prisma.enrollment.groupBy({
+      by: ['courseId', 'status'],
+      where: { course: { createdBy } },
+      _count: { _all: true },
+    }),
+    // Per-user status tallies for training coverage + distinct staff assigned.
+    prisma.enrollment.groupBy({
+      by: ['userId', 'status'],
+      where: { course: { createdBy } },
+      _count: { _all: true },
+    }),
+    // Only scored enrollments, narrow projection — used for average grade,
+    // monthly performance and per-course pass/fail distribution.
+    prisma.enrollment.findMany({
+      where: { course: { createdBy }, score: { not: null } },
+      select: { courseId: true, score: true, completedAt: true },
+    }),
+  ]);
 
   // Get total staff (workers) in organization to ensure accurate coverage base
   let totalOrgStaff = 0;
-  if (currentUser?.organizationId) {
+  if (organizationId) {
     totalOrgStaff = await prisma.user.count({
       where: {
-        organizationId: currentUser.organizationId,
+        organizationId,
         role: { in: [...WORKER_ROLES] },
       },
     });
@@ -847,12 +903,8 @@ export async function createFullCourse(data: {
     throw new Error('Unauthorized');
   }
 
-  const currentUser = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { organizationId: true },
-  });
-
-  if (!currentUser?.organizationId) {
+  // Org is authoritative on the DB-revalidated session — no re-query.
+  if (!session.user.organizationId) {
     throw new Error('Organization not found');
   }
 
@@ -1219,6 +1271,16 @@ export async function updateLessonContent(lessonId: string, content: string, tit
     throw new Error('Unauthorized or Lesson not found');
   }
 
+  // F-089: this is the rich-text editor's save path — the most likely place for
+  // someone to paste a real clinical note. Gated like every other ingress.
+  await assertNoPhi({
+    text: content,
+    source: 'lesson_edit',
+    actorId: session.user.id,
+    organizationId: session.user.organizationId ?? undefined,
+    logContext: { lessonId },
+  });
+
   await prisma.lesson.update({
     where: { id: lessonId },
     data: {
@@ -1311,12 +1373,8 @@ export async function assignRetake(enrollmentId: string, retakeReason?: string) 
     throw new Error('Unauthorized');
   }
 
-  const adminUser = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { role: true },
-  });
-
-  if (!adminUser || !isAdminRole(adminUser.role)) {
+  // Role is authoritative on the DB-revalidated session — no re-query.
+  if (!isAdminRole(session.user.role)) {
     throw new Error('Insufficient permissions');
   }
 

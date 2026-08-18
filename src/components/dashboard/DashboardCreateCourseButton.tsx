@@ -33,8 +33,14 @@ export default function DashboardCreateCourseButton({
 
   return (
     <>
-      <Button variant="default" onClick={handleClick} id="dashboard-create-course-btn">
-        <Plus className="size-5" aria-hidden="true" />
+      <Button
+        variant="default"
+        size="lg"
+        onClick={handleClick}
+        id="dashboard-create-course-btn"
+        className="h-8 gap-1.5 rounded-[8px] px-3 text-xs font-semibold tracking-[-0.31px] has-[>svg]:px-3 md:h-12 md:gap-2 md:rounded-[12px] md:px-6 md:text-[15.5px] md:has-[>svg]:px-6"
+      >
+        <Plus className="size-4 md:size-[25px]" aria-hidden="true" />
         Create Course
       </Button>
 

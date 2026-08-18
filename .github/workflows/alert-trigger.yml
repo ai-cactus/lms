@@ -1,25 +1,37 @@
 name: Report
 
+# Manual-only: this used to fire on every PR close (types: [closed]), which
+# meant a job ran on every merge. Policy is now that nothing runs post-merge —
+# PR-time checks gate the merge, the deploy branches only build+deploy. Run it
+# by hand if an activity alert is needed:
+#   gh workflow run alert-trigger.yml
 on:
-  pull_request:
-    types: [closed]
+  workflow_dispatch:
+
+# The called workflow only sends an email; it checks out nothing and needs no
+# write scopes.
+permissions:
+  contents: read
 
 jobs:
   call-workflow:
-    uses: ai-cactus/org-automation/.github/workflows/activity-alert.yml@main
+    # Pinned to an immutable commit SHA rather than @main (F-073). A mutable
+    # external ref means a change in another repository silently changes what
+    # runs here — and with `secrets: inherit` below, that code receives every
+    # secret in this repository. Bump deliberately; Dependabot's
+    # github-actions ecosystem will propose updates.
+    # 7200f45 = ai-cactus/org-automation@main as of 2026-08-09. Reviewed at
+    # that SHA: it sends one email via dawidd6/action-send-mail and reads only
+    # EMAIL_USERNAME and EMAIL_PASSWORD.
+    uses: ai-cactus/org-automation/.github/workflows/activity-alert.yml@7200f45816ea72cda79fabfc0a02519c36c7c2fc
+    # TODO(F-073): replace with an explicit two-secret pass:
+    #     secrets:
+    #       EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
+    #       EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+    # Blocked upstream: activity-alert.yml declares no `on.workflow_call.secrets`,
+    # and named secrets can only be passed to secrets the called workflow
+    # declares. Until ai-cactus/org-automation adds that block, `inherit` is the
+    # only form that works — so this job still receives PRODUCTION_ENV_BASE64,
+    # SSH_PRIVATE_KEY and STRIPE_SECRET_KEY. The SHA pin above is what bounds
+    # the risk: the code receiving them is fixed and reviewed.
     secrets: inherit
-
-# name: Trigger Alert
-
-# on:
-#   push:
-#   pull_request:
-#   issues:
-#   issue_comment:
-#   create:
-#   delete:
-
-# jobs:
-#   call-workflow:
-#     uses: ai-cactus/org-automation/.github/workflows/activity-alert.yml@main
-#     secrets: inherit

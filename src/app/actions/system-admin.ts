@@ -1,10 +1,12 @@
 'use server';
 
 import prisma from '@/lib/prisma';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import crypto from 'crypto';
 import { revalidatePath } from 'next/cache';
 import { logger } from '@/lib/logger';
+import { audit, auditCritical, getClientContext } from '@/lib/audit';
+import { checkRateLimit } from '@/lib/rate-limit';
 import { verifySystemAdminCookie, SYSTEM_ADMIN_COOKIE } from '@/lib/system-auth';
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -34,6 +36,39 @@ function signToken(payload: string): string {
   return `${payload}.${hmac}`;
 }
 
+/**
+ * Constant-time password comparison (F-056).
+ *
+ * A plain `===` short-circuits on the first differing byte, so response timing
+ * leaks how much of the password a guess got right — which turns brute-forcing a
+ * shared secret from 62^n into roughly 62*n work. Length is compared first and
+ * separately because timingSafeEqual throws on differing lengths; leaking the
+ * length alone is not materially useful.
+ */
+function timingSafeEquals(a: string, b: string): boolean {
+  const bufA = Buffer.from(a, 'utf8');
+  const bufB = Buffer.from(b, 'utf8');
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
+/**
+ * Audit context for system-admin events (F-094).
+ *
+ * `actorRole: 'system_admin'` is recorded, but deliberately no `actorId`: this
+ * surface authenticates with a SHARED static password (F-056), so the trail can
+ * establish that someone holding it acted, and when, and from where — but not
+ * who. IP and user-agent are the only identifying signals available until real
+ * per-admin accounts exist. Do not invent an actorId here; a fabricated
+ * attribution is worse than an honest gap.
+ */
+async function systemClientContext() {
+  return {
+    actorRole: 'system_admin',
+    ...getClientContext(await headers()),
+  };
+}
+
 // ── Auth Action ──────────────────────────────────────────────────────────────
 
 export async function verifySystemPassword(
@@ -44,8 +79,45 @@ export async function verifySystemPassword(
     return { success: false, error: 'System admin is not enabled' };
   }
 
-  if (password !== systemPassword) {
+  // F-097: this gate previously accepted UNLIMITED attempts against a single
+  // shared static password (F-056), guarding cross-organization powers including
+  // irreversible user deletion. It was the most brute-forceable surface in the
+  // system.
+  //
+  // Deliberately tighter than the tenant login limiter (10 per 15 min): a
+  // legitimate operator needs a handful of attempts, and there is no self-service
+  // reset to lock anyone out of.
+  //
+  // failClosed on purpose. Everywhere else that is a trade-off; here it is not.
+  // If Redis is unavailable, refusing platform-admin logins for a few minutes is
+  // strictly better than opening an unmetered brute-force window on a shared
+  // credential — the console is an operations tool, not a customer-facing path.
+  const ip = getClientContext(await headers()).ip ?? 'unknown';
+  const { allowed, resetInSeconds } = await checkRateLimit(`system-admin-login:${ip}`, 5, 900, {
+    failClosed: true,
+  });
+  if (!allowed) {
+    logger.warn({ msg: '[system] System admin login rate limit exceeded', ip });
+    await audit({
+      action: 'system.auth.rate_limited',
+      ...(await systemClientContext()),
+    });
+    return {
+      success: false,
+      error: `Too many attempts. Please wait ${resetInSeconds} seconds and try again.`,
+    };
+  }
+
+  if (!timingSafeEquals(password, systemPassword)) {
     logger.warn({ msg: 'System admin login failed: wrong password' });
+    // F-094: this is the entry point to cross-organization super-admin powers,
+    // so a failed attempt is exactly what a reviewer needs to see. Best-effort
+    // rather than critical: a failing audit sink must not make the login
+    // endpoint unusable, and a genuine attacker is not deterred by a 500.
+    await audit({
+      action: 'system.auth.failure',
+      ...(await systemClientContext()),
+    });
     return { success: false, error: 'Invalid password' };
   }
 
@@ -68,6 +140,14 @@ export async function verifySystemPassword(
   });
 
   logger.info({ msg: 'System admin authenticated successfully' });
+  // F-094 + F-056: a successful super-admin session must be on the record. Note
+  // there is no actorId to record — system-admin auth is a SHARED static
+  // password, so the trail can prove that someone held it and when, but not
+  // who. Real per-actor attribution needs the F-056 account model.
+  await audit({
+    action: 'system.auth.success',
+    ...(await systemClientContext()),
+  });
   return { success: true };
 }
 
@@ -471,6 +551,10 @@ export async function deleteUserWithRelations(
 
     logger.info({ msg: 'System admin: deleting user', email: user.email, userId: user.id });
 
+    // Resolved before opening the transaction: headers() is request-scoped and
+    // must not be awaited inside a transaction callback.
+    const clientContext = await systemClientContext();
+
     const result = await prisma.$transaction(async (tx) => {
       const counts: Record<string, number> = {};
 
@@ -554,6 +638,25 @@ export async function deleteUserWithRelations(
       // 11. Delete the user
       await tx.user.delete({ where: { id: userId } });
       counts.user = 1;
+
+      // F-094: the most destructive action in the system — an irreversible
+      // cross-organization hard delete of a person and all their enrollments,
+      // attempts, certificates and attestations. auditCritical INSIDE the
+      // transaction, so the deletion and its record commit together: there can
+      // be no unexplained disappearance of a user's compliance history. If the
+      // audit write fails, the delete correctly rolls back.
+      await auditCritical(
+        {
+          action: 'system.user.delete',
+          targetType: 'user',
+          targetId: userId,
+          // Counts only — no email, no names. The logger redacts PII anyway,
+          // but the audit row is long-lived so it carries even less.
+          metadata: { deletedCounts: counts },
+          ...clientContext,
+        },
+        tx,
+      );
 
       return counts;
     });

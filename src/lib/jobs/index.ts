@@ -3,10 +3,7 @@ import { logger } from '@/lib/logger';
 import { Prisma } from '@/generated/prisma/client';
 
 export type JobType =
-  | 'GENERATE_DRAFT'
-  | 'EXPORT_PACK'
-  | 'GENERATE_V46_COURSE'
-  | 'GENERATE_V3_COURSE';
+  'GENERATE_DRAFT' | 'EXPORT_PACK' | 'GENERATE_V46_COURSE' | 'GENERATE_V3_COURSE';
 
 export async function createJob(
   type: JobType,

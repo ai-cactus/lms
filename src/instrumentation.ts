@@ -1,7 +1,45 @@
 import type { Worker } from 'bullmq';
 
+/**
+ * Registers OpenTelemetry tracing (Phase 3).
+ *
+ * OPT-IN on purpose: it runs only when OTEL_EXPORTER_OTLP_ENDPOINT is set, so
+ * an environment without a collector — local dev, CI, the build — carries no
+ * tracing overhead and cannot spend its startup retrying an exporter that will
+ * never answer. Enabling it in production is therefore a config change, not a
+ * deploy.
+ *
+ * Next.js instruments itself, so registering is enough to get a root span per
+ * request plus render, route-handler and fetch spans. `NEXT_OTEL_VERBOSE=1`
+ * adds the finer-grained ones when actually debugging something.
+ *
+ * Runs BEFORE the worker boot below: a failure to start tracing must never stop
+ * the workers from starting, so it is wrapped and swallowed.
+ */
+async function registerTracing(): Promise<void> {
+  if (!process.env.OTEL_EXPORTER_OTLP_ENDPOINT) return;
+
+  const { logger } = await import('@/lib/logger');
+  try {
+    const { registerOTel } = await import('@vercel/otel');
+    registerOTel({
+      // Same value the logger stamps as `service` and the collector reports as
+      // service.name, so traces, metrics and logs agree on one identity.
+      serviceName: process.env.OTEL_SERVICE_NAME || 'lms',
+    });
+    logger.info({
+      msg: '[instrumentation] OpenTelemetry tracing registered',
+      endpoint: process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
+    });
+  } catch (err) {
+    logger.error({ msg: '[instrumentation] Failed to register OpenTelemetry tracing', err });
+  }
+}
+
 export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
+    await registerTracing();
+
     // Import Node-only modules lazily inside the runtime guard. A top-level
     // import would pull the Prisma client (which loads `node:path`/`node:process`)
     // into the Edge runtime bundle and trigger an unsupported-module warning,
@@ -44,11 +82,13 @@ export async function register() {
         { getVideoTranscodeWorker },
         { getVideoSweepWorker },
         { getReminderSweepWorker },
+        { getNotificationDigestWorker },
       ] = await Promise.all([
         import('@/lib/queue/manual-indexer-worker'),
         import('@/lib/queue/video-transcode-worker'),
         import('@/lib/queue/video-sweep-worker'),
         import('@/lib/queue/reminder-sweep-worker'),
+        import('@/lib/queue/notification-digest-worker'),
       ]);
 
       for (const worker of [
@@ -56,6 +96,7 @@ export async function register() {
         getVideoTranscodeWorker(),
         getVideoSweepWorker(),
         getReminderSweepWorker(),
+        getNotificationDigestWorker(),
       ]) {
         // Sweep getters return null when disabled via their enable flag.
         if (worker) startedWorkers.push(worker);

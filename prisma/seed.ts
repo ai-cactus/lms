@@ -85,6 +85,13 @@ const ENROLLMENT_LOCKOUT_ID = '88888888-8888-4888-8888-888888888886';
 // contend over the same enrollment's attempt history.
 const RETAKE_WORKER_ID = '22222222-2222-4222-8222-222222222230';
 const ENROLLMENT_RETAKE_ID = '88888888-8888-4888-8888-888888888887';
+// A worker with a fully completed enrollment and an already-issued certificate,
+// for the certificate-modal e2e coverage (button-overlap regression). Kept
+// separate from the other fixtures so opening the modal never depends on
+// driving a real course through to completion via the UI/quiz.
+const CERTIFICATE_WORKER_ID = '22222222-2222-4222-8222-222222222231';
+const ENROLLMENT_CERTIFICATE_ID = '88888888-8888-4888-8888-888888888888';
+const CERTIFICATE_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
 // The correct answer is stored as the option TEXT (the worker learn/grading flow
 // compares by string equality, not by letter or index).
@@ -136,7 +143,7 @@ async function main(): Promise<void> {
       organizationId: org.id,
       stripeSubscriptionId: 'sub_e2e_seed_0001',
       stripePriceId: 'price_e2e_seed_0001',
-      plan: 'professional',
+      plan: 'growth',
       billingCycle: 'yearly',
       status: 'active',
       currentPeriodStart: subNow,
@@ -486,8 +493,40 @@ async function main(): Promise<void> {
       lastName: 'Retake',
     },
   });
+  const certificateWorker = await prisma.user.upsert({
+    where: { email: 'cara.certificate@test.com' },
+    update: {
+      password: workerPassword,
+      role: 'front_desk_admin',
+      emailVerified: true,
+      mfaEnabled: false,
+      organizationId: org.id,
+      passwordResetRequired: false,
+    },
+    create: {
+      id: CERTIFICATE_WORKER_ID,
+      email: 'cara.certificate@test.com',
+      password: workerPassword,
+      role: 'front_desk_admin',
+      emailVerified: true,
+      mfaEnabled: false,
+      organizationId: org.id,
+      authProvider: 'credentials',
+    },
+  });
+  await prisma.profile.upsert({
+    where: { id: certificateWorker.id },
+    update: { fullName: 'Cara Certificate', firstName: 'Cara', lastName: 'Certificate' },
+    create: {
+      id: certificateWorker.id,
+      email: 'cara.certificate@test.com',
+      fullName: 'Cara Certificate',
+      firstName: 'Cara',
+      lastName: 'Certificate',
+    },
+  });
   log(
-    'users + profiles ready (admin, admin2, worker, sarah, overdueWorker, nearDeadlineWorker, assignableWorker, nurse, lockoutWorker, retakeWorker)',
+    'users + profiles ready (admin, admin2, worker, sarah, overdueWorker, nearDeadlineWorker, assignableWorker, nurse, lockoutWorker, retakeWorker, certificateWorker)',
   );
 
   // 3. Document + version owned by the admin (feeds the ENG-024 wizard picker).
@@ -830,8 +869,56 @@ async function main(): Promise<void> {
     },
   });
 
+  await prisma.enrollment.upsert({
+    where: { id: ENROLLMENT_CERTIFICATE_ID },
+    update: {
+      status: 'completed',
+      progress: 100,
+      score: 95,
+      completedAt: now,
+      lockedAt: null,
+      retakeOf: null,
+      retakeReason: null,
+    },
+    create: {
+      id: ENROLLMENT_CERTIFICATE_ID,
+      userId: certificateWorker.id,
+      courseId: COURSE_ID,
+      status: 'completed',
+      progress: 100,
+      score: 95,
+      startedAt: now,
+      completedAt: now,
+    },
+  });
+  // The certificate is issued directly rather than via issueCertificate() (which
+  // uploads a PDF to object storage) — CertificateModal's preview and export are
+  // both driven client-side from the DB row + DOM, so no storage backend is
+  // needed to reach or interact with the modal.
+  await prisma.certificate.upsert({
+    where: { enrollmentId: ENROLLMENT_CERTIFICATE_ID },
+    update: {
+      userId: certificateWorker.id,
+      courseId: COURSE_ID,
+      score: 95,
+      pdfStoragePath: 'certificates/e2e-seed-fixture.pdf',
+      pdfGeneratedAt: now,
+      issuedAt: now,
+    },
+    create: {
+      id: CERTIFICATE_ID,
+      enrollmentId: ENROLLMENT_CERTIFICATE_ID,
+      userId: certificateWorker.id,
+      courseId: COURSE_ID,
+      score: 95,
+      pdfStoragePath: 'certificates/e2e-seed-fixture.pdf',
+      pdfGeneratedAt: now,
+      issuedAt: now,
+    },
+  });
+
   log(
-    'enrollments ready (sarah in_progress, worker locked, overdueWorker 10d overdue, nearDeadlineWorker due in 3d, nurse + lockoutWorker + retakeWorker at progress:100; retakes + quiz attempts reset)',
+    'enrollments ready (sarah in_progress, worker locked, overdueWorker 10d overdue, nearDeadlineWorker due in 3d, nurse + lockoutWorker + retakeWorker at progress:100, certificateWorker completed + certificate issued; retakes + quiz attempts reset)',
   );
 
   log('seed complete');

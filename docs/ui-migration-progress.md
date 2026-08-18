@@ -2,7 +2,20 @@
 
 Living status of the Tailwind v4 + shadcn UI migration. **Update this file whenever a slice/page is migrated** — it is the single source of truth for "what's done" across sessions (we ship features between migration passes, so don't rely on memory).
 
-**Last updated:** 2026-06-14 — 🎉 **MIGRATION COMPLETE. 0 `.module.css` files remain in `src/`.** All remaining slices migrated in one pass (billing, auditor-pack, profile/settings, worker/learn, onboarding, system, marketing/landing, staff modals, shared primitives, styleguide). Legacy components (`Button`/`Input`/`Modal`/`Select`/`Checkbox` + their modules) **deleted** from `src/components/ui/legacy/`; barrel exports removed. Only `legacy/ModalContext.tsx` (priority-based modal-coordination context — functional, not styling) is intentionally kept. Gates green: `tsc --noEmit` ✓, `eslint` ✓, `npm run build` ✓, `npm test` 158/158 ✓. Public routes verified rendering (0 console/page errors) at 375/desktop via Playwright. Auth-gated routes verified via the production build + tsc/lint (not screenshot — require login).
+**Last updated:** 2026-07-26 — **Pixel-perfect Figma reconciliation pass (branch `ui-updates`)** — see the new section below.
+
+---
+
+## Figma reconciliation pass — branch `ui-updates` (2026-07)
+
+A second pass on top of the completed module-css migration: reconcile every screen pixel-perfect against the Figma **"LMS v2 (Updated)"** page (file `cySAabdYLDKzwbs88owBHn`, page `12539:30414`). UI-only; logic preserved. Section→node map + verification recipe: see project memory `ui-updates-figma-reconciliation` and agent memory `project_figma_to_css_scale.md` (frame generations differ: some are 1:1, some 1.125× oversized in type/padding).
+
+Status (all reconciled, uncommitted alongside the user's shell rework):
+- ✅ Auth (all pages — user, commit `10c4b8a`) · ✅ Shell (sidebar/navbar split: `DefaultDashboardLayout`/`ProfileDashboardLayout` + `NavBar`; single-scroll-container architecture under `h-screen overflow-hidden`) · ✅ Profile (+ tabs) · ✅ Dashboard home · ✅ Documents · ✅ Courses list/detail · ✅ Course wizard (steps 1–7 + publish/success modals; found+fixed: PHI notice pushed CTA below fold, Step6 zero-height scroller) · ✅ Staff list/profile/invite · ✅ Status Tracker (merged single-table design — stat cards + filters removed per Figma, pending product sign-off) · ✅ Audit Reports ×4 tabs · ✅ Billing ×4 tabs · ✅ Settings ×3 tabs · ✅ 404/error screens · ✅ `SelectTrigger` dead `size` prop removed (was a no-op trap).
+
+Open product decisions from the pass (design vs app, not styling): `--primary` #4730f7 vs Figma's #394ce6/#4758e0; Documents "Uploaded By" column removed per design; Status Tracker filters/stat-cards removed per design; Figma-only features not built (folders empty-state, audit drilldowns/transcript, billing Subscription-summary view, 9-step wizard with prebuilt-course/modules steps, /timeout screen); 404 CTAs removed per design; two design kits coexist in Figma (17px/#dfe1e6 list kit vs 12px/#e2e8f0 audit/settings kit) — app mirrors the split.
+
+_Previous milestone (2026-06-14):_ 🎉 **MIGRATION COMPLETE. 0 `.module.css` files remain in `src/`.** All remaining slices migrated in one pass (billing, auditor-pack, profile/settings, worker/learn, onboarding, system, marketing/landing, staff modals, shared primitives, styleguide). Legacy components (`Button`/`Input`/`Modal`/`Select`/`Checkbox` + their modules) **deleted** from `src/components/ui/legacy/`; barrel exports removed. Only `legacy/ModalContext.tsx` (priority-based modal-coordination context — functional, not styling) is intentionally kept. Gates green: `tsc --noEmit` ✓, `eslint` ✓, `npm run build` ✓, `npm test` 158/158 ✓. Public routes verified rendering (0 console/page errors) at 375/desktop via Playwright. Auth-gated routes verified via the production build + tsc/lint (not screenshot — require login).
 
 _Prior — 2026-06-11 (dashboard course/training slice ✅: Documents, Training, Courses)._
 **Branch convention:** one `feature/<slice>-ui-migration` branch per slice, PR'd against `dev`.

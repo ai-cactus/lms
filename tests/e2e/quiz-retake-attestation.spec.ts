@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import net from 'net';
 
 /**
  * Phase 3 QA regression coverage for:
@@ -26,6 +27,31 @@ const QUIZ_ID = '66666666-6666-4666-8666-666666666661';
 const COURSE_ID = '44444444-4444-4444-8444-444444444441';
 const QUESTION_ID = '77777777-7777-4777-8777-777777777771';
 const WRONG_ANSWER = 'Ignore it and continue working';
+
+/**
+ * issueCertificate() (src/app/actions/certificate.ts) uploads the attestation
+ * certificate PDF to object storage, falling back to MinIO when GCS is
+ * unconfigured (as in this environment — see documents.spec.ts's header
+ * comment for the same limitation on the upload side). CI starts a real MinIO
+ * container; local sandboxes typically do not, so probe it and self-skip
+ * rather than asserting on a flow that can never complete here.
+ */
+function isMinioReachable(): Promise<boolean> {
+  const host = process.env.MINIO_ENDPOINT || 'localhost';
+  const port = Number(process.env.MINIO_PORT) || 9000;
+  return new Promise((resolve) => {
+    const socket = net.createConnection({ host, port, timeout: 800 });
+    socket.once('connect', () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.once('timeout', () => {
+      socket.destroy();
+      resolve(false);
+    });
+    socket.once('error', () => resolve(false));
+  });
+}
 
 async function loginAsWorker(page: import('@playwright/test').Page, email: string): Promise<void> {
   await page.goto('/login');
@@ -150,6 +176,16 @@ test.describe('Quiz retake lockout (append-history model)', () => {
 
 test.describe('Attestation gate for sub-role workers (isWorkerRole fix)', () => {
   test('a nurse (job-specific worker sub-role) can pass the quiz and attest', async ({ page }) => {
+    test.skip(
+      !(await isMinioReachable()),
+      'Local MinIO not running — issueCertificate() falls back to MinIO when GCS is ' +
+        'unconfigured (both are true in this sandbox), so certificate-PDF upload cannot ' +
+        'complete here and the attestation flow can never reach its success state. ' +
+        '`isWorkerRole()` itself (the gate this test guards) has direct unit coverage in ' +
+        'src/lib/rbac/role-utils.test.ts; this spec is the only place the full UI flow ' +
+        'is exercised, so it should be re-run wherever live object storage is available.',
+    );
+
     await loginAsWorker(page, 'nina.nurse@test.com');
 
     await page.getByText(COURSE_TITLE).first().click();

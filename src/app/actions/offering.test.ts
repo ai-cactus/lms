@@ -12,6 +12,7 @@ const {
   mockOrgCourseOfferingUpsert,
   mockOrgCourseOfferingUpdate,
   mockOrgCourseOfferingDelete,
+  mockOrgCourseOfferingFindMany,
   mockCourseFindMany,
   mockCourseFindFirst,
   mockUserFindUnique,
@@ -23,6 +24,7 @@ const {
   const mockOrgCourseOfferingUpsert = vi.fn();
   const mockOrgCourseOfferingUpdate = vi.fn();
   const mockOrgCourseOfferingDelete = vi.fn();
+  const mockOrgCourseOfferingFindMany = vi.fn();
   const mockCourseFindMany = vi.fn();
   const mockCourseFindFirst = vi.fn();
   const mockUserFindUnique = vi.fn();
@@ -35,6 +37,7 @@ const {
     mockOrgCourseOfferingUpsert,
     mockOrgCourseOfferingUpdate,
     mockOrgCourseOfferingDelete,
+    mockOrgCourseOfferingFindMany,
     mockCourseFindMany,
     mockCourseFindFirst,
     mockUserFindUnique,
@@ -50,6 +53,7 @@ vi.mock('@/lib/prisma', () => {
       upsert: mockOrgCourseOfferingUpsert,
       update: mockOrgCourseOfferingUpdate,
       delete: mockOrgCourseOfferingDelete,
+      findMany: mockOrgCourseOfferingFindMany,
     },
   };
   return { prisma, default: prisma };
@@ -57,7 +61,13 @@ vi.mock('@/lib/prisma', () => {
 
 vi.mock('@/auth', () => ({ auth: mockAdminAuth }));
 vi.mock('@/auth.worker', () => ({ auth: mockWorkerAuth }));
-vi.mock('next/cache', () => ({ revalidatePath: mockRevalidate }));
+// unstable_cache is a passthrough here so each test call re-runs the wrapped
+// fetcher against the current mock — this file doesn't exercise Next's real
+// cache store, only that getGlobalVideoCatalog's query shape/mapping is correct.
+vi.mock('next/cache', () => ({
+  revalidatePath: mockRevalidate,
+  unstable_cache: (fn: (...args: unknown[]) => unknown) => fn,
+}));
 
 import {
   listAvailableVideoCourses,
@@ -74,39 +84,65 @@ const ADMIN_USER_ID = 'user-admin-1';
 const ORG_ID = 'org-1';
 
 function setupAdminSession() {
-  mockAdminAuth.mockResolvedValue({ user: { id: ADMIN_USER_ID } });
+  // org/role are read from the DB-revalidated session (see resolveOrg), not a
+  // separate user query. 'admin' is retired post-RBAC; 'owner' is an admin role.
+  mockAdminAuth.mockResolvedValue({
+    user: { id: ADMIN_USER_ID, organizationId: ORG_ID, role: 'owner' },
+  });
   mockWorkerAuth.mockResolvedValue(null);
-  // After RBAC migration: 'admin' is retired; use 'owner' which is an admin role.
-  mockUserFindUnique.mockResolvedValue({ organizationId: ORG_ID, role: 'owner' });
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
   mockAdminAuth.mockResolvedValue(null);
   mockWorkerAuth.mockResolvedValue(null);
+  mockOrgCourseOfferingFindMany.mockResolvedValue([]);
 });
 
 // ---------------------------------------------------------------------------
 // listAvailableVideoCourses
+//   Reads split into: (1) the cached, tenant-independent global catalog via
+//   prisma.course.findMany (no `offerings` include any more — unstable_cache
+//   wraps this fetcher, mocked as a passthrough above), then (2) a per-org
+//   prisma.orgCourseOffering.findMany join for the caller's adoption state.
 // ---------------------------------------------------------------------------
 
 describe('listAvailableVideoCourses', () => {
-  it('queries global published video courses with this org offerings filter', async () => {
+  it('queries global published video courses, then joins this org offerings separately', async () => {
     setupAdminSession();
     mockCourseFindMany.mockResolvedValue([]);
 
     await listAvailableVideoCourses();
 
-    const callArg = mockCourseFindMany.mock.calls[0][0];
-    expect(callArg.where).toMatchObject({
+    const catalogArg = mockCourseFindMany.mock.calls[0][0];
+    expect(catalogArg.where).toMatchObject({
       type: 'video',
       isGlobal: true,
       status: 'published',
     });
-    // The offerings include must filter by the caller's org
-    expect(callArg.include.offerings.where.organizationId).toBe(ORG_ID);
     // Catalog lists in upload order (oldest first), not latest-first
-    expect(callArg.orderBy).toEqual({ createdAt: 'asc' });
+    expect(catalogArg.orderBy).toEqual({ createdAt: 'asc' });
+    // The tenant-independent cached read must never carry an org filter.
+    expect(catalogArg.where.organizationId).toBeUndefined();
+
+    // With an empty catalog there's nothing to join adoption state against.
+    expect(mockOrgCourseOfferingFindMany).not.toHaveBeenCalled();
+  });
+
+  it('joins offerings scoped to the caller org and the fetched catalog ids', async () => {
+    setupAdminSession();
+    mockCourseFindMany.mockResolvedValue([
+      { id: 'c-offered', title: 'Offered Course', description: 'desc', lessons: [] },
+    ]);
+    mockOrgCourseOfferingFindMany.mockResolvedValue([]);
+
+    await listAvailableVideoCourses();
+
+    const joinArg = mockOrgCourseOfferingFindMany.mock.calls[0][0];
+    expect(joinArg.where).toMatchObject({
+      organizationId: ORG_ID,
+      courseId: { in: ['c-offered'] },
+    });
   });
 
   it('marks isOffered true when an offering row exists for the org', async () => {
@@ -122,16 +158,15 @@ describe('listAvailableVideoCourses', () => {
             quiz: { _count: { questions: 5 } },
           },
         ],
-        offerings: [{ id: 'off-1' }],
       },
       {
         id: 'c-not-offered',
         title: 'Not Offered',
         description: null,
         lessons: [],
-        offerings: [],
       },
     ]);
+    mockOrgCourseOfferingFindMany.mockResolvedValue([{ id: 'off-1', courseId: 'c-offered' }]);
 
     const result = await listAvailableVideoCourses();
 
@@ -152,7 +187,6 @@ describe('listAvailableVideoCourses', () => {
         title: 'T',
         description: null,
         lessons: [{ videoDurationSeconds: 720, quiz: { _count: { questions: 3 } } }],
-        offerings: [],
       },
     ]);
 
@@ -166,17 +200,19 @@ describe('listAvailableVideoCourses', () => {
   });
 
   it('throws No organization when user has no organizationId', async () => {
-    mockAdminAuth.mockResolvedValue({ user: { id: ADMIN_USER_ID } });
+    mockAdminAuth.mockResolvedValue({
+      user: { id: ADMIN_USER_ID, organizationId: null, role: 'owner' },
+    });
     mockWorkerAuth.mockResolvedValue(null);
-    mockUserFindUnique.mockResolvedValue({ organizationId: null, role: 'owner' });
 
     await expect(listAvailableVideoCourses()).rejects.toThrow('No organization');
   });
 
   it('throws Forbidden when user role is not admin', async () => {
-    mockAdminAuth.mockResolvedValue({ user: { id: ADMIN_USER_ID } });
+    mockAdminAuth.mockResolvedValue({
+      user: { id: ADMIN_USER_ID, organizationId: ORG_ID, role: 'nurse' },
+    });
     mockWorkerAuth.mockResolvedValue(null);
-    mockUserFindUnique.mockResolvedValue({ organizationId: ORG_ID, role: 'nurse' });
 
     await expect(listAvailableVideoCourses()).rejects.toThrow('Forbidden');
   });
@@ -251,9 +287,10 @@ describe('offerCourseToOrg', () => {
   });
 
   it('throws Forbidden when caller has worker role', async () => {
-    mockAdminAuth.mockResolvedValue({ user: { id: ADMIN_USER_ID } });
+    mockAdminAuth.mockResolvedValue({
+      user: { id: ADMIN_USER_ID, organizationId: ORG_ID, role: 'nurse' },
+    });
     mockWorkerAuth.mockResolvedValue(null);
-    mockUserFindUnique.mockResolvedValue({ organizationId: ORG_ID, role: 'nurse' });
 
     await expect(offerCourseToOrg('c1')).rejects.toThrow('Forbidden');
     expect(mockOrgCourseOfferingUpsert).not.toHaveBeenCalled();
@@ -339,9 +376,10 @@ describe('withdrawOffering', () => {
   });
 
   it('throws Forbidden when caller has worker role', async () => {
-    mockAdminAuth.mockResolvedValue({ user: { id: ADMIN_USER_ID } });
+    mockAdminAuth.mockResolvedValue({
+      user: { id: ADMIN_USER_ID, organizationId: ORG_ID, role: 'nurse' },
+    });
     mockWorkerAuth.mockResolvedValue(null);
-    mockUserFindUnique.mockResolvedValue({ organizationId: ORG_ID, role: 'nurse' });
 
     await expect(withdrawOffering('o1')).rejects.toThrow('Forbidden');
     expect(mockOrgCourseOfferingDelete).not.toHaveBeenCalled();

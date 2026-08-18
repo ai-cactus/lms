@@ -12,6 +12,8 @@ import {
   buildWorkerCsvTemplate,
   buildStaffInviteCsvTemplate,
   summariseSkippedCsvRows,
+  readStaffSpreadsheetRows,
+  MAX_STAFF_UPLOAD_BYTES,
   STAFF_CSV_EMAIL_HEADER,
   MANAGER_CSV_ROLE_HEADER,
   type ManagerCsvSkippedRow,
@@ -524,5 +526,64 @@ describe('buildWorkerCsvTemplate', () => {
       'worker2@example.com',
       'worker3@example.com',
     ]);
+  });
+});
+
+/**
+ * Tier 3 item 5.2 (perf/tier3-app-optimization): `readStaffSpreadsheetRows`
+ * switched from `import * as XLSX` to `const XLSX = await import('xlsx')`
+ * inside the function body, deferring the ~400 kB SheetJS chunk until a file
+ * is actually uploaded. These behaviors were previously untested — the 40
+ * tests above only cover the pure `extract*FromRows` core, never the
+ * side-effectful file-reading adapter that the dynamic import actually
+ * touches. Exercises the real `xlsx` package (no mocking) so a broken
+ * dynamic-import path or a real SheetJS incompatibility surfaces here.
+ */
+describe('readStaffSpreadsheetRows — dynamic xlsx import', () => {
+  function csvFile(content: string, name = 'staff.csv') {
+    return new File([content], name, { type: 'text/csv' });
+  }
+
+  it('parses a real CSV file into a cell matrix identical to the pre-change static-import behavior', async () => {
+    const file = csvFile('email\nalice@example.com\nbob@example.com\n');
+
+    const rows = await readStaffSpreadsheetRows(file);
+
+    expect(rows).toEqual([['email'], ['alice@example.com'], ['bob@example.com']]);
+  });
+
+  it('feeds straight into extractStaffEmailsFromRows exactly as before', async () => {
+    const file = csvFile('email\nalice@example.com\n');
+
+    const rows = await readStaffSpreadsheetRows(file);
+    const result = extractStaffEmailsFromRows(rows);
+
+    expect(result.validEmails).toEqual(['alice@example.com']);
+  });
+
+  it('rejects files over the size cap before ever reaching the dynamic import', async () => {
+    const oversized = new File([new Uint8Array(MAX_STAFF_UPLOAD_BYTES + 1)], 'big.csv');
+
+    await expect(readStaffSpreadsheetRows(oversized)).rejects.toThrow(
+      'File is too large. Please upload a spreadsheet under 5 MB.',
+    );
+  });
+
+  it('wraps a corrupt-file parse failure in the same user-safe error message callers already expect', async () => {
+    // xlsx is a ZIP container; a truncated ZIP central directory forces XLSX.read to throw.
+    const corrupt = new File(['PK\x03\x04garbagegarbagegarbage'], 'corrupt.xlsx');
+
+    await expect(readStaffSpreadsheetRows(corrupt)).rejects.toThrow(
+      'Could not read the file. Please upload a valid CSV or XLSX spreadsheet.',
+    );
+  });
+
+  it('returns an empty matrix for a workbook with no sheets, without throwing', async () => {
+    // A syntactically valid but completely empty file has no SheetNames.
+    const empty = new File([''], 'empty.csv');
+
+    const rows = await readStaffSpreadsheetRows(empty);
+
+    expect(rows).toEqual([]);
   });
 });

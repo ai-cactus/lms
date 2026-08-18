@@ -6,7 +6,7 @@ import { BILLING_PLANS, BillingCycle, canSelectPlan } from '@/lib/billing-plans'
 import type { PlanPriceMap } from '@/lib/billing-prices';
 import type { PlanChangeClassification } from '@/lib/billing-plan-change';
 import { getPlanCardPrice, getDiscountPercent, formatCents } from '@/lib/billing-price-format';
-import { Star, Check, Play, AlertTriangle, CalendarClock } from 'lucide-react';
+import { Flame, Check, Play, AlertTriangle, CalendarClock } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -45,6 +45,9 @@ interface Props {
 }
 
 const BILLING_CYCLES: readonly BillingCycle[] = ['monthly', 'quarterly', 'yearly'];
+
+/** Order the cycle toggle is presented in — cheapest-per-month first. */
+const CYCLE_DISPLAY_ORDER: readonly BillingCycle[] = ['yearly', 'quarterly', 'monthly'];
 
 function isBillingCycle(value: string | null | undefined): value is BillingCycle {
   return value != null && (BILLING_CYCLES as readonly string[]).includes(value);
@@ -96,6 +99,11 @@ const fieldErrorTextClass = 'mt-1 block text-xs text-error';
 const inputClass = (hasError: boolean) => cn(fieldBaseClass, hasError && fieldErrorClass);
 const selectClass = (hasError: boolean) =>
   cn(fieldBaseClass, selectExtraClass, hasError && fieldErrorClass);
+
+const planButtonClass =
+  'h-[47px] w-full cursor-pointer rounded-full px-4 text-[16px] leading-[24px] font-semibold transition-colors';
+const statusCardClass =
+  'mt-6 flex flex-col gap-4 rounded-[12px] border border-[#e2e8f0] bg-white p-[25px] shadow-[0px_1px_1px_0px_rgba(0,0,0,0.05)]';
 
 // ── State types ──────────────────────────────────────────────────────────────
 
@@ -488,7 +496,7 @@ export default function SubscriptionTab({
 
   // ── Billing cycle labels ───────────────────────────────────────────────────
 
-  const cycles = BILLING_CYCLES;
+  const cycles = CYCLE_DISPLAY_ORDER;
   const cycleLabels: Record<BillingCycle, string> = {
     monthly: 'Monthly',
     quarterly: 'Quarterly',
@@ -499,121 +507,178 @@ export default function SubscriptionTab({
 
   return (
     <div>
-      <div className="mb-7">
-        <h2 className="mb-1.5 text-[26px] font-bold text-foreground">Select a plan</h2>
-        <p className="text-sm text-text-secondary">
+      <div className="flex flex-col items-center gap-[6px] pb-8 text-center">
+        <h2 className="text-[28px] leading-[1.31] font-semibold tracking-[-0.04em] text-[#272b30] sm:text-[35.5px]">
+          Select a plan
+        </h2>
+        <p className="text-[14.8px] leading-[26px] text-[#707070]">
           Select the best plan for your team size and budget — Upgrade or cancel at anytime.
         </p>
       </div>
 
       {checkoutError && (
-        <div className="mb-4 rounded-lg border border-error/40 bg-error/10 px-4 py-2.5 text-[13px] text-error">
+        <div className="mb-4 rounded-[8px] border border-error/40 bg-error/10 px-4 py-2.5 text-[13px] text-error">
           {checkoutError}
         </div>
       )}
 
-      <div
-        className="mb-8 inline-flex max-w-full gap-0 overflow-x-auto rounded-lg bg-muted p-1"
-        role="group"
-        aria-label="Billing cycle"
-      >
-        {cycles.map((c) => (
-          <button
-            key={c}
-            className={cn(
-              'cursor-pointer whitespace-nowrap rounded-md px-5 py-2 text-[13px] font-medium transition-colors',
-              cycle === c ? 'bg-background text-primary shadow-sm' : 'text-text-secondary',
-            )}
-            onClick={() => setCycle(c)}
-          >
-            {cycleLabels[c]}
-          </button>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-[repeat(auto-fit,minmax(270px,1fr))]">
-        {BILLING_PLANS.map((plan) => {
-          const allowed = canSelectPlan(plan, orgStaffCount);
-          const cyclePrice = getPlanCardPrice(planPrices[plan.key][cycle]);
-          const discountPct = getDiscountPercent(
-            planPrices[plan.key].monthly,
-            planPrices[plan.key][cycle],
-          );
-          const isCurrent = currentPlan === plan.key;
-          const isDisabled = !allowed && !plan.isEnterprise;
-
-          return (
-            <div
-              key={plan.key}
+      <div className="flex flex-col items-center gap-5">
+        <div
+          className="inline-flex max-w-full gap-[2px] overflow-x-auto rounded-full bg-[rgba(64,64,64,0.08)] p-1"
+          role="group"
+          aria-label="Billing cycle"
+        >
+          {cycles.map((c) => (
+            <button
+              key={c}
               className={cn(
-                'relative flex flex-col rounded-xl border-[1.5px] border-border bg-background p-7 transition-all',
-                isCurrent && 'border-primary bg-primary/5 shadow-[0_4px_16px_rgba(51,92,255,0.12)]',
-                !isCurrent &&
-                  !isDisabled &&
-                  'hover:border-primary hover:shadow-[0_4px_16px_rgba(51,92,255,0.1)]',
-                isDisabled && 'pointer-events-none cursor-not-allowed opacity-50',
+                'cursor-pointer rounded-full px-8 py-[7px] text-[12.9px] leading-[22px] font-semibold tracking-[0.2px] whitespace-nowrap transition-colors',
+                cycle === c
+                  ? 'bg-background text-[#141414] shadow-[0px_1px_1px_0px_rgba(0,0,0,0.04)]'
+                  : 'text-[#717171]',
               )}
-              aria-disabled={isDisabled}
+              onClick={() => setCycle(c)}
             >
-              {plan.key === 'professional' && (
-                <div className="absolute right-6 top-6 flex items-center gap-1 rounded-full border border-primary bg-background px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.6px] text-primary">
-                  <Star size={12} fill="currentColor" /> POPULAR
-                </div>
-              )}
+              {cycleLabels[c]}
+            </button>
+          ))}
+        </div>
 
-              <p className="mb-1 text-lg font-bold text-foreground">{plan.name}</p>
-              <p className="mb-5 text-[13px] text-text-secondary">{plan.description}</p>
+        <div className="grid w-full grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
+          {BILLING_PLANS.map((plan) => {
+            const allowed = canSelectPlan(plan, orgStaffCount);
+            const cyclePrice = getPlanCardPrice(planPrices[plan.key][cycle]);
+            const discountPct = getDiscountPercent(
+              planPrices[plan.key].monthly,
+              planPrices[plan.key][cycle],
+            );
+            const isCurrent = currentPlan === plan.key;
+            const isDisabled = !allowed && !plan.isEnterprise;
+            // The design paints the recommended plan as a solid brand card, unless
+            // the org is already subscribed to another plan — then the subscribed
+            // card takes the emphasis and every other card stays neutral.
+            const isFeatured = !!plan.popular && !currentPlan;
 
-              <div className="mb-5 flex items-baseline gap-1">
-                {plan.isEnterprise ? (
-                  <span className="text-[32px] font-extrabold text-foreground">Custom</span>
-                ) : cyclePrice === null ? (
-                  <span className="text-lg font-semibold text-text-tertiary">
-                    Price unavailable
-                  </span>
-                ) : (
-                  <>
-                    <span className="text-[38px] font-extrabold text-foreground">
-                      ${cyclePrice}
-                    </span>
-                    <span className="text-sm text-text-secondary">
-                      /mo
-                      {cycle !== 'monthly'
-                        ? ` (billed ${cycle}${
-                            discountPct !== null && discountPct > 0 ? ` — save ${discountPct}%` : ''
-                          })`
-                        : ''}
-                    </span>
-                  </>
+            return (
+              <div
+                key={plan.key}
+                className={cn(
+                  'relative flex flex-col gap-4 rounded-[24px] border p-[25px] transition-all',
+                  isFeatured && 'border-[#cddfff] bg-primary',
+                  isCurrent && 'border-primary bg-[#eff1ff]',
+                  !isFeatured && !isCurrent && 'border-[#e2e8f0] bg-white',
+                  !isCurrent && !isDisabled && !isFeatured && 'hover:border-primary',
+                  isDisabled && 'pointer-events-none cursor-not-allowed opacity-50',
                 )}
-              </div>
+                aria-disabled={isDisabled}
+              >
+                <div className="flex flex-col gap-[5px]">
+                  <div className="flex items-center justify-between gap-2">
+                    <p
+                      className={cn(
+                        'text-[21.1px] leading-[30px] font-semibold',
+                        isFeatured ? 'text-white' : 'text-[#141414]',
+                      )}
+                    >
+                      {plan.name}
+                    </p>
+                    {plan.popular && (
+                      <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full border border-primary bg-[#f2f3ff] px-2 py-1 text-[11.8px] leading-[16px] tracking-[0.2px] text-primary">
+                        <Flame className="size-4" aria-hidden="true" />
+                        Popular
+                      </span>
+                    )}
+                  </div>
+                  <p
+                    className={cn(
+                      'text-[15.1px] leading-[22px] tracking-[0.2px]',
+                      isFeatured ? 'text-[#e6eaff]' : 'text-[#707070]',
+                    )}
+                  >
+                    {plan.description}
+                  </p>
+                </div>
 
-              {plan.isEnterprise ? (
-                <button
-                  id={`plan-btn-${plan.key}`}
-                  className="mb-6 w-full cursor-pointer rounded-lg bg-primary px-3 py-3 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
-                  onClick={() =>
-                    setEnterpriseModal((s) => ({
-                      ...s,
-                      ...EMPTY_FORM,
-                      open: true,
-                      success: false,
-                      error: null,
-                      fieldErrors: {},
-                    }))
-                  }
-                >
-                  Contact sales
-                </button>
-              ) : (
-                <>
+                <div className="flex items-end gap-2">
+                  {plan.isEnterprise ? (
+                    <span
+                      className={cn(
+                        'text-[33.4px] leading-[48px] font-semibold tracking-[-0.4px]',
+                        isFeatured ? 'text-white' : 'text-[#141414]',
+                      )}
+                    >
+                      Custom
+                    </span>
+                  ) : cyclePrice === null ? (
+                    <span
+                      className={cn(
+                        'text-[18px] leading-[48px] font-semibold',
+                        isFeatured ? 'text-[#e6eaff]' : 'text-[#94a3b8]',
+                      )}
+                    >
+                      Price unavailable
+                    </span>
+                  ) : (
+                    <>
+                      <span
+                        className={cn(
+                          'text-[33.4px] leading-[48px] font-semibold tracking-[-0.4px]',
+                          isFeatured ? 'text-white' : 'text-[#141414]',
+                        )}
+                      >
+                        ${cyclePrice}
+                      </span>
+                      <span
+                        className={cn(
+                          'pb-[11px] text-[11.8px] leading-[16px] tracking-[0.2px]',
+                          isFeatured ? 'text-[#e6eaff]' : 'text-[#707070]',
+                        )}
+                      >
+                        /mo
+                        {cycle !== 'monthly'
+                          ? ` (billed ${cycle}${
+                              discountPct !== null && discountPct > 0
+                                ? ` — save ${discountPct}%`
+                                : ''
+                            })`
+                          : ''}
+                      </span>
+                    </>
+                  )}
+                </div>
+
+                {plan.isEnterprise ? (
                   <button
                     id={`plan-btn-${plan.key}`}
                     className={cn(
-                      'mb-6 w-full rounded-lg px-3 py-3 text-sm font-semibold transition-colors',
+                      planButtonClass,
+                      currentPlan
+                        ? 'border border-[#cddfff] bg-white text-primary hover:bg-primary/5'
+                        : 'bg-primary text-primary-foreground hover:bg-primary/90',
+                    )}
+                    onClick={() =>
+                      setEnterpriseModal((s) => ({
+                        ...s,
+                        ...EMPTY_FORM,
+                        open: true,
+                        success: false,
+                        error: null,
+                        fieldErrors: {},
+                      }))
+                    }
+                  >
+                    Contact sales
+                  </button>
+                ) : (
+                  <button
+                    id={`plan-btn-${plan.key}`}
+                    className={cn(
+                      planButtonClass,
                       isCurrent
-                        ? 'cursor-default bg-[#cbd5e1] text-white'
-                        : 'cursor-pointer border-[1.5px] border-primary bg-background text-primary hover:bg-primary/10',
+                        ? 'cursor-default bg-[#e2e8f0] text-[#64748b]'
+                        : currentPlan
+                          ? 'border border-[#cddfff] bg-white text-primary hover:bg-primary/5'
+                          : 'bg-primary text-primary-foreground hover:bg-primary/90',
                     )}
                     disabled={
                       isCurrent ||
@@ -633,30 +698,46 @@ export default function SubscriptionTab({
                           ? 'Current Plan'
                           : 'Subscribe'}
                   </button>
-                </>
-              )}
+                )}
 
-              <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.8px] text-text-tertiary">
-                {plan.featuresLabel}
-              </p>
-              <ul className="flex flex-col gap-2.5">
-                {plan.features.map((feature) => (
-                  <li
-                    key={feature}
-                    className="flex items-center gap-2.5 text-[13px] text-foreground"
+                <div className="flex flex-col">
+                  <p
+                    className={cn(
+                      'pb-2 text-[10px] font-bold tracking-[0.8px] uppercase',
+                      isFeatured ? 'text-[#c7cffd]' : 'text-[#94a3b8]',
+                    )}
                   >
-                    <Check className="size-4 shrink-0 text-primary" aria-hidden="true" />
-                    {feature}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          );
-        })}
+                    {plan.featuresLabel}
+                  </p>
+                  <ul className="flex flex-col">
+                    {plan.features.map((feature) => (
+                      <li
+                        key={feature}
+                        className={cn(
+                          'flex items-center gap-2 py-1 text-[15.1px] leading-[22px] tracking-[0.2px]',
+                          isFeatured ? 'text-[#e6eaff]' : 'text-[#646464]',
+                        )}
+                      >
+                        <Check
+                          className={cn(
+                            'size-5 shrink-0',
+                            isFeatured ? 'text-white' : 'text-primary',
+                          )}
+                          aria-hidden="true"
+                        />
+                        {feature}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {scheduledPlanName && scheduledEffectiveAt && (
-        <div className="mt-6 flex flex-col gap-4 rounded-xl border border-border bg-background p-6">
+        <div className={statusCardClass}>
           <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
             <div>
               <h3 className="text-base font-semibold text-foreground">Plan change scheduled</h3>
@@ -687,7 +768,7 @@ export default function SubscriptionTab({
       )}
 
       {currentPlan && isPaused && (
-        <div className="mt-6 flex flex-col gap-4 rounded-xl border border-border bg-background p-6">
+        <div className={statusCardClass}>
           <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
             <div>
               <h3 className="text-base font-semibold text-foreground">
@@ -733,7 +814,7 @@ export default function SubscriptionTab({
       )}
 
       {currentPlan && !isPaused && isCancelScheduled && (
-        <div className="mt-6 flex flex-col gap-4 rounded-xl border border-border bg-background p-6">
+        <div className={statusCardClass}>
           <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
             <div>
               <h3 className="text-base font-semibold text-foreground">
@@ -769,7 +850,7 @@ export default function SubscriptionTab({
 
       {currentPlan && !isPaused && !isCancelScheduled && (
         <>
-          <div className="mt-6 flex flex-col gap-4 rounded-xl border border-border bg-background p-6">
+          <div className={statusCardClass}>
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-base font-semibold text-foreground">
@@ -784,7 +865,7 @@ export default function SubscriptionTab({
             </div>
           </div>
 
-          <div className="mt-6 flex flex-col gap-4 rounded-xl border border-border bg-background p-6">
+          <div className={statusCardClass}>
             <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
               <div>
                 <h3 className="text-base font-semibold text-foreground">

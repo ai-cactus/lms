@@ -31,7 +31,12 @@ interface RowActionsMenuProps {
   /** Accessible label for the trigger. */
   label?: string;
   align?: 'start' | 'end';
+  /** Trigger button classes. */
   className?: string;
+  /** Extra classes for the dropdown panel, e.g. a per-page width/shadow spec. */
+  contentClassName?: string;
+  /** Extra classes applied to every menu item. */
+  itemClassName?: string;
 }
 
 /**
@@ -45,7 +50,14 @@ export function RowActionsMenu({
   label = 'Row actions',
   align = 'end',
   className,
+  contentClassName,
+  itemClassName,
 }: RowActionsMenuProps) {
+  const itemClass = cn(
+    'cursor-pointer gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium',
+    itemClassName,
+  );
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -61,38 +73,38 @@ export function RowActionsMenu({
         </button>
       </DropdownMenuTrigger>
 
-      <DropdownMenuContent align={align} className="min-w-[184px] rounded-xl p-1.5">
-        {actions.map((action, i) => {
-          const itemClass = 'cursor-pointer gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium';
-          return (
-            <React.Fragment key={`${action.label}-${i}`}>
-              {action.separatorBefore && <DropdownMenuSeparator />}
-              {action.href ? (
-                <DropdownMenuItem
-                  asChild
-                  variant={action.variant}
-                  disabled={action.disabled}
-                  className={itemClass}
-                >
-                  <Link href={action.href}>
-                    {action.icon}
-                    {action.label}
-                  </Link>
-                </DropdownMenuItem>
-              ) : (
-                <DropdownMenuItem
-                  variant={action.variant}
-                  disabled={action.disabled}
-                  onSelect={action.onSelect}
-                  className={itemClass}
-                >
+      <DropdownMenuContent
+        align={align}
+        className={cn('min-w-[184px] rounded-xl p-1.5', contentClassName)}
+      >
+        {actions.map((action, i) => (
+          <React.Fragment key={`${action.label}-${i}`}>
+            {action.separatorBefore && <DropdownMenuSeparator />}
+            {action.href ? (
+              <DropdownMenuItem
+                asChild
+                variant={action.variant}
+                disabled={action.disabled}
+                className={itemClass}
+              >
+                <Link href={action.href}>
                   {action.icon}
                   {action.label}
-                </DropdownMenuItem>
-              )}
-            </React.Fragment>
-          );
-        })}
+                </Link>
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem
+                variant={action.variant}
+                disabled={action.disabled}
+                onSelect={action.onSelect}
+                className={itemClass}
+              >
+                {action.icon}
+                {action.label}
+              </DropdownMenuItem>
+            )}
+          </React.Fragment>
+        ))}
       </DropdownMenuContent>
     </DropdownMenu>
   );

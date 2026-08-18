@@ -1,0 +1,23 @@
+<svg width="154" height="154" viewBox="0 0 154 154" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <clipPath id="circleClip">
+      <circle cx="77" cy="77" r="77" />
+    </clipPath>
+    <filter id="cardShadow" x="10.3" y="20.2" width="135.6" height="162" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="4.4" stdDeviation="4.4" flood-color="#000000" flood-opacity="0.06" />
+    </filter>
+  </defs>
+  <g clip-path="url(#circleClip)">
+    <rect width="154" height="154" fill="#EEF1F5" />
+    <g filter="url(#cardShadow)">
+      <rect x="25.3" y="35.2" width="105.6" height="132" rx="13.2" fill="#FDFDFC" />
+    </g>
+    <rect x="62.7" y="46.2" width="30.8" height="8.8" rx="4.4" fill="#EEF1F5" />
+    <rect x="36.3" y="66" width="57.2" height="13.2" rx="6.6" fill="#EEF1F5" />
+    <rect x="36.3" y="83.6" width="83.6" height="13.2" rx="6.6" fill="#EEF1F5" />
+    <rect x="36.3" y="107.8" width="39.6" height="13.2" rx="6.6" fill="#EEF1F5" />
+    <rect x="36.3" y="125.4" width="39.6" height="13.2" rx="6.6" fill="#EEF1F5" />
+    <rect x="80.3" y="107.8" width="39.6" height="13.2" rx="6.6" fill="#EEF1F5" />
+    <rect x="80.3" y="125.4" width="39.6" height="13.2" rx="6.6" fill="#EEF1F5" />
+  </g>
+</svg>

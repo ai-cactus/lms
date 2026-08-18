@@ -34,6 +34,7 @@ yarn-error.log*
 .env
 .env.staging
 .env.production
+.env.production.local
 .env.productionn
 .env.local
 # vercel
@@ -46,6 +47,9 @@ next-env.d.ts
 
 #files
 /src/generated/prisma
+# Prisma client output (prisma/schema.prisma → ../generated/prisma); regenerated
+# locally, in CI (npx prisma generate per job) and in the Dockerfile — never committed
+/generated/prisma
 production/
 
 AGENT.md
@@ -63,6 +67,7 @@ vm-setup.md
 #docs/new-prompt-25-02.md
 plans/
 commands
+docs/local
 docs/hack-check.md
 docs/Reminders_and_Escalations.csv:Zone.Identifier
 docs/Reminders_and_Escalations.csv
@@ -74,7 +79,15 @@ docs/*QA-Report*.pdf
 .playwright-mcp/
 # Analysis report PDF renderings (generated from docs/analysis/*.md) — kept locally, never committed
 docs/analysis/pdf/
-# One-off diagnosis report exports — kept locally, never committed
-platform-speed-diagnosis-*.pdf
+# One-off diagnosis/optimization report exports — kept locally, never committed
+platform-speed-*.pdf
+platform-speed-*.md
+# Perf snapshot CSVs from scripts/perf-snapshot.sh — local measurement data
+perf-results/
+# Security incident reports — sensitive; kept locally, never committed
+security/incidents/
 testing_stages.jpeg
 Theraptly_LMS_QA_Test_Cases.docx
+
+# Stray Chrome temp profiles from Lighthouse runs on Windows/WSL (literal "C:\..." dir names)
+/C:*

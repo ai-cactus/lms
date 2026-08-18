@@ -23,9 +23,10 @@ vi.mock('@/lib/stripe', () => ({
 }));
 vi.mock('@/lib/logger', () => ({ logger: loggerMock }));
 
-// Deterministic plan/price-id fixture, independent of real env vars — 2
-// billable plans x 3 cycles (6 prices, matching the real Stripe object count)
-// plus enterprise (no price ids — contact-only).
+// Deterministic plan/price-id fixture, independent of real env vars — the
+// real 4-tier lineup (starter/growth/pro billable x 3 cycles = 9 prices,
+// matching the real Stripe object count) plus enterprise (no price ids —
+// contact-only).
 vi.mock('@/lib/billing-plans', () => ({
   BILLING_PLANS: [
     {
@@ -37,7 +38,15 @@ vi.mock('@/lib/billing-plans', () => ({
       },
     },
     {
-      key: 'professional',
+      key: 'growth',
+      priceId: {
+        monthly: 'price_growth_monthly',
+        quarterly: 'price_growth_quarterly',
+        yearly: 'price_growth_yearly',
+      },
+    },
+    {
+      key: 'pro',
       priceId: {
         monthly: 'price_pro_monthly',
         quarterly: 'price_pro_quarterly',
@@ -64,7 +73,7 @@ function stripePrice(overrides: Record<string, unknown> = {}) {
   };
 }
 
-const ALL_SIX_PRICES: Record<string, ReturnType<typeof stripePrice>> = {
+const ALL_NINE_PRICES: Record<string, ReturnType<typeof stripePrice>> = {
   price_starter_monthly: stripePrice({ unit_amount: 9900 }),
   price_starter_quarterly: stripePrice({
     unit_amount: 27000,
@@ -74,19 +83,28 @@ const ALL_SIX_PRICES: Record<string, ReturnType<typeof stripePrice>> = {
     unit_amount: 89000,
     recurring: { interval: 'year', interval_count: 1 },
   }),
-  price_pro_monthly: stripePrice({ unit_amount: 14900 }),
-  price_pro_quarterly: stripePrice({
+  price_growth_monthly: stripePrice({ unit_amount: 14900 }),
+  price_growth_quarterly: stripePrice({
     unit_amount: 40000,
     recurring: { interval: 'month', interval_count: 3 },
   }),
-  price_pro_yearly: stripePrice({
+  price_growth_yearly: stripePrice({
     unit_amount: 134000,
+    recurring: { interval: 'year', interval_count: 1 },
+  }),
+  price_pro_monthly: stripePrice({ unit_amount: 24900 }),
+  price_pro_quarterly: stripePrice({
+    unit_amount: 68000,
+    recurring: { interval: 'month', interval_count: 3 },
+  }),
+  price_pro_yearly: stripePrice({
+    unit_amount: 224000,
     recurring: { interval: 'year', interval_count: 1 },
   }),
 };
 
 function resolveKnownPrices(overrides: Record<string, unknown> = {}) {
-  const table = { ...ALL_SIX_PRICES, ...overrides };
+  const table = { ...ALL_NINE_PRICES, ...overrides };
   mockRetrieve.mockImplementation((id: string) => {
     if (!(id in table)) return Promise.reject(new Error(`unexpected price id: ${id}`));
     return Promise.resolve(table[id]);
@@ -140,7 +158,8 @@ describe('fetchPlanPricesUncached — happy path', () => {
       intervalCount: 1,
       effectiveMonthlyCents: Math.round(89000 / 12), // 7417
     });
-    expect(result.professional.monthly?.effectiveMonthlyCents).toBe(14900);
+    expect(result.growth.monthly?.effectiveMonthlyCents).toBe(14900);
+    expect(result.pro.monthly?.effectiveMonthlyCents).toBe(24900);
     expect(loggerMock.error).not.toHaveBeenCalled();
     expect(loggerMock.warn).not.toHaveBeenCalled();
   });
@@ -151,7 +170,7 @@ describe('fetchPlanPricesUncached — happy path', () => {
     const result = await fetchPlanPricesUncached();
 
     expect(result.enterprise).toEqual({});
-    expect(mockRetrieve).toHaveBeenCalledTimes(6); // 2 billable plans x 3 cycles
+    expect(mockRetrieve).toHaveBeenCalledTimes(9); // 3 billable plans x 3 cycles
     expect(mockRetrieve).not.toHaveBeenCalledWith(null);
     expect(mockRetrieve).not.toHaveBeenCalledWith(undefined);
   });
@@ -163,7 +182,7 @@ describe('fetchPlanPricesUncached — partial Stripe failures', () => {
     mockRetrieve.mockImplementation((id: string) =>
       id === 'price_starter_monthly'
         ? Promise.reject(new Error('Stripe API unavailable'))
-        : Promise.resolve(ALL_SIX_PRICES[id]),
+        : Promise.resolve(ALL_NINE_PRICES[id]),
     );
 
     const result = await fetchPlanPricesUncached();
@@ -171,7 +190,8 @@ describe('fetchPlanPricesUncached — partial Stripe failures', () => {
     expect(result.starter.monthly).toBeUndefined();
     expect(result.starter.quarterly).toBeDefined();
     expect(result.starter.yearly).toBeDefined();
-    expect(result.professional.monthly).toBeDefined();
+    expect(result.growth.monthly).toBeDefined();
+    expect(result.pro.monthly).toBeDefined();
     expect(loggerMock.error).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
         msg: expect.stringContaining('Failed to retrieve Stripe price'),
@@ -187,10 +207,11 @@ describe('fetchPlanPricesUncached — partial Stripe failures', () => {
 
     await expect(fetchPlanPricesUncached()).resolves.toEqual({
       starter: {},
-      professional: {},
+      growth: {},
+      pro: {},
       enterprise: {},
     });
-    expect(loggerMock.error).toHaveBeenCalledTimes(6);
+    expect(loggerMock.error).toHaveBeenCalledTimes(9);
   });
 });
 
@@ -201,7 +222,7 @@ describe('fetchPlanPricesUncached — STRIPE_SECRET_KEY unset', () => {
 
     const result = await fetchPlanPricesUncached();
 
-    expect(result).toEqual({ starter: {}, professional: {}, enterprise: {} });
+    expect(result).toEqual({ starter: {}, growth: {}, pro: {}, enterprise: {} });
     expect(mockRetrieve).not.toHaveBeenCalled();
     expect(loggerMock.warn).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ msg: expect.stringContaining('STRIPE_SECRET_KEY unset') }),
@@ -257,7 +278,9 @@ describe('fetchPlanPricesUncached — unexpected Stripe price shapes', () => {
     const result = await fetchPlanPricesUncached();
 
     expect(result.starter.quarterly).toBeDefined();
-    expect(result.professional.monthly).toBeDefined();
-    expect(result.professional.yearly).toBeDefined();
+    expect(result.growth.monthly).toBeDefined();
+    expect(result.growth.yearly).toBeDefined();
+    expect(result.pro.monthly).toBeDefined();
+    expect(result.pro.yearly).toBeDefined();
   });
 });

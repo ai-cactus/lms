@@ -143,8 +143,8 @@ async function loginAndOpenInviteModal(
   await page.waitForURL('**/dashboard**', { timeout: 45000 });
   await page.goto('/dashboard/staff');
   await page.waitForLoadState('networkidle');
-  // Open the invite modal — button label is "Add Workers" on the staff page.
-  const inviteBtn = page.getByRole('button', { name: /add workers?/i }).first();
+  // Open the invite modal — button label is "Add Staff" on the staff page.
+  const inviteBtn = page.getByRole('button', { name: /add staff/i }).first();
   await inviteBtn.click();
   // Wait for modal to appear (step 1 — email entry).
   await page.waitForSelector('[role="dialog"]', { timeout: 5000 });

@@ -41,8 +41,7 @@ function workerCookieName(): string {
 export async function enterLearnMode(): Promise<void> {
   const session = await auth();
   const sessionUser = session?.user as
-    | { id: string; name?: string | null; sessionId?: string; mfaVerified?: boolean }
-    | undefined;
+    { id: string; name?: string | null; sessionId?: string; mfaVerified?: boolean } | undefined;
   const userId = sessionUser?.id;
   if (!sessionUser || !userId) {
     redirect('/login');

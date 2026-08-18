@@ -33,28 +33,192 @@ interface LogPayload {
   [key: string]: unknown;
 }
 
+/* ─── Redaction (F-078) ─────────────────────────────────────────────────────
+ *
+ * PII safety used to depend on every developer remembering to call maskEmail
+ * before passing an address into a log field. That is a code-review habit, not
+ * a control, and it fails silently. Redaction is now structural: the logger
+ * scrubs payloads on the way out, so forgetting is no longer possible.
+ *
+ * Two matching strategies, and the split is deliberate:
+ *
+ *   FRAGMENT — matched anywhere in the key. Reserved for words that are never
+ *   part of an innocuous field name ('password', 'secret', 'token', …). Safe to
+ *   be greedy with.
+ *
+ *   EXACT — matched only as the whole key. Used for broad words that DO appear
+ *   inside safe field names: redacting on the fragment 'content' would also
+ *   scrub `contentHash` and `contentLength`, which the PHI decision ledger logs
+ *   on purpose. `content` alone is the document text; `contentHash` is a digest.
+ *
+ * Values are also swept for anything shaped like an email address, including in
+ * `msg`, because addresses interpolated into a message string were the most
+ * common leak and no key-based rule can catch them.
+ */
+
+const REDACTED = '[REDACTED]';
+
+/** Never part of a harmless field name — safe to match as a substring. */
+const SENSITIVE_KEY_FRAGMENTS = [
+  'password',
+  'passwd',
+  'secret',
+  'token',
+  'authorization',
+  'cookie',
+  'apikey',
+  'credential',
+  'privatekey',
+  'accesskey',
+  'bearer',
+  'sessionid',
+];
+
+/** Broad words that appear inside safe field names — whole-key match only. */
+const SENSITIVE_KEYS_EXACT = new Set([
+  'content',
+  'contents',
+  'snippet',
+  'answers',
+  'answer',
+  'address',
+  'phone',
+  'dob',
+  'dateofbirth',
+  'ssn',
+  'signature',
+  'attestationsignature',
+  'body',
+]);
+
+/** Routed through maskEmail rather than blanked, since the domain is useful. */
+const EMAIL_KEY_FRAGMENTS = ['email', 'recipient', 'mailto'];
+
+// Deliberately loose: this is a redaction heuristic, not a validator. Over-
+// matching costs a mangled log line; under-matching leaks an address.
+const EMAIL_PATTERN = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
+
+/** Depth cap: bounds work on deep structures and, with `seen`, stops cycles. */
+const MAX_REDACT_DEPTH = 6;
+
+function normalizeKey(key: string): string {
+  return key.toLowerCase().replace(/[_-]/g, '');
+}
+
+function isSensitiveKey(key: string): boolean {
+  const k = normalizeKey(key);
+  if (SENSITIVE_KEYS_EXACT.has(k)) return true;
+  return SENSITIVE_KEY_FRAGMENTS.some((fragment) => k.includes(fragment));
+}
+
+function isEmailKey(key: string): boolean {
+  const k = normalizeKey(key);
+  return EMAIL_KEY_FRAGMENTS.some((fragment) => k.includes(fragment));
+}
+
+/** Masks any email-shaped substring inside a free-text value. */
+function maskEmailsInText(value: string): string {
+  return value.replace(EMAIL_PATTERN, (match) => maskEmail(match));
+}
+
+function redactValue(key: string, value: unknown, depth: number, seen: WeakSet<object>): unknown {
+  if (isSensitiveKey(key)) return REDACTED;
+
+  if (typeof value === 'string') {
+    return isEmailKey(key) ? maskEmail(value) : maskEmailsInText(value);
+  }
+
+  if (value === null || typeof value !== 'object') return value;
+
+  if (depth >= MAX_REDACT_DEPTH) return '[TRUNCATED]';
+
+  // Cycles would otherwise recurse forever; a logger must never be the thing
+  // that takes the process down.
+  if (seen.has(value)) return '[CIRCULAR]';
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => redactValue(key, entry, depth + 1, seen));
+  }
+
+  return redactObject(value as Record<string, unknown>, depth + 1, seen);
+}
+
+function redactObject(
+  input: Record<string, unknown>,
+  depth: number,
+  seen: WeakSet<object>,
+): Record<string, unknown> {
+  const output: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(input)) {
+    output[key] = redactValue(key, value, depth, seen);
+  }
+  return output;
+}
+
+/** Entry point: scrubs one log payload. */
+export function redactLogPayload(input: Record<string, unknown>): Record<string, unknown> {
+  return redactObject(input, 0, new WeakSet());
+}
+
+/**
+ * Extra own-properties worth keeping off an Error. Everything else is dropped.
+ *
+ * This used to spread ALL own properties as `err_*`, so an error carrying a
+ * token, a request body, or a raw email leaked it straight into the log line
+ * (F-078). An allow-list inverts the default: unknown properties are omitted,
+ * and their NAMES are reported so a developer can still tell something was
+ * there without the value being disclosed.
+ */
+const ERROR_PROP_ALLOWLIST = new Set([
+  'code',
+  'errno',
+  'syscall',
+  'status',
+  'statusCode',
+  'statusText',
+  'type',
+  'reason',
+  'resource',
+  'bucketname',
+  'requestId',
+  'path',
+]);
+
+const ERROR_BASE_PROPS = ['name', 'message', 'stack'];
+
 /**
  * Safely serialize an unknown error value into plain JSON-compatible fields.
  * Error instances have non-enumerable properties so JSON.stringify drops them.
  */
 function serializeError(err: unknown): Record<string, unknown> {
   if (err instanceof Error) {
+    const source = err as unknown as Record<string, unknown>;
+    const extras: Record<string, unknown> = {};
+    const omitted: string[] = [];
+
+    for (const key of Object.getOwnPropertyNames(err)) {
+      if (ERROR_BASE_PROPS.includes(key)) continue;
+      if (ERROR_PROP_ALLOWLIST.has(key)) {
+        extras[`err_${key}`] = redactValue(key, source[key], 0, new WeakSet());
+      } else {
+        omitted.push(key);
+      }
+    }
+
     return {
       errName: err.name,
-      errMessage: err.message,
-      errStack: err.stack,
-      // Capture any extra own properties (e.g. S3Error.code, .bucketname)
-      ...Object.fromEntries(
-        Object.getOwnPropertyNames(err)
-          .filter((k) => !['name', 'message', 'stack'].includes(k))
-          .map((k) => [`err_${k}`, (err as unknown as Record<string, unknown>)[k]]),
-      ),
+      // The message is free text and routinely interpolates an identifier.
+      errMessage: maskEmailsInText(err.message),
+      errStack: err.stack ? maskEmailsInText(err.stack) : err.stack,
+      ...extras,
+      ...(omitted.length ? { errExtraKeysOmitted: omitted } : {}),
     };
   }
   if (typeof err === 'object' && err !== null) {
-    return { errRaw: JSON.stringify(err) };
+    return { errRaw: JSON.stringify(redactLogPayload(err as Record<string, unknown>)) };
   }
-  return { errRaw: String(err) };
+  return { errRaw: maskEmailsInText(String(err)) };
 }
 
 const LOG_LEVELS: Record<LogLevel, number> = {
@@ -83,8 +247,15 @@ function emit(level: LogLevel, payload: LogPayload): void {
     level,
     time: new Date().toISOString(),
     env: process.env.NODE_ENV,
+    // Self-identifying for log aggregation. The collector tails Docker's log
+    // files, whose paths carry only a container ID, so without this every app
+    // line in Cloud Logging would be attributable only to an opaque hash.
+    // Same var the collector reports as service.name, so they agree.
+    ...(process.env.OTEL_SERVICE_NAME ? { service: process.env.OTEL_SERVICE_NAME } : {}),
     ...(correlationId ? { correlationId } : {}),
-    ...rest,
+    // F-078: scrub before the entry is assembled. Structural rather than
+    // per-call-site, so a forgotten maskEmail can no longer leak.
+    ...redactLogPayload(rest),
   };
 
   // Expand Error objects so JSON.stringify captures message + stack

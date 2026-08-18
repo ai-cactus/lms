@@ -13,7 +13,14 @@ export async function POST(request: NextRequest) {
       request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
       request.headers.get('x-real-ip') ??
       'unknown';
-    const { allowed } = await checkRateLimit(`resend-verification:${ip}`, 5, 600);
+    // F-024: fail CLOSED like the other pre-session auth paths. This endpoint is
+    // unauthenticated and sends an email on every accepted call, so falling back
+    // to the per-instance in-memory window during a Redis outage turns it into an
+    // email-bombing vector — and the damage lands on our sending reputation, not
+    // just the target's inbox.
+    const { allowed } = await checkRateLimit(`resend-verification:${ip}`, 5, 600, {
+      failClosed: true,
+    });
     if (!allowed) {
       logger.warn({ msg: '[auth] Resend verification rate limit exceeded', ip });
       return NextResponse.json(

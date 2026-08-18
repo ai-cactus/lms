@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
-import { useForm, Controller } from 'react-hook-form';
+import React, { useEffect } from 'react';
+import { useForm, useController, useWatch, Controller } from 'react-hook-form';
 import { useRouter } from 'next/navigation';
-import { ChevronDown } from 'lucide-react';
+import { PlusCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -15,106 +15,222 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import Stepper from '@/components/onboarding/Stepper';
 import { logger } from '@/lib/logger';
+import {
+  ADDITIONAL_BUSINESS_TYPES,
+  OTHER_OPTION_ID,
+  PRIMARY_BUSINESS_TYPES,
+  PROGRAM_SERVICES,
+  type OnboardingOption,
+} from '@/lib/constants/onboarding-options';
+import {
+  hydrateSelection,
+  hydrateSingleSelection,
+  resolveSelection,
+  resolveSingleSelection,
+} from '@/lib/onboarding/step3-selection';
 
 interface Step3FormData {
   primaryBusinessType: string;
+  primaryBusinessTypeOtherText: string;
   additionalBusinessTypes: string[];
+  additionalBusinessTypeOtherText: string;
   services: string[];
+  servicesOtherText: string;
 }
 
-const OTHER_OPTION_ID = 'other';
+const BLANK_STEP3_VALUES: Step3FormData = {
+  primaryBusinessType: '',
+  primaryBusinessTypeOtherText: '',
+  additionalBusinessTypes: [],
+  additionalBusinessTypeOtherText: '',
+  services: [],
+  servicesOtherText: '',
+};
 
-const ADDITIONAL_BUSINESS_TYPES = [
-  { id: 'community_mental_health', label: 'Community Mental Health Center' },
-  { id: 'sud_treatment', label: 'Substance Use Disorder (SUD) Treatment Center' },
-  {
-    id: 'addiction_programs',
-    label: 'Outpatient or residential programs focused on addiction services',
-  },
-  { id: 'residential_inpatient', label: 'Residential / Inpatient Facility' },
-  {
-    id: 'behavioral_hospital',
-    label: 'Behavioral health hospitals, crisis stabilization units, or long-term care programs',
-  },
-  { id: 'school_campus', label: 'School- or Campus-based Program' },
-  { id: OTHER_OPTION_ID, label: 'Other (Specify)' },
-];
+interface PersistedStep3 {
+  primaryBusinessType?: string;
+  additionalBusinessTypes?: string[];
+  services?: string[];
+}
 
-const LABEL_BY_ID = new Map(ADDITIONAL_BUSINESS_TYPES.map((o) => [o.id, o.label]));
+/**
+ * "Other" is deliberately excluded from the known-id sets: a persisted value is
+ * either a canonical id or the free text typed into the "Other" box, and free
+ * text of literally "other" must rehydrate into the text box, not the option.
+ */
+function knownIdsOf(options: readonly OnboardingOption[]): ReadonlySet<string> {
+  return new Set(options.filter((option) => option.id !== OTHER_OPTION_ID).map((o) => o.id));
+}
 
-const PROGRAM_SERVICES = [
-  { id: 'aging', label: 'Aging Services' },
-  { id: 'behavioral', label: 'Behavioral Health' },
-  { id: 'child-youth', label: 'Child & Youth Services' },
-  { id: 'employment', label: 'Employment & Community Services' },
-  { id: 'medical-rehab', label: 'Medical Rehabilitation' },
-  { id: 'opioid', label: 'Opioid Treatment Program' },
-  { id: 'vision', label: 'Vision Rehabilitation Services' },
-];
+const PRIMARY_BUSINESS_TYPE_IDS = knownIdsOf(PRIMARY_BUSINESS_TYPES);
+const ADDITIONAL_BUSINESS_TYPE_IDS = knownIdsOf(ADDITIONAL_BUSINESS_TYPES);
+const PROGRAM_SERVICE_IDS = knownIdsOf(PROGRAM_SERVICES);
+
+const sectionLabelClass = 'text-base font-semibold text-foreground md:text-lg';
+const fieldLabelClass =
+  '[&>label]:text-base [&>label]:font-semibold [&>label]:text-foreground md:[&>label]:text-lg';
+
+function readDraft(): Record<string, unknown> {
+  if (typeof window === 'undefined') return {};
+  try {
+    return JSON.parse(localStorage.getItem('onboarding_data') || '{}');
+  } catch {
+    return {};
+  }
+}
+
+interface OptionCheckboxGridProps {
+  options: readonly OnboardingOption[];
+  selected: string[];
+  onToggle: (id: string, checked: boolean) => void;
+  otherText: string;
+  onOtherTextChange: (value: string) => void;
+  otherError?: string;
+}
+
+function OptionCheckboxGrid({
+  options,
+  selected,
+  onToggle,
+  otherText,
+  onOtherTextChange,
+  otherError,
+}: OptionCheckboxGridProps) {
+  const otherActive = selected.includes(OTHER_OPTION_ID);
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2 sm:gap-x-[130px] sm:gap-y-[37px] sm:px-[30px]">
+        {options.map((option) =>
+          option.id === OTHER_OPTION_ID ? (
+            <button
+              key={option.id}
+              type="button"
+              aria-pressed={otherActive}
+              onClick={() => onToggle(option.id, !otherActive)}
+              className="flex cursor-pointer items-center gap-3 text-left"
+            >
+              <PlusCircle className="size-7 shrink-0 text-primary" aria-hidden="true" />
+              <span className="text-lg text-primary">{option.label}</span>
+            </button>
+          ) : (
+            <label key={option.id} className="flex cursor-pointer items-center gap-3">
+              <Checkbox
+                className="size-7 rounded-[4px]"
+                checked={selected.includes(option.id)}
+                onCheckedChange={(checked) => onToggle(option.id, checked === true)}
+              />
+              <span className="text-lg text-foreground">{option.label}</span>
+            </label>
+          ),
+        )}
+      </div>
+
+      {otherActive && (
+        <div className="sm:px-[30px]">
+          <Field error={otherError}>
+            <Input
+              value={otherText}
+              onChange={(event) => onOtherTextChange(event.target.value)}
+              placeholder="Please specify"
+            />
+          </Field>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function OnboardingStep3() {
   const router = useRouter();
   const {
     control,
+    register,
+    reset,
     handleSubmit,
-    setError,
     formState: { errors },
-  } = useForm<Step3FormData>({
-    defaultValues: {
-      primaryBusinessType: '',
-      additionalBusinessTypes: [],
-      services: [],
+  } = useForm<Step3FormData>({ defaultValues: BLANK_STEP3_VALUES });
+
+  const additionalTypes = useController({
+    name: 'additionalBusinessTypes',
+    control,
+    rules: { validate: (value) => value.length > 0 || 'Additional Business Type is required' },
+  });
+  const additionalOther = useController({
+    name: 'additionalBusinessTypeOtherText',
+    control,
+    rules: {
+      validate: (value, formValues) =>
+        !formValues.additionalBusinessTypes.includes(OTHER_OPTION_ID) ||
+        value.trim().length > 0 ||
+        'Please specify your additional business type',
     },
   });
-  const [otherText, setOtherText] = useState('');
+  const services = useController({ name: 'services', control });
+  const servicesOther = useController({
+    name: 'servicesOtherText',
+    control,
+    rules: {
+      validate: (value, formValues) =>
+        !formValues.services.includes(OTHER_OPTION_ID) ||
+        value.trim().length > 0 ||
+        'Please specify the program service',
+    },
+  });
+
+  useEffect(() => {
+    const step3 = readDraft().step3 as PersistedStep3 | undefined;
+    if (!step3) return;
+
+    const primary = hydrateSingleSelection(step3.primaryBusinessType, PRIMARY_BUSINESS_TYPE_IDS);
+    const additional = hydrateSelection(
+      step3.additionalBusinessTypes,
+      ADDITIONAL_BUSINESS_TYPE_IDS,
+    );
+    const programServices = hydrateSelection(step3.services, PROGRAM_SERVICE_IDS);
+
+    reset({
+      primaryBusinessType: primary.selectedId,
+      primaryBusinessTypeOtherText: primary.otherText,
+      additionalBusinessTypes: additional.selectedIds,
+      additionalBusinessTypeOtherText: additional.otherText,
+      services: programServices.selectedIds,
+      servicesOtherText: programServices.otherText,
+    });
+  }, [reset]);
+
+  const primaryBusinessType = useWatch({ control, name: 'primaryBusinessType' });
+
+  const toggleIn = (current: string[], id: string, checked: boolean) =>
+    checked ? [...current, id] : current.filter((value) => value !== id);
 
   const onSubmit = (data: Step3FormData) => {
-    if (data.additionalBusinessTypes.includes(OTHER_OPTION_ID) && !otherText.trim()) {
-      setError('additionalBusinessTypes', {
-        type: 'manual',
-        message: 'Please specify your additional business type',
-      });
-      return;
-    }
-
-    // Convert selected option ids to their stored labels; the "Other" selection
-    // stores the typed free text rather than the literal "Other (Specify)".
-    const additionalBusinessTypes = data.additionalBusinessTypes.flatMap((id) =>
-      id === OTHER_OPTION_ID
-        ? otherText.trim()
-          ? [otherText.trim()]
-          : []
-        : [LABEL_BY_ID.get(id) ?? id],
-    );
-
     try {
       if (typeof window !== 'undefined') {
-        const existing = JSON.parse(localStorage.getItem('onboarding_data') || '{}');
-        const updated = {
-          ...existing,
-          step3: {
-            primaryBusinessType: data.primaryBusinessType,
-            additionalBusinessTypes,
-            services: data.services,
-          },
+        const draft = readDraft();
+        draft.step3 = {
+          primaryBusinessType: resolveSingleSelection(
+            data.primaryBusinessType,
+            data.primaryBusinessTypeOtherText,
+          ),
+          additionalBusinessTypes: resolveSelection(
+            data.additionalBusinessTypes,
+            data.additionalBusinessTypeOtherText,
+          ),
+          services: resolveSelection(data.services, data.servicesOtherText),
         };
-        localStorage.setItem('onboarding_data', JSON.stringify(updated));
+        localStorage.setItem('onboarding_data', JSON.stringify(draft));
       }
       router.push('/onboarding/step4');
     } catch (error) {
-      logger.error({ msg: 'Submission error:', err: error });
+      logger.error({ msg: '[onboarding] Step 3 local save failed', err: error });
     }
   };
 
-  const getError = (fieldName: keyof Step3FormData) => {
-    return errors[fieldName]?.message;
-  };
-
   return (
-    <div className="w-full max-w-[1000px]">
+    <div className="w-full max-w-[1080px]">
       <Stepper currentStep={3} />
 
       <h1 className="mb-2 text-center text-[22px] font-bold text-foreground md:text-[28px]">
@@ -124,155 +240,97 @@ export default function OnboardingStep3() {
         Choose the services that reflect the people you serve.
       </p>
 
-      <form
-        onSubmit={handleSubmit(onSubmit)}
-        className="flex flex-col gap-4 rounded-2xl bg-background p-6 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05)] md:gap-6 md:p-10"
-      >
-        <div className="flex flex-col gap-4 md:flex-row md:gap-6">
-          <div className="flex flex-1 flex-col gap-1.5">
-            <Controller
-              name="primaryBusinessType"
-              control={control}
-              rules={{ required: 'Primary Business Type is required' }}
-              render={({ field }) => (
-                <Field
-                  label="Primary Business Type"
-                  required
-                  error={getError('primaryBusinessType')}
+      <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-8 md:gap-10">
+        <div className="flex flex-col gap-6">
+          <Controller
+            name="primaryBusinessType"
+            control={control}
+            rules={{ required: 'Primary Business Type is required' }}
+            render={({ field }) => (
+              <Field
+                label="Primary Business Type"
+                required
+                error={errors.primaryBusinessType?.message}
+                className={fieldLabelClass}
+              >
+                <Select
+                  value={field.value}
+                  onValueChange={(value) => {
+                    // Radix renders a hidden native <select> whenever a Select sits
+                    // inside a <form>, and echoes a change event back through
+                    // onValueChange when the value is set programmatically. The echo
+                    // reports "" until the matching <option> has registered, which
+                    // would wipe the value rehydrated from the localStorage draft.
+                    // No SelectItem here has an empty value, so "" is only ever that
+                    // echo — never a real user selection.
+                    if (!value) return;
+                    field.onChange(value);
+                  }}
                 >
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger className="h-14 w-full rounded-[10px]">
-                      <SelectValue placeholder="Select an option" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="solo">Solo / Independent Provider</SelectItem>
-                      <SelectItem value="group">Group Practice</SelectItem>
-                      <SelectItem value="clinic">Clinic</SelectItem>
-                      <SelectItem value="hospital">Hospital</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </Field>
-              )}
-            />
-          </div>
-          <div className="flex flex-1 flex-col gap-1.5">
-            <Controller
-              name="additionalBusinessTypes"
-              control={control}
-              rules={{ validate: (v) => v.length > 0 || 'Additional Business Type is required' }}
-              render={({ field }) => {
-                const summary =
-                  field.value.length === 0
-                    ? ''
-                    : field.value
-                        .map((id) =>
-                          id === OTHER_OPTION_ID
-                            ? otherText.trim() || 'Other'
-                            : (LABEL_BY_ID.get(id) ?? id),
-                        )
-                        .join(', ');
-                const toggle = (id: string, checked: boolean) => {
-                  field.onChange(
-                    checked ? [...field.value, id] : field.value.filter((v) => v !== id),
-                  );
-                };
-                return (
-                  <Field
-                    label="Additional Business Type"
-                    required
-                    error={getError('additionalBusinessTypes')}
-                  >
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <button
-                          type="button"
-                          className={`flex h-14 w-full items-center justify-between gap-2 rounded-[10px] border bg-background px-3 text-left text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 ${
-                            getError('additionalBusinessTypes')
-                              ? 'border-destructive'
-                              : 'border-input'
-                          }`}
-                        >
-                          <span
-                            className={
-                              summary ? 'line-clamp-1 text-foreground' : 'text-muted-foreground'
-                            }
-                          >
-                            {summary || 'Select an option'}
-                          </span>
-                          <ChevronDown className="size-4 shrink-0 opacity-50" aria-hidden="true" />
-                        </button>
-                      </PopoverTrigger>
-                      <PopoverContent
-                        align="start"
-                        className="w-(--radix-popover-trigger-width) p-2"
-                      >
-                        <div className="flex flex-col">
-                          {ADDITIONAL_BUSINESS_TYPES.map((option) => {
-                            const isChecked = field.value.includes(option.id);
-                            return (
-                              <label
-                                key={option.id}
-                                className="flex cursor-pointer items-start gap-2 rounded-md p-2 text-sm text-foreground hover:bg-accent"
-                              >
-                                <Checkbox
-                                  className="mt-0.5"
-                                  checked={isChecked}
-                                  onCheckedChange={(c) => toggle(option.id, c === true)}
-                                />
-                                <span>{option.label}</span>
-                              </label>
-                            );
-                          })}
-                          {field.value.includes(OTHER_OPTION_ID) && (
-                            <div className="p-2">
-                              <Input
-                                value={otherText}
-                                onChange={(e) => setOtherText(e.target.value)}
-                                placeholder="Please specify"
-                              />
-                            </div>
-                          )}
-                        </div>
-                      </PopoverContent>
-                    </Popover>
-                  </Field>
-                );
-              }}
-            />
-          </div>
+                  <SelectTrigger className="h-14 w-full rounded-[13px]">
+                    <SelectValue placeholder="Select an option" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PRIMARY_BUSINESS_TYPES.map((option) => (
+                      <SelectItem key={option.id} value={option.id}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+            )}
+          />
+
+          {primaryBusinessType === OTHER_OPTION_ID && (
+            <Field error={errors.primaryBusinessTypeOtherText?.message}>
+              <Input
+                {...register('primaryBusinessTypeOtherText', {
+                  validate: (value, formValues) =>
+                    formValues.primaryBusinessType !== OTHER_OPTION_ID ||
+                    value.trim().length > 0 ||
+                    'Please specify your business type',
+                })}
+                placeholder="Please specify"
+              />
+            </Field>
+          )}
         </div>
 
-        <div className="flex flex-col gap-2">
-          <label className="mb-4 block text-sm font-semibold text-foreground">
-            Program Services
-          </label>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {PROGRAM_SERVICES.map((service) => (
-              <Controller
-                key={service.id}
-                name="services"
-                control={control}
-                render={({ field }) => {
-                  const isChecked = field.value.includes(service.id);
-                  return (
-                    <label className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
-                      <Checkbox
-                        checked={isChecked}
-                        onCheckedChange={(c) => {
-                          if (c === true) {
-                            field.onChange([...field.value, service.id]);
-                          } else {
-                            field.onChange(field.value.filter((v) => v !== service.id));
-                          }
-                        }}
-                      />
-                      {service.label}
-                    </label>
-                  );
-                }}
-              />
-            ))}
-          </div>
+        <div className="flex flex-col gap-6">
+          <span className={sectionLabelClass}>
+            Additional Business Type{' '}
+            <span className="text-error" aria-hidden="true">
+              *
+            </span>
+          </span>
+          <OptionCheckboxGrid
+            options={ADDITIONAL_BUSINESS_TYPES}
+            selected={additionalTypes.field.value}
+            onToggle={(id, checked) =>
+              additionalTypes.field.onChange(toggleIn(additionalTypes.field.value, id, checked))
+            }
+            otherText={additionalOther.field.value}
+            onOtherTextChange={additionalOther.field.onChange}
+            otherError={additionalOther.fieldState.error?.message}
+          />
+          {additionalTypes.fieldState.error?.message && (
+            <p className="text-sm text-error">{additionalTypes.fieldState.error.message}</p>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-6">
+          <span className={sectionLabelClass}>Program Services</span>
+          <OptionCheckboxGrid
+            options={PROGRAM_SERVICES}
+            selected={services.field.value}
+            onToggle={(id, checked) =>
+              services.field.onChange(toggleIn(services.field.value, id, checked))
+            }
+            otherText={servicesOther.field.value}
+            onOtherTextChange={servicesOther.field.onChange}
+            otherError={servicesOther.fieldState.error?.message}
+          />
         </div>
 
         <div className="mt-6 flex flex-col-reverse gap-3 md:flex-row md:justify-between md:gap-4">

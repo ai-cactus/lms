@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { FC } from 'react';
 import { isAdminRole, dbRoleToRoleKey } from '@/lib/rbac/role-utils';
 import { can } from '@/lib/rbac/permissions';
 import type { Role } from '@/types/next-auth';
@@ -13,8 +13,9 @@ import BillingPausedBanner from '@/components/billing/BillingPausedBanner';
 import StatusTrackerAlertBanner from '@/components/dashboard/StatusTrackerAlertBanner';
 import { getPauseState } from '@/lib/billing';
 import { getStatusTrackerSummaryForOrg } from '@/lib/reminders/status-tracker';
+import { WithChildren } from '@/types/react';
 
-export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
+const DashboardLayout: FC<WithChildren> = async ({ children }) => {
   const session = await auth();
 
   if (!session?.user?.email) {
@@ -64,25 +65,27 @@ export default async function DashboardLayout({ children }: { children: React.Re
     <AdminSessionProvider>
       <OrganizationActivationModal hasOrganization={!!organizationId} />
       <ExportJobsProvider>
-        <DashboardLayoutClient
-          userEmail={session.user.email || ''}
-          fullName={fullName}
-          role={role || undefined}
-        >
-          {pauseState !== 'none' && (
-            <BillingPausedBanner
-              pauseState={pauseState}
-              pauseEndsAt={
-                subscription?.pauseEndsAt ? subscription.pauseEndsAt.toISOString() : null
-              }
-            />
-          )}
-          {canSeeStatusTracker && (
-            <StatusTrackerAlertBanner hardEscalationCount={hardEscalationCount} />
-          )}
-          {children}
-        </DashboardLayoutClient>
+        {/* Full-viewport shell: the two dashboard layouts own their own scroll
+            container, so the page frame itself never scrolls. */}
+        <div className="h-screen w-full overflow-hidden">
+          <DashboardLayoutClient fullName={fullName} role={role || undefined}>
+            {pauseState !== 'none' && (
+              <BillingPausedBanner
+                pauseState={pauseState}
+                pauseEndsAt={
+                  subscription?.pauseEndsAt ? subscription.pauseEndsAt.toISOString() : null
+                }
+              />
+            )}
+            {canSeeStatusTracker && (
+              <StatusTrackerAlertBanner hardEscalationCount={hardEscalationCount} />
+            )}
+            {children}
+          </DashboardLayoutClient>
+        </div>
       </ExportJobsProvider>
     </AdminSessionProvider>
   );
-}
+};
+
+export default DashboardLayout;

@@ -17,6 +17,7 @@ const { mockAuth, prismaMock, mockRedirect } = vi.hoisted(() => ({
     invite: { findMany: vi.fn(), count: vi.fn() },
     facility: { findFirst: vi.fn() },
     subscription: { findUnique: vi.fn() },
+    organization: { findUnique: vi.fn() },
   },
   mockRedirect: vi.fn(() => {
     throw new Error('NEXT_REDIRECT');
@@ -57,7 +58,8 @@ beforeEach(() => {
     name: 'Acme Clinic',
     type: 'clinic',
   });
-  prismaMock.subscription.findUnique.mockResolvedValue({ plan: 'professional', status: 'active' });
+  prismaMock.subscription.findUnique.mockResolvedValue({ plan: 'growth', status: 'active' });
+  prismaMock.organization.findUnique.mockResolvedValue({ notificationDigestFrequency: 'daily' });
   prismaMock.user.count.mockResolvedValue(3);
   prismaMock.invite.count.mockResolvedValue(0);
 });
@@ -152,7 +154,7 @@ describe('SettingsPageRoute — data shaping for the owner path', () => {
 
   it('derives planLimit/planName only for a non-canceled subscription', async () => {
     prismaMock.subscription.findUnique.mockResolvedValueOnce({
-      plan: 'professional',
+      plan: 'growth',
       status: 'canceled',
     });
 

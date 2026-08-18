@@ -14,6 +14,12 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { logger } from '@/lib/logger';
+import {
+  ADDITIONAL_BUSINESS_TYPES,
+  PRIMARY_BUSINESS_TYPES,
+  getOptionLabel,
+} from '@/lib/constants/onboarding-options';
+import { panelLabelClass, sectionHeadingClass } from './profile-tab-styles';
 
 interface OrganizationData {
   id: string;
@@ -39,22 +45,15 @@ const HIPAA_OPTIONS = [
   { label: 'No', value: 'no' },
 ];
 
-// Exact options from onboarding/step3
-const PRIMARY_BUSINESS_TYPES = [
-  { label: 'Solo / Independent Provider', value: 'solo' },
-  { label: 'Group Practice', value: 'group' },
-  { label: 'Clinic', value: 'clinic' },
-  { label: 'Hospital', value: 'hospital' },
-];
+// Organizations onboarded before the step 3 option set was reworked still hold
+// these ids; they are no longer offered, but must remain readable here.
+const LEGACY_PRIMARY_BUSINESS_TYPE_LABELS: Record<string, string> = {
+  solo: 'Solo / Independent Provider',
+  group: 'Group Practice',
+  clinic: 'Clinic',
+  hospital: 'Hospital',
+};
 
-const ADDITIONAL_BUSINESS_TYPES = [
-  { label: 'Other', value: 'none' },
-  { label: 'Non-Profit', value: 'non-profit' },
-  { label: 'Private', value: 'private' },
-  { label: 'Public', value: 'public' },
-];
-
-const labelClass = 'mb-2 block text-sm font-medium text-foreground';
 const requiredClass = 'text-error';
 const optionalClass = 'text-text-tertiary font-normal';
 
@@ -207,7 +206,7 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
 
   if (!initialData) {
     return (
-      <div className="flex min-h-[400px] items-center justify-center p-6">
+      <div className="flex min-h-[400px] items-center justify-center">
         <div className="flex max-w-[420px] flex-col items-center text-center">
           <div className="mb-4 flex size-16 items-center justify-center rounded-full bg-primary/10 text-primary">
             <Building2 className="size-8" aria-hidden="true" />
@@ -223,19 +222,26 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
     );
   }
 
-  const additionalBusinessType = (initialData.additionalBusinessTypes || [])[0] || '';
+  const primaryBusinessType = initialData.primaryBusinessType || '';
+  const primaryBusinessTypeLabel = primaryBusinessType
+    ? (getOptionLabel(PRIMARY_BUSINESS_TYPES, primaryBusinessType) ??
+      LEGACY_PRIMARY_BUSINESS_TYPE_LABELS[primaryBusinessType] ??
+      primaryBusinessType)
+    : '';
+
+  // Values that match no known id are the free text captured by "Other (specify)".
+  const additionalBusinessTypeLabels = (initialData.additionalBusinessTypes || [])
+    .map((value) => getOptionLabel(ADDITIONAL_BUSINESS_TYPES, value) ?? value)
+    .join(', ');
 
   return (
-    <div className="flex flex-col gap-10 p-6 md:p-10">
+    <div className="flex w-full flex-col gap-10">
       {/* Section 1: Basic Organization Information */}
-      <div className="flex flex-col gap-6">
-        <div className="flex items-center gap-2 text-base font-semibold text-foreground">
-          <span className="text-primary">1.</span>
-          <span>Basic Organization Information</span>
-        </div>
+      <div className="flex flex-col gap-[27.639px]">
+        <div className={sectionHeadingClass}>1. Basic Organization Information</div>
 
         <div>
-          <label className={labelClass}>
+          <label className={panelLabelClass}>
             Legal Business Name <span className={requiredClass}>*</span>
           </label>
           <Input
@@ -248,7 +254,7 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
         </div>
 
         <div>
-          <label className={labelClass}>
+          <label className={panelLabelClass}>
             Doing Business As (DBA) <span className={requiredClass}>*</span>
           </label>
           <Input
@@ -261,7 +267,7 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
         </div>
 
         <div>
-          <label className={labelClass}>
+          <label className={panelLabelClass}>
             Employer Identification Number (EIN) <span className={optionalClass}>(optional)</span>
           </label>
           <Input
@@ -273,9 +279,9 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
           />
         </div>
 
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-x-[16.584px] gap-y-[27.639px] sm:grid-cols-2">
           <div>
-            <label className={labelClass}>
+            <label className={panelLabelClass}>
               Primary Contact Name <span className={requiredClass}>*</span>
             </label>
             <Input
@@ -287,7 +293,7 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
             />
           </div>
           <div>
-            <label className={labelClass}>
+            <label className={panelLabelClass}>
               Primary Contact Email <span className={requiredClass}>*</span>
             </label>
             <Input
@@ -303,15 +309,12 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
       </div>
 
       {/* Section 2: Credentialing & Documentation */}
-      <div className="flex flex-col gap-6">
-        <div className="flex items-center gap-2 text-base font-semibold text-foreground">
-          <span className="text-primary">2.</span>
-          <span>Credentialing &amp; Documentation</span>
-        </div>
+      <div className="flex flex-col gap-[27.639px]">
+        <div className={sectionHeadingClass}>2. Credentialing &amp; Documentation</div>
 
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-x-[16.584px] gap-y-[27.639px] sm:grid-cols-2">
           <div>
-            <label className={labelClass}>
+            <label className={panelLabelClass}>
               HIPAA Compliance Confirmation <span className={requiredClass}>*</span>
             </label>
             <ReadOnlySelect
@@ -324,31 +327,32 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
       </div>
 
       {/* Section 3: Organization Services */}
-      <div className="flex flex-col gap-6">
-        <div className="flex items-center gap-2 text-base font-semibold text-foreground">
-          <span className="text-primary">3.</span>
-          <span>Organization Services</span>
-        </div>
+      <div className="flex flex-col gap-[27.639px]">
+        <div className={sectionHeadingClass}>3. Organization Services</div>
 
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-x-[16.584px] gap-y-[27.639px] sm:grid-cols-2">
           <div>
-            <label className={labelClass}>
+            <label className={panelLabelClass}>
               Primary Business Type <span className={requiredClass}>*</span>
             </label>
-            <ReadOnlySelect
-              value={initialData.primaryBusinessType || ''}
-              options={PRIMARY_BUSINESS_TYPES}
+            <Input
+              name="primaryBusinessType"
+              value={primaryBusinessTypeLabel}
               placeholder="Select an option"
+              disabled
+              readOnly
             />
           </div>
           <div>
-            <label className={labelClass}>
+            <label className={panelLabelClass}>
               Additional Business Type <span className={requiredClass}>*</span>
             </label>
-            <ReadOnlySelect
-              value={additionalBusinessType}
-              options={ADDITIONAL_BUSINESS_TYPES}
+            <Input
+              name="additionalBusinessTypes"
+              value={additionalBusinessTypeLabels}
               placeholder="Select an option"
+              disabled
+              readOnly
             />
           </div>
         </div>
@@ -356,14 +360,11 @@ export default function OrganizationForm({ initialData, isAdmin }: OrganizationF
 
       {/* Section: Worker Onboarding Code */}
       {isAdmin && (
-        <div className="flex flex-col gap-6">
-          <div className="flex items-center gap-2 text-base font-semibold text-foreground">
-            <span className="text-primary">4.</span>
-            <span>Worker Onboarding</span>
-          </div>
+        <div className="flex flex-col gap-[27.639px]">
+          <div className={sectionHeadingClass}>4. Worker Onboarding</div>
 
           <div>
-            <label className={labelClass}>
+            <label className={panelLabelClass}>
               Organization Join Code
               <span className={optionalClass}> (Share this code with your workers)</span>
             </label>

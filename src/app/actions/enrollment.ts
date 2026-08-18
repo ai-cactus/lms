@@ -9,11 +9,17 @@ import { revalidatePath } from 'next/cache';
 import { notifyOrganizationAdmins } from './notifications';
 import { QuizAttemptResult } from '@/types/quiz';
 import { logger } from '@/lib/logger';
+import { invalidatePlaybackAuthz } from '@/lib/video/playback-cache';
 import type { StaffEntry } from '@/types/enrollment';
 import { RenewalCycle, ReminderStage, UserRole } from '@/generated/prisma/enums';
 import { REMINDER_STAGE_DEFAULTS, SWEEP_STAGES } from '@/lib/reminders/stages';
-import { createEnrollmentForUser, type CreateEnrollmentContext } from '@/lib/enrollment/create';
-import { enrollUserForRoleTargets } from '@/lib/enrollment/role-targets';
+import {
+  createEnrollmentForUser,
+  createEnrollmentsForUsers,
+  type CreateEnrollmentContext,
+  type EnrollmentOutcome,
+} from '@/lib/enrollment/create';
+import { getSeatUsage } from '@/lib/seat-limits';
 
 export interface AssignmentSettingsInput {
   scheduleAt?: string | Date | null;
@@ -157,6 +163,30 @@ async function resolveSession() {
 }
 
 /**
+ * Sequential enrollment path — the pre-existing per-entry loop, retained as the
+ * instant fallback behind the `ENROLLMENT_BATCH_ENABLED` kill-switch. Seat-rejected
+ * emails are force-failed without any DB work, exactly as before. Returns one
+ * outcome per entry in input order so the caller's result bucketing is identical
+ * whether the batched or sequential path ran.
+ */
+async function enrollSequentially(
+  entries: StaffEntry[],
+  ctx: CreateEnrollmentContext,
+  skipEmails: ReadonlySet<string>,
+): Promise<EnrollmentOutcome[]> {
+  const outcomes: EnrollmentOutcome[] = [];
+  for (const entry of entries) {
+    const normalizedEmail = entry.email.toLowerCase().trim();
+    if (skipEmails.has(normalizedEmail)) {
+      outcomes.push({ status: 'failed', email: normalizedEmail });
+      continue;
+    }
+    outcomes.push(await createEnrollmentForUser(entry, ctx));
+  }
+  return outcomes;
+}
+
+/**
  * Get all available users (workers) that can be enrolled in courses.
  * Used by Share Modal to show selectable users.
  */
@@ -166,19 +196,22 @@ export async function getAvailableUsers() {
     throw new Error('Unauthorized');
   }
 
-  // Restrict to the caller's own organization — never return users from other tenants.
-  const caller = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { organizationId: true },
-  });
-  if (!caller?.organizationId) {
+  // Restrict to the caller's own organization — never return users from other
+  // tenants. Org is authoritative on the DB-revalidated session — no re-query.
+  const organizationId = session.user.organizationId;
+  if (!organizationId) {
     return [];
   }
 
   const users = await prisma.user.findMany({
-    where: { organizationId: caller.organizationId },
-    include: {
-      profile: true,
+    where: { organizationId },
+    // Explicit projection — the DTO uses only these fields, so never load the
+    // password hash / MFA-secret columns of the full user row into memory.
+    select: {
+      id: true,
+      email: true,
+      role: true,
+      profile: { select: { fullName: true, avatarUrl: true } },
     },
     orderBy: {
       createdAt: 'desc',
@@ -199,9 +232,10 @@ export async function getAvailableUsers() {
  * Each entry must include an email address and may optionally include
  * firstName, lastName, and role — all sourced from the CSV upload.
  *
- * - Existing users: enrolled immediately and notified.
- * - New users: account is created (with profile hydrated from CSV fields),
- *   a temporary password is issued, and a course invite email is sent.
+ * - Existing org members: enrolled immediately and notified.
+ * - Unknown / org-less emails: sent a `/join` invite with the course parked on
+ *   it (no account created) — enrolled when they accept. Overflow past the plan's
+ *   seat limit is rejected into `failed`.
  */
 export async function enrollUsers(
   courseId: string,
@@ -351,12 +385,74 @@ export async function enrollUsers(
     enrolledByUserId: session.user.id,
   };
 
-  // Brand-new accounts created here gain a role, so they must also pick up any
-  // OTHER role-target assignments for that role in the org (live auto-enroll).
-  const newlyInvitedUserIds: string[] = [];
+  // Seat gate (F-022): an unknown / org-less email consumes a plan seat when it
+  // becomes a pending invite, so reject the batch's overflow up front — the same
+  // accounting createInvites uses (active workers + non-expired pending invites,
+  // only brand-new emails cost a seat). Existing members and already-pending
+  // emails don't consume a new seat. No-op for unlimited / unenforced plans.
+  const seatRejectedEmails = new Set<string>();
+  if (organizationId) {
+    const usage = await getSeatUsage(organizationId, { includePendingInvites: true });
+    if (usage.staffMax !== null) {
+      const normalizedEmails = staffEntries.map((e) => e.email.toLowerCase().trim());
+      const [existingMembers, existingPending] = await Promise.all([
+        prisma.user.findMany({
+          where: { email: { in: normalizedEmails }, organizationId },
+          select: { email: true },
+        }),
+        prisma.invite.findMany({
+          where: {
+            email: { in: normalizedEmails },
+            organizationId,
+            status: 'pending',
+            expiresAt: { gt: new Date() },
+          },
+          select: { email: true },
+        }),
+      ]);
 
-  for (const entry of staffEntries) {
-    const outcome = await createEnrollmentForUser(entry, enrollmentContext);
+      const known = new Set([
+        ...existingMembers.map((u) => u.email.toLowerCase()),
+        ...existingPending.map((i) => i.email.toLowerCase()),
+      ]);
+
+      let remaining = Math.max(0, usage.staffMax - usage.current);
+      for (const email of normalizedEmails) {
+        if (known.has(email)) continue; // existing member / pending — no new seat
+        if (remaining > 0) {
+          // Reserve a seat; add to `known` so a repeated email in the batch costs
+          // only one seat.
+          remaining -= 1;
+          known.add(email);
+        } else {
+          seatRejectedEmails.add(email);
+        }
+      }
+
+      if (seatRejectedEmails.size > 0) {
+        logger.warn({
+          msg: '[enrollment] Course assignment seat limit reached — invites rejected',
+          organizationId,
+          plan: usage.planName,
+          staffMax: usage.staffMax,
+          current: usage.current,
+          rejectedCount: seatRejectedEmails.size,
+        });
+      }
+    }
+  }
+
+  // Kill-switch (default OFF): the batched path collapses the per-user reads into
+  // batched look-ups and runs the side-effects with bounded concurrency; the
+  // sequential path is the instant fallback. Both return one outcome per entry in
+  // input order (seat-rejected emails force-failed), so the bucketing below is
+  // identical either way.
+  const batchEnabled = process.env.ENROLLMENT_BATCH_ENABLED === 'true';
+  const outcomes = batchEnabled
+    ? await createEnrollmentsForUsers(staffEntries, enrollmentContext, seatRejectedEmails)
+    : await enrollSequentially(staffEntries, enrollmentContext, seatRejectedEmails);
+
+  for (const outcome of outcomes) {
     switch (outcome.status) {
       case 'failed':
         results.failed.push(outcome.email);
@@ -364,19 +460,14 @@ export async function enrollUsers(
       case 'alreadyEnrolled':
         results.alreadyEnrolled.push(outcome.email);
         break;
-      case 'newInvited':
+      case 'invited':
+        // Role targets fire at accept time (enrollUserForRoleTargets in the accept
+        // paths), so no eager role-target enrollment is needed here.
         results.newInvited.push(outcome.email);
-        newlyInvitedUserIds.push(outcome.userId);
         break;
       case 'enrolled':
         results.success.push(outcome.email);
         break;
-    }
-  }
-
-  if (organizationId) {
-    for (const newUserId of newlyInvitedUserIds) {
-      await enrollUserForRoleTargets(newUserId, organizationId);
     }
   }
 
@@ -400,23 +491,20 @@ export async function getCourseAssignmentSettings(
     throw new Error('Unauthorized');
   }
 
-  const currentUser = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { role: true, organizationId: true },
-  });
-
-  if (!isAdminRole(currentUser?.role)) {
+  // Role/org are authoritative on the DB-revalidated session — no re-query.
+  if (!isAdminRole(session.user.role)) {
     throw new Error('Forbidden');
   }
 
-  if (!currentUser?.organizationId) {
+  const organizationId = session.user.organizationId;
+  if (!organizationId) {
     return null;
   }
 
   // Scope strictly to the caller's org so an admin can never read another
   // tenant's assignment configuration for the same (possibly global) course.
   const assignment = await prisma.courseAssignment.findFirst({
-    where: { organizationId: currentUser.organizationId, courseId },
+    where: { organizationId, courseId },
     orderBy: { createdAt: 'desc' },
     include: { reminderStages: true },
   });
@@ -578,9 +666,17 @@ export async function assignCourseToRole(
   };
 
   const results = { enrolled: 0, alreadyEnrolled: 0, failed: 0 };
-  for (const holder of holders) {
-    const outcome = await createEnrollmentForUser({ email: holder.email }, enrollmentContext);
-    if (outcome.status === 'enrolled' || outcome.status === 'newInvited') results.enrolled += 1;
+  const holderEntries: StaffEntry[] = holders.map((holder) => ({ email: holder.email }));
+  // Same kill-switch as enrollUsers; role holders carry no seat rejection.
+  const batchEnabled = process.env.ENROLLMENT_BATCH_ENABLED === 'true';
+  const outcomes = batchEnabled
+    ? await createEnrollmentsForUsers(holderEntries, enrollmentContext)
+    : await enrollSequentially(holderEntries, enrollmentContext, new Set());
+
+  for (const outcome of outcomes) {
+    // Role holders are always existing org members, so `invited` is unreachable
+    // here; count it defensively alongside `enrolled` if it ever occurs.
+    if (outcome.status === 'enrolled' || outcome.status === 'invited') results.enrolled += 1;
     else if (outcome.status === 'alreadyEnrolled') results.alreadyEnrolled += 1;
     else results.failed += 1;
   }
@@ -608,21 +704,18 @@ export async function getRoleHolderCounts(): Promise<Record<string, number>> {
     throw new Error('Unauthorized');
   }
 
-  const currentUser = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { role: true, organizationId: true },
-  });
-
-  if (!isAdminRole(currentUser?.role)) {
+  // Role/org are authoritative on the DB-revalidated session — no re-query.
+  if (!isAdminRole(session.user.role)) {
     throw new Error('Forbidden');
   }
-  if (!currentUser?.organizationId) {
+  const organizationId = session.user.organizationId;
+  if (!organizationId) {
     return {};
   }
 
   const grouped = await prisma.user.groupBy({
     by: ['role'],
-    where: { organizationId: currentUser.organizationId },
+    where: { organizationId },
     _count: { _all: true },
   });
 
@@ -897,6 +990,12 @@ export async function removeWorkerAssignment(enrollmentId: string) {
   await prisma.enrollment.delete({
     where: { id: enrollmentId },
   });
+
+  // The video proxy caches the ALLOW verdict for up to 5 minutes; evict it so
+  // the removal takes effect on the learner's next Range request rather than
+  // letting them finish the video. Keyed on the course, so this one call covers
+  // every lesson in it.
+  invalidatePlaybackAuthz(enrollment.userId, enrollment.courseId);
 
   logger.info({
     msg: '[enrollment] Worker assignment removed',

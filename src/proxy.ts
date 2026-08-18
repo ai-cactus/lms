@@ -38,6 +38,94 @@ function getContext(pathname: string): 'worker' | 'admin' | null {
   return null; // Public route — skip auth
 }
 
+/* ─── API default-deny (F-013) ───────────────────────────────────────────────
+ *
+ * Every `/api/**` handler used to guard itself with an imperative session check.
+ * That is opt-in security: a handler that forgets one is fully open, and nothing
+ * fails when it does. It also makes correctness impossible to verify locally — a
+ * route that authorises several layers below its handler is indistinguishable,
+ * to a reviewer or a grep, from a genuine hole.
+ *
+ * So authentication moves to the framework: unless a path is listed below, it
+ * requires a valid session cookie before the handler runs. A new route is closed
+ * by default, and opening it is a visible, reviewable edit to this file.
+ *
+ * SCOPE — this layer does authN only. Roles, org scoping, enrollment and MFA
+ * step-up stay in the handlers: the Edge runtime cannot reach Prisma, and those
+ * checks need the database. This does not replace `guardApiSession`; it means a
+ * forgotten one is no longer an unauthenticated hole.
+ */
+
+/** Reachable WITHOUT any session, by design. Keep this list short and justified. */
+const PUBLIC_API_ROUTES: readonly string[] = [
+  // Liveness probe for the external uptime check — must answer before login.
+  '/api/health',
+  // The invitee has no account yet; authenticated by a CSPRNG token instead.
+  '/api/invite/accept',
+  // Called by Stripe, not a browser. Authenticated by webhook signature, and it
+  // MUST stay reachable or billing state silently stops reconciling.
+  '/api/webhooks/stripe',
+];
+
+/**
+ * Prefixes that authenticate themselves by a DIFFERENT mechanism, so requiring a
+ * NextAuth cookie here would lock them out.
+ *
+ * `/api/system/**` uses the HMAC `system_admin_auth` cookie
+ * (src/lib/system-auth.ts), verified inside each handler. Enforcing it here would
+ * mean re-implementing that HMAC with Web Crypto, since the Edge runtime has no
+ * `node:crypto` — duplicated security logic in two places, which is worse than
+ * this exemption. Unifying the two mechanisms is §4.4 of
+ * docs/rebuild/09-PLATFORM-ADMIN-SPEC.md.
+ */
+const SELF_AUTHENTICATED_API_PREFIXES: readonly string[] = ['/api/system/'];
+
+function isExemptApiRoute(pathname: string): boolean {
+  if (PUBLIC_API_ROUTES.includes(pathname)) return true;
+  return SELF_AUTHENTICATED_API_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+}
+
+/**
+ * Requires SOME authenticated session on an API route. Either portal cookie
+ * satisfies it — an admin bridged into learner mode legitimately holds both, and
+ * deciding WHICH one is appropriate needs the database, so that stays in the
+ * handler.
+ */
+async function gateApiRoute(
+  req: NextRequest,
+  pathname: string,
+  passThrough: () => NextResponse,
+): Promise<NextResponse> {
+  if (isExemptApiRoute(pathname)) return passThrough();
+
+  // Same vars in the same order as the encoder in create-auth-instance.ts, or
+  // decoding fails and a valid session is wrongly rejected.
+  const secret = (process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET)!;
+  const useSecureCookies = process.env.NODE_ENV === 'production';
+
+  for (const prefix of ['admin', 'worker'] as const) {
+    const cookieName = `${useSecureCookies ? '__Secure-' : ''}${prefix}.session-token`;
+    const rawToken =
+      req.cookies.get(cookieName)?.value || req.cookies.get(`${prefix}.session-token`)?.value;
+    if (!rawToken) continue;
+
+    try {
+      // The salt must be the cookie name the token was encoded under.
+      const token = await decode({ token: rawToken, secret, salt: cookieName });
+      if (token) return passThrough();
+    } catch {
+      // A malformed cookie is not an authenticated session. Try the other portal
+      // rather than failing outright — holding one bad cookie and one good one is
+      // normal during a session transition.
+    }
+  }
+
+  logger.warn({ msg: '[Proxy] Unauthenticated API request blocked', path: pathname });
+  // JSON, never a redirect: these are called by fetch(), and an HTML redirect
+  // surfaces as an unparseable-response bug rather than a 401.
+  return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+}
+
 export async function proxy(req: NextRequest) {
   // F-067: Assign a correlation ID per matched request. Honour an inbound
   // x-correlation-id (distributed tracing) or mint a fresh one, and propagate
@@ -48,8 +136,10 @@ export async function proxy(req: NextRequest) {
   // `node:async_hooks`, so we do NOT bind an AsyncLocalStorage scope here — we
   // only propagate the ID via headers. Node-runtime code that wants all its
   // logs stamped with this ID can read the x-correlation-id header and wrap its
-  // work in runWithCorrelationId() (e.g. background jobs). Broadening this to
-  // every API route is F-013 (deferred).
+  // work in runWithCorrelationId() (e.g. background jobs).
+  //
+  // The matcher now covers /api/:path*, so every API request gets a correlation
+  // ID as well as the F-013 authentication gate.
   const correlationId = req.headers.get('x-correlation-id') ?? crypto.randomUUID();
 
   const res = await handleProxy(req, correlationId);
@@ -69,8 +159,19 @@ async function handleProxy(req: NextRequest, correlationId: string): Promise<Nex
 
   // NextAuth API routes handle their own session parsing and JSON responses.
   // We MUST NOT intercept them to return HTML redirects!
+  //
+  // This prefix also covers the pre-session auth endpoints that legitimately run
+  // without a cookie — /api/auth/verify, /api/auth/resend-verification,
+  // /api/auth/mfa/{send,verify} and /api/auth/signout-all — plus
+  // /api/auth-worker/**, which matches this prefix too. They are therefore
+  // exempt from the API gate below by construction.
   if (pathname.startsWith('/api/auth')) {
     return passThrough();
+  }
+
+  // F-013: every other API route needs a session before its handler runs.
+  if (pathname.startsWith('/api/')) {
+    return gateApiRoute(req, pathname, passThrough);
   }
 
   // Not an auth-protected route — let it through
@@ -88,8 +189,8 @@ async function handleProxy(req: NextRequest, correlationId: string): Promise<Nex
     req.cookies.get(cookieName)?.value ||
     req.cookies.get(`${cfg.cookiePrefix}.session-token`)?.value;
 
-  logger.info({ msg: `[Proxy] Target Auth: ${context}` });
-  logger.info({ msg: `[Proxy] Searching for cookie: ${cookieName}. Found token? ${!!rawToken}` });
+  logger.debug({ msg: `[Proxy] Target Auth: ${context}` });
+  logger.debug({ msg: `[Proxy] Searching for cookie: ${cookieName}. Found token? ${!!rawToken}` });
 
   // Not logged in — send to the correct login page
   if (!rawToken) {
@@ -104,7 +205,7 @@ async function handleProxy(req: NextRequest, correlationId: string): Promise<Nex
     token = await decode({ token: rawToken, secret, salt });
     /* eslint-disable-next-line @typescript-eslint/ban-ts-comment */
     // @ts-ignore - JWT email is injected natively but omitted from standard JWT definition
-    logger.info({
+    logger.debug({
       msg: `[Proxy] Decoded token successfully for ${context}`,
       email: maskEmail(token?.email ?? ''),
     });
@@ -117,7 +218,7 @@ async function handleProxy(req: NextRequest, correlationId: string): Promise<Nex
   }
 
   if (!token) {
-    logger.info({ msg: `[Proxy] Token is null after decode.` });
+    logger.debug({ msg: `[Proxy] Token is null after decode.` });
     return NextResponse.redirect(new URL(cfg.loginPath, req.url));
   }
 
@@ -162,22 +263,34 @@ async function handleProxy(req: NextRequest, correlationId: string): Promise<Nex
     return NextResponse.redirect(new URL(cfg.loginPath, req.url));
   }
 
-  // Worker-specific: force onboarding if no org
-  if (
-    context === 'worker' &&
-    !token.organizationId &&
-    pathname !== ROUTE_CONFIG.worker.onboardingPath
-  ) {
-    return NextResponse.redirect(new URL(ROUTE_CONFIG.worker.onboardingPath, req.url));
-  }
+  // Server Actions POST to the page they were invoked from and carry a
+  // `next-action` header. Answering one with a redirect to a DIFFERENT route
+  // crashes the client ("An unexpected response was received from the server",
+  // Next.js E394) instead of navigating. The onboarding gates below are purely
+  // about where a session BELONGS, so they are safely deferred to the ordinary
+  // GET/RSC navigation that follows the action — which hits them normally. The
+  // auth/role/MFA gates above are deliberately NOT deferred: those must deny
+  // the action itself.
+  const isServerAction = req.method === 'POST' && req.headers.has('next-action');
 
-  // Worker with org trying to hit onboarding — send home
-  if (
-    context === 'worker' &&
-    token.organizationId &&
-    pathname === ROUTE_CONFIG.worker.onboardingPath
-  ) {
-    return NextResponse.redirect(new URL(ROUTE_CONFIG.worker.homePath, req.url));
+  if (!isServerAction) {
+    // Worker-specific: force onboarding if no org
+    if (
+      context === 'worker' &&
+      !token.organizationId &&
+      pathname !== ROUTE_CONFIG.worker.onboardingPath
+    ) {
+      return NextResponse.redirect(new URL(ROUTE_CONFIG.worker.onboardingPath, req.url));
+    }
+
+    // Worker with org trying to hit onboarding — send home
+    if (
+      context === 'worker' &&
+      token.organizationId &&
+      pathname === ROUTE_CONFIG.worker.onboardingPath
+    ) {
+      return NextResponse.redirect(new URL(ROUTE_CONFIG.worker.homePath, req.url));
+    }
   }
 
   // ✅ Both admin and worker sessions can coexist independently.
@@ -194,7 +307,9 @@ export const config = {
     '/worker/:path*',
     '/onboarding-worker/:path*',
     '/login',
-    '/api/auth/:path*',
-    '/api/auth-worker/:path*',
+    // F-013: the whole API surface, so authentication is default-deny. Adding a
+    // route no longer means remembering to guard it — see gateApiRoute and its
+    // two exemption lists above.
+    '/api/:path*',
   ],
 };

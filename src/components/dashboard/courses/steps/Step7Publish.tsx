@@ -5,6 +5,7 @@ import { X } from 'lucide-react';
 import DatePicker from '@/components/ui/DatePicker';
 import TimePicker from '@/components/ui/TimePicker';
 import { Button } from '@/components/ui/button';
+import { wizardSubtitleClass, wizardTitleClass } from './wizardFormClasses';
 
 import { CourseWizardData } from '@/types/course';
 import { searchStaffUsers } from '@/app/actions/user';
@@ -120,19 +121,21 @@ export default function Step7Publish({ data, onChange }: Step7PublishProps) {
   }, []);
 
   return (
-    <div className="relative z-[50] flex w-full max-w-[800px] flex-col items-center transition-[max-width] duration-300 ease-in-out">
-      <h2 className="mb-5 flex-shrink-0 text-center text-[32px] font-bold tracking-[-0.5px] text-foreground font-[family-name:var(--font-heading)]">
-        Finalize &amp; Publish
-      </h2>
-      <p className="mb-[30px] max-w-[600px] flex-shrink-0 text-center text-base leading-[1.5] text-text-secondary">
-        Assign this course to your team members and set a due date for completion.
-      </p>
+    <div className="flex w-full flex-col gap-10 md:gap-14">
+      <div className="flex flex-col items-center gap-3">
+        <h2 className={wizardTitleClass}>Finalize &amp; Publish</h2>
+        <p className={wizardSubtitleClass}>
+          Assign this course to your team members and set a due date for completion.
+        </p>
+      </div>
 
-      <div className="w-full max-w-[600px]">
+      <div className="w-full">
         <div className="mb-8">
-          <label className="mb-2 block flex-shrink-0 text-sm text-text-secondary">Assign to</label>
+          <label className="mb-[11px] block text-base font-medium tracking-[0.36px] text-black md:text-[18px]">
+            Assign to
+          </label>
           <div
-            className="relative flex w-full min-h-[48px] cursor-text flex-wrap items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 transition-all focus-within:border-primary focus-within:shadow-[0_0_0_2px_rgba(76,110,245,0.1)]"
+            className="relative flex min-h-[52px] w-full cursor-text flex-wrap items-center gap-1.5 rounded-[12px] border-[1.5px] border-[#e5e7ea] bg-background px-[18px] py-2.5 transition-colors focus-within:border-primary md:min-h-[56px]"
             ref={wrapperRef}
             onClick={() => document.getElementById('assign-input')?.focus()}
           >
@@ -169,7 +172,7 @@ export default function Step7Publish({ data, onChange }: Step7PublishProps) {
             })}
             <input
               id="assign-input"
-              className="min-w-[120px] flex-1 border-none py-1 text-sm text-foreground outline-none"
+              className="min-w-[120px] flex-1 border-none py-1 text-base text-[#0a0a0a] outline-none placeholder:text-[#979797] md:text-[18px]"
               placeholder={data.assignments?.length === 0 ? 'Type a name or email...' : ''}
               value={inputValue}
               onChange={(e) => {
@@ -208,21 +211,25 @@ export default function Step7Publish({ data, onChange }: Step7PublishProps) {
               </div>
             )}
           </div>
-          <div className="mt-2.5 w-full flex-shrink-0 text-center text-xs font-medium text-text-secondary">
+          <p className="mt-2.5 text-sm font-medium text-[#666d80]">
             Type an email and press Enter. New emails will receive an invite with login credentials.
-          </div>
-          {validationError && (
-            <div className="mt-1.5 text-[13px] text-error">{validationError}</div>
-          )}
+          </p>
+          {validationError && <p className="mt-1.5 text-sm text-error">{validationError}</p>}
         </div>
 
-        <div className="mb-6 grid w-full grid-cols-[200px_1fr] items-center gap-5">
-          <div className="flex w-full flex-col gap-2">
-            <label className="mb-2 block flex-shrink-0 text-sm text-text-secondary">Due Date</label>
+        <hr className="mb-8 w-full border-0 border-t border-t-[#e5e7ea]" />
+
+        <div className="grid w-full grid-cols-1 gap-6 md:grid-cols-2">
+          <div className="flex w-full flex-col gap-[11px]">
+            <label className="text-base font-medium tracking-[0.36px] text-black md:text-[18px]">
+              Due Date
+            </label>
             <DatePicker value={data.dueDate || ''} onChange={(val) => onChange('dueDate', val)} />
           </div>
-          <div className="flex w-full flex-col gap-2">
-            <label className="mb-2 block flex-shrink-0 text-sm text-text-secondary">Due Time</label>
+          <div className="flex w-full flex-col gap-[11px]">
+            <label className="text-base font-medium tracking-[0.36px] text-black md:text-[18px]">
+              Due Time
+            </label>
             <TimePicker value={data.dueTime || ''} onChange={(val) => onChange('dueTime', val)} />
           </div>
         </div>

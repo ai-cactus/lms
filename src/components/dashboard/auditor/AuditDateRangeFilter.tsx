@@ -94,11 +94,13 @@ export default function AuditDateRangeFilter({
         <PopoverTrigger asChild>
           <Button
             variant="outline"
-            size="sm"
-            className={cn('h-11 gap-2', active && 'border-primary/50 text-foreground')}
+            className={cn(
+              'h-[38px] gap-2 rounded-[8px] border-[#e2e8f0] px-[13px] text-[14px] font-medium text-[#0f172a]',
+              active && 'border-primary/50',
+            )}
             aria-label="Filter by date range"
           >
-            <CalendarRange className="size-4 text-text-tertiary" aria-hidden="true" />
+            <CalendarRange className="size-4 text-[#64748b]" aria-hidden="true" />
             <span className="max-w-[180px] truncate">{triggerLabel(value)}</span>
           </Button>
         </PopoverTrigger>

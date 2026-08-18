@@ -28,13 +28,17 @@ const {
   mockProfileUpsert,
   mockInviteFindUnique,
   mockInviteUpdate,
+  mockInviteUpdateMany,
   mockInviteDelete,
+  mockEnrollmentDeleteMany,
+  mockTransaction,
   mockRevalidatePath,
   mockSendInviteEmail,
   mockSendStaffRemovedEmail,
   mockSendStaffRemovalConfirmationEmail,
   mockAudit,
   mockEnrollUsers,
+  mockInvalidateRevalidationCache,
   prismaMock,
 } = vi.hoisted(() => {
   const mockUserFindUnique = vi.fn();
@@ -42,17 +46,26 @@ const {
   const mockProfileUpsert = vi.fn();
   const mockInviteFindUnique = vi.fn();
   const mockInviteUpdate = vi.fn();
+  const mockInviteUpdateMany = vi.fn();
   const mockInviteDelete = vi.fn();
   const mockEnrollmentFindUnique = vi.fn();
+  const mockEnrollmentDeleteMany = vi.fn();
+  // removeStaff() runs its writes as an array-form $transaction([...]) — the
+  // individual delegate calls below are already-invoked mock promises by the
+  // time $transaction receives them, so resolving via Promise.all is faithful
+  // to Prisma's real array-transaction semantics for this test double.
+  const mockTransaction = vi.fn((ops: Promise<unknown>[]) => Promise.all(ops));
   const prismaMock = {
     user: { findUnique: mockUserFindUnique, update: mockUserUpdate },
     profile: { upsert: mockProfileUpsert },
     invite: {
       findUnique: mockInviteFindUnique,
       update: mockInviteUpdate,
+      updateMany: mockInviteUpdateMany,
       delete: mockInviteDelete,
     },
-    enrollment: { findUnique: mockEnrollmentFindUnique },
+    enrollment: { findUnique: mockEnrollmentFindUnique, deleteMany: mockEnrollmentDeleteMany },
+    $transaction: mockTransaction,
   };
   return {
     mockAuth: vi.fn(),
@@ -61,14 +74,18 @@ const {
     mockProfileUpsert,
     mockInviteFindUnique,
     mockInviteUpdate,
+    mockInviteUpdateMany,
     mockInviteDelete,
     mockEnrollmentFindUnique,
+    mockEnrollmentDeleteMany,
+    mockTransaction,
     mockRevalidatePath: vi.fn(),
     mockSendInviteEmail: vi.fn(),
     mockSendStaffRemovedEmail: vi.fn(),
     mockSendStaffRemovalConfirmationEmail: vi.fn(),
     mockAudit: vi.fn(),
     mockEnrollUsers: vi.fn(),
+    mockInvalidateRevalidationCache: vi.fn(),
     prismaMock,
   };
 });
@@ -92,6 +109,13 @@ vi.mock('@/lib/email', () => ({
 }));
 // assignCourseToStaffMember delegates to enrollUsers — mock the enrollment module.
 vi.mock('@/app/actions/enrollment', () => ({ enrollUsers: mockEnrollUsers }));
+// removeStaff / role change actively bust the JWT revalidation cache; stub it so
+// the tests don't reach the real Redis client (its connect attempt would hang).
+// Kept as a spy (not an inline vi.fn()) so tests can assert it's actually
+// called — a stub that silently swallows the call would hide a real regression.
+vi.mock('@/lib/auth/session-revalidation-cache', () => ({
+  invalidateRevalidationCache: mockInvalidateRevalidationCache,
+}));
 
 import {
   updateStaffDetails,
@@ -137,7 +161,9 @@ beforeEach(() => {
   mockProfileUpsert.mockResolvedValue({});
   mockInviteFindUnique.mockResolvedValue(PENDING_INVITE);
   mockInviteUpdate.mockResolvedValue({});
+  mockInviteUpdateMany.mockResolvedValue({ count: 0 });
   mockInviteDelete.mockResolvedValue({});
+  mockEnrollmentDeleteMany.mockResolvedValue({ count: 0 });
   mockSendInviteEmail.mockResolvedValue(undefined);
   mockSendStaffRemovedEmail.mockResolvedValue(undefined);
   mockSendStaffRemovalConfirmationEmail.mockResolvedValue(undefined);
@@ -147,6 +173,7 @@ beforeEach(() => {
     newInvited: [],
     failed: [],
   });
+  mockInvalidateRevalidationCache.mockResolvedValue(undefined);
 });
 
 // ── updateStaffDetails() ────────────────────────────────────────────────────────
@@ -337,9 +364,16 @@ describe('updateStaffDetails() — in-place role change (canChangeRole integrati
         metadata: { fromRole: 'hr', toRole: 'nurse' },
       }),
     );
+    // commit 66aa961: the role change bumped sessionVersion, so the target's
+    // cached revalidation snapshot must be busted with THEIR id (not the
+    // actor's), and only after the DB write that bumped the version.
+    expect(mockInvalidateRevalidationCache).toHaveBeenCalledExactlyOnceWith('target-1');
+    expect(mockUserUpdate.mock.invocationCallOrder[0]).toBeLessThan(
+      mockInvalidateRevalidationCache.mock.invocationCallOrder[0],
+    );
   });
 
-  it('a same-role resubmit does NOT bump sessionVersion and does NOT write a staff.role.change audit entry', async () => {
+  it('a same-role resubmit does NOT bump sessionVersion, does NOT write a staff.role.change audit entry, and does NOT invalidate the cache', async () => {
     mockAuth.mockResolvedValue(makeAdminSession('owner'));
     mockUserFindUnique.mockResolvedValue({ organizationId: 'org-1', role: 'nurse' });
 
@@ -353,6 +387,8 @@ describe('updateStaffDetails() — in-place role change (canChangeRole integrati
     expect(mockAudit).not.toHaveBeenCalledWith(
       expect.objectContaining({ action: 'staff.role.change' }),
     );
+    // No sessionVersion bump happened, so there's nothing to invalidate.
+    expect(mockInvalidateRevalidationCache).not.toHaveBeenCalled();
   });
 
   it('denies a role change attempted by hr (hr may edit staff but not re-role them)', async () => {
@@ -943,6 +979,15 @@ describe('removeStaff() — org disconnect + sessionVersion bump (QA ISSUE 2)', 
     );
   });
 
+  it("commit 66aa961: busts the removed user's cached revalidation snapshot, with THEIR id, after the transaction commits", async () => {
+    await removeStaff('target-1');
+
+    expect(mockInvalidateRevalidationCache).toHaveBeenCalledExactlyOnceWith('target-1');
+    expect(mockTransaction.mock.invocationCallOrder[0]).toBeLessThan(
+      mockInvalidateRevalidationCache.mock.invocationCallOrder[0],
+    );
+  });
+
   it('rejects when the caller has no session', async () => {
     mockAuth.mockResolvedValue(null);
 
@@ -950,6 +995,7 @@ describe('removeStaff() — org disconnect + sessionVersion bump (QA ISSUE 2)', 
 
     expect(result).toEqual({ success: false, error: 'Unauthorized' });
     expect(mockUserUpdate).not.toHaveBeenCalled();
+    expect(mockInvalidateRevalidationCache).not.toHaveBeenCalled();
   });
 
   it('rejects when the target user belongs to a different organization', async () => {
@@ -963,6 +1009,7 @@ describe('removeStaff() — org disconnect + sessionVersion bump (QA ISSUE 2)', 
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/does not belong to your organization/i);
     expect(mockUserUpdate).not.toHaveBeenCalled();
+    expect(mockInvalidateRevalidationCache).not.toHaveBeenCalled();
   });
 
   it('rejects when the target user is not found', async () => {
@@ -975,6 +1022,7 @@ describe('removeStaff() — org disconnect + sessionVersion bump (QA ISSUE 2)', 
 
     expect(result).toEqual({ success: false, error: 'User not found' });
     expect(mockUserUpdate).not.toHaveBeenCalled();
+    expect(mockInvalidateRevalidationCache).not.toHaveBeenCalled();
   });
 
   it('still returns success even if the removal notification emails fail', async () => {
@@ -985,6 +1033,112 @@ describe('removeStaff() — org disconnect + sessionVersion bump (QA ISSUE 2)', 
     expect(result).toEqual({ success: true });
     // The DB mutation (the security-relevant part) already happened.
     expect(mockUserUpdate).toHaveBeenCalledOnce();
+    expect(mockInvalidateRevalidationCache).toHaveBeenCalledExactlyOnceWith('target-1');
+  });
+
+  it('OBSERVATION (not currently exploitable): removeStaff has no local try/catch around invalidateRevalidationCache — it relies entirely on that module\'s own internal fail-safety. If it ever violated its "never rethrows" contract, the already-committed removal would be reported as a failure', async () => {
+    // The REAL invalidateRevalidationCache() catches every Redis error
+    // internally and is documented to never rethrow — this mock deliberately
+    // violates that contract to pin down what removeStaff's single top-level
+    // try/catch does in that (currently unreachable) case: the DB transaction
+    // already committed, but the caller sees `success: false`. Unlike the
+    // notification-email block a few lines below it (which has its own
+    // dedicated try/catch specifically so a non-critical failure can't mask a
+    // successful removal), this call site has no equivalent local guard.
+    mockInvalidateRevalidationCache.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+
+    const result = await removeStaff('target-1');
+
+    expect(mockTransaction).toHaveBeenCalledOnce();
+    expect(result).toEqual({ success: false, error: 'ECONNREFUSED' });
+  });
+});
+
+/**
+ * fix/worker-invite: removeStaff() now drops the removed user's IN-FLIGHT
+ * enrollments (so a subsequent re-invite yields a clean slate) while
+ * retaining terminal/completed ones for compliance history, and expires any
+ * pending Invite for that email in the org (so a live `/join` token can't
+ * immediately re-add the person). All three writes — the enrollment cleanup,
+ * the org-unlink, and the invite expiry — run inside a single $transaction.
+ */
+describe('removeStaff() — drops in-flight enrollments and expires pending invites (fix/worker-invite)', () => {
+  const ADMIN_SESSION = makeAdminSession('owner');
+  const TARGET_USER = {
+    organizationId: 'org-1',
+    email: 'removed@acme.com',
+    profile: { fullName: 'Removed Staffer' },
+  };
+
+  beforeEach(() => {
+    mockAuth.mockResolvedValue(ADMIN_SESSION);
+    mockUserFindUnique
+      .mockResolvedValueOnce({ ...ADMIN, organization: { name: 'Acme Co' } })
+      .mockResolvedValueOnce(TARGET_USER);
+    mockUserUpdate.mockResolvedValue({});
+  });
+
+  it('deletes only the active-status enrollments for the removed user', async () => {
+    mockEnrollmentDeleteMany.mockResolvedValue({ count: 2 });
+
+    await removeStaff('target-1');
+
+    expect(mockEnrollmentDeleteMany).toHaveBeenCalledWith({
+      where: {
+        userId: 'target-1',
+        status: { in: ['enrolled', 'assigned', 'in_progress', 'lessons_complete'] },
+      },
+    });
+    // Terminal statuses (completed, attested, locked, failed, retry_requested)
+    // are never named in the deleteMany filter — they are retained by omission.
+    const call = mockEnrollmentDeleteMany.mock.calls[0][0];
+    expect(call.where.status.in).not.toContain('completed');
+    expect(call.where.status.in).not.toContain('attested');
+  });
+
+  it("expires (not deletes) any pending invite for the removed user's email in the org", async () => {
+    await removeStaff('target-1');
+
+    expect(mockInviteUpdateMany).toHaveBeenCalledWith({
+      where: { email: 'removed@acme.com', organizationId: 'org-1', status: 'pending' },
+      data: { status: 'expired' },
+    });
+  });
+
+  it('runs the enrollment cleanup, org-unlink, and invite expiry inside a single $transaction', async () => {
+    await removeStaff('target-1');
+
+    expect(mockTransaction).toHaveBeenCalledOnce();
+    const opsCountAtCallTime = mockTransaction.mock.calls[0][0].length;
+    expect(opsCountAtCallTime).toBe(3);
+    // All three delegate calls fired (the array-form transaction evaluates
+    // its operations eagerly, before $transaction itself is invoked).
+    expect(mockEnrollmentDeleteMany).toHaveBeenCalledOnce();
+    expect(mockUserUpdate).toHaveBeenCalledOnce();
+    expect(mockInviteUpdateMany).toHaveBeenCalledOnce();
+  });
+
+  it('records the dropped-enrollment count on the staff.remove audit entry', async () => {
+    mockEnrollmentDeleteMany.mockResolvedValue({ count: 3 });
+
+    await removeStaff('target-1');
+
+    expect(mockAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'staff.remove',
+        metadata: { droppedEnrollmentCount: 3 },
+      }),
+    );
+  });
+
+  it('records a zero dropped-enrollment count when the removed user had no in-flight training', async () => {
+    mockEnrollmentDeleteMany.mockResolvedValue({ count: 0 });
+
+    await removeStaff('target-1');
+
+    expect(mockAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ metadata: { droppedEnrollmentCount: 0 } }),
+    );
   });
 });
 

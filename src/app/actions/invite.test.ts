@@ -25,6 +25,7 @@ const {
   mockUserFindMany,
   mockInviteFindMany,
   mockInviteCreateMany,
+  mockInviteUpdate,
   mockSendInviteEmail,
   mockRevalidatePath,
   mockLoggerWarn,
@@ -39,6 +40,7 @@ const {
     mockUserFindMany: vi.fn(),
     mockInviteFindMany: vi.fn(),
     mockInviteCreateMany: vi.fn(),
+    mockInviteUpdate: vi.fn(),
     mockSendInviteEmail: vi.fn(),
     mockRevalidatePath: vi.fn(),
     mockLoggerWarn: vi.fn(),
@@ -57,6 +59,7 @@ vi.mock('@/lib/prisma', () => ({
       count: mockInviteCount,
       findMany: mockInviteFindMany,
       createMany: mockInviteCreateMany,
+      update: mockInviteUpdate,
     },
   },
 }));
@@ -66,7 +69,11 @@ vi.mock('@/lib/email', () => ({ sendInviteEmail: mockSendInviteEmail }));
 vi.mock('@/lib/billing-plans', () => ({
   BILLING_PLANS: [
     { key: 'starter', name: 'Starter', staffMax: 10 },
-    { key: 'pro', name: 'Pro', staffMax: null },
+    { key: 'pro', name: 'Pro', staffMax: 150 },
+    // Unlimited-seat fixture entry — named 'enterprise' (not 'pro') to avoid
+    // colliding with the real 4-tier 'pro' key, which has a finite staffMax
+    // of 150, not null. See src/lib/billing-plans.ts.
+    { key: 'enterprise', name: 'Enterprise', staffMax: null },
   ],
 }));
 
@@ -117,6 +124,7 @@ beforeEach(() => {
   mockUserFindMany.mockResolvedValue([]);
   mockInviteFindMany.mockResolvedValue([]);
   mockInviteCreateMany.mockResolvedValue({ count: 1 });
+  mockInviteUpdate.mockResolvedValue({});
   mockSendInviteEmail.mockResolvedValue(undefined);
 });
 
@@ -398,6 +406,47 @@ describe('createInvites() — seat counting excludes owner (D2)', () => {
   });
 });
 
+// ── Seat counting — pro tier's 150-seat cap (the new 4th tier) ──────────────
+
+describe("createInvites() — seat counting enforces the pro plan's 150-seat cap", () => {
+  beforeEach(() => {
+    mockAuth.mockResolvedValue(makeSession('owner'));
+    mockOrgFindUnique.mockResolvedValue({
+      name: 'Acme Corp',
+      subscription: { plan: 'pro', status: 'active' },
+    });
+  });
+
+  it("rejects when adding a new invite would exceed the pro plan's 150-seat limit", async () => {
+    // 150/150 seats used
+    mockUserCount.mockResolvedValue(150);
+    mockInviteCount.mockResolvedValue(0);
+    mockUserFindMany.mockResolvedValue([]);
+    mockInviteFindMany.mockResolvedValue([]);
+
+    const result = await createInvites([item('new@acme.com', 'nurse')]);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/limit|Pro|seat/i);
+    expect(result.limitError).toBeDefined();
+    expect(result.limitError?.limit).toBe(150);
+  });
+
+  it("allows the invite when one seat remains under the pro plan's 150-seat cap", async () => {
+    // 149/150 seats — room for 1 more
+    mockUserCount.mockResolvedValue(149);
+    mockInviteCount.mockResolvedValue(0);
+    mockUserFindMany.mockResolvedValue([]);
+    mockInviteFindMany.mockResolvedValue([]);
+    mockInviteCreateMany.mockResolvedValue({ count: 1 });
+    mockSendInviteEmail.mockResolvedValue(undefined);
+
+    const result = await createInvites([item('new@acme.com', 'nurse')]);
+
+    expect(result.success).toBe(true);
+  });
+});
+
 // ── hr inviting hr and finance — allowed (D1) ─────────────────────────────────
 
 describe('createInvites() — hr valid grants (D1)', () => {
@@ -514,6 +563,26 @@ describe('createInvites() — existing member and pending-invite rows', () => {
       'Acme Corp',
       expect.any(String),
     );
+  });
+
+  // Sanity fix (fix/worker-invite): a resend previously kept the ORIGINAL
+  // expiry, so a nearly-expired invite could be "resent" yet still expire
+  // moments later. Resending must always refresh the 7-day window.
+  it('refreshes the expiry of an existing pending invite on resend', async () => {
+    mockInviteFindMany.mockResolvedValue([
+      { id: 'existing-invite-1', email: 'pending@acme.com', token: 'existing-token-123' },
+    ]);
+
+    await createInvites([item('pending@acme.com', 'nurse')]);
+
+    expect(mockInviteUpdate).toHaveBeenCalledWith({
+      where: { id: 'existing-invite-1' },
+      data: { expiresAt: expect.any(Date) },
+    });
+    // The refresh must precede (or at least accompany) the resend email — not
+    // matter which happens first here, but the row must actually be touched.
+    const refreshedExpiry = mockInviteUpdate.mock.calls[0][0].data.expiresAt as Date;
+    expect(refreshedExpiry.getTime()).toBeGreaterThan(Date.now());
   });
 });
 

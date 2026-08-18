@@ -5,6 +5,7 @@ import prisma from '@/lib/prisma';
 import { saveFile } from '@/lib/documents/uploadHandler';
 import { calculateHash } from '@/lib/documents/versioning';
 import { scanText } from '@/lib/documents/phiScanner';
+import { recordPhiDecision, recordPhiDecisionInTransaction } from '@/lib/documents/phiDecision';
 import { MAX_DOCUMENT_UPLOAD_BYTES } from '@/lib/documents/upload-config';
 import { extractTextFromFile } from '@/lib/file-parser';
 import { deleteFile } from '@/lib/storage';
@@ -13,6 +14,7 @@ import { logger } from '@/lib/logger';
 import { audit, getClientContext } from '@/lib/audit';
 import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
 import { can } from '@/lib/rbac/permissions';
+import { emitNotificationEvent } from '@/lib/notifications/emit';
 import { headers } from 'next/headers';
 import { revalidatePath } from 'next/cache';
 import { Prisma } from '@/generated/prisma/client';
@@ -36,6 +38,9 @@ export async function uploadDocument(
   }
 
   const userId = session.user.id;
+  // Stamped onto the PHI decision ledger so a rejection can be attributed to a
+  // tenant, not just an actor. Org is authoritative on the revalidated session.
+  const organizationId = session.user.organizationId ?? undefined;
 
   // Registry gate: only roles granted `document.create` may upload (e.g. Finance
   // has no document access — it must not be able to seed the Document Hub).
@@ -129,6 +134,21 @@ export async function uploadDocument(
   // Compliance product: never store a document we could not confirm is
   // PHI-free. A scan that failed to complete is blocked with a distinct,
   // retry-able message; a genuine PHI detection is blocked with a clear reason.
+  // F-092: record the decision BEFORE returning. A block leaves no
+  // DocumentVersion and therefore no PhiReport, so without this the rejection
+  // would exist only as a stdout warning — and "prove you rejected it" is the
+  // question that actually matters.
+  if (phiResult.scanFailed || phiResult.hasPHI) {
+    await recordPhiDecision({
+      source: 'document_upload',
+      scan: phiResult,
+      scannedText: textContent,
+      filename: file.name,
+      actorId: userId,
+      organizationId,
+    });
+  }
+
   if (phiResult.scanFailed) {
     logger.warn({ msg: '[doc] Upload blocked — PHI scan could not complete', userId });
     return {
@@ -137,7 +157,11 @@ export async function uploadDocument(
   }
 
   if (phiResult.hasPHI) {
-    logger.warn({ msg: '[doc] Upload blocked — PHI detected', userId });
+    logger.warn({
+      msg: '[doc] Upload blocked — PHI detected',
+      userId,
+      decidedBy: phiResult.decidedBy,
+    });
     return {
       error: 'This document appears to contain PHI (e.g. SSN/DOB/MRN) and cannot be uploaded.',
       phiDetected: true,
@@ -204,6 +228,20 @@ export async function uploadDocument(
         },
       });
 
+      // F-092: inside the transaction on purpose — the decision row and the
+      // stored version commit or roll back together, so the ledger cannot be
+      // missing a row for content that was accepted. Throws on failure, which
+      // correctly fails the upload rather than storing unattested content.
+      await recordPhiDecisionInTransaction(tx, {
+        source: 'document_upload',
+        scan: phiResult,
+        scannedText: textContent,
+        filename: file.name,
+        documentVersionId: version.id,
+        actorId: userId,
+        organizationId,
+      });
+
       return docId!;
     });
 
@@ -228,7 +266,6 @@ export async function uploadDocument(
     });
 
     revalidatePath('/dashboard/documents');
-    return { success: true, phiDetected: phiResult.hasPHI };
   } catch (err: unknown) {
     const e = err as Error;
     logger.error({
@@ -246,6 +283,33 @@ export async function uploadDocument(
     });
     return { error: 'Upload failed. Please try again.' };
   }
+
+  // Notify the clinical/quality director (falling back to the owner). Kept
+  // outside the block above so a notification-side failure can never trigger the
+  // orphan cleanup and delete a document that was stored successfully.
+  const uploader = await prisma.user
+    .findUnique({
+      where: { id: userId },
+      select: { facilityId: true, profile: { select: { fullName: true } } },
+    })
+    .catch((err: unknown) => {
+      logger.error({ msg: '[doc] Could not load uploader for upload notification', err, userId });
+      return null;
+    });
+  const uploaderName = uploader?.profile?.fullName || session.user.email.split('@')[0];
+
+  await emitNotificationEvent({
+    organizationId: session.user.organizationId,
+    type: 'DOCUMENT_UPLOADED',
+    title: 'New document uploaded',
+    message: `${uploaderName} uploaded '${file.name}'.`,
+    actor: { userId, role: session.user.role },
+    facilityId: uploader?.facilityId ?? null,
+    linkUrl: '/dashboard/documents',
+    context: { documentTitle: file.name, uploaderName },
+  });
+
+  return { success: true, phiDetected: phiResult.hasPHI };
 }
 
 export async function getDocuments() {

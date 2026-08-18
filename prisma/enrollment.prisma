@@ -118,3 +118,23 @@ model ReminderNudge {
   @@index([enrollmentId])
   @@map("reminder_nudges")
 }
+
+/// Pending course assignments attached to an outstanding staff Invite. When a
+/// course is assigned to an unknown (or org-less) email, no user/enrollment is
+/// created yet — the course is parked here and materialised into a real
+/// enrollment when the invite is accepted (see enrollInviteCourses). Only the
+/// courseId is stored; schedule/deadline settings are resolved at accept time
+/// from the org's CourseAssignment row, mirroring role-target auto-enroll.
+/// Revoking the invite cascades these rows away.
+model InviteCourseAssignment {
+  id        String   @id @default(uuid())
+  inviteId  String   @map("invite_id")
+  courseId  String   @map("course_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  invite    Invite   @relation(fields: [inviteId], references: [id], onDelete: Cascade)
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([inviteId, courseId])
+  @@index([courseId])
+  @@map("invite_course_assignments")
+}

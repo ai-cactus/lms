@@ -1,0 +1,36 @@
+{
+  "displayName": "LMS VM disk pressure",
+  "documentation": {
+    "content": "Filesystem usage on the VM is high.\n\nWhy this is a priority rather than a nuisance: production, staging, Postgres, Redis and MinIO all share ONE host and ONE disk. A full disk does not degrade gracefully \u2014 Postgres stops accepting writes, which takes the application down and can stop audit rows being written.\n\n**First response:** check container log sizes first (`docker ps -s`), then MinIO data and Postgres growth. Container logs are capped at 10m x 5 per service, so if they are the cause something is logging in a loop.\n\nThere are no backups yet (F-004), so a disk-full event that corrupts data is currently unrecoverable. Treat accordingly.",
+    "mimeType": "text/markdown"
+  },
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "LMS VM disk pressure",
+      "conditionThreshold": {
+        "filter": "metric.type=\"workload.googleapis.com/system.filesystem.utilization\"",
+        "comparison": "COMPARISON_GT",
+        "thresholdValue": 0.8,
+        "duration": "300s",
+        "aggregations": [
+          {
+            "alignmentPeriod": "300s",
+            "perSeriesAligner": "ALIGN_MEAN",
+            "crossSeriesReducer": "REDUCE_MAX"
+          }
+        ],
+        "trigger": {
+          "count": 1
+        }
+      }
+    }
+  ],
+  "notificationChannels": [
+    "REPLACE_WITH_CHANNEL"
+  ],
+  "alertStrategy": {
+    "autoClose": "604800s"
+  },
+  "enabled": true
+}

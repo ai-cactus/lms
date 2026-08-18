@@ -35,7 +35,15 @@ import { createFullCourse, publishCourse } from './course';
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockAuth.mockResolvedValue({ user: { id: 'admin-1' } });
+  // Org is read straight off the DB-revalidated session (see createFullCourse
+  // in course.ts) rather than a separate user.findUnique — mockUserFindUnique
+  // is unused by the code under test now, kept only as a harmless mock.
+  mockAuth.mockResolvedValue({
+    // F-034: `role` is now load-bearing — publishCourse checks the registry for
+    // `course.edit`. A real session always carries one; omitting it here made the
+    // fixture less realistic than production, and the new guard exposed that.
+    user: { id: 'admin-1', role: 'owner', organizationId: 'org-1' },
+  });
   mockWorkerAuth.mockResolvedValue(null);
   mockUserFindUnique.mockResolvedValue({ organizationId: 'org-1' });
 });

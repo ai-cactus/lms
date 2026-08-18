@@ -20,6 +20,12 @@
  * sweeper running in a NON-prod environment that held prod GCS credentials):
  *   - OPT-IN: the worker only starts when VIDEO_SWEEP_ENABLED === 'true'. It is
  *     DISABLED by default so a stray non-prod process can never sweep prod.
+ *   - ENVIRONMENT-OWNERSHIP INTERLOCK: it additionally refuses to start unless
+ *     VIDEO_SWEEP_OWNER_APP_URL exactly equals APP_URL. This is the guardrail
+ *     that survives an env file being COPIED between environments — see
+ *     resolveOwnershipRefusal().
+ *   - FAIL-SAFE DRY RUN: VIDEO_SWEEP_DRY_RUN defaults to dry-run; real deletion
+ *     requires the explicit opt-out VIDEO_SWEEP_DRY_RUN='false'.
  *   - SINGLE-BACKEND scope: it lists only the active backend (see step 1), not a
  *     merged GCS+MinIO view that would surface another environment's objects.
  *   - EMPTY-REFERENCE-SET guardrail: if the DB references zero objects while
@@ -264,15 +270,69 @@ function resolveGracePeriodMs(): number {
   return safeHours * 60 * 60 * 1000;
 }
 
-/** Reads VIDEO_SWEEP_DRY_RUN (default false). */
+/**
+ * Reads VIDEO_SWEEP_DRY_RUN. FAIL-SAFE: dry-run unless the value is EXACTLY the
+ * string 'false'.
+ *
+ * WHY the default is inverted: deleting storage objects must require an explicit
+ * opt-out, never an omission. With the previous `=== 'true'` reading, an
+ * environment that armed VIDEO_SWEEP_ENABLED but simply forgot this variable
+ * deleted for real — the exact shape of mistake that cost production videos.
+ */
 function resolveDryRun(): boolean {
-  return process.env.VIDEO_SWEEP_DRY_RUN === 'true';
+  return process.env.VIDEO_SWEEP_DRY_RUN !== 'false';
 }
 
 /** Reads VIDEO_SWEEP_MAX_DELETES (default 10). Guards against mass deletion. */
 function resolveMaxDeletes(): number {
   const cap = Number(process.env.VIDEO_SWEEP_MAX_DELETES);
   return Number.isFinite(cap) && cap > 0 ? cap : DEFAULT_MAX_DELETES;
+}
+
+/**
+ * The bucket a sweep would actually delete from, mirroring the provider
+ * precedence in lib/storage (GCS when GCP_BUCKET_NAME is set, else MinIO).
+ * Reported in the ownership-refusal logs so the operator can see, in one line,
+ * which environment's storage the refusing process was pointed at.
+ */
+function resolveSweepBucket(): string {
+  return process.env.GCP_BUCKET_NAME || process.env.MINIO_BUCKET || 'lms-documents';
+}
+
+/**
+ * Environment-ownership interlock. Returns null when this environment owns the
+ * storage it would sweep, or a reason string describing why it must not start.
+ *
+ * WHY key on APP_URL: every other guardrail (VIDEO_SWEEP_ENABLED, DRY_RUN, the
+ * delete cap) lives in the same .env file that gets copied between environments,
+ * so copying production's env to staging carries the arming flags along with the
+ * production bucket name and credentials — which is precisely how a non-prod
+ * process came to delete production videos. APP_URL is the one value that MUST
+ * change when an env file is copied to another environment, or auth redirects
+ * and emailed links break loudly. Pinning VIDEO_SWEEP_OWNER_APP_URL to the owner
+ * therefore turns any such copy into a mismatch, and a mismatch refuses.
+ */
+function resolveOwnershipRefusal(): string | null {
+  const ownerAppUrl = process.env.VIDEO_SWEEP_OWNER_APP_URL;
+  const appUrl = process.env.APP_URL;
+
+  if (!ownerAppUrl) {
+    return (
+      '[VideoSweep] REFUSING to start — VIDEO_SWEEP_ENABLED is "true" but ' +
+      'VIDEO_SWEEP_OWNER_APP_URL is not set. Set it to the APP_URL of the single ' +
+      'environment that owns this storage bucket.'
+    );
+  }
+
+  if (ownerAppUrl !== appUrl) {
+    return (
+      `[VideoSweep] REFUSING to start — VIDEO_SWEEP_OWNER_APP_URL (${ownerAppUrl}) ` +
+      `does not match APP_URL (${appUrl ?? '<unset>'}). This environment does not ` +
+      'own the storage it would sweep.'
+    );
+  }
+
+  return null;
 }
 
 /**
@@ -307,16 +367,36 @@ async function registerRepeatableJob(cron: string): Promise<void> {
 }
 
 /**
- * Returns the singleton sweep worker, creating it on first call. The sweeper is
- * OPT-IN: it starts ONLY when VIDEO_SWEEP_ENABLED === 'true'. Any other value
- * (unset, 'false', or anything else) leaves it disabled and additionally
- * best-effort removes any lingering cron Job Scheduler so a previously-enabled
- * environment stops enqueuing sweep jobs. Returns null when disabled. Safe to
- * call repeatedly.
+ * Best-effort teardown of any scheduler a previously-enabled deploy left behind,
+ * so an environment that is no longer allowed to sweep also stops PRODUCING
+ * sweep jobs for whichever process still consumes them. Fire-and-forget.
+ */
+function removeLingeringScheduler(): void {
+  void videoSweepQueue.removeJobScheduler(SWEEP_SCHEDULER_ID).catch((err) => {
+    logger.error({
+      msg: '[VideoSweep] Failed to remove lingering Job Scheduler while refusing to sweep',
+      schedulerId: SWEEP_SCHEDULER_ID,
+      err,
+    });
+  });
+}
+
+/**
+ * Returns the singleton sweep worker, creating it on first call. Safe to call
+ * repeatedly. Returns null — starting nothing and registering no cron schedule —
+ * unless BOTH gates pass:
  *
- * WHY opt-in: prod GCS videos were deleted twice by this sweeper running in a
- * non-prod environment that held prod credentials. Defaulting to disabled means
- * a stray process can never sweep unless someone deliberately enables it.
+ *   1. OPT-IN: VIDEO_SWEEP_ENABLED === 'true'. Any other value (unset, 'false',
+ *      anything else) leaves it disabled.
+ *   2. OWNERSHIP: VIDEO_SWEEP_OWNER_APP_URL is set and exactly equals APP_URL
+ *      (see resolveOwnershipRefusal for why APP_URL is the interlock key).
+ *
+ * Either refusal also best-effort removes a lingering cron Job Scheduler.
+ *
+ * WHY two gates: prod GCS videos were deleted twice by this sweeper running in a
+ * non-prod environment that held prod credentials. Gate 1 stops an unconfigured
+ * process; gate 2 stops a process configured from a COPY of the owner's env file,
+ * which gate 1 alone cannot (the copy brings the arming flag with it).
  */
 export function getVideoSweepWorker(): Worker | null {
   if (globalThis.__videoSweepWorker) {
@@ -327,15 +407,21 @@ export function getVideoSweepWorker(): Worker | null {
     logger.warn({
       msg: "[VideoSweep] Disabled (VIDEO_SWEEP_ENABLED !== 'true') — worker not started",
     });
-    // Best-effort: tear down any scheduler a previously-enabled deploy left
-    // behind so this environment stops producing sweep jobs. Fire-and-forget.
-    void videoSweepQueue.removeJobScheduler(SWEEP_SCHEDULER_ID).catch((err) => {
-      logger.error({
-        msg: '[VideoSweep] Failed to remove lingering Job Scheduler while disabled',
-        schedulerId: SWEEP_SCHEDULER_ID,
-        err,
-      });
+    removeLingeringScheduler();
+    return null;
+  }
+
+  // Neither URL is a secret, and an operator debugging a refusal needs both
+  // sides plus the bucket at stake to act on it.
+  const ownershipRefusal = resolveOwnershipRefusal();
+  if (ownershipRefusal) {
+    logger.error({
+      msg: ownershipRefusal,
+      ownerAppUrl: process.env.VIDEO_SWEEP_OWNER_APP_URL ?? null,
+      appUrl: process.env.APP_URL ?? null,
+      bucket: resolveSweepBucket(),
     });
+    removeLingeringScheduler();
     return null;
   }
 
@@ -349,6 +435,17 @@ export function getVideoSweepWorker(): Worker | null {
       Number(process.env.VIDEO_SWEEP_GRACE_PERIOD_HOURS) || DEFAULT_GRACE_PERIOD_HOURS,
     dryRun,
   });
+
+  if (!dryRun) {
+    // Surfaced at WARN so a live-delete configuration is never something an
+    // operator has to go looking for in the logs.
+    logger.warn({
+      msg: '[VideoSweep] LIVE DELETES ARMED — VIDEO_SWEEP_DRY_RUN is "false"; this environment will permanently delete unreferenced objects',
+      appUrl: process.env.APP_URL ?? null,
+      bucket: resolveSweepBucket(),
+      maxDeletes: resolveMaxDeletes(),
+    });
+  }
 
   const worker = new Worker<VideoSweepJobData, VideoSweepSummary>(
     VIDEO_SWEEP_QUEUE_NAME,
