@@ -191,24 +191,27 @@ cat <<EOF
 
 Next, and it is not optional:
 
-  1. Confirm the email channel is VERIFIED. Google sends a confirmation mail;
-     until it is accepted, every policy below points at nothing.
-       gcloud beta monitoring channels describe ${CHANNEL} \\
-         --project=${PROJECT} --format='value(verificationStatus)'
+  1. Confirm the disk/memory metrics actually exist. Both policies depend on
+     the OPTIONAL hostmetrics utilization metrics enabled in
+     infra/otel/collector-config.yaml on 2026-08-14 — a collector predating
+     that change publishes only *.usage, and both policies stay silent.
+     There is no "gcloud monitoring time-series" command; query the API:
+       TOKEN=\$(gcloud auth print-access-token)
+       curl -s --get "https://monitoring.googleapis.com/v3/projects/${PROJECT}/timeSeries" \\
+         -H "Authorization: Bearer \$TOKEN" \\
+         --data-urlencode 'filter=metric.type="workload.googleapis.com/system.memory.utilization" AND resource.type="generic_node"' \\
+         --data-urlencode "interval.startTime=\$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ)" \\
+         --data-urlencode "interval.endTime=\$(date -u +%Y-%m-%dT%H:%M:%SZ)" \\
+         --data-urlencode 'view=HEADERS'
+     An empty timeSeries means the collector has not been redeployed with the
+     new config. Restart it, then re-check.
 
-  2. Trigger ONE alert end to end and confirm the mail arrives. An alert
-     policy nobody has ever seen fire is decoration.
+  2. Trigger ONE alert end to end and confirm the mail arrives at
+     ${ALERT_EMAIL}. This is the ONLY proof the channel delivers. The
+     API does not return verificationStatus for an API-created email channel — the field
+     is simply absent — so a channel that delivers and one that does not look
+     identical from the CLI. An alert policy nobody has ever seen fire is
+     decoration.
      Safe method: point a check at staging and break the staging health
      response, never production.
-
-  3. Confirm the disk/memory metrics actually exist. They depend on the
-     OPTIONAL hostmetrics utilization metrics enabled in
-     infra/otel/collector-config.yaml on 2026-08-14 — a collector predating
-     that change publishes only *.usage, and both policies stay silent:
-       gcloud monitoring time-series list \\
-         --project=${PROJECT} \\
-         --filter='metric.type="workload.googleapis.com/system.memory.utilization"' \\
-         --format='value(metric.type)' --limit=1
-     Empty output means the collector has not been redeployed with the new
-     config. Restart it, then re-check.
 EOF

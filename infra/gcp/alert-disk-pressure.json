@@ -9,7 +9,7 @@
     {
       "displayName": "LMS VM disk pressure",
       "conditionThreshold": {
-        "filter": "metric.type=\"workload.googleapis.com/system.filesystem.utilization\"",
+        "filter": "metric.type=\"workload.googleapis.com/system.filesystem.utilization\" AND resource.type=\"generic_node\"",
         "comparison": "COMPARISON_GT",
         "thresholdValue": 0.8,
         "duration": "300s",

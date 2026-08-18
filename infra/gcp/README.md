@@ -40,7 +40,8 @@ verification steps that turn this from applied into proven.
 >
 > **A collector running the old config leaves both alerts permanently silent**,
 > which looks exactly like "nothing is wrong". Redeploy the collector before
-> trusting them, and confirm with the `time-series list` check the script prints.
+> trusting them, and confirm with the `timeSeries` API check the script prints
+> (there is no `gcloud monitoring time-series` command).
 
 > ⚠️ **`system.memory.utilization` emits one series per state** (used, free,
 > cached, buffered, slab_\*), and the condition reduces with MAX across series.
@@ -87,6 +88,40 @@ for f in alert-*.json; do
   gcloud monitoring policies create --policy-from-file=/tmp/policy.json --project="$PROJECT_ID"
 done
 ```
+
+## Why the host-metric filters pin `resource.type="generic_node"`
+
+The API rejects any `conditionThreshold.filter` on a `workload.googleapis.com/*`
+metric that does not restrict `resource.type`:
+
+```
+Field alert_policy.conditions[0].condition_threshold.filter had an invalid value
+of "metric.type=\"workload.googleapis.com/system.filesystem.utilization\"":
+must specify a restriction on "resource.type" in the filter
+```
+
+The restriction must be `generic_node`, **not** `gce_instance`. These series come
+from the OTel collector's `hostmetrics` receiver (infra/otel/collector-config.yaml),
+which runs no `resourcedetection` processor — so the `googlecloud` exporter has no
+GCP platform attributes to map and falls back to the generic monitored resource,
+with `location=global` and empty `namespace`/`node_id`. Confirmed against the live
+series on 2026-08-18.
+
+`gce_instance` would be accepted by the API and would match nothing: a policy that
+can never fire, and looks identical to one that simply has nothing to report. Before
+changing either filter, check what the data actually carries:
+
+```bash
+TOKEN=$(gcloud auth print-access-token)
+curl -s --get "https://monitoring.googleapis.com/v3/projects/$PROJECT_ID/timeSeries" \
+  -H "Authorization: Bearer $TOKEN" \
+  --data-urlencode 'filter=metric.type="workload.googleapis.com/system.memory.utilization"' \
+  --data-urlencode "interval.startTime=$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ)" \
+  --data-urlencode "interval.endTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  --data-urlencode 'view=HEADERS'
+```
+
+An empty `timeSeries` means the filter matches nothing — fix it before applying.
 
 ## Verifying the content matcher actually works
 
