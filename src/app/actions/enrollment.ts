@@ -2,7 +2,7 @@
 
 import prisma from '@/lib/prisma';
 import { isAdminRole, ALL_ROLES } from '@/lib/rbac/role-utils';
-import { hasActiveBilling } from '@/lib/billing';
+import { hasActiveBilling, BILLING_GATE_ASSIGN_MESSAGE } from '@/lib/billing';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
@@ -17,6 +17,7 @@ import {
   createEnrollmentForUser,
   createEnrollmentsForUsers,
   type CreateEnrollmentContext,
+  type DeferredWorkerNotification,
   type EnrollmentOutcome,
 } from '@/lib/enrollment/create';
 import { getSeatUsage } from '@/lib/seat-limits';
@@ -85,6 +86,13 @@ interface UpsertCourseAssignmentParams {
    * `null` explicitly clears it; a role value sets it.
    */
   targetRole?: UserRole | null;
+  /**
+   * `'write'` (default) overwrites an existing assignment's settings and stage
+   * rows. `'preserve'` links the existing row without touching them — the row is
+   * shared org-wide, so assigning to one worker must not silently retune the
+   * reminder ladder for everyone already enrolled.
+   */
+  settingsMode?: 'write' | 'preserve';
 }
 
 /**
@@ -93,7 +101,8 @@ interface UpsertCourseAssignmentParams {
  * `(organizationId, courseId)`: reuse the most recent row so already-enrolled
  * workers keep firing off the same (now updated) schedule/ladder. Stage rows are
  * upserted on the `(assignmentId, stage)` unique key — never duplicated — and
- * stages outside the submitted set survive. Returns the assignment id.
+ * stages outside the submitted set survive. Returns the assignment id. With
+ * `settingsMode: 'preserve'` an existing row is returned untouched.
  *
  * Shared by the individual-assignment path ({@link enrollUsers}) and the
  * role-target path ({@link assignCourseToRole}).
@@ -108,6 +117,17 @@ async function upsertCourseAssignment(params: UpsertCourseAssignmentParams): Pro
   });
 
   if (existing) {
+    if (params.settingsMode === 'preserve') {
+      logger.info({
+        msg: '[enrollment] Existing course assignment reused — settings preserved',
+        assignmentId: existing.id,
+        organizationId,
+        courseId,
+        userId: params.assignedByAdminId,
+      });
+      return existing.id;
+    }
+
     await prisma.courseAssignment.update({
       where: { id: existing.id },
       data: {
@@ -227,6 +247,26 @@ export async function getAvailableUsers() {
   }));
 }
 
+/** Opt-in behaviour switches for {@link enrollUsers}; every default is today's behaviour. */
+export interface EnrollUsersOptions {
+  /**
+   * Return the worker-facing notification/email payloads instead of emitting
+   * them, so a multi-course caller can send ONE batched notice per worker.
+   */
+  deferWorkerNotification?: boolean;
+  /** See {@link UpsertCourseAssignmentParams.settingsMode}. Defaults to `'write'`. */
+  assignmentSettingsMode?: 'write' | 'preserve';
+}
+
+export interface EnrollUsersResult {
+  success: string[];
+  alreadyEnrolled: string[];
+  newInvited: string[];
+  failed: string[];
+  /** Present only when `options.deferWorkerNotification` was set. */
+  deferred?: DeferredWorkerNotification[];
+}
+
 /**
  * Enroll users in a course using structured staff entries.
  * Each entry must include an email address and may optionally include
@@ -241,7 +281,8 @@ export async function enrollUsers(
   courseId: string,
   staffEntries: StaffEntry[],
   assignmentSettings?: AssignmentSettingsInput,
-) {
+  options?: EnrollUsersOptions,
+): Promise<EnrollUsersResult> {
   const session = await resolveSession();
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
@@ -307,7 +348,7 @@ export async function enrollUsers(
       organizationId,
       userId: session.user.id,
     });
-    throw new Error('Your organization needs an active subscription to assign courses.');
+    throw new Error(BILLING_GATE_ASSIGN_MESSAGE);
   }
 
   // Create a CourseAssignment batch to hold this assignment's schedule /
@@ -351,6 +392,7 @@ export async function enrollUsers(
       remindersEnabled: assignmentSettings?.remindersEnabled ?? true,
       renewalCycle: assignmentSettings?.renewalCycle ?? 'none',
       stageRows,
+      settingsMode: options?.assignmentSettingsMode ?? 'write',
     });
   }
 
@@ -383,6 +425,7 @@ export async function enrollUsers(
     assignmentDueAt,
     assignmentWindowDays: assignmentSettings?.dueWindowDays ?? null,
     enrolledByUserId: session.user.id,
+    ...(options?.deferWorkerNotification ? { deferWorkerNotification: true } : {}),
   };
 
   // Seat gate (F-022): an unknown / org-less email consumes a plan seat when it
@@ -452,6 +495,8 @@ export async function enrollUsers(
     ? await createEnrollmentsForUsers(staffEntries, enrollmentContext, seatRejectedEmails)
     : await enrollSequentially(staffEntries, enrollmentContext, seatRejectedEmails);
 
+  const deferred: DeferredWorkerNotification[] = [];
+
   for (const outcome of outcomes) {
     switch (outcome.status) {
       case 'failed':
@@ -467,12 +512,17 @@ export async function enrollUsers(
         break;
       case 'enrolled':
         results.success.push(outcome.email);
+        if (outcome.deferred) {
+          deferred.push(outcome.deferred);
+        }
         break;
     }
   }
 
   revalidatePath(`/dashboard/training/courses/${courseId}`);
-  return results;
+  // Conditional spread: callers that never opted in keep the exact result shape
+  // they have always received.
+  return { ...results, ...(options?.deferWorkerNotification ? { deferred } : {}) };
 }
 
 /**
@@ -598,7 +648,7 @@ export async function assignCourseToRole(
       organizationId,
       userId: session.user.id,
     });
-    throw new Error('Your organization needs an active subscription to assign courses.');
+    throw new Error(BILLING_GATE_ASSIGN_MESSAGE);
   }
 
   const scheduleAt =

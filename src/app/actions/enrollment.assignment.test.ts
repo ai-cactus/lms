@@ -67,7 +67,6 @@ vi.mock('./notifications', () => ({
 }));
 vi.mock('@/lib/email', () => ({
   sendCourseInviteEmail: vi.fn(),
-  sendCourseEnrollmentEmail: vi.fn(),
   sendCourseLaunchEmail: vi.fn(),
 }));
 
@@ -207,6 +206,64 @@ describe('enrollUsers — upsert path (Issue #5 / TC-018): re-submitting setting
         data: expect.objectContaining({ assignmentId: 'existing-assignment-1' }),
       }),
     );
+  });
+});
+
+describe('enrollUsers — assignmentSettingsMode: "preserve" (multi-course staff assignment)', () => {
+  it('links the existing CourseAssignment without touching its settings or stage rows, while the deadline still reaches the worker Enrollment.dueAt', async () => {
+    mockAssignmentFindFirst.mockResolvedValue({
+      id: 'existing-assignment-1',
+      renewalCycle: 'annual',
+      remindersEnabled: false,
+    });
+
+    const chosenDeadline = '2027-01-01T00:00:00.000Z';
+    await enrollUsers(
+      'course-1',
+      [{ email: 'w@x.com' }],
+      { dueAt: chosenDeadline },
+      { assignmentSettingsMode: 'preserve' },
+    );
+
+    // The shared org-wide row is neither updated nor upserted...
+    expect(mockAssignmentUpdate).not.toHaveBeenCalled();
+    expect(mockStageUpsert).not.toHaveBeenCalled();
+    expect(mockAssignmentCreate).not.toHaveBeenCalled();
+    // ...it is simply linked...
+    expect(mockEnrollmentCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ assignmentId: 'existing-assignment-1' }),
+      }),
+    );
+    // ...while the worker's own enrollment still gets the admin's chosen deadline.
+    expect(mockEnrollmentCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ dueAt: new Date(chosenDeadline) }),
+      }),
+    );
+  });
+
+  it('creates a fresh CourseAssignment from the supplied settings when none exists yet — nothing to preserve', async () => {
+    mockAssignmentFindFirst.mockResolvedValue(null);
+
+    await enrollUsers(
+      'course-1',
+      [{ email: 'w@x.com' }],
+      { dueAt: '2027-01-01T00:00:00.000Z', renewalCycle: 'annual' },
+      { assignmentSettingsMode: 'preserve' },
+    );
+
+    expect(mockAssignmentCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ renewalCycle: 'annual' }) }),
+    );
+  });
+
+  it('defaults to "write" (today\'s overwrite behaviour) when assignmentSettingsMode is omitted', async () => {
+    mockAssignmentFindFirst.mockResolvedValue({ id: 'existing-assignment-1' });
+
+    await enrollUsers('course-1', [{ email: 'w@x.com' }], { renewalCycle: 'annual' });
+
+    expect(mockAssignmentUpdate).toHaveBeenCalled();
   });
 });
 

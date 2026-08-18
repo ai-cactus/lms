@@ -15,7 +15,7 @@ import EmptyTableState from '@/components/ui/EmptyTableState';
 import { RowActionsMenu } from '@/components/ui';
 import Link from 'next/link';
 import Image from 'next/image';
-import AssignUserCourseModal from './AssignUserCourseModal';
+import AssignCoursesModal from './AssignCoursesModal';
 import AssignRetakeModal from '../training/AssignRetakeModal';
 import CertificateModal from '../training/CertificateModal';
 import QuizResults from '@/components/dashboard/training/QuizResults';
@@ -154,10 +154,11 @@ const STAT_CARDS = [
 export default function StaffProfileClient({ staff, viewerRole }: StaffProfileClientProps) {
   const { user, stats, enrollments } = staff;
 
-  // Assigning a course is a roster mutation: view-only roles (Finance, Clinical
-  // Director) can read a profile but must not see the affordance. The server
-  // action enforces the same gate — this only hides dead-end UI.
-  const canEdit = can(dbRoleToRoleKey(viewerRole), 'user.edit');
+  // Assigning courses is an assignment action, not a roster edit: Clinical
+  // Director holds `assignment.create` and legitimately assigns training paths,
+  // while Finance holds neither and stays read-only. The server action enforces
+  // the same gate — this only hides dead-end UI.
+  const canAssignCourses = can(dbRoleToRoleKey(viewerRole), 'assignment.create');
 
   const [searchQuery, setSearchQuery] = useState('');
   const [certificateSearchQuery, setCertificateSearchQuery] = useState('');
@@ -285,7 +286,7 @@ export default function StaffProfileClient({ staff, viewerRole }: StaffProfileCl
               </span>
             </div>
 
-            {canEdit && (
+            {canAssignCourses && (
               <Button
                 onClick={() => setIsAssignModalOpen(true)}
                 className="h-12 shrink-0 gap-2 rounded-[12px] px-6 text-[15.5px] font-semibold tracking-[-0.31px]"
@@ -654,11 +655,11 @@ export default function StaffProfileClient({ staff, viewerRole }: StaffProfileCl
         )}
       </section>
 
-      <AssignUserCourseModal
+      <AssignCoursesModal
         isOpen={isAssignModalOpen}
         onClose={() => setIsAssignModalOpen(false)}
         staffUserId={user.id}
-        userName={user.name}
+        staffName={user.name}
         enrolledCourseIds={enrollments.map((e) => e.courseId)}
         onSuccess={() => {
           window.location.reload();

@@ -29,6 +29,32 @@ export interface CreateEnrollmentContext {
   assignmentWindowDays: number | null;
   /** Actor recorded on the structured enrollment log. */
   enrolledByUserId: string;
+  /**
+   * Defer the worker-facing side-effects — the COURSE_ASSIGNED notification and
+   * the launch email — to the caller, so a multi-course caller emits ONE batched
+   * notice instead of N. The enrollment row, the computed deadline and the
+   * INITIAL_LAUNCH ReminderLog seed are unaffected and still written here.
+   *
+   * Only the `enrolled` branch defers: an `invited` address has no account to
+   * batch against, so the `/join` invite email always sends inline.
+   */
+  deferWorkerNotification?: boolean;
+}
+
+/**
+ * The worker-facing side-effects {@link createEnrollmentForUser} did not emit
+ * because {@link CreateEnrollmentContext.deferWorkerNotification} was set. The
+ * caller groups these (see `collectDeferredNotices`) into one notice per worker.
+ */
+export interface DeferredWorkerNotification {
+  userId: string;
+  email: string;
+  recipientName: string;
+  courseId: string;
+  courseTitle: string;
+  organizationName: string;
+  /** The deadline actually persisted on the enrollment row. */
+  dueAt: Date;
 }
 
 /**
@@ -42,7 +68,14 @@ export type EnrollmentOutcome =
   | { status: 'failed'; email: string }
   | { status: 'alreadyEnrolled'; email: string }
   | { status: 'invited'; email: string }
-  | { status: 'enrolled'; email: string; userId: string; enrollmentId: string };
+  | {
+      status: 'enrolled';
+      email: string;
+      userId: string;
+      enrollmentId: string;
+      /** Set only when the context deferred the notification/email to the caller. */
+      deferred?: DeferredWorkerNotification;
+    };
 
 /**
  * Pre-fetched, per-user snapshot the batched path ({@link createEnrollmentsForUsers})
@@ -66,7 +99,9 @@ export interface EnrollmentPrefetch {
  *
  * For a pre-existing org member: write the enrollment with its computed deadline,
  * seed the `INITIAL_LAUNCH` reminder log, notify the worker in-app, and send the
- * launch email. For an unknown or org-less email: send a `/join` invite and park
+ * launch email — the last two returned as a {@link DeferredWorkerNotification}
+ * instead when {@link CreateEnrollmentContext.deferWorkerNotification} is set.
+ * For an unknown or org-less email: send a `/join` invite and park
  * the course on it (materialised into an enrollment on accept) rather than
  * creating an account. Never throws for an individual entry — a failure is
  * reported via the returned {@link EnrollmentOutcome}.
@@ -303,33 +338,47 @@ export async function createEnrollmentForUser(
     });
   }
 
-  await createNotification({
-    userId: user.id,
-    type: 'COURSE_ASSIGNED',
-    title: 'New Required Training Assigned',
-    message: `You have been assigned a new course: ${ctx.courseTitle}`,
-    linkUrl: `/worker/trainings`,
-    metadata: { courseId: ctx.courseId },
-  });
-
   // This path is only reached for a pre-existing org member, so the Stage 1
   // launch email always sends here (invited addresses returned earlier with the
-  // `/join` invite email instead).
+  // `/join` invite email instead) — unless the caller batches it.
   const recipientName = user.profile?.fullName || fullName || 'there';
-  try {
-    await sendCourseLaunchEmail(
-      normalizedEmail,
-      recipientName,
-      ctx.courseTitle,
-      ctx.organizationName,
-      computedDueAt,
-    );
-  } catch (emailErr) {
-    logger.error({
-      msg: '[enrollment] Failed to send course launch email',
+
+  let deferred: DeferredWorkerNotification | undefined;
+  if (ctx.deferWorkerNotification) {
+    deferred = {
       userId: user.id,
-      err: emailErr,
+      email: normalizedEmail,
+      recipientName,
+      courseId: ctx.courseId,
+      courseTitle: ctx.courseTitle,
+      organizationName: ctx.organizationName,
+      dueAt: computedDueAt,
+    };
+  } else {
+    await createNotification({
+      userId: user.id,
+      type: 'COURSE_ASSIGNED',
+      title: 'New Required Training Assigned',
+      message: `You have been assigned a new course: ${ctx.courseTitle}`,
+      linkUrl: `/worker/trainings`,
+      metadata: { courseId: ctx.courseId },
     });
+
+    try {
+      await sendCourseLaunchEmail(
+        normalizedEmail,
+        recipientName,
+        ctx.courseTitle,
+        ctx.organizationName,
+        computedDueAt,
+      );
+    } catch (emailErr) {
+      logger.error({
+        msg: '[enrollment] Failed to send course launch email',
+        userId: user.id,
+        err: emailErr,
+      });
+    }
   }
 
   logger.info({
@@ -344,6 +393,7 @@ export async function createEnrollmentForUser(
     email: normalizedEmail,
     userId: user.id,
     enrollmentId: enrollment.id,
+    ...(deferred ? { deferred } : {}),
   };
 }
 
