@@ -152,6 +152,11 @@ if [ "$WITH_UPTIME" = "--with-uptime" ]; then
   fi
 fi
 
+# `gcloud monitoring policies` is the GA surface and takes the same
+# --policy-from-file. It is used deliberately in place of `gcloud alpha ...`:
+# alpha is NOT installed by default, and on a machine without it gcloud stops to
+# ask "Do you want to continue (Y/n)?" — a prompt that is invisible from inside
+# a script, so the run simply appears to hang forever.
 # ── 4. Alert policies ────────────────────────────────────────────────────────
 for f in alert-*.json; do
   # The uptime policy is meaningless without the check that feeds it.
@@ -161,7 +166,7 @@ for f in alert-*.json; do
   fi
 
   DISPLAY="$(python3 -c "import json,sys; print(json.load(open('$f'))['displayName'])")"
-  if gcloud alpha monitoring policies list --project="$PROJECT" \
+  if gcloud monitoring policies list --project="$PROJECT" \
     --format='value(displayName)' 2>/dev/null | grep -Fqx "$DISPLAY"; then
     log "policy '${DISPLAY}' exists, skipping"
     continue
@@ -171,7 +176,7 @@ for f in alert-*.json; do
   sed -e "s|REPLACE_WITH_CHANNEL|${CHANNEL}|g" \
     -e "s|REPLACE_WITH_PROJECT_ID|${PROJECT}|g" \
     "$f" >/tmp/lms-policy.json
-  gcloud alpha monitoring policies create --policy-from-file=/tmp/lms-policy.json --project="$PROJECT"
+  gcloud monitoring policies create --policy-from-file=/tmp/lms-policy.json --project="$PROJECT"
   rm -f /tmp/lms-policy.json
 done
 

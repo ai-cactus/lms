@@ -55,7 +55,7 @@ piece by hand.
 PROJECT_ID=your-project-id
 
 # 1. Notification channel — do this first; policies reference it.
-gcloud alpha monitoring channels create \
+gcloud beta monitoring channels create \
   --display-name="LMS ops email" \
   --type=email \
   --channel-labels=email_address=admin@theraptly.com \
@@ -84,7 +84,7 @@ gcloud monitoring uptime create "LMS production — reachable and serving our ow
 # 3. Alert policies.
 for f in alert-*.json; do
   sed -e "s|REPLACE_WITH_CHANNEL|$CHANNEL|" -e "s/REPLACE_WITH_PROJECT_ID/$PROJECT_ID/" "$f" > /tmp/policy.json
-  gcloud alpha monitoring policies create --policy-from-file=/tmp/policy.json --project="$PROJECT_ID"
+  gcloud monitoring policies create --policy-from-file=/tmp/policy.json --project="$PROJECT_ID"
 done
 ```
 
