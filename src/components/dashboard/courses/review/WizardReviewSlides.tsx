@@ -153,6 +153,10 @@ export default function WizardReviewSlides({
             </div>
             <div
               className={`flex-1 overflow-y-auto px-6 py-6 md:px-10 ${slideBodyClass}`}
+              // Already sanitised: every slide's `html` is passed through sanitizeHtml
+              // when the deck is built above. Suppressed at the call site rather than
+              // disabling the rule, so a future UNSANITISED sink is still caught.
+              // nosemgrep: typescript.react.security.audit.react-dangerouslysetinnerhtml.react-dangerouslysetinnerhtml
               dangerouslySetInnerHTML={{ __html: current?.html || '' }}
             />
           </div>
