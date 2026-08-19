@@ -1,22 +1,16 @@
 'use client';
 
-import { useState, useMemo, useEffect, useCallback, useTransition } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useTransition } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { RowActionsMenu, type RowAction } from '@/components/ui';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { RowActionsMenu } from '@/components/ui';
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import { Alert } from '@/components/ui/alert';
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import EmptyTableState from '@/components/ui/EmptyTableState';
 import {
   Table,
@@ -30,55 +24,216 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { CourseWithStats } from '@/types/course';
-import { deleteCourse } from '@/app/actions/course';
+import { checkCourseGenerationJobV46 } from '@/app/actions/course-ai-v4.6';
+import { deleteCourse, updateCourse } from '@/app/actions/course';
 import BillingGateModal from '@/components/dashboard/billing/BillingGateModal';
-import { Plus, Search, Pencil, Trash2, UserPlus, FileText, Play, Library } from 'lucide-react';
-import CourseRenameModal from '@/components/dashboard/courses/CourseRenameModal';
-import CoursesEmptyState from '@/components/dashboard/courses/CoursesEmptyState';
-import CoursesTableFooter from '@/components/dashboard/courses/CoursesTableFooter';
-import PendingGenerationBanner from '@/components/dashboard/courses/PendingGenerationBanner';
-import { cn } from '@/lib/utils';
-import { can } from '@/lib/rbac/permissions';
-import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
-import type { Role } from '@/types/next-auth';
+import { Plus, Search, Pencil, Trash2, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import CourseTypeIcon from '@/components/dashboard/courses/CourseTypeIcon';
 
-const headCls =
-  'h-10 px-2 py-[9px] text-[13px] font-medium tracking-[0.31px] whitespace-nowrap text-[#2a3144] md:px-[18px] md:text-[15.6px]';
-const cellCls = 'h-[71px] px-5 text-[15px] font-medium tracking-[0.35px] md:text-[17.4px]';
+const PENDING_KEY = 'lms_pending_generation';
+const STALE_THRESHOLD_MS = 60 * 60 * 1000; // 1 hour
+
+interface PendingGeneration {
+  jobId: string;
+  formData: Record<string, unknown>;
+  timestamp: number;
+}
+
+type BannerState = 'generating' | 'done' | 'failed' | 'hidden';
+
+const bannerClasses: Record<Exclude<BannerState, 'hidden'>, string> = {
+  generating: 'border-[#4C6EF5] bg-[#EBF4FF] text-[#1e3a8a]',
+  done: 'border-[#38A169] bg-[#F0FFF4] text-[#1a4731]',
+  failed: 'border-[#E53E3E] bg-[#FFF5F5] text-[#742a2a]',
+};
+
+function PendingGenerationBanner() {
+  const [banner, setBanner] = useState<BannerState>('hidden');
+  const [pending, setPending] = useState<PendingGeneration | null>(null);
+
+  const dismiss = useCallback(() => {
+    localStorage.removeItem(PENDING_KEY);
+    setBanner('hidden');
+  }, []);
+
+  useEffect(() => {
+    let raw: string | null = null;
+    try {
+      raw = localStorage.getItem(PENDING_KEY);
+    } catch {
+      return; // localStorage unavailable
+    }
+    if (!raw) return;
+
+    let parsed: PendingGeneration;
+    try {
+      parsed = JSON.parse(raw) as PendingGeneration;
+    } catch {
+      localStorage.removeItem(PENDING_KEY);
+      return;
+    }
+
+    // Discard entries older than 1 hour
+    if (Date.now() - parsed.timestamp > STALE_THRESHOLD_MS) {
+      localStorage.removeItem(PENDING_KEY);
+      return;
+    }
+
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Intentional: initialising banner state from localStorage inside effect
+    setPending(parsed);
+
+    setBanner('generating');
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await checkCourseGenerationJobV46(parsed.jobId);
+        if (res.status === 'completed') {
+          clearInterval(interval);
+          setBanner('done');
+        } else if (res.status === 'failed' || res.error) {
+          clearInterval(interval);
+          setBanner('failed');
+        }
+      } catch {
+        // network blip — keep polling
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  if (banner === 'hidden' || !pending) return null;
+
+  return (
+    <div
+      className={`flex items-center gap-3 rounded-[10px] border px-4 py-3 mb-4 text-sm ${bannerClasses[banner]}`}
+    >
+      {banner === 'generating' && (
+        <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden="true" />
+      )}
+      <span className="flex-1">
+        {banner === 'generating' && 'Your course is still being generated in the background…'}
+        {banner === 'done' &&
+          '✅ Course generation complete! Resume the wizard to review and publish.'}
+        {banner === 'failed' && '⚠️ Course generation failed. Please start a new course.'}
+      </span>
+      {banner === 'done' && (
+        <Link
+          href="/dashboard/courses/create"
+          className="font-semibold text-[#38A169] no-underline whitespace-nowrap"
+        >
+          Resume Setup →
+        </Link>
+      )}
+      <button
+        onClick={dismiss}
+        className="bg-none border-none cursor-pointer opacity-60 p-1"
+        title="Dismiss"
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Lightweight inline rename modal for courses
+// ---------------------------------------------------------------------------
+function CourseRenameModal({
+  courseId,
+  currentTitle,
+  onClose,
+  onRenamed,
+}: {
+  courseId: string;
+  currentTitle: string;
+  onClose: () => void;
+  onRenamed: (newTitle: string) => void;
+}) {
+  const [title, setTitle] = useState(currentTitle);
+  const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = title.trim();
+    if (!trimmed) {
+      setError('Course title cannot be empty.');
+      return;
+    }
+    setError(null);
+    startTransition(async () => {
+      try {
+        await updateCourse(courseId, { title: trimmed });
+        onRenamed(trimmed);
+        onClose();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to rename course.');
+      }
+    });
+  };
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/45 flex items-center justify-center z-[1000] p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Rename course"
+    >
+      <div className="bg-white rounded-xl p-6 w-full max-w-[420px] shadow-[0_20px_60px_rgba(0,0,0,0.2)]">
+        <h2 className="text-lg font-semibold text-[#111827] mb-4">Rename Course</h2>
+        <form onSubmit={handleSubmit}>
+          <Input
+            className="h-11"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            autoFocus
+            disabled={isPending}
+            aria-label="New course title"
+          />
+          {error && <p className="text-red-600 text-[0.8125rem] mt-1.5">{error}</p>}
+          <div className="flex justify-end gap-3 mt-5">
+            <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>
+              Cancel
+            </Button>
+            <Button type="submit" loading={isPending}>
+              {isPending ? 'Saving…' : 'Save'}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 
 interface CoursesListClientProps {
   courses: CourseWithStats[];
   /** Whether the organization has an active or trialing billing subscription. */
   hasBilling: boolean;
-  /** Viewer's role — every row affordance is rendered from its registry gates. */
-  viewerRole: Role;
 }
 
-/** Design maps the platform's two course types onto Video / Reading Course tabs. */
-type CourseTypeTab = 'video' | 'reading';
+/**
+ * Build a compact pagination range with ellipses, e.g. [1, 2, 3, '…', 9].
+ * Always shows the first and last page plus a window around the current page.
+ */
+function buildPaginationRange(current: number, total: number): (number | 'ellipsis')[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
 
-/** The persisted discriminant for reading courses stays `text` — only the label changed. */
-const COURSE_TYPE_BY_TAB: Record<CourseTypeTab, string> = {
-  video: 'video',
-  reading: 'text',
-};
+  const pages: (number | 'ellipsis')[] = [1];
+  const start = Math.max(2, current - 1);
+  const end = Math.min(total - 1, current + 1);
 
-const TAB_TRIGGER_CLASS =
-  '-mb-px flex-none gap-2 rounded-none border-0 border-b-2 border-transparent bg-transparent px-4 py-3 text-[15.75px] font-medium text-[#5d5d5d] shadow-none after:hidden hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:font-semibold data-[state=active]:text-primary data-[state=active]:shadow-none md:px-8';
+  if (start > 2) pages.push('ellipsis');
+  for (let p = start; p <= end; p++) pages.push(p);
+  if (end < total - 1) pages.push('ellipsis');
 
-const TAB_BADGE_CLASS = 'rounded-full px-[9px] py-[2px] text-[11.4px] font-medium';
-const TAB_BADGE_ACTIVE_CLASS = 'bg-[#edeffe] text-primary';
-const TAB_BADGE_INACTIVE_CLASS = 'bg-[#f5f5f5] text-[#404040]';
+  pages.push(total);
+  return pages;
+}
 
-const ROW_MENU_CONTENT_CLASS =
-  'w-[226px] rounded-[12px] border-[#e5e7eb] px-0 py-[6px] shadow-[0px_12px_32px_0px_rgba(0,0,0,0.14)]';
-const ROW_MENU_ITEM_CLASS = 'rounded-none px-4 py-[11px] text-[13px]';
-
-export default function CoursesListClient({
-  courses,
-  hasBilling,
-  viewerRole,
-}: CoursesListClientProps) {
+export default function CoursesListClient({ courses, hasBilling }: CoursesListClientProps) {
   const router = useRouter();
   const [courseList, setCourseList] = useState<CourseWithStats[]>(courses);
   const [searchQuery, setSearchQuery] = useState('');
@@ -86,28 +241,9 @@ export default function CoursesListClient({
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [showBillingGate, setShowBillingGate] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<CourseWithStats | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [courseToRename, setCourseToRename] = useState<{ id: string; title: string } | null>(null);
   const [, startTransition] = useTransition();
-
-  // Every row affordance is derived from the registry, never from a role list —
-  // read-only roles (e.g. supervisor) end up with no write items at all.
-  const viewerRoleKey = dbRoleToRoleKey(viewerRole);
-  const canAssign = can(viewerRoleKey, 'assignment.create');
-  const canReadDocuments = can(viewerRoleKey, 'document.read');
-  const canCreateCourse = can(viewerRoleKey, 'course.create');
-  const canEditCourse = can(viewerRoleKey, 'course.edit');
-  const canDeleteCourse = can(viewerRoleKey, 'course.delete');
-
-  // Landing on an empty tab reads as "no courses", so open on the type the org
-  // actually has, preferring Video when both (or neither) are populated.
-  const [activeTab, setActiveTab] = useState<CourseTypeTab>(() =>
-    courses.some((course) => course.type === COURSE_TYPE_BY_TAB.video) ||
-    !courses.some((course) => course.type === COURSE_TYPE_BY_TAB.reading)
-      ? 'video'
-      : 'reading',
-  );
 
   // Sync when server props change after revalidatePath
   useEffect(() => {
@@ -116,14 +252,21 @@ export default function CoursesListClient({
 
   const handleDelete = useCallback(
     (course: CourseWithStats) => {
+      if (
+        !confirm(
+          `Delete "${course.title}"?\n\nThis will permanently remove the course and cannot be undone.`,
+        )
+      ) {
+        return;
+      }
       setDeletingId(course.id);
-      setActionError(null);
+      setDeleteError(null);
       startTransition(async () => {
         try {
           await deleteCourse(course.id);
           setCourseList((prev) => prev.filter((c) => c.id !== course.id));
         } catch (err) {
-          setActionError(err instanceof Error ? err.message : 'Failed to delete course.');
+          setDeleteError(err instanceof Error ? err.message : 'Failed to delete course.');
         }
         setDeletingId(null);
       });
@@ -135,96 +278,21 @@ export default function CoursesListClient({
     setCourseList((prev) => prev.map((c) => (c.id === courseId ? { ...c, title: newTitle } : c)));
   }, []);
 
-  const startCreateCourse = useCallback(() => {
-    if (!hasBilling) {
-      setShowBillingGate(true);
-      return;
-    }
-    router.push('/dashboard/courses/create');
-  }, [hasBilling, router]);
-
-  // The Video tab lists only courses already offered to the org, so the catalog
-  // of adoptable global courses needs its own way in.
-  const startPrebuiltCatalog = useCallback(() => {
-    if (!hasBilling) {
-      setShowBillingGate(true);
-      return;
-    }
-    router.push('/dashboard/courses/prebuilt');
-  }, [hasBilling, router]);
-
-  const selectTab = useCallback((tab: CourseTypeTab) => {
-    setActiveTab(tab);
-    setCurrentPage(1);
-  }, []);
-
-  const tabCounts = useMemo(
-    () => ({
-      video: courseList.filter((course) => course.type === COURSE_TYPE_BY_TAB.video).length,
-      reading: courseList.filter((course) => course.type === COURSE_TYPE_BY_TAB.reading).length,
-    }),
-    [courseList],
-  );
-
-  // Search narrows within the active tab, never across it.
   const filteredCourses = useMemo(() => {
-    const query = searchQuery.toLowerCase();
-    return courseList.filter(
-      (course) =>
-        course.type === COURSE_TYPE_BY_TAB[activeTab] && course.title.toLowerCase().includes(query),
+    return courseList.filter((course) =>
+      course.title.toLowerCase().includes(searchQuery.toLowerCase()),
     );
-  }, [courseList, searchQuery, activeTab]);
+  }, [courseList, searchQuery]);
 
+  const totalPages = Math.ceil(filteredCourses.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const currentCourses = filteredCourses.slice(startIndex, startIndex + itemsPerPage);
   const totalEntries = filteredCourses.length;
 
-  // Header affordances stay tied to "the org already has courses"; the illustrated
-  // panel below is per-tab, and an empty *search* keeps the table chrome instead.
-  const hasCourses = courseList.length > 0;
-  const isVideoTab = activeTab === 'video';
-  const showEmptyPanel = totalEntries === 0 && searchQuery.trim() === '';
-
-  const buildRowActions = (course: CourseWithStats): RowAction[] => {
-    const actions: RowAction[] = [];
-
-    if (canAssign) {
-      actions.push({
-        label: 'Assign to staff',
-        icon: <UserPlus className="size-4" />,
-        onSelect: () => router.push(`/dashboard/training/courses/${course.id}/assign`),
-      });
+  const handlePageChange = (page: number) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
     }
-
-    // Forked courses (duplicates, adopted prebuilts) carry no CourseVersion, so
-    // there is no source document to open.
-    if (canReadDocuments && course.sourceDocumentId) {
-      actions.push({
-        label: 'View Source Document',
-        icon: <FileText className="size-4" />,
-        onSelect: () => router.push(`/dashboard/documents/${course.sourceDocumentId}`),
-      });
-    }
-
-    if (canEditCourse) {
-      actions.push({
-        label: 'Rename',
-        icon: <Pencil className="size-4" />,
-        onSelect: () => setCourseToRename({ id: course.id, title: course.title }),
-      });
-    }
-
-    if (canDeleteCourse) {
-      actions.push({
-        label: deletingId === course.id ? 'Deleting…' : 'Delete',
-        icon: <Trash2 className="size-4" />,
-        variant: 'destructive',
-        disabled: deletingId === course.id,
-        onSelect: () => setDeleteTarget(course),
-      });
-    }
-
-    return actions;
   };
 
   return (
@@ -241,58 +309,25 @@ export default function CoursesListClient({
         />
       )}
 
-      <AlertDialog
-        open={!!deleteTarget}
-        onOpenChange={(open) => {
-          if (!open) setDeleteTarget(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete course?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently remove &ldquo;{deleteTarget?.title}&rdquo; and cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-white hover:bg-destructive/90"
-              onClick={() => {
-                if (deleteTarget) handleDelete(deleteTarget);
-                setDeleteTarget(null);
-              }}
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <header className="mb-[30px] flex flex-col gap-[5px]">
-        <p className="text-sm leading-tight font-medium">
-          <span className="text-[#a0aec0]">Trainings / </span>
-          <span className="text-[#2d3748]">Courses</span>
-        </p>
-        <div className="flex items-center gap-4">
-          <h1 className="min-w-0 flex-1 text-[28px] leading-[1.31] font-semibold tracking-[-0.04em] text-[#272b30] sm:text-[33.5px]">
-            Courses
-          </h1>
-          {hasCourses && canCreateCourse && (
-            <div className="flex shrink-0 items-center gap-2 md:gap-3">
-              <Button
-                id="create-course-btn"
-                size="lg"
-                onClick={startCreateCourse}
-                className="h-10 gap-1.5 rounded-[10px] px-4 text-[13px] font-semibold tracking-[-0.31px] has-[>svg]:px-4 md:h-12 md:gap-2 md:rounded-[12px] md:px-6 md:text-[15.5px] md:has-[>svg]:px-6"
-              >
-                <Plus className="size-5 md:size-[25px]" aria-hidden="true" />
-                Create Course
-              </Button>
-            </div>
-          )}
+      <div className="mb-8 flex items-center justify-between gap-4 max-sm:flex-col max-sm:items-start">
+        <div>
+          <div className="mb-2 text-sm text-[#718096]">Trainings / Courses</div>
+          <h1 className="text-2xl font-bold text-[#1a202c]">Courses</h1>
         </div>
-      </header>
+        <Button
+          id="create-course-btn"
+          onClick={() => {
+            if (!hasBilling) {
+              setShowBillingGate(true);
+              return;
+            }
+            router.push('/dashboard/courses/create');
+          }}
+        >
+          <Plus className="size-5" />
+          Create Course
+        </Button>
+      </div>
 
       {showBillingGate && (
         <BillingGateModal
@@ -302,235 +337,192 @@ export default function CoursesListClient({
         />
       )}
 
-      {actionError && (
-        <Alert variant="error" className="mb-4">
-          {actionError}
-        </Alert>
+      {deleteError && (
+        <p role="alert" className="text-red-600 text-sm mb-3 px-3 py-2 bg-red-50 rounded-md">
+          ⚠️ {deleteError}
+        </p>
       )}
 
       <PendingGenerationBanner />
 
-      <div className="flex min-w-0 flex-col gap-6 rounded-[17px] border border-[#dfe1e6] bg-white p-4 shadow-[0px_1px_2px_0px_rgba(228,229,231,0.24)] md:px-[21px] md:pt-[21px] md:pb-4">
-        <div className="flex flex-col gap-4 lg:flex-row lg:flex-wrap lg:items-end lg:justify-between">
-          <Tabs value={activeTab} onValueChange={(value) => selectTab(value as CourseTypeTab)}>
-            <TabsList
-              variant="line"
-              className="h-auto w-full justify-start gap-0 rounded-none border-b border-[#f0f2f5] bg-transparent p-0"
-            >
-              <TabsTrigger value="video" className={TAB_TRIGGER_CLASS}>
-                Video{' '}
-                <Badge
-                  variant="secondary"
-                  className={cn(
-                    TAB_BADGE_CLASS,
-                    isVideoTab ? TAB_BADGE_ACTIVE_CLASS : TAB_BADGE_INACTIVE_CLASS,
-                  )}
-                >
-                  {tabCounts.video}
-                </Badge>
-              </TabsTrigger>
-              <TabsTrigger value="reading" className={TAB_TRIGGER_CLASS}>
-                Reading Course{' '}
-                <Badge
-                  variant="secondary"
-                  className={cn(
-                    TAB_BADGE_CLASS,
-                    isVideoTab ? TAB_BADGE_INACTIVE_CLASS : TAB_BADGE_ACTIVE_CLASS,
-                  )}
-                >
-                  {tabCounts.reading}
-                </Badge>
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
-
-          <div className="flex w-full flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center lg:w-auto">
-            <div className="w-full sm:w-[470px] sm:max-w-full">
-              <Input
-                className="h-[38px] rounded-[8.5px] border-[#dfe1e6] pl-9 text-[15px] shadow-[0px_1px_2px_0px_rgba(228,229,231,0.24)] placeholder:text-[#a4abb8]"
-                placeholder="Search for courses..."
-                value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  setCurrentPage(1);
-                }}
-                aria-label="Search courses"
-                startIcon={<Search aria-hidden="true" />}
-              />
-            </div>
-            {isVideoTab && canCreateCourse && (
-              <Button
-                variant="link"
-                onClick={startPrebuiltCatalog}
-                className="h-auto shrink-0 justify-start gap-1.5 p-0 text-[14px] font-semibold whitespace-nowrap sm:justify-center"
-              >
-                <Library className="size-4" aria-hidden="true" />
-                Browse course catalog
-              </Button>
-            )}
-          </div>
+      <div className="rounded-xl border border-[#e2e8f0] bg-white p-6">
+        <div className="mb-6 w-full sm:w-[380px]">
+          <Input
+            className="h-11"
+            placeholder="Search for courses..."
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setCurrentPage(1);
+            }}
+            startIcon={<Search aria-hidden="true" />}
+          />
         </div>
 
-        {showEmptyPanel ? (
-          <CoursesEmptyState
-            variant={activeTab}
-            canCreateCourse={canCreateCourse}
-            onCreate={startCreateCourse}
-            onSwitchTab={() => selectTab(isVideoTab ? 'reading' : 'video')}
-          />
-        ) : (
-          <>
-            <Table className="table-fixed">
-              <TableHeader>
-                <TableRow className="border-0 hover:bg-transparent">
-                  <TableHead
-                    className={cn(
-                      headCls,
-                      'rounded-l-[9px]',
-                      isVideoTab ? 'md:w-[36%]' : 'md:w-[38%]',
-                    )}
-                  >
-                    Course Name
-                  </TableHead>
-                  <TableHead
-                    className={cn(
-                      headCls,
-                      'hidden md:table-cell',
-                      isVideoTab ? 'md:w-[12%]' : 'md:w-[17%]',
-                    )}
-                  >
-                    Assigned Staff
-                  </TableHead>
-                  <TableHead
-                    className={cn(
-                      headCls,
-                      'hidden md:table-cell',
-                      isVideoTab ? 'md:w-[32%]' : 'md:w-[27%]',
-                    )}
-                  >
-                    {isVideoTab ? 'Description' : 'Date Created'}
-                  </TableHead>
-                  <TableHead className={cn(headCls, 'w-[56px] rounded-r-[9px] md:w-[20%]')}>
-                    Action
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {currentCourses.length > 0 ? (
-                  currentCourses.map((course) => {
-                    const rowActions = buildRowActions(course);
-                    const secondaryValue = isVideoTab
-                      ? course.description
-                      : new Date(course.createdAt).toLocaleDateString('en-US', {
-                          month: 'short',
-                          day: '2-digit',
-                          year: 'numeric',
-                        });
-                    return (
-                      <TableRow
-                        key={course.id}
-                        onClick={() => router.push(`/dashboard/training/courses/${course.id}`)}
-                        className="cursor-pointer"
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent border-0">
+              <TableHead style={{ width: '32%' }}>Course Name</TableHead>
+              <TableHead className="hidden md:table-cell" style={{ width: '10%' }}>
+                Type
+              </TableHead>
+              <TableHead className="hidden md:table-cell" style={{ width: '13%' }}>
+                Assigned Staff
+              </TableHead>
+              <TableHead className="hidden md:table-cell" style={{ width: '15%' }}>
+                Role
+              </TableHead>
+              <TableHead className="hidden lg:table-cell" style={{ width: '18%' }}>
+                Date Created
+              </TableHead>
+              <TableHead className="text-right" style={{ width: '12%' }}>
+                Action
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {currentCourses.length > 0 ? (
+              currentCourses.map((course) => (
+                <TableRow
+                  key={course.id}
+                  onClick={() => router.push(`/dashboard/training/courses/${course.id}`)}
+                  className="cursor-pointer"
+                >
+                  <TableCell>
+                    <div className="flex items-center gap-4">
+                      <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[#f1f5f9]">
+                        <Image
+                          src={course.thumbnail || '/images/icon-course-blue.svg'}
+                          alt={course.title}
+                          width={40}
+                          height={40}
+                          className="object-cover"
+                        />
+                      </div>
+                      <span className="font-semibold text-[#1a202c]">{course.title}</span>
+                    </div>
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell">
+                    <CourseTypeIcon type={course.type} />
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell">{course.enrollmentsCount}</TableCell>
+                  <TableCell className="hidden md:table-cell">General</TableCell>
+                  <TableCell className="hidden lg:table-cell">
+                    {new Date(course.createdAt).toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: '2-digit',
+                      year: 'numeric',
+                    })}
+                  </TableCell>
+                  <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center justify-end gap-3">
+                      <Link
+                        href={`/dashboard/training/courses/${course.id}`}
+                        className="hidden text-sm font-semibold text-primary hover:underline sm:inline-flex"
                       >
-                        <TableCell className={cn(cellCls, 'px-2 md:px-[18px]')}>
-                          <div className="flex items-center gap-3 sm:gap-[18px]">
-                            {isVideoTab ? (
-                              <div className="relative h-[47px] w-[78px] shrink-0 overflow-hidden rounded-[6px] bg-[#f1f5f9]">
-                                {/* The icon fallback is a square glyph — cropping it into this
-                                    16:9 box mangles it, so posterless videos show the tile alone. */}
-                                {course.thumbnail && (
-                                  <Image
-                                    src={course.thumbnail}
-                                    alt={course.title}
-                                    width={78}
-                                    height={47}
-                                    className="size-full object-cover"
-                                  />
-                                )}
-                                <span className="absolute inset-0 flex items-center justify-center">
-                                  <span className="flex size-5 items-center justify-center rounded-full bg-white/90">
-                                    <Play
-                                      className="size-2.5 fill-foreground text-foreground"
-                                      aria-hidden="true"
-                                    />
-                                  </span>
-                                </span>
-                              </div>
-                            ) : (
-                              <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[#f1f5f9]">
-                                <Image
-                                  src={course.thumbnail || '/images/icon-course-blue.svg'}
-                                  alt={course.title}
-                                  width={40}
-                                  height={40}
-                                  className="object-cover"
-                                />
-                              </div>
-                            )}
-                            <div className="flex min-w-0 flex-1 flex-col justify-center">
-                              <span className="truncate text-[15px] font-medium tracking-[0.35px] text-[#1e1e1e] sm:text-[17.6px]">
-                                {course.title}
-                              </span>
-                              <span className="truncate text-[13px] font-normal text-[#464646] md:hidden">
-                                {course.enrollmentsCount} assigned
-                                {secondaryValue ? ` · ${secondaryValue}` : ''}
-                              </span>
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell className={cn(cellCls, 'hidden text-[#505050] md:table-cell')}>
-                          {course.enrollmentsCount}
-                        </TableCell>
-                        <TableCell className={cn(cellCls, 'hidden text-[#464646] md:table-cell')}>
-                          <span className="block truncate">{secondaryValue}</span>
-                        </TableCell>
-                        <TableCell
-                          className={cn(cellCls, 'px-1 md:px-[18px]')}
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <div className="flex items-center gap-1 md:gap-3">
-                            <Link
-                              href={`/dashboard/training/courses/${course.id}`}
-                              className="hidden px-4 py-2.5 text-[16px] font-semibold text-primary hover:underline sm:inline-flex"
-                            >
-                              View
-                            </Link>
-                            {rowActions.length > 0 && (
-                              <RowActionsMenu
-                                className="size-8 rounded-[8px] border border-[#ece4e4] bg-white text-[#0d0d12] [&_svg]:size-4"
-                                contentClassName={ROW_MENU_CONTENT_CLASS}
-                                itemClassName={ROW_MENU_ITEM_CLASS}
-                                actions={rowActions}
-                              />
-                            )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
-                ) : (
-                  <EmptyTableState
-                    message="No courses found."
-                    subMessage="Try adjusting your search or create a new course."
-                    colSpan={4}
-                    asTableRow
-                  />
-                )}
-              </TableBody>
-            </Table>
+                        View
+                      </Link>
+                      <RowActionsMenu
+                        actions={[
+                          {
+                            label: 'Rename',
+                            icon: <Pencil className="size-4" />,
+                            onSelect: () =>
+                              setCourseToRename({ id: course.id, title: course.title }),
+                          },
+                          {
+                            label: deletingId === course.id ? 'Deleting…' : 'Delete',
+                            icon: <Trash2 className="size-4" />,
+                            variant: 'destructive',
+                            separatorBefore: true,
+                            disabled: deletingId === course.id,
+                            onSelect: () => handleDelete(course),
+                          },
+                        ]}
+                      />
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))
+            ) : (
+              <EmptyTableState
+                message="No courses found."
+                subMessage="Try adjusting your search or create a new course."
+                colSpan={6}
+                asTableRow
+              />
+            )}
+          </TableBody>
+        </Table>
 
-            <CoursesTableFooter
-              totalEntries={totalEntries}
-              currentPage={currentPage}
-              itemsPerPage={itemsPerPage}
-              onPageChange={setCurrentPage}
-              onItemsPerPageChange={(next) => {
-                setItemsPerPage(next);
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-4 border-t border-[#edf2f7] pt-4">
+          <div className="text-sm text-[#718096]">
+            Showing {totalEntries === 0 ? 0 : startIndex + 1} to{' '}
+            {Math.min(startIndex + itemsPerPage, totalEntries)} of {totalEntries} entries
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <Button
+              variant="outline"
+              size="icon-sm"
+              disabled={currentPage === 1}
+              onClick={() => handlePageChange(currentPage - 1)}
+            >
+              <ChevronLeft className="size-4" />
+            </Button>
+
+            {buildPaginationRange(currentPage, totalPages).map((page, i) =>
+              page === 'ellipsis' ? (
+                <span
+                  key={`ellipsis-${i}`}
+                  className="px-1.5 text-sm text-[#718096]"
+                  aria-hidden="true"
+                >
+                  …
+                </span>
+              ) : (
+                <Button
+                  key={page}
+                  variant={page === currentPage ? 'default' : 'outline'}
+                  size="icon-sm"
+                  onClick={() => handlePageChange(page)}
+                >
+                  {page}
+                </Button>
+              ),
+            )}
+
+            <Button
+              variant="outline"
+              size="icon-sm"
+              disabled={currentPage === totalPages || totalPages === 0}
+              onClick={() => handlePageChange(currentPage + 1)}
+            >
+              <ChevronRight className="size-4" />
+            </Button>
+          </div>
+
+          <div className="flex items-center gap-2 text-sm text-[#718096]">
+            <span>Show</span>
+            <Select
+              value={itemsPerPage.toString()}
+              onValueChange={(v) => {
+                setItemsPerPage(Number(v));
                 setCurrentPage(1);
               }}
-            />
-          </>
-        )}
+            >
+              <SelectTrigger className="h-8 w-[72px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="5">5</SelectItem>
+                <SelectItem value="10">10</SelectItem>
+                <SelectItem value="20">20</SelectItem>
+              </SelectContent>
+            </Select>
+            <span>entries</span>
+          </div>
+        </div>
       </div>
     </div>
   );

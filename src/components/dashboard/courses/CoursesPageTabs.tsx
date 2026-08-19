@@ -7,12 +7,10 @@ import CoursesListClient from '@/components/dashboard/courses/CoursesListClient'
 import AvailableCoursesClient from '@/components/dashboard/courses/AvailableCoursesClient';
 import type { CourseWithStats } from '@/types/course';
 import type { VideoCourseAvailabilityRow } from '@/app/actions/offering';
-import type { Role } from '@/types/next-auth';
 
 interface CoursesPageTabsProps {
   courses: CourseWithStats[];
   hasBilling: boolean;
-  viewerRole: Role;
   availableCourses: VideoCourseAvailabilityRow[];
 }
 
@@ -33,7 +31,6 @@ function isTabValue(value: string | null): value is TabValue {
 export default function CoursesPageTabs({
   courses,
   hasBilling,
-  viewerRole,
   availableCourses,
 }: CoursesPageTabsProps) {
   const router = useRouter();
@@ -74,7 +71,7 @@ export default function CoursesPageTabs({
       </TabsList>
 
       <TabsContent value="mine">
-        <CoursesListClient courses={courses} hasBilling={hasBilling} viewerRole={viewerRole} />
+        <CoursesListClient courses={courses} hasBilling={hasBilling} />
       </TabsContent>
 
       <TabsContent value="available">
