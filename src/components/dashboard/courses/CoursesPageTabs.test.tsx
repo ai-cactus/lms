@@ -37,14 +37,7 @@ const videoCourse: VideoCourseAvailabilityRow = {
 };
 
 function renderTabs(availableCourses: VideoCourseAvailabilityRow[] = [videoCourse]) {
-  return render(
-    <CoursesPageTabs
-      courses={[]}
-      hasBilling
-      viewerRole="owner"
-      availableCourses={availableCourses}
-    />,
-  );
+  return render(<CoursesPageTabs courses={[]} hasBilling availableCourses={availableCourses} />);
 }
 
 describe('CoursesPageTabs', () => {

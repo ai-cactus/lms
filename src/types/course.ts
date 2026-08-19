@@ -11,12 +11,6 @@ export type CourseWithStats = {
   lessonsCount: number;
   enrollmentsCount: number;
   completionRate: number;
-  /**
-   * Document the course was generated from, when the caller loaded that lineage.
-   * Absent from views that do not query it; null when the course has no
-   * `CourseVersion` lineage or the document belongs to another tenant.
-   */
-  sourceDocumentId?: string | null;
 };
 
 export interface CourseWizardData {

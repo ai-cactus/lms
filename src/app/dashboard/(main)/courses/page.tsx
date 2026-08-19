@@ -56,7 +56,6 @@ export default async function CoursesPage() {
       <CoursesPageTabs
         courses={courses}
         hasBilling={hasBilling}
-        viewerRole={user.role}
         availableCourses={availableCourses}
       />
     </Suspense>
