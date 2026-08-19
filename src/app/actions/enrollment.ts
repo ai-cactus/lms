@@ -3,7 +3,7 @@
 import prisma from '@/lib/prisma';
 import { dbRoleToRoleKey, ALL_ROLES } from '@/lib/rbac/role-utils';
 import { can } from '@/lib/rbac/permissions';
-import { hasActiveBilling } from '@/lib/billing';
+import { hasActiveBilling, BILLING_GATE_ASSIGN_MESSAGE } from '@/lib/billing';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
@@ -17,6 +17,7 @@ import {
   createEnrollmentForUser,
   createEnrollmentsForUsers,
   type CreateEnrollmentContext,
+  type DeferredWorkerNotification,
   type EnrollmentOutcome,
 } from '@/lib/enrollment/create';
 import { getSeatUsage } from '@/lib/seat-limits';
@@ -126,6 +127,26 @@ export async function getAvailableUsers() {
   }));
 }
 
+/** Opt-in behaviour switches for {@link enrollUsers}; every default is today's behaviour. */
+export interface EnrollUsersOptions {
+  /**
+   * Return the worker-facing notification/email payloads instead of emitting
+   * them, so a multi-course caller can send ONE batched notice per worker.
+   */
+  deferWorkerNotification?: boolean;
+  /** See {@link UpsertCourseAssignmentParams.settingsMode}. Defaults to `'write'`. */
+  assignmentSettingsMode?: 'write' | 'preserve';
+}
+
+export interface EnrollUsersResult {
+  success: string[];
+  alreadyEnrolled: string[];
+  newInvited: string[];
+  failed: string[];
+  /** Present only when `options.deferWorkerNotification` was set. */
+  deferred?: DeferredWorkerNotification[];
+}
+
 /**
  * Enroll users in a course using structured staff entries.
  * Each entry must include an email address and may optionally include
@@ -140,7 +161,8 @@ export async function enrollUsers(
   courseId: string,
   staffEntries: StaffEntry[],
   assignmentSettings?: AssignmentSettingsInput,
-) {
+  options?: EnrollUsersOptions,
+): Promise<EnrollUsersResult> {
   const session = await resolveSession();
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
@@ -211,7 +233,7 @@ export async function enrollUsers(
       organizationId,
       userId: session.user.id,
     });
-    throw new Error('Your organization needs an active subscription to assign courses.');
+    throw new Error(BILLING_GATE_ASSIGN_MESSAGE);
   }
 
   // Create a CourseAssignment batch to hold this assignment's schedule /
@@ -255,6 +277,7 @@ export async function enrollUsers(
       remindersEnabled: assignmentSettings?.remindersEnabled ?? true,
       renewalCycle: assignmentSettings?.renewalCycle ?? 'none',
       stageRows,
+      settingsMode: options?.assignmentSettingsMode ?? 'write',
     });
   }
 
@@ -287,6 +310,7 @@ export async function enrollUsers(
     assignmentDueAt,
     assignmentWindowDays: assignmentSettings?.dueWindowDays ?? null,
     enrolledByUserId: session.user.id,
+    ...(options?.deferWorkerNotification ? { deferWorkerNotification: true } : {}),
   };
 
   // Seat gate (F-022): an unknown / org-less email consumes a plan seat when it
@@ -356,6 +380,8 @@ export async function enrollUsers(
     ? await createEnrollmentsForUsers(staffEntries, enrollmentContext, seatRejectedEmails)
     : await enrollSequentially(staffEntries, enrollmentContext, seatRejectedEmails);
 
+  const deferred: DeferredWorkerNotification[] = [];
+
   for (const outcome of outcomes) {
     switch (outcome.status) {
       case 'failed':
@@ -371,12 +397,17 @@ export async function enrollUsers(
         break;
       case 'enrolled':
         results.success.push(outcome.email);
+        if (outcome.deferred) {
+          deferred.push(outcome.deferred);
+        }
         break;
     }
   }
 
   revalidatePath(`/dashboard/training/courses/${courseId}`);
-  return results;
+  // Conditional spread: callers that never opted in keep the exact result shape
+  // they have always received.
+  return { ...results, ...(options?.deferWorkerNotification ? { deferred } : {}) };
 }
 
 /**
@@ -533,7 +564,7 @@ async function assignCourseToRoleTargets(
       organizationId,
       userId: session.user.id,
     });
-    throw new Error('Your organization needs an active subscription to assign courses.');
+    throw new Error(BILLING_GATE_ASSIGN_MESSAGE);
   }
 
   const { scheduleAt, dueAt, dueWindowDays } = options;

@@ -345,61 +345,6 @@ export const sendCourseInviteEmail = async (
   }
 };
 
-export const sendCourseEnrollmentEmail = async (
-  email: string,
-  userName: string,
-  courseName: string,
-  orgName: string,
-) => {
-  const baseUrl =
-    process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://staging-lms.theraptly.com';
-  const loginLink = `${baseUrl}/login`;
-  const appName = 'Theraptly';
-
-  const html = `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
-            <div style="text-align: center; margin-bottom: 32px;">
-                <h1 style="color: #4C6EF5; font-size: 28px; margin: 0;">You've been assigned a new course!</h1>
-            </div>
-            <p style="color: #333; font-size: 16px; line-height: 1.6;">
-                Hi <strong>${escapeHtml(userName)}</strong>,
-            </p>
-            <p style="color: #333; font-size: 16px; line-height: 1.6;">
-                <strong>${escapeHtml(orgName)}</strong> has assigned you a new training course:
-            </p>
-            <div style="background: #f7fafc; border-radius: 8px; padding: 24px; margin: 24px 0; text-align: center;">
-                <h3 style="margin: 0; color: #2D3748; font-size: 20px;">${escapeHtml(courseName)}</h3>
-            </div>
-            <p style="color: #333; font-size: 16px; line-height: 1.6;">
-                Please log in to your account to start this course.
-            </p>
-            <div style="text-align: center; margin: 32px 0;">
-                <a href="${loginLink}" style="display: inline-block; background-color: #4C6EF5; color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">Log In to Training Dashboard</a>
-            </div>
-            <p style="color: #718096; font-size: 12px; margin-top: 32px; text-align: center;">
-                If you have questions, please contact your administrator.
-            </p>
-        </div>
-    `;
-
-  try {
-    const info = await sendMailTracked(
-      {
-        from: `"${appName}" <${user}>`,
-        to: email,
-        subject: `New Course Assignment: ${courseName} - ${appName}`,
-        html,
-      },
-      'course_enrollment',
-    );
-    logger.info({ msg: 'Course enrollment email sent: %s', data: info.messageId });
-    return { success: true };
-  } catch (error) {
-    logger.error({ msg: 'Error sending course enrollment email:', err: error });
-    return { success: false, error };
-  }
-};
-
 // Send email to admin when a worker exhausts quiz attempts
 export async function sendQuizLockedEmail(
   adminEmail: string,
@@ -791,48 +736,95 @@ function reminderBaseUrl(): string {
   );
 }
 
+/** One course line rendered by {@link sendCoursesAssignedEmail}. */
+export interface AssignedCourseLine {
+  title: string;
+  dueAt: Date | string | null;
+}
+
 /**
- * Stage 1 — Initial launch. Sent when a course is assigned (the in-app
- * COURSE_ASSIGNED notification is kept; this is the accompanying email).
- * Friendly tone, surfaces the due date, links to the worker trainings page.
+ * Stage 1 — Initial launch. Announces 1..N newly assigned courses in a SINGLE
+ * email (the in-app COURSE_ASSIGNED notification is kept; this is the
+ * accompanying email). Friendly tone, surfaces each due date, links to the
+ * worker trainings page.
+ *
+ * The one-course rendering is intentionally byte-identical to the long-standing
+ * single-course launch email, so {@link sendCourseLaunchEmail} can delegate here
+ * without changing what existing recipients see.
  */
-export async function sendCourseLaunchEmail(
+export async function sendCoursesAssignedEmail(
   to: string,
   userName: string,
-  courseName: string,
+  courses: AssignedCourseLine[],
   orgName: string,
-  dueAt: Date | string | null,
 ): Promise<{ success: boolean; messageId?: string; error?: unknown }> {
   if (!to) {
     logger.warn({ msg: '[email] Course launch email skipped — missing recipient' });
     return { success: false, error: 'Missing recipient email' };
   }
 
+  if (courses.length === 0) {
+    logger.warn({ msg: '[email] Course launch email skipped — no courses', to: maskEmail(to) });
+    return { success: false, error: 'No courses to announce' };
+  }
+
   const appName = 'Theraptly';
   const trainingsLink = `${reminderBaseUrl()}/worker/trainings`;
-  const formattedDue = formatDueDate(dueAt);
+  const count = courses.length;
+  const isSingle = count === 1;
+
+  // Subjects are never escaped — see the escapeHtml docstring at the top of this file.
+  const subject = isSingle
+    ? `📋 New Required Training Assigned: ${courses[0].title}`
+    : `📋 ${count} New Required Trainings Assigned`;
+  const heading = isSingle
+    ? '📋 New Required Training Assigned'
+    : `📋 ${count} New Required Trainings Assigned`;
+  const intro = isSingle
+    ? 'has assigned you a new required training course:'
+    : `has assigned you ${count} new required training courses:`;
+  const outro = isSingle
+    ? 'Please review the details and log in to begin the course.'
+    : 'Please review the details and log in to begin these courses.';
+
+  const dueLine = (course: AssignedCourseLine, margin: string): string => {
+    const formatted = formatDueDate(course.dueAt);
+    return formatted
+      ? `<p style="margin: ${margin}; color: #4a5568; font-size: 15px;">Due by <strong>${escapeHtml(formatted)}</strong></p>`
+      : '';
+  };
+
+  const card = isSingle
+    ? `<div style="background: #f7fafc; border-radius: 8px; padding: 24px; margin: 24px 0; text-align: center;">
+                <h3 style="margin: 0; color: #2D3748; font-size: 20px;">${escapeHtml(courses[0].title)}</h3>
+                ${dueLine(courses[0], '12px 0 0 0')}
+            </div>`
+    : `<div style="background: #f7fafc; border-radius: 8px; padding: 8px 24px; margin: 24px 0; text-align: left;">
+                ${courses
+                  .map(
+                    (course, index) =>
+                      `<div style="padding: 16px 0;${index > 0 ? ' border-top: 1px solid #e2e8f0;' : ''}">
+                    <h3 style="margin: 0; color: #2D3748; font-size: 18px;">${escapeHtml(course.title)}</h3>
+                    ${dueLine(course, '6px 0 0 0')}
+                </div>`,
+                  )
+                  .join('\n                ')}
+            </div>`;
 
   const html = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
             <div style="text-align: center; margin-bottom: 32px;">
-                <h1 style="color: #4C6EF5; font-size: 28px; margin: 0;">📋 New Required Training Assigned</h1>
+                <h1 style="color: #4C6EF5; font-size: 28px; margin: 0;">${heading}</h1>
             </div>
             <p style="color: #333; font-size: 16px; line-height: 1.6;">
                 Hi <strong>${escapeHtml(userName)}</strong>,
             </p>
             <p style="color: #333; font-size: 16px; line-height: 1.6;">
-                <strong>${escapeHtml(orgName)}</strong> has assigned you a new required training course:
+                <strong>${escapeHtml(orgName)}</strong> ${intro}
             </p>
-            <div style="background: #f7fafc; border-radius: 8px; padding: 24px; margin: 24px 0; text-align: center;">
-                <h3 style="margin: 0; color: #2D3748; font-size: 20px;">${escapeHtml(courseName)}</h3>
-                ${
-                  formattedDue
-                    ? `<p style="margin: 12px 0 0 0; color: #4a5568; font-size: 15px;">Due by <strong>${escapeHtml(formattedDue)}</strong></p>`
-                    : ''
-                }
-            </div>
+            ${card}
             <p style="color: #333; font-size: 16px; line-height: 1.6;">
-                Please review the details and log in to begin the course.
+                ${outro}
             </p>
             <div style="text-align: center; margin: 32px 0;">
                 <a href="${trainingsLink}" style="display: inline-block; background-color: #4C6EF5; color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">Log In to Begin</a>
@@ -848,7 +840,7 @@ export async function sendCourseLaunchEmail(
       {
         from: `"${appName}" <${user}>`,
         to,
-        subject: `📋 New Required Training Assigned: ${courseName}`,
+        subject,
         html,
       },
       'course_launch',
@@ -857,6 +849,7 @@ export async function sendCourseLaunchEmail(
       msg: '[email] Course launch email sent',
       messageId: info.messageId,
       to: maskEmail(to),
+      courseCount: count,
     });
     return { success: true, messageId: info.messageId };
   } catch (error) {
@@ -864,9 +857,26 @@ export async function sendCourseLaunchEmail(
       msg: '[email] Failed to send course launch email',
       err: error,
       to: maskEmail(to),
+      courseCount: count,
     });
     return { success: false, error };
   }
+}
+
+/**
+ * Single-course Stage 1 launch email. Thin delegator over
+ * {@link sendCoursesAssignedEmail} — kept as its own export because the renewal
+ * launch in the reminder sweep and the non-deferred enrollment path both call it
+ * with this exact signature.
+ */
+export async function sendCourseLaunchEmail(
+  to: string,
+  userName: string,
+  courseName: string,
+  orgName: string,
+  dueAt: Date | string | null,
+): Promise<{ success: boolean; messageId?: string; error?: unknown }> {
+  return sendCoursesAssignedEmail(to, userName, [{ title: courseName, dueAt }], orgName);
 }
 
 /** Deadline reminder stages (CSV stages 2–4). */
