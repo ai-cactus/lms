@@ -21,6 +21,15 @@ export function hasActiveBilling(
   return subscription.status === 'active' || subscription.status === 'trialing';
 }
 
+/**
+ * The message every course-assignment path throws when {@link hasActiveBilling}
+ * rejects the org. Shared so callers that need to branch on it — the
+ * multi-course staff assignment aborts its loop rather than failing each course
+ * in turn — compare against one literal instead of their own copy.
+ */
+export const BILLING_GATE_ASSIGN_MESSAGE =
+  'Your organization needs an active subscription to assign courses.';
+
 /** The longest a subscription may stay paused before a continue/cancel decision. */
 export const MAX_PAUSE_MONTHS = 3;
 

@@ -95,6 +95,13 @@ export interface UpsertCourseAssignmentParams {
    * `null` / `[]` explicitly clears it; a non-empty list sets it.
    */
   targetRoles?: UserRole[] | null;
+  /**
+   * `'write'` (default) overwrites an existing assignment's settings and stage
+   * rows. `'preserve'` links the existing row without touching them — the row is
+   * shared org-wide, so assigning to one worker must not silently retune the
+   * reminder ladder for everyone already enrolled.
+   */
+  settingsMode?: 'write' | 'preserve';
 }
 
 /**
@@ -118,7 +125,8 @@ function roleTargetColumns(targetRoles: UserRole[] | null | undefined) {
  * `(organizationId, courseId)`: reuse the most recent row so already-enrolled
  * workers keep firing off the same (now updated) schedule/ladder. Stage rows are
  * upserted on the `(assignmentId, stage)` unique key — never duplicated — and
- * stages outside the submitted set survive. Returns the assignment id.
+ * stages outside the submitted set survive. Returns the assignment id. With
+ * `settingsMode: 'preserve'` an existing row is returned untouched.
  */
 export async function upsertCourseAssignment(
   params: UpsertCourseAssignmentParams,
@@ -133,6 +141,17 @@ export async function upsertCourseAssignment(
   });
 
   if (existing) {
+    if (params.settingsMode === 'preserve') {
+      logger.info({
+        msg: '[enrollment] Existing course assignment reused — settings preserved',
+        assignmentId: existing.id,
+        organizationId,
+        courseId,
+        userId: params.assignedByAdminId,
+      });
+      return existing.id;
+    }
+
     await prisma.courseAssignment.update({
       where: { id: existing.id },
       data: {

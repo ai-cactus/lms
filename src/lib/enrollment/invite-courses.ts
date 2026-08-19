@@ -1,6 +1,11 @@
 import prisma from '@/lib/prisma';
 import { logger } from '@/lib/logger';
-import { createEnrollmentForUser, type CreateEnrollmentContext } from './create';
+import {
+  createEnrollmentForUser,
+  type CreateEnrollmentContext,
+  type DeferredWorkerNotification,
+} from './create';
+import { collectDeferredNotices, notifyCoursesAssigned } from './notify';
 
 /**
  * Materialise the courses parked on an accepted invite into real enrollments.
@@ -15,7 +20,9 @@ import { createEnrollmentForUser, type CreateEnrollmentContext } from './create'
  * resolved from the org's latest {@link @/generated/prisma CourseAssignment} row
  * for the course (with sensible fallbacks when none exists — the default deadline
  * window in {@link createEnrollmentForUser} then applies). Idempotent via that
- * helper's existing-enrollment check. Never throws — a failure here must not
+ * helper's existing-enrollment check — a re-accept enrolls nothing and therefore
+ * announces nothing. Every course materialised in this run is announced in ONE
+ * email and ONE in-app notification. Never throws — a failure here must not
  * abort the accept path.
  */
 export async function enrollInviteCourses(
@@ -50,6 +57,8 @@ export async function enrollInviteCourses(
     if (!membership) {
       return;
     }
+
+    const deferred: DeferredWorkerNotification[] = [];
 
     for (const { courseId } of invite.courseAssignments) {
       // Resolve the org's live schedule/deadline for this course; fall back to a
@@ -87,11 +96,17 @@ export async function enrollInviteCourses(
         assignmentDueAt: assignment?.dueAt ?? null,
         assignmentWindowDays: assignment?.dueWindowDays ?? null,
         enrolledByUserId: organizationUserId,
+        // An invite can park several courses; batch them into one notice rather
+        // than emailing the new member once per course.
+        deferWorkerNotification: true,
       };
 
       const outcome = await createEnrollmentForUser({ email: membership.user.email }, ctx);
 
       if (outcome.status === 'enrolled') {
+        if (outcome.deferred) {
+          deferred.push(outcome.deferred);
+        }
         logger.info({
           msg: '[enrollment] Invite-parked course enrolled on accept',
           organizationUserId,
@@ -99,6 +114,10 @@ export async function enrollInviteCourses(
           inviteId,
         });
       }
+    }
+
+    for (const notice of collectDeferredNotices(deferred)) {
+      await notifyCoursesAssigned(notice);
     }
   } catch (err) {
     logger.error({

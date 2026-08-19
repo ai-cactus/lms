@@ -15,7 +15,13 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { prismaMock, mockCreateEnrollmentForUser, mockLogger } = vi.hoisted(() => {
+const {
+  prismaMock,
+  mockCreateEnrollmentForUser,
+  mockCollectDeferredNotices,
+  mockNotifyCoursesAssigned,
+  mockLogger,
+} = vi.hoisted(() => {
   const prismaMock = {
     invite: { findUnique: vi.fn() },
     organizationUser: { findFirst: vi.fn() },
@@ -25,6 +31,8 @@ const { prismaMock, mockCreateEnrollmentForUser, mockLogger } = vi.hoisted(() =>
   return {
     prismaMock,
     mockCreateEnrollmentForUser: vi.fn(),
+    mockCollectDeferredNotices: vi.fn(),
+    mockNotifyCoursesAssigned: vi.fn(),
     mockLogger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
   };
 });
@@ -32,10 +40,15 @@ const { prismaMock, mockCreateEnrollmentForUser, mockLogger } = vi.hoisted(() =>
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock, default: prismaMock }));
 vi.mock('@/lib/logger', () => ({ logger: mockLogger }));
 vi.mock('./create', () => ({ createEnrollmentForUser: mockCreateEnrollmentForUser }));
+vi.mock('./notify', () => ({
+  collectDeferredNotices: mockCollectDeferredNotices,
+  notifyCoursesAssigned: mockNotifyCoursesAssigned,
+}));
 
 import { enrollInviteCourses } from './invite-courses';
 
 const ORG_USER_ID = 'ou-1';
+const USER_ID = 'user-1';
 const INVITE_ID = 'invite-1';
 
 const baseMembership = {
@@ -50,6 +63,12 @@ beforeEach(() => {
     email: 'staff@example.com',
     userId: 'user-1',
     enrollmentId: 'enrollment-1',
+  });
+  mockCollectDeferredNotices.mockReturnValue([]);
+  mockNotifyCoursesAssigned.mockResolvedValue({
+    emailSent: true,
+    notificationCreated: true,
+    courseCount: 1,
   });
 });
 
@@ -169,6 +188,7 @@ describe('enrollInviteCourses — materialising parked courses', () => {
         assignmentDueAt: dueAt,
         assignmentWindowDays: 14,
         enrolledByUserId: ORG_USER_ID,
+        deferWorkerNotification: true,
       },
     );
     expect(prismaMock.course.findUnique).not.toHaveBeenCalled();
@@ -322,5 +342,112 @@ describe('enrollInviteCourses — materialising parked courses', () => {
         inviteId: INVITE_ID,
       }),
     );
+  });
+});
+
+describe('enrollInviteCourses — batched notice for 3+ parked courses', () => {
+  it('every per-course ctx sets deferWorkerNotification: true, and collectDeferredNotices/notifyCoursesAssigned fire exactly once for the whole invite', async () => {
+    prismaMock.invite.findUnique.mockResolvedValue({
+      organizationId: 'org-1',
+      courseAssignments: [
+        { courseId: 'course-a' },
+        { courseId: 'course-b' },
+        { courseId: 'course-c' },
+      ],
+    });
+    prismaMock.organizationUser.findFirst.mockResolvedValue(baseMembership);
+    prismaMock.courseAssignment.findFirst.mockResolvedValue(null);
+    prismaMock.course.findUnique
+      .mockResolvedValueOnce({ title: 'Course A' })
+      .mockResolvedValueOnce({ title: 'Course B' })
+      .mockResolvedValueOnce({ title: 'Course C' });
+    mockCreateEnrollmentForUser
+      .mockResolvedValueOnce({
+        status: 'enrolled',
+        email: 'staff@example.com',
+        userId: USER_ID,
+        enrollmentId: 'enr-a',
+        deferred: {
+          organizationUserId: ORG_USER_ID,
+          userId: USER_ID,
+          email: 'staff@example.com',
+          recipientName: 'Staff One',
+          courseId: 'course-a',
+          courseTitle: 'Course A',
+          organizationName: 'Acme Corp',
+          dueAt: new Date('2026-09-01T00:00:00Z'),
+        },
+      })
+      .mockResolvedValueOnce({
+        status: 'enrolled',
+        email: 'staff@example.com',
+        userId: USER_ID,
+        enrollmentId: 'enr-b',
+        deferred: {
+          organizationUserId: ORG_USER_ID,
+          userId: USER_ID,
+          email: 'staff@example.com',
+          recipientName: 'Staff One',
+          courseId: 'course-b',
+          courseTitle: 'Course B',
+          organizationName: 'Acme Corp',
+          dueAt: new Date('2026-09-01T00:00:00Z'),
+        },
+      })
+      .mockResolvedValueOnce({
+        status: 'enrolled',
+        email: 'staff@example.com',
+        userId: USER_ID,
+        enrollmentId: 'enr-c',
+        deferred: {
+          organizationUserId: ORG_USER_ID,
+          userId: USER_ID,
+          email: 'staff@example.com',
+          recipientName: 'Staff One',
+          courseId: 'course-c',
+          courseTitle: 'Course C',
+          organizationName: 'Acme Corp',
+          dueAt: new Date('2026-09-01T00:00:00Z'),
+        },
+      });
+    const oneNotice = { organizationUserId: ORG_USER_ID, userId: USER_ID, courses: [] };
+    mockCollectDeferredNotices.mockReturnValue([oneNotice]);
+
+    await enrollInviteCourses(ORG_USER_ID, INVITE_ID);
+
+    expect(mockCreateEnrollmentForUser).toHaveBeenCalledTimes(3);
+    for (const call of mockCreateEnrollmentForUser.mock.calls) {
+      expect(call[1]).toMatchObject({ deferWorkerNotification: true });
+    }
+    expect(mockCollectDeferredNotices).toHaveBeenCalledTimes(1);
+    expect(mockCollectDeferredNotices).toHaveBeenCalledWith([
+      expect.objectContaining({ courseId: 'course-a' }),
+      expect.objectContaining({ courseId: 'course-b' }),
+      expect.objectContaining({ courseId: 'course-c' }),
+    ]);
+    expect(mockNotifyCoursesAssigned).toHaveBeenCalledTimes(1);
+    expect(mockNotifyCoursesAssigned).toHaveBeenCalledWith(oneNotice);
+  });
+
+  it('all parked courses already enrolled: notifyCoursesAssigned is never called', async () => {
+    prismaMock.invite.findUnique.mockResolvedValue({
+      organizationId: 'org-1',
+      courseAssignments: [{ courseId: 'course-a' }, { courseId: 'course-b' }],
+    });
+    prismaMock.organizationUser.findFirst.mockResolvedValue(baseMembership);
+    prismaMock.courseAssignment.findFirst.mockResolvedValue(null);
+    prismaMock.course.findUnique
+      .mockResolvedValueOnce({ title: 'Course A' })
+      .mockResolvedValueOnce({ title: 'Course B' });
+    mockCreateEnrollmentForUser.mockResolvedValue({
+      status: 'alreadyEnrolled',
+      email: 'staff@example.com',
+    });
+    mockCollectDeferredNotices.mockReturnValue([]);
+
+    await enrollInviteCourses(ORG_USER_ID, INVITE_ID);
+
+    expect(mockCollectDeferredNotices).toHaveBeenCalledWith([]);
+    expect(mockNotifyCoursesAssigned).not.toHaveBeenCalled();
   });
 });

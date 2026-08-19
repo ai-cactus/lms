@@ -6,9 +6,10 @@ import { redirect } from 'next/navigation';
 import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
 import { getCourses } from '@/app/actions/course';
+import { listAvailableVideoCourses } from '@/app/actions/offering';
 import { hasActiveBilling } from '@/lib/billing';
 import { Button } from '@/components/ui/button';
-import CoursesListClient from '@/components/dashboard/courses/CoursesListClient';
+import CoursesPageTabs from '@/components/dashboard/courses/CoursesPageTabs';
 
 export const dynamic = 'force-dynamic';
 
@@ -58,11 +59,21 @@ export default async function CoursesPage() {
   // that is not paused. past_due, canceled and paused are treated as inactive.
   const hasBilling = hasActiveBilling(organization?.subscription);
 
-  const courses = await getCourses();
+  // Fetch both data sources in parallel; a failure in the global video catalog
+  // must never take the page down with it — fall back to an empty list.
+  const [courses, availableCourses] = await Promise.all([
+    getCourses(),
+    listAvailableVideoCourses().catch(() => []),
+  ]);
 
   return (
     <Suspense fallback={null}>
-      <CoursesListClient courses={courses} hasBilling={hasBilling} viewerRole={role} />
+      <CoursesPageTabs
+        courses={courses}
+        hasBilling={hasBilling}
+        viewerRole={role}
+        availableCourses={availableCourses}
+      />
     </Suspense>
   );
 }
