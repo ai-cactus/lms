@@ -66,7 +66,6 @@ vi.mock('./notifications', () => ({
 
 vi.mock('@/lib/email', () => ({
   sendCourseInviteEmail: vi.fn().mockResolvedValue(undefined),
-  sendCourseEnrollmentEmail: vi.fn().mockResolvedValue(undefined),
   // Phase 7 wires sendCourseLaunchEmail from the assign flow; the mock must
   // export it or the module-under-test throws at import time.
   sendCourseLaunchEmail: vi.fn().mockResolvedValue(undefined),

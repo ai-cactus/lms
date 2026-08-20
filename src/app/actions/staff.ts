@@ -1,5 +1,6 @@
 'use server';
 
+import { BILLING_GATE_ASSIGN_MESSAGE } from '@/lib/billing';
 import prisma from '@/lib/prisma';
 import {
   isAdminRole,
@@ -16,6 +17,8 @@ import type { EnrollmentStatus, UserRole } from '@/generated/prisma/enums';
 import { enrollUsers, type AssignmentSettingsInput } from '@/app/actions/enrollment';
 import { enrollUserForRoleTargets } from '@/lib/enrollment/role-targets';
 import { logger, maskEmail } from '@/lib/logger';
+import type { DeferredWorkerNotification } from '@/lib/enrollment/create';
+import { collectDeferredNotices, notifyCoursesAssigned } from '@/lib/enrollment/notify';
 import { audit, getClientContext } from '@/lib/audit';
 import { headers } from 'next/headers';
 import { invalidateRevalidationCache } from '@/lib/auth/session-revalidation-cache';
@@ -515,6 +518,10 @@ export async function setStaffFacilities(
 }
 
 /**
+ * @deprecated Superseded by {@link assignCoursesToStaffMember}, which assigns
+ * 1..N courses in one action and emits a single batched notice. Kept as the
+ * instant revert path for the staff-profile assign dialog.
+ *
  * Assigns a course to a single staff member from their profile. This path is
  * gated on `user.edit` (roster management) — deliberately distinct from the
  * Courses-module assignment, which is gated on enrollment rights. Finance and
@@ -566,6 +573,211 @@ export async function assignCourseToStaffMember(
       error: err instanceof Error ? err.message : 'Failed to assign course',
     };
   }
+}
+
+/** Upper bound on one multi-course assignment — see {@link assignCoursesToStaffMember}. */
+const MAX_COURSES_PER_ASSIGNMENT = 50;
+
+export interface AssignCoursesToStaffResult {
+  /** Newly assigned — exactly the courses the batched email lists. */
+  assigned: { courseId: string; courseTitle: string }[];
+  alreadyAssigned: { courseId: string; courseTitle: string }[];
+  /** `courseTitle` is null for an id that resolves to no course at all. */
+  failed: { courseId: string; courseTitle: string | null }[];
+  invited: boolean;
+  emailSent: boolean;
+  error?: string;
+}
+
+/**
+ * Assign one or more courses to a staff member from their profile in a single
+ * action, announcing all of them in ONE email and ONE in-app notification.
+ *
+ * Gated on `assignment.create` (course-assignment rights) rather than the roster
+ * permission the single-course predecessor uses, so every role that may assign
+ * courses elsewhere — Clinical Director included — may assign them here too.
+ *
+ * Partial failure is expected and reported, never fatal: already-enrolled and
+ * unassignable courses are bucketed and skipped, and only the newly assigned
+ * ones are announced. Nothing newly assigned ⇒ no email and no notification.
+ */
+export async function assignCoursesToStaffMember(
+  staffOrgUserId: string,
+  courseIds: string[],
+  options?: { dueAt?: string | Date | null },
+): Promise<AssignCoursesToStaffResult> {
+  const result: AssignCoursesToStaffResult = {
+    assigned: [],
+    alreadyAssigned: [],
+    failed: [],
+    invited: false,
+    emailSent: false,
+  };
+
+  const session = await auth();
+  if (
+    !session?.user?.id ||
+    !session.user.organizationId ||
+    !can(dbRoleToRoleKey(session.user.role), 'assignment.create')
+  ) {
+    logger.warn({
+      msg: '[enrollment] Multi-course staff assignment denied — missing assignment.create',
+      staffOrgUserId,
+      userId: session?.user?.id,
+      role: session?.user?.role,
+    });
+    return { ...result, error: 'Unauthorized' };
+  }
+
+  const uniqueCourseIds = [
+    ...new Set(courseIds.map((id) => id?.trim()).filter((id): id is string => !!id)),
+  ];
+  if (uniqueCourseIds.length === 0) {
+    return { ...result, error: 'Select at least one course to assign.' };
+  }
+  if (uniqueCourseIds.length > MAX_COURSES_PER_ASSIGNMENT) {
+    return {
+      ...result,
+      error: `You can assign at most ${MAX_COURSES_PER_ASSIGNMENT} courses at a time.`,
+    };
+  }
+
+  let dueAt: Date | null = null;
+  if (options?.dueAt) {
+    const parsed = options.dueAt instanceof Date ? options.dueAt : new Date(options.dueAt);
+    if (Number.isNaN(parsed.getTime())) {
+      return { ...result, error: 'The deadline is not a valid date.' };
+    }
+    if (parsed.getTime() <= Date.now()) {
+      return { ...result, error: 'The deadline must be in the future.' };
+    }
+    dueAt = parsed;
+  }
+
+  // Tenant isolation: only assign to a staff member within the caller's own org.
+  const target = await prisma.organizationUser.findUnique({
+    where: { id: staffOrgUserId },
+    select: { organizationId: true, user: { select: { email: true } } },
+  });
+  if (!target || target.organizationId !== session.user.organizationId) {
+    logger.warn({
+      msg: '[enrollment] Multi-course staff assignment denied — cross-tenant target',
+      staffOrgUserId,
+      orgId: session.user.organizationId,
+      userId: session.user.id,
+    });
+    return { ...result, error: 'Forbidden' };
+  }
+
+  // Titles for the result payload only — `enrollUsers` still runs the real
+  // ownership / offering / publish / billing checks per course.
+  const courses = await prisma.course.findMany({
+    where: { id: { in: uniqueCourseIds } },
+    select: { id: true, title: true },
+  });
+  const titleById = new Map(courses.map((course) => [course.id, course.title]));
+
+  const assignmentSettings: AssignmentSettingsInput | undefined = dueAt ? { dueAt } : undefined;
+  const deferred: DeferredWorkerNotification[] = [];
+
+  for (const courseId of uniqueCourseIds) {
+    const courseTitle = titleById.get(courseId);
+    if (courseTitle === undefined) {
+      result.failed.push({ courseId, courseTitle: null });
+      continue;
+    }
+
+    try {
+      // Sequential, not Promise.all: each iteration writes org-scoped rows, so
+      // serialising avoids write contention and keeps the logs deterministic.
+      const outcome = await enrollUsers(
+        courseId,
+        [{ email: target.user.email }],
+        assignmentSettings,
+        {
+          deferWorkerNotification: true,
+          assignmentSettingsMode: 'preserve',
+        },
+      );
+
+      if (outcome.success.length > 0) {
+        result.assigned.push({ courseId, courseTitle });
+        if (outcome.deferred) {
+          deferred.push(...outcome.deferred);
+        }
+      } else if (outcome.alreadyEnrolled.length > 0) {
+        result.alreadyAssigned.push({ courseId, courseTitle });
+      } else if (outcome.newInvited.length > 0) {
+        // Unreachable for a confirmed org member (the tenancy check above proves
+        // one), but if it ever happens the member was reached by the `/join`
+        // invite email naming this course, so report it as assigned.
+        result.invited = true;
+        result.assigned.push({ courseId, courseTitle });
+      } else {
+        result.failed.push({ courseId, courseTitle });
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to assign course';
+      if (message === BILLING_GATE_ASSIGN_MESSAGE) {
+        logger.warn({
+          msg: '[enrollment] Multi-course staff assignment aborted — billing gate',
+          staffOrgUserId,
+          orgId: session.user.organizationId,
+          userId: session.user.id,
+        });
+        result.error = message;
+        break;
+      }
+
+      logger.error({
+        msg: '[enrollment] Course could not be assigned to staff member',
+        staffOrgUserId,
+        courseId,
+        userId: session.user.id,
+        err,
+      });
+      result.failed.push({ courseId, courseTitle });
+    }
+  }
+
+  // Zero newly assigned ⇒ the loop body never runs ⇒ no email, no notification.
+  for (const notice of collectDeferredNotices(deferred)) {
+    const emitted = await notifyCoursesAssigned(notice);
+    result.emailSent = result.emailSent || emitted.emailSent;
+  }
+
+  logger.info({
+    msg: '[enrollment] Multi-course staff assignment complete',
+    staffOrgUserId,
+    orgId: session.user.organizationId,
+    userId: session.user.id,
+    requested: uniqueCourseIds.length,
+    assigned: result.assigned.length,
+    alreadyAssigned: result.alreadyAssigned.length,
+    failed: result.failed.length,
+    emailSent: result.emailSent,
+  });
+
+  if (result.assigned.length > 0) {
+    // F-001: record the sensitive mutation on the authorized, successful path.
+    await audit({
+      action: 'staff.courses.assign',
+      actorId: session.user.id,
+      actorRole: session.user.role,
+      organizationId: session.user.organizationId,
+      targetType: 'user',
+      targetId: staffOrgUserId,
+      metadata: {
+        courseIds: result.assigned.map((course) => course.courseId),
+        dueAt: dueAt ? dueAt.toISOString() : null,
+      },
+      ...getClientContext(await headers()),
+    });
+  }
+
+  revalidatePath(`/dashboard/staff/${staffOrgUserId}`);
+  revalidatePath('/dashboard/staff');
+  return result;
 }
 
 export async function getEnrollmentQuizResult(enrollmentId: string) {

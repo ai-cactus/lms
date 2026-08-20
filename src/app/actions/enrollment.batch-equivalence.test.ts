@@ -67,6 +67,7 @@ const {
   mockCreateNotification,
   mockSendCourseInviteEmail,
   mockSendCourseLaunchEmail,
+  mockSendCoursesAssignedEmail,
 } = vi.hoisted(() => {
   const prismaMock = {
     course: { findUnique: vi.fn() },
@@ -96,6 +97,7 @@ const {
     mockCreateNotification: vi.fn(),
     mockSendCourseInviteEmail: vi.fn(),
     mockSendCourseLaunchEmail: vi.fn(),
+    mockSendCoursesAssignedEmail: vi.fn(),
   };
 });
 
@@ -114,12 +116,15 @@ vi.mock('./notifications', () => ({
 vi.mock('@/lib/email', () => ({
   sendCourseInviteEmail: mockSendCourseInviteEmail,
   sendCourseLaunchEmail: mockSendCourseLaunchEmail,
-  sendCourseEnrollmentEmail: vi.fn().mockResolvedValue(undefined),
+  // notifyCoursesAssigned (real, unmocked below) dynamically imports this.
+  sendCoursesAssignedEmail: mockSendCoursesAssignedEmail,
 }));
 
 import { enrollUsers, assignCourseToRole } from './enrollment';
+import { collectDeferredNotices, notifyCoursesAssigned } from '@/lib/enrollment/notify';
 import type { StaffEntry } from '@/types/enrollment';
 import type { UserRole } from '@/generated/prisma/enums';
+import type { DeferredWorkerNotification } from '@/lib/enrollment/create';
 
 const ADMIN_ID = 'admin-1';
 const ADMIN_ORG_USER_ID = 'ou-admin-1';
@@ -329,6 +334,7 @@ beforeEach(() => {
   mockCreateNotification.mockResolvedValue(undefined);
   mockSendCourseInviteEmail.mockResolvedValue(undefined);
   mockSendCourseLaunchEmail.mockResolvedValue(undefined);
+  mockSendCoursesAssignedEmail.mockResolvedValue({ success: true, messageId: 'msg-1' });
 });
 
 afterEach(() => {
@@ -342,6 +348,17 @@ function setFlag(flag: FlagState) {
 }
 
 const FLAG_STATES: FlagState[] = ['unset', 'false', 'true'];
+
+/**
+ * The `assignCourseToRole` 50+-holder equivalence spec below (and its 3-holder
+ * neighbor) drive many sequential in-memory-mock DB calls per `it.each` case;
+ * under a busy machine that intermittently exceeds vitest's 5s default and times
+ * out — deterministic-but-marginal, not flaky logic. Pre-existing on `main`
+ * (reproduced there independently of this branch's changes, which never touch
+ * `createEnrollmentsForUsers`). Mirrors the same fix already applied file-wide in
+ * ../../lib/enrollment/create-batch.test.ts for the identical symptom.
+ */
+vi.setConfig({ testTimeout: 20_000 });
 
 describe('enrollUsers — ENROLLMENT_BATCH_ENABLED equivalence', () => {
   it.each(FLAG_STATES)(
@@ -432,6 +449,82 @@ describe('enrollUsers — ENROLLMENT_BATCH_ENABLED equivalence', () => {
     const falseResult = await enrollUsers(COURSE_ID, entries);
 
     expect(falseResult).toEqual(unsetResult);
+  });
+});
+
+/**
+ * deferWorkerNotification equivalence: `createEnrollmentsForUsers` (the
+ * batched path) forwards its context verbatim, so this must hold identically
+ * whether ENROLLMENT_BATCH_ENABLED routes through it or through
+ * `enrollSequentially`.
+ */
+describe('enrollUsers — deferWorkerNotification equivalence across ENROLLMENT_BATCH_ENABLED', () => {
+  it.each(['false', 'true'] as const)(
+    'flag=%s: returns one deferred payload per newly enrolled member, and collectDeferredNotices/notifyCoursesAssigned send the email exactly once',
+    async (flag) => {
+      setFlag(flag);
+      seedDb(
+        membersSeed([member('u-1', 'nurse1@example.com'), member('u-2', 'nurse2@example.com')]),
+      );
+
+      const result = await enrollUsers(
+        COURSE_ID,
+        [{ email: 'nurse1@example.com' }, { email: 'nurse2@example.com' }],
+        undefined,
+        { deferWorkerNotification: true },
+      );
+
+      expect(result.success).toEqual(['nurse1@example.com', 'nurse2@example.com']);
+      expect(result.deferred).toHaveLength(2);
+      // Two DIFFERENT workers, not one worker with two courses — one notice per worker.
+      const notices = collectDeferredNotices(result.deferred as DeferredWorkerNotification[]);
+      expect(notices).toHaveLength(2);
+
+      for (const notice of notices) {
+        await notifyCoursesAssigned(notice);
+      }
+
+      expect(mockSendCoursesAssignedEmail).toHaveBeenCalledTimes(2);
+      expect(mockSendCourseLaunchEmail).not.toHaveBeenCalled();
+    },
+  );
+
+  it('the deferred payloads are deep-equal between flag states — `DeferredWorkerNotification` carries no enrollmentId to diverge on, unlike the outer EnrollmentOutcome', async () => {
+    // No explicit deadline in assignmentSettings ⇒ computeDueAt falls back to a
+    // default window measured from "now" — pin the clock so both calls compute
+    // the exact same dueAt instead of differing by the wall-clock ms between them.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-18T12:00:00.000Z'));
+    try {
+      const buildSeed = () => membersSeed([member('u-1', 'nurse1@example.com')]);
+      const entries: StaffEntry[] = [{ email: 'nurse1@example.com' }];
+
+      setFlag('false');
+      seedDb(buildSeed());
+      const falseResult = await enrollUsers(COURSE_ID, entries, undefined, {
+        deferWorkerNotification: true,
+      });
+
+      vi.clearAllMocks();
+      mockAdminAuth.mockResolvedValue({
+        user: {
+          id: ADMIN_ID,
+          role: 'owner',
+          organizationId: ORG_ID,
+          organizationUserId: ADMIN_ORG_USER_ID,
+        },
+      });
+      mockWorkerAuth.mockResolvedValue(null);
+      setFlag('true');
+      seedDb(buildSeed());
+      const trueResult = await enrollUsers(COURSE_ID, entries, undefined, {
+        deferWorkerNotification: true,
+      });
+
+      expect(trueResult.deferred).toEqual(falseResult.deferred);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

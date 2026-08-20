@@ -178,7 +178,16 @@ export default function WizardReviewArticle({
           <h2 id={lessonTitleId} className="mt-6 text-xl font-bold text-[#0d0d12] md:text-[22px]">
             {lesson?.title || 'Untitled Section'}
           </h2>
-          <div className={reviewProseClass} dangerouslySetInnerHTML={{ __html: html }} />
+          <div
+            className={reviewProseClass}
+            // Already sanitised: `html` is sanitizeHtml(lesson.content) run through
+            // withHeadingAnchors above. It must NOT be re-sanitised here — the
+            // allowlist has no `id`, so a second pass would strip the anchors the
+            // outline scrolls to. Suppressed at the call site rather than disabling
+            // the rule, so a future UNSANITISED sink is still caught.
+            // nosemgrep: typescript.react.security.audit.react-dangerouslysetinnerhtml.react-dangerouslysetinnerhtml
+            dangerouslySetInnerHTML={{ __html: html }}
+          />
 
           {lesson?.keyPoints && lesson.keyPoints.length > 0 && (
             <div className="mt-6 flex gap-3 rounded-[10px] bg-[#f4f5f7] px-4 py-3.5">
