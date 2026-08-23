@@ -123,6 +123,42 @@ export async function resolveActiveMembership(userId: string): Promise<Membershi
     : { kind: 'choice', memberships };
 }
 
+/**
+ * Pick the membership a resolution activates. On `choice` the org picker lets
+ * the user switch afterwards, but the session must always be scoped to a real
+ * membership, so the first (oldest-joined, deterministic) one is provisionally
+ * activated rather than leaving the session org-less.
+ */
+export function activeMembershipOf(resolution: MembershipResolution): MembershipSummary | null {
+  if (resolution.kind === 'resolved') return resolution.membership;
+  if (resolution.kind === 'choice') return resolution.memberships[0];
+  return null;
+}
+
+/**
+ * Resolve the membership an ALREADY-ACTIVE session should render as.
+ *
+ * The distinction from {@link resolveActiveMembership} is deliberate: once a
+ * session carries an `organizationId` on its JWT, that org is authoritative for
+ * this session and must be honoured with a POINT lookup. Re-deriving via the
+ * global resolver would consult `User.lastActiveOrganizationId`, which a sibling
+ * session's login or a later org switch may have moved — silently bleeding a
+ * multi-org user's view into a different organization than their token names.
+ *
+ * Only a genuinely org-less token (pre-onboarding, or just-joined and not yet
+ * re-minted) falls back to the global resolver, adopting its active pick.
+ */
+export async function resolveMembershipForActiveSession(
+  userId: string,
+  sessionOrganizationId: string | null,
+): Promise<MembershipSummary | null> {
+  if (sessionOrganizationId) {
+    return getActiveMembership(userId, sessionOrganizationId);
+  }
+  const resolution = await resolveActiveMembership(userId);
+  return activeMembershipOf(resolution);
+}
+
 export interface CreateMembershipInput {
   userId: string;
   organizationId: string;

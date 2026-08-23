@@ -5,7 +5,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { cookies } from 'next/headers';
 import prisma from '@/lib/prisma';
-import { expireSiblingSessionCookies } from '@/lib/auth/session-cookies';
+import { expireSiblingSessionCookies, markSiblingSessionEvicted } from '@/lib/auth/session-cookies';
 import { logger, maskEmail } from '@/lib/logger';
 import { isSessionMfaVerified } from '@/lib/session-mfa';
 import {
@@ -26,11 +26,11 @@ import { BCRYPT_COST } from '@/lib/bcrypt-config';
 import { enrollUserForRoleTargets } from '@/lib/enrollment/role-targets';
 import { enrollInviteCourses } from '@/lib/enrollment/invite-courses';
 import {
+  activeMembershipOf,
   createMembership,
   getActiveMembership,
   recordMembershipLogin,
   resolveActiveMembership,
-  type MembershipResolution,
   type MembershipSummary,
 } from '@/lib/auth/membership';
 
@@ -86,18 +86,6 @@ function claimsFor(
       };
 }
 
-/**
- * Pick the membership a resolution activates. On `choice` the org picker lets
- * the user switch afterwards, but the session must always be scoped to a real
- * membership, so the first (oldest-joined, deterministic) one is provisionally
- * activated rather than leaving the session org-less.
- */
-function activeMembershipOf(resolution: MembershipResolution): MembershipSummary | null {
-  if (resolution.kind === 'resolved') return resolution.membership;
-  if (resolution.kind === 'choice') return resolution.memberships[0];
-  return null;
-}
-
 export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
   const { cookiePrefix, allowedRoles, basePath } = instanceConfig;
   const sessionAllowedRoles = instanceConfig.sessionAllowedRoles ?? allowedRoles;
@@ -146,6 +134,36 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
       callbackUrl: {
         name: `${useSecureCookies ? '__Secure-' : ''}${cookiePrefix}.callback-url`,
         options: { sameSite: 'lax', path: '/', secure: useSecureCookies },
+      },
+      // OAuth (Microsoft Entra ID) transaction cookies. Without a prefix both
+      // instances would collide on the single `authjs.*` default, so an OAuth
+      // round-trip started on one portal could be finished against the other.
+      // Options mirror @auth/core's defaults for each cookie type verbatim
+      // (see node_modules/@auth/core/lib/utils/cookie.js `defaultCookies`) —
+      // only the NAME is namespaced with the instance prefix.
+      pkceCodeVerifier: {
+        name: `${useSecureCookies ? '__Secure-' : ''}${cookiePrefix}.pkce.code_verifier`,
+        options: {
+          httpOnly: true,
+          sameSite: 'lax',
+          path: '/',
+          secure: useSecureCookies,
+          maxAge: 60 * 15,
+        },
+      },
+      state: {
+        name: `${useSecureCookies ? '__Secure-' : ''}${cookiePrefix}.state`,
+        options: {
+          httpOnly: true,
+          sameSite: 'lax',
+          path: '/',
+          secure: useSecureCookies,
+          maxAge: 60 * 15,
+        },
+      },
+      nonce: {
+        name: `${useSecureCookies ? '__Secure-' : ''}${cookiePrefix}.nonce`,
+        options: { httpOnly: true, sameSite: 'lax', path: '/', secure: useSecureCookies },
       },
     },
 
@@ -554,6 +572,10 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
         try {
           const cookieStore = await cookies();
           expireSiblingSessionCookies(cookieStore, cookiePrefix);
+          // Leave a short-lived marker so the evicted sibling's next landing on
+          // /login can explain WHY it was signed out (another account took over
+          // this browser). Presence-only, non-httpOnly, self-expiring.
+          markSiblingSessionEvicted(cookieStore, cookiePrefix);
           logger.info({
             msg: '[Auth] Cleared sibling session cookie on login',
             instance: cookiePrefix,
@@ -583,6 +605,13 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
           // on every session() call, and .setIssuedAt() in the encoder overwrites `iat`
           // each time — so `iat` cannot be used as a session identifier.
           token.sessionId = crypto.randomUUID();
+          // Stamp the resolved idle-timeout window once at sign-in so the client
+          // InactivityTimer has a single, server-authoritative source (replaces
+          // the old NEXT_PUBLIC_INACTIVITY_TIMEOUT_MINUTES build-time env).
+          token.inactivityTimeoutMinutes = parseInt(
+            process.env.INACTIVITY_TIMEOUT_MINUTES || '60',
+            10,
+          );
           if (user.name) {
             token.name = user.name;
           }
@@ -764,6 +793,8 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
             (token.mfaEnabled as boolean) ?? false;
           (session.user as User & { sessionId?: string }).sessionId =
             (token.sessionId as string) ?? undefined;
+          session.user.inactivityTimeoutMinutes =
+            (token.inactivityTimeoutMinutes as number) ?? undefined;
         }
         return session;
       },
