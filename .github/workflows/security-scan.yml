@@ -24,18 +24,23 @@ name: Security Scan
 # in this file silently stops working if that entitlement changes.
 #
 # ── Trigger economics ────────────────────────────────────────────────────────
-# Private repos on the Free plan get 2,000 Actions minutes/month (public repos
-# were unlimited). There is no `push` trigger: pushes to dev arrive via PR,
-# which already ran this, so a push trigger only paid twice for one answer.
-# `paths` skips runs where nothing scannable changed — a docs-only commit
-# cannot introduce a code vulnerability. Safe to path-filter because no job
-# here is a required status check; doing the same to ci.yml would leave a
-# required check permanently "expected" and block the PR.
+# There is no `push` trigger: pushes to dev arrive via PR, which already ran
+# this, so a push trigger only paid twice for one answer. `paths` skips runs
+# where nothing scannable changed — a docs-only commit cannot introduce a code
+# vulnerability. Safe to path-filter because no job here is a required status
+# check; doing the same to ci.yml would leave a required check permanently
+# "expected" and block the PR.
+#
+# UPDATE (2026-08-23): the PR trigger is now limited to the branches that
+# promote into a deploying environment. Semgrep + Trivy cost ~2.8 min per run
+# and neither one blocks anything — semgrep is `continue-on-error` and trivy
+# is `exit-code: 0` — so on the dev path they were pure spend against an
+# exhausted Actions budget. They still run on every staging/main PR, on the
+# weekly schedule, and on demand via workflow_dispatch.
 
 on:
   pull_request:
     branches:
-      - dev
       - staging
       - main
       - master
@@ -203,9 +208,17 @@ jobs:
           fetch-depth: 0
 
       - name: Install gitleaks
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          VERSION="$(curl -sSfL https://api.github.com/repos/gitleaks/gitleaks/releases/latest | grep -oP '"tag_name":\s*"v\K[^"]+')"
-          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz" -o /tmp/gitleaks.tar.gz
+          # Pinned, and authenticated. Resolving "latest" through an
+          # unauthenticated api.github.com call hit the anonymous rate limit
+          # and returned 403 roughly half the time. Keep this pin in sync with
+          # GITLEAKS_VERSION in quality-gate.yml.
+          VERSION="8.30.1"
+          curl -sSfL -H "Authorization: Bearer ${GH_TOKEN}" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz" \
+            -o /tmp/gitleaks.tar.gz
           tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
           sudo install /tmp/gitleaks /usr/local/bin/gitleaks
           gitleaks version

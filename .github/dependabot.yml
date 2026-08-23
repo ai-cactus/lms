@@ -1,5 +1,25 @@
 version: 2
 
+# ── Cost policy (2026-08-23) ────────────────────────────────────────────────
+# On 2026-08-17 this config opened TEN PRs in a single batch (weekly × limit 5
+# × two ecosystems). At the time each PR cost ~24 Actions minutes, so that one
+# morning burned ~240 minutes and the pattern was on track for ~1,000/month —
+# larger than the maintainer's own PR traffic, and a direct cause of the
+# Actions budget being exhausted twice in August.
+#
+# Both ecosystems are now MONTHLY with a single catch-all group, so a month of
+# minor/patch bumps arrives as one reviewable PR per ecosystem.
+#
+# This does NOT weaken security posture:
+#   * Dependabot SECURITY updates are a separate channel (repo setting
+#     `dependabot_security_updates`, verified enabled) and still open PRs
+#     immediately when an advisory lands. The schedule below governs only
+#     routine version updates.
+#   * scheduled-audit.yml still runs `npm audit --audit-level=high` DAILY and
+#     files/updates a GitHub issue on any high or critical advisory.
+# Majors are excluded from the groups so a breaking bump still arrives as its
+# own PR rather than hiding inside a batch.
+
 updates:
   # ──────────────────────────────────────────────────────────────────────────
   # GitHub Actions — keeps third-party actions and the pinned external
@@ -8,30 +28,31 @@ updates:
   - package-ecosystem: github-actions
     directory: '/'
     schedule:
-      interval: weekly
-      day: monday
-    open-pull-requests-limit: 5
+      interval: monthly
+    open-pull-requests-limit: 2
     commit-message:
       prefix: 'chore(actions)'
     labels:
       - dependencies
       - github-actions
+    groups:
+      actions:
+        patterns:
+          - '*'
+        update-types:
+          - minor
+          - patch
 
   # ──────────────────────────────────────────────────────────────────────────
   # npm — security-first. The tree needs `--legacy-peer-deps` to install, so
   # Dependabot cannot always resolve a version bump on its own; treat its npm
   # PRs as proposals to verify locally, not as auto-merge candidates.
-  #
-  # Version updates are grouped and capped to keep review load sane. Security
-  # advisories are what actually matter here and arrive regardless of the
-  # grouping below.
   # ──────────────────────────────────────────────────────────────────────────
   - package-ecosystem: npm
     directory: '/'
     schedule:
-      interval: weekly
-      day: monday
-    open-pull-requests-limit: 5
+      interval: monthly
+    open-pull-requests-limit: 2
     versioning-strategy: increase
     commit-message:
       prefix: 'chore(deps)'
@@ -39,28 +60,23 @@ updates:
     labels:
       - dependencies
     groups:
-      # Next/React move together; splitting them produces unresolvable PRs.
-      next-react:
+      # One PR for the month's routine bumps. This replaces the previous
+      # next-react / prisma / dev-tooling split, which produced up to five
+      # concurrent PRs. Next and React still move together — they are simply
+      # inside the same group as everything else now.
+      npm-minor-patch:
         patterns:
-          - 'next'
-          - 'react'
-          - 'react-dom'
-          - '@types/react'
-          - '@types/react-dom'
-      prisma:
-        patterns:
-          - 'prisma'
-          - '@prisma/*'
-      dev-tooling:
-        dependency-type: development
-        patterns:
-          - 'eslint*'
-          - '@typescript-eslint/*'
-          - 'prettier'
-          - 'vitest'
-          - '@vitest/*'
-          - '@playwright/*'
+          - '*'
+        update-types:
+          - minor
+          - patch
     ignore:
+      # quill is pinned DOWN on purpose: package.json overrides it to an exact
+      # 2.0.2 because 2.0.3 is simultaneously the latest release and the
+      # vulnerable one. Without this ignore the catch-all patch group above
+      # would propose 2.0.3 every month and silently undo the pin — which has
+      # already happened once.
+      - dependency-name: 'quill'
       # Major bumps of the framework and ORM are migration projects, not
       # dependency chores — they get their own planned work.
       - dependency-name: 'next'

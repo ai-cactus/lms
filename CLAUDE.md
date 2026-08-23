@@ -47,6 +47,20 @@ Orchestration guidance:
   - `npm run lint:fix`: Automatically fix ESLint errors.
   - `npm run format`: Prettier formatting.
   - `npm run format:check`: Verify formatting consistency.
+- **Verification** (heavy checks run locally, not in CI — see `CONTRIBUTING.md`):
+  - `npm run typecheck`: `tsc --noEmit`.
+  - `npm run verify`: light tier — changed-file lint + typecheck + affected tests.
+  - `npm run verify:full`: heavy tier — lint + format + typecheck + full suite + build.
+  - `npm run test:changed`: affected unit tests only.
+  - `npm run secrets:scan`: staged-only gitleaks scan.
+- **End-to-end tests**:
+  - `npm run e2e:local`: full Playwright suite in CI parity (~5 min). Accepts a
+    spec filter: `npm run e2e:local -- auth.spec.ts`.
+  - `npm run e2e:up` / `npm run e2e:down`: manage the e2e service containers.
+  - `npm run test:e2e -- <spec>`: fast single-spec iteration against a dev server.
+- **Git hooks**: `pre-push` is tiered by the branch being pushed — light for feature
+  branches, full suite + build for `dev`/`staging`/`main`. Use `SKIP_HEAVY=1 git push`
+  if you must; never `--no-verify`.
 
 ## Coding Style & Naming Conventions
 
