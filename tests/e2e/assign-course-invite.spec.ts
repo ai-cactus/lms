@@ -132,10 +132,9 @@ async function seedOrgWithOwnerAndCourse(): Promise<Seeded> {
 async function cleanup(seeded: Seeded, inviteeEmail: string): Promise<void> {
   const client = await db();
   try {
-    await client.query(
-      `DELETE FROM invite_course_assignments WHERE course_id = $1`,
-      [seeded.courseId],
-    );
+    await client.query(`DELETE FROM invite_course_assignments WHERE course_id = $1`, [
+      seeded.courseId,
+    ]);
     await client.query(`DELETE FROM invites WHERE organization_id = $1`, [seeded.orgId]);
     await client.query(`DELETE FROM enrollments WHERE course_id = $1`, [seeded.courseId]);
     await client.query(`DELETE FROM course_assignments WHERE course_id = $1`, [seeded.courseId]);
@@ -233,7 +232,10 @@ test.describe('Assign course to a brand-new email — unified invite flow', () =
 
         await joinPage.getByPlaceholder('Enter your first name').fill('Brand');
         await joinPage.getByPlaceholder('Enter your last name').fill('New');
-        await joinPage.getByPlaceholder(/^password \(at least/i).first().fill(workerPassword);
+        await joinPage
+          .getByPlaceholder(/^password \(at least/i)
+          .first()
+          .fill(workerPassword);
         await joinPage
           .getByPlaceholder(/^password \(at least/i)
           .nth(1)

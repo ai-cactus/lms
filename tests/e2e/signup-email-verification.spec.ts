@@ -347,7 +347,10 @@ test.describe('Signup: email-based user story', () => {
     // AC-3: the verification token minted by the real signup() action must
     // always carry role 'owner' — self-serve signup can never mint a worker.
     const tokenRecord = await getTokenFromDb(email);
-    expect(tokenRecord, 'A verification token must have been created for this email').not.toBeNull();
+    expect(
+      tokenRecord,
+      'A verification token must have been created for this email',
+    ).not.toBeNull();
     expect(tokenRecord.role).toBe('owner');
   });
 

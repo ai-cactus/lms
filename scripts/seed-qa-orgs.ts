@@ -302,7 +302,12 @@ const STAFF: StaffSeed[] = [
   },
   { firstName: 'Ivan', lastName: 'Petrov', role: 'case_manager', jobTitle: 'Senior Case Manager' },
   { firstName: 'Nadia', lastName: 'Haddad', role: 'case_manager', jobTitle: 'Case Manager' },
-  { firstName: 'Owen', lastName: 'Brannigan', role: 'case_manager', jobTitle: 'Intake Coordinator' },
+  {
+    firstName: 'Owen',
+    lastName: 'Brannigan',
+    role: 'case_manager',
+    jobTitle: 'Intake Coordinator',
+  },
   {
     firstName: 'Leila',
     lastName: 'Chowdhury',
@@ -369,7 +374,12 @@ const STAFF: StaffSeed[] = [
     role: 'front_desk_admin',
     jobTitle: 'Medical Records Clerk',
   },
-  { firstName: 'Victor', lastName: 'Amadi', role: 'front_desk_admin', jobTitle: 'Billing Assistant' },
+  {
+    firstName: 'Victor',
+    lastName: 'Amadi',
+    role: 'front_desk_admin',
+    jobTitle: 'Billing Assistant',
+  },
   {
     firstName: 'Rosalind',
     lastName: 'Achterberg',
@@ -413,7 +423,11 @@ const INVITES: InviteSeed[] = [
     expiresInDays: 3,
   },
   { email: 'pending.eriksson@paginationqa.test', role: 'front_desk_admin', expiresInDays: 2 },
-  { email: 'pending.fontaine@paginationqa.test', role: 'peer_support_specialist', expiresInDays: 1 },
+  {
+    email: 'pending.fontaine@paginationqa.test',
+    role: 'peer_support_specialist',
+    expiresInDays: 1,
+  },
   { email: 'pending.gallagher@paginationqa.test', role: 'facilities_support', expiresInDays: -2 },
   { email: 'pending.hernandez@paginationqa.test', role: 'hr', expiresInDays: -9 },
 ];
@@ -1418,7 +1432,6 @@ async function seedAssignmentsAndEnrollments(
         .join(', '),
   );
 }
-
 
 /**
  * Admin-facing notifications for the data-rich org's admin so the bell panel,

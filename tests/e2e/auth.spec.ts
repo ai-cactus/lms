@@ -12,17 +12,13 @@ test.describe('Authentication Flows', () => {
     // visible — this guards against a regression to blank/spinner on first paint.
     await page.goto('/login');
 
-    const heroImage = page.getByAltText(
-      'Audit-ready training, built from your policies',
-    );
+    const heroImage = page.getByAltText('Audit-ready training, built from your policies');
     await expect(heroImage).toBeVisible();
     // Next/Image rewrites the src through its optimizer (e.g.
     // /_next/image?url=%2Fimages%2Fslider_1.png&w=...&q=100) — "." isn't a
     // URI-reserved character, so the original filename survives verbatim.
     await expect(heroImage).toHaveAttribute('src', /slider_1\.png/);
-    await expect(
-      page.getByText('Audit-ready training, built from your policies'),
-    ).toBeVisible();
+    await expect(page.getByText('Audit-ready training, built from your policies')).toBeVisible();
   });
 
   test('ENG-001: Microsoft OAuth Sign Up callbackUrl points to /dashboard (signup is owner-only, no role selection)', async ({

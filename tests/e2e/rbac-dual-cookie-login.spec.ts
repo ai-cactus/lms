@@ -127,10 +127,9 @@ async function cleanup(seeded: Seeded): Promise<void> {
   const client = await db();
   try {
     await client.query(`DELETE FROM subscriptions WHERE organization_id = $1`, [seeded.orgId]);
-    await client.query(
-      `DELETE FROM organization_user_facilities WHERE organization_user_id = $1`,
-      [seeded.orgUserId],
-    );
+    await client.query(`DELETE FROM organization_user_facilities WHERE organization_user_id = $1`, [
+      seeded.orgUserId,
+    ]);
     await client.query(`DELETE FROM organization_users WHERE id = $1`, [seeded.orgUserId]);
     await client.query(`DELETE FROM users WHERE id = $1`, [seeded.userId]);
     await client.query(`DELETE FROM facilities WHERE organization_id = $1`, [seeded.orgId]);

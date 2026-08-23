@@ -470,7 +470,8 @@ test.describe('Video course playback', () => {
       );
       await expect
         .poll(
-          () => page.evaluate(() => (document.querySelector('video') as HTMLVideoElement).currentTime),
+          () =>
+            page.evaluate(() => (document.querySelector('video') as HTMLVideoElement).currentTime),
           { timeout: 10000 },
         )
         .toBeGreaterThan(timeAfterSeek);
@@ -479,7 +480,9 @@ test.describe('Video course playback', () => {
     }
   });
 
-  test('playing through to the watch-gate threshold unlocks "Proceed to Quiz"', async ({ page }) => {
+  test('playing through to the watch-gate threshold unlocks "Proceed to Quiz"', async ({
+    page,
+  }) => {
     const fixture = courseFixture!;
     const learner = await seedLearner(fixture);
     try {
@@ -529,7 +532,9 @@ test.describe('Video course playback', () => {
 
       // clampSeekTarget snaps this back to the mark (0) + tolerance (1.5s).
       await expect
-        .poll(() => page.evaluate(() => (document.querySelector('video') as HTMLVideoElement).currentTime))
+        .poll(() =>
+          page.evaluate(() => (document.querySelector('video') as HTMLVideoElement).currentTime),
+        )
         .toBeLessThan(2);
 
       const proceedButton = page.getByRole('button', { name: 'Proceed to Quiz' });
@@ -539,50 +544,47 @@ test.describe('Video course playback', () => {
     }
   });
 
-  test.skip(
-    'the mobile backgrounding regression (a >1.5s gap between timeupdate events from a backgrounded tab) cannot be faithfully reproduced in Playwright',
-    async () => {
-      // NOT a vacuous placeholder — documenting a real coverage gap.
-      //
-      // The bug PR 7 fixed: on mobile, backgrounding the tab suspends
-      // `timeupdate` dispatch while the media clock keeps advancing, so the
-      // NEXT `timeupdate` reports a large jump in `video.currentTime` with no
-      // intervening `seeking`/`seeked` pair (it wasn't a seek — playback simply
-      // continued while the browser throttled event delivery). The fix
-      // (src/lib/video/gating.ts's `advanceWatchedMark`) judges each step
-      // against wall-clock-elapsed-time-times-playbackRate rather than a fixed
-      // media-time threshold, so a large jump backed by an equally large wall
-      // gap still reads as genuine.
-      //
-      // Reproducing the TRIGGER end-to-end needs the browser to keep
-      // decoding/advancing the media clock while independently throttling
-      // `timeupdate` dispatch — a real UA background-tab optimization that
-      // Playwright/CDP expose no lever for:
-      //   - Programmatically setting `video.currentTime` always fires
-      //     `seeking`/`seeked` first, which routes through `handleSeeked` /
-      //     `clampSeekTarget` instead — the SEEK path, not the backgrounding
-      //     path this bug is about (that path IS covered above, faithfully).
-      //   - CDP's `Page.setWebLifecycleState({state: 'frozen'})` freezes JS
-      //     execution entirely, which also stops the media clock — the
-      //     opposite of the bug (media keeps running, only event dispatch
-      //     lags), so it doesn't reproduce the mismatch either.
-      //   - `page.clock` (Playwright's virtual-time control) fakes
-      //     `Date.now()`/timers, not the browser's independent audio/video
-      //     presentation clock, so it can force a wall-clock jump but not a
-      //     correspondingly real media-time jump without an actual seek.
-      //
-      // The exact invariant this bug lives in — mediaDelta vs.
-      // wallDelta*playbackRate, including a synthetic 60s-backgrounded jump —
-      // is unit-tested directly and exhaustively in src/lib/video/gating.test.ts
-      // ("THE REGRESSION LOCK: credits a 60s jump when 60s of wall clock also
-      // passed" / "drives the gate to unlock across a backgrounded
-      // watch-through"). That is the correct and sufficient layer for this
-      // regression; an e2e attempt here would either be redundant with those
-      // unit tests (if it drove the pure function directly) or silently test
-      // nothing (if it tried to fake browser backgrounding and the fake
-      // didn't actually reproduce the throttling).
-    },
-  );
+  test.skip('the mobile backgrounding regression (a >1.5s gap between timeupdate events from a backgrounded tab) cannot be faithfully reproduced in Playwright', async () => {
+    // NOT a vacuous placeholder — documenting a real coverage gap.
+    //
+    // The bug PR 7 fixed: on mobile, backgrounding the tab suspends
+    // `timeupdate` dispatch while the media clock keeps advancing, so the
+    // NEXT `timeupdate` reports a large jump in `video.currentTime` with no
+    // intervening `seeking`/`seeked` pair (it wasn't a seek — playback simply
+    // continued while the browser throttled event delivery). The fix
+    // (src/lib/video/gating.ts's `advanceWatchedMark`) judges each step
+    // against wall-clock-elapsed-time-times-playbackRate rather than a fixed
+    // media-time threshold, so a large jump backed by an equally large wall
+    // gap still reads as genuine.
+    //
+    // Reproducing the TRIGGER end-to-end needs the browser to keep
+    // decoding/advancing the media clock while independently throttling
+    // `timeupdate` dispatch — a real UA background-tab optimization that
+    // Playwright/CDP expose no lever for:
+    //   - Programmatically setting `video.currentTime` always fires
+    //     `seeking`/`seeked` first, which routes through `handleSeeked` /
+    //     `clampSeekTarget` instead — the SEEK path, not the backgrounding
+    //     path this bug is about (that path IS covered above, faithfully).
+    //   - CDP's `Page.setWebLifecycleState({state: 'frozen'})` freezes JS
+    //     execution entirely, which also stops the media clock — the
+    //     opposite of the bug (media keeps running, only event dispatch
+    //     lags), so it doesn't reproduce the mismatch either.
+    //   - `page.clock` (Playwright's virtual-time control) fakes
+    //     `Date.now()`/timers, not the browser's independent audio/video
+    //     presentation clock, so it can force a wall-clock jump but not a
+    //     correspondingly real media-time jump without an actual seek.
+    //
+    // The exact invariant this bug lives in — mediaDelta vs.
+    // wallDelta*playbackRate, including a synthetic 60s-backgrounded jump —
+    // is unit-tested directly and exhaustively in src/lib/video/gating.test.ts
+    // ("THE REGRESSION LOCK: credits a 60s jump when 60s of wall clock also
+    // passed" / "drives the gate to unlock across a backgrounded
+    // watch-through"). That is the correct and sufficient layer for this
+    // regression; an e2e attempt here would either be redundant with those
+    // unit tests (if it drove the pure function directly) or silently test
+    // nothing (if it tried to fake browser backgrounding and the fake
+    // didn't actually reproduce the throttling).
+  });
 });
 
 // ── Mobile viewport ──────────────────────────────────────────────────────────
@@ -673,26 +675,23 @@ test.describe('Video course playback — mobile viewport', () => {
 // ── Catalog grid (PR 5) — NOT COVERED, see note ─────────────────────────────
 
 test.describe('Video course catalog grid', () => {
-  test.skip(
-    'renders <img> posters instead of <video> elements and does not fire N preview-video requests',
-    async () => {
-      // Genuine gap, not an oversight: VideoCourseCard
-      // (src/components/dashboard/courses/VideoCourseCard.tsx) and the server
-      // action it renders (listAvailableVideoCourses in
-      // src/app/actions/offering.ts) both exist and were touched by this PR
-      // series (PR 5 — "kill the catalog thumbnail hack" — is in
-      // VideoCourseCard.test.tsx's own header comment), but as of this branch
-      // NO page under src/app imports VideoCourseCard or calls
-      // listAvailableVideoCourses — grep confirms the only importers are the
-      // component's own file and its unit test. There is no live route to
-      // navigate Playwright to for this assertion.
-      //
-      // The <img>-not-<video> behavior itself IS covered, at the component
-      // level, by the pre-existing VideoCourseCard.test.tsx. This e2e gap is
-      // "no page renders this component yet," not "the component is
-      // untested" — worth confirming with the team whether a catalog route is
-      // still planned before writing e2e coverage that would have nothing to
-      // exercise.
-    },
-  );
+  test.skip('renders <img> posters instead of <video> elements and does not fire N preview-video requests', async () => {
+    // Genuine gap, not an oversight: VideoCourseCard
+    // (src/components/dashboard/courses/VideoCourseCard.tsx) and the server
+    // action it renders (listAvailableVideoCourses in
+    // src/app/actions/offering.ts) both exist and were touched by this PR
+    // series (PR 5 — "kill the catalog thumbnail hack" — is in
+    // VideoCourseCard.test.tsx's own header comment), but as of this branch
+    // NO page under src/app imports VideoCourseCard or calls
+    // listAvailableVideoCourses — grep confirms the only importers are the
+    // component's own file and its unit test. There is no live route to
+    // navigate Playwright to for this assertion.
+    //
+    // The <img>-not-<video> behavior itself IS covered, at the component
+    // level, by the pre-existing VideoCourseCard.test.tsx. This e2e gap is
+    // "no page renders this component yet," not "the component is
+    // untested" — worth confirming with the team whether a catalog route is
+    // still planned before writing e2e coverage that would have nothing to
+    // exercise.
+  });
 });
