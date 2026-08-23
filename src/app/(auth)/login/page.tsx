@@ -15,6 +15,7 @@ import { authenticate } from '@/app/actions/auth';
 import { signIn } from 'next-auth/react';
 import { logger, maskEmail } from '@/lib/logger';
 import { SIBLING_EVICTED_COOKIE_SUFFIX } from '@/lib/auth/session-cookies';
+import { clearTabIdentity } from '@/lib/auth/tab-identity';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -48,6 +49,18 @@ export default function LoginPage() {
     } catch {
       /* ignore */
     }
+  }, []);
+
+  // Reaching /login means THIS tab is (re)authenticating, so its prior
+  // per-tab identity baseline (SessionIdentityGuard) is void. Clear it so the
+  // post-login dashboard/worker landing is treated as 'first-sight' and ADOPTS
+  // the freshly-authenticated account, instead of reading the stale baseline as
+  // a takeover and evicting on a legitimate same-tab account switch. Because
+  // sessionStorage is per tab, this clears only the tab performing the login — a
+  // stale OTHER tab (which never revisited /login) keeps its baseline and still
+  // evicts correctly on its next reload/focus, preserving takeover detection.
+  useEffect(() => {
+    clearTabIdentity();
   }, []);
 
   // Single-use: clear the eviction marker so the notice doesn't re-fire on a
