@@ -33,6 +33,13 @@ interface MembershipClaims {
   organizationId: string | null;
   organizationUserId: string | null;
   role: Role;
+  /**
+   * Resolved idle-timeout window (minutes) stamped onto the token at sign-in
+   * from `INACTIVITY_TIMEOUT_MINUTES`. Optional because pre-stamp/legacy tokens
+   * and the credentials `authorize` return do not carry it; readers fall back to
+   * 60. It is the single source of truth for InactivityTimer.
+   */
+  inactivityTimeoutMinutes?: number;
 }
 
 declare module 'next-auth' {

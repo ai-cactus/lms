@@ -13,7 +13,7 @@ import BillingPausedBanner from '@/components/billing/BillingPausedBanner';
 import StatusTrackerAlertBanner from '@/components/dashboard/StatusTrackerAlertBanner';
 import { getPauseState } from '@/lib/billing';
 import { getStatusTrackerSummaryForOrg } from '@/lib/reminders/status-tracker';
-import { resolveActiveMembership } from '@/lib/auth/membership';
+import { resolveMembershipForActiveSession } from '@/lib/auth/membership';
 import { isOrgWideFacilityRole } from '@/lib/facility/scope';
 import { resolveMemberFacilityId } from '@/lib/facility/member-facility';
 import { WithChildren } from '@/types/react';
@@ -30,11 +30,15 @@ const DashboardLayout: FC<WithChildren> = async ({ children }) => {
     select: { fullName: true },
   });
 
-  // Re-resolve the active membership fresh from the DB — the session JWT stays
-  // org-less until the next full sign-in, so a user who just finished
-  // onboarding needs this to see their brand-new organization immediately.
-  const resolution = await resolveActiveMembership(session.user.id);
-  const membership = resolution.kind === 'resolved' ? resolution.membership : null;
+  // Resolve the membership this session is scoped to. When the JWT already names
+  // an org, that org is authoritative (point lookup) — never re-derived via the
+  // global resolver, which consults User.lastActiveOrganizationId and could bleed
+  // a multi-org user's view into a sibling session's org. Only a genuinely
+  // org-less session (just finished onboarding) falls back to the global pick.
+  const membership = await resolveMembershipForActiveSession(
+    session.user.id,
+    session.user.organizationId,
+  );
   const role = membership?.role ?? session.user.role;
   const organizationId = membership?.organizationId;
 
@@ -80,7 +84,7 @@ const DashboardLayout: FC<WithChildren> = async ({ children }) => {
       : 0;
 
   return (
-    <AdminSessionProvider>
+    <AdminSessionProvider currentUserId={session.user.id} currentUserName={fullName}>
       <OrganizationActivationModal hasOrganization={!!organizationId} />
       <ExportJobsProvider>
         {/* Full-viewport shell: the two dashboard layouts own their own scroll

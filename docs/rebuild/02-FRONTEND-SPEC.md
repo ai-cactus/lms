@@ -73,7 +73,7 @@ While decoupling each area, resolve the frontend findings:
 ## 6. Environment (frontend)
 
 The `web` tier holds **only** public config and its API base URL — never a secret, never `NEXT_PUBLIC_GEMINI_API_KEY` (F-008):
-- `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_API_BASE_URL` (public origin), `API_INTERNAL_URL` (private DNS for SSR fetches), `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, `NEXT_PUBLIC_INACTIVITY_TIMEOUT_MINUTES`.
+- `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_API_BASE_URL` (public origin), `API_INTERNAL_URL` (private DNS for SSR fetches), `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`.
 - Session cookie signing/verification stays in `api`; `web` never needs the auth secret.
 
 ## 7. Migration ergonomics

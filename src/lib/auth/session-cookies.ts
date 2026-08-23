@@ -24,6 +24,27 @@ export function sessionCookieName(instance: 'admin' | 'worker', useSecureCookies
   return `${useSecureCookies ? '__Secure-' : ''}${instance}.session-token`;
 }
 
+/**
+ * Suffix of the short-lived, NON-httpOnly marker cookie that records "your
+ * session on this browser was evicted because another account signed in". The
+ * login page reads it via `document.cookie` (hence non-httpOnly) to surface a
+ * distinct "Signed Out" notice, then clears it. Presence-only — it never
+ * carries any account data.
+ */
+export const SIBLING_EVICTED_COOKIE_SUFFIX = 'session-evicted';
+
+/**
+ * Names of the eviction-marker cookie for the sibling instance (both the
+ * `__Secure-` and plain variants), mirroring {@link siblingCookieNames}.
+ */
+export function siblingEvictedCookieNames(current: 'admin' | 'worker'): string[] {
+  const sibling = current === 'admin' ? 'worker' : 'admin';
+  return [
+    `__Secure-${sibling}.${SIBLING_EVICTED_COOKIE_SUFFIX}`,
+    `${sibling}.${SIBLING_EVICTED_COOKIE_SUFFIX}`,
+  ];
+}
+
 // Minimal structural type for the mutable cookie store returned by
 // `cookies()` (next/headers). Declared locally to keep this module
 // dependency-free (see the file header) — importing next/headers here would
@@ -68,6 +89,37 @@ export function expireSiblingSessionCookies(
       secure: name.startsWith('__Secure-'),
       expires: new Date(0),
       maxAge: 0,
+    });
+  }
+}
+
+/**
+ * Drop a short-lived, presence-only marker cookie for the sibling instance,
+ * recording that its session was just evicted by a login on `current`. The
+ * login page reads it (via `document.cookie` — hence NON-httpOnly) to show a
+ * distinct "you were signed out because another account signed in" notice, then
+ * clears it (single-use). The 60s max-age self-clears it if the evicted user
+ * never lands on the login page.
+ *
+ * Only ever called from the login `signIn` callback, right beside
+ * {@link expireSiblingSessionCookies} — a login-by-another-account is the sole
+ * eviction event. It must NOT be emitted for a same-user org switch or an
+ * intentional logout (see session-bridge.ts), which are not evictions.
+ */
+export function markSiblingSessionEvicted(
+  cookieStore: MutableCookieStore,
+  current: 'admin' | 'worker',
+): void {
+  for (const name of siblingEvictedCookieNames(current)) {
+    cookieStore.set(name, '1', {
+      path: '/',
+      // Readable by the login page's client script — carries no account data.
+      httpOnly: false,
+      sameSite: 'lax',
+      // A `__Secure-` prefixed name is only accepted with `Secure`; the plain
+      // variant is the one that sticks in non-secure (dev) environments.
+      secure: name.startsWith('__Secure-'),
+      maxAge: 60,
     });
   }
 }

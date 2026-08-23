@@ -26,6 +26,7 @@ vi.mock('@/lib/logger', () => ({ logger: mockLogger, maskEmail: (e: string) => e
 
 import {
   resolveActiveMembership,
+  resolveMembershipForActiveSession,
   listActiveMemberships,
   getActiveMembership,
   createMembership,
@@ -180,6 +181,79 @@ describe('listActiveMemberships / getActiveMembership', () => {
       organizationSlug: 'acme-health',
       role: 'supervisor',
     });
+  });
+});
+
+describe('resolveMembershipForActiveSession', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('performs a POINT lookup (getActiveMembership) when the session already names an organization', async () => {
+    prismaMock.organizationUser.findFirst.mockResolvedValue(membershipRow({ role: 'nurse' }));
+
+    const result = await resolveMembershipForActiveSession('user-1', 'org-1');
+
+    expect(result).toEqual({
+      organizationUserId: 'ou-1',
+      organizationId: 'org-1',
+      organizationName: 'Acme Health',
+      organizationSlug: 'acme-health',
+      role: 'nurse',
+    });
+    expect(prismaMock.organizationUser.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { userId: 'user-1', organizationId: 'org-1', active: true },
+      }),
+    );
+  });
+
+  it('does NOT consult the global resolver (User.lastActiveOrganizationId or organizationUser.findMany) when the session already names an organization', async () => {
+    prismaMock.organizationUser.findFirst.mockResolvedValue(membershipRow());
+
+    await resolveMembershipForActiveSession('user-1', 'org-1');
+
+    // The global resolver reads User.lastActiveOrganizationId and lists every
+    // active membership — a sibling session's login or a later org switch may
+    // have moved that value, so it must never be consulted once the session's
+    // own JWT already names an org (see the point-lookup rationale in the
+    // module doc comment).
+    expect(prismaMock.user.findUnique).not.toHaveBeenCalled();
+    expect(prismaMock.organizationUser.findMany).not.toHaveBeenCalled();
+  });
+
+  it('returns null when the session names an organization the user is no longer an active member of', async () => {
+    prismaMock.organizationUser.findFirst.mockResolvedValue(null);
+
+    const result = await resolveMembershipForActiveSession('user-1', 'org-stale');
+
+    expect(result).toBeNull();
+  });
+
+  it('falls back to the global resolver when the session is genuinely org-less (sessionOrganizationId null)', async () => {
+    prismaMock.user.findUnique.mockResolvedValue({ lastActiveOrganizationId: null });
+    prismaMock.organizationUser.findMany.mockResolvedValue([membershipRow()]);
+
+    const result = await resolveMembershipForActiveSession('user-1', null);
+
+    expect(result).toEqual({
+      organizationUserId: 'ou-1',
+      organizationId: 'org-1',
+      organizationName: 'Acme Health',
+      organizationSlug: 'acme-health',
+      role: 'hr',
+    });
+    expect(prismaMock.organizationUser.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('returns null via the global-resolver fallback when the org-less user has never joined any organization', async () => {
+    prismaMock.user.findUnique.mockResolvedValue({ lastActiveOrganizationId: null });
+    prismaMock.organizationUser.findMany.mockResolvedValue([]);
+    prismaMock.organizationUser.count.mockResolvedValue(0);
+
+    const result = await resolveMembershipForActiveSession('user-1', null);
+
+    expect(result).toBeNull();
   });
 });
 

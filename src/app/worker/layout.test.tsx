@@ -11,30 +11,37 @@
  *
  * Post multi-org refactor: `fullName` is read directly off `User` (no more
  * `Profile` model), and the active org/role come from
- * `resolveActiveMembership()` (`@/lib/auth/membership`) rather than a flat
- * `User.organizationId`/`User.role` — the session JWT stays org-less until
- * next sign-in, so the layout re-resolves the membership fresh on every
- * request (e.g. right after join-by-code onboarding).
+ * `resolveMembershipForActiveSession()` (`@/lib/auth/membership`) rather than a
+ * flat `User.organizationId`/`User.role`. Unlike the login-time resolver
+ * (`resolveActiveMembership`, which returns a `MembershipResolution` union),
+ * this session-scoped resolver returns a `MembershipSummary | null` directly —
+ * a POINT lookup against `session.user.organizationId` when the JWT already
+ * names an org, falling back to the global resolver only for a genuinely
+ * org-less token (e.g. right after join-by-code onboarding).
  */
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockAuth, prismaMock, mockRedirect, mockResolveActiveMembership } = vi.hoisted(() => ({
-  mockAuth: vi.fn(),
-  prismaMock: {
-    user: { findUnique: vi.fn() },
-    organization: { findUnique: vi.fn() },
-  },
-  mockRedirect: vi.fn(() => {
-    throw new Error('NEXT_REDIRECT');
+const { mockAuth, prismaMock, mockRedirect, mockResolveMembershipForActiveSession } = vi.hoisted(
+  () => ({
+    mockAuth: vi.fn(),
+    prismaMock: {
+      user: { findUnique: vi.fn() },
+      organization: { findUnique: vi.fn() },
+    },
+    mockRedirect: vi.fn(() => {
+      throw new Error('NEXT_REDIRECT');
+    }),
+    mockResolveMembershipForActiveSession: vi.fn(),
   }),
-  mockResolveActiveMembership: vi.fn(),
-}));
+);
 
 vi.mock('@/auth.worker', () => ({ auth: mockAuth }));
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock, default: prismaMock }));
 vi.mock('next/navigation', () => ({ redirect: mockRedirect }));
-vi.mock('@/lib/auth/membership', () => ({ resolveActiveMembership: mockResolveActiveMembership }));
+vi.mock('@/lib/auth/membership', () => ({
+  resolveMembershipForActiveSession: mockResolveMembershipForActiveSession,
+}));
 vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
   maskEmail: (e: string) => `masked:${e}`,
@@ -55,25 +62,35 @@ vi.mock('@/components/worker/WorkerDashboardLayout', () => ({
 
 import WorkerLayout from './layout';
 
-const SESSION = { user: { id: 'user-1', email: 'worker@acme.com', name: 'Worker One' } };
+const SESSION = {
+  user: { id: 'user-1', email: 'worker@acme.com', name: 'Worker One', organizationId: 'org-1' },
+};
 const ACTIVE_SUB = { status: 'active', pausedAt: null };
 const RESOLVED_MEMBERSHIP = {
-  kind: 'resolved' as const,
-  membership: {
-    organizationUserId: 'ou-1',
-    organizationId: 'org-1',
-    organizationName: 'Acme Co',
-    organizationSlug: 'acme-co',
-    role: 'nurse',
-  },
+  organizationUserId: 'ou-1',
+  organizationId: 'org-1',
+  organizationName: 'Acme Co',
+  organizationSlug: 'acme-co',
+  role: 'nurse',
 };
 
 beforeEach(() => {
   vi.clearAllMocks();
   mockAuth.mockResolvedValue(SESSION);
   prismaMock.user.findUnique.mockResolvedValue({ fullName: 'Worker One' });
-  mockResolveActiveMembership.mockResolvedValue(RESOLVED_MEMBERSHIP);
+  mockResolveMembershipForActiveSession.mockResolvedValue(RESOLVED_MEMBERSHIP);
   prismaMock.organization.findUnique.mockResolvedValue({ subscription: ACTIVE_SUB });
+});
+
+describe('WorkerLayout — resolveMembershipForActiveSession point lookup', () => {
+  it('resolves the membership via a POINT lookup against session.user.organizationId (never the global resolver)', async () => {
+    await WorkerLayout({ children: <div /> });
+
+    expect(mockResolveMembershipForActiveSession).toHaveBeenCalledExactlyOnceWith(
+      'user-1',
+      'org-1',
+    );
+  });
 });
 
 describe('WorkerLayout — billing gate (TC-041-B)', () => {
@@ -134,7 +151,7 @@ describe('WorkerLayout — billing gate (TC-041-B)', () => {
   });
 
   it('redirects to /onboarding-worker before the billing check when the user has no organization', async () => {
-    mockResolveActiveMembership.mockResolvedValue({ kind: 'none' });
+    mockResolveMembershipForActiveSession.mockResolvedValue(null);
 
     await expect(WorkerLayout({ children: <div /> })).rejects.toThrow('NEXT_REDIRECT');
 
