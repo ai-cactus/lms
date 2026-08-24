@@ -1,7 +1,8 @@
 'use server';
 
 import { auth } from '@/auth';
-import { getRoleDisplayName, isAdminRole, WORKER_ROLES } from '@/lib/rbac/role-utils';
+import { dbRoleToRoleKey, getRoleDisplayName, WORKER_ROLES } from '@/lib/rbac/role-utils';
+import { can, type Permission } from '@/lib/rbac/permissions';
 import prisma from '@/lib/prisma';
 import { logger } from '@/lib/logger';
 import { startedAtWhere, type AuditDateRangeInput } from '@/lib/audit-reports/date-range';
@@ -46,13 +47,29 @@ export interface AuditorStaffRow {
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function requireAdminSession() {
+/**
+ * D-01: these are `'use server'` exports, so they are POST-invocable directly
+ * and bypass every page-level gate. They were guarded by `isAdminRole`, which
+ * admits Finance and Clinical Director — neither of whom holds any auditPack
+ * permission. Fixing only the audit-reports page would have left this open.
+ *
+ * `auditPack.read` for the read surfaces; `auditPack.create` for the pack
+ * generator, which produces bulk PHI/PII egress.
+ */
+async function requireAuditorSession(permission: Permission) {
   const session = await auth();
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
   }
   const { role, organizationId } = session.user;
-  if (!isAdminRole(role) || !organizationId) {
+  const roleKey = dbRoleToRoleKey(role);
+  if (!roleKey || !can(roleKey, permission) || !organizationId) {
+    logger.warn({
+      msg: '[auditor] Permission denied',
+      userId: session.user.id,
+      role,
+      permission,
+    });
     throw new Error('Unauthorized');
   }
   return { userId: session.user.id, organizationId };
@@ -64,7 +81,7 @@ async function requireAdminSession() {
 
 export async function checkAuditorAccess(): Promise<boolean> {
   try {
-    const { organizationId } = await requireAdminSession();
+    const { organizationId } = await requireAuditorSession('auditPack.read');
     const org = await prisma.organization.findUnique({
       where: { id: organizationId },
       select: { hasAuditorAccess: true },
@@ -82,7 +99,7 @@ export async function checkAuditorAccess(): Promise<boolean> {
 export async function getAuditorOverviewStats(
   range?: AuditDateRangeInput,
 ): Promise<AuditorOverviewStats> {
-  const { organizationId } = await requireAdminSession();
+  const { organizationId } = await requireAuditorSession('auditPack.read');
   const dateWhere = startedAtWhere(range);
 
   const [totalCourses, enrollmentStats, staffCount] = await Promise.all([
@@ -132,7 +149,7 @@ export async function getAuditorCourses(
   search?: string,
   range?: AuditDateRangeInput,
 ): Promise<AuditorCourseRow[]> {
-  const { organizationId } = await requireAdminSession();
+  const { organizationId } = await requireAuditorSession('auditPack.read');
   const dateWhere = startedAtWhere(range);
 
   const courses = await prisma.course.findMany({
@@ -181,7 +198,7 @@ export async function getAuditorStaff(
   search?: string,
   range?: AuditDateRangeInput,
 ): Promise<AuditorStaffRow[]> {
-  const { organizationId } = await requireAdminSession();
+  const { organizationId } = await requireAuditorSession('auditPack.read');
   const dateWhere = startedAtWhere(range);
 
   const workers = await prisma.organizationUser.findMany({
@@ -243,7 +260,7 @@ export async function getAuditorStaff(
 // ---------------------------------------------------------------------------
 
 export async function generateAuditorPackCsv(): Promise<string> {
-  const { organizationId } = await requireAdminSession();
+  const { organizationId } = await requireAuditorSession('auditPack.create');
 
   const enrollments = await prisma.enrollment.findMany({
     where: { organizationUser: { organizationId } },
