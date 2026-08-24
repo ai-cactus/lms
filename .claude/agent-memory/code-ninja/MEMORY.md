@@ -15,6 +15,7 @@
 - [Auth instance-selector vs DB role](auth_instance_vs_role.md) — the `'admin'|'worker'` cookie/routing selector is NOT the DB role; don't conflate them.
 - [Proxy cookie lags membership](gotcha_proxy_cookie_lags_membership.md) — proxy gates read the raw cookie (no callbacks); pair any organizationId gate with a client `update()`.
 - [Server Action redirectTo must render](gotcha_server_action_redirectto_must_render.md) — any redirect ON the target (proxy gate or a `redirect()` stub page) crashes the client with E394.
+- [Auth revalidation cache TTL](auth_revalidation_cache_ttl.md) — JWT decode DB revalidation is Redis-cached (AUTH_REVALIDATE_TTL_SECONDS, def 30); sessionVersion bumps actively busted via invalidateRevalidationCache, TTL backstops the rest.
 - [Build type-checks everything](build_typecheck_scope.md) — `next build` type-checks scripts/ and tests too; `npm run lint` only covers src/.
 - [RBAC role model](rbac_role_model.md) — 13 category-aware DB roles (5 manager + 8 worker, uniform worker perms); DEFAULT_SELF_SERVE_WORKER_ROLE + snake↔camel conversion in role-utils.ts.
 - [Org/Facility split](org_facility_split.md) — location/compliance fields moved to Facility; now genuinely multi-facility (OrganizationUserFacility); facility.* = owner+supervisor only.
@@ -55,3 +56,4 @@
 - [Bare `auth()` drops Set-Cookie](gotcha_bare_auth_drops_set_cookie.md) — no-args next-auth v5 `auth()` never rotates the session cookie, which is what makes `Vary: Cookie` usable.
 - [Playback cache is in-process](gotcha_video_playback_cache_is_in_process.md) — one container, no Redis; spawned scripts/ can't evict it, so invalidate from the BullMQ handler.
 - [RSC vs JSON payload shapes](gotcha_rsc_vs_json_payload_shapes.md) — one builder for a route + a server page: normalise Dates to ISO, plus the wall-clock hydration trap and server-page auth conventions.
+- [Next 16 revalidateTag + no Prisma.validator](gotcha_next16_revalidatetag_and_prisma_validator.md) — revalidateTag needs a 2nd arg (`'max'`); new prisma-client generator has no Prisma.validator, use `satisfies` selects with `'asc' as const`.
