@@ -43,7 +43,7 @@ Only `web` is reachable from the internet (through the ingress/WAF). `api`, `wor
 
 **Validate every variable at boot with a Zod/envalid schema per service (fail-fast — F-042).** Grouped by tier:
 
-- **`web` (public only, no secrets):** `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_API_BASE_URL`, `API_INTERNAL_URL`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, `NEXT_PUBLIC_INACTIVITY_TIMEOUT_MINUTES`. **Never** `NEXT_PUBLIC_GEMINI_API_KEY` (F-008).
+- **`web` (public only, no secrets):** `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_API_BASE_URL`, `API_INTERNAL_URL`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`. **Never** `NEXT_PUBLIC_GEMINI_API_KEY` (F-008).
 - **`api`:** `DATABASE_URL` (pooled) + `DIRECT_URL`, `REDIS_URL`, `AUTH_SECRET` (single — F-035), `AUTH_MICROSOFT_ENTRA_ID_ID/_SECRET/_TENANT_ID`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_{STARTER,PROFESSIONAL}_{,QUARTERLY,YEARLY}_PRICE_ID`, `SMTP_*`/`ZOHO_*`, `ENTERPRISE_CONTACT_EMAIL`, `GCP_BUCKET_NAME`, `GCS_KEY_BASE64`, `GOOGLE_PROJECT_ID`, `GOOGLE_LOCATION`, `GEMINI/VERTEX` config, `MINIO_*`, `SYSTEM_ADMIN_PASSWORD` (→ real accounts over time), `INACTIVITY_TIMEOUT_MINUTES`, hCaptcha secret (new — F-023).
 - **`worker`:** the `api` DB/Redis/storage/email/AI vars + `V46_GENERATION_TIMEOUT_MS`, `REMINDER_*`, `VIDEO_SWEEP_*`, `MAX_VIDEO_UPLOAD_BYTES`, `NODE_OPTIONS`.
 

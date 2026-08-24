@@ -93,7 +93,14 @@ async function seedOrgOwnerWorkerAndEnrollments(): Promise<Seeded> {
     await client.query(
       `INSERT INTO users (id, email, password, email_verified, auth_provider, first_name, last_name, full_name, created_at, updated_at)
        VALUES ($1, $2, $3, true, 'credentials', $4, $5, $6, NOW(), NOW())`,
-      [ownerId, ownerEmail, await bcrypt.hash(ownerPassword, 10), 'Remove', 'Owner', 'Remove Owner'],
+      [
+        ownerId,
+        ownerEmail,
+        await bcrypt.hash(ownerPassword, 10),
+        'Remove',
+        'Owner',
+        'Remove Owner',
+      ],
     );
     await client.query(
       `INSERT INTO users (id, email, password, email_verified, auth_provider, first_name, last_name, full_name, created_at, updated_at)
@@ -197,10 +204,10 @@ async function seedOrgOwnerWorkerAndEnrollments(): Promise<Seeded> {
 async function cleanup(seeded: Seeded): Promise<void> {
   const client = await db();
   try {
-    await client.query(`DELETE FROM organization_user_facilities WHERE organization_user_id IN ($1, $2)`, [
-      seeded.ownerOrgUserId,
-      seeded.workerOrgUserId,
-    ]);
+    await client.query(
+      `DELETE FROM organization_user_facilities WHERE organization_user_id IN ($1, $2)`,
+      [seeded.ownerOrgUserId, seeded.workerOrgUserId],
+    );
     await client.query(`DELETE FROM invites WHERE organization_id = $1`, [seeded.orgId]);
     await client.query(`DELETE FROM enrollments WHERE course_id IN ($1, $2)`, [
       seeded.inFlightCourseId,
@@ -270,10 +277,9 @@ test.describe('Remove staffer with in-flight training, then re-invite — clean 
         expect(orgUserRes.rows[0].active).toBe(false);
         expect(orgUserRes.rows[0].deactivated_at).not.toBeNull();
 
-        const inFlightRes = await dbAfterRemoval.query(
-          `SELECT id FROM enrollments WHERE id = $1`,
-          [seeded.inFlightEnrollmentId],
-        );
+        const inFlightRes = await dbAfterRemoval.query(`SELECT id FROM enrollments WHERE id = $1`, [
+          seeded.inFlightEnrollmentId,
+        ]);
         expect(inFlightRes.rows).toHaveLength(0);
 
         const completedRes = await dbAfterRemoval.query(
@@ -290,7 +296,10 @@ test.describe('Remove staffer with in-flight training, then re-invite — clean 
       await page.goto('/dashboard/staff');
       await page.waitForLoadState('networkidle');
 
-      await page.getByRole('button', { name: /add staff/i }).first().click();
+      await page
+        .getByRole('button', { name: /add staff/i })
+        .first()
+        .click();
       await page.waitForSelector('[role="dialog"]', { timeout: 5000 });
       await expect(page.getByText('Invite New Staffs')).toBeVisible();
       // Facility is required before Continue advances past step 1.
@@ -335,7 +344,10 @@ test.describe('Remove staffer with in-flight training, then re-invite — clean 
         });
         await joinPage.getByPlaceholder('Enter your first name').fill('Rejoined');
         await joinPage.getByPlaceholder('Enter your last name').fill('Worker');
-        await joinPage.getByPlaceholder(/^password \(at least/i).first().fill(newPassword);
+        await joinPage
+          .getByPlaceholder(/^password \(at least/i)
+          .first()
+          .fill(newPassword);
         await joinPage
           .getByPlaceholder(/^password \(at least/i)
           .nth(1)

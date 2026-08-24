@@ -138,9 +138,7 @@ test.describe('Quiz retake lockout (append-history model)', () => {
 
     await page.getByText(COURSE_TITLE).first().click();
     await page.waitForURL('**/worker/courses/**');
-    await page
-      .getByRole('button', { name: /continue course|start course|resume course/i })
-      .click();
+    await page.getByRole('button', { name: /continue course|start course|resume course/i }).click();
     await page.waitForURL('**/learn/**');
 
     await page.getByRole('button', { name: 'Proceed to Quiz' }).click();
@@ -190,9 +188,7 @@ test.describe('Attestation gate for sub-role workers (isWorkerRole fix)', () => 
 
     await page.getByText(COURSE_TITLE).first().click();
     await page.waitForURL('**/worker/courses/**');
-    await page
-      .getByRole('button', { name: /continue course|start course|resume course/i })
-      .click();
+    await page.getByRole('button', { name: /continue course|start course|resume course/i }).click();
     await page.waitForURL('**/learn/**');
 
     await page.getByRole('button', { name: 'Proceed to Quiz' }).click();

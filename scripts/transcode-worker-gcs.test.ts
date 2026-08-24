@@ -125,9 +125,9 @@ describe('getGcs() credential-decode algorithm [Bug 2 regression — replicated 
   it('throws for a valid base64 string that decodes to non-JSON', () => {
     const malformedKey = Buffer.from('this is not json').toString('base64');
 
-    expect(() =>
-      replicatedGetGcs(malformedKey, MockStorageCtor as unknown as StorageCtor),
-    ).toThrow(/GCS_KEY_BASE64 is malformed/);
+    expect(() => replicatedGetGcs(malformedKey, MockStorageCtor as unknown as StorageCtor)).toThrow(
+      /GCS_KEY_BASE64 is malformed/,
+    );
 
     // Storage must never be constructed when the key cannot be parsed.
     expect(MockStorageCtor).not.toHaveBeenCalled();

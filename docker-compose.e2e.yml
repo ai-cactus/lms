@@ -1,0 +1,133 @@
+# docker-compose.e2e.yml
+#
+# Backing services for the LOCAL Playwright suite (`npm run e2e:local`).
+# Mirrors the service matrix of the `e2e` job in .github/workflows/ci.yml:
+# pgvector/pgvector:pg16, redis:7-alpine, mailhog/mailhog:v1.0.1, minio.
+#
+# Host ports are deliberately OFFSET from docker-compose.dev.yml (which holds
+# 5433, 6380, 9005/9006, 1025/8025) so the dev stack and the e2e stack can run
+# side by side. The e2e database is `lms_e2e` on its OWN volume — the suite
+# must never be able to reach the dev `lms` database.
+#
+#   Bring up:   npm run e2e:up      (--wait; every service has a healthcheck)
+#   Tear down:  npm run e2e:down    (-v: wipes the e2e volumes)
+
+name: lms-e2e
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '3'
+
+services:
+  db:
+    container_name: lms-e2e-db
+    image: pgvector/pgvector:pg16
+    logging: *default-logging
+    ports:
+      - '5442:5432'
+    environment:
+      POSTGRES_DB: lms_e2e
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    # Throughput over durability: this database is recreated by migrate+seed on
+    # every run, so fsync buys nothing and costs a lot on WSL2's virtiofs.
+    command: >-
+      postgres -c fsync=off -c synchronous_commit=off -c full_page_writes=off
+    volumes:
+      - e2e-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d lms_e2e']
+      interval: 3s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+    networks: [e2e-net]
+
+  redis:
+    container_name: lms-e2e-redis
+    image: redis:7-alpine
+    logging: *default-logging
+    ports:
+      - '6389:6379'
+    command: redis-server --save '' --appendonly no
+    healthcheck:
+      test: ['CMD-SHELL', 'redis-cli ping | grep -q PONG']
+      interval: 3s
+      timeout: 5s
+      retries: 20
+      start_period: 3s
+    networks: [e2e-net]
+
+  minio:
+    container_name: lms-e2e-minio
+    image: minio/minio:latest
+    logging: *default-logging
+    command: server /data --console-address ":9001"
+    ports:
+      - '9010:9000' # S3-compatible API → MINIO_PORT=9010
+      - '9011:9001' # Browser console
+    environment:
+      MINIO_ROOT_USER: lms_minio_e2e
+      MINIO_ROOT_PASSWORD: lms_minio_secret_e2e
+    tmpfs:
+      - /data
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -sf http://127.0.0.1:9000/minio/health/live']
+      interval: 3s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+    networks: [e2e-net]
+
+  mailhog:
+    # Pinned to match the CI e2e job's sink: a floating tag means a dev/CI
+    # drift can appear as a mail-delivery bug.
+    # Named lms-e2e-smtp, not lms-e2e-mailhog: a hand-created standalone
+    # container from the old runbook may still hold that name on 1025/8025.
+    container_name: lms-e2e-smtp
+    image: mailhog/mailhog:v1.0.1
+    platform: linux/amd64
+    logging: *default-logging
+    ports:
+      - '1125:1025' # smtp  → SMTP_PORT=1125
+      - '8125:8025' # web ui → MAILHOG_URL=http://localhost:8125
+    healthcheck:
+      test:
+        ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:8025/api/v2/messages']
+      interval: 3s
+      timeout: 5s
+      retries: 20
+      start_period: 3s
+    networks: [e2e-net]
+
+  # OPTIONAL. src/lib/storage/minio-provider.ts calls ensureBucket() →
+  # bucketExists()/makeBucket() before EVERY operation, so the app creates
+  # `lms-documents` itself and CI relies on exactly that. This one-shot only
+  # makes the bucket deterministic before the first spec, and surfaces
+  # credential problems as an obvious failure instead of a mid-test 500.
+  #
+  # Behind a profile so `up --wait` never sees a completed container — compose
+  # treats an exited service as a failure under --wait.
+  mc-init:
+    image: minio/mc:latest
+    profiles: ['init']
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >-
+      /bin/sh -c "
+      mc alias set e2e http://minio:9000 lms_minio_e2e lms_minio_secret_e2e &&
+      mc mb --ignore-existing e2e/lms-documents &&
+      echo 'bucket lms-documents ready'
+      "
+    networks: [e2e-net]
+
+volumes:
+  e2e-postgres-data:
+
+networks:
+  e2e-net:
+    driver: bridge
+    name: lms-e2e-net

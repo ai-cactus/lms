@@ -5,6 +5,11 @@ const nextConfig: NextConfig = {
     serverActions: {
       bodySizeLimit: '10mb',
     },
+    // Every request body routed through the proxy is capped at 10MB by default,
+    // which truncates the MinIO proxy-upload fallback mid-multipart and surfaces
+    // as "Failed to parse body as FormData". Align it with MAX_VIDEO_BYTES so the
+    // fallback can carry a real video when direct-to-GCS is unavailable.
+    proxyClientMaxBodySize: '500mb',
   },
   images: {
     qualities: [75, 100],

@@ -1,19 +1,78 @@
 echo "Running pre-push checks..."
 
-# Heavy verification moved here from pre-commit so commits stay fast.
-# Mirrors the CI pipeline (.github/workflows/ci.yml) to catch failures
-# before they reach the remote.
+# Tiered local verification. GitHub Actions minutes are a hard constraint, so
+# the heavy gate that used to live in CI lives here. The tier is chosen by the
+# REMOTE branch being updated:
+#
+#   feature/*, bugfix/*, tags, anything else → LIGHT (npm run verify,      ~15-85s)
+#   dev | staging | main | master            → HEAVY (npm run verify:full, ~5-7m)
+#
+# Escape hatch:  SKIP_HEAVY=1 git push   → downgrades HEAVY to LIGHT.
+#                Use this instead of `--no-verify`, which skips everything.
+#
+# ── Shell contract ──────────────────────────────────────────────────────────
+# husky v9 runs this via .husky/_/h, which does:  sh -e "$0" "$@"
+#   * /bin/sh is dash and ERREXIT IS ON. Never write a bare `[ x = y ]` as a
+#     statement — a false test aborts the hook. Always wrap it in `if`.
+#   * stdin is INHERITED from git, so the ref lines below really do arrive,
+#     and the loop is not a subshell, so its variables survive it.
+#   * $1 = remote name, $2 = remote URL.
+#
+# git feeds one line per ref:
+#   <local ref> <local sha> <remote ref> <remote sha>
+# A branch deletion arrives with an all-zero local sha.
 
-echo "→ Generating Prisma client..."
-npx prisma generate || exit 1
+PROTECTED_BRANCHES="dev staging main master"
 
-echo "→ Type checking (TypeScript)..."
-npx tsc --noEmit || exit 1
+heavy=0
+saw_branch=0
 
-echo "→ Running tests..."
-npm run test || exit 1
+while read -r local_ref local_sha remote_ref remote_sha; do
+  if [ -z "$remote_ref" ]; then continue; fi
 
-echo "→ Build check..."
-npm run build || exit 1
+  # Branch deletion — local sha is all zeros. Nothing is being added, so there
+  # is nothing to verify.
+  case "$local_sha" in
+    *[!0]*) : ;;
+    *) continue ;;
+  esac
+
+  # Only branches decide the tier; refs/tags/* etc. fall through to LIGHT.
+  case "$remote_ref" in
+    refs/heads/*) : ;;
+    *) continue ;;
+  esac
+  saw_branch=1
+
+  branch="${remote_ref#refs/heads/}"
+  for p in $PROTECTED_BRANCHES; do
+    if [ "$branch" = "$p" ]; then heavy=1; fi
+  done
+done
+
+# Empty stdin (hook invoked by hand, or a git version that sends nothing):
+# fall back to the current branch rather than skipping verification entirely.
+if [ "$saw_branch" = "0" ] && [ "$heavy" = "0" ]; then
+  cur="$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+  for p in $PROTECTED_BRANCHES; do
+    if [ "$cur" = "$p" ]; then heavy=1; fi
+  done
+fi
+
+if [ "$heavy" = "1" ] && [ -n "${SKIP_HEAVY:-}" ] && [ "${SKIP_HEAVY}" != "0" ]; then
+  echo ""
+  echo "⚠  SKIP_HEAVY set — downgrading to the LIGHT tier for a protected-branch push."
+  echo "   The full suite and production build were NOT run."
+  echo ""
+  heavy=0
+fi
+
+if [ "$heavy" = "1" ]; then
+  echo "→ pre-push: HEAVY tier (protected branch). Full verify + build."
+  npm run verify:full || exit 1
+else
+  echo "→ pre-push: LIGHT tier. Changed-file lint + typecheck + affected tests."
+  npm run verify || exit 1
+fi
 
 echo "All pre-push checks passed!"

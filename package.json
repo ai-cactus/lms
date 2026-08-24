@@ -7,11 +7,22 @@
     "dev": "NODE_OPTIONS='--max-old-space-size=4096' next dev",
     "build": "next build",
     "start": "node --max-old-space-size=4096 --expose-gc node_modules/.bin/next start",
-    "lint": "eslint src/ scripts/",
-    "lint:fix": "eslint src/ scripts/ --fix",
-    "format": "prettier --write \"src/**/*.{ts,tsx,css,json}\"",
-    "format:check": "prettier --check \"src/**/*.{ts,tsx,css,json}\"",
+    "lint": "eslint src/ scripts/ tests/",
+    "lint:fix": "eslint src/ scripts/ tests/ --fix",
+    "format": "prettier --write \"{src,scripts,tests}/**/*.{ts,tsx,css,json}\"",
+    "format:check": "prettier --check \"{src,scripts,tests}/**/*.{ts,tsx,css,json}\"",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:changed": "vitest run --changed ${VERIFY_BASE:-origin/dev} --passWithNoTests",
+    "verify": "sh scripts/verify-light.sh",
+    "verify:full": "npm run lint && npm run format:check && npm run typecheck && npm run test && npm run build",
+    "test:e2e": "sh scripts/with-e2e-env.sh npx playwright test",
+    "e2e:local": "sh scripts/e2e-local.sh",
+    "e2e:up": "docker compose -f docker-compose.e2e.yml up -d --wait db redis minio mailhog",
+    "e2e:down": "docker compose -f docker-compose.e2e.yml down -v --remove-orphans",
+    "e2e:bucket": "docker compose -f docker-compose.e2e.yml --profile init run --rm --no-deps mc-init",
+    "secrets:scan": "sh scripts/secrets-scan.sh",
+    "secrets:scan:all": "gitleaks dir . --config .gitleaks.toml --redact --no-banner",
     "script": "tsx scripts/run.ts",
     "prepare": "husky",
     "prisma:migrate:dev": "prisma migrate dev",
@@ -30,12 +41,15 @@
     "quill": "2.0.2"
   },
   "lint-staged": {
-    "src/**/*.{ts,tsx}": [
-      "eslint --fix",
+    "{src,scripts,tests}/**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}": [
+      "eslint --fix --no-error-on-unmatched-pattern",
       "prettier --write"
     ],
-    "src/**/*.{css,json}": [
+    "{src,scripts,tests}/**/*.{css,json}": [
       "prettier --write"
+    ],
+    "prisma/**/*.prisma": [
+      "prisma format"
     ]
   },
   "dependencies": {

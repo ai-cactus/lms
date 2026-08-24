@@ -132,9 +132,7 @@ test.describe('Login membership resolution — 2+ active memberships', () => {
     await login(page, 'multi.org@test.com', 'MultiOrg123!');
 
     await page.waitForURL('**/select-organization**', { timeout: 45000 });
-    await expect(
-      page.getByRole('heading', { name: /choose an organization/i }),
-    ).toBeVisible();
+    await expect(page.getByRole('heading', { name: /choose an organization/i })).toBeVisible();
 
     await expect(page.getByText('E2E Test Organization')).toBeVisible();
     await expect(page.getByText('E2E Second Organization')).toBeVisible();

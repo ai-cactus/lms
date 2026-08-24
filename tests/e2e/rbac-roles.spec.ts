@@ -121,9 +121,10 @@ async function cleanupUser(userId: string, orgId?: string, orgUserId?: string): 
   const client = await db();
   try {
     if (orgUserId) {
-      await client.query(`DELETE FROM organization_user_facilities WHERE organization_user_id = $1`, [
-        orgUserId,
-      ]);
+      await client.query(
+        `DELETE FROM organization_user_facilities WHERE organization_user_id = $1`,
+        [orgUserId],
+      );
       await client.query(`DELETE FROM organization_users WHERE id = $1`, [orgUserId]);
     }
     await client.query(`DELETE FROM users WHERE id = $1`, [userId]);

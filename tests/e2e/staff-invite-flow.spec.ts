@@ -133,7 +133,10 @@ test.describe('Staff invite — 2-step modal, submit to success', () => {
       await page.goto('/dashboard/staff');
       await page.waitForLoadState('networkidle');
 
-      await page.getByRole('button', { name: /add staff/i }).first().click();
+      await page
+        .getByRole('button', { name: /add staff/i })
+        .first()
+        .click();
       await page.waitForSelector('[role="dialog"]', { timeout: 5000 });
 
       // Step 1 — email entry. Facility is required before Continue advances.
@@ -206,7 +209,10 @@ test.describe('Staff invite — 2-step modal, submit to success', () => {
       await page.goto('/dashboard/staff');
       await page.waitForLoadState('networkidle');
 
-      await page.getByRole('button', { name: /add staff/i }).first().click();
+      await page
+        .getByRole('button', { name: /add staff/i })
+        .first()
+        .click();
       await page.waitForSelector('[role="dialog"]', { timeout: 5000 });
 
       // Facility is required before Continue advances past step 1.
@@ -289,7 +295,10 @@ test.describe('Staff invite — 2-step modal, submit to success', () => {
       await page.goto('/dashboard/staff');
       await page.waitForLoadState('networkidle');
 
-      await page.getByRole('button', { name: /add staff/i }).first().click();
+      await page
+        .getByRole('button', { name: /add staff/i })
+        .first()
+        .click();
       await page.waitForSelector('[role="dialog"]', { timeout: 5000 });
       // Facility is required before Continue advances past step 1.
       await page.getByRole('combobox', { name: 'Facility' }).click();
@@ -319,7 +328,10 @@ test.describe('Staff invite — 2-step modal, submit to success', () => {
       await page.goto('/dashboard/staff');
       await page.waitForLoadState('networkidle');
 
-      await page.getByRole('button', { name: /add staff/i }).first().click();
+      await page
+        .getByRole('button', { name: /add staff/i })
+        .first()
+        .click();
       const dialog = page.getByRole('dialog');
       await expect(dialog).toBeVisible();
       await expect(page.getByText('Invite New Staffs')).toBeVisible();

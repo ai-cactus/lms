@@ -14,6 +14,8 @@ import { Alert } from '@/components/ui/alert';
 import { authenticate } from '@/app/actions/auth';
 import { signIn } from 'next-auth/react';
 import { logger, maskEmail } from '@/lib/logger';
+import { SIBLING_EVICTED_COOKIE_SUFFIX } from '@/lib/auth/session-cookies';
+import { clearTabIdentity } from '@/lib/auth/tab-identity';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -27,11 +29,50 @@ export default function LoginPage() {
       : searchParams.get('reason'),
   );
 
+  // Presence-only marker dropped by the auth signIn callback when THIS browser's
+  // sibling session was evicted by another account logging in (see
+  // markSiblingSessionEvicted). Read once for the notice below.
+  const [evictedByOther] = React.useState<boolean>(
+    typeof window !== 'undefined'
+      ? document.cookie
+          .split('; ')
+          .some((c) => c.split('=')[0].endsWith(`.${SIBLING_EVICTED_COOKIE_SUFFIX}`))
+      : false,
+  );
+
   // Clear the sessionStorage flag immediately so it doesn't persist on refresh
   useEffect(() => {
     try {
       if (sessionStorage.getItem('logout_reason')) {
         sessionStorage.removeItem('logout_reason');
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  // Reaching /login means THIS tab is (re)authenticating, so its prior
+  // per-tab identity baseline (SessionIdentityGuard) is void. Clear it so the
+  // post-login dashboard/worker landing is treated as 'first-sight' and ADOPTS
+  // the freshly-authenticated account, instead of reading the stale baseline as
+  // a takeover and evicting on a legitimate same-tab account switch. Because
+  // sessionStorage is per tab, this clears only the tab performing the login — a
+  // stale OTHER tab (which never revisited /login) keeps its baseline and still
+  // evicts correctly on its next reload/focus, preserving takeover detection.
+  useEffect(() => {
+    clearTabIdentity();
+  }, []);
+
+  // Single-use: clear the eviction marker so the notice doesn't re-fire on a
+  // refresh. A `__Secure-` marker needs `Secure` to be overwritten under https.
+  useEffect(() => {
+    try {
+      const secure = window.location.protocol === 'https:' ? '; Secure' : '';
+      for (const entry of document.cookie.split('; ')) {
+        const name = entry.split('=')[0];
+        if (name.endsWith(`.${SIBLING_EVICTED_COOKIE_SUFFIX}`)) {
+          document.cookie = `${name}=; Max-Age=0; path=/; SameSite=Lax${secure}`;
+        }
       }
     } catch {
       /* ignore */
@@ -159,6 +200,11 @@ export default function LoginPage() {
         {inactiveReason === 'inactive' && (
           <Alert variant="warning" className="w-full" title="Session Expired">
             You were logged out due to inactivity. Please log in again.
+          </Alert>
+        )}
+        {evictedByOther && (
+          <Alert variant="warning" className="w-full" title="Signed Out">
+            You were signed out because another account signed in on this browser.
           </Alert>
         )}
         <div className="flex flex-col gap-9">

@@ -140,10 +140,10 @@ async function seedOrgWithOwnerAndHrStaffer(): Promise<Seeded> {
 async function cleanup(seeded: Seeded): Promise<void> {
   const client = await db();
   try {
-    await client.query(`DELETE FROM organization_user_facilities WHERE organization_user_id IN ($1, $2)`, [
-      seeded.ownerOrgUserId,
-      seeded.staffOrgUserId,
-    ]);
+    await client.query(
+      `DELETE FROM organization_user_facilities WHERE organization_user_id IN ($1, $2)`,
+      [seeded.ownerOrgUserId, seeded.staffOrgUserId],
+    );
     await client.query(`DELETE FROM invites WHERE organization_id = $1`, [seeded.orgId]);
     await client.query(`DELETE FROM organization_users WHERE id IN ($1, $2)`, [
       seeded.ownerOrgUserId,
@@ -212,7 +212,10 @@ test.describe('Removed-user re-invite lifecycle', () => {
       await page.goto('/dashboard/staff');
       await page.waitForLoadState('networkidle');
 
-      await page.getByRole('button', { name: /add staff/i }).first().click();
+      await page
+        .getByRole('button', { name: /add staff/i })
+        .first()
+        .click();
       await page.waitForSelector('[role="dialog"]', { timeout: 5000 });
       await expect(page.getByText('Invite New Staffs')).toBeVisible();
       // Facility is required before Continue advances past step 1.
@@ -269,7 +272,10 @@ test.describe('Removed-user re-invite lifecycle', () => {
         // Placeholder is "Password (at least N characters)" (capital P) — the
         // regex must be case-insensitive or the locator matches nothing and
         // .fill() hangs waiting for an element that will never appear.
-        await joinPage.getByPlaceholder(/^password \(at least/i).first().fill(newPassword);
+        await joinPage
+          .getByPlaceholder(/^password \(at least/i)
+          .first()
+          .fill(newPassword);
         await joinPage
           .getByPlaceholder(/^password \(at least/i)
           .nth(1)

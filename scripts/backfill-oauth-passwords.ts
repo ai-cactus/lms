@@ -36,7 +36,10 @@ async function main() {
   }
 
   for (const user of usersWithEmptyPassword) {
-    const randomPassword = await bcrypt.hash(nodeCrypto.randomUUID() + Date.now().toString(), BCRYPT_COST);
+    const randomPassword = await bcrypt.hash(
+      nodeCrypto.randomUUID() + Date.now().toString(),
+      BCRYPT_COST,
+    );
     await prisma.user.update({
       where: { id: user.id },
       data: {

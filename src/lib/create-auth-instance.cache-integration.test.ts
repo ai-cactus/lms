@@ -106,15 +106,21 @@ vi.mock('@/lib/enrollment/role-targets', () => ({ enrollUserForRoleTargets: vi.f
 vi.mock('@/lib/enrollment/invite-courses', () => ({ enrollInviteCourses: vi.fn() }));
 // The membership is deliberately NOT part of the cached snapshot — it is re-read
 // on every decode — so it is mocked here to make that live read observable.
-vi.mock('@/lib/auth/membership', () => ({
-  getActiveMembership: mockGetActiveMembership,
-  // Every token here is org-less, which is the branch that looks for a
-  // membership joined since the token was minted; `none` keeps these tests on
-  // the identity/sessionVersion behavior they are about.
-  resolveActiveMembership: vi.fn().mockResolvedValue({ kind: 'none' }),
-  createMembership: vi.fn(),
-  recordMembershipLogin: vi.fn(),
-}));
+// `activeMembershipOf` is left as the REAL (unmocked) implementation via
+// importOriginal — see create-auth-instance.test.ts's identical rationale.
+vi.mock('@/lib/auth/membership', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/auth/membership')>();
+  return {
+    ...actual,
+    getActiveMembership: mockGetActiveMembership,
+    // Every token here is org-less, which is the branch that looks for a
+    // membership joined since the token was minted; `none` keeps these tests on
+    // the identity/sessionVersion behavior they are about.
+    resolveActiveMembership: vi.fn().mockResolvedValue({ kind: 'none' }),
+    createMembership: vi.fn(),
+    recordMembershipLogin: vi.fn(),
+  };
+});
 
 import { adminConfig } from '@/auth';
 import { invalidateRevalidationCache } from '@/lib/auth/session-revalidation-cache';

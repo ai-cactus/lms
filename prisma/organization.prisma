@@ -35,7 +35,6 @@ model Organization {
   joinCode                    String?                          @unique @map("join_code")
   joinCodeExpiresAt           DateTime?                        @map("join_code_expires_at")
   stripeCustomerId            String?                          @unique @map("stripe_customer_id")
-  inactivityTimeoutMinutes    Int                              @default(15) @map("inactivity_timeout_minutes")
   requireMfa                  Boolean                          @default(false) @map("require_mfa")
   // How often batched (Tier 2) notifications are emailed. Per-type opt-outs
   // stay per-user on NotificationPreference; this is the org-wide cadence.

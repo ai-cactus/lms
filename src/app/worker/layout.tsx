@@ -7,7 +7,7 @@ import WorkerBillingBlockedScreen from '@/components/worker/WorkerBillingBlocked
 import { WorkerSessionProvider } from '@/components/providers/WorkerSessionProvider';
 import { hasActiveBilling } from '@/lib/billing';
 import { logger, maskEmail } from '@/lib/logger';
-import { resolveActiveMembership } from '@/lib/auth/membership';
+import { resolveMembershipForActiveSession } from '@/lib/auth/membership';
 
 export default async function WorkerLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
@@ -21,12 +21,15 @@ export default async function WorkerLayout({ children }: { children: React.React
     select: { fullName: true },
   });
 
-  // Re-resolve the active membership fresh from the DB — the session JWT stays
-  // org-less until the next full sign-in, so a worker who just finished
-  // join-by-code onboarding needs this to see their brand-new membership
-  // immediately.
-  const resolution = await resolveActiveMembership(session.user.id);
-  const membership = resolution.kind === 'resolved' ? resolution.membership : null;
+  // Resolve the membership this session is scoped to. When the JWT already names
+  // an org, that org is authoritative (point lookup) — never re-derived via the
+  // global resolver (which consults User.lastActiveOrganizationId). Only a
+  // genuinely org-less session (just finished join-by-code) falls back to the
+  // global pick.
+  const membership = await resolveMembershipForActiveSession(
+    session.user.id,
+    session.user.organizationId,
+  );
   const role = membership?.role ?? session.user.role;
 
   const fullName = user?.fullName || session.user.name || session.user.email || 'User';
@@ -60,7 +63,7 @@ export default async function WorkerLayout({ children }: { children: React.React
   }
 
   return (
-    <WorkerSessionProvider>
+    <WorkerSessionProvider currentUserId={session.user.id} currentUserName={fullName}>
       <WorkerDashboardLayout fullName={fullName} role={role ?? undefined}>
         {children}
       </WorkerDashboardLayout>

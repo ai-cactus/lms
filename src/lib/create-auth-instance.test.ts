@@ -95,12 +95,21 @@ vi.mock('@/lib/enrollment/invite-courses', () => ({
 // Membership resolution has its own dedicated suite
 // (src/lib/auth/membership.test.ts) — mocked here so create-auth-instance's
 // tests focus purely on how it WIRES those results into claims/sessions.
-vi.mock('@/lib/auth/membership', () => ({
-  resolveActiveMembership: mockResolveActiveMembership,
-  getActiveMembership: mockGetActiveMembership,
-  createMembership: mockCreateMembership,
-  recordMembershipLogin: mockRecordMembershipLogin,
-}));
+// `activeMembershipOf` is left as the REAL (unmocked) implementation via
+// importOriginal: it's a pure function of the `resolution` shape the mocked
+// `resolveActiveMembership` above already returns per-test, so re-mocking it
+// would just duplicate that translation logic here and risk drifting from the
+// real one it's meant to verify the wiring of.
+vi.mock('@/lib/auth/membership', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/auth/membership')>();
+  return {
+    ...actual,
+    resolveActiveMembership: mockResolveActiveMembership,
+    getActiveMembership: mockGetActiveMembership,
+    createMembership: mockCreateMembership,
+    recordMembershipLogin: mockRecordMembershipLogin,
+  };
+});
 vi.mock('@/lib/auth/session-revalidation-cache', () => ({
   getCachedRevalidation: mockGetCachedRevalidation,
   setCachedRevalidation: mockSetCachedRevalidation,
@@ -866,6 +875,113 @@ describe('5.1 cache — claim 5: a cache hit is fed through every revocation gua
     await (adminConfig.callbacks!.jwt as any)({ token });
 
     expect(mockSetCachedRevalidation).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Session-isolation fix: the OAuth transaction cookies (pkce/state/nonce) are
+ * namespaced with the instance prefix so a round-trip started on one portal
+ * (admin) can't be finished against the other (worker) — see the "OAuth
+ * (Microsoft Entra ID) transaction cookies" comment in create-auth-instance.ts.
+ */
+describe('OAuth transaction cookie namespacing — pkce/state/nonce differ between admin and worker', () => {
+  it('pkceCodeVerifier cookie name is prefixed per instance and differs between admin and worker', () => {
+    expect(adminConfig.cookies!.pkceCodeVerifier!.name).toBe('admin.pkce.code_verifier');
+    expect(workerConfig.cookies!.pkceCodeVerifier!.name).toBe('worker.pkce.code_verifier');
+    expect(adminConfig.cookies!.pkceCodeVerifier!.name).not.toBe(
+      workerConfig.cookies!.pkceCodeVerifier!.name,
+    );
+  });
+
+  it('state cookie name is prefixed per instance and differs between admin and worker', () => {
+    expect(adminConfig.cookies!.state!.name).toBe('admin.state');
+    expect(workerConfig.cookies!.state!.name).toBe('worker.state');
+    expect(adminConfig.cookies!.state!.name).not.toBe(workerConfig.cookies!.state!.name);
+  });
+
+  it('nonce cookie name is prefixed per instance and differs between admin and worker', () => {
+    expect(adminConfig.cookies!.nonce!.name).toBe('admin.nonce');
+    expect(workerConfig.cookies!.nonce!.name).toBe('worker.nonce');
+    expect(adminConfig.cookies!.nonce!.name).not.toBe(workerConfig.cookies!.nonce!.name);
+  });
+
+  it('the sessionToken cookie name is also prefixed per instance (dev, non-secure form)', () => {
+    expect(adminConfig.cookies!.sessionToken!.name).toBe('admin.session-token');
+    expect(workerConfig.cookies!.sessionToken!.name).toBe('worker.session-token');
+  });
+});
+
+/**
+ * Session-isolation fix: the resolved idle-timeout window is stamped onto the
+ * JWT once at sign-in (token.inactivityTimeoutMinutes) so the client
+ * InactivityTimer and the server session maxAge agree on a single,
+ * server-authoritative value, replacing the old build-time
+ * NEXT_PUBLIC_INACTIVITY_TIMEOUT_MINUTES env var.
+ */
+describe('inactivityTimeoutMinutes is stamped onto the JWT at sign-in', () => {
+  const signInUser = {
+    id: 'user-1',
+    email: 'person@acme.com',
+    role: 'owner' as const,
+    organizationId: 'org-1',
+    organizationUserId: 'ou-1',
+    passwordResetRequired: false,
+    mfaVerified: true,
+  };
+
+  it('stamps INACTIVITY_TIMEOUT_MINUTES onto the token when `user` is present (sign-in)', async () => {
+    vi.stubEnv('INACTIVITY_TIMEOUT_MINUTES', '45');
+    mockFindUnique.mockResolvedValue(freshUserBase);
+    mockGetActiveMembership.mockResolvedValue(
+      makeMembership({ role: 'owner', organizationId: 'org-1' }),
+    );
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await (adminConfig.callbacks!.jwt as any)({
+      token: {},
+      user: signInUser,
+    });
+
+    expect(result.inactivityTimeoutMinutes).toBe(45);
+    vi.unstubAllEnvs();
+  });
+
+  it('falls back to 60 minutes when INACTIVITY_TIMEOUT_MINUTES is unset', async () => {
+    vi.stubEnv('INACTIVITY_TIMEOUT_MINUTES', undefined);
+    mockFindUnique.mockResolvedValue(freshUserBase);
+    mockGetActiveMembership.mockResolvedValue(
+      makeMembership({ role: 'owner', organizationId: 'org-1' }),
+    );
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await (adminConfig.callbacks!.jwt as any)({
+      token: {},
+      user: signInUser,
+    });
+
+    expect(result.inactivityTimeoutMinutes).toBe(60);
+    vi.unstubAllEnvs();
+  });
+
+  it('does not re-stamp inactivityTimeoutMinutes on later re-validation decodes (no `user` on the call)', async () => {
+    mockFindUnique.mockResolvedValue(freshUserBase);
+    mockGetActiveMembership.mockResolvedValue(
+      makeMembership({ role: 'owner', organizationId: 'org-1' }),
+    );
+    const token = {
+      id: 'user-1',
+      organizationId: 'org-1',
+      role: 'owner',
+      sessionVersion: 1,
+      inactivityTimeoutMinutes: 45,
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await (adminConfig.callbacks!.jwt as any)({ token });
+
+    // Re-validation (no `user`) never touches this field — it stays whatever
+    // sign-in stamped, regardless of the CURRENT env value.
+    expect(result.inactivityTimeoutMinutes).toBe(45);
   });
 });
 
