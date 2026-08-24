@@ -1,10 +1,8 @@
 import Image from 'next/image';
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
-import { isAdminRole } from '@/lib/rbac/role-utils';
 import { ChevronRight } from 'lucide-react';
-import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
+import { requirePermission } from '@/lib/rbac/require-permission';
 import { getAuditorOverviewStats } from '@/app/actions/auditor';
 import { Button } from '@/components/ui/button';
 import AuditorPackClient from '@/components/dashboard/auditor/AuditorPackClient';
@@ -16,17 +14,11 @@ export const metadata = {
 };
 
 export default async function AuditorPackPage() {
-  const session = await auth();
-  if (!session?.user?.id) {
-    redirect('/login');
-  }
-
-  const { role, organizationId } = session.user;
-
-  // Only admin users may access this page
-  if (!isAdminRole(role)) {
-    redirect('/dashboard');
-  }
+  // D-01: was `isAdminRole`, which admits Finance — a role holding neither
+  // `audit.read` nor any auditPack permission. The sidebar already gated this
+  // correctly on `auditPack.read`; the route did not, so a typed URL reached it.
+  const ctx = await requirePermission('auditPack.read');
+  const { organizationId } = ctx;
 
   const organization = organizationId
     ? await prisma.organization.findUnique({

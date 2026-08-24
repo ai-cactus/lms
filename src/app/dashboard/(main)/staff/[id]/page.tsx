@@ -1,8 +1,7 @@
 import React from 'react';
 import { getStaffDetails } from '@/app/actions/staff';
 import StaffProfileClient from '@/components/dashboard/staff/StaffProfileClient';
-import { auth } from '@/auth';
-import { listAccessibleFacilities } from '@/lib/facility/scope';
+import { requirePermissionWithFacilityScope } from '@/lib/rbac/require-permission';
 import { notFound } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
@@ -13,15 +12,20 @@ interface PageProps {
 
 export default async function StaffProfilePage({ params }: PageProps) {
   const { id } = await params;
-  const [session, staff] = await Promise.all([auth(), getStaffDetails(id)]);
 
-  if (!session?.user?.id || !staff) {
+  // D-01: `onDeny: 'notFound'` rather than a redirect — this URL is addressed by
+  // someone else's id, so a 403 would confirm that the id exists. A caller
+  // without `user.read` must not be able to tell a real member from a fiction.
+  const ctx = await requirePermissionWithFacilityScope('user.read', undefined, {
+    onDeny: 'notFound',
+  });
+
+  const staff = await getStaffDetails(id);
+  if (!staff) {
     notFound();
   }
 
-  const facilities = await listAccessibleFacilities(session);
-
   return (
-    <StaffProfileClient staff={staff} viewerRole={session.user.role} facilities={facilities} />
+    <StaffProfileClient staff={staff} viewerRole={ctx.role} facilities={ctx.accessibleFacilities} />
   );
 }
