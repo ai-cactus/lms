@@ -1,5 +1,6 @@
 import { NextResponse, NextRequest } from 'next/server';
 import { authorize } from '@/lib/rbac/authorize';
+import { resolveDataFacilityIds } from '@/lib/facility/staff-where';
 import prisma from '@/lib/prisma';
 import { auditorExportQueue } from '@/lib/queue/auditor-export-queue';
 import { getExportWorker } from '@/lib/queue/auditor-export-worker';
@@ -18,6 +19,23 @@ export async function POST(req: NextRequest) {
     const { organizationId, userId } = authResult.ctx;
     if (!organizationId) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    // D-01: the facility scope is derived from the SESSION here and stamped
+    // into the job, never read from the request body — a caller must not be
+    // able to widen their own export. `null` = org-wide.
+    const facilityIds = await resolveDataFacilityIds({
+      user: {
+        id: userId,
+        role: authResult.ctx.role,
+        organizationId,
+        organizationUserId: authResult.ctx.organizationUserId,
+      },
+    });
+    if (facilityIds !== null && facilityIds.length === 0) {
+      // Fail closed: a facility-bound caller with no assignments would otherwise
+      // queue a job whose subject set is empty and whose meaning is unclear.
+      return NextResponse.json({ error: 'No facility assigned' }, { status: 403 });
     }
 
     const org = await prisma.organization.findUnique({
@@ -53,6 +71,9 @@ export async function POST(req: NextRequest) {
 
     // ── Authorize scopeId belongs to this org ──
     if (scope === 'course') {
+      // Deliberately NOT facility-narrowed. Per team finding #17 the course
+      // catalogue is an org-level artifact — a supervisor may report on any of
+      // the org's courses; it is the enrollment DATA inside that is limited.
       if (!scopeId) return NextResponse.json({ error: 'scopeId required' }, { status: 400 });
       const course = await prisma.course.findFirst({
         where: { id: scopeId, creator: { organizationId } },
@@ -62,8 +83,16 @@ export async function POST(req: NextRequest) {
     } else if (scope === 'staff') {
       if (!scopeId) return NextResponse.json({ error: 'scopeId required' }, { status: 400 });
       // scopeId is the OrganizationUser id — see auditor-export-worker.ts.
+      // Facility-narrowed so an out-of-scope target 404s here rather than
+      // queueing a job that silently produces an empty report.
       const staff = await prisma.organizationUser.findFirst({
-        where: { id: scopeId, organizationId },
+        where: {
+          id: scopeId,
+          organizationId,
+          ...(facilityIds
+            ? { facilities: { some: { facilityId: { in: facilityIds }, active: true } } }
+            : {}),
+        },
         select: { id: true },
       });
       if (!staff) return NextResponse.json({ error: 'Staff not found' }, { status: 404 });
@@ -94,6 +123,7 @@ export async function POST(req: NextRequest) {
           label,
           from,
           to,
+          facilityIds,
         },
       },
     });
@@ -108,6 +138,7 @@ export async function POST(req: NextRequest) {
       scopeId,
       from,
       to,
+      facilityIds,
     });
 
     return NextResponse.json({ jobId: dbJob.id, scope, label });

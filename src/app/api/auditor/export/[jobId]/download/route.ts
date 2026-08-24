@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authorize } from '@/lib/rbac/authorize';
+import { resolveDataFacilityIds } from '@/lib/facility/staff-where';
 import prisma from '@/lib/prisma';
 import * as XLSX from 'xlsx';
 import { Document, Packer, Paragraph, HeadingLevel } from 'docx';
@@ -108,6 +109,38 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ jobI
       }
     } else {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    // D-01: scope is re-derived AT DOWNLOAD TIME and the artifact's recorded
+    // scope must be a subset of it. Closes "start a job for facility A, get
+    // transferred to B, then download A's data".
+    const currentFacilityIds = await resolveDataFacilityIds({
+      user: {
+        id: authResult.ctx.userId,
+        role: authResult.ctx.role,
+        organizationId,
+        organizationUserId: authResult.ctx.organizationUserId,
+      },
+    });
+    const jobFacilityIds = (job.payload as Record<string, unknown> | null)?.facilityIds as
+      string[] | null | undefined;
+
+    if (currentFacilityIds !== null) {
+      // The caller is facility-bound. An artifact is only releasable if its own
+      // scope is known AND contained by theirs. `undefined` means the job predates
+      // this field — unknown is NOT org-wide, so it is refused rather than
+      // assumed safe. That window is minutes; jobs complete in seconds.
+      const releasable =
+        Array.isArray(jobFacilityIds) &&
+        jobFacilityIds.every((id) => currentFacilityIds.includes(id));
+      if (!releasable) {
+        logger.warn({
+          msg: '[auditor] Download refused — artifact scope exceeds caller scope',
+          userId: authResult.ctx.userId,
+          jobId,
+        });
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
     }
 
     if (job.result === null || typeof job.result !== 'object') {

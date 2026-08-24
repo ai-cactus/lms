@@ -23,8 +23,18 @@ const ALL_ROLE_KEYS = Object.keys(roles) as RoleKey[];
 /** Roles allowed to read the staff roster. Everyone else must be denied. */
 const USER_READ_HOLDERS: RoleKey[] = ['owner', 'admin', 'supervisor', 'hr'];
 
-/** Roles allowed to GENERATE an auditor pack (bulk PHI/PII egress). */
-const AUDIT_PACK_CREATE_HOLDERS: RoleKey[] = ['owner', 'admin', 'hr', 'clinicalDirector'];
+/**
+ * Roles allowed to GENERATE an auditor pack. Supervisor is included per team
+ * finding #17 — the export is scoped to their facilities, not withheld. Finance
+ * is NOT, and never should be: it holds no auditPack permission at all.
+ */
+const AUDIT_PACK_CREATE_HOLDERS: RoleKey[] = [
+  'owner',
+  'admin',
+  'hr',
+  'clinicalDirector',
+  'supervisor',
+];
 
 /** Roles allowed to VIEW audit surfaces. Supervisor reads but cannot generate. */
 const AUDIT_PACK_READ_HOLDERS: RoleKey[] = [
@@ -70,9 +80,9 @@ describe('D-01 registry partition', () => {
       expect(can(role, 'auditPack.read')).toBe(true);
     });
 
-    it('supervisor may READ audit surfaces but not GENERATE an export', () => {
+    it('supervisor may both read and generate — the export is facility-scoped, not withheld (#17)', () => {
       expect(can('supervisor', 'auditPack.read')).toBe(true);
-      expect(can('supervisor', 'auditPack.create')).toBe(false);
+      expect(can('supervisor', 'auditPack.create')).toBe(true);
     });
 
     it('finance holds no auditPack permission at all', () => {

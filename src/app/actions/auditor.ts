@@ -3,6 +3,8 @@
 import { auth } from '@/auth';
 import { dbRoleToRoleKey, getRoleDisplayName, WORKER_ROLES } from '@/lib/rbac/role-utils';
 import { can, type Permission } from '@/lib/rbac/permissions';
+import { resolveDataFacilityIds } from '@/lib/facility/staff-where';
+import type { Prisma } from '@/generated/prisma/client';
 import prisma from '@/lib/prisma';
 import { logger } from '@/lib/logger';
 import { startedAtWhere, type AuditDateRangeInput } from '@/lib/audit-reports/date-range';
@@ -72,7 +74,14 @@ async function requireAuditorSession(permission: Permission) {
     });
     throw new Error('Unauthorized');
   }
-  return { userId: session.user.id, organizationId };
+  // D-01 + #17. `subjectWhere` narrows WHOSE records appear; the course
+  // catalogue is org-level and is deliberately never narrowed by it.
+  const facilityIds = await resolveDataFacilityIds(session);
+  const subjectWhere: Prisma.OrganizationUserWhereInput = facilityIds
+    ? { facilities: { some: { facilityId: { in: facilityIds }, active: true } } }
+    : {};
+
+  return { userId: session.user.id, organizationId, subjectWhere };
 }
 
 // ---------------------------------------------------------------------------
@@ -99,22 +108,22 @@ export async function checkAuditorAccess(): Promise<boolean> {
 export async function getAuditorOverviewStats(
   range?: AuditDateRangeInput,
 ): Promise<AuditorOverviewStats> {
-  const { organizationId } = await requireAuditorSession('auditPack.read');
+  const { organizationId, subjectWhere } = await requireAuditorSession('auditPack.read');
   const dateWhere = startedAtWhere(range);
 
   const [totalCourses, enrollmentStats, staffCount] = await Promise.all([
-    // Count published courses created by org users
+    // Course CATALOGUE — org-level, never facility-narrowed (#17).
     prisma.course.count({
       where: { creator: { organizationId }, status: 'published' },
     }),
-    // Enrollment stats for all org workers (completion rate respects the range)
+    // Enrollment stats — SUBJECT data, narrowed.
     prisma.enrollment.findMany({
-      where: { organizationUser: { organizationId }, ...dateWhere },
+      where: { organizationUser: { organizationId, ...subjectWhere }, ...dateWhere },
       select: { status: true },
     }),
-    // Staff count (workers only)
+    // Staff count — SUBJECT data, narrowed.
     prisma.organizationUser.count({
-      where: { organizationId, role: { in: [...WORKER_ROLES] } },
+      where: { organizationId, role: { in: [...WORKER_ROLES] }, ...subjectWhere },
     }),
   ]);
 
@@ -149,9 +158,10 @@ export async function getAuditorCourses(
   search?: string,
   range?: AuditDateRangeInput,
 ): Promise<AuditorCourseRow[]> {
-  const { organizationId } = await requireAuditorSession('auditPack.read');
+  const { organizationId, subjectWhere } = await requireAuditorSession('auditPack.read');
   const dateWhere = startedAtWhere(range);
 
+  // Course list itself is NOT narrowed — org-level catalogue (#17).
   const courses = await prisma.course.findMany({
     where: {
       creator: { organizationId },
@@ -166,8 +176,10 @@ export async function getAuditorCourses(
       createdAt: true,
       enrollments: {
         // Per-course stats reflect only enrollments started within the range,
-        // scoped to this org (a global course may be enrolled by other orgs too).
-        where: { organizationUser: { organizationId }, ...dateWhere },
+        // scoped to this org (a global course may be enrolled by other orgs too)
+        // and, for a facility-bound caller, to their facilities. The course row
+        // itself still appears — with zeroes — which is what #17 asks for.
+        where: { organizationUser: { organizationId, ...subjectWhere }, ...dateWhere },
         select: { status: true },
       },
     },
@@ -198,13 +210,15 @@ export async function getAuditorStaff(
   search?: string,
   range?: AuditDateRangeInput,
 ): Promise<AuditorStaffRow[]> {
-  const { organizationId } = await requireAuditorSession('auditPack.read');
+  const { organizationId, subjectWhere } = await requireAuditorSession('auditPack.read');
   const dateWhere = startedAtWhere(range);
 
   const workers = await prisma.organizationUser.findMany({
+    // #17: the Workers tab shows only the caller's facilities.
     where: {
       organizationId,
       role: { in: [...WORKER_ROLES] },
+      ...subjectWhere,
       ...(search
         ? {
             OR: [
@@ -260,10 +274,13 @@ export async function getAuditorStaff(
 // ---------------------------------------------------------------------------
 
 export async function generateAuditorPackCsv(): Promise<string> {
-  const { organizationId } = await requireAuditorSession('auditPack.create');
+  const { organizationId, subjectWhere } = await requireAuditorSession('auditPack.create');
 
+  // Pure SUBJECT data — every row is a named person's training record with their
+  // email. This is what GET /api/auditor/export returns, and it was the single
+  // highest-yield path in D-01. Narrowed unconditionally.
   const enrollments = await prisma.enrollment.findMany({
-    where: { organizationUser: { organizationId } },
+    where: { organizationUser: { organizationId, ...subjectWhere } },
     include: {
       organizationUser: { include: { user: { select: { email: true, fullName: true } } } },
       course: { select: { title: true } },
