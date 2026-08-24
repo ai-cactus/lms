@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isAdminRole } from '@/lib/rbac/role-utils';
+import { authorize } from '@/lib/rbac/authorize';
 import prisma from '@/lib/prisma';
-import { auth } from '@/auth';
 import * as XLSX from 'xlsx';
 import { Document, Packer, Paragraph, HeadingLevel } from 'docx';
 import { logger } from '@/lib/logger';
@@ -67,10 +66,8 @@ function flattenResult(result: AuditReportResult): Record<string, unknown>[] {
 export async function GET(req: NextRequest, { params }: { params: Promise<{ jobId: string }> }) {
   try {
     const { jobId } = await params;
-    const session = await auth();
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const authResult = await authorize('auditPack.read');
+    if (!authResult.ok) return authResult.response;
 
     const url = new URL(req.url);
     const format = url.searchParams.get('format') || 'pdf';
@@ -79,10 +76,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ jobI
       return NextResponse.json({ error: 'Missing jobId' }, { status: 400 });
     }
 
-    // ── Authorization: caller must be an admin of an org with the paid auditor
-    //    feature enabled (mirrors POST /api/auditor/export).
-    const { role, organizationId } = session.user;
-    if (!isAdminRole(role) || !organizationId) {
+    // ── Authorization: caller must hold `auditPack.read` in an org with the
+    //    paid auditor feature enabled. D-01: this was gated on `isAdminRole`,
+    //    which admits Finance and Clinical Director.
+    const { organizationId } = authResult.ctx;
+    if (!organizationId) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -121,8 +119,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ jobI
     // authorized path, with scope/format/row-count context (no PII values).
     await audit({
       action: 'export.download',
-      actorId: session.user.id,
-      actorRole: role,
+      actorId: authResult.ctx.userId,
+      actorRole: authResult.ctx.role,
       organizationId,
       targetType: 'job',
       targetId: jobId,

@@ -1,19 +1,19 @@
 import { NextResponse } from 'next/server';
-import { isAdminRole } from '@/lib/rbac/role-utils';
-import { auth } from '@/auth';
+import { authorize } from '@/lib/rbac/authorize';
 import prisma from '@/lib/prisma';
 import { generateAuditorPackCsv } from '@/app/actions/auditor';
 import { logger } from '@/lib/logger';
 
 export async function GET() {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    // D-01: this endpoint returns a CSV of every staff member's name, email,
+    // course and progress. It was gated on `isAdminRole`, which admits Finance
+    // and Clinical Director — neither of whom holds `auditPack.create`.
+    const authResult = await authorize('auditPack.create');
+    if (!authResult.ok) return authResult.response;
 
-    const { role, organizationId } = session.user;
-    if (!isAdminRole(role) || !organizationId) {
+    const { organizationId } = authResult.ctx;
+    if (!organizationId) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 

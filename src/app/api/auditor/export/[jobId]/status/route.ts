@@ -1,15 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { auth } from '@/auth';
+import { authorize } from '@/lib/rbac/authorize';
 import { logger } from '@/lib/logger';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ jobId: string }> }) {
   try {
     const { jobId } = await params;
-    const session = await auth();
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+
+    // D-01: this route previously performed NO role check at all — any
+    // authenticated session could poll any job in its organization.
+    const authResult = await authorize('auditPack.read');
+    if (!authResult.ok) return authResult.response;
+    const { userId, organizationId } = authResult.ctx;
+
     if (!jobId) {
       return NextResponse.json({ error: 'Missing jobId' }, { status: 400 });
     }
@@ -20,8 +23,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ jobI
     }
 
     // Ensure they only poll their own org's jobs (though job IDs are UUIDs)
-    if (job.userId !== session.user.id) {
-      const { organizationId } = session.user;
+    if (job.userId !== userId) {
       const jobOwnerMembership =
         organizationId && job.userId
           ? await prisma.organizationUser.findFirst({

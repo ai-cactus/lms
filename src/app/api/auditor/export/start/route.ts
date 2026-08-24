@@ -1,7 +1,6 @@
 import { NextResponse, NextRequest } from 'next/server';
-import { isAdminRole } from '@/lib/rbac/role-utils';
+import { authorize } from '@/lib/rbac/authorize';
 import prisma from '@/lib/prisma';
-import { auth } from '@/auth';
 import { auditorExportQueue } from '@/lib/queue/auditor-export-queue';
 import { getExportWorker } from '@/lib/queue/auditor-export-worker';
 import { logger } from '@/lib/logger';
@@ -11,11 +10,13 @@ type Scope = 'org' | 'course' | 'staff' | 'all-courses' | 'all-staff';
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    // D-01: starting an export job produces org-wide bulk data. `isAdminRole`
+    // admitted Finance and Clinical Director; `auditPack.create` does not.
+    const authResult = await authorize('auditPack.create');
+    if (!authResult.ok) return authResult.response;
 
-    const { role, organizationId } = session.user;
-    if (!isAdminRole(role) || !organizationId) {
+    const { organizationId, userId } = authResult.ctx;
+    if (!organizationId) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -83,7 +84,7 @@ export async function POST(req: NextRequest) {
     const dbJob = await prisma.job.create({
       data: {
         type: 'AUDITOR_PACK_EXPORT',
-        userId: session.user.id,
+        userId,
         status: 'queued',
         payload: {
           progress: 0,
