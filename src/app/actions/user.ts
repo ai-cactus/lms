@@ -7,6 +7,13 @@ import { revalidatePath } from 'next/cache';
 
 import { headers } from 'next/headers';
 import { logger, maskEmail } from '@/lib/logger';
+import { can } from '@/lib/rbac/permissions';
+import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
+import {
+  inviteFacilityWhere,
+  resolveDataFacilityIds,
+  staffFacilityWhere,
+} from '@/lib/facility/staff-where';
 import { invalidateRevalidationCache } from '@/lib/auth/session-revalidation-cache';
 import bcrypt from 'bcryptjs';
 import { BCRYPT_COST } from '@/lib/bcrypt-config';
@@ -38,11 +45,29 @@ export async function getStaffUsers() {
     throw new Error('Unauthorized');
   }
 
+  // D-01: this action had NO permission check, and `resolveSession()` falls back
+  // to workerAuth() — so any authenticated worker could POST it and receive the
+  // whole organisation's roster with email addresses. The exposure was never
+  // limited to the three manager roles the defect report named.
+  const roleKey = dbRoleToRoleKey(session.user.role);
+  if (!roleKey || !can(roleKey, 'user.read')) {
+    logger.warn({
+      msg: '[staff] Roster read denied',
+      userId: session.user.id,
+      role: session.user.role,
+    });
+    throw new Error('Unauthorized');
+  }
+
   // Org is authoritative on the DB-revalidated session — no re-query.
   const organizationId = session.user.organizationId;
   if (!organizationId) {
     return [];
   }
+
+  // null for org-wide roles (owner/admin/hr/clinical_director/finance) — HR in
+  // particular is org-wide BY DESIGN and must keep seeing every facility.
+  const dataFacilityIds = await resolveDataFacilityIds(session);
 
   try {
     const [orgUsers, invites] = await Promise.all([
@@ -53,6 +78,7 @@ export async function getStaffUsers() {
           // Every active member including the owner — the owner doesn't consume
           // a plan seat (seat counts query separately) but must appear in the
           // roster. Their row is immutable: no facility change, no removal.
+          ...staffFacilityWhere(dataFacilityIds),
         },
         include: {
           user: true,
@@ -68,6 +94,10 @@ export async function getStaffUsers() {
         where: {
           organizationId,
           status: 'pending',
+          // `Invite.facilityId` is required, so a pending invite is already
+          // facility-scoped data. Showing a supervisor another facility's
+          // incoming hires leaks the same class of PII as the roster itself.
+          ...inviteFacilityWhere(dataFacilityIds),
         },
         orderBy: { createdAt: 'desc' },
       }),
@@ -126,6 +156,24 @@ export async function searchStaffUsers(query: string) {
     return [];
   }
 
+  // D-01: no permission check at all, and worker-reachable via resolveSession()
+  // — any authenticated account could type two characters and receive names,
+  // emails and roles.
+  //
+  // Gated on `user.read` OR `assignment.create`, not `user.read` alone: Clinical
+  // Director holds no `user.read` but does hold `assignment.create`, and this
+  // action backs the course wizard's assignee picker. Requiring `user.read`
+  // would break a documented CD workflow while fixing a leak.
+  const roleKey = dbRoleToRoleKey(session.user.role);
+  if (!roleKey || !(can(roleKey, 'user.read') || can(roleKey, 'assignment.create'))) {
+    logger.warn({
+      msg: '[staff] Staff search denied',
+      userId: session.user.id,
+      role: session.user.role,
+    });
+    return [];
+  }
+
   // Org is authoritative on the DB-revalidated session — no re-query.
   const organizationId = session.user.organizationId;
   if (!organizationId) {
@@ -134,12 +182,15 @@ export async function searchStaffUsers(query: string) {
 
   if (!query || query.length < 2) return [];
 
+  const dataFacilityIds = await resolveDataFacilityIds(session);
+
   try {
     const orgUsers = await prisma.organizationUser.findMany({
       where: {
         organizationId,
         active: true,
         role: { not: 'owner' },
+        ...staffFacilityWhere(dataFacilityIds),
         OR: [
           { user: { email: { contains: query, mode: 'insensitive' } } },
           { user: { fullName: { contains: query, mode: 'insensitive' } } },
