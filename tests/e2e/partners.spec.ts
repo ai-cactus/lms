@@ -64,7 +64,10 @@ test.describe('/partners page', () => {
     // "$X,XXX" <p> (the "by year N" stat has a trailing "/yr" and is excluded
     // by the exact-match regex) — either one recalculating on slider input is
     // sufficient proof the calculator is live, so `.first()` is fine here.
-    const total = earnings.locator('p').filter({ hasText: /^\$[\d,]+$/ }).first();
+    const total = earnings
+      .locator('p')
+      .filter({ hasText: /^\$[\d,]+$/ })
+      .first();
 
     await expect(total).toBeVisible();
     const before = await total.textContent();
@@ -107,7 +110,9 @@ test.describe('Navbar', () => {
       .click();
 
     await expect(page).toHaveURL(/\/partners$/);
-    await expect(page.getByRole('heading', { level: 1, name: /Turn warm intros into/i })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { level: 1, name: /Turn warm intros into/i }),
+    ).toBeVisible();
   });
 
   test('the mobile menu opens on a mobile viewport', async ({ page }) => {
@@ -137,7 +142,9 @@ test.describe('/ (landing)', () => {
 
     // Refreshed hero
     await expect(
-      page.getByRole('heading', { level: 1 }).filter({ hasText: /Be ready when inspectors ask for/i }),
+      page
+        .getByRole('heading', { level: 1 })
+        .filter({ hasText: /Be ready when inspectors ask for/i }),
     ).toBeVisible();
 
     // Refreshed closing CTA
@@ -147,6 +154,8 @@ test.describe('/ (landing)', () => {
 
     // Footer
     await expect(page.getByText('© 2026 Theraptly. All rights reserved.')).toBeVisible();
-    await expect(page.getByRole('contentinfo').getByRole('link', { name: 'Partner Program' })).toBeVisible();
+    await expect(
+      page.getByRole('contentinfo').getByRole('link', { name: 'Partner Program' }),
+    ).toBeVisible();
   });
 });

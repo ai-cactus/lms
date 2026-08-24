@@ -46,6 +46,70 @@ git push origin feature/auth-refactor
 
 6. **Get review → Merge into dev**
 
+## ✅ Local Verification & CI Policy
+
+Heavy verification runs **locally**, not in CI. GitHub Actions minutes are a hard
+constraint, so CI keeps only what a local hook cannot honestly replace.
+
+| Event                          | Runs online                                            | Runs locally                                                    |
+| ------------------------------ | ------------------------------------------------------ | --------------------------------------------------------------- |
+| `git commit`                   | —                                                        | lint-staged (`src`, `scripts`, `tests`) + staged secret scan      |
+| `git push feature/*`           | —                                                        | eslint + vitest on changed files, `tsc --noEmit` (~30–60s)        |
+| `git push dev\|staging\|main`  | —                                                        | the above **+ full vitest suite + `next build`** (~5–7 min)       |
+| PR → `dev`                     | Static Checks + Build Check (~5 min)                     | —                                                                 |
+| PR → `staging` / `main`        | + full unit suite + **E2E** + Semgrep/Trivy (~22 min)    | `npm run e2e:local` on demand                                     |
+| Weekly / on demand             | Semgrep, Trivy, gitleaks full history, SBOM              | —                                                                 |
+| Daily                          | `npm audit` (high+) → auto-issue                         | —                                                                 |
+
+**Never use `git push --no-verify`.** It skips everything. If a protected-branch push
+is genuinely too slow right now, use `SKIP_HEAVY=1 git push` — the light checks still run.
+
+### Commands
+
+```bash
+npm run verify        # light tier: changed-file lint + typecheck + affected tests
+npm run verify:full   # heavy tier: lint + format + typecheck + full suite + build
+npm run typecheck     # tsc --noEmit
+npm run test:changed  # affected unit tests only (VERIFY_BASE=origin/main to retarget)
+npm run secrets:scan  # staged-only gitleaks scan
+```
+
+### Running E2E locally
+
+`npm run e2e:local` runs the Playwright suite in CI parity — production build,
+one worker, real Postgres/Redis/MinIO/MailHog. Takes about 5 minutes.
+
+```bash
+npm run e2e:local                     # everything
+npm run e2e:local -- auth.spec.ts     # one spec
+E2E_SKIP_BUILD=1 npm run e2e:local    # reuse the existing build
+E2E_RESET=1      npm run e2e:local    # drop + recreate the database
+E2E_KEEP_UP=1    npm run e2e:local    # leave the containers running
+npm run e2e:up / e2e:down             # manage the containers directly
+```
+
+The stack binds ports **5442 / 6389 / 9010 / 1125**, deliberately offset from
+`docker-compose.dev.yml`, so the dev stack can stay up alongside it. Environment
+values live in the committed `.env.e2e` (dummy values only) and are exported into
+the process, which outranks — and never modifies — your `.env` / `.env.local`.
+
+For fast single-spec iteration against a dev server, use `npm run test:e2e -- <spec>`.
+
+### Getting E2E to run in CI for a `dev` PR
+
+Add the **`run-e2e`** label to the PR, or trigger the CI workflow manually via
+`workflow_dispatch`.
+
+### Optional tooling
+
+`gitleaks` is not an npm dependency. Without it the pre-commit secret scan skips
+with a warning (CI still scans the full tree). Install it to catch leaks before
+they leave your machine:
+
+```bash
+brew install gitleaks   # or: go install github.com/gitleaks/gitleaks/v8@latest
+```
+
 ## 📜 Coding Standards
 
 - **TypeScript**: Use strict typing where possible. Avoid `any`.

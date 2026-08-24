@@ -422,9 +422,7 @@ test.describe.skip('Staff profile — assign multiple courses in one action', ()
       await stalePage.getByRole('button', { name: 'Assign Course', exact: true }).click();
       const staleDialog = stalePage.getByRole('dialog');
       await expect(staleDialog.getByText('Assign Courses')).toBeVisible();
-      await staleDialog
-        .getByRole('checkbox', { name: `MC Assign Course A`, exact: false })
-        .click();
+      await staleDialog.getByRole('checkbox', { name: `MC Assign Course A`, exact: false }).click();
       await staleDialog.getByRole('button', { name: 'Assign Course' }).click();
       await expect(staleDialog.getByText('Set Completion Deadline')).toBeVisible();
       await staleDialog.getByRole('button', { name: 'Assign Course' }).click();

@@ -1,9 +1,19 @@
-echo "Running pre-commit checks (lint-staged)..."
+echo "Running pre-commit checks..."
 
-# Fast path only: format & lint the STAGED files via lint-staged
-# (config in package.json). lint-staged re-stages its own fixes.
-# Heavy checks (Prisma generate, typecheck, tests, build) run in
-# .husky/pre-push and in CI (.github/workflows/ci.yml).
+# Fast path only. Heavy verification lives in .husky/pre-push (tiered by target
+# branch) and in `npm run verify:full`.
+#
+# Runs under `sh -e` via .husky/_/h — errexit is ON and /bin/sh is dash. Keep
+# every conditional inside `if`; a bare failing test aborts the commit.
+
+# lint-staged runs FIRST because it re-stages its own --fix/--write output, so
+# the secret scan below sees exactly the bytes that will be committed.
+echo "→ lint-staged (eslint --fix + prettier on staged src/, scripts/, tests/)"
 npx lint-staged || exit 1
+
+# Skips with a warning when gitleaks is not installed — see the script's header
+# for why that is deliberate. Bypass with SKIP_SECRET_SCAN=1.
+echo "→ staged secret scan (gitleaks)"
+sh scripts/secrets-scan.sh || exit 1
 
 echo "Pre-commit checks passed!"

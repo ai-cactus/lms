@@ -36,7 +36,13 @@ async function main() {
   const hashed = await bcrypt.hash('Admin123!', BCRYPT_COST);
   const admin = await prisma.user.upsert({
     where: { email: 'admin@test.com' },
-    update: { password: hashed, emailVerified: true, firstName: 'Jane', lastName: 'Doe', fullName: 'Jane Doe' },
+    update: {
+      password: hashed,
+      emailVerified: true,
+      firstName: 'Jane',
+      lastName: 'Doe',
+      fullName: 'Jane Doe',
+    },
     create: {
       email: 'admin@test.com',
       password: hashed,
@@ -53,7 +59,10 @@ async function main() {
   });
   await prisma.organizationUserFacility.upsert({
     where: {
-      organizationUserId_facilityId: { organizationUserId: adminMembership.id, facilityId: facility.id },
+      organizationUserId_facilityId: {
+        organizationUserId: adminMembership.id,
+        facilityId: facility.id,
+      },
     },
     update: { active: true, deactivatedAt: null },
     create: { organizationUserId: adminMembership.id, facilityId: facility.id },
@@ -87,7 +96,10 @@ async function main() {
     });
     await prisma.organizationUserFacility.upsert({
       where: {
-        organizationUserId_facilityId: { organizationUserId: membership.id, facilityId: facility.id },
+        organizationUserId_facilityId: {
+          organizationUserId: membership.id,
+          facilityId: facility.id,
+        },
       },
       update: {},
       create: { organizationUserId: membership.id, facilityId: facility.id },

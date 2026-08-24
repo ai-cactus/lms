@@ -8,11 +8,16 @@ name: Quality Gate
 # `workflow_call` workflow lets the deploy workflows depend on them with
 # `needs:`, which is a real gate.
 #
-# Scope: the FAST checks only (~5 min in parallel). The heavy jobs — full
-# production build and the Playwright e2e suite — stay in ci.yml on the PR
-# path. Tradeoff: a direct push to main/staging is gated on lint/types/unit
-# tests/secrets but not on e2e, so that an urgent production deploy is not
-# held for 30+ minutes. Merges arriving via PR do get e2e.
+# Scope: the FAST checks only. The heavy jobs — full production build and the
+# Playwright e2e suite — stay in ci.yml on the PR path.
+#
+# ── Cost note (2026-08-23) ──────────────────────────────────────────────────
+# GitHub bills each JOB rounded up to the whole minute. This gate used to be
+# six parallel jobs of 0.1-0.9 min each, so ~2.3 min of real work billed as
+# ~6 min — every job paid a fresh checkout + node setup + npm ci to do seconds
+# of work. They are now a single sequential `static` job (~3 min billed).
+# The unit suite stays separate because it must be independently skippable:
+# it runs only on PRs that promote into a deploying branch (see `full-suite`).
 
 on:
   workflow_call:
@@ -22,8 +27,14 @@ on:
           Fail the gate on HIGH+ npm advisories. Defaults to false because
           `npm audit` exits non-zero both for a real advisory and for a
           registry/network error, so a registry blip would block deploys.
-          Flip to true on the PR path once F-055's remaining transitive
-          advisories are cleared.
+        type: boolean
+        required: false
+        default: false
+      full-suite:
+        description: >-
+          Run the full vitest suite. Defaults to false: the suite runs locally
+          on every push via .husky/pre-push, so CI only needs it on the PRs
+          that promote code into staging/main. See CONTRIBUTING.md.
         type: boolean
         required: false
         default: false
@@ -31,72 +42,40 @@ on:
 permissions:
   contents: read
 
+env:
+  # Pinned deliberately. Resolving "latest" through an unauthenticated
+  # api.github.com call hit the rate limit and returned 403 roughly half the
+  # time — and because this gate is a dependency of the e2e and build jobs, a
+  # 403 here marked them SKIPPED, which drove the pipeline re-runs that
+  # exhausted the Actions budget twice. Bump this pin deliberately.
+  GITLEAKS_VERSION: '8.30.1'
+
 jobs:
-  lint:
-    name: Lint
+  static:
+    name: Static Checks
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
       - uses: ./.github/actions/setup-node-deps
-
-      - name: Run ESLint
-        run: npm run lint
-
-  format:
-    name: Format Check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: ./.github/actions/setup-node-deps
+        with:
+          prisma: 'true'
 
       - name: Check formatting
         run: npm run format:check
 
-  typecheck:
-    name: Type Check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: ./.github/actions/setup-node-deps
-        with:
-          prisma: 'true'
+      - name: Run ESLint
+        run: npm run lint
 
       - name: Run TypeScript compiler
-        run: npx tsc --noEmit
-
-  test:
-    name: Tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: ./.github/actions/setup-node-deps
-        with:
-          prisma: 'true'
-
-      - name: Run tests
-        run: npm run test
-
-  audit:
-    name: Dependency Audit
-    runs-on: ubuntu-latest
-    # See the strict-audit input docs above for why this is conditional.
-    continue-on-error: ${{ inputs.strict-audit != true }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: '24'
-          cache: 'npm'
+        run: npm run typecheck
 
       # Reads package-lock.json and queries the advisory DB — no install needed.
       # Retried because a transient registry error is indistinguishable from a
       # real advisory by exit code alone.
       - name: Run npm audit (high+)
+        continue-on-error: ${{ inputs.strict-audit != true }}
         run: |
           for attempt in 1 2 3; do
             if npm audit --audit-level=high; then
@@ -108,23 +87,39 @@ jobs:
           echo "npm audit reported advisories or could not reach the registry." >&2
           exit 1
 
-  secret-scan:
-    name: Secret Scan
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
       - name: Install gitleaks
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          VERSION="$(curl -sSfL https://api.github.com/repos/gitleaks/gitleaks/releases/latest | grep -oP '"tag_name":\s*"v\K[^"]+')"
-          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz" -o /tmp/gitleaks.tar.gz
+          set -euo pipefail
+          url="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          # Authenticated so the download is not subject to the anonymous rate limit.
+          curl -sSfL -H "Authorization: Bearer ${GH_TOKEN}" "$url" -o /tmp/gitleaks.tar.gz
           tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
           sudo install /tmp/gitleaks /usr/local/bin/gitleaks
           gitleaks version
 
-      # `detect --no-git` scans files on disk (working tree), so the scan
-      # covers committed paths like .claude/agent-memory/** without failing
-      # on secrets that only exist in older commits. Full-history scanning is
-      # tracked separately (F-075).
+      # `gitleaks dir` scans files on disk (working tree), so the scan covers
+      # committed paths like .claude/agent-memory/** without failing on secrets
+      # that only exist in older commits. Full-history scanning runs on the
+      # weekly schedule in security-scan.yml (F-075).
+      # (`detect --no-git` is the pre-8.19 spelling of this command.)
       - name: Scan working tree for secrets
-        run: gitleaks detect --no-git --source . --config .gitleaks.toml --redact --verbose
+        run: gitleaks dir . --config .gitleaks.toml --redact --verbose --no-banner
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Runs locally on every push (.husky/pre-push). CI runs it on the PRs that
+    # promote into a deploying branch — see ci.yml's `full-suite` expression.
+    if: ${{ inputs.full-suite }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-node-deps
+        with:
+          prisma: 'true'
+
+      - name: Run tests
+        run: npm run test

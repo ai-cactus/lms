@@ -51,7 +51,9 @@ async function main() {
   });
 
   if (!facility) {
-    console.log('No facility found for the owner\'s organization! Please complete onboarding first.');
+    console.log(
+      "No facility found for the owner's organization! Please complete onboarding first.",
+    );
     return;
   }
 

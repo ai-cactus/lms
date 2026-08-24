@@ -56,10 +56,7 @@ test.describe('Certificate modal — action bar overlap regression', () => {
     // check fails with "subtree intercepts pointer events" if another
     // element (the overflowing preview card, pre-fix) sits on top at the
     // click point. A successful click here is the actual regression proof.
-    const [download] = await Promise.all([
-      page.waitForEvent('download'),
-      exportButton.click(),
-    ]);
+    const [download] = await Promise.all([page.waitForEvent('download'), exportButton.click()]);
     expect(download.suggestedFilename()).toMatch(/\.pdf$/i);
 
     // Let the in-flight rasterization settle back to idle before closing, so

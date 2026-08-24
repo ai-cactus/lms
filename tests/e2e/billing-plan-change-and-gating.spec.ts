@@ -176,10 +176,9 @@ async function cleanup(seeded: SeededAdmin): Promise<void> {
   const client = await db();
   try {
     await client.query(`DELETE FROM subscriptions WHERE organization_id = $1`, [seeded.orgId]);
-    await client.query(
-      `DELETE FROM organization_user_facilities WHERE organization_user_id = $1`,
-      [seeded.adminOrgUserId],
-    );
+    await client.query(`DELETE FROM organization_user_facilities WHERE organization_user_id = $1`, [
+      seeded.adminOrgUserId,
+    ]);
     await client.query(`DELETE FROM organization_users WHERE id = $1`, [seeded.adminOrgUserId]);
     await client.query(`DELETE FROM users WHERE id = $1`, [seeded.adminId]);
     await client.query(`DELETE FROM facilities WHERE organization_id = $1`, [seeded.orgId]);
@@ -219,7 +218,9 @@ test.describe('Billing — 4-tier plan grid (starter/growth/pro/enterprise)', ()
     await expect(page.locator('#plan-btn-professional')).toHaveCount(0);
 
     await expect(
-      page.getByRole('group', { name: /billing cycle/i }).getByRole('button', { name: /^yearly$/i }),
+      page
+        .getByRole('group', { name: /billing cycle/i })
+        .getByRole('button', { name: /^yearly$/i }),
     ).toHaveClass(/bg-background/);
   });
 });

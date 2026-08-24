@@ -52,13 +52,7 @@ async function db(): Promise<Client> {
 }
 
 type UserRole =
-  | 'owner'
-  | 'supervisor'
-  | 'hr'
-  | 'clinical_director'
-  | 'finance'
-  | 'nurse'
-  | 'therapist_clinician';
+  'owner' | 'supervisor' | 'hr' | 'clinical_director' | 'finance' | 'nurse' | 'therapist_clinician';
 
 interface Seeded {
   userId: string;
