@@ -42,8 +42,10 @@ export interface PageAuthContext {
 }
 
 export interface RequirePermissionOptions {
-  /** Where a denied caller lands. Default `/dashboard`. */
+  /** Where an AUTHORIZED-but-denied caller lands. Default `/dashboard`. */
   redirectTo?: string;
+  /** Where an UNAUTHENTICATED caller lands. Default `/login`. */
+  unauthenticatedRedirectTo?: string;
   /**
    * `redirect` (default) for collection URLs that have no nav entry for this
    * role. `notFound` for id-addressed detail pages, where a 403 would confirm
@@ -52,7 +54,20 @@ export interface RequirePermissionOptions {
   onDeny?: 'redirect' | 'notFound';
 }
 
-function deny(options?: RequirePermissionOptions): never {
+/**
+ * Denial is not one case. An unauthenticated caller has somewhere useful to go
+ * (`/login`); an authenticated one who lacks the permission does not, and
+ * sending them to `/login` would be a confusing dead end. Collapsing the two
+ * also bounces a logged-out visitor to `/dashboard`, which then bounces them
+ * again.
+ */
+function deny(
+  reason: 'unauthenticated' | 'unknown_role' | 'forbidden',
+  options?: RequirePermissionOptions,
+): never {
+  if (reason === 'unauthenticated') {
+    redirect(options?.unauthenticatedRedirectTo ?? '/login');
+  }
   if (options?.onDeny === 'notFound') notFound();
   redirect(options?.redirectTo ?? '/dashboard');
 }
@@ -67,7 +82,7 @@ export async function requirePermission(
   options?: RequirePermissionOptions,
 ): Promise<PageAuthContext> {
   const verdict = await evaluatePermission(permission);
-  if (!verdict.ok) deny(options);
+  if (!verdict.ok) deny(verdict.reason, options);
 
   const { userId, role, roleKey, organizationId, organizationUserId } = verdict.ctx;
   return { userId, role, roleKey, organizationId, organizationUserId };

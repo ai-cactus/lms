@@ -25,13 +25,15 @@ vi.mock('@/lib/facility/scope', () => ({
   resolveFacilityScopeSelection: (...a: unknown[]) => resolveFacilityScopeSelection(...a),
   isOrgWideFacilityRole: (...a: unknown[]) => isOrgWideFacilityRole(...a),
 }));
+const redirect = vi.fn(() => {
+  throw new Error('NEXT_REDIRECT');
+});
+const notFound = vi.fn(() => {
+  throw new Error('NEXT_NOT_FOUND');
+});
 vi.mock('next/navigation', () => ({
-  redirect: vi.fn(() => {
-    throw new Error('NEXT_REDIRECT');
-  }),
-  notFound: vi.fn(() => {
-    throw new Error('NEXT_NOT_FOUND');
-  }),
+  redirect: (...a: unknown[]) => redirect(...(a as [])),
+  notFound: () => notFound(),
 }));
 
 const { requirePermission, requirePermissionWithFacilityScope } =
@@ -64,6 +66,24 @@ describe('requirePermission', () => {
   it('redirects on denial rather than returning an unauthorized context', async () => {
     evaluatePermission.mockResolvedValue({ ok: false, reason: 'forbidden' });
     await expect(requirePermission('user.read')).rejects.toThrow('NEXT_REDIRECT');
+    expect(redirect).toHaveBeenCalledWith('/dashboard');
+  });
+
+  // Denial is not one case. Collapsing these sends a logged-out visitor to
+  // /dashboard, which bounces them again; and an authenticated-but-forbidden
+  // caller to /login, which is a dead end.
+  it('sends an UNAUTHENTICATED caller to /login, not the forbidden destination', async () => {
+    evaluatePermission.mockResolvedValue({ ok: false, reason: 'unauthenticated' });
+    await expect(requirePermission('user.read')).rejects.toThrow('NEXT_REDIRECT');
+    expect(redirect).toHaveBeenCalledWith('/login');
+  });
+
+  it('an unauthenticated caller goes to /login even when onDeny is notFound', async () => {
+    evaluatePermission.mockResolvedValue({ ok: false, reason: 'unauthenticated' });
+    await expect(requirePermission('user.read', { onDeny: 'notFound' })).rejects.toThrow(
+      'NEXT_REDIRECT',
+    );
+    expect(redirect).toHaveBeenCalledWith('/login');
   });
 
   it('404s instead of 403ing when onDeny is notFound — an id-addressed page must not confirm existence', async () => {
