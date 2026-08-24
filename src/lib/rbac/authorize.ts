@@ -35,15 +35,19 @@ export type AuthResult =
   { ok: true; ctx: AuthorizedContext } | { ok: false; response: NextResponse };
 
 /**
- * Authorize the current request against a single permission.
- * Returns `{ ok: true, ctx }` on success, or `{ ok: false, response }` carrying
- * a ready-to-return 401/403 error response.
+ * The verdict, without any response shaping. Extracted so the page-side guard
+ * in `require-permission.ts` reaches the SAME decision as an API route — a page
+ * and an API route disagreeing about a permission is how D-01 stayed invisible.
  */
-export async function authorize(permission: Permission): Promise<AuthResult> {
+export type PermissionVerdict =
+  | { ok: true; ctx: AuthorizedContext }
+  | { ok: false; reason: 'unauthenticated' | 'unknown_role' | 'forbidden' };
+
+export async function evaluatePermission(permission: Permission): Promise<PermissionVerdict> {
   const session = await auth();
 
   if (!session?.user?.id) {
-    return { ok: false, response: apiError('Unauthorized', 401) };
+    return { ok: false, reason: 'unauthenticated' };
   }
 
   const role = session.user.role;
@@ -56,7 +60,7 @@ export async function authorize(permission: Permission): Promise<AuthResult> {
       role,
       permission,
     });
-    return { ok: false, response: apiError('Forbidden', 403, 'INSUFFICIENT_PERMISSIONS') };
+    return { ok: false, reason: 'unknown_role' };
   }
 
   if (!can(roleKey, permission)) {
@@ -67,7 +71,7 @@ export async function authorize(permission: Permission): Promise<AuthResult> {
       role,
       permission,
     });
-    return { ok: false, response: apiError('Forbidden', 403, 'INSUFFICIENT_PERMISSIONS') };
+    return { ok: false, reason: 'forbidden' };
   }
 
   return {
@@ -81,4 +85,17 @@ export async function authorize(permission: Permission): Promise<AuthResult> {
       organizationUserId: session.user.organizationUserId,
     },
   };
+}
+
+/**
+ * Authorize the current request against a single permission.
+ * Returns `{ ok: true, ctx }` on success, or `{ ok: false, response }` carrying
+ * a ready-to-return 401/403 error response.
+ */
+export async function authorize(permission: Permission): Promise<AuthResult> {
+  const verdict = await evaluatePermission(permission);
+  if (verdict.ok) return { ok: true, ctx: verdict.ctx };
+  return verdict.reason === 'unauthenticated'
+    ? { ok: false, response: apiError('Unauthorized', 401) }
+    : { ok: false, response: apiError('Forbidden', 403, 'INSUFFICIENT_PERMISSIONS') };
 }
