@@ -148,21 +148,28 @@ async function seed(): Promise<Seeded> {
   }
 }
 
+/**
+ * Teardown. Deleting the organization cascades organization_users,
+ * organization_user_facilities, invites, subscriptions and facilities (every
+ * one of those relations is `onDelete: Cascade` onto Organization), so the org
+ * goes first and `users` — which is NOT org-scoped — goes after.
+ *
+ * Best-effort by design. A teardown hiccup must never mark a passing security
+ * assertion as failed; on the first CI run it did exactly that, reporting the
+ * HR anti-over-fix test as red when every assertion in it had in fact passed.
+ * The e2e database is disposable and reseeded per run, so a residual row is
+ * cheaper than a false red on a security guard.
+ */
 async function cleanup(s: Seeded): Promise<void> {
   const client = new Client({ connectionString: DB_URL });
-  await client.connect();
   try {
-    await client.query(`DELETE FROM subscriptions WHERE id = $1`, [s.subscriptionId]);
-    await client.query(
-      `DELETE FROM organization_user_facilities WHERE organization_user_id = ANY($1::uuid[])`,
-      [s.orgUserIds],
-    );
-    await client.query(`DELETE FROM organization_users WHERE id = ANY($1::uuid[])`, [s.orgUserIds]);
-    await client.query(`DELETE FROM users WHERE id = ANY($1::uuid[])`, [s.userIds]);
-    await client.query(`DELETE FROM facilities WHERE organization_id = $1`, [s.orgId]);
+    await client.connect();
     await client.query(`DELETE FROM organizations WHERE id = $1`, [s.orgId]);
+    await client.query(`DELETE FROM users WHERE id = ANY($1::uuid[])`, [s.userIds]);
+  } catch (error) {
+    console.warn('[d01] cleanup did not complete:', (error as Error).message);
   } finally {
-    await client.end();
+    await client.end().catch(() => {});
   }
 }
 
