@@ -127,6 +127,9 @@ logger.debug({ msg: '[module] Intermediate state', data: someValue });
 ## Commit & Pull Request Guidelines
 
 - **Branches**: Use `feature/` or `bugfix/` prefixes for all branches (e.g., `feature/ai-pipeline`).
+- **⛔ Always branch from an up-to-date `dev`** (the default branch). Before creating **any** new branch, `git checkout dev && git pull origin dev`, then branch from there. Never branch off another feature branch, and never branch off a stale local `dev`.
+  - **Why**: a branch stacked on another feature branch drags that branch's commits into its own PR, cannot merge until its parent does, and — because `ci.yml` filters `pull_request` on `branches: [dev, staging, main, master]` — **gets no CI at all** if its PR is based on a non-trunk branch. That is silent: zero checks reported, which reads like nothing to run rather than nothing ran.
+  - If work genuinely depends on an unmerged branch, say so and confirm the stack explicitly rather than creating it silently.
 - **Commits**: Follow `feat:`, `fix:`, `chore:` conventional commit prefixes where possible.
 - **Workflow**: Create PRs against the `dev` branch for integration. PRs should be focused on single logical changes.
 

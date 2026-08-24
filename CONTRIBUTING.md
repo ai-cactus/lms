@@ -18,18 +18,24 @@ By participating in this project, you agree to abide by our Code of Conduct. We 
 
 ### 🔁 Workflow Breakdown
 
-1. **Pull latest dev**
+1. **Pull latest dev** — always, before every new branch
 
 ```bash
 git checkout dev
 git pull origin dev
 ```
 
-2. **Create feature branch**
+2. **Create feature branch** — from that freshly-pulled `dev`, never from another feature branch
 
 ```bash
 git checkout -b feature/auth-refactor
 ```
+
+> **Why this matters.** A branch created off another feature branch pulls that branch's commits into
+> its own PR, cannot merge until its parent merges, and — because `ci.yml` filters `pull_request` on
+> `branches: [dev, staging, main, master]` — **receives no CI at all** when its PR is based on a
+> non-trunk branch. There is no error; the PR simply reports zero checks, which looks identical to
+> "nothing needed to run".
 
 3. **Make changes**
 
