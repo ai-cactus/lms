@@ -4,7 +4,6 @@ import { getStripeClient } from '@/lib/stripe';
 import { logger } from '@/lib/logger';
 import { authorize } from '@/lib/rbac/authorize';
 import { apiError } from '@/lib/api-response';
-import { WORKER_ROLES } from '@/lib/rbac/role-utils';
 
 // GET /api/billing/overview — returns current plan, staff usage, payment method, last 2 invoices
 export async function GET() {
@@ -34,11 +33,13 @@ export async function GET() {
       return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
     }
 
+    // Every active member consumes a seat, managers and the owner included —
+    // seats are what the plan is billed on, not a worker-only headcount.
+    // Invited-but-unactivated members are not billed until they activate.
     const activeStaffCount = await prisma.organizationUser.count({
       where: {
         organizationId,
         active: true,
-        role: { in: [...WORKER_ROLES] },
       },
     });
 
