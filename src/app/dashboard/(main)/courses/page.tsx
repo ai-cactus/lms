@@ -1,9 +1,7 @@
 import { Suspense } from 'react';
 import Link from 'next/link';
 import { ShieldAlert } from 'lucide-react';
-import { isAdminRole } from '@/lib/rbac/role-utils';
-import { redirect } from 'next/navigation';
-import { auth } from '@/auth';
+import { requirePermission } from '@/lib/rbac/require-permission';
 import prisma from '@/lib/prisma';
 import { getCourses } from '@/app/actions/course';
 import { listAvailableVideoCourses } from '@/app/actions/offering';
@@ -19,15 +17,12 @@ export const metadata = {
 };
 
 export default async function CoursesPage() {
-  const session = await auth();
-  if (!session?.user?.id) {
-    redirect('/login');
-  }
-
-  const { role, organizationId, organizationUserId } = session.user;
-  if (!isAdminRole(role)) {
-    redirect('/dashboard');
-  }
+  // Team QA #9: Finance must not view courses from the admin side. This was
+  // `isAdminRole`, which admits Finance regardless of the registry — the same
+  // enforcement-gap shape as D-01. `course.read` is the real gate, and Finance
+  // no longer holds it.
+  const ctx = await requirePermission('course.read');
+  const { organizationId, organizationUserId } = ctx;
 
   // A session with no active membership (onboarding not finished) has no courses
   // to show — getCourses() would throw and dump the user on the generic error
@@ -71,7 +66,7 @@ export default async function CoursesPage() {
       <CoursesPageTabs
         courses={courses}
         hasBilling={hasBilling}
-        viewerRole={role}
+        viewerRole={ctx.role}
         availableCourses={availableCourses}
       />
     </Suspense>

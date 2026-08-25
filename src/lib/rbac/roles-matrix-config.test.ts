@@ -201,7 +201,10 @@ describe('per-role NAVIGATION module list — exact assertions for owner/admin/4
       ['Dashboard', 'Documents', 'Courses', 'Status Tracker', 'Staff Management', 'Help Center'],
     ],
     ['clinicalDirector', ['Dashboard', 'Documents', 'Courses', 'Status Tracker', 'Help Center']],
-    ['finance', ['Dashboard', 'Courses', 'Billing', 'Help Center']],
+    // Courses removed 2026-08-25 — team QA #9: Finance must not view courses
+    // from the admin side. Deliberate edit; the nav follows `course.read`,
+    // which the finance grant no longer carries.
+    ['finance', ['Dashboard', 'Billing', 'Help Center']],
     [STUDENT_COLUMN_ROLE, ['Dashboard', 'Courses', 'Help Center']],
   ];
 

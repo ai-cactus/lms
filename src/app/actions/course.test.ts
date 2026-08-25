@@ -766,7 +766,11 @@ describe('getCourseById', () => {
     expect(result.enrollments[0].organizationUser.userId).toBe('staff-a');
   });
 
-  it.each(['owner', 'admin', 'hr', 'clinical_director', 'finance', 'supervisor'] as Role[])(
+  // `finance` was dropped from this list 2026-08-25: the COU-002/COU-004
+  // behaviour is unchanged, but its gate is `course.read`, which Finance no
+  // longer holds per team QA #9. The rule under test — a same-org manager who
+  // holds course.read may open a colleague's course — still stands for the rest.
+  it.each(['owner', 'admin', 'hr', 'clinical_director', 'supervisor'] as Role[])(
     'a same-org manager (%s) who is neither creator nor enrolled can open the course (COU-002/COU-004)',
     async (role) => {
       const otherA = makeEnrollment('staff-a', 1);
@@ -778,6 +782,14 @@ describe('getCourseById', () => {
       expect(result.id).toBe('course-1');
     },
   );
+
+  it('finance — a same-org manager WITHOUT course.read — is denied (team QA #9)', async () => {
+    const otherA = makeEnrollment('staff-a', 1);
+    mockCourseFindUnique.mockResolvedValue(makeCourse([otherA]));
+    setAdminSession('manager-viewer', 'finance' as Role);
+
+    await expect(getCourseById('course-1')).rejects.toThrow('Course not found');
+  });
 
   it('a same-org WORKER who is neither creator nor enrolled is still denied (enrollment-gated)', async () => {
     const otherA = makeEnrollment('staff-a', 1);

@@ -336,7 +336,16 @@ export const roles = {
       'billing.delete',
       'organization.read',
       'facility.read',
-      'course.read',
+      // `course.read` REMOVED 2026-08-25 — team QA finding #9: "Finance is also
+      // showing courses on the dashboard sidebar / Finance managers should not
+      // be able to view courses from the admin side." Product decision recorded
+      // 2026-08-22 and the test catalog corrected
+      // (docs/qa-test-cases-08-20.md:1191-1194); the phase-8 report still reads
+      // PASS on TC-FIN-003 criterion 9.9 and is stale on this point.
+      //
+      // The nav follows automatically: roles-matrix-config.ts:59 gates the
+      // Courses item on perm('course.read'). Finance's own learner transcripts
+      // run on enrollment.read / certificate.read, which it keeps.
       'enrollment.read',
       'certificate.read',
       'notification.create',
