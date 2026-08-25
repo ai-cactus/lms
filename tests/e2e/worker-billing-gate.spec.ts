@@ -161,7 +161,12 @@ test.describe('Worker portal billing gate (TC-041-B)', () => {
       await loginAs(page, seeded.email, seeded.password);
       await page.waitForURL('**/worker**', { timeout: 45000 });
 
-      await expect(page.getByText(/training temporarily unavailable/i)).toBeVisible({
+      // Heading role, not bare text: Next's route announcer
+      // (#__next-route-announcer__) mirrors the h1 after client navigation, so
+      // getByText matches two elements and trips strict mode.
+      await expect(
+        page.getByRole('heading', { name: /training temporarily unavailable/i }),
+      ).toBeVisible({
         timeout: 15000,
       });
       await expect(
@@ -202,7 +207,9 @@ test.describe('Worker portal billing gate (TC-041-B)', () => {
       await loginAs(page, seeded.email, seeded.password);
       await page.waitForURL('**/worker**', { timeout: 45000 });
 
-      await expect(page.getByText(/training temporarily unavailable/i)).toBeVisible({
+      await expect(
+        page.getByRole('heading', { name: /training temporarily unavailable/i }),
+      ).toBeVisible({
         timeout: 15000,
       });
     } finally {
