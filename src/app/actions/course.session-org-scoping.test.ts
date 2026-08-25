@@ -218,13 +218,18 @@ describe('assignRetake — admin-only role gate sourced from the session', () =>
     expect(mockEnrollmentCreate).toHaveBeenCalledOnce();
   });
 
-  it('rejects a read-only Supervisor: `enrollment.edit` is a self-service permission every role holds, so the gate must be `enrollment.create`', async () => {
+  // REVERSED 2026-08-25 — supervisor now holds enrollment.create per team QA
+  // 3.1 / C8. See course.assign-retake.test.ts for the full rationale and the
+  // open question about whether retakes should have their own permission.
+  it('allows a Supervisor: assignment is now within its grant (team QA 3.1 / C8)', async () => {
     mockAdminAuth.mockResolvedValue({
       user: { id: 'sup-1', role: 'supervisor', organizationId: 'org-A' },
     });
     mockWorkerAuth.mockResolvedValue(null);
 
-    await expect(assignRetake('enr-1')).rejects.toThrow('Insufficient permissions');
-    expect(mockEnrollmentCreate).not.toHaveBeenCalled();
+    const result = await assignRetake('enr-1');
+
+    expect(result.success).toBe(true);
+    expect(mockEnrollmentCreate).toHaveBeenCalledOnce();
   });
 });

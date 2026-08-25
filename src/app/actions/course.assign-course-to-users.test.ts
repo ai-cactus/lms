@@ -101,8 +101,11 @@ describe('assignCourseToUsers — auth / tenancy guards', () => {
     );
   });
 
+  // Exemplar changed from `supervisor` to `finance` 2026-08-25: supervisor now
+  // HOLDS assignment.create (team QA 3.1 / C8). The rule under test is
+  // unchanged — a role without the verb is refused before any course lookup.
   it('throws Forbidden for a role without assignment.create, before any course lookup', async () => {
-    mockAdminAuth.mockResolvedValue(sessionFor({ role: 'supervisor' }));
+    mockAdminAuth.mockResolvedValue(sessionFor({ role: 'finance' }));
 
     await expect(assignCourseToUsers(COURSE_ID, ['staff@acme.com'])).rejects.toThrow('Forbidden');
 

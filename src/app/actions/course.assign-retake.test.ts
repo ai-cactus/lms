@@ -86,8 +86,24 @@ describe('assignRetake — auth / RBAC gate', () => {
     await expect(assignRetake(ENROLLMENT_ID)).rejects.toThrow('Unauthorized');
   });
 
-  it("denies supervisor — a read-only role must not force a retake via enrollment.edit's self-service grant", async () => {
+  // REVERSED 2026-08-25. This asserted that supervisor — then a read-only role —
+  // could not force a retake. Team QA section 3.1 / C8 makes supervisors
+  // assigners: "they can assign existing courses to existing staff". A retake
+  // re-issues an existing course to an existing staff member, so it falls under
+  // that grant, and supervisor now holds enrollment.create.
+  //
+  // NOTE FOR REVIEW: C8 does not say "retake" in so many words — this is an
+  // inference from its wording. If retakes are meant to stay owner/admin/HR
+  // only, assignRetake needs its own permission rather than reusing
+  // enrollment.create, and this test should go back to denying.
+  it('allows supervisor — a retake re-assigns an existing course to existing staff (C8)', async () => {
     mockAdminAuth.mockResolvedValue(makeSession('supervisor'));
+
+    await expect(assignRetake(ENROLLMENT_ID)).resolves.toBeDefined();
+  });
+
+  it('still denies finance — no enrollment.create', async () => {
+    mockAdminAuth.mockResolvedValue(makeSession('finance'));
 
     await expect(assignRetake(ENROLLMENT_ID)).rejects.toThrow('Insufficient permissions');
     expect(prismaMock.enrollment.create).not.toHaveBeenCalled();

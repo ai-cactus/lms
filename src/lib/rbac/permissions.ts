@@ -232,6 +232,21 @@ export const roles = {
       // privilege. The facility narrowing that makes it safe ships in the same
       // commit — never grant this without it.
       'auditPack.create',
+      // Team QA 2026-08-25, section 3.1 and C8: "Facility supervisors should be
+      // able to assign courses" / "they can assign existing courses to existing
+      // staff". Both verbs are required — the assign route and role-target path
+      // check `assignment.create` (enrollment.ts:520, staff.ts:662) while the
+      // enrolment itself checks `enrollment.create` (enrollment.ts:175).
+      //
+      // C8 is otherwise unchanged: no course.* or document.* write verbs, and
+      // no user.create — a supervisor assigns EXISTING courses to EXISTING
+      // staff, and creates neither.
+      //
+      // Both are scope-bound, not org-wide: the assignee picker and the
+      // enrolment target are narrowed to the caller's facilities in the same
+      // commit. Never grant these without that narrowing.
+      'assignment.create',
+      'enrollment.create',
     ],
   },
 
