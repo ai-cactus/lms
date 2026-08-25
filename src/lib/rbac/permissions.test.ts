@@ -67,6 +67,17 @@ describe('can() — supervisor (demoted to read-only + self-service)', () => {
     'notification.create',
     'notification.edit',
     'notification.delete',
+    // The one write verb a supervisor holds. Added 2026-08-24 for team QA
+    // finding #17: "when downloading an audit report for courses, all courses
+    // are listed, but the data in the export should be limited to the facility"
+    // — the team asked for the DATA to be scoped, not the capability removed,
+    // and the team's expected behaviour is the platform direction.
+    //
+    // It does not breach the "no write verbs" principle in spirit: the pack is
+    // derived from records the supervisor may already read, and the export is
+    // narrowed to their facilities at the query layer (D-01 commit F). If that
+    // narrowing is ever removed, this grant must go with it.
+    'auditPack.create',
   ] as const;
 
   it('supervisor is denied billing.create/edit/delete', () => {

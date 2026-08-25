@@ -217,8 +217,22 @@ export const roles = {
     category: 'manager',
     displayName: 'Facility Supervisor',
     description:
-      'Facility-level overseer. READ-ONLY on documents, courses, staff and audits — a supervisor’s power is SCOPE, not verbs: their read access spans the facilities assigned to them (OrganizationUserFacility), enforced at the data layer. Cannot create or edit facilities, cannot change staff roles, and has no billing access whatsoever.',
-    permissions: [...readEverythingExceptBilling, ...selfServicePermissions],
+      'Facility-level overseer. READ-ONLY on documents, courses, staff and audits — a supervisor’s power is SCOPE, not verbs: their read access spans the facilities assigned to them (OrganizationUserFacility), enforced at the data layer. May generate an auditor pack, but only over that same facility scope. Cannot create or edit facilities, cannot change staff roles, and has no billing access whatsoever.',
+    permissions: [
+      ...readEverythingExceptBilling,
+      ...selfServicePermissions,
+      // Team QA 2026-08-22 finding #17 reads "when downloading an audit report
+      // for courses, all courses are listed, but the data in the export should
+      // be limited to the facility" — it asks for the DATA to be scoped, not
+      // for the capability to be removed. The team's expected behaviour is the
+      // platform direction, so the registry moves to meet it.
+      //
+      // This is consistent with the role's own principle above: producing a
+      // report over records you may already read is a matter of scope, not of
+      // privilege. The facility narrowing that makes it safe ships in the same
+      // commit — never grant this without it.
+      'auditPack.create',
+    ],
   },
 
   hr: {

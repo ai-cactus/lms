@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isAdminRole } from '@/lib/rbac/role-utils';
+import { authorize } from '@/lib/rbac/authorize';
+import { resolveDataFacilityIds } from '@/lib/facility/staff-where';
 import prisma from '@/lib/prisma';
-import { auth } from '@/auth';
 import * as XLSX from 'xlsx';
 import { Document, Packer, Paragraph, HeadingLevel } from 'docx';
 import { logger } from '@/lib/logger';
@@ -67,10 +67,8 @@ function flattenResult(result: AuditReportResult): Record<string, unknown>[] {
 export async function GET(req: NextRequest, { params }: { params: Promise<{ jobId: string }> }) {
   try {
     const { jobId } = await params;
-    const session = await auth();
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const authResult = await authorize('auditPack.read');
+    if (!authResult.ok) return authResult.response;
 
     const url = new URL(req.url);
     const format = url.searchParams.get('format') || 'pdf';
@@ -79,10 +77,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ jobI
       return NextResponse.json({ error: 'Missing jobId' }, { status: 400 });
     }
 
-    // ── Authorization: caller must be an admin of an org with the paid auditor
-    //    feature enabled (mirrors POST /api/auditor/export).
-    const { role, organizationId } = session.user;
-    if (!isAdminRole(role) || !organizationId) {
+    // ── Authorization: caller must hold `auditPack.read` in an org with the
+    //    paid auditor feature enabled. D-01: this was gated on `isAdminRole`,
+    //    which admits Finance and Clinical Director.
+    const { organizationId } = authResult.ctx;
+    if (!organizationId) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -112,6 +111,38 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ jobI
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    // D-01: scope is re-derived AT DOWNLOAD TIME and the artifact's recorded
+    // scope must be a subset of it. Closes "start a job for facility A, get
+    // transferred to B, then download A's data".
+    const currentFacilityIds = await resolveDataFacilityIds({
+      user: {
+        id: authResult.ctx.userId,
+        role: authResult.ctx.role,
+        organizationId,
+        organizationUserId: authResult.ctx.organizationUserId,
+      },
+    });
+    const jobFacilityIds = (job.payload as Record<string, unknown> | null)?.facilityIds as
+      string[] | null | undefined;
+
+    if (currentFacilityIds !== null) {
+      // The caller is facility-bound. An artifact is only releasable if its own
+      // scope is known AND contained by theirs. `undefined` means the job predates
+      // this field — unknown is NOT org-wide, so it is refused rather than
+      // assumed safe. That window is minutes; jobs complete in seconds.
+      const releasable =
+        Array.isArray(jobFacilityIds) &&
+        jobFacilityIds.every((id) => currentFacilityIds.includes(id));
+      if (!releasable) {
+        logger.warn({
+          msg: '[auditor] Download refused — artifact scope exceeds caller scope',
+          userId: authResult.ctx.userId,
+          jobId,
+        });
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
+    }
+
     if (job.result === null || typeof job.result !== 'object') {
       return NextResponse.json({ error: 'Invalid job result formatting' }, { status: 500 });
     }
@@ -121,8 +152,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ jobI
     // authorized path, with scope/format/row-count context (no PII values).
     await audit({
       action: 'export.download',
-      actorId: session.user.id,
-      actorRole: role,
+      actorId: authResult.ctx.userId,
+      actorRole: authResult.ctx.role,
       organizationId,
       targetType: 'job',
       targetId: jobId,

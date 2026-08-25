@@ -23,7 +23,9 @@ const {
   // jobTitle now lives on the active OrganizationUser membership.
   prismaMock: {
     user: { findUnique: vi.fn(), update: vi.fn() },
-    organizationUser: { update: vi.fn() },
+    organizationUser: { update: vi.fn(), findMany: vi.fn() },
+    invite: { findMany: vi.fn() },
+    facility: { findMany: vi.fn() },
   },
   mockHeaders: vi.fn(),
   mockAdminAuth: vi.fn(),
@@ -54,7 +56,7 @@ vi.mock('bcryptjs', () => ({
   hash: mockBcryptHash,
 }));
 
-import { updateProfile, changePassword } from './user';
+import { updateProfile, changePassword, getStaffUsers } from './user';
 
 const SESSION = { user: { id: 'user-1', email: 'user@acme.com' } };
 
@@ -252,5 +254,96 @@ describe('changePassword — self-service password change', () => {
 
     expect(result).toEqual({ success: false, error: 'Failed to change password' });
     expect(mockInvalidateRevalidationCache).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * D-01 — facility scoping of the staff roster.
+ *
+ * The anti-over-fix case matters as much as the fix: HR is org-wide BY DESIGN
+ * (`ORG_WIDE_FACILITY_ROLES`) and `TC-HR-001` passed. Narrowing HR while fixing
+ * supervisor would be a new defect wearing a fix's clothes. These assert on the
+ * Prisma `where` the action actually builds, not on its return value.
+ */
+describe('getStaffUsers — D-01 facility scoping', () => {
+  const ORG = 'org-a';
+
+  const sessionFor = (role: string) => ({
+    user: {
+      id: 'u1',
+      role,
+      organizationId: ORG,
+      organizationUserId: 'ou1',
+    },
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockHeaders.mockResolvedValue(new Headers());
+    prismaMock.organizationUser.findMany.mockResolvedValue([]);
+    prismaMock.invite.findMany.mockResolvedValue([]);
+    prismaMock.facility.findMany.mockResolvedValue([{ id: 'annex', name: 'Annex' }]);
+  });
+
+  it('does NOT narrow HR — org-wide by design (TC-HR-001 must not regress)', async () => {
+    mockAdminAuth.mockResolvedValue(sessionFor('hr'));
+
+    await getStaffUsers();
+
+    const where = prismaMock.organizationUser.findMany.mock.calls[0][0].where;
+    expect(where).not.toHaveProperty('facilities');
+    const inviteWhere = prismaMock.invite.findMany.mock.calls[0][0].where;
+    expect(inviteWhere).not.toHaveProperty('facilityId');
+    // org-wide roles short-circuit before any facility lookup
+    expect(prismaMock.facility.findMany).not.toHaveBeenCalled();
+  });
+
+  it.each(['owner', 'admin', 'clinical_director', 'finance'])(
+    'does NOT narrow %s — also org-wide',
+    async (role) => {
+      mockAdminAuth.mockResolvedValue(sessionFor(role));
+
+      if (role === 'clinical_director' || role === 'finance') {
+        // no user.read — denied before any query
+        await expect(getStaffUsers()).rejects.toThrow('Unauthorized');
+        expect(prismaMock.organizationUser.findMany).not.toHaveBeenCalled();
+        return;
+      }
+
+      await getStaffUsers();
+      const where = prismaMock.organizationUser.findMany.mock.calls[0][0].where;
+      expect(where).not.toHaveProperty('facilities');
+    },
+  );
+
+  it('narrows supervisor to its own facilities, and scopes pending invites too', async () => {
+    mockAdminAuth.mockResolvedValue(sessionFor('supervisor'));
+
+    await getStaffUsers();
+
+    const where = prismaMock.organizationUser.findMany.mock.calls[0][0].where;
+    expect(where.facilities).toEqual({
+      some: { facilityId: { in: ['annex'] }, active: true },
+    });
+    const inviteWhere = prismaMock.invite.findMany.mock.calls[0][0].where;
+    expect(inviteWhere.facilityId).toEqual({ in: ['annex'] });
+  });
+
+  it('a supervisor with no facility assignments sees nothing, not everything', async () => {
+    mockAdminAuth.mockResolvedValue(sessionFor('supervisor'));
+    prismaMock.facility.findMany.mockResolvedValue([]);
+
+    await getStaffUsers();
+
+    const where = prismaMock.organizationUser.findMany.mock.calls[0][0].where;
+    expect(where.facilities).toEqual({ some: { facilityId: { in: [] }, active: true } });
+  });
+
+  it('denies a worker — the roster was reachable via workerAuth() with no check at all', async () => {
+    mockAdminAuth.mockResolvedValue(null);
+    mockWorkerAuth.mockResolvedValue(sessionFor('nurse'));
+
+    await expect(getStaffUsers()).rejects.toThrow('Unauthorized');
+    expect(prismaMock.organizationUser.findMany).not.toHaveBeenCalled();
   });
 });

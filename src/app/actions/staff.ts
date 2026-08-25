@@ -16,6 +16,7 @@ import crypto from 'crypto';
 import type { EnrollmentStatus, UserRole } from '@/generated/prisma/enums';
 import { enrollUsers, type AssignmentSettingsInput } from '@/app/actions/enrollment';
 import { enrollUserForRoleTargets } from '@/lib/enrollment/role-targets';
+import { resolveDataFacilityIds, staffFacilityWhere } from '@/lib/facility/staff-where';
 import { logger, maskEmail } from '@/lib/logger';
 import type { DeferredWorkerNotification } from '@/lib/enrollment/create';
 import { collectDeferredNotices, notifyCoursesAssigned } from '@/lib/enrollment/notify';
@@ -43,13 +44,36 @@ const ROLE_CHANGE_DENIED_MESSAGES: Record<RoleChangeDenyReason, string> = {
  */
 export async function getStaffDetails(organizationUserId: string) {
   const session = await auth();
-  if (!session?.user?.id || !isAdminRole(session.user.role) || !session.user.organizationId) {
+  if (!session?.user?.id || !session.user.organizationId) {
     throw new Error('Unauthorized');
   }
 
+  // D-01: was `isAdminRole`, which admits Finance and Clinical Director —
+  // neither holds `user.read`.
+  const roleKey = dbRoleToRoleKey(session.user.role);
+  if (!roleKey || !can(roleKey, 'user.read')) {
+    logger.warn({
+      msg: '[staff] Staff detail read denied',
+      userId: session.user.id,
+      role: session.user.role,
+    });
+    throw new Error('Unauthorized');
+  }
+
+  // null for org-wide roles; an array (possibly empty) for a facility-bound one.
+  const dataFacilityIds = await resolveDataFacilityIds(session);
+
   try {
-    const orgUser = await prisma.organizationUser.findUnique({
-      where: { id: organizationUserId },
+    // findFirst, not findUnique, so the tenancy and facility predicates compose
+    // into the query rather than being checked after the row is already loaded.
+    // An out-of-facility target must return null exactly as a non-existent id
+    // does — a distinguishable response would confirm the person exists.
+    const orgUser = await prisma.organizationUser.findFirst({
+      where: {
+        id: organizationUserId,
+        organizationId: session.user.organizationId,
+        ...staffFacilityWhere(dataFacilityIds),
+      },
       // Explicit projection — this DTO never needs the credential columns behind
       // the joined User rows (password hash, MFA state, reset flags).
       select: {
@@ -93,7 +117,10 @@ export async function getStaffDetails(organizationUserId: string) {
 
     if (!orgUser) return null;
 
-    // Tenant isolation: an admin may only view users that belong to their own org.
+    // Tenant isolation. Now REDUNDANT — `organizationId` moved into the query
+    // above — and deliberately kept: this is a tenancy boundary, and if the
+    // predicate is ever dropped from the `where` this still catches it. It
+    // should be unreachable; the log firing means the query lost its filter.
     if (orgUser.organizationId !== session.user.organizationId) {
       logger.warn({
         msg: '[staff] Cross-tenant staff detail access blocked',
@@ -304,9 +331,22 @@ export async function getAssignableManagers(): Promise<
   { id: string; name: string; email: string }[]
 > {
   const session = await auth();
-  if (!session?.user?.id || !isAdminRole(session.user.role) || !session.user.organizationId) {
+  if (!session?.user?.id || !session.user.organizationId) {
     throw new Error('Unauthorized');
   }
+
+  // D-01: returns names and emails, so it is a roster read — gate on user.read.
+  const roleKey = dbRoleToRoleKey(session.user.role);
+  if (!roleKey || !can(roleKey, 'user.read')) {
+    logger.warn({
+      msg: '[staff] Assignable-manager read denied',
+      userId: session.user.id,
+      role: session.user.role,
+    });
+    throw new Error('Unauthorized');
+  }
+
+  const dataFacilityIds = await resolveDataFacilityIds(session);
 
   // Restrict to the caller's own organization — never return users from other tenants.
   const admins = await prisma.organizationUser.findMany({
@@ -314,6 +354,7 @@ export async function getAssignableManagers(): Promise<
       organizationId: session.user.organizationId,
       active: true,
       role: { in: [...ADMIN_ROLES] },
+      ...staffFacilityWhere(dataFacilityIds),
     },
     include: {
       user: true,
@@ -782,13 +823,31 @@ export async function assignCoursesToStaffMember(
 
 export async function getEnrollmentQuizResult(enrollmentId: string) {
   const session = await auth();
-  if (!session?.user?.id || !isAdminRole(session.user.role) || !session.user.organizationId) {
+  if (!session?.user?.id || !session.user.organizationId) {
     throw new Error('Unauthorized');
   }
 
+  // D-01: exposes another person's quiz answers and score.
+  const roleKey = dbRoleToRoleKey(session.user.role);
+  if (!roleKey || !can(roleKey, 'assignment.read')) {
+    logger.warn({
+      msg: '[staff] Quiz result read denied',
+      userId: session.user.id,
+      role: session.user.role,
+    });
+    throw new Error('Unauthorized');
+  }
+
+  const dataFacilityIds = await resolveDataFacilityIds(session);
+
   try {
-    const enrollment = await prisma.enrollment.findUnique({
-      where: { id: enrollmentId },
+    // findFirst so the facility predicate composes into the query — an
+    // out-of-facility enrollment must be indistinguishable from a missing one.
+    const enrollment = await prisma.enrollment.findFirst({
+      where: {
+        id: enrollmentId,
+        organizationUser: { is: staffFacilityWhere(dataFacilityIds) },
+      },
       include: {
         organizationUser: {
           include: {
@@ -1153,14 +1212,28 @@ export async function generateStaffActivityPdfAndEmail(
       return { success: false, error: 'Unauthorized' };
     }
 
-    // Verify caller is an admin with an organization
-    if (!isAdminRole(session.user.role) || !session.user.organizationId) {
+    // D-01: this emails a PDF of one person's full training record — the same
+    // egress class as the auditor export, and it was gated on `isAdminRole`.
+    const roleKey = dbRoleToRoleKey(session.user.role);
+    if (!roleKey || !can(roleKey, 'user.read') || !session.user.organizationId) {
+      logger.warn({
+        msg: '[staff] Activity PDF export denied',
+        userId: session.user.id,
+        role: session.user.role,
+      });
       return { success: false, error: 'Forbidden' };
     }
 
-    // Verify the target staff belongs to the same organization
-    const staffOrgUser = await prisma.organizationUser.findUnique({
-      where: { id: staffOrgUserId },
+    const dataFacilityIds = await resolveDataFacilityIds(session);
+
+    // Verify the target staff belongs to the same organization AND is within
+    // the caller's facility scope.
+    const staffOrgUser = await prisma.organizationUser.findFirst({
+      where: {
+        id: staffOrgUserId,
+        organizationId: session.user.organizationId,
+        ...staffFacilityWhere(dataFacilityIds),
+      },
       select: {
         organizationId: true,
         user: { select: { email: true, fullName: true } },
@@ -1185,6 +1258,8 @@ export async function generateStaffActivityPdfAndEmail(
       return { success: false, error: 'Staff member not found' };
     }
 
+    // Redundant since `organizationId` moved into the query above; kept as a
+    // backstop on the tenancy boundary. Unreachable in normal operation.
     if (staffOrgUser.organizationId !== session.user.organizationId) {
       return { success: false, error: 'Forbidden — staff member not in your organization' };
     }

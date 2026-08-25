@@ -100,4 +100,30 @@ describe('Audit Reports page — billing gate', () => {
     await expect(AuditorPackPage()).rejects.toThrow('NEXT_REDIRECT');
     expect(mockRedirect).toHaveBeenCalledWith('/dashboard');
   });
+
+  // D-01. The `nurse` case above passed under the old `isAdminRole` gate too —
+  // nurse was never in ADMIN_ROLES. These are the roles that gate ADMITTED
+  // while holding no auditPack permission, so they are the cases that matter.
+  it('redirects finance — in ADMIN_ROLES, but holds no auditPack permission at all', async () => {
+    mockAuth.mockResolvedValue(session('finance'));
+
+    await expect(AuditorPackPage()).rejects.toThrow('NEXT_REDIRECT');
+    expect(mockRedirect).toHaveBeenCalledWith('/dashboard');
+    expect(mockGetStats).not.toHaveBeenCalled();
+  });
+
+  // Not every ADMIN_ROLES member is over-scoped here. Clinical Director's D-01
+  // exposure was the staff roster (`user.read`); it legitimately holds
+  // `auditPack.read`, and supervisor holds it as a read verb. Over-tightening
+  // this gate would be its own defect.
+  it.each(['clinical_director', 'supervisor', 'hr'])(
+    'still admits %s — holds auditPack.read',
+    async (role) => {
+      mockAuth.mockResolvedValue(session(role));
+      prismaMock.organization.findUnique.mockResolvedValue({ hasAuditorAccess: true });
+
+      await expect(AuditorPackPage()).resolves.toBeTruthy();
+      expect(mockRedirect).not.toHaveBeenCalled();
+    },
+  );
 });
