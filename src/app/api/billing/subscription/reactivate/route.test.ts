@@ -9,6 +9,9 @@
  *     otherwise), and only when Stripe still considers it billable (active
  *     or trialing) — a fully-canceled subscription must resubscribe instead.
  *   - Never call Stripe when a guard rejects the request first.
+ *   - Release a pending plan-change schedule instead of hard-blocking on it,
+ *     since Stripe refuses cancellation-behaviour updates while a Subscription
+ *     Schedule wraps the subscription.
  *   - Enforce the F-012 admin + auth guard, consistent with sibling routes.
  */
 
@@ -26,6 +29,7 @@ const { mockAuth, prismaMock, stripeMock } = vi.hoisted(() => {
   };
   const stripeMock = {
     subscriptions: { update: vi.fn() },
+    subscriptionSchedules: { retrieve: vi.fn(), release: vi.fn() },
   };
   return { mockAuth, prismaMock, stripeMock };
 });
@@ -63,28 +67,60 @@ const CANCEL_SCHEDULED_SUB = {
   scheduledEffectiveAt: null,
 };
 
+const CANCEL_SCHEDULED_SUB_WITH_SCHEDULE = {
+  ...CANCEL_SCHEDULED_SUB,
+  stripeScheduleId: 'sub_sched_1',
+  scheduledEffectiveAt: new Date('2026-08-17T00:00:00Z'),
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   // Session carries the `role` claim so the F-012 guardApiSession check
   // (auth + MFA + admin role, read from session claims) passes by default.
   mockAuth.mockResolvedValue({ user: { id: 'user-1', role: 'owner', organizationId: 'org-1' } });
   prismaMock.user.findUnique.mockResolvedValue(ADMIN_USER);
+  // vi.clearAllMocks() clears call history, not queued implementations, so
+  // every Stripe stub this file rejects must be re-armed here.
+  stripeMock.subscriptions.update.mockResolvedValue({});
+  stripeMock.subscriptionSchedules.retrieve.mockResolvedValue({
+    id: 'sub_sched_1',
+    status: 'active',
+  });
+  stripeMock.subscriptionSchedules.release.mockResolvedValue({});
 });
 
-describe('POST /api/billing/subscription/reactivate — scheduled-change guard', () => {
-  it('returns 409 and does not touch Stripe when a plan change is pending', async () => {
-    prismaMock.subscription.findUnique.mockResolvedValue({
-      ...CANCEL_SCHEDULED_SUB,
-      stripeScheduleId: 'sub_sched_1',
-      scheduledEffectiveAt: new Date('2026-08-17T00:00:00Z'),
+describe('POST /api/billing/subscription/reactivate — pending plan-change schedule', () => {
+  it('releases the pending schedule and then clears the cancellation', async () => {
+    prismaMock.subscription.findUnique.mockResolvedValue(CANCEL_SCHEDULED_SUB_WITH_SCHEDULE);
+
+    const res = await POST();
+
+    expect(res.status).toBe(200);
+    expect(stripeMock.subscriptionSchedules.release).toHaveBeenCalledWith('sub_sched_1');
+    expect(stripeMock.subscriptions.update).toHaveBeenCalledWith('sub_x', {
+      cancel_at_period_end: false,
     });
+    expect(prismaMock.subscription.update).toHaveBeenCalledWith({
+      where: { organizationId: 'org-1' },
+      data: {
+        scheduledPlan: null,
+        scheduledBillingCycle: null,
+        scheduledPriceId: null,
+        scheduledEffectiveAt: null,
+        stripeScheduleId: null,
+      },
+    });
+  });
+
+  it('returns 502 and never clears the cancellation when the release fails upstream', async () => {
+    prismaMock.subscription.findUnique.mockResolvedValue(CANCEL_SCHEDULED_SUB_WITH_SCHEDULE);
+    stripeMock.subscriptionSchedules.release.mockRejectedValue(new Error('Stripe API error'));
 
     const res = await POST();
     const body = await res.json();
 
-    expect(res.status).toBe(409);
-    expect(body.error).toMatch(/pending plan change/i);
-    expect(body.error).toMatch(/cancel it first/i);
+    expect(res.status).toBe(502);
+    expect(body.error).toMatch(/unable to update your subscription/i);
     expect(stripeMock.subscriptions.update).not.toHaveBeenCalled();
     expect(prismaMock.subscription.update).not.toHaveBeenCalled();
   });
@@ -237,10 +273,6 @@ describe('POST /api/billing/subscription/reactivate — RBAC (billing.edit regis
       user: { id: 'user-1', role: 'finance', organizationId: 'org-1' },
     });
     prismaMock.subscription.findUnique.mockResolvedValue(CANCEL_SCHEDULED_SUB);
-    // A prior test in this file (Stripe-throws) leaves `mockRejectedValue` set
-    // on this mock — vi.clearAllMocks() clears call history, not the queued
-    // implementation — so this test must reset it explicitly.
-    stripeMock.subscriptions.update.mockResolvedValue({});
 
     const res = await POST();
 
