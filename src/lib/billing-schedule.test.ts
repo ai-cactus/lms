@@ -98,6 +98,43 @@ describe('releasePendingSchedule — schedule already gone (stale local mirror)'
   });
 });
 
+describe('releasePendingSchedule — schedule released concurrently', () => {
+  // Two requests (cancel + resume, say) can both read `active` and both call
+  // release. The loser must not fail a mutation that reached its desired end
+  // state, so a failed release re-reads the schedule to find out.
+  it.each(['released', 'canceled', 'completed'])(
+    'tolerates a release failure once Stripe reports status=%s, and clears the columns',
+    async (statusAfterFailure) => {
+      stripeMock.subscriptionSchedules.retrieve
+        .mockResolvedValueOnce({ id: 'sub_sched_1', status: 'active' })
+        .mockResolvedValueOnce({ id: 'sub_sched_1', status: statusAfterFailure });
+      stripeMock.subscriptionSchedules.release.mockRejectedValue(
+        new Error('You cannot release a subscription schedule in that status'),
+      );
+
+      await expect(releasePendingSchedule('org-1', 'sub_sched_1')).resolves.toEqual({
+        released: false,
+      });
+
+      expect(stripeMock.subscriptionSchedules.retrieve).toHaveBeenCalledTimes(2);
+      expect(prismaMock.subscription.update).toHaveBeenCalledWith(CLEARED_COLUMNS);
+    },
+  );
+
+  it('tolerates a release failure once Stripe no longer has the schedule at all', async () => {
+    stripeMock.subscriptionSchedules.retrieve
+      .mockResolvedValueOnce({ id: 'sub_sched_1', status: 'active' })
+      .mockRejectedValueOnce(resourceMissingError());
+    stripeMock.subscriptionSchedules.release.mockRejectedValue(new Error('no longer releasable'));
+
+    await expect(releasePendingSchedule('org-1', 'sub_sched_1')).resolves.toEqual({
+      released: false,
+    });
+
+    expect(prismaMock.subscription.update).toHaveBeenCalledWith(CLEARED_COLUMNS);
+  });
+});
+
 describe('releasePendingSchedule — upstream failures propagate', () => {
   it('rethrows a non-resource_missing retrieve failure and leaves the columns untouched', async () => {
     stripeMock.subscriptionSchedules.retrieve.mockRejectedValue(new Error('Stripe API error'));
@@ -110,11 +147,26 @@ describe('releasePendingSchedule — upstream failures propagate', () => {
     expect(prismaMock.subscription.update).not.toHaveBeenCalled();
   });
 
-  it('rethrows a release failure and leaves the columns untouched', async () => {
+  // The schedule is still releasable after the failure, so nothing was
+  // released and the error is real — not a lost race.
+  it('rethrows a release failure the schedule state does not excuse', async () => {
     stripeMock.subscriptionSchedules.retrieve.mockResolvedValue({
       id: 'sub_sched_1',
       status: 'active',
     });
+    stripeMock.subscriptionSchedules.release.mockRejectedValue(new Error('Stripe API error'));
+
+    await expect(releasePendingSchedule('org-1', 'sub_sched_1')).rejects.toThrow(
+      'Stripe API error',
+    );
+
+    expect(prismaMock.subscription.update).not.toHaveBeenCalled();
+  });
+
+  it('rethrows the original release failure when the re-read also fails', async () => {
+    stripeMock.subscriptionSchedules.retrieve
+      .mockResolvedValueOnce({ id: 'sub_sched_1', status: 'active' })
+      .mockRejectedValueOnce(new Error('connection error'));
     stripeMock.subscriptionSchedules.release.mockRejectedValue(new Error('Stripe API error'));
 
     await expect(releasePendingSchedule('org-1', 'sub_sched_1')).rejects.toThrow(

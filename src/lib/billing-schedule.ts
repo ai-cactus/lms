@@ -37,6 +37,29 @@ function isResourceMissingError(err: unknown): boolean {
 }
 
 /**
+ * The schedule's live status, or `null` when Stripe no longer has it at all.
+ * Only `resource_missing` is folded into `null`; every other failure
+ * propagates.
+ */
+async function retrieveScheduleStatus(
+  stripe: Stripe,
+  stripeScheduleId: string,
+): Promise<Stripe.SubscriptionSchedule.Status | null> {
+  try {
+    const schedule = await stripe.subscriptionSchedules.retrieve(stripeScheduleId);
+    return schedule.status;
+  } catch (err) {
+    if (isResourceMissingError(err)) return null;
+    throw err;
+  }
+}
+
+/** Stripe accepts `release` only while the schedule is `not_started` or `active`. */
+function isReleasable(status: Stripe.SubscriptionSchedule.Status | null): boolean {
+  return status !== null && RELEASABLE_STATUSES.has(status);
+}
+
+/**
  * Releases the organization's pending subscription schedule and clears the
  * local `scheduled*` mirror.
  *
@@ -46,10 +69,24 @@ function isResourceMissingError(err: unknown): boolean {
  * treated as already gone — the local columns are still cleared, which is what
  * repairs a stale mirror instead of failing the caller's request.
  *
+ * The same tolerance covers the release call itself. Two concurrent requests
+ * (cancel + resume, say) can both read `active` and both attempt the release;
+ * the loser must not fail a mutation that in fact reached its desired end
+ * state. Stripe publishes no error code for "already released" — `code` is
+ * documented as nullable and populated only "for some errors", and the
+ * error-codes table has no subscription-schedule entry — so rather than match
+ * an undocumented message string, a failed release re-reads the schedule and
+ * tolerates the failure only when Stripe confirms it is genuinely no longer
+ * releasable.
+ *
  * Any other failure propagates and the local columns are left untouched: a
  * change we could not confirm is gone on Stripe must not be resolved locally.
  *
- * @returns `released: true` only when a `release` call was actually made.
+ * @returns `released: true` only when this call's own `release` request was
+ * accepted by Stripe. A release lost to a concurrent request reports `false`,
+ * as does a release whose response never came back even though Stripe applied
+ * it — the flag records what this request observed, not who ended the
+ * schedule, and it is surfaced in the caller's audit metadata on that basis.
  */
 export async function releasePendingSchedule(
   organizationId: string,
@@ -57,17 +94,24 @@ export async function releasePendingSchedule(
 ): Promise<{ released: boolean }> {
   const stripe = getStripeClient();
 
-  let liveStatus: Stripe.SubscriptionSchedule.Status | null = null;
-  try {
-    const schedule = await stripe.subscriptionSchedules.retrieve(stripeScheduleId);
-    liveStatus = schedule.status;
-  } catch (err) {
-    if (!isResourceMissingError(err)) throw err;
-  }
+  const liveStatus = await retrieveScheduleStatus(stripe, stripeScheduleId);
 
-  const released = liveStatus !== null && RELEASABLE_STATUSES.has(liveStatus);
-  if (released) {
-    await stripe.subscriptionSchedules.release(stripeScheduleId);
+  let released = false;
+  if (isReleasable(liveStatus)) {
+    try {
+      await stripe.subscriptionSchedules.release(stripeScheduleId);
+      released = true;
+    } catch (releaseError) {
+      let statusAfterFailure: Stripe.SubscriptionSchedule.Status | null;
+      try {
+        statusAfterFailure = await retrieveScheduleStatus(stripe, stripeScheduleId);
+      } catch {
+        throw releaseError;
+      }
+      // Still releasable means the schedule is untouched, so the release
+      // genuinely failed (auth, network, rate limit, unexpected fault).
+      if (isReleasable(statusAfterFailure)) throw releaseError;
+    }
   }
 
   await prisma.subscription.update({
