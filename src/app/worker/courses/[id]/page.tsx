@@ -1,4 +1,4 @@
-import { redirect } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { auth } from '@/auth.worker';
 import prisma from '@/lib/prisma';
 import CoursePreview from '@/components/dashboard/training/CoursePreview';
@@ -20,7 +20,17 @@ export default async function WorkerCourseDetailsPage(props: PageProps) {
     redirect('/');
   }
 
-  const course = await getCourseById(params.id);
+  // getCourseById THROWS 'Course not found' on denial rather than calling
+  // notFound(). Unguarded, that escapes the server component and renders as an
+  // HTTP 500 — the opaque failure team QA #15 reported. The dashboard
+  // equivalents already catch it; this call site never did, and it is the one a
+  // manager in learn mode opens.
+  let course;
+  try {
+    course = await getCourseById(params.id);
+  } catch {
+    notFound();
+  }
 
   // Fetch latest enrollment for this membership and course
   const enrollment = session.user.organizationUserId
