@@ -247,7 +247,9 @@ describe('can() — finance (regression guard: exact permission set)', () => {
     'billing.delete',
     'organization.read',
     'facility.read',
-    'course.read',
+    // `course.read` removed 2026-08-25 per team QA finding #9 — Finance must
+    // not see courses from the admin side. Deliberate edit of this guard; see
+    // permissions.ts for the decision trail.
     'enrollment.read',
     'certificate.read',
     'notification.create',

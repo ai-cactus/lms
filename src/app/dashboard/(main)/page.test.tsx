@@ -52,6 +52,10 @@ vi.mock('@/app/actions/dashboard-facility', () => ({
   getGlobalDashboardData: mockGetGlobalDashboardData,
 }));
 vi.mock('@/lib/facility/scope', () => ({
+  // #8: the page now distinguishes org-wide roles from facility-scoped ones
+  // when choosing its framing copy.
+  isOrgWideFacilityRole: (role: string) =>
+    ['owner', 'admin', 'hr', 'clinical_director', 'finance'].includes(role),
   listAccessibleFacilities: mockListAccessibleFacilities,
   resolveFacilityScopeSelection: mockResolveFacilityScopeSelection,
 }));
