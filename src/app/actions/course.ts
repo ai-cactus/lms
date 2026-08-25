@@ -43,6 +43,32 @@ export async function getCourses(): Promise<CourseWithStats[]> {
   const organizationId = session.user.organizationId;
   const createdByOrgUserId = session.user.organizationUserId;
 
+  // Team QA finding #15 / C1: "Any course created is global, so should be
+  // viewable by any manager + supervisor with access to courses."
+  //
+  // This list was creator-scoped, so an HR-authored course was invisible to the
+  // Owner and every other manager. getCourseById was already fixed for exactly
+  // this (COU-002/COU-004, see below) and getCourses never received the matching
+  // change — the same predicate, applied to the list rather than the detail.
+  //
+  // Sharpened by team QA 2026-08-25 section 3.1: supervisors can now assign
+  // courses, but they author none, so under creator scoping their list was
+  // ALWAYS empty and the new capability had nothing to act on.
+  //
+  // `isAdminRole` is load-bearing alongside the permission check: worker roles
+  // also hold `course.read` (for their own enrolled courses), so the permission
+  // alone would widen this list to every worker. Workers stay enrollment-gated.
+  const isOrgManager =
+    !!organizationId &&
+    isAdminRole(session.user.role) &&
+    can(dbRoleToRoleKey(session.user.role), 'course.read');
+
+  // Managers see every course authored inside their organization; everyone else
+  // keeps the original creator scope.
+  const authoredWhere: Prisma.CourseWhereInput = isOrgManager
+    ? { creator: { organizationId } }
+    : { createdByOrgUserId };
+
   // Course structure only — lesson/enrollment tallies come from grouped
   // aggregation below, not from materializing every enrollment row per course.
   const courseCardSelect = {
@@ -60,7 +86,7 @@ export async function getCourses(): Promise<CourseWithStats[]> {
 
   const [ownCourses, offerings] = await Promise.all([
     prisma.course.findMany({
-      where: { createdByOrgUserId },
+      where: authoredWhere,
       select: {
         ...courseCardSelect,
         // Latest source-document lineage, so the list can offer "View Source
@@ -103,7 +129,9 @@ export async function getCourses(): Promise<CourseWithStats[]> {
   const [ownCounts, adoptedCounts] = await Promise.all([
     prisma.enrollment.groupBy({
       by: ['courseId', 'status'],
-      where: { course: { createdByOrgUserId } },
+      // Must track `authoredWhere` — otherwise a manager sees their colleagues'
+      // courses listed with a permanent 0 enrolled / 0 completed.
+      where: { course: authoredWhere },
       _count: { _all: true },
     }),
     organizationId && adoptedCourseIds.length

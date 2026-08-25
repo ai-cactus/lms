@@ -94,3 +94,84 @@ describe('getCourses', () => {
     expect(adopted?.lessonsCount).toBe(1);
   });
 });
+
+/**
+ * Team QA #15 / C1 — "Any course created is global, so should be viewable by
+ * any manager + supervisor with access to courses."
+ *
+ * getCourses was creator-scoped, so an HR-authored course was invisible to the
+ * Owner. getCourseById had already been fixed for exactly this (COU-002/COU-004);
+ * the list never received the matching change.
+ *
+ * Asserted on the Prisma `where` the action builds, because the scope decision
+ * lives in the query.
+ */
+describe('getCourses — org-manager visibility (#15)', () => {
+  const sessionFor = (role?: string) => ({
+    user: {
+      id: 'u-1',
+      role,
+      organizationUserId: 'ou-1',
+      organizationId: 'org-1',
+    },
+  });
+
+  beforeEach(() => {
+    mockCourseFindMany.mockResolvedValue([]);
+    mockOfferingFindMany.mockResolvedValue([]);
+    mockEnrollmentGroupBy.mockResolvedValue([]);
+    mockWorkerAuth.mockResolvedValue(null);
+  });
+
+  it.each(['owner', 'admin', 'hr', 'clinical_director', 'supervisor'])(
+    '%s sees every course authored in the organisation, not just their own',
+    async (role) => {
+      mockAuth.mockResolvedValue(sessionFor(role));
+
+      await getCourses();
+
+      expect(mockCourseFindMany.mock.calls[0][0].where).toEqual({
+        creator: { organizationId: 'org-1' },
+      });
+    },
+  );
+
+  it('supervisor in particular — authors nothing, so creator scoping left them empty', async () => {
+    mockAuth.mockResolvedValue(sessionFor('supervisor'));
+
+    await getCourses();
+
+    const where = mockCourseFindMany.mock.calls[0][0].where;
+    expect(where).not.toHaveProperty('createdByOrgUserId');
+  });
+
+  it('finance is NOT widened — it lost course.read (#9)', async () => {
+    mockAuth.mockResolvedValue(sessionFor('finance'));
+
+    await getCourses();
+
+    expect(mockCourseFindMany.mock.calls[0][0].where).toEqual({
+      createdByOrgUserId: 'ou-1',
+    });
+  });
+
+  it('a worker is NOT widened — worker roles hold course.read for their OWN enrolled courses', async () => {
+    mockAuth.mockResolvedValue(sessionFor('nurse'));
+
+    await getCourses();
+
+    expect(mockCourseFindMany.mock.calls[0][0].where).toEqual({
+      createdByOrgUserId: 'ou-1',
+    });
+  });
+
+  it('the enrollment tally follows the same scope, or org courses show a permanent 0', async () => {
+    mockAuth.mockResolvedValue(sessionFor('hr'));
+
+    await getCourses();
+
+    expect(mockEnrollmentGroupBy.mock.calls[0][0].where).toEqual({
+      course: { creator: { organizationId: 'org-1' } },
+    });
+  });
+});
