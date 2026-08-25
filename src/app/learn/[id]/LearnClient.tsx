@@ -1,7 +1,11 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { isAdminRole, isWorkerRole } from '@/lib/rbac/role-utils';
+// isAdminRole is deliberately NOT imported here: the learn view mode comes from
+// the server as `userData.isAdminView`. Re-deriving it from the role string is
+// exactly the D-16 defect — a manager in Learn mode carries an admin role by
+// design (session-bridge.ts).
+import { isWorkerRole } from '@/lib/rbac/role-utils';
 import { useParams, useRouter } from 'next/navigation';
 import { Menu, AlertCircle } from 'lucide-react';
 import QuizResults from '@/components/dashboard/training/QuizResults';
@@ -103,6 +107,12 @@ interface QuizResultsData {
 interface UserData {
   name: string;
   role: string;
+  /**
+   * Server-decided view mode. NEVER re-derive this from `role`: a manager in
+   * Learn mode legitimately carries an admin role on the worker session, which
+   * is exactly what D-16 got wrong.
+   */
+  isAdminView: boolean;
   organizationName?: string;
   email: string;
   jobTitle: string;
@@ -415,7 +425,7 @@ export default function LearnClient({ initialData }: LearnClientProps) {
   // True when the LAST lesson is a video lesson whose watch-gate has not yet been met.
   // Admins bypass; non-video courses are unaffected (returns false).
   const isVideoQuizGateBlocked = () => {
-    if (!course || isAdminRole(userData?.role)) return false;
+    if (!course || userData?.isAdminView === true) return false;
     const lastLesson = course.lessons[course.lessons.length - 1];
     if (!lastLesson?.videoStorageUri) return false;
     return !isQuizUnlocked(watchedPct);
@@ -431,7 +441,7 @@ export default function LearnClient({ initialData }: LearnClientProps) {
       if (!quizResults && isVideoQuizGateBlocked()) {
         return;
       }
-      if (quizUnlocked || quizResults || isAdminRole(userData?.role)) {
+      if (quizUnlocked || quizResults || userData?.isAdminView === true) {
         setIsQuizActive(true);
         setQuizStep(quizResults ? 'review' : 'intro');
         setActiveIndex(index);
@@ -444,7 +454,7 @@ export default function LearnClient({ initialData }: LearnClientProps) {
     }
 
     // Standard Lesson Selection
-    if (index <= highestUnlockedIndex || isAdminRole(userData?.role)) {
+    if (index <= highestUnlockedIndex || userData?.isAdminView === true) {
       setIsQuizActive(false);
       setActiveIndex(index);
     }
@@ -475,7 +485,7 @@ export default function LearnClient({ initialData }: LearnClientProps) {
       }
       updateProgress(course.lessons.length - 1);
 
-      if (quizUnlocked || isAdminRole(userData?.role)) {
+      if (quizUnlocked || userData?.isAdminView === true) {
         setIsQuizActive(true);
         setQuizStep(quizResults ? 'review' : 'intro');
         setActiveIndex(course.lessons.length);
@@ -619,7 +629,7 @@ export default function LearnClient({ initialData }: LearnClientProps) {
   // Admins opening a VIDEO course get a clean read-only review: the course
   // video + an answer-key walkthrough of the quiz + an Assign action. (Text
   // courses keep the existing editable admin flow below.)
-  if (isAdminRole(userData?.role) && course.lessons.some((l) => l.videoStorageUri)) {
+  if (userData?.isAdminView === true && course.lessons.some((l) => l.videoStorageUri)) {
     const reviewVideoLesson = course.lessons.find((l) => l.videoStorageUri) ?? null;
     return (
       <AdminCourseReview
@@ -659,12 +669,12 @@ export default function LearnClient({ initialData }: LearnClientProps) {
   // For video lessons, the quiz stays locked until the watch-gate is met.
   // Admins bypass the gate; text lessons keep their existing (non-video) gating.
   const isVideoGateBlocked =
-    isVideoLesson && !isAdminRole(userData?.role) && !isQuizUnlocked(watchedPct);
+    isVideoLesson && !userData?.isAdminView === true && !isQuizUnlocked(watchedPct);
 
-  const isQuizLocked = isQuizActive && quizStep === 'active' && !isAdminRole(userData?.role);
+  const isQuizLocked = isQuizActive && quizStep === 'active' && !userData?.isAdminView === true;
 
   const railUnlockedIndex =
-    quizUnlocked || quizResults || isAdminRole(userData?.role)
+    quizUnlocked || quizResults || userData?.isAdminView === true
       ? course?.lessons.length || 9999
       : highestUnlockedIndex;
 
@@ -688,7 +698,7 @@ export default function LearnClient({ initialData }: LearnClientProps) {
           quiz={course.quiz}
           onExitClick={() => {
             if (!isQuizLocked) {
-              router.push(isAdminRole(userData?.role) ? '/dashboard/courses' : '/worker');
+              router.push(userData?.isAdminView === true ? '/dashboard/courses' : '/worker');
             }
           }}
           disableNav={isQuizLocked}
@@ -795,7 +805,7 @@ export default function LearnClient({ initialData }: LearnClientProps) {
               />
             </div>
           ) : isQuizIndex ? (
-            isAdminRole(userData?.role) ? (
+            userData?.isAdminView === true ? (
               <div style={{ overflow: 'auto', height: '100%', padding: '24px 0' }}>
                 <AdminQuizEditor
                   courseId={courseId}
@@ -1035,7 +1045,7 @@ export default function LearnClient({ initialData }: LearnClientProps) {
               onSelectModule={(index) => {
                 if (index === course.lessons.length) {
                   handleRailSelect(index);
-                } else if (index <= highestUnlockedIndex || isAdminRole(userData?.role)) {
+                } else if (index <= highestUnlockedIndex || userData?.isAdminView === true) {
                   setIsQuizActive(false);
                   setActiveIndex(index);
                   // Scroll to the module in article view
@@ -1073,7 +1083,7 @@ export default function LearnClient({ initialData }: LearnClientProps) {
                   id={`module-${idx}`}
                   style={{ marginBottom: idx < course.lessons.length - 1 ? '48px' : '0' }}
                 >
-                  {isAdminRole(userData?.role) ? (
+                  {userData?.isAdminView === true ? (
                     <AdminLessonEditor
                       lesson={{
                         ...lesson,
@@ -1160,7 +1170,7 @@ export default function LearnClient({ initialData }: LearnClientProps) {
       </div>
 
       {/* Modals */}
-      {showQuizGateModal && !isAdminRole(userData?.role) && (
+      {showQuizGateModal && !userData?.isAdminView === true && (
         <div
           className="fixed left-0 top-0 z-[100] flex h-full w-full items-center justify-center bg-black/50 backdrop-blur-[4px] animate-in fade-in duration-200"
           onClick={() => setShowQuizGateModal(false)}

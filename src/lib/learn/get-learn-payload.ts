@@ -128,6 +128,13 @@ export interface LearnPayload {
   user: {
     name: string;
     role: string;
+    /**
+     * Whether to render the ADMIN review/editing experience. Derived from the
+     * PORTAL, not the role — a manager who chose Learn carries an admin role on
+     * the worker session by design (see session-bridge.ts), so the client must
+     * not re-derive this with isAdminRole(). D-16 / team QA #1, #4, #5.
+     */
+    isAdminView: boolean;
     organizationName?: string;
     email: string;
     jobTitle: string;
@@ -260,11 +267,37 @@ export async function getLearnPayload(courseId: string): Promise<LearnPayload | 
       }
     }
 
-    const isAdmin = isAdminRole(activeRole);
+    // Team QA #1/#4/#5 (D-16). `isAdminRole(activeRole)` was doing two unrelated
+    // jobs: deciding whether the caller MAY OPEN this course, and deciding
+    // whether to render the ADMIN editors. Those are different questions, and
+    // conflating them is the whole of D-16.
+    //
+    // `enterLearnMode` mints a worker cookie that deliberately carries the
+    // admin's real role (see session-bridge.ts — the worker instance tolerates
+    // it because sessionAllowedRoles is ALL_ROLES). So a manager who switched to
+    // Learn had an admin role on the WORKER session, `isAdmin` came out true,
+    // and LearnClient rendered AdminLessonEditor / AdminQuizEditor instead of
+    // the learner UI. That single fact explains all three reports:
+    //   #1 the admin course view, #4 the quiz that never submits (the admin quiz
+    //   panel has no submit control) and #5 the "module-scoped" slide picker
+    //   (CourseRail already renders every lesson flat — what they saw was the
+    //   editor).
+    //
+    // ACCESS still keys on the role: an admin may open a same-org or global
+    // course with no enrollment, which is what the fallback above grants.
+    const mayOpenWithoutEnrollment = isAdminRole(activeRole);
 
-    if (!enrollment && !isAdmin) {
+    if (!enrollment && !mayOpenWithoutEnrollment) {
       return { error: 'Not enrolled in this course', status: 403 };
     }
+
+    // VIEW MODE keys on the PORTAL. A worker session exists only because the
+    // caller is in the worker portal — either a real worker, or a manager who
+    // deliberately chose Learn. Either way they asked for the learner
+    // experience. An admin opening /learn from the dashboard has no worker
+    // cookie and keeps the review/editing view unchanged.
+    const inLearnerPortal = Boolean(session?.user?.id);
+    const isAdmin = mayOpenWithoutEnrollment && !inLearnerPortal;
 
     // `answers` is a Prisma `Json` column the quiz endpoints always write as an
     // answer array; the client still guards with Array.isArray before reading it.
@@ -428,6 +461,7 @@ export async function getLearnPayload(courseId: string): Promise<LearnPayload | 
       user: {
         name: activeMembership?.user.fullName || activeMembership?.user.email || '',
         role: activeMembership?.role || 'worker',
+        isAdminView: isAdmin,
         organizationName: activeMembership?.organization.name || undefined,
         email: activeMembership?.user.email || '',
         jobTitle: activeMembership?.jobTitle || '',
