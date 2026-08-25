@@ -23,7 +23,7 @@ const { mockAuth, mockAudit, prismaMock, stripeMock } = vi.hoisted(() => {
     subscription: { findUnique: vi.fn(), update: vi.fn() },
   };
   const stripeMock = {
-    subscriptionSchedules: { release: vi.fn() },
+    subscriptionSchedules: { retrieve: vi.fn(), release: vi.fn() },
   };
   return { mockAuth, mockAudit, prismaMock, stripeMock };
 });
@@ -61,6 +61,12 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockAuth.mockResolvedValue({ user: { id: 'user-1', role: 'owner', organizationId: 'org-1' } });
   prismaMock.user.findUnique.mockResolvedValue(ADMIN_USER);
+  // The route delegates to releasePendingSchedule, which reads the live
+  // schedule before releasing it.
+  stripeMock.subscriptionSchedules.retrieve.mockResolvedValue({
+    id: 'sub_sched_1',
+    status: 'active',
+  });
 });
 
 // ---------------------------------------------------------------------------
