@@ -15,7 +15,11 @@ import type { Role } from '@/types/next-auth';
 import { getStatusTrackerSummaryForOrg } from '@/lib/reminders/status-tracker';
 import Link from 'next/link';
 import { BookOpen, Users, BadgeCheck } from 'lucide-react';
-import { listAccessibleFacilities, resolveFacilityScopeSelection } from '@/lib/facility/scope';
+import {
+  isOrgWideFacilityRole,
+  listAccessibleFacilities,
+  resolveFacilityScopeSelection,
+} from '@/lib/facility/scope';
 import { getGlobalDashboardData } from '@/app/actions/dashboard-facility';
 import GlobalDashboardView from '@/components/dashboard/global/GlobalDashboardView';
 import FacilityScopeSwitcher from '@/components/dashboard/FacilityScopeSwitcher';
@@ -171,9 +175,18 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
             </div>
           </div>
           <p className="text-sm leading-[28px] text-[#525252] md:text-base xl:text-lg">
+            {/*
+              Team QA #8: an org-wide role was being shown facility framing. The
+              DATA was never facility-scoped — getDashboardData(undefined)
+              resolves to an empty facilityFilter — but the copy said otherwise,
+              which is what the report describes as "showing facility view
+              dashboard, instead of global view".
+            */}
             {scopedFacility
               ? 'Here is an overview of your facility'
-              : 'Here is an overview of your courses'}
+              : isOrgWideFacilityRole(role as Role)
+                ? 'Here is an overview across your organisation'
+                : 'Here is an overview of your courses'}
           </p>
         </div>
       </div>
