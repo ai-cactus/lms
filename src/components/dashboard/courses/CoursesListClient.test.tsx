@@ -188,19 +188,21 @@ describe('CoursesListClient — row action gating per role', () => {
     expect(within(actions).getByRole('button', { name: 'Delete' })).toBeInTheDocument();
   });
 
-  it('supervisor (read-only) resolves to ONLY "View Source Document" — no Assign/Duplicate/Rename/Delete', () => {
+  // UPDATED 2026-08-25 — team QA section 3.1: "Facility supervisors should be
+  // able to assign courses". Supervisor now holds assignment.create, so Assign
+  // MUST appear; the authoring actions must still not, per C8 ("can't create or
+  // edit documents and courses").
+  it('supervisor resolves to "View Source Document" AND "Assign to staff" — but no authoring actions', () => {
     render(<CoursesListClient courses={[course]} hasBilling viewerRole="supervisor" />);
 
     const actions = actionsForRow();
     expect(
       within(actions).getByRole('button', { name: 'View Source Document' }),
     ).toBeInTheDocument();
-    expect(
-      within(actions).queryByRole('button', { name: 'Assign to staff' }),
-    ).not.toBeInTheDocument();
-    expect(within(actions).queryByRole('button', { name: 'Duplicate' })).not.toBeInTheDocument();
+    expect(within(actions).getByRole('button', { name: 'Assign to staff' })).toBeInTheDocument();
     expect(within(actions).queryByRole('button', { name: 'Rename' })).not.toBeInTheDocument();
     expect(within(actions).queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
+    expect(within(actions).queryByRole('button', { name: 'Duplicate' })).not.toBeInTheDocument();
   });
 
   it('supervisor still gets a disabled "View Source Document" for a forked course (item always listed per design)', () => {

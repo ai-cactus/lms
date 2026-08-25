@@ -31,6 +31,12 @@ export interface CreateEnrollmentContext {
   /** Actor (identity id) recorded on the structured enrollment log. */
   enrolledByUserId: string;
   /**
+   * Whether the caller may invite a NON-member. `false` restricts the enrolment
+   * to existing org members — see the guard in {@link createEnrollmentForUser}.
+   * Undefined preserves the historical behaviour for callers predating the flag.
+   */
+  callerCanInvite?: boolean;
+  /**
    * Defer the worker-facing side-effects — the COURSE_ASSIGNED notification and
    * the launch email — to the caller, so a multi-course caller emits ONE batched
    * notice instead of N. The enrollment row, the computed deadline and the
@@ -173,6 +179,25 @@ export async function createEnrollmentForUser(
   // accepted (see enrollInviteCourses). Unifies the assign flow with the
   // staff-invite flow; no premature accounts, no temporary passwords.
   if (!user || !membership) {
+    // Team QA C8: a supervisor "can assign existing courses to existing staff"
+    // but "can't add staff". This branch INVITES an unknown address, which is
+    // adding staff — so it is gated on the caller's `invite.create`, not on the
+    // role. Supervisor holds assignment.create + enrollment.create but not
+    // invite.create, so an unknown email fails for them and succeeds for
+    // owner/admin/hr exactly as before.
+    //
+    // Without this, granting the two assign verbs would silently have handed
+    // supervisors the ability to add staff through the assign flow.
+    if (ctx.callerCanInvite === false) {
+      logger.warn({
+        msg: '[enrollment] Assign refused — caller cannot invite a non-member',
+        email: maskEmail(normalizedEmail),
+        courseId: ctx.courseId,
+        enrolledBy: ctx.enrolledByUserId,
+      });
+      return { status: 'failed', email: normalizedEmail };
+    }
+
     if (!ctx.organizationId) {
       // No org to attach an invite to — the standalone assign / wizard paths
       // always have one, so this only guards a misconfigured caller.

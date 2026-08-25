@@ -12,6 +12,7 @@ import { QuizAttemptResult } from '@/types/quiz';
 import { logger } from '@/lib/logger';
 import { invalidatePlaybackAuthz } from '@/lib/video/playback-cache';
 import type { StaffEntry } from '@/types/enrollment';
+import { resolveDataFacilityIds, staffFacilityWhere } from '@/lib/facility/staff-where';
 import { RenewalCycle, ReminderStage, UserRole } from '@/generated/prisma/enums';
 import {
   createEnrollmentForUser,
@@ -106,8 +107,14 @@ export async function getAvailableUsers() {
     return [];
   }
 
+  // Supervisors hold assignment.create as of 2026-08-25 (team QA 3.1 / C8), so
+  // this picker is now reachable by a FACILITY-BOUND role. Narrow it, or the
+  // act of granting the verb would hand a supervisor the whole org's roster —
+  // the same read-side gap D-01 closed everywhere else.
+  const dataFacilityIds = await resolveDataFacilityIds(session);
+
   const members = await prisma.organizationUser.findMany({
-    where: { organizationId, active: true },
+    where: { organizationId, active: true, ...staffFacilityWhere(dataFacilityIds) },
     // Explicit projection — the DTO uses only these fields, so never load the
     // password hash / MFA-secret columns of the full user row into memory.
     select: {
@@ -310,6 +317,10 @@ export async function enrollUsers(
     assignmentDueAt,
     assignmentWindowDays: assignmentSettings?.dueWindowDays ?? null,
     enrolledByUserId: session.user.id,
+    // C8: supervisors assign to EXISTING staff only. Derived from the registry,
+    // not from a role check, so any future role without invite.create inherits
+    // the same restriction automatically.
+    callerCanInvite: can(dbRoleToRoleKey(session.user.role), 'invite.create'),
     ...(options?.deferWorkerNotification ? { deferWorkerNotification: true } : {}),
   };
 
@@ -619,6 +630,10 @@ async function assignCourseToRoleTargets(
     assignmentDueAt: dueAt,
     assignmentWindowDays: dueWindowDays,
     enrolledByUserId: session.user.id,
+    // C8: supervisors assign to EXISTING staff only. Derived from the registry,
+    // not from a role check, so any future role without invite.create inherits
+    // the same restriction automatically.
+    callerCanInvite: can(dbRoleToRoleKey(session.user.role), 'invite.create'),
   };
 
   const results = { enrolled: 0, alreadyEnrolled: 0, failed: 0 };

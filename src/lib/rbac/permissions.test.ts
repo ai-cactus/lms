@@ -78,6 +78,13 @@ describe('can() — supervisor (demoted to read-only + self-service)', () => {
     // narrowed to their facilities at the query layer (D-01 commit F). If that
     // narrowing is ever removed, this grant must go with it.
     'auditPack.create',
+    // Added 2026-08-25 per team QA section 3.1 / C8 — supervisors assign
+    // EXISTING courses to EXISTING staff. Both verbs are required by the
+    // assign path. Like auditPack.create above, they are safe only because the
+    // assignee picker and the enrolment target are facility-narrowed; if that
+    // narrowing is removed these grants must go with it.
+    'assignment.create',
+    'enrollment.create',
   ] as const;
 
   it('supervisor is denied billing.create/edit/delete', () => {
