@@ -661,6 +661,30 @@ async function setSubscriptionSchedule(
   }
 }
 
+/**
+ * "Your subscription is paused" genuinely renders in THREE places at once on
+ * `/dashboard/billing?tab=subscription`: the site-wide BillingPausedBanner
+ * (layout-level, `src/components/billing/BillingPausedBanner.tsx:63`), the
+ * Subscription tab's own status card (`SubscriptionTab.tsx:779`), and — were
+ * it mounted — OverviewTab's copy (`OverviewTab.tsx:310`, not mounted here
+ * since only one tab renders at a time). A bare `getByText` is a genuine
+ * Playwright strict-mode violation, not a rendering bug — `.first()`/`.last()`
+ * would silently stop checking the region that actually matters.
+ *
+ * Of the two elements actually in the DOM here, only SubscriptionTab's own
+ * copy is a real heading (`<h3>`) — the banner's is a plain `<p>` — so
+ * `getByRole('heading', ...)` uniquely resolves to the Subscription tab's own
+ * card (same targeting technique PR #520 used for the route-announcer
+ * collision, applied here to a genuine multi-render string instead). Walking
+ * up from that heading to its containing status-card row also scopes the
+ * "Continue Plan" / "Cancel Subscription" button lookup to the SAME card,
+ * rather than the banner's own button.
+ */
+function subscriptionTabPausedCard(page: Page) {
+  const heading = page.getByRole('heading', { name: 'Your subscription is paused' });
+  return { heading, card: heading.locator('..').locator('..') };
+}
+
 test.describe('Billing — cancel auto-releases a pending schedule instead of erroring (#25, #26)', () => {
   test('cancels successfully with no pending schedule — no "Internal server error" anywhere on screen (#25)', async ({
     page,
@@ -791,16 +815,20 @@ test.describe('Billing — resume auto-releases a pending schedule instead of bl
       });
 
       await page.goto('/dashboard/billing?tab=subscription');
-      await expect(page.getByText('Your subscription is paused')).toBeVisible();
+      const { heading, card } = subscriptionTabPausedCard(page);
+      await expect(heading).toBeVisible();
 
-      const resumeButton = page.getByRole('button', { name: 'Continue Plan' });
+      const resumeButton = card.getByRole('button', { name: 'Continue Plan' });
       await expect(resumeButton).toBeVisible();
       await resumeButton.click();
 
       await expect(page).toHaveURL(/[?&]tab=overview/, { timeout: 20000 });
       // Real, unmocked overview re-read (no stripeCustomerId on this freshly
-      // seeded org) — the pause genuinely cleared server-side.
-      await expect(page.getByText('Your subscription is paused')).toHaveCount(0);
+      // seeded org) — the pause genuinely cleared server-side. Checking the
+      // SubscriptionTab heading again would be vacuous (that tab is unmounted
+      // once activeTab flips to 'overview'); the site-wide BillingPausedBanner
+      // is layout-level and DB-driven, so its disappearance is real proof.
+      await expect(page.getByRole('status')).toHaveCount(0);
       await expect(page.getByText(/Next invoice on/i)).toBeVisible();
     } finally {
       await cleanup(seeded);
@@ -827,7 +855,8 @@ test.describe('Billing — resume auto-releases a pending schedule instead of bl
       await loginAs(page, seeded.email, seeded.password);
 
       await page.goto('/dashboard/billing?tab=subscription');
-      await expect(page.getByText('Your subscription is paused')).toBeVisible();
+      const { heading, card } = subscriptionTabPausedCard(page);
+      await expect(heading).toBeVisible();
       await expect(page.getByText('Plan change scheduled')).toBeVisible();
 
       await page.route('**/api/billing/subscription/resume', async (route) => {
@@ -846,7 +875,7 @@ test.describe('Billing — resume auto-releases a pending schedule instead of bl
         });
       });
 
-      const resumeButton = page.getByRole('button', { name: 'Continue Plan' });
+      const resumeButton = card.getByRole('button', { name: 'Continue Plan' });
       await expect(resumeButton).toBeVisible();
       await resumeButton.click();
 
@@ -857,7 +886,10 @@ test.describe('Billing — resume auto-releases a pending schedule instead of bl
         page.getByRole('alert').filter({ hasText: /cancel it first|pending plan change/i }),
       ).toHaveCount(0);
       await expect(page).toHaveURL(/[?&]tab=overview/, { timeout: 20000 });
-      await expect(page.getByText('Your subscription is paused')).toHaveCount(0);
+      // Real proof the pause cleared server-side: the layout-level, DB-driven
+      // banner disappears (checking the SubscriptionTab heading here would be
+      // vacuous — that tab is unmounted once activeTab flips to 'overview').
+      await expect(page.getByRole('status')).toHaveCount(0);
 
       await page.goto('/dashboard/billing?tab=subscription');
       await expect(page.getByText('Plan change scheduled')).toHaveCount(0);
@@ -965,7 +997,7 @@ test.describe('Billing — Staff Usage counts every active member, not just work
       if (extraUserIds.length > 0) {
         const client = await db();
         try {
-          await client.query(`DELETE FROM users WHERE id = ANY($1::uuid[])`, [extraUserIds]);
+          await client.query(`DELETE FROM users WHERE id = ANY($1::text[])`, [extraUserIds]);
         } finally {
           await client.end();
         }
