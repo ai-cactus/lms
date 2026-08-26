@@ -63,17 +63,24 @@ import {
   FileText,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { logger } from '@/lib/logger';
 import { can } from '@/lib/rbac/permissions';
 import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
 import type { Role } from '@/types/next-auth';
 
-type BannerState = 'generating' | 'done' | 'failed' | 'hidden';
+type BannerState = 'generating' | 'done' | 'failed' | 'unknown' | 'hidden';
 
 const bannerClasses: Record<Exclude<BannerState, 'hidden'>, string> = {
   generating: 'border-primary/30 bg-primary/5 text-foreground',
   done: 'border-success/30 bg-success/10 text-foreground',
   failed: 'border-error/30 bg-error/10 text-foreground',
+  unknown: 'border-warning/30 bg-warning/10 text-foreground',
 };
+
+// One or two failed polls are a blip (a deploy, a momentary network drop) and
+// polling should ride them out. Beyond that the banner would keep asserting
+// work is in progress that we can no longer see, so we stop and say so.
+const MAX_CONSECUTIVE_POLL_FAILURES = 3;
 
 const headCls =
   'h-10 px-2 text-[13px] font-medium tracking-[0.31px] whitespace-nowrap text-[#666d80] md:px-[18px] md:text-[15.5px]';
@@ -96,6 +103,9 @@ function PendingGenerationBanner() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Intentional: initialising banner state from localStorage inside effect
     setBanner('generating');
 
+    const jobIds = pending.jobs.map((job) => job.jobId);
+    let consecutiveFailures = 0;
+
     // A multi-module generation is only done when every module's job is done,
     // and any failed module makes the whole run unusable for review.
     const interval = setInterval(async () => {
@@ -103,6 +113,8 @@ function PendingGenerationBanner() {
         const results = await Promise.all(
           pending.jobs.map((job) => checkCourseGenerationJobV46(job.jobId)),
         );
+        // Only an unbroken run of failures is evidence we've lost the jobs.
+        consecutiveFailures = 0;
         if (results.some((res) => res.status === 'failed' || res.error)) {
           clearInterval(interval);
           setBanner('failed');
@@ -110,8 +122,25 @@ function PendingGenerationBanner() {
           clearInterval(interval);
           setBanner('done');
         }
-      } catch {
-        // network blip — keep polling
+      } catch (err) {
+        consecutiveFailures += 1;
+        if (consecutiveFailures >= MAX_CONSECUTIVE_POLL_FAILURES) {
+          clearInterval(interval);
+          setBanner('unknown');
+          logger.error({
+            msg: '[course] Gave up polling course generation status',
+            err,
+            jobIds,
+            consecutiveFailures,
+          });
+        } else {
+          logger.warn({
+            msg: '[course] Course generation poll failed — retrying',
+            err,
+            jobIds,
+            consecutiveFailures,
+          });
+        }
       }
     }, 5000);
 
@@ -136,11 +165,19 @@ function PendingGenerationBanner() {
       {banner === 'failed' && (
         <AlertTriangle className="size-4 shrink-0 text-error" aria-hidden="true" />
       )}
+      {banner === 'unknown' && (
+        <AlertTriangle className="size-4 shrink-0 text-warning" aria-hidden="true" />
+      )}
       <span className="flex-1">
         {banner === 'generating' && 'Your course is still being generated in the background…'}
         {banner === 'done' &&
           'Course generation complete! Resume the wizard to review and publish.'}
         {banner === 'failed' && 'Course generation failed. Please start a new course.'}
+        {/* Deliberately not the `failed` copy: we lost contact with the jobs, we
+            did not observe them fail, and telling the admin to start over could
+            discard a run that actually completed. */}
+        {banner === 'unknown' &&
+          'We couldn’t check on your course generation. It may still be running.'}
       </span>
       {banner === 'done' && (
         <Link
@@ -148,6 +185,14 @@ function PendingGenerationBanner() {
           className="font-semibold whitespace-nowrap text-success no-underline"
         >
           Resume Setup →
+        </Link>
+      )}
+      {banner === 'unknown' && (
+        <Link
+          href="/dashboard/courses/queue"
+          className="font-semibold whitespace-nowrap text-warning no-underline"
+        >
+          Check Job Queue →
         </Link>
       )}
       <button
