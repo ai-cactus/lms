@@ -174,6 +174,8 @@ export const courseDetailSelect = {
   type: true,
   duration: true,
   status: true,
+  /** Splits `draft` into "Needs Review" (F-051 gate) vs a plain unpublished draft. */
+  reviewRequired: true,
   updatedAt: true,
   overview: true,
   objectives: true,

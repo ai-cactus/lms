@@ -173,7 +173,7 @@ export default function CoursePreview({
       ? Math.max(1, Math.round(videoSeconds / 60))
       : (course.duration ?? null);
 
-  const approver = course.creator?.user?.fullName ?? course.creator?.user?.email ?? null;
+  const creatorName = course.creator?.user?.fullName ?? course.creator?.user?.email ?? null;
   const passingScore = course.quiz?.passingScore ?? null;
   const skillLevel = course.skillLevel ?? null;
   const objectives = course.objectives ?? [];
@@ -210,11 +210,11 @@ export default function CoursePreview({
             <p className="mb-4 text-base text-[#cbd5e0]">{course.description}</p>
           )}
 
-          {approver && !isVideoCourse && (
+          {creatorName && !isVideoCourse && (
             <div className="mb-6 inline-flex items-center gap-2 text-sm text-white">
               <CircleCheck className="size-4 text-[#48bb78]" aria-hidden="true" />
               <span>
-                <strong>Approved by: {approver}</strong> (Admin)
+                <strong>Created by: {creatorName}</strong>
               </span>
             </div>
           )}
