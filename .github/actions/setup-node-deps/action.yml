@@ -1,6 +1,6 @@
 name: Setup Node and dependencies
 description: >-
-  Sets up Node 24 and restores node_modules from cache, running `npm ci` only
+  Sets up Node (version from .nvmrc) and restores node_modules from cache, running `npm ci` only
   on a cache miss.
 
   Why this exists: every job that needs the dependency tree would otherwise
@@ -24,7 +24,10 @@ runs:
   steps:
     - uses: actions/setup-node@v7
       with:
-        node-version: '24'
+        # Read from .nvmrc so CI, the Dockerfile (ARG NODE_VERSION) and local
+        # dev cannot drift. A skew is invisible until deploy: CI builds green
+        # on its own Node while the image fails on an older one.
+        node-version-file: '.nvmrc'
         # Caches the npm download cache, which still helps on a
         # node_modules cache miss.
         cache: 'npm'
