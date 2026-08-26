@@ -1,7 +1,7 @@
 'use server';
 
 import prisma from '@/lib/prisma';
-import type { Prisma } from '@/generated/prisma/client';
+import { Prisma } from '@/generated/prisma/client';
 import { dbRoleToRoleKey, isAdminRole, WORKER_ROLES } from '@/lib/rbac/role-utils';
 import { assertNoPhi } from '@/lib/documents/phiGate';
 import { can } from '@/lib/rbac/permissions';
@@ -19,7 +19,12 @@ import { resolveFacilityScope } from '@/lib/facility/scope';
 import { forkCourse } from '@/lib/course/fork-course';
 import { resolveOnCompletion } from '@/lib/reminders/sweep';
 import { combineDateAndTime } from '@/lib/reminders/deadline';
-import { enrollUsers } from './enrollment';
+import { assignCourseToRoles, enrollUsers } from './enrollment';
+import {
+  buildPendingAssignment,
+  parsePendingAssignment,
+  type RoleAssignmentIntent,
+} from '@/lib/course/pending-assignment';
 import { defaultStageRows, upsertCourseAssignment } from '@/lib/enrollment/assignment';
 
 // Helper: resolve the active session from either auth instance
@@ -439,8 +444,71 @@ export async function publishCourse(courseId: string, opts?: { acknowledgeWarnin
       status: 'published',
       // Clear the gate once warnings have been acknowledged and published.
       ...(existing.reviewRequired ? { reviewRequired: false } : {}),
+      // Prisma reads `undefined` as "leave unchanged", so a nullable Json column
+      // is cleared with DbNull. Doing it in the same write that publishes stops a
+      // concurrent publish from replaying the same intent twice.
+      ...(existing.pendingAssignment !== null ? { pendingAssignment: Prisma.DbNull } : {}),
     },
   });
+
+  // Replay the assignment the quality gate deferred at creation (Issue #14).
+  // The course is already published, so a failure here must not fail the call —
+  // it is reported back and the admin re-assigns from the training dashboard.
+  let assignmentFailed = false;
+  if (existing.reviewRequired && opts?.acknowledgeWarnings && existing.pendingAssignment !== null) {
+    const pending = parsePendingAssignment(existing.pendingAssignment, { courseId });
+    assignmentFailed = pending === null;
+
+    if (pending) {
+      try {
+        const replay =
+          pending.mode === 'email'
+            ? await enrollUsers(
+                courseId,
+                pending.emails.map((email) => ({ email })),
+                { dueAt: pending.dueAt ? new Date(pending.dueAt) : null },
+              )
+            : await assignCourseToRoles(courseId, pending.roles, {
+                dueDate: pending.dueDate,
+                dueTime: pending.dueTime,
+                dueWindowDays: pending.dueWindowDays,
+                remindersEnabled: pending.remindersEnabled,
+                reminderDaysBefore: pending.reminderDaysBefore,
+                renewalCycle: pending.renewalCycle,
+              });
+
+        if (replay.refusedReason) {
+          // The publish above already cleared `reviewRequired`, so the assign
+          // actions' own review gate should never fire here — but a refusal is
+          // returned, not thrown, and must never be read as a replayed assignment.
+          assignmentFailed = true;
+          logger.error({
+            msg: '[course] Deferred assignment refused on publish',
+            courseId,
+            userId: session.user.id,
+            mode: pending.mode,
+            reason: replay.refusedReason,
+          });
+        } else {
+          logger.info({
+            msg: '[course] Deferred assignment replayed on publish',
+            courseId,
+            userId: session.user.id,
+            mode: pending.mode,
+          });
+        }
+      } catch (assignError) {
+        assignmentFailed = true;
+        logger.error({
+          msg: '[course] Failed to replay deferred assignment on publish',
+          courseId,
+          userId: session.user.id,
+          mode: pending.mode,
+          err: assignError,
+        });
+      }
+    }
+  }
 
   if (existing.reviewRequired) {
     logger.info({
@@ -453,7 +521,7 @@ export async function publishCourse(courseId: string, opts?: { acknowledgeWarnin
     logger.info({ msg: '[course] Course published', courseId, userId: session.user.id });
   }
   revalidatePath('/dashboard/training');
-  return course;
+  return { ...course, assignmentFailed };
 }
 
 export async function deleteCourse(courseId: string) {
@@ -1417,6 +1485,13 @@ export async function createFullCourse(data: {
   courseModules?: CourseModuleInput[];
   quiz: QuizQuestion[];
   assignments: string[];
+  /**
+   * Role-targeted assignment intent from wizard step 9. Only consulted when the
+   * quality gate holds the course back — the caller performs the assignment
+   * itself when the course publishes immediately. Mutually exclusive with
+   * {@link assignments}.
+   */
+  roleAssignment?: RoleAssignmentIntent;
   dueDate?: Date;
   dueTime?: string;
   // Quiz settings from Step 4
@@ -1463,6 +1538,12 @@ export async function createFullCourse(data: {
     })),
   });
 
+  // F-051: a held-back course must not enrol anyone yet — enrolment sends a
+  // launch email and seeds a reminder ladder, neither of which can be undone.
+  // The intent is parked on the course and replayed by publishCourse once the
+  // warnings are acknowledged.
+  const pendingAssignment = reviewRequired ? buildPendingAssignment(data) : null;
+
   // 1. Create Course, Lessons, Quiz in one transaction (nested write)
   const course = await prisma.course.create({
     data: {
@@ -1474,6 +1555,9 @@ export async function createFullCourse(data: {
       status: reviewRequired ? 'draft' : 'published',
       reviewRequired,
       qualityWarnings,
+      pendingAssignment: pendingAssignment
+        ? (pendingAssignment as Prisma.InputJsonValue)
+        : undefined,
       createdByOrgUserId: session.user.organizationUserId,
       // Pipeline version tracking
       promptVersion,
@@ -1572,7 +1656,9 @@ export async function createFullCourse(data: {
     skipped: [] as string[],
   };
 
-  if (data.assignments && data.assignments.length > 0) {
+  // Deferred while the quality gate holds the course: publishCourse replays the
+  // parked intent once the warnings are acknowledged.
+  if (!reviewRequired && data.assignments && data.assignments.length > 0) {
     const dueAt = combineDateAndTime(data.dueDate, data.dueTime);
     const staffEntries: StaffEntry[] = data.assignments.map((email) => ({ email }));
 
@@ -1601,6 +1687,7 @@ export async function createFullCourse(data: {
     promptVersion,
     reviewRequired,
     warnings: qualityWarnings.length,
+    deferredAssignment: pendingAssignment?.mode ?? null,
     enrolled: inviteResults.existingEnrolled,
     invited: inviteResults.newInvited,
     failed: inviteResults.failed.length,

@@ -65,8 +65,10 @@ export default function WorkerTrainingList({ courses }: WorkerTrainingListProps)
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabKey>('active');
 
+  // Both entry points land on the course preview rather than jumping straight
+  // into the player, so the learner sees the overview before starting.
   const handleStartClick = (courseId: string) => {
-    router.push(`/learn/${courseId}`);
+    router.push(`/worker/courses/${courseId}`);
   };
 
   const handleViewResultClick = (courseId: string) => {

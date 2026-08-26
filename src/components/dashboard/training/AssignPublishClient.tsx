@@ -184,12 +184,19 @@ export default function AssignPublishClient({
       if (mode === 'role') {
         // Role targets never carry an absolute due date — the deadline is computed
         // per user from their role-join date and the window.
-        await assignCourseToRole(courseId, targetRole, {
+        const res = await assignCourseToRole(courseId, targetRole, {
           scheduleAt: scheduleDate ? new Date(scheduleDate) : null,
           renewalCycle,
           remindersEnabled,
           stages,
         });
+
+        // A refusal is returned rather than thrown, so it must be surfaced here
+        // and stop the flow before the course is published or success is shown.
+        if (res.refusedReason) {
+          setError(res.refusedReason);
+          return;
+        }
       } else {
         const res = await enrollUsers(courseId, entries, {
           scheduleAt: scheduleDate ? new Date(scheduleDate) : null,
@@ -198,6 +205,11 @@ export default function AssignPublishClient({
           remindersEnabled,
           stages,
         });
+
+        if (res.refusedReason) {
+          setError(res.refusedReason);
+          return;
+        }
 
         if (res.failed.length > 0 && res.success.length + res.newInvited.length === 0) {
           setError(`Could not assign: ${res.failed.join(', ')}`);

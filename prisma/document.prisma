@@ -94,9 +94,9 @@ model PhiDecision {
   /// Where the scanned text came from. A discriminator rather than a relation so
   /// new ingress points (e.g. lesson-editor text — see F-089) can be recorded
   /// without a schema change.
-  source  String
+  source    String
   /// 'allowed' | 'blocked_phi' | 'blocked_scan_failed'
-  outcome String
+  outcome   String
   /// Which layer decided: 'local_regex' (zero network) | 'ai' | null when allowed.
   decidedBy String? @map("decided_by")
 

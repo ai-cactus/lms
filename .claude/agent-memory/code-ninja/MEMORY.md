@@ -22,7 +22,7 @@
 - [Offline migrations](project_offline_migrations.md) — dev DB (localhost:5433) often unreachable; scaffold Prisma migrations offline via `migrate diff --from-schema/--to-schema`.
 - [migrate dev destructive diff](project_migrate_dev_destructive_diff.md) — autogen drops the raw-SQL pgvector col + facility defaults, AND `migrate dev` hangs on an interactive prompt; hand-author + verify with Prisma-7 `migrate diff` flags.
 - [migrate dev HNSW drift](project_migrate_dev_hnsw_drift.md) — every new migration spuriously drops `manual_chunks_embedding_hnsw_idx` (raw-SQL pgvector index); strip the DROP INDEX line.
-- [Never run prisma format](gotcha_prisma_format_churn.md) — it rewrites every schema file; hand-align the one model you touched and validate instead.
+- [prisma format runs in pre-commit](gotcha_prisma_format_churn.md) — lint-staged formats staged .prisma now, so schemas ARE canonical; hand-align your model and validate.
 - [MinIO dev port mismatch](gotcha_minio_dev_port_mismatch.md) — compose publishes MinIO on 9005 but .env expects 9000; run it standalone for storage/video flows to work locally.
 - [Vitest @/generated alias](project_vitest_generated_alias.md) — vitest.config.mts must alias @/generated & @/db (most-specific first) or value-imports of generated Prisma fail in tests.
 - [vi.mock of node builtins needs `default`](gotcha_vitest_node_builtin_mock_default.md) — fs/promises & child_process mocks must also export default; plus how to test a script whose main() runs at import.

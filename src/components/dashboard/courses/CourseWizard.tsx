@@ -29,6 +29,7 @@ import {
 import { createFullCourse, publishCourse } from '@/app/actions/course';
 import { assignCourseToRoles } from '@/app/actions/enrollment';
 import type { RenewalCycle, UserRole } from '@/generated/prisma/enums';
+import type { RoleAssignmentIntent } from '@/lib/course/pending-assignment';
 import { createCustomCategory } from '@/app/actions/categories';
 import { analyzeStoredDocument } from '@/app/actions/course-ai';
 import { getDocuments } from '@/app/actions/documents';
@@ -350,12 +351,22 @@ export default function CourseWizard() {
 
     // Step 9 targets either whole roles or named individuals, never both: the
     // email list only reaches createFullCourse in email mode, and the role
-    // targets are assigned right after the course exists.
+    // targets are assigned right after the course exists — unless the quality
+    // gate holds it back, in which case the server parks the intent instead.
     const assignMode = formData.assignMode;
     const roleTargets = formData.assignRoles as UserRole[];
+    const targetsRoles = assignMode === 'roles' && roleTargets.length > 0;
     // An explicit deadline only counts while the deadline toggle is on.
     const dueDate = formData.dueDeadlineEnabled ? formData.dueDate : '';
     const dueTime = formData.dueDeadlineEnabled ? formData.dueTime : '';
+    // Built once so the intent parked for a held-back draft cannot drift from
+    // the assignment performed when the course publishes immediately.
+    const roleAssignmentSettings = {
+      dueWindowDays: formData.completionDeadlineDays,
+      remindersEnabled: formData.reminders.length > 0,
+      reminderDaysBefore: formData.reminders.map((reminder) => reminder.value),
+      renewalCycle: formData.recurringEnabled ? (formData.renewalCycle as RenewalCycle) : 'none',
+    } satisfies Omit<RoleAssignmentIntent, 'roles'>;
 
     try {
       const result = await createFullCourse({
@@ -374,6 +385,11 @@ export default function CourseWizard() {
         objectives: formData.objectives || [],
         quiz: generatedContent?.quiz || [],
         assignments: assignMode === 'email' ? formData.assignments || [] : [],
+        // Only used if the quality gate holds the course back — the immediate
+        // publish path assigns the roles below instead.
+        roleAssignment: targetsRoles
+          ? { roles: roleTargets, ...roleAssignmentSettings }
+          : undefined,
         dueDate: dueDate ? new Date(dueDate) : undefined,
         dueTime,
         quizTitle: formData.quizTitle,
@@ -397,19 +413,17 @@ export default function CourseWizard() {
 
         // Role targeting is a separate write from course creation, so a failure
         // here must not lose the published course — it is surfaced as a banner
-        // and the admin can re-assign from the training dashboard.
+        // and the admin can re-assign from the training dashboard. A course held
+        // back by the quality gate assigns nobody yet: enrolling would email
+        // learners about a draft, so publishCourse replays the parked intent
+        // once the warnings are acknowledged.
         let roleAssignmentFailed = false;
-        if (assignMode === 'roles' && roleTargets.length > 0) {
+        if (!result.reviewRequired && targetsRoles) {
           try {
             await assignCourseToRoles(result.courseId, roleTargets, {
               dueDate: dueDate || null,
               dueTime: dueTime || null,
-              dueWindowDays: formData.completionDeadlineDays,
-              remindersEnabled: formData.reminders.length > 0,
-              reminderDaysBefore: formData.reminders.map((reminder) => reminder.value),
-              renewalCycle: formData.recurringEnabled
-                ? (formData.renewalCycle as RenewalCycle)
-                : 'none',
+              ...roleAssignmentSettings,
             });
           } catch (assignError) {
             roleAssignmentFailed = true;
@@ -478,6 +492,11 @@ export default function CourseWizard() {
       const publishedId = reviewGate.courseId;
       setReviewGate(null);
       setCreatedCourseId(publishedId);
+      if (result.assignmentFailed) {
+        setWizardError(
+          'Course published, but assigning it to the selected recipients failed. You can assign it from the training dashboard.',
+        );
+      }
     } catch (error) {
       logger.error({ msg: 'Error publishing course with warnings:', err: error });
       setWizardError('An unexpected error occurred. Please try again.');
