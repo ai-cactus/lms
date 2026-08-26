@@ -77,9 +77,10 @@ const bannerClasses: Record<Exclude<BannerState, 'hidden'>, string> = {
   unknown: 'border-warning/30 bg-warning/10 text-foreground',
 };
 
-// One or two failed polls are a blip (a deploy, a momentary network drop) and
-// polling should ride them out. Beyond that the banner would keep asserting
-// work is in progress that we can no longer see, so we stop and say so.
+// One or two undetermined polls are a blip (a deploy, a momentary network drop,
+// a transient DB error) and polling should ride them out. Beyond that the
+// banner would keep asserting work is in progress that we can no longer see, so
+// we stop and say so.
 const MAX_CONSECUTIVE_POLL_FAILURES = 3;
 
 const headCls =
@@ -109,38 +110,61 @@ function PendingGenerationBanner() {
     // A multi-module generation is only done when every module's job is done,
     // and any failed module makes the whole run unusable for review.
     const interval = setInterval(async () => {
+      // A thrown poll and an `{ error }` response assert the same thing — we
+      // could not determine the state — so they share one give-up path.
+      let failure: { err: unknown } | { pollErrors: string[] } | null = null;
+
       try {
         const results = await Promise.all(
           pending.jobs.map((job) => checkCourseGenerationJobV46(job.jobId)),
         );
-        // Only an unbroken run of failures is evidence we've lost the jobs.
-        consecutiveFailures = 0;
-        if (results.some((res) => res.status === 'failed' || res.error)) {
+
+        // Only `status: 'failed'` is the server reporting that the job failed.
+        // An `{ error }` return — including 'Job not found', which can be
+        // replication lag or a stale id from localStorage — means the status
+        // is undetermined, and must never condemn a run that is still healthy.
+        if (results.some((res) => res.status === 'failed')) {
           clearInterval(interval);
           setBanner('failed');
-        } else if (results.every((res) => res.status === 'completed')) {
-          clearInterval(interval);
-          setBanner('done');
+          return;
+        }
+
+        const pollErrors = results
+          .map((res) => res.error)
+          .filter((error): error is string => Boolean(error));
+
+        if (pollErrors.length > 0) {
+          failure = { pollErrors };
+        } else {
+          // Only an unbroken run of failures is evidence we've lost the jobs.
+          consecutiveFailures = 0;
+          if (results.every((res) => res.status === 'completed')) {
+            clearInterval(interval);
+            setBanner('done');
+          }
+          return;
         }
       } catch (err) {
-        consecutiveFailures += 1;
-        if (consecutiveFailures >= MAX_CONSECUTIVE_POLL_FAILURES) {
-          clearInterval(interval);
-          setBanner('unknown');
-          logger.error({
-            msg: '[course] Gave up polling course generation status',
-            err,
-            jobIds,
-            consecutiveFailures,
-          });
-        } else {
-          logger.warn({
-            msg: '[course] Course generation poll failed — retrying',
-            err,
-            jobIds,
-            consecutiveFailures,
-          });
-        }
+        failure = { err };
+      }
+
+      consecutiveFailures += 1;
+      if (consecutiveFailures >= MAX_CONSECUTIVE_POLL_FAILURES) {
+        clearInterval(interval);
+        setBanner('unknown');
+        logger.error({
+          msg: '[course] Gave up polling course generation status',
+          ...failure,
+          jobIds,
+          consecutiveFailures,
+        });
+      } else {
+        logger.warn({
+          msg: '[course] Course generation poll failed — retrying',
+          ...failure,
+          jobIds,
+          consecutiveFailures,
+        });
       }
     }, 5000);
 
