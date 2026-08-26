@@ -35,7 +35,7 @@ import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import EmptyTableState from '@/components/ui/EmptyTableState';
 import { courseTypeLabel, courseTypeBadgeVariant } from '@/lib/video/course-type-label';
-import { courseStatusBadge } from '@/lib/video/course-status-label';
+import { courseStatusBadge } from '@/lib/course/course-status-label';
 import { CourseWithRelations } from '@/types/course';
 
 interface TrainingDetailsProps {
