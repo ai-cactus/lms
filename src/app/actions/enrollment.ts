@@ -30,6 +30,17 @@ import {
 } from '@/lib/enrollment/assignment';
 import { combineDateAndTime } from '@/lib/reminders/deadline';
 
+/**
+ * F-051 refusal text for the direct assign paths. The assign actions *return*
+ * this rather than throwing it: Next.js redacts errors thrown from a Server
+ * Action in production builds, so a thrown message reaches the browser as an
+ * opaque React error instead of the reason the assignment was refused.
+ *
+ * Module-private: a `'use server'` file may only export async functions.
+ */
+const REVIEW_GATE_ASSIGN_MESSAGE =
+  'This course has quality warnings and requires review before it can be assigned.';
+
 export interface AssignmentSettingsInput {
   scheduleAt?: string | Date | null;
   renewalCycle?: RenewalCycle;
@@ -152,6 +163,12 @@ export interface EnrollUsersResult {
   failed: string[];
   /** Present only when `options.deferWorkerNotification` was set. */
   deferred?: DeferredWorkerNotification[];
+  /**
+   * Set when the call was refused outright — nothing was assigned, enrolled,
+   * invited or emailed. Carries the user-facing reason; see
+   * {@link REVIEW_GATE_ASSIGN_MESSAGE}.
+   */
+  refusedReason?: string;
 }
 
 /**
@@ -229,6 +246,31 @@ export async function enrollUsers(
   // are unaffected — they do not pass through this action.
   if (!isOwnCourse && course.isGlobal === true && course.status !== 'published') {
     throw new Error('Course not found');
+  }
+
+  // F-051 review gate: a course the quality gate is holding must not reach
+  // learners by any route. publishCourse enforces this on the publish path, but
+  // the direct assign paths (staff profile, Assign & Publish) land here instead
+  // and would otherwise enroll — and email — staff into a held draft.
+  // Deliberately keyed on reviewRequired, not on status: an ordinary unheld
+  // draft stays assignable, which is what the Assign & Publish flow relies on.
+  if (course.reviewRequired) {
+    logger.warn({
+      msg: '[enrollment] Course assignment blocked — course held for quality review',
+      courseId,
+      organizationId,
+      userId: session.user.id,
+    });
+    // Refused by return so the reason survives production error redaction.
+    // Fail-closed: no assignment, enrollment, invite or email has run yet.
+    return {
+      success: [],
+      alreadyEnrolled: [],
+      newInvited: [],
+      failed: [],
+      refusedReason: REVIEW_GATE_ASSIGN_MESSAGE,
+      ...(options?.deferWorkerNotification ? { deferred: [] } : {}),
+    };
   }
 
   // Billing gate (defense in depth): an org must have active billing to create
@@ -493,11 +535,18 @@ interface RoleTargetAssignmentOptions {
 }
 
 interface RoleTargetAssignmentResult {
-  assignmentId: string;
+  /** Null only when the call was refused — see {@link refusedReason}. */
+  assignmentId: string | null;
   holderCount: number;
   enrolled: number;
   alreadyEnrolled: number;
   failed: number;
+  /**
+   * Set when the call was refused outright — no assignment was written and no
+   * holder was enrolled. Carries the user-facing reason; see
+   * {@link REVIEW_GATE_ASSIGN_MESSAGE}.
+   */
+  refusedReason?: string;
 }
 
 /**
@@ -567,6 +616,28 @@ async function assignCourseToRoleTargets(
 
   if (!isOwnCourse && course.isGlobal === true && course.status !== 'published') {
     throw new Error('Course not found');
+  }
+
+  // F-051 review gate, as in enrollUsers above. publishCourse clears
+  // reviewRequired before replaying a deferred assignment, so this never blocks
+  // that replay — only a direct role assignment into a still-held course.
+  if (course.reviewRequired) {
+    logger.warn({
+      msg: '[enrollment] Role assignment blocked — course held for quality review',
+      courseId,
+      organizationId,
+      targetRoles,
+      userId: session.user.id,
+    });
+    // Refused by return, as in enrollUsers above, and equally fail-closed.
+    return {
+      assignmentId: null,
+      holderCount: 0,
+      enrolled: 0,
+      alreadyEnrolled: 0,
+      failed: 0,
+      refusedReason: REVIEW_GATE_ASSIGN_MESSAGE,
+    };
   }
 
   if (!hasActiveBilling(organization?.subscription)) {

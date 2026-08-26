@@ -600,11 +600,22 @@ export async function assignCourseToStaffMember(
     return { success: [], alreadyEnrolled: [], newInvited: [], failed: [], error: 'Forbidden' };
   }
 
-  // enrollUsers throws on the billing gate (and other hard failures). Normalize
-  // that into this action's return shape so the calling modal surfaces the
-  // specific message instead of falling back to a generic failed state.
+  // enrollUsers throws on the billing gate (and other hard failures) and returns
+  // a `refusedReason` for the review gate. Normalize both into this action's
+  // return shape so the calling modal surfaces the specific message instead of
+  // falling back to a generic failed state.
   try {
-    return await enrollUsers(courseId, [{ email: target.user.email }], assignmentSettings);
+    const outcome = await enrollUsers(courseId, [{ email: target.user.email }], assignmentSettings);
+    if (outcome.refusedReason) {
+      return {
+        success: [],
+        alreadyEnrolled: [],
+        newInvited: [],
+        failed: [staffOrgUserId],
+        error: outcome.refusedReason,
+      };
+    }
+    return outcome;
   } catch (err) {
     return {
       success: [],
@@ -740,6 +751,20 @@ export async function assignCoursesToStaffMember(
           assignmentSettingsMode: 'preserve',
         },
       );
+
+      // Refused (course held for quality review): nothing was written for this
+      // course. Report it as failed like any other per-course problem — unlike
+      // the billing gate it is course-specific, so the loop continues.
+      if (outcome.refusedReason) {
+        logger.warn({
+          msg: '[enrollment] Course could not be assigned to staff member — held for quality review',
+          staffOrgUserId,
+          courseId,
+          userId: session.user.id,
+        });
+        result.failed.push({ courseId, courseTitle });
+        continue;
+      }
 
       if (outcome.success.length > 0) {
         result.assigned.push({ courseId, courseTitle });

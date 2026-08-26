@@ -35,6 +35,7 @@ import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import EmptyTableState from '@/components/ui/EmptyTableState';
 import { courseTypeLabel, courseTypeBadgeVariant } from '@/lib/video/course-type-label';
+import { courseStatusBadge } from '@/lib/course/course-status-label';
 import { CourseWithRelations } from '@/types/course';
 
 interface TrainingDetailsProps {
@@ -58,6 +59,8 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
   } | null>(null);
 
   const enrollments = course.enrollments || [];
+
+  const statusBadge = courseStatusBadge(course.status, course.reviewRequired);
 
   const totalLearners = enrollments.length;
 
@@ -111,15 +114,12 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
               </Badge>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center justify-center rounded-[15px] bg-[#eafdf5] px-[14px] py-px text-[13px] leading-[22px] font-semibold text-[#59904b]">
-                Active
-              </span>
-              {course.type !== 'video' && (
-                <span className="inline-flex items-center gap-1.5 rounded-[15px] bg-[#eafdf5] px-[14px] py-px text-[13px] leading-[22px] font-semibold text-[#59904b]">
-                  <CheckCircle2 className="size-4" aria-hidden="true" />
-                  Approved by: Admin
-                </span>
-              )}
+              <Badge
+                variant="outline"
+                className={cn('px-3.5 py-0.5 text-[13px]', statusBadge.className)}
+              >
+                {statusBadge.label}
+              </Badge>
             </div>
             <p className="text-sm leading-5 text-[#475467]">
               Mandatory annual training aligned with organizational standards
