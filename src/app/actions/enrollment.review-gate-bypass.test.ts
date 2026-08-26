@@ -1,30 +1,22 @@
 /**
- * Regression probe for a gap discovered while testing Issue #14 (the F-051
- * publish-review gate).
+ * Regression guard for the F-051 publish-review gate on the DIRECT assign paths.
  *
- * `createFullCourse` and `publishCourse` (src/app/actions/course.ts) now
- * correctly defer enrollment/email until a review-required draft is
- * explicitly acknowledged (see course.deferred-assignment.test.ts). BUT
- * `enrollUsers` and `assignCourseToRoles` — the same two functions
- * `publishCourse` calls to replay the deferred intent — are also reachable
- * DIRECTLY from `/dashboard/training/courses/[id]/assign`
- * (AssignPublishClient.tsx via the assign/page.tsx server component), and
- * neither the page's course lookup nor `enrollUsers` itself ever reads
- * `course.reviewRequired`. TrainingDetails.tsx's "Assign" button also links
- * there unconditionally, regardless of the course's review-gate state.
+ * `createFullCourse` and `publishCourse` (src/app/actions/course.ts) defer
+ * enrollment/email until a review-required draft is explicitly acknowledged
+ * (see course.deferred-assignment.test.ts). But `enrollUsers` and the
+ * role-target assign actions — the same functions `publishCourse` calls to
+ * replay the deferred intent — are also reachable DIRECTLY from
+ * `/dashboard/training/courses/[id]/assign` (AssignPublishClient.tsx), and from
+ * the staff profile. Without their own gate an admin could create a course
+ * flagged `reviewRequired: true` (still `status: 'draft'`), navigate straight
+ * to its Assign page, and enroll — and EMAIL — learners about an unreviewed
+ * course, reaching the Issue #14 scenario through a second door.
  *
- * Concretely: an admin can create a course that gets flagged
- * `reviewRequired: true` (still `status: 'draft'`), then navigate straight to
- * its Assign page and click "Assign Course" — which calls `enrollUsers`
- * directly — enrolling and EMAILING learners about a course that has not
- * been reviewed. This is precisely the scenario Issue #14 was fixed to
- * prevent, reached through a second door the fix never closed.
- *
- * This is a PRODUCT DEFECT, not a test issue — reported to the orchestrator
- * per bug-hunter's mandate, not fixed here. The assertion below documents
- * the desired (currently unmet) behavior; it is expected to fail until
- * `enrollUsers` (or the assign page) is given the same reviewRequired guard
- * `publishCourse` already has.
+ * The gate refuses by RETURN VALUE rather than by throwing: Next.js redacts
+ * errors thrown from a Server Action in production, so a thrown message reaches
+ * the browser as an opaque React error (#441) instead of the reason. These
+ * tests pin both halves — the reason is communicated, and the refusal is
+ * fail-closed (no assignment, enrollment, invite or email is written).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -49,6 +41,9 @@ const { prismaMock, mockAdminAuth, mockWorkerAuth } = vi.hoisted(() => {
   return { prismaMock, mockAdminAuth, mockWorkerAuth };
 });
 
+const mockSendCourseInviteEmail = vi.fn().mockResolvedValue(undefined);
+const mockSendCourseLaunchEmail = vi.fn().mockResolvedValue(undefined);
+
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
@@ -60,8 +55,8 @@ vi.mock('./notifications', () => ({
   notifyOrganizationAdmins: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock('@/lib/email', () => ({
-  sendCourseInviteEmail: vi.fn().mockResolvedValue(undefined),
-  sendCourseLaunchEmail: vi.fn().mockResolvedValue(undefined),
+  sendCourseInviteEmail: mockSendCourseInviteEmail,
+  sendCourseLaunchEmail: mockSendCourseLaunchEmail,
 }));
 vi.mock('bcryptjs', () => ({
   default: { hash: vi.fn().mockResolvedValue('hashed-password') },
@@ -69,13 +64,17 @@ vi.mock('bcryptjs', () => ({
 }));
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock, default: prismaMock }));
 
-import { enrollUsers } from './enrollment';
+import { assignCourseToRole, enrollUsers } from './enrollment';
 
 const ADMIN_ID = 'admin-001';
 const ADMIN_ORG_USER_ID = 'ou-admin-001';
 const ORG_ID = 'org-001';
 const COURSE_ID = 'held-course-001';
 const STAFF_EMAIL = 'staff@example.com';
+
+/** The exact copy the assign UI (and its e2e guard) shows the admin. */
+const REFUSAL_MESSAGE =
+  'This course has quality warnings and requires review before it can be assigned.';
 
 const adminSession = {
   user: {
@@ -101,7 +100,18 @@ const reviewRequiredCourse = {
   pendingAssignment: { mode: 'email', emails: [STAFF_EMAIL], dueAt: null },
 };
 
-describe('enrollUsers — F-051 review-gate bypass via the direct assign path (product defect)', () => {
+/** Nothing that could reach a learner may have been written. */
+function expectNoAssignmentSideEffects() {
+  expect(prismaMock.enrollment.create).not.toHaveBeenCalled();
+  expect(prismaMock.courseAssignment.create).not.toHaveBeenCalled();
+  expect(prismaMock.courseAssignment.update).not.toHaveBeenCalled();
+  expect(prismaMock.invite.create).not.toHaveBeenCalled();
+  expect(prismaMock.user.create).not.toHaveBeenCalled();
+  expect(mockSendCourseInviteEmail).not.toHaveBeenCalled();
+  expect(mockSendCourseLaunchEmail).not.toHaveBeenCalled();
+}
+
+describe('F-051 review gate — the direct assign paths refuse a held draft', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockAdminAuth.mockResolvedValue(adminSession);
@@ -120,20 +130,56 @@ describe('enrollUsers — F-051 review-gate bypass via the direct assign path (p
       fullName: 'Jane Doe',
     });
     prismaMock.organizationUser.findFirst.mockResolvedValue({ id: 'ou-staff-001' });
+    prismaMock.organizationUser.findMany.mockResolvedValue([]);
     prismaMock.courseAssignment.findFirst.mockResolvedValue(null);
     prismaMock.courseAssignment.create.mockResolvedValue({ id: 'assignment-001' });
+    prismaMock.course.findUnique.mockResolvedValue(reviewRequiredCourse);
   });
 
-  it("must refuse to enroll into a review-required (F-051-held) course, mirroring publishCourse's own gate", async () => {
-    prismaMock.course.findUnique.mockResolvedValue(reviewRequiredCourse);
+  it('enrollUsers returns the refusal reason instead of throwing it', async () => {
+    const result = await enrollUsers(COURSE_ID, [{ email: STAFF_EMAIL }]);
 
-    // Desired behavior: enrollUsers refuses a course the quality gate is
-    // still holding, the same way publishCourse does. Today it does not —
-    // this assertion is expected to FAIL, proving the gap end to end
-    // (enrollment.create IS invoked despite reviewRequired: true).
-    await expect(enrollUsers(COURSE_ID, [{ email: STAFF_EMAIL }])).rejects.toThrow(
-      /review|not published|draft/i,
-    );
-    expect(prismaMock.enrollment.create).not.toHaveBeenCalled();
+    // Returned, not thrown: a thrown Server Action error is redacted in
+    // production, so the admin would see React error #441 rather than this.
+    expect(result.refusedReason).toBe(REFUSAL_MESSAGE);
+    expect(result).toMatchObject({
+      success: [],
+      alreadyEnrolled: [],
+      newInvited: [],
+      failed: [],
+    });
+  });
+
+  it('enrollUsers enrolls, invites and emails nobody when it refuses', async () => {
+    await enrollUsers(COURSE_ID, [{ email: STAFF_EMAIL }]);
+
+    expectNoAssignmentSideEffects();
+  });
+
+  it('enrollUsers refuses before emitting any deferred worker notification', async () => {
+    const result = await enrollUsers(COURSE_ID, [{ email: STAFF_EMAIL }], undefined, {
+      deferWorkerNotification: true,
+    });
+
+    expect(result.refusedReason).toBe(REFUSAL_MESSAGE);
+    expect(result.deferred).toEqual([]);
+    expectNoAssignmentSideEffects();
+  });
+
+  it('assignCourseToRole returns the refusal reason and writes no assignment', async () => {
+    const result = await assignCourseToRole(COURSE_ID, 'nurse');
+
+    expect(result.refusedReason).toBe(REFUSAL_MESSAGE);
+    expect(result).toMatchObject({
+      assignmentId: null,
+      holderCount: 0,
+      enrolled: 0,
+      alreadyEnrolled: 0,
+      failed: 0,
+      targetRole: 'nurse',
+    });
+    // Refused before the holder lookup, so no role holder was ever considered.
+    expect(prismaMock.organizationUser.findMany).not.toHaveBeenCalled();
+    expectNoAssignmentSideEffects();
   });
 });

@@ -461,28 +461,42 @@ export async function publishCourse(courseId: string, opts?: { acknowledgeWarnin
 
     if (pending) {
       try {
-        if (pending.mode === 'email') {
-          await enrollUsers(
+        const replay =
+          pending.mode === 'email'
+            ? await enrollUsers(
+                courseId,
+                pending.emails.map((email) => ({ email })),
+                { dueAt: pending.dueAt ? new Date(pending.dueAt) : null },
+              )
+            : await assignCourseToRoles(courseId, pending.roles, {
+                dueDate: pending.dueDate,
+                dueTime: pending.dueTime,
+                dueWindowDays: pending.dueWindowDays,
+                remindersEnabled: pending.remindersEnabled,
+                reminderDaysBefore: pending.reminderDaysBefore,
+                renewalCycle: pending.renewalCycle,
+              });
+
+        if (replay.refusedReason) {
+          // The publish above already cleared `reviewRequired`, so the assign
+          // actions' own review gate should never fire here — but a refusal is
+          // returned, not thrown, and must never be read as a replayed assignment.
+          assignmentFailed = true;
+          logger.error({
+            msg: '[course] Deferred assignment refused on publish',
             courseId,
-            pending.emails.map((email) => ({ email })),
-            { dueAt: pending.dueAt ? new Date(pending.dueAt) : null },
-          );
+            userId: session.user.id,
+            mode: pending.mode,
+            reason: replay.refusedReason,
+          });
         } else {
-          await assignCourseToRoles(courseId, pending.roles, {
-            dueDate: pending.dueDate,
-            dueTime: pending.dueTime,
-            dueWindowDays: pending.dueWindowDays,
-            remindersEnabled: pending.remindersEnabled,
-            reminderDaysBefore: pending.reminderDaysBefore,
-            renewalCycle: pending.renewalCycle,
+          logger.info({
+            msg: '[course] Deferred assignment replayed on publish',
+            courseId,
+            userId: session.user.id,
+            mode: pending.mode,
           });
         }
-        logger.info({
-          msg: '[course] Deferred assignment replayed on publish',
-          courseId,
-          userId: session.user.id,
-          mode: pending.mode,
-        });
       } catch (assignError) {
         assignmentFailed = true;
         logger.error({
