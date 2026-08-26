@@ -231,6 +231,18 @@ export async function enrollUsers(
     throw new Error('Course not found');
   }
 
+  // F-051 review gate: a course the quality gate is holding must not reach
+  // learners by any route. publishCourse enforces this on the publish path, but
+  // the direct assign paths (staff profile, Assign & Publish) land here instead
+  // and would otherwise enroll — and email — staff into a held draft.
+  // Deliberately keyed on reviewRequired, not on status: an ordinary unheld
+  // draft stays assignable, which is what the Assign & Publish flow relies on.
+  if (course.reviewRequired) {
+    throw new Error(
+      'This course has quality warnings and requires review before it can be assigned.',
+    );
+  }
+
   // Billing gate (defense in depth): an org must have active billing to create
   // new enrollments. Placed after auth/existence checks so we never leak course
   // state, and before any assignment/enrollment writes.
@@ -567,6 +579,15 @@ async function assignCourseToRoleTargets(
 
   if (!isOwnCourse && course.isGlobal === true && course.status !== 'published') {
     throw new Error('Course not found');
+  }
+
+  // F-051 review gate, as in enrollUsers above. publishCourse clears
+  // reviewRequired before replaying a deferred assignment, so this never blocks
+  // that replay — only a direct role assignment into a still-held course.
+  if (course.reviewRequired) {
+    throw new Error(
+      'This course has quality warnings and requires review before it can be assigned.',
+    );
   }
 
   if (!hasActiveBilling(organization?.subscription)) {
