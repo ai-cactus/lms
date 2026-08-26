@@ -66,6 +66,11 @@ model Course {
   isGlobal                    Boolean                  @default(false) @map("is_global")
   reviewRequired              Boolean                  @default(false) @map("review_required")
   qualityWarnings             String[]                 @default([]) @map("quality_warnings")
+  /// Assignment intent captured at creation but withheld because the F-051
+  /// quality gate held the course as a draft. Replayed by publishCourse once the
+  /// warnings are acknowledged, then cleared. Null means nothing is deferred —
+  /// enrolling learners (and emailing them) before publication cannot be undone.
+  pendingAssignment           Json?                    @map("pending_assignment")
   /// Lineage pointer set when this course was deep-copied from another (org
   /// duplicate, or a platform prebuilt course adopted into an org). Nulled rather
   /// than cascading if the source is deleted — a fork is an independent course.
