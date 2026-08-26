@@ -1,10 +1,12 @@
 /**
  * Tests for POST /api/billing/subscription/cancel.
  *
- * Phase 4 / Issue 3 added a 409 guard: a subscription with a pending
- * `stripeScheduleId` (a scheduled plan change) cannot be canceled, since a
- * Stripe Subscription Schedule and `cancel_at_period_end` would otherwise
- * conflict. The admin must cancel the scheduled change first.
+ * A subscription with a pending `stripeScheduleId` used to be hard-blocked
+ * with a 409, because Stripe rejects `cancel_at_period_end` updates while a
+ * Subscription Schedule wraps the subscription. That guard also fired on a
+ * stale local mirror, leaving admins unable to cancel at all. The route now
+ * releases the pending schedule first and proceeds; only a release that fails
+ * upstream stops the cancellation, with a 502.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -23,6 +25,7 @@ const { mockAuth, mockAudit, prismaMock, stripeMock } = vi.hoisted(() => {
   };
   const stripeMock = {
     subscriptions: { update: vi.fn() },
+    subscriptionSchedules: { retrieve: vi.fn(), release: vi.fn() },
   };
   return { mockAuth, mockAudit, prismaMock, stripeMock };
 });
@@ -61,26 +64,62 @@ function makeReq(body: unknown = {}): NextRequest {
   return { json: vi.fn().mockResolvedValue(body) } as unknown as NextRequest;
 }
 
+const SCHEDULED_SUB = {
+  ...CANCELABLE_SUB,
+  stripeScheduleId: 'sub_sched_1',
+  scheduledEffectiveAt: new Date('2026-08-17T00:00:00Z'),
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   mockAuth.mockResolvedValue({ user: { id: 'user-1', role: 'owner', organizationId: 'org-1' } });
   prismaMock.user.findUnique.mockResolvedValue(ADMIN_USER);
+  stripeMock.subscriptionSchedules.retrieve.mockResolvedValue({
+    id: 'sub_sched_1',
+    status: 'active',
+  });
+  stripeMock.subscriptionSchedules.release.mockResolvedValue({});
 });
 
-describe('POST /api/billing/subscription/cancel — scheduled-change guard', () => {
-  it('returns 409 and does not touch Stripe when a plan change is pending', async () => {
-    prismaMock.subscription.findUnique.mockResolvedValue({
-      ...CANCELABLE_SUB,
-      stripeScheduleId: 'sub_sched_1',
-      scheduledEffectiveAt: new Date('2026-08-17T00:00:00Z'),
+describe('POST /api/billing/subscription/cancel — pending plan-change schedule', () => {
+  it('releases the pending schedule and then cancels at period end', async () => {
+    prismaMock.subscription.findUnique.mockResolvedValue(SCHEDULED_SUB);
+    stripeMock.subscriptions.update.mockResolvedValue({});
+
+    const res = await POST(makeReq());
+
+    expect(res.status).toBe(200);
+    expect(stripeMock.subscriptionSchedules.release).toHaveBeenCalledWith('sub_sched_1');
+    expect(stripeMock.subscriptions.update).toHaveBeenCalledWith('sub_x', {
+      cancel_at_period_end: true,
     });
+    expect(prismaMock.subscription.update).toHaveBeenCalledWith({
+      where: { organizationId: 'org-1' },
+      data: {
+        scheduledPlan: null,
+        scheduledBillingCycle: null,
+        scheduledPriceId: null,
+        scheduledEffectiveAt: null,
+        stripeScheduleId: null,
+      },
+    });
+    expect(mockAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'billing.subscription.cancel',
+        metadata: { cancelAtPeriodEnd: true, releasedSchedule: true },
+      }),
+    );
+  });
+
+  it('returns 502 and never cancels when the release fails upstream', async () => {
+    prismaMock.subscription.findUnique.mockResolvedValue(SCHEDULED_SUB);
+    stripeMock.subscriptionSchedules.release.mockRejectedValue(new Error('Stripe API error'));
 
     const res = await POST(makeReq());
     const body = await res.json();
 
-    expect(res.status).toBe(409);
-    expect(body.error).toMatch(/pending plan change/i);
-    expect(body.error).toMatch(/cancel it first/i);
+    expect(res.status).toBe(502);
+    expect(body.error).toMatch(/unable to update your subscription/i);
     expect(stripeMock.subscriptions.update).not.toHaveBeenCalled();
     expect(prismaMock.subscription.update).not.toHaveBeenCalled();
   });

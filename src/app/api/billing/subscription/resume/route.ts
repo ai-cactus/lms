@@ -8,9 +8,13 @@ import { guardApiSession } from '@/lib/auth-guard';
 import { logger } from '@/lib/logger';
 import { audit, getClientContext } from '@/lib/audit';
 import { headers } from 'next/headers';
+import { releasePendingSchedule } from '@/lib/billing-schedule';
 
 // POST /api/billing/subscription/resume — resumes a paused subscription
 // (the "Continue Plan" action). Clears the pause window and restores access.
+// A pending plan-change schedule is released first rather than blocking the
+// request: Stripe refuses subscription updates while a schedule wraps it, and
+// a paused org can reach this state without ever seeing the pause guard.
 export async function POST() {
   try {
     const session = await auth();
@@ -38,25 +42,33 @@ export async function POST() {
       return NextResponse.json({ error: 'No active subscription found' }, { status: 404 });
     }
 
-    // A pending plan-change schedule wraps the subscription; mutating it while a
-    // schedule is active would conflict with the Schedule API, so require the
-    // scheduled change to be cancelled first.
-    if (subscription.stripeScheduleId) {
-      const when = subscription.scheduledEffectiveAt
-        ? new Date(subscription.scheduledEffectiveAt).toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-          })
-        : 'the end of your billing period';
-      return NextResponse.json(
-        { error: `You have a pending plan change scheduled for ${when}. Cancel it first.` },
-        { status: 409 },
-      );
-    }
-
     if (!subscription.pausedAt) {
       return NextResponse.json({ error: 'Subscription is not paused.' }, { status: 409 });
+    }
+
+    // Released only once every other precondition has passed, so a rejected
+    // request never tears down a schedule the customer still has.
+    let releasedSchedule = false;
+    if (subscription.stripeScheduleId) {
+      try {
+        ({ released: releasedSchedule } = await releasePendingSchedule(
+          organizationId,
+          subscription.stripeScheduleId,
+        ));
+      } catch (err) {
+        logger.error({
+          msg: '[billing] Failed to auto-release pending schedule',
+          err,
+          organizationId,
+        });
+        return NextResponse.json(
+          {
+            error:
+              'Unable to update your subscription right now. Please try again in a moment or contact support.',
+          },
+          { status: 502 },
+        );
+      }
     }
 
     // Clearing `pause_collection` tells Stripe to resume collecting payment.
@@ -90,6 +102,7 @@ export async function POST() {
       organizationId,
       targetType: 'subscription',
       targetId: subscription.id,
+      metadata: { releasedSchedule },
       ...getClientContext(await headers()),
     });
 

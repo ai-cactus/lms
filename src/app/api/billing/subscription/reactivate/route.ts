@@ -8,10 +8,14 @@ import { apiError } from '@/lib/api-response';
 import { logger } from '@/lib/logger';
 import { audit, getClientContext } from '@/lib/audit';
 import { headers } from 'next/headers';
+import { releasePendingSchedule } from '@/lib/billing-schedule';
 
 // POST /api/billing/subscription/reactivate — clears a scheduled cancellation
 // (the "Resume subscription" action). Reverses a soft cancel by turning off
-// `cancel_at_period_end` while the subscription is still billable.
+// `cancel_at_period_end` while the subscription is still billable. A pending
+// plan-change schedule is released first rather than blocking the request:
+// Stripe refuses cancellation-behaviour updates while a schedule wraps the
+// subscription.
 export async function POST() {
   try {
     const session = await auth();
@@ -39,23 +43,6 @@ export async function POST() {
       return NextResponse.json({ error: 'No active subscription found' }, { status: 404 });
     }
 
-    // A pending plan-change schedule wraps the subscription; mutating it while a
-    // schedule is active would conflict with the Schedule API, so require the
-    // scheduled change to be cancelled first.
-    if (subscription.stripeScheduleId) {
-      const when = subscription.scheduledEffectiveAt
-        ? new Date(subscription.scheduledEffectiveAt).toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-          })
-        : 'the end of your billing period';
-      return NextResponse.json(
-        { error: `You have a pending plan change scheduled for ${when}. Cancel it first.` },
-        { status: 409 },
-      );
-    }
-
     if (!subscription.cancelAtPeriodEnd) {
       return NextResponse.json(
         { error: 'Subscription is not scheduled for cancellation.' },
@@ -70,6 +57,31 @@ export async function POST() {
         { error: 'Subscription can no longer be reactivated.' },
         { status: 409 },
       );
+    }
+
+    // Released only once every other precondition has passed, so a rejected
+    // request never tears down a schedule the customer still has.
+    let releasedSchedule = false;
+    if (subscription.stripeScheduleId) {
+      try {
+        ({ released: releasedSchedule } = await releasePendingSchedule(
+          organizationId,
+          subscription.stripeScheduleId,
+        ));
+      } catch (err) {
+        logger.error({
+          msg: '[billing] Failed to auto-release pending schedule',
+          err,
+          organizationId,
+        });
+        return NextResponse.json(
+          {
+            error:
+              'Unable to update your subscription right now. Please try again in a moment or contact support.',
+          },
+          { status: 502 },
+        );
+      }
     }
 
     // Clearing `cancel_at_period_end` tells Stripe to keep the subscription
@@ -97,6 +109,7 @@ export async function POST() {
       organizationId,
       targetType: 'subscription',
       targetId: subscription.id,
+      metadata: { releasedSchedule },
       ...getClientContext(await headers()),
     });
 

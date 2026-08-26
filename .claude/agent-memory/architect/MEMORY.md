@@ -2,3 +2,4 @@
 - [RBAC Rollout](project_rbac_rollout.md) — 2026-06-30 six-role enum migration, auth rework, authorize helper, backfill script
 - [Sidebar Nav + Learn Mode](project_sidebar_nav_learn_mode.md) — 2026-07-09 Figma sidebar redesign + session-bridge Manage/Learn switcher for managers on `/worker/*`
 - [Tier 3 Perf Plan](project_tier3_perf_plan.md) — 2026-08-05 app-level perf plan (5.1-5.5) in docs/perf/tier3-implementation-plan.md; 14-PR decomposition, pending approval
+- [Billing cancel/resume/seats fix](project_billing_cancel_resume_seats_fix.md) — 2026-08-25 bugfix/billing-cancel-resume-seats; unifies #25/#26/#29 under one stripeScheduleId-drift root cause + #33 seat-count fix
