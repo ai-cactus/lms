@@ -714,7 +714,7 @@ test.describe('Billing — cancel auto-releases a pending schedule instead of er
 
       const dialog = page.getByRole('dialog');
       await expect(dialog).toBeVisible();
-      await dialog.getByRole('button', { name: 'Continue' }).click();
+      await dialog.getByRole('button', { name: 'Yes, cancel subscription' }).click();
 
       await page.waitForURL('**/dashboard/billing', { timeout: 20000 });
       await expect(
@@ -775,7 +775,7 @@ test.describe('Billing — cancel auto-releases a pending schedule instead of er
       await expect(
         dialog.getByRole('alert').filter({ hasText: /cancel it first|pending plan change/i }),
       ).toHaveCount(0);
-      await dialog.getByRole('button', { name: 'Continue' }).click();
+      await dialog.getByRole('button', { name: 'Yes, cancel subscription' }).click();
       await page.waitForURL('**/dashboard/billing', { timeout: 20000 });
 
       // Real, fresh server read — proves the schedule was actually released,
@@ -927,7 +927,7 @@ test.describe('Billing — pause keeps its hard schedule-conflict guard (regress
 
       const dialog = page.getByRole('dialog');
       await expect(dialog).toBeVisible();
-      await dialog.getByRole('button', { name: 'Continue' }).click();
+      await dialog.getByRole('button', { name: 'Yes, pause subscription' }).click();
 
       const errorAlert = dialog.getByRole('alert');
       await expect(errorAlert).toBeVisible();

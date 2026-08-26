@@ -279,7 +279,7 @@ export default function CancelSubscriptionClient({ planName, periodEnd, pausedAt
               disabled={pauseModal.loading}
               onClick={() => setPauseModal((s) => ({ ...s, open: false }))}
             >
-              Cancel
+              Never mind
             </Button>
             <Button
               className="flex-1"
@@ -287,7 +287,7 @@ export default function CancelSubscriptionClient({ planName, periodEnd, pausedAt
               disabled={pauseModal.loading}
               onClick={() => void handlePause()}
             >
-              Continue
+              Yes, pause subscription
             </Button>
           </div>
         </DialogContent>
@@ -330,7 +330,7 @@ export default function CancelSubscriptionClient({ planName, periodEnd, pausedAt
               disabled={cancelModal.loading}
               onClick={() => setCancelModal((s) => ({ ...s, open: false }))}
             >
-              Cancel
+              Keep my plan
             </Button>
             <Button
               variant="destructive"
@@ -340,7 +340,7 @@ export default function CancelSubscriptionClient({ planName, periodEnd, pausedAt
               onClick={() => void handleCancel()}
             >
               <Check className="size-4" aria-hidden="true" />
-              Continue
+              Yes, cancel subscription
             </Button>
           </div>
         </DialogContent>
