@@ -7,8 +7,12 @@ import { getStripeClient } from '@/lib/stripe';
 import { guardApiSession } from '@/lib/auth-guard';
 import { logger } from '@/lib/logger';
 import { audit, getClientContext } from '@/lib/audit';
+import { releasePendingSchedule } from '@/lib/billing-schedule';
 
-// POST /api/billing/subscription/cancel — cancels subscription at end of current period
+// POST /api/billing/subscription/cancel — cancels subscription at end of current
+// period. A pending plan-change schedule is released first rather than blocking
+// the request: Stripe rejects cancellation-behaviour updates on a scheduled
+// subscription, and a customer cancelling no longer wants the queued change.
 export async function POST(request: NextRequest) {
   try {
     const session = await auth();
@@ -45,28 +49,36 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No active subscription found' }, { status: 404 });
     }
 
-    // A pending plan-change schedule wraps the subscription; cancelling it while
-    // a schedule is active would conflict with the Schedule API, so require the
-    // scheduled change to be cancelled first.
-    if (subscription.stripeScheduleId) {
-      const when = subscription.scheduledEffectiveAt
-        ? new Date(subscription.scheduledEffectiveAt).toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-          })
-        : 'the end of your billing period';
-      return NextResponse.json(
-        { error: `You have a pending plan change scheduled for ${when}. Cancel it first.` },
-        { status: 409 },
-      );
-    }
-
     if (subscription.cancelAtPeriodEnd) {
       return NextResponse.json(
         { error: 'Subscription is already scheduled for cancellation.' },
         { status: 409 },
       );
+    }
+
+    // Released only once every other precondition has passed, so a rejected
+    // request never tears down a schedule the customer still has.
+    let releasedSchedule = false;
+    if (subscription.stripeScheduleId) {
+      try {
+        ({ released: releasedSchedule } = await releasePendingSchedule(
+          organizationId,
+          subscription.stripeScheduleId,
+        ));
+      } catch (err) {
+        logger.error({
+          msg: '[billing] Failed to auto-release pending schedule',
+          err,
+          organizationId,
+        });
+        return NextResponse.json(
+          {
+            error:
+              'Unable to update your subscription right now. Please try again in a moment or contact support.',
+          },
+          { status: 502 },
+        );
+      }
     }
 
     // Cancel at period end — does not stop service immediately
@@ -88,7 +100,7 @@ export async function POST(request: NextRequest) {
       organizationId,
       targetType: 'subscription',
       targetId: subscription.id,
-      metadata: { cancelAtPeriodEnd: true },
+      metadata: { cancelAtPeriodEnd: true, releasedSchedule },
       ...getClientContext(request.headers),
     });
 

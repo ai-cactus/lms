@@ -256,7 +256,12 @@ test.describe('Onboarding wizard — 5-step happy path', () => {
 
       // completeOnboarding runs, then redirects to /onboarding/complete.
       await page.waitForURL('**/onboarding/complete**', { timeout: 30000 });
-      await expect(page.getByText(/all set/i)).toBeVisible();
+      // Target the heading, not bare text: Next's route announcer
+      // (#__next-route-announcer__, role="alert" aria-live="assertive") mirrors
+      // the h1 on client navigation, so getByText matches TWO elements and
+      // trips Playwright strict mode. It is populated after navigation settles,
+      // which is why this presented as intermittent rather than always red.
+      await expect(page.getByRole('heading', { name: /all set/i })).toBeVisible();
 
       // The completion screen re-mints the session (organizationId adopted)
       // before handing off — "Go to Dashboard" must land on a WORKING

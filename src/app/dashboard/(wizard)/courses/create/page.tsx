@@ -1,7 +1,6 @@
 import { Suspense } from 'react';
-import { isAdminRole } from '@/lib/rbac/role-utils';
+import { requirePermission } from '@/lib/rbac/require-permission';
 import { redirect } from 'next/navigation';
-import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
 import { hasActiveBilling } from '@/lib/billing';
 import CourseWizard from '@/components/dashboard/courses/CourseWizard';
@@ -12,15 +11,11 @@ export const metadata = {
 };
 
 export default async function CreateCoursePage() {
-  const session = await auth();
-  if (!session?.user?.id) {
-    redirect('/login');
-  }
-
-  const { role, organizationId } = session.user;
-  if (!isAdminRole(role)) {
-    redirect('/dashboard');
-  }
+  // Authoring a course is a create verb, not an admin-tier one. `isAdminRole`
+  // let Finance (and any other admin-tier role without course.create) reach the
+  // wizard by URL.
+  const ctx = await requirePermission('course.create');
+  const { organizationId } = ctx;
 
   // Confirm the org has an active subscription before allowing access to the
   // wizard. This prevents URL-bypassing of the UI billing gate.

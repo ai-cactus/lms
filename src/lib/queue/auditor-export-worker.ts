@@ -24,6 +24,7 @@ export function getExportWorker() {
         scopeId,
         from,
         to,
+        facilityIds,
       } = job.data as {
         organizationId: string;
         dbJobId: string;
@@ -31,6 +32,13 @@ export function getExportWorker() {
         scopeId?: string;
         from?: string | null;
         to?: string | null;
+        /**
+         * D-01. Derived server-side at /start from the caller's session — never
+         * from the request body. `null` = org-wide; an array narrows the SUBJECT
+         * axis below. `scope` selects the report's subject kind; this is an
+         * orthogonal axis and must not be folded into it.
+         */
+        facilityIds?: string[] | null;
       };
       if (!organizationId) throw new Error('organizationId missing');
 
@@ -63,11 +71,47 @@ export function getExportWorker() {
       });
       const orgName = org?.name || 'Organization';
 
-      // OrganizationUser ids for this org — the tenancy scope every downstream
-      // Course/Enrollment query below filters through, not the bare User table.
-      const orgUserIds = await prisma.organizationUser
+      // D-01 + team finding #17. One id array is not enough, because the report
+      // has two axes that must scope differently:
+      //
+      //   SUBJECTS — whose training records may appear. Facility-narrowed.
+      //              This is the security boundary.
+      //   AUTHORS  — who created the organisation's courses. NEVER narrowed.
+      //              The course CATALOGUE is an org-level artifact.
+      //
+      // Narrowing the author axis too would delete a course from a supervisor's
+      // report entirely whenever it happens to have been written by someone at
+      // another facility — the report would read "this facility has no
+      // bloodborne-pathogens course" when it has one with no local enrollments.
+      // That is a worse audit artifact than the leak we are closing. #17 asks
+      // for exactly this asymmetry: all courses listed, the DATA facility-limited.
+      const facilityScoped = Array.isArray(facilityIds);
+
+      const authorOrgUserIds = await prisma.organizationUser
         .findMany({ where: { organizationId, active: true }, select: { id: true } })
         .then((u) => u.map((x) => x.id));
+
+      const subjectOrgUserIds = facilityScoped
+        ? await prisma.organizationUser
+            .findMany({
+              where: {
+                organizationId,
+                active: true,
+                // Membership, not Enrollment.facilityId: that column records the
+                // facility at enrollment time and is nullable, so a transferred
+                // worker's records would surface under their FORMER supervisor
+                // while their name is absent from that supervisor's roster.
+                facilities: { some: { facilityId: { in: facilityIds }, active: true } },
+              },
+              select: { id: true },
+            })
+            .then((u) => u.map((x) => x.id))
+        : authorOrgUserIds;
+
+      // The SUBJECT-side predicate for direct OrganizationUser queries below.
+      const subjectFacilityWhere = facilityScoped
+        ? { facilities: { some: { facilityId: { in: facilityIds }, active: true } } }
+        : {};
 
       await updateDbJob(15, 'Fetching records...');
       await new Promise((r) => setTimeout(r, 600));
@@ -93,7 +137,7 @@ export function getExportWorker() {
               include: { quiz: { include: { _count: { select: { questions: true } } } } },
             },
             enrollments: {
-              where: { organizationUserId: { in: orgUserIds }, ...dateWhere },
+              where: { organizationUserId: { in: subjectOrgUserIds }, ...dateWhere },
               include: { organizationUser: { include: { user: true } }, quizAttempts: true },
             },
           },
@@ -161,7 +205,7 @@ export function getExportWorker() {
         // scopeId is the OrganizationUser id — the org-scoped staff identity —
         // not the bare global User id.
         const staff = await prisma.organizationUser.findFirst({
-          where: { id: scopeId, organizationId },
+          where: { id: scopeId, organizationId, ...subjectFacilityWhere },
           include: {
             user: true,
             enrollments: {
@@ -206,21 +250,26 @@ export function getExportWorker() {
       } else if (scope === 'all-courses') {
         const [courses, totalStaff] = await Promise.all([
           prisma.course.findMany({
-            where: { createdByOrgUserId: { in: orgUserIds }, status: 'published' },
+            where: { createdByOrgUserId: { in: authorOrgUserIds }, status: 'published' },
             select: {
               title: true,
               category: true,
               type: true,
               status: true,
               enrollments: {
-                where: { organizationUserId: { in: orgUserIds }, ...dateWhere },
+                where: { organizationUserId: { in: subjectOrgUserIds }, ...dateWhere },
                 select: { status: true },
               },
             },
             orderBy: { title: 'asc' },
           }),
           prisma.organizationUser.count({
-            where: { organizationId, active: true, role: { in: [...WORKER_ROLES] } },
+            where: {
+              organizationId,
+              active: true,
+              role: { in: [...WORKER_ROLES] },
+              ...subjectFacilityWhere,
+            },
           }),
         ]);
 
@@ -252,7 +301,14 @@ export function getExportWorker() {
       } else if (scope === 'all-staff') {
         const [workers, totalCourses] = await Promise.all([
           prisma.organizationUser.findMany({
-            where: { organizationId, active: true, role: { in: [...WORKER_ROLES] } },
+            // #17: "when viewing the workers tab, the tab should display all
+            // workers in that specific facility only".
+            where: {
+              organizationId,
+              active: true,
+              role: { in: [...WORKER_ROLES] },
+              ...subjectFacilityWhere,
+            },
             select: {
               role: true,
               jobTitle: true,
@@ -266,7 +322,7 @@ export function getExportWorker() {
             orderBy: { createdAt: 'desc' },
           }),
           prisma.course.count({
-            where: { createdByOrgUserId: { in: orgUserIds }, status: 'published' },
+            where: { createdByOrgUserId: { in: authorOrgUserIds }, status: 'published' },
           }),
         ]);
 
@@ -298,10 +354,15 @@ export function getExportWorker() {
       } else {
         const [totalCourses, totalStaff] = await Promise.all([
           prisma.course.count({
-            where: { createdByOrgUserId: { in: orgUserIds }, status: 'published' },
+            where: { createdByOrgUserId: { in: authorOrgUserIds }, status: 'published' },
           }),
           prisma.organizationUser.count({
-            where: { organizationId, active: true, role: { in: [...WORKER_ROLES] } },
+            where: {
+              organizationId,
+              active: true,
+              role: { in: [...WORKER_ROLES] },
+              ...subjectFacilityWhere,
+            },
           }),
         ]);
 
@@ -319,7 +380,7 @@ export function getExportWorker() {
         let completed = 0;
         for (let skip = 0; ; skip += ENROLLMENT_BATCH_SIZE) {
           const batch = await prisma.enrollment.findMany({
-            where: { organizationUserId: { in: orgUserIds }, ...dateWhere },
+            where: { organizationUserId: { in: subjectOrgUserIds }, ...dateWhere },
             include: {
               organizationUser: { include: { user: { select: { email: true, fullName: true } } } },
               course: { select: { title: true, category: true } },

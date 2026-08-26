@@ -217,8 +217,37 @@ export const roles = {
     category: 'manager',
     displayName: 'Facility Supervisor',
     description:
-      'Facility-level overseer. READ-ONLY on documents, courses, staff and audits — a supervisor’s power is SCOPE, not verbs: their read access spans the facilities assigned to them (OrganizationUserFacility), enforced at the data layer. Cannot create or edit facilities, cannot change staff roles, and has no billing access whatsoever.',
-    permissions: [...readEverythingExceptBilling, ...selfServicePermissions],
+      'Facility-level overseer. READ-ONLY on documents, courses, staff and audits — a supervisor’s power is SCOPE, not verbs: their read access spans the facilities assigned to them (OrganizationUserFacility), enforced at the data layer. May generate an auditor pack, but only over that same facility scope. Cannot create or edit facilities, cannot change staff roles, and has no billing access whatsoever.',
+    permissions: [
+      ...readEverythingExceptBilling,
+      ...selfServicePermissions,
+      // Team QA 2026-08-22 finding #17 reads "when downloading an audit report
+      // for courses, all courses are listed, but the data in the export should
+      // be limited to the facility" — it asks for the DATA to be scoped, not
+      // for the capability to be removed. The team's expected behaviour is the
+      // platform direction, so the registry moves to meet it.
+      //
+      // This is consistent with the role's own principle above: producing a
+      // report over records you may already read is a matter of scope, not of
+      // privilege. The facility narrowing that makes it safe ships in the same
+      // commit — never grant this without it.
+      'auditPack.create',
+      // Team QA 2026-08-25, section 3.1 and C8: "Facility supervisors should be
+      // able to assign courses" / "they can assign existing courses to existing
+      // staff". Both verbs are required — the assign route and role-target path
+      // check `assignment.create` (enrollment.ts:520, staff.ts:662) while the
+      // enrolment itself checks `enrollment.create` (enrollment.ts:175).
+      //
+      // C8 is otherwise unchanged: no course.* or document.* write verbs, and
+      // no user.create — a supervisor assigns EXISTING courses to EXISTING
+      // staff, and creates neither.
+      //
+      // Both are scope-bound, not org-wide: the assignee picker and the
+      // enrolment target are narrowed to the caller's facilities in the same
+      // commit. Never grant these without that narrowing.
+      'assignment.create',
+      'enrollment.create',
+    ],
   },
 
   hr: {
@@ -322,7 +351,16 @@ export const roles = {
       'billing.delete',
       'organization.read',
       'facility.read',
-      'course.read',
+      // `course.read` REMOVED 2026-08-25 — team QA finding #9: "Finance is also
+      // showing courses on the dashboard sidebar / Finance managers should not
+      // be able to view courses from the admin side." Product decision recorded
+      // 2026-08-22 and the test catalog corrected
+      // (docs/qa-test-cases-08-20.md:1191-1194); the phase-8 report still reads
+      // PASS on TC-FIN-003 criterion 9.9 and is stale on this point.
+      //
+      // The nav follows automatically: roles-matrix-config.ts:59 gates the
+      // Courses item on perm('course.read'). Finance's own learner transcripts
+      // run on enrollment.read / certificate.read, which it keeps.
       'enrollment.read',
       'certificate.read',
       'notification.create',

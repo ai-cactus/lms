@@ -56,7 +56,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-node-deps
         with:
@@ -115,7 +115,7 @@ jobs:
     # promote into a deploying branch — see ci.yml's `full-suite` expression.
     if: ${{ inputs.full-suite }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-node-deps
         with:

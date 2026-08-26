@@ -179,7 +179,25 @@ async function loginAs(page: Page, email: string, password: string): Promise<voi
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-test.describe('RBAC matrix realignment — Finance / Clinical Director are view-only on staff', () => {
+/**
+ * SUPERSEDED PREMISE, REWRITTEN 2026-08-24 (D-01).
+ *
+ * This block previously asserted that Finance and Clinical Director were
+ * "view-only" on staff — able to see the roster and a profile, just without
+ * mutating affordances. That premise was written against the old coarse
+ * `isAdminRole` gate and the registry never agreed with it:
+ *
+ *   - `finance` holds no `user.*` permission of any kind.
+ *   - `clinical_director` likewise, and its own registry description reads
+ *     "Has no Staff Management access at all".
+ *
+ * D-01 found both roles reaching the full staff directory in production
+ * (P7-004, P8-006), which is the defect, not the intended behaviour. They are
+ * now DENIED the roster outright, so the assertions below check denial rather
+ * than the absence of buttons. The HR and owner control groups keep their
+ * original meaning.
+ */
+test.describe('RBAC — Finance / Clinical Director are DENIED staff (D-01)', () => {
   for (const role of ['finance', 'clinical_director'] as const) {
     test(`${role}: no mutating staff affordances on the list or a profile`, async ({ page }) => {
       test.setTimeout(90_000);
@@ -197,35 +215,23 @@ test.describe('RBAC matrix realignment — Finance / Clinical Director are view-
       );
       try {
         await loginAs(page, viewerEmail, viewerPassword);
+
+        // The roster itself is denied — no `user.read`. Assert on the response
+        // BYTES, not on a missing button: D-01 existed precisely because a
+        // hidden nav link was mistaken for authorization.
         await page.goto('/dashboard/staff');
         await page.waitForLoadState('networkidle');
 
-        // "Add Workers" is gone (no invite.create) — established regression coverage
-        // (rbac-invite-roles / StaffListClient.test.tsx); re-asserted here as a
-        // sanity check that this is the same view-only seed.
-        await expect(page.getByRole('button', { name: /add staff/i })).not.toBeVisible();
+        const listBody = await page.content();
+        expect(listBody).not.toContain(targetEmail);
+        expect(listBody).not.toContain(inviteEmail);
 
-        // Pending-invite row: neither invite.edit nor invite.edit/delete are held,
-        // so the kebab itself must not render at all for that row.
-        const inviteRow = page.locator('tr', { hasText: inviteEmail });
-        await expect(inviteRow).toBeVisible();
-        await expect(inviteRow.getByRole('button', { name: 'Row actions' })).toHaveCount(0);
-
-        // Active staff row: the kebab now carries only Change Facility
-        // (user.edit) and Remove Staff (user.delete) — this role holds neither,
-        // so the kebab must not render. Read-only access to the profile is
-        // unaffected: the row click itself opens it.
-        const staffRow = page.locator('tr', { hasText: targetEmail });
-        await expect(staffRow).toBeVisible();
-        await expect(staffRow.getByRole('button', { name: 'Row actions' })).toHaveCount(0);
-
-        // Staff profile page — navigate directly rather than clicking the row:
-        // this scenario is about profile-level permission gating, not row-click
-        // behavior — a direct nav decouples it from list/HMR timing.
+        // A profile addressed by id must not render either, and must not
+        // confirm that the id exists.
         await page.goto(`/dashboard/staff/${seeded.targetOrgUserId}`);
+        await page.waitForLoadState('networkidle');
 
-        await expect(page.getByRole('heading', { name: 'Trainings' })).toBeVisible();
-        await expect(page.getByRole('button', { name: 'Assign Course' })).not.toBeVisible();
+        expect(await page.content()).not.toContain(targetEmail);
       } finally {
         await cleanupScenario(seeded);
       }

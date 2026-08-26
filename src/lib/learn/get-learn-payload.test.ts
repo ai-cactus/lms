@@ -379,9 +379,115 @@ describe('getLearnPayload — membership', () => {
     expect(payload.user).toEqual({
       name: 'Jane Worker',
       role: 'nurse',
+      // D-16: view mode is server-decided. False here because this is a real
+      // worker in the worker portal.
+      isAdminView: false,
       organizationName: 'Acme Health',
       email: 'jane@example.com',
       jobTitle: 'RN',
     });
+  });
+});
+
+/**
+ * D-16 — team QA #1, #4 and #5 are one bug.
+ *
+ * `enterLearnMode` mints a worker cookie that deliberately carries the admin's
+ * real role (session-bridge.ts). The payload derived its VIEW MODE from that
+ * role, so a manager who chose Learn got `isAdmin: true` and LearnClient
+ * rendered AdminLessonEditor / AdminQuizEditor:
+ *
+ *   #1 the admin course view
+ *   #4 the quiz that "never submits" — the admin quiz panel has no submit
+ *   #5 the "module-scoped" slide picker — CourseRail already renders every
+ *      lesson flat, so what they saw was the editor
+ *
+ * View mode now keys on the PORTAL; access still keys on the role.
+ */
+describe('getLearnPayload — learner view mode (D-16)', () => {
+  const managerWorkerSession = {
+    user: { id: 'm1', organizationUserId: 'ou-mgr', organizationId: 'org-1', role: 'hr' },
+  };
+
+  beforeEach(() => {
+    mockQuizFindUnique?.mockResolvedValue?.(null);
+    mockOrganizationUserFindUnique.mockResolvedValue({
+      role: 'hr',
+      user: { fullName: 'Manager One', email: 'm@example.com' },
+      organization: { name: 'Acme Health' },
+      jobTitle: 'HR Lead',
+    });
+  });
+
+  it('a manager in LEARN mode gets the learner view, not the admin view', async () => {
+    // Worker cookie present (they chose Learn) but carrying an admin role.
+    mockWorkerAuth.mockResolvedValue(managerWorkerSession);
+    mockAdminAuth.mockResolvedValue({
+      user: { id: 'm1', organizationUserId: 'ou-mgr', organizationId: 'org-1', role: 'hr' },
+    });
+    mockCourseFindUnique.mockResolvedValue(makeCourse());
+    mockEnrollmentFindFirst.mockResolvedValue(null);
+
+    const payload = asPayload(await getLearnPayload('course-1'));
+
+    expect(payload.user.isAdminView).toBe(false);
+  });
+
+  it('...and is still ALLOWED in without an enrollment — access keys on the role', async () => {
+    mockWorkerAuth.mockResolvedValue(managerWorkerSession);
+    mockAdminAuth.mockResolvedValue({
+      user: { id: 'm1', organizationUserId: 'ou-mgr', organizationId: 'org-1', role: 'hr' },
+    });
+    mockCourseFindUnique.mockResolvedValue(makeCourse());
+    mockEnrollmentFindFirst.mockResolvedValue(null);
+
+    const result = await getLearnPayload('course-1');
+
+    expect((result as { error?: string }).error).toBeUndefined();
+  });
+
+  it('an admin opening /learn WITHOUT a worker session keeps the admin view', async () => {
+    mockWorkerAuth.mockResolvedValue(null);
+    mockAdminAuth.mockResolvedValue({
+      user: { id: 'a1', organizationUserId: 'ou-adm', organizationId: 'org-1', role: 'owner' },
+    });
+    mockOrganizationUserFindUnique.mockResolvedValue({
+      role: 'owner',
+      user: { fullName: 'Owner One', email: 'o@example.com' },
+      organization: { name: 'Acme Health' },
+      jobTitle: 'Owner',
+    });
+    mockCourseFindUnique.mockResolvedValue(makeCourse());
+    mockEnrollmentFindFirst.mockResolvedValue(null);
+
+    const payload = asPayload(await getLearnPayload('course-1'));
+
+    expect(payload.user.isAdminView).toBe(true);
+  });
+
+  it('a real worker never gets the admin view', async () => {
+    mockWorkerAuth.mockResolvedValue({
+      user: { id: 'w1', organizationUserId: 'ou-worker', organizationId: 'org-1', role: 'nurse' },
+    });
+    mockAdminAuth.mockResolvedValue(null);
+    mockOrganizationUserFindUnique.mockResolvedValue({
+      role: 'nurse',
+      user: { fullName: 'Jane Worker', email: 'jane@example.com' },
+      organization: { name: 'Acme Health' },
+      jobTitle: 'RN',
+    });
+    mockCourseFindUnique.mockResolvedValue(makeCourse());
+    mockEnrollmentFindFirst.mockResolvedValue({
+      id: 'enr-1',
+      progress: 0,
+      status: 'in_progress',
+      score: null,
+      videoPositionSeconds: 0,
+      quizAttempts: [],
+    });
+
+    const payload = asPayload(await getLearnPayload('course-1'));
+
+    expect(payload.user.isAdminView).toBe(false);
   });
 });

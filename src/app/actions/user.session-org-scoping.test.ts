@@ -47,7 +47,9 @@ beforeEach(() => {
 
 describe('getStaffUsers — org-scoping sourced from the session', () => {
   it('scopes both the user and invite lookups to the caller org (org-A)', async () => {
-    mockAdminAuth.mockResolvedValue({ user: { id: 'admin-1', organizationId: 'org-A' } });
+    mockAdminAuth.mockResolvedValue({
+      user: { id: 'admin-1', role: 'owner', organizationId: 'org-A' },
+    });
     mockWorkerAuth.mockResolvedValue(null);
 
     await getStaffUsers();
@@ -61,7 +63,9 @@ describe('getStaffUsers — org-scoping sourced from the session', () => {
   });
 
   it('a different admin session (org-B) issues org-B-scoped queries, never org-A', async () => {
-    mockAdminAuth.mockResolvedValue({ user: { id: 'admin-2', organizationId: 'org-B' } });
+    mockAdminAuth.mockResolvedValue({
+      user: { id: 'admin-2', role: 'owner', organizationId: 'org-B' },
+    });
     mockWorkerAuth.mockResolvedValue(null);
 
     await getStaffUsers();
@@ -75,7 +79,9 @@ describe('getStaffUsers — org-scoping sourced from the session', () => {
   });
 
   it('returns an empty roster and never touches the DB for an org-less session (an org: null filter would otherwise match every removed staffer across every tenant)', async () => {
-    mockAdminAuth.mockResolvedValue({ user: { id: 'admin-1', organizationId: null } });
+    mockAdminAuth.mockResolvedValue({
+      user: { id: 'admin-1', role: 'owner', organizationId: null },
+    });
     mockWorkerAuth.mockResolvedValue(null);
 
     const result = await getStaffUsers();
@@ -95,7 +101,9 @@ describe('getStaffUsers — org-scoping sourced from the session', () => {
 
 describe('searchStaffUsers — org-scoping sourced from the session', () => {
   it('scopes the search query to the caller org', async () => {
-    mockAdminAuth.mockResolvedValue({ user: { id: 'admin-1', organizationId: 'org-A' } });
+    mockAdminAuth.mockResolvedValue({
+      user: { id: 'admin-1', role: 'owner', organizationId: 'org-A' },
+    });
     mockWorkerAuth.mockResolvedValue(null);
 
     await searchStaffUsers('jane');
@@ -106,7 +114,9 @@ describe('searchStaffUsers — org-scoping sourced from the session', () => {
   });
 
   it('a different org session (org-B) never triggers an org-A-scoped search', async () => {
-    mockAdminAuth.mockResolvedValue({ user: { id: 'admin-2', organizationId: 'org-B' } });
+    mockAdminAuth.mockResolvedValue({
+      user: { id: 'admin-2', role: 'owner', organizationId: 'org-B' },
+    });
     mockWorkerAuth.mockResolvedValue(null);
 
     await searchStaffUsers('jane');
@@ -117,7 +127,9 @@ describe('searchStaffUsers — org-scoping sourced from the session', () => {
   });
 
   it('returns [] without querying the DB for an org-less session, regardless of query length', async () => {
-    mockAdminAuth.mockResolvedValue({ user: { id: 'admin-1', organizationId: null } });
+    mockAdminAuth.mockResolvedValue({
+      user: { id: 'admin-1', role: 'owner', organizationId: null },
+    });
     mockWorkerAuth.mockResolvedValue(null);
 
     const result = await searchStaffUsers('jane');

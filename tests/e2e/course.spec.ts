@@ -290,7 +290,12 @@ test.describe('Courses list — Video/Reading Course tabs and role-gated row act
     }
   });
 
-  test("supervisor (read-only) sees no write items in a course row's kebab menu", async ({
+  // UPDATED 2026-08-25 — team QA section 3.1: "Facility supervisors should be
+  // able to assign courses". Supervisor now holds assignment.create, so "Assign
+  // to staff" MUST appear. The AUTHORING actions must still not, per C8
+  // ("supervisors can't create or edit documents and courses"), and neither must
+  // Create Course — which is what this test now pins.
+  test("supervisor sees Assign but no authoring items in a course row's kebab menu", async ({
     page,
   }) => {
     const seeded = await seedCourseTabsFixture();
@@ -305,9 +310,9 @@ test.describe('Courses list — Video/Reading Course tabs and role-gated row act
       // Source Document" for anyone with document.read — supervisors included
       // — disabling it rather than hiding it when the course has no
       // sourceDocumentId (this seeded course wasn't AI-generated). So the
-      // trigger DOES render for a read-only supervisor; only its one item is
-      // disabled, and none of the write actions (Assign to staff, Rename,
-      // Delete) appear.
+      // trigger DOES render for a supervisor; its one item is disabled here
+      // because this seeded course wasn't AI-generated. "Assign to staff" now
+      // appears (3.1); Rename and Delete still must not (C8).
       const rowActionsButton = row.getByRole('button', { name: 'Row actions' });
       await expect(rowActionsButton).toBeVisible();
       await rowActionsButton.click();
@@ -316,7 +321,7 @@ test.describe('Courses list — Video/Reading Course tabs and role-gated row act
         'data-disabled',
         '',
       );
-      await expect(menu.getByRole('menuitem', { name: 'Assign to staff' })).toHaveCount(0);
+      await expect(menu.getByRole('menuitem', { name: 'Assign to staff' })).toHaveCount(1);
       await expect(menu.getByRole('menuitem', { name: 'Rename' })).toHaveCount(0);
       await expect(menu.getByRole('menuitem', { name: 'Delete' })).toHaveCount(0);
       await page.keyboard.press('Escape');

@@ -47,7 +47,9 @@ beforeEach(() => {
 
 describe('getAvailableUsers — org-scoping sourced from the session', () => {
   it('queries only users in the caller org (org-A), and only org-A', async () => {
-    mockAdminAuth.mockResolvedValue({ user: { id: 'admin-1', organizationId: 'org-A' } });
+    mockAdminAuth.mockResolvedValue({
+      user: { id: 'admin-1', role: 'owner', organizationId: 'org-A' },
+    });
     mockWorkerAuth.mockResolvedValue(null);
     mockOrgUserFindMany.mockResolvedValue([
       {
@@ -76,7 +78,9 @@ describe('getAvailableUsers — org-scoping sourced from the session', () => {
   });
 
   it('a different org session (org-B) never sees org-A results and never issues an org-A-scoped query', async () => {
-    mockAdminAuth.mockResolvedValue({ user: { id: 'admin-2', organizationId: 'org-B' } });
+    mockAdminAuth.mockResolvedValue({
+      user: { id: 'admin-2', role: 'owner', organizationId: 'org-B' },
+    });
     mockWorkerAuth.mockResolvedValue(null);
     mockOrgUserFindMany.mockResolvedValue([]);
 

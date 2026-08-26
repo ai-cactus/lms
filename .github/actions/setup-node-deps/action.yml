@@ -3,12 +3,15 @@ description: >-
   Sets up Node 24 and restores node_modules from cache, running `npm ci` only
   on a cache miss.
 
-  Why this exists: the repository is private on a Free plan, so Actions
-  minutes are metered (2,000/month). Six gate jobs each running a full
-  `npm ci` burned ~60-90s apiece on identical work. Keying a node_modules
-  cache on the lockfile hash turns that into a ~10s restore while keeping the
-  jobs parallel — cheaper than serialising them into one job, which would
-  have traded wall-clock for minutes.
+  Why this exists: every job that needs the dependency tree would otherwise
+  run a full `npm ci` (~60-90s) on identical work. Keying a node_modules
+  cache on the lockfile hash turns that into a ~10s restore.
+
+  History: this was written when six parallel gate jobs each paid that cost.
+  The gate has since been consolidated into a single sequential `static` job
+  (see quality-gate.yml), because GitHub bills each JOB rounded up to the
+  whole minute. The cache still earns its place across the remaining jobs
+  (static, test, build, e2e) and across reruns.
 
 inputs:
   prisma:
@@ -19,7 +22,7 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: actions/setup-node@v4
+    - uses: actions/setup-node@v7
       with:
         node-version: '24'
         # Caches the npm download cache, which still helps on a
@@ -28,7 +31,7 @@ runs:
 
     - name: Restore node_modules
       id: node-modules-cache
-      uses: actions/cache@v4
+      uses: actions/cache@v6
       with:
         path: node_modules
         # Exact-hash key with no restore-keys on purpose: a partial restore

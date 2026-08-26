@@ -44,6 +44,10 @@ vi.mock('@/lib/reminders/status-tracker', () => ({
 vi.mock('@/lib/facility/scope', () => ({
   listAccessibleFacilities: vi.fn().mockResolvedValue([]),
   resolveFacilityScopeSelection: vi.fn().mockResolvedValue({ mode: 'all' }),
+  // D-01: the page now resolves facility scope through
+  // requirePermissionWithFacilityScope, which consults this.
+  isOrgWideFacilityRole: (role: string) =>
+    ['owner', 'admin', 'hr', 'clinical_director', 'finance'].includes(role),
 }));
 vi.mock('@/components/dashboard/FacilityScopeSwitcher', () => ({
   default: () => <div data-testid="facility-scope-switcher" />,

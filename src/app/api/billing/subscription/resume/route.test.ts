@@ -1,11 +1,12 @@
 /**
  * Tests for POST /api/billing/subscription/resume.
  *
- * Phase 4 / Issue 3 added a 409 guard: a paused subscription with a pending
- * `stripeScheduleId` (a scheduled plan change) cannot be resumed via this
- * route, since clearing `pause_collection` while a Schedule is active would
- * conflict with the Schedule API. The admin must cancel the scheduled change
- * first.
+ * A paused subscription with a pending `stripeScheduleId` used to be
+ * hard-blocked with a 409, since clearing `pause_collection` while a Schedule
+ * wraps the subscription conflicts with the Schedule API. Because checkout
+ * lets a paused org schedule a plan change, that guard trapped orgs in the
+ * paused state with no way back. The route now releases the pending schedule
+ * first and proceeds; only a release that fails upstream stops it, with a 502.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -24,6 +25,7 @@ const { mockAuth, mockAudit, prismaMock, stripeMock } = vi.hoisted(() => {
   };
   const stripeMock = {
     subscriptions: { update: vi.fn() },
+    subscriptionSchedules: { retrieve: vi.fn(), release: vi.fn() },
   };
   return { mockAuth, mockAudit, prismaMock, stripeMock };
 });
@@ -59,26 +61,81 @@ const PAUSED_SUB = {
   scheduledEffectiveAt: null,
 };
 
+const PAUSED_SUB_WITH_SCHEDULE = {
+  ...PAUSED_SUB,
+  stripeScheduleId: 'sub_sched_1',
+  scheduledEffectiveAt: new Date('2026-08-17T00:00:00Z'),
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   mockAuth.mockResolvedValue({ user: { id: 'user-1', role: 'owner', organizationId: 'org-1' } });
   prismaMock.user.findUnique.mockResolvedValue(ADMIN_USER);
+  stripeMock.subscriptionSchedules.retrieve.mockResolvedValue({
+    id: 'sub_sched_1',
+    status: 'active',
+  });
+  stripeMock.subscriptionSchedules.release.mockResolvedValue({});
 });
 
-describe('POST /api/billing/subscription/resume — scheduled-change guard', () => {
-  it('returns 409 and does not touch Stripe when a plan change is pending', async () => {
-    prismaMock.subscription.findUnique.mockResolvedValue({
-      ...PAUSED_SUB,
-      stripeScheduleId: 'sub_sched_1',
-      scheduledEffectiveAt: new Date('2026-08-17T00:00:00Z'),
+describe('POST /api/billing/subscription/resume — pending plan-change schedule', () => {
+  it('releases the pending schedule and then resumes the subscription', async () => {
+    prismaMock.subscription.findUnique.mockResolvedValue(PAUSED_SUB_WITH_SCHEDULE);
+    stripeMock.subscriptions.update.mockResolvedValue({});
+
+    const res = await POST();
+
+    expect(res.status).toBe(200);
+    expect(stripeMock.subscriptionSchedules.release).toHaveBeenCalledWith('sub_sched_1');
+    expect(stripeMock.subscriptions.update).toHaveBeenCalledWith('sub_x', {
+      pause_collection: null,
     });
+    expect(prismaMock.subscription.update).toHaveBeenCalledWith({
+      where: { organizationId: 'org-1' },
+      data: {
+        scheduledPlan: null,
+        scheduledBillingCycle: null,
+        scheduledPriceId: null,
+        scheduledEffectiveAt: null,
+        stripeScheduleId: null,
+      },
+    });
+    expect(mockAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'billing.subscription.resume',
+        metadata: { releasedSchedule: true },
+      }),
+    );
+  });
+
+  it('resumes without a release call when Stripe no longer has the schedule', async () => {
+    prismaMock.subscription.findUnique.mockResolvedValue(PAUSED_SUB_WITH_SCHEDULE);
+    stripeMock.subscriptionSchedules.retrieve.mockRejectedValue(
+      Object.assign(new Error('No such subscription schedule'), { code: 'resource_missing' }),
+    );
+    stripeMock.subscriptions.update.mockResolvedValue({});
+
+    const res = await POST();
+
+    expect(res.status).toBe(200);
+    expect(stripeMock.subscriptionSchedules.release).not.toHaveBeenCalled();
+    expect(stripeMock.subscriptions.update).toHaveBeenCalledWith('sub_x', {
+      pause_collection: null,
+    });
+    expect(mockAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ metadata: { releasedSchedule: false } }),
+    );
+  });
+
+  it('returns 502 and never resumes when the release fails upstream', async () => {
+    prismaMock.subscription.findUnique.mockResolvedValue(PAUSED_SUB_WITH_SCHEDULE);
+    stripeMock.subscriptionSchedules.release.mockRejectedValue(new Error('Stripe API error'));
 
     const res = await POST();
     const body = await res.json();
 
-    expect(res.status).toBe(409);
-    expect(body.error).toMatch(/pending plan change/i);
-    expect(body.error).toMatch(/cancel it first/i);
+    expect(res.status).toBe(502);
+    expect(body.error).toMatch(/unable to update your subscription/i);
     expect(stripeMock.subscriptions.update).not.toHaveBeenCalled();
     expect(prismaMock.subscription.update).not.toHaveBeenCalled();
   });

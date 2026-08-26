@@ -3,10 +3,10 @@ import { authorize } from '@/lib/rbac/authorize';
 import { apiError } from '@/lib/api-response';
 import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
-import { getStripeClient } from '@/lib/stripe';
 import { guardApiSession } from '@/lib/auth-guard';
 import { logger } from '@/lib/logger';
 import { audit, getClientContext } from '@/lib/audit';
+import { releasePendingSchedule } from '@/lib/billing-schedule';
 
 // POST /api/billing/subscription/cancel-scheduled-change — releases a pending
 // subscription-schedule plan change and clears the local scheduled* columns.
@@ -28,8 +28,6 @@ export async function POST(request: NextRequest) {
     }
     const organizationId = ctx.organizationId;
 
-    const stripe = getStripeClient();
-
     const subscription = await prisma.subscription.findUnique({
       where: { organizationId },
       select: { id: true, stripeScheduleId: true },
@@ -46,20 +44,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // `release` ends the schedule but keeps the underlying subscription running
+    // Releasing ends the schedule but keeps the underlying subscription running
     // on its current plan — exactly what "cancel the scheduled change" means.
-    await stripe.subscriptionSchedules.release(subscription.stripeScheduleId);
-
-    await prisma.subscription.update({
-      where: { organizationId },
-      data: {
-        scheduledPlan: null,
-        scheduledBillingCycle: null,
-        scheduledPriceId: null,
-        scheduledEffectiveAt: null,
-        stripeScheduleId: null,
-      },
-    });
+    await releasePendingSchedule(organizationId, subscription.stripeScheduleId);
 
     logger.info({
       msg: '[billing] Cancelled scheduled plan change',

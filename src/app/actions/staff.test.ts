@@ -88,7 +88,12 @@ const {
     typeof arg === 'function' ? Promise.resolve(arg(txClient)) : Promise.all(arg),
   );
   const prismaMock = {
-    organizationUser: { findUnique: mockOrgUserFindUnique, update: mockOrgUserUpdate },
+    organizationUser: {
+      findUnique: mockOrgUserFindUnique,
+      findFirst: mockOrgUserFindUnique,
+      findMany: vi.fn().mockResolvedValue([]),
+      update: mockOrgUserUpdate,
+    },
     user: { update: mockUserUpdate },
     invite: {
       findUnique: mockInviteFindUnique,
@@ -96,7 +101,11 @@ const {
       updateMany: mockInviteUpdateMany,
       delete: mockInviteDelete,
     },
-    enrollment: { findUnique: mockEnrollmentFindUnique, deleteMany: mockEnrollmentDeleteMany },
+    enrollment: {
+      findUnique: mockEnrollmentFindUnique,
+      findFirst: mockEnrollmentFindUnique,
+      deleteMany: mockEnrollmentDeleteMany,
+    },
     facility: { findMany: mockFacilityFindMany },
     $transaction: mockTransaction,
   };

@@ -1,13 +1,8 @@
 import React from 'react';
-import { redirect } from 'next/navigation';
-import { auth } from '@/auth';
 import { getStatusTrackerSummaryForOrg } from '@/lib/reminders/status-tracker';
-import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
-import { can } from '@/lib/rbac/permissions';
-import { listAccessibleFacilities, resolveFacilityScopeSelection } from '@/lib/facility/scope';
+import { requirePermissionWithFacilityScope } from '@/lib/rbac/require-permission';
 import { FACILITY_SCOPE_PARAM } from '@/lib/facility/scope-param';
 import FacilityScopeSwitcher from '@/components/dashboard/FacilityScopeSwitcher';
-import type { Role } from '@/types/next-auth';
 import StatusTrackerTableClient, {
   type StatusTrackerRowView,
 } from '@/components/dashboard/status-tracker/StatusTrackerTableClient';
@@ -24,36 +19,27 @@ interface StatusTrackerPageProps {
 }
 
 export default async function StatusTrackerPage({ searchParams }: StatusTrackerPageProps) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    redirect('/login');
-  }
-
-  const { role, organizationId } = session.user;
-
-  // Roster-wide assignment visibility gates this page (finance is excluded from
-  // worker training metrics even though it is an admin-tier role).
-  if (!can(dbRoleToRoleKey(role as Role), 'assignment.read')) {
-    redirect('/dashboard');
-  }
-
-  // Scope is URL state, mirroring the dashboard: the selection is re-validated
-  // against the caller's accessible facilities on every request.
+  // D-01, fourth surface (unreported by the defect register). This page derived
+  // its facility ids from the `?facility=` parameter alone. For a supervisor who
+  // had not picked one, `scope.mode` is 'all' -> `[]` -> it passed `undefined`,
+  // which getStatusTrackerSummaryForOrg maps to NO facility predicate. A
+  // facility-bound supervisor therefore saw org-wide overdue enrollments,
+  // including the names and emails of workers at facilities they do not manage.
+  //
+  // 'all' means "all facilities I CAN SEE", never "no filter". `dataFacilityIds`
+  // encodes that distinction: null only for an org-wide role viewing all.
   const { facility: facilityParam } = await searchParams;
-  const scope = await resolveFacilityScopeSelection(session, facilityParam);
-  const scopedFacilityIds =
-    scope.mode === 'single'
-      ? [scope.facility.id]
-      : scope.mode === 'compare'
-        ? scope.facilities.map((facility) => facility.id)
-        : [];
-  const facilities = await listAccessibleFacilities(session);
+  const ctx = await requirePermissionWithFacilityScope('assignment.read', facilityParam);
+  const { organizationId, dataFacilityIds } = ctx;
+  const scopedFacilityIds = ctx.selectedFacilityIds;
+  const facilities = ctx.accessibleFacilities;
 
   const summary = organizationId
     ? await getStatusTrackerSummaryForOrg(
         organizationId,
         undefined,
-        scopedFacilityIds.length > 0 ? scopedFacilityIds : undefined,
+        // The security boundary — NOT `scopedFacilityIds`, which is view state.
+        dataFacilityIds ?? undefined,
       )
     : {
         overdueCount: 0,

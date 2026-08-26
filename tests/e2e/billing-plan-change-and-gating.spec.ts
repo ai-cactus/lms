@@ -592,3 +592,417 @@ test.describe('Billing — resume refreshes Overview without a manual reload (De
     }
   });
 });
+
+// ── bugfix/billing-cancel-resume-seats (#25, #26, #29, #33) ────────────────
+//
+// Stripe refuses cancellation-behaviour updates on a subscription attached to
+// a Subscription Schedule. cancel/resume/reactivate used to hard-block on the
+// LOCAL mirror column `subscription.stripeScheduleId` with a 409 telling the
+// admin to cancel the scheduled change first — confusing when a schedule was
+// genuinely still pending (#26), and a straight 500 when the mirror was stale
+// (#25). The fix (`releasePendingSchedule`, src/lib/billing-schedule.ts)
+// releases the pending schedule and proceeds instead of blocking. `pause`
+// deliberately keeps its hard 409 guard (test below re-confirms that).
+//
+// Network boundary: cancel/resume both call Stripe (schedule release +
+// cancel_at_period_end / pause_collection), which this local harness cannot
+// reach (.env.e2e ships a dummy STRIPE_SECRET_KEY — see file-level Network
+// boundary note above). Those two routes are intercepted at the browser
+// network layer, same convention as the existing resume/cancel-scheduled-
+// change tests in this file. Each mock ALSO commits the same subscription-row
+// update the real route would have made via `releasePendingSchedule`, so the
+// follow-up navigation's server-side re-read (router.refresh() / a fresh
+// page.goto) reflects genuinely changed state rather than a canned response
+// papering over a stale row — the "banner clears" / "pause state clears"
+// assertions below are real, not just an echo of the mock.
+//
+// `pause`'s 409 guard fires purely from the DB read, before any Stripe call
+// (see src/app/api/billing/subscription/pause/route.ts:58-70) — that test
+// hits the real, unmocked route.
+
+async function setSubscriptionSchedule(
+  orgId: string,
+  fields: {
+    cancelAtPeriodEnd?: boolean;
+    pausedAt?: Date | null;
+    pauseEndsAt?: Date | null;
+    scheduledPlan?: string | null;
+    scheduledBillingCycle?: string | null;
+    scheduledEffectiveAt?: Date | null;
+    stripeScheduleId?: string | null;
+  },
+): Promise<void> {
+  const client = await db();
+  try {
+    await client.query(
+      `UPDATE subscriptions SET
+         cancel_at_period_end = COALESCE($2, cancel_at_period_end),
+         paused_at = $3,
+         pause_ends_at = $4,
+         scheduled_plan = $5::"SubscriptionPlan",
+         scheduled_billing_cycle = $6::"SubscriptionBillingCycle",
+         scheduled_price_id = NULL,
+         scheduled_effective_at = $7,
+         stripe_schedule_id = $8
+       WHERE organization_id = $1`,
+      [
+        orgId,
+        fields.cancelAtPeriodEnd ?? null,
+        fields.pausedAt ?? null,
+        fields.pauseEndsAt ?? null,
+        fields.scheduledPlan ?? null,
+        fields.scheduledBillingCycle ?? null,
+        fields.scheduledEffectiveAt ?? null,
+        fields.stripeScheduleId ?? null,
+      ],
+    );
+  } finally {
+    await client.end();
+  }
+}
+
+/**
+ * "Your subscription is paused" genuinely renders in THREE places at once on
+ * `/dashboard/billing?tab=subscription`: the site-wide BillingPausedBanner
+ * (layout-level, `src/components/billing/BillingPausedBanner.tsx:63`), the
+ * Subscription tab's own status card (`SubscriptionTab.tsx:779`), and — were
+ * it mounted — OverviewTab's copy (`OverviewTab.tsx:310`, not mounted here
+ * since only one tab renders at a time). A bare `getByText` is a genuine
+ * Playwright strict-mode violation, not a rendering bug — `.first()`/`.last()`
+ * would silently stop checking the region that actually matters.
+ *
+ * Of the two elements actually in the DOM here, only SubscriptionTab's own
+ * copy is a real heading (`<h3>`) — the banner's is a plain `<p>` — so
+ * `getByRole('heading', ...)` uniquely resolves to the Subscription tab's own
+ * card (same targeting technique PR #520 used for the route-announcer
+ * collision, applied here to a genuine multi-render string instead). Walking
+ * up from that heading to its containing status-card row also scopes the
+ * "Continue Plan" / "Cancel Subscription" button lookup to the SAME card,
+ * rather than the banner's own button.
+ */
+function subscriptionTabPausedCard(page: Page) {
+  const heading = page.getByRole('heading', { name: 'Your subscription is paused' });
+  return { heading, card: heading.locator('..').locator('..') };
+}
+
+test.describe('Billing — cancel auto-releases a pending schedule instead of erroring (#25, #26)', () => {
+  test('cancels successfully with no pending schedule — no "Internal server error" anywhere on screen (#25)', async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    const seeded = await seedAdmin({ subscription: { status: 'active' } });
+
+    try {
+      await loginAs(page, seeded.email, seeded.password);
+
+      await page.route('**/api/billing/subscription/cancel', async (route) => {
+        await setSubscriptionSchedule(seeded.orgId, { cancelAtPeriodEnd: true });
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            message: 'Subscription will be canceled at the end of the billing period.',
+            cancelAtPeriodEnd: true,
+            currentPeriodEnd: new Date(Date.now() + 1000 * 60 * 60 * 24 * 300).toISOString(),
+          }),
+        });
+      });
+
+      await page.goto('/dashboard/billing/cancel');
+      await page.getByRole('checkbox').click();
+      await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+
+      const dialog = page.getByRole('dialog');
+      await expect(dialog).toBeVisible();
+      await dialog.getByRole('button', { name: 'Continue' }).click();
+
+      await page.waitForURL('**/dashboard/billing', { timeout: 20000 });
+      await expect(
+        page.getByRole('alert').filter({ hasText: /internal server error|unexpected error/i }),
+      ).toHaveCount(0);
+      await expect(page.getByText(/internal server error/i)).toHaveCount(0);
+    } finally {
+      await cleanup(seeded);
+    }
+  });
+
+  test('cancels successfully with a pending scheduled downgrade — no "cancel it first" error, and the scheduled-change banner clears (#26)', async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    const seeded = await seedAdmin({
+      subscription: {
+        status: 'active',
+        scheduledPlan: 'starter',
+        scheduledBillingCycle: 'yearly',
+        scheduledEffectiveAt: new Date('2026-09-01T00:00:00.000Z'),
+        stripeScheduleId: 'sub_sched_e2e_cancel',
+      },
+    });
+
+    try {
+      await loginAs(page, seeded.email, seeded.password);
+
+      // Pre-condition: the pending schedule is genuinely visible before cancel.
+      await page.goto('/dashboard/billing?tab=subscription');
+      await expect(page.getByText('Plan change scheduled')).toBeVisible();
+
+      await page.route('**/api/billing/subscription/cancel', async (route) => {
+        await setSubscriptionSchedule(seeded.orgId, {
+          cancelAtPeriodEnd: true,
+          scheduledPlan: null,
+          scheduledBillingCycle: null,
+          scheduledEffectiveAt: null,
+          stripeScheduleId: null,
+        });
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            message: 'Subscription will be canceled at the end of the billing period.',
+            cancelAtPeriodEnd: true,
+            currentPeriodEnd: new Date(Date.now() + 1000 * 60 * 60 * 24 * 300).toISOString(),
+          }),
+        });
+      });
+
+      await page.goto('/dashboard/billing/cancel');
+      await page.getByRole('checkbox').click();
+      await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+
+      const dialog = page.getByRole('dialog');
+      await expect(dialog).toBeVisible();
+      await expect(
+        dialog.getByRole('alert').filter({ hasText: /cancel it first|pending plan change/i }),
+      ).toHaveCount(0);
+      await dialog.getByRole('button', { name: 'Continue' }).click();
+      await page.waitForURL('**/dashboard/billing', { timeout: 20000 });
+
+      // Real, fresh server read — proves the schedule was actually released,
+      // not just that the client stayed quiet about the (mocked) response.
+      await page.goto('/dashboard/billing?tab=subscription');
+      await expect(page.getByText('Plan change scheduled')).toHaveCount(0);
+      await expect(page.getByText('Your subscription is scheduled to cancel')).toBeVisible();
+    } finally {
+      await cleanup(seeded);
+    }
+  });
+});
+
+test.describe('Billing — resume auto-releases a pending schedule instead of blocking a restart (#29)', () => {
+  test('resumes immediately from a plain pause, same day, well before pauseEndsAt', async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    const seeded = await seedAdmin({
+      subscription: {
+        status: 'active',
+        pausedAt: new Date(),
+        pauseEndsAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 90),
+      },
+    });
+
+    try {
+      await loginAs(page, seeded.email, seeded.password);
+
+      await page.route('**/api/billing/subscription/resume', async (route) => {
+        await setSubscriptionSchedule(seeded.orgId, { pausedAt: null, pauseEndsAt: null });
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ message: 'Subscription has been resumed.', success: true }),
+        });
+      });
+
+      await page.goto('/dashboard/billing?tab=subscription');
+      const { heading, card } = subscriptionTabPausedCard(page);
+      await expect(heading).toBeVisible();
+
+      const resumeButton = card.getByRole('button', { name: 'Continue Plan' });
+      await expect(resumeButton).toBeVisible();
+      await resumeButton.click();
+
+      await expect(page).toHaveURL(/[?&]tab=overview/, { timeout: 20000 });
+      // Real, unmocked overview re-read (no stripeCustomerId on this freshly
+      // seeded org) — the pause genuinely cleared server-side. Checking the
+      // SubscriptionTab heading again would be vacuous (that tab is unmounted
+      // once activeTab flips to 'overview'); the site-wide BillingPausedBanner
+      // is layout-level and DB-driven, so its disappearance is real proof.
+      await expect(page.getByRole('status')).toHaveCount(0);
+      await expect(page.getByText(/Next invoice on/i)).toBeVisible();
+    } finally {
+      await cleanup(seeded);
+    }
+  });
+
+  test('resumes a pause even with a pending plan-change schedule present, instead of the schedule-conflict error (sharper #29 repro)', async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    const seeded = await seedAdmin({
+      subscription: {
+        status: 'active',
+        pausedAt: new Date(),
+        pauseEndsAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 90),
+        scheduledPlan: 'starter',
+        scheduledBillingCycle: 'yearly',
+        scheduledEffectiveAt: new Date('2026-09-01T00:00:00.000Z'),
+        stripeScheduleId: 'sub_sched_e2e_resume',
+      },
+    });
+
+    try {
+      await loginAs(page, seeded.email, seeded.password);
+
+      await page.goto('/dashboard/billing?tab=subscription');
+      const { heading, card } = subscriptionTabPausedCard(page);
+      await expect(heading).toBeVisible();
+      await expect(page.getByText('Plan change scheduled')).toBeVisible();
+
+      await page.route('**/api/billing/subscription/resume', async (route) => {
+        await setSubscriptionSchedule(seeded.orgId, {
+          pausedAt: null,
+          pauseEndsAt: null,
+          scheduledPlan: null,
+          scheduledBillingCycle: null,
+          scheduledEffectiveAt: null,
+          stripeScheduleId: null,
+        });
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ message: 'Subscription has been resumed.', success: true }),
+        });
+      });
+
+      const resumeButton = card.getByRole('button', { name: 'Continue Plan' });
+      await expect(resumeButton).toBeVisible();
+      await resumeButton.click();
+
+      // The old bug: this click would 409 with "pending plan change ...
+      // cancel it first" and leave the org stuck paused. The fix releases the
+      // schedule and resumes instead.
+      await expect(
+        page.getByRole('alert').filter({ hasText: /cancel it first|pending plan change/i }),
+      ).toHaveCount(0);
+      await expect(page).toHaveURL(/[?&]tab=overview/, { timeout: 20000 });
+      // Real proof the pause cleared server-side: the layout-level, DB-driven
+      // banner disappears (checking the SubscriptionTab heading here would be
+      // vacuous — that tab is unmounted once activeTab flips to 'overview').
+      await expect(page.getByRole('status')).toHaveCount(0);
+
+      await page.goto('/dashboard/billing?tab=subscription');
+      await expect(page.getByText('Plan change scheduled')).toHaveCount(0);
+    } finally {
+      await cleanup(seeded);
+    }
+  });
+});
+
+test.describe('Billing — pause keeps its hard schedule-conflict guard (regression guard, NOT a repro of a bug)', () => {
+  test('pausing while a plan-change schedule is pending still returns the 409 — proves the guard was deliberately left intact', async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    const seeded = await seedAdmin({
+      subscription: {
+        status: 'active',
+        scheduledPlan: 'starter',
+        scheduledBillingCycle: 'yearly',
+        scheduledEffectiveAt: new Date('2026-09-01T00:00:00.000Z'),
+        stripeScheduleId: 'sub_sched_e2e_pause_guard',
+      },
+    });
+
+    try {
+      await loginAs(page, seeded.email, seeded.password);
+
+      // No page.route interception here — this hits the real pause route.
+      // Its 409 guard (route.ts:58-70) reads only the local DB mirror and
+      // returns before any Stripe call, so it's fully reachable without a
+      // live Stripe test-mode account.
+      await page.goto('/dashboard/billing/cancel');
+      await page.getByRole('button', { name: 'Pause Instead' }).click();
+      await page.getByRole('menuitem', { name: '1 Month' }).click();
+
+      const dialog = page.getByRole('dialog');
+      await expect(dialog).toBeVisible();
+      await dialog.getByRole('button', { name: 'Continue' }).click();
+
+      const errorAlert = dialog.getByRole('alert');
+      await expect(errorAlert).toBeVisible();
+      await expect(errorAlert).toContainText(/pending plan change/i);
+      await expect(errorAlert).toContainText(/cancel it first/i);
+      // The dialog stays open on a failed pause — no navigation happened.
+      await expect(page).toHaveURL(/\/dashboard\/billing\/cancel$/);
+    } finally {
+      await cleanup(seeded);
+    }
+  });
+});
+
+test.describe('Billing — Staff Usage counts every active member, not just workers (#33)', () => {
+  test('Overview "Staff Usage" reads 7, not 1, for 1 worker + 6 managers', async ({ page }) => {
+    test.setTimeout(90_000);
+    const seeded = await seedAdmin({ subscription: { status: 'active' } });
+    const extraUserIds: string[] = [];
+
+    try {
+      const client = await db();
+      const hashed = await bcrypt.hash('unused-not-a-real-login', 10);
+      try {
+        // seedAdmin's owner is manager #1 of 6; add 4 more managers + 1 worker
+        // (nurse) for 1 worker + 6 managers = 7 active seats total (#33 repro).
+        const roles = ['admin', 'supervisor', 'hr', 'clinical_director', 'finance', 'nurse'];
+        for (const role of roles) {
+          const userId = crypto.randomUUID();
+          const orgUserId = crypto.randomUUID();
+          const email = uid(`member-${role}`);
+          await client.query(
+            `INSERT INTO users (id, email, password, email_verified, auth_provider, first_name, last_name, full_name, created_at, updated_at)
+             VALUES ($1, $2, $3, true, 'credentials', $4, $5, $6, NOW(), NOW())`,
+            [userId, email, hashed, 'E2E', role, `E2E ${role}`],
+          );
+          await client.query(
+            `INSERT INTO organization_users (id, user_id, organization_id, role, active, joined_at, role_assigned_at, created_at, updated_at)
+             VALUES ($1, $2, $3, $4::"UserRole", true, NOW(), NOW(), NOW(), NOW())`,
+            [orgUserId, userId, seeded.orgId, role],
+          );
+          extraUserIds.push(userId);
+        }
+        // A deactivated member must not inflate the count.
+        const deactivatedUserId = crypto.randomUUID();
+        await client.query(
+          `INSERT INTO users (id, email, password, email_verified, auth_provider, first_name, last_name, full_name, created_at, updated_at)
+           VALUES ($1, $2, $3, true, 'credentials', 'E2E', 'inactive', 'E2E inactive', NOW(), NOW())`,
+          [deactivatedUserId, uid('member-inactive'), hashed],
+        );
+        await client.query(
+          `INSERT INTO organization_users (id, user_id, organization_id, role, active, joined_at, role_assigned_at, created_at, updated_at)
+           VALUES ($1, $2, $3, 'nurse'::"UserRole", false, NOW(), NOW(), NOW(), NOW())`,
+          [crypto.randomUUID(), deactivatedUserId, seeded.orgId],
+        );
+        extraUserIds.push(deactivatedUserId);
+      } finally {
+        await client.end();
+      }
+
+      await loginAs(page, seeded.email, seeded.password);
+      await page.goto('/dashboard/billing');
+
+      await expect(page.getByText('Staff Usage')).toBeVisible();
+      await expect(page.getByText(/7\s*\/\s*50\s*active/i)).toBeVisible();
+      await expect(page.getByText(/^1\s*\/\s*50\s*active/i)).toHaveCount(0);
+    } finally {
+      if (extraUserIds.length > 0) {
+        const client = await db();
+        try {
+          await client.query(`DELETE FROM users WHERE id = ANY($1::text[])`, [extraUserIds]);
+        } finally {
+          await client.end();
+        }
+      }
+      await cleanup(seeded);
+    }
+  });
+});

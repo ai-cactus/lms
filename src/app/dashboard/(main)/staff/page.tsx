@@ -1,30 +1,29 @@
 import React from 'react';
 import { getStaffUsers } from '@/app/actions/user';
 import StaffListClient from '@/components/dashboard/staff/StaffListClient';
-import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
 import { BILLING_PLANS } from '@/lib/billing-plans';
 import { DEFAULT_SELF_SERVE_WORKER_ROLE } from '@/lib/rbac/role-utils';
-import { listAccessibleFacilities, type AccessibleFacility } from '@/lib/facility/scope';
+import { requirePermissionWithFacilityScope } from '@/lib/rbac/require-permission';
+import type { AccessibleFacility } from '@/lib/facility/scope';
 import type { Role } from '@/types/next-auth';
 
 export const dynamic = 'force-dynamic';
 
 export default async function StaffPage() {
-  const session = await auth();
-  const sessionUser = session?.user as
-    { organizationId?: string; organizationUserId?: string | null; role?: Role } | undefined;
-  const hasOrganization = !!sessionUser?.organizationId;
-  const organizationId = sessionUser?.organizationId;
-  const inviterRole: Role = sessionUser?.role ?? DEFAULT_SELF_SERVE_WORKER_ROLE;
+  // D-01: this page previously called `auth()` and nothing else — no permission
+  // check at all. The roster was reachable by anyone who typed the URL, and the
+  // sidebar not linking it was doing the work authorization should have done.
+  const ctx = await requirePermissionWithFacilityScope('user.read');
 
-  // Only fetch users if org exists, otherwise return empty list
+  const hasOrganization = !!ctx.organizationId;
+  const organizationId = ctx.organizationId ?? undefined;
+  const inviterRole: Role = ctx.role ?? DEFAULT_SELF_SERVE_WORKER_ROLE;
+
   const users = hasOrganization ? await getStaffUsers() : [];
 
-  // Facilities the viewer may move staff between — re-derived per request rather
-  // than read from the session, so scope can never go stale.
-  const facilities: AccessibleFacility[] =
-    session && hasOrganization ? await listAccessibleFacilities(session) : [];
+  // Already re-derived per request by the guard, so scope can never go stale.
+  const facilities: AccessibleFacility[] = ctx.accessibleFacilities;
 
   // Fetch plan quota info so the UI can show seat usage and block at-limit invites
   let planLimit: number | null = null;
@@ -74,7 +73,7 @@ export default async function StaffPage() {
       currentWorkerCount={currentWorkerCount}
       pendingInviteCount={pendingInviteCount}
       inviterRole={inviterRole}
-      viewerOrganizationUserId={sessionUser?.organizationUserId ?? null}
+      viewerOrganizationUserId={ctx.organizationUserId ?? null}
       facilities={facilities}
     />
   );

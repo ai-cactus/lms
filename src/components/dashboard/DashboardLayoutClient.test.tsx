@@ -237,7 +237,10 @@ describe('DashboardLayoutClient — exact sidebar module set for all 6 manager r
     // Staff Management and Audit Reports are no longer visible.
     {
       role: 'finance',
-      visible: ['Dashboard', 'Courses', 'Billing', 'Help Center'],
+      // Courses removed 2026-08-25 — team QA #9: Finance must not view courses
+      // from the admin side. The nav follows `course.read`, which the finance
+      // grant no longer carries.
+      visible: ['Dashboard', 'Billing', 'Help Center'],
     },
     {
       role: 'front_desk_admin',
