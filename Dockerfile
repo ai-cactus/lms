@@ -1,7 +1,15 @@
+# The Node major here MUST match `.nvmrc` (which CI's setup-node-deps action
+# reads). A skew between the two is invisible until deploy: CI runs
+# `npm run build` on its own Node, so a dependency that requires a newer
+# runtime builds green in CI and only fails here. That is exactly how
+# jsdom 30 (engines: ^22.22.2 || ^24.15.0 || >=26) broke the staging image
+# while every CI check passed on Node 24.
+ARG NODE_VERSION=24
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Stage 1: Install dependencies
 # ──────────────────────────────────────────────────────────────────────────────
-FROM node:20-slim AS deps
+FROM node:${NODE_VERSION}-slim AS deps
 
 # openssl is required by Prisma's query engine on Debian/slim
 RUN apt-get update && apt-get install -y --no-install-recommends openssl \
@@ -16,7 +24,7 @@ RUN npm ci --legacy-peer-deps
 # ──────────────────────────────────────────────────────────────────────────────
 # Stage 2: Build the Next.js application
 # ──────────────────────────────────────────────────────────────────────────────
-FROM node:20-slim AS builder
+FROM node:${NODE_VERSION}-slim AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends openssl \
     && rm -rf /var/lib/apt/lists/*
@@ -45,7 +53,7 @@ RUN npm run build
 # ──────────────────────────────────────────────────────────────────────────────
 # Stage 3: Production runtime image
 # ──────────────────────────────────────────────────────────────────────────────
-FROM node:20-slim AS runner
+FROM node:${NODE_VERSION}-slim AS runner
 
 # ffmpeg: required by the video-transcode worker to normalize uploaded course
 # videos to a web-safe, faststart MP4 (scripts/transcode-worker.ts, run via tsx).
