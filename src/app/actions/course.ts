@@ -2013,7 +2013,22 @@ export async function retakeQuiz(enrollmentId: string) {
   return { success: true };
 }
 
-export async function assignRetake(enrollmentId: string, retakeReason?: string) {
+/**
+ * Outcome of {@link assignRetake}. A refusal is returned rather than thrown so
+ * the reason survives Next.js's production redaction of Server Action errors —
+ * see {@link AssignCoursesToUserResult} and `enrollUsers`' `refusedReason`.
+ */
+export interface AssignRetakeResult {
+  success: boolean;
+  retakeEnrollmentId?: string;
+  /** Set when the call was refused outright — no retake enrollment was created. */
+  refusedReason?: string;
+}
+
+export async function assignRetake(
+  enrollmentId: string,
+  retakeReason?: string,
+): Promise<AssignRetakeResult> {
   const session = await resolveSession();
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
@@ -2046,15 +2061,33 @@ export async function assignRetake(enrollmentId: string, retakeReason?: string) 
     throw new Error('Enrollment not found');
   }
 
+  // Refused by return, not thrown: the reason is guidance the admin acts on, and
+  // a thrown message is redacted to React error #441 in production builds.
+  // Fail-closed — no retake enrollment has been created at this point.
   if (lockedEnrollment.status !== 'locked') {
-    throw new Error('Enrollment is not locked');
+    logger.warn({
+      msg: '[course] assignRetake refused — enrollment is not locked',
+      enrollmentId,
+      status: lockedEnrollment.status,
+      userId: session.user.id,
+    });
+    return { success: false, refusedReason: 'Enrollment is not locked' };
   }
 
   const existingRetake = await prisma.enrollment.findFirst({
     where: { retakeOf: enrollmentId, status: 'enrolled' },
   });
   if (existingRetake) {
-    throw new Error('An active retake already exists for this enrollment');
+    logger.warn({
+      msg: '[course] assignRetake refused — an active retake already exists',
+      enrollmentId,
+      existingRetakeEnrollmentId: existingRetake.id,
+      userId: session.user.id,
+    });
+    return {
+      success: false,
+      refusedReason: 'An active retake already exists for this enrollment',
+    };
   }
 
   const retakeEnrollment = await prisma.enrollment.create({
