@@ -6,12 +6,14 @@ const {
   mockCourseFindMany,
   mockOfferingFindMany,
   mockEnrollmentGroupBy,
+  mockFacilityFindMany,
 } = vi.hoisted(() => ({
   mockAuth: vi.fn(),
   mockWorkerAuth: vi.fn(),
   mockCourseFindMany: vi.fn(),
   mockOfferingFindMany: vi.fn(),
   mockEnrollmentGroupBy: vi.fn(),
+  mockFacilityFindMany: vi.fn(),
 }));
 
 vi.mock('@/lib/prisma', () => {
@@ -19,6 +21,9 @@ vi.mock('@/lib/prisma', () => {
     course: { findMany: mockCourseFindMany },
     orgCourseOffering: { findMany: mockOfferingFindMany },
     enrollment: { groupBy: mockEnrollmentGroupBy },
+    // getCourses facility-scopes its enrollment tallies, which resolves the
+    // caller's accessible facilities for anything but an org-wide role.
+    facility: { findMany: mockFacilityFindMany },
   };
   return { prisma, default: prisma };
 });
@@ -33,10 +38,16 @@ beforeEach(() => {
   // membership id and org id directly — there is no separate `prisma.user`
   // lookup to enrich the session with org context.
   mockAuth.mockResolvedValue({
-    user: { id: 'admin-1', organizationUserId: 'ou-admin-1', organizationId: 'org-1' },
+    user: {
+      id: 'admin-1',
+      role: 'admin',
+      organizationUserId: 'ou-admin-1',
+      organizationId: 'org-1',
+    },
   });
   mockWorkerAuth.mockResolvedValue(null);
   mockEnrollmentGroupBy.mockResolvedValue([]);
+  mockFacilityFindMany.mockResolvedValue([]);
 });
 
 describe('getCourses', () => {

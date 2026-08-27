@@ -134,14 +134,22 @@ export async function getCourses(): Promise<CourseWithStats[]> {
   const adoptedCourseIds = adoptedCourses.map((c) => c.id);
 
   // Per-course enrollment totals + completed/attested tallies via grouped
-  // aggregation (F-028 pattern). Own courses count ALL enrollments (unscoped,
-  // matching the prior behavior); adopted courses count only THIS org's staff.
+  // aggregation (F-028 pattern). Adopted courses count only THIS org's staff.
+  //
+  // Both are also facility-scoped: a supervisor's card must not report an
+  // organisation-wide "42 enrolled / 61% complete" over a roster they cannot
+  // open — the detail page's roster is narrowed the same way, and a headline
+  // figure that disagrees with the list beneath it is still leaked information.
+  const dataFacilityIds = await resolveDataFacilityIds(session);
+  const facilityFilter: Prisma.EnrollmentWhereInput =
+    dataFacilityIds === null ? {} : { facilityId: { in: dataFacilityIds } };
+
   const [ownCounts, adoptedCounts] = await Promise.all([
     prisma.enrollment.groupBy({
       by: ['courseId', 'status'],
       // Must track `authoredWhere` — otherwise a manager sees their colleagues'
       // courses listed with a permanent 0 enrolled / 0 completed.
-      where: { course: authoredWhere },
+      where: { course: authoredWhere, ...facilityFilter },
       _count: { _all: true },
     }),
     organizationId && adoptedCourseIds.length
@@ -150,6 +158,7 @@ export async function getCourses(): Promise<CourseWithStats[]> {
           where: {
             courseId: { in: adoptedCourseIds },
             organizationUser: { organizationId },
+            ...facilityFilter,
           },
           _count: { _all: true },
         })

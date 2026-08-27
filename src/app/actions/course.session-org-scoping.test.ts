@@ -49,6 +49,9 @@ vi.mock('@/lib/prisma', () => {
     // A retake is stamped with the member's CURRENT facility, resolved fresh.
     organizationUserFacility: { findFirst: vi.fn().mockResolvedValue(null) },
     notification: { updateMany: mockNotificationUpdateMany },
+    organizationUser: { findMany: vi.fn().mockResolvedValue([]) },
+    // Facility scope is resolved for anything but an org-wide role.
+    facility: { findMany: vi.fn().mockResolvedValue([]) },
   };
   return { prisma, default: prisma };
 });
