@@ -11,6 +11,8 @@ const {
   mockOrgUserCount,
   mockForkCourse,
   mockResolveFacilityScope,
+  mockListAccessibleFacilities,
+  mockOrgUserFindMany,
 } = vi.hoisted(() => ({
   mockAdminAuth: vi.fn(),
   mockWorkerAuth: vi.fn(),
@@ -22,6 +24,8 @@ const {
   mockOrgUserCount: vi.fn(),
   mockForkCourse: vi.fn(),
   mockResolveFacilityScope: vi.fn(),
+  mockListAccessibleFacilities: vi.fn(),
+  mockOrgUserFindMany: vi.fn(),
 }));
 
 vi.mock('@/lib/prisma', () => {
@@ -34,7 +38,7 @@ vi.mock('@/lib/prisma', () => {
     enrollment: { groupBy: mockEnrollmentGroupBy, findMany: mockEnrollmentFindMany },
     // Post refactor: total org staff is counted on OrganizationUser (scoped to
     // WORKER_ROLES), not a raw `prisma.user.count`.
-    organizationUser: { count: mockOrgUserCount },
+    organizationUser: { count: mockOrgUserCount, findMany: mockOrgUserFindMany },
   };
   return { prisma, default: prisma };
 });
@@ -45,7 +49,14 @@ vi.mock('@/lib/course/fork-course', () => ({ forkCourse: mockForkCourse }));
 // getDashboardData re-validates `requestedFacilityId` through resolveFacilityScope;
 // mocked here so facility-filter tests control the scope directly rather than
 // exercising scope.ts's own DB query (covered by its own unit suite).
-vi.mock('@/lib/facility/scope', () => ({ resolveFacilityScope: mockResolveFacilityScope }));
+// `isOrgWideFacilityRole` is kept REAL (it is a pure role-list lookup): the
+// roster-narrowing tests below turn on the genuine org-wide/facility-bound
+// split, and a stubbed verdict would prove nothing about it.
+vi.mock('@/lib/facility/scope', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/facility/scope')>()),
+  resolveFacilityScope: mockResolveFacilityScope,
+  listAccessibleFacilities: mockListAccessibleFacilities,
+}));
 vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
@@ -60,6 +71,7 @@ import {
 import { ADMIN_ROLES, WORKER_ROLES, dbRoleToRoleKey } from '@/lib/rbac/role-utils';
 import { can } from '@/lib/rbac/permissions';
 import type { Role } from '@/types/next-auth';
+import { isOrgWideFacilityRole } from '@/lib/facility/scope';
 
 const ORG_USER_ID = 'ou-admin-1';
 const ORG_ID = 'org-1';
@@ -592,6 +604,13 @@ const ROSTER_PRIVILEGED_ROLES = ADMIN_ROLES.filter((role) =>
 const ROSTER_UNPRIVILEGED_ADMIN_ROLES = ADMIN_ROLES.filter(
   (role) => !can(dbRoleToRoleKey(role), 'user.read'),
 );
+// Holding `user.read` is no longer enough to see the whole roster: a
+// facility-bound holder (supervisor) sees only their own facilities' rows, so
+// the two halves are asserted separately.
+const ROSTER_PRIVILEGED_ORG_WIDE_ROLES = ROSTER_PRIVILEGED_ROLES.filter(isOrgWideFacilityRole);
+const ROSTER_PRIVILEGED_FACILITY_BOUND_ROLES = ROSTER_PRIVILEGED_ROLES.filter(
+  (role) => !isOrgWideFacilityRole(role),
+);
 
 describe('getCourseById', () => {
   const CREATOR_USER_ID = 'creator-user-1';
@@ -659,6 +678,10 @@ describe('getCourseById', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // Facility-bound viewers default to "no accessible facility" so any test
+    // that does not opt in exercises the fail-closed path.
+    mockListAccessibleFacilities.mockResolvedValue([]);
+    mockOrgUserFindMany.mockResolvedValue([]);
   });
 
   it.each(WORKER_ROLES)(
@@ -731,8 +754,8 @@ describe('getCourseById', () => {
     );
   });
 
-  it.each(ROSTER_PRIVILEGED_ROLES)(
-    'a manager holding user.read (%s) who is NOT the creator still receives the full roster',
+  it.each(ROSTER_PRIVILEGED_ORG_WIDE_ROLES)(
+    'an ORG-WIDE manager holding user.read (%s) who is NOT the creator still receives the full roster',
     async (role) => {
       const adminId = 'admin-viewer';
       const otherA = makeEnrollment('staff-a', 1);
@@ -752,6 +775,28 @@ describe('getCourseById', () => {
       const emails = result.enrollments.map((e) => e.organizationUser.user.email);
       expect(emails).toContain('staff-a@example.com');
       expect(emails).toContain('staff-b@example.com');
+    },
+  );
+
+  it.each(ROSTER_PRIVILEGED_FACILITY_BOUND_ROLES)(
+    "a FACILITY-BOUND manager holding user.read (%s) receives only their own facilities' rows",
+    async (role) => {
+      const supervisorId = 'supervisor-viewer';
+      const sameFacility = makeEnrollment('staff-a', 1);
+      const otherFacility = makeEnrollment('staff-b', 2);
+      const own = makeEnrollment(supervisorId, 3);
+      mockCourseFindUnique.mockResolvedValue(makeCourse([sameFacility, own, otherFacility]));
+      mockListAccessibleFacilities.mockResolvedValue([{ id: 'fac-1' }]);
+      mockOrgUserFindMany.mockResolvedValue([{ id: 'ou-staff-a' }]);
+      setAdminSession(supervisorId, role);
+
+      const result = await getCourseById('course-1');
+
+      expect(result.enrollments.map((e) => e.organizationUser.userId).sort()).toEqual(
+        ['staff-a', supervisorId].sort(),
+      );
+      const emails = result.enrollments.map((e) => e.organizationUser.user.email);
+      expect(emails).not.toContain('staff-b@example.com');
     },
   );
 

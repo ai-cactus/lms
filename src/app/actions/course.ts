@@ -16,6 +16,11 @@ import type { StaffEntry } from '@/types/enrollment';
 import { logger } from '@/lib/logger';
 import { resolveMemberFacilityId, resolveMemberFacilityIds } from '@/lib/facility/member-facility';
 import { resolveFacilityScope } from '@/lib/facility/scope';
+import {
+  resolveDataFacilityIds,
+  staffFacilityWhere,
+  type FacilityScopeSession,
+} from '@/lib/facility/staff-where';
 import { forkCourse } from '@/lib/course/fork-course';
 import { resolveOnCompletion } from '@/lib/reminders/sweep';
 import { combineDateAndTime } from '@/lib/reminders/deadline';
@@ -219,6 +224,53 @@ export async function getCourses(): Promise<CourseWithStats[]> {
   return [...own, ...adopted.filter((c) => !seen.has(c.id))];
 }
 
+/**
+ * Narrow a course roster to the enrollments the viewer's facility scope admits.
+ *
+ * `courseDetailSelect.enrollments` carries staff PII (email, full name, role,
+ * score) for EVERY enrollment on the course, while the detail gates below are
+ * role-shaped only — and `isAdminRole` admits `supervisor`, who is bound to the
+ * facilities on their own assignments. Without this narrowing a supervisor reads
+ * every enrolled worker in the organisation, and on a course shared through an
+ * `orgCourseOffering` the roster is not even org-filtered.
+ *
+ * Applied AFTER the access decision, never before: those gates read this same
+ * roster to establish `isEnrolled`, so filtering first would deny a learner
+ * their own course. For the same reason the viewer's own enrollment always
+ * survives — it is theirs to see however their facility assignments are set up.
+ */
+async function narrowRosterToFacilityScope(
+  session: FacilityScopeSession,
+  course: CourseWithRelations,
+): Promise<CourseWithRelations> {
+  const dataFacilityIds = await resolveDataFacilityIds(session);
+  if (dataFacilityIds === null) return course;
+
+  const isSelf = (enrollment: CourseWithRelations['enrollments'][number]) =>
+    enrollment.organizationUser.userId === session.user.id;
+
+  // Fail closed: no accessible facility means see nothing, never see everything.
+  if (dataFacilityIds.length === 0 || course.enrollments.length === 0) {
+    return { ...course, enrollments: course.enrollments.filter(isSelf) };
+  }
+
+  const inScope = await prisma.organizationUser.findMany({
+    where: {
+      id: { in: course.enrollments.map((enrollment) => enrollment.organizationUserId) },
+      ...staffFacilityWhere(dataFacilityIds),
+    },
+    select: { id: true },
+  });
+  const allowed = new Set(inScope.map((member) => member.id));
+
+  return {
+    ...course,
+    enrollments: course.enrollments.filter(
+      (enrollment) => allowed.has(enrollment.organizationUserId) || isSelf(enrollment),
+    ),
+  };
+}
+
 export async function getCourseById(courseId: string): Promise<CourseWithRelations> {
   const session = await resolveSession();
   if (!session?.user?.id) {
@@ -260,7 +312,12 @@ export async function getCourseById(courseId: string): Promise<CourseWithRelatio
   // from a learner who may only ever see their own.
   const isPrivileged = isCreator || can(dbRoleToRoleKey(session.user.role), 'user.read');
   if (isPrivileged) {
-    return course;
+    // The creator keeps the full roster of the course they authored: `isCreator`
+    // is an ownership gate that predates facility scope, and no facility-bound
+    // role holds `course.create`, so exempting it cannot widen what a supervisor
+    // sees. Everyone else reaching here does so through the role gate, which is
+    // exactly where `isAdminRole` lets a facility-bound supervisor through.
+    return isCreator ? course : narrowRosterToFacilityScope(session, course);
   }
 
   return {
@@ -307,7 +364,7 @@ export async function getCourseForOrgView(courseId: string): Promise<CourseWithR
     throw new Error('Course not found');
   }
 
-  return course;
+  return narrowRosterToFacilityScope(session, course);
 }
 
 export async function createCourse(data: { title: string; description?: string }) {
