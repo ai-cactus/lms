@@ -15,7 +15,7 @@ import { QuizQuestion } from '@/types/quiz';
 import type { StaffEntry } from '@/types/enrollment';
 import { logger } from '@/lib/logger';
 import { resolveMemberFacilityId, resolveMemberFacilityIds } from '@/lib/facility/member-facility';
-import { resolveFacilityScope } from '@/lib/facility/scope';
+import { isOrgWideFacilityRole, listAccessibleFacilities } from '@/lib/facility/scope';
 import {
   resolveDataFacilityIds,
   staffFacilityWhere,
@@ -737,24 +737,54 @@ export async function getPrebuiltCourses(): Promise<PrebuiltCourseRow[]> {
   });
 }
 
+/**
+ * The facilities this dashboard's figures may span, on the `string[] | null`
+ * contract used everywhere else (`null` = no predicate, `[]` = see nothing).
+ *
+ * The previous single-optional-id signature could not express "see nothing": a
+ * facility-bound caller with no assignments produced no id, and no id meant no
+ * predicate — the org-wide query shape. That is the fail-OPEN this replaces.
+ *
+ * The argument reaches a server action straight from the client, so it is a
+ * request and never a grant: ids the caller cannot view are dropped, and if
+ * that leaves nothing the answer is nothing rather than everything.
+ */
+async function resolveDashboardFacilityIds(
+  session: FacilityScopeSession,
+  requestedFacilityIds?: string[] | null,
+): Promise<string[] | null> {
+  if (requestedFacilityIds == null) {
+    if (isOrgWideFacilityRole(session.user.role)) return null;
+    return (await listAccessibleFacilities(session)).map((facility) => facility.id);
+  }
+
+  if (requestedFacilityIds.length === 0) return [];
+
+  const accessible = new Set(
+    (await listAccessibleFacilities(session)).map((facility) => facility.id),
+  );
+  return requestedFacilityIds.filter((id) => accessible.has(id));
+}
+
 // Get dashboard data (combines courses list and stats to prevent duplicate queries)
 /**
- * @param requestedFacilityId Narrows every enrollment-derived figure (staff
- *   assigned, average grade, per-course pass/fail, training coverage) to one
- *   facility. Re-validated here rather than trusted: an unknown or inaccessible
- *   id widens back to the whole organisation, so a facility-bound caller can
- *   never read a site they are not assigned to. Omit for the org-wide view.
+ * @param requestedFacilityIds Narrows every enrollment-derived figure (staff
+ *   assigned, average grade, per-course pass/fail, training coverage) to these
+ *   facilities. Omit (or pass null) for "the caller's own scope", which is the
+ *   whole organisation only for an org-wide role. See
+ *   {@link resolveDashboardFacilityIds} — the value is re-validated, never trusted.
  */
-export async function getDashboardData(requestedFacilityId?: string | null) {
+export async function getDashboardData(requestedFacilityIds?: string[] | null) {
   const session = await resolveSession();
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
   }
 
-  const scope = await resolveFacilityScope(session, requestedFacilityId);
-  const facilityId = scope.mode === 'single' ? scope.facility.id : null;
+  const dataFacilityIds = await resolveDashboardFacilityIds(session, requestedFacilityIds);
   // Spread into a `where` to leave the org-wide query shape byte-identical.
-  const facilityFilter = facilityId ? { facilityId } : {};
+  // An empty array narrows to nothing, which is the point.
+  const facilityFilter: Prisma.EnrollmentWhereInput =
+    dataFacilityIds === null ? {} : { facilityId: { in: dataFacilityIds } };
 
   // F-028: avoid the unbounded `enrollments: true` materialization that pulled
   // every enrollment row (all columns) for every course on each dashboard load.
@@ -822,9 +852,9 @@ export async function getDashboardData(requestedFacilityId?: string | null) {
         organizationId,
         active: true,
         role: { in: [...WORKER_ROLES] },
-        // Under facility scope the coverage base is that site's roster, so a
-        // worker at another facility never dilutes its completion percentages.
-        ...(facilityId ? { facilities: { some: { facilityId, active: true } } } : {}),
+        // Under facility scope the coverage base is those sites' roster, so a
+        // worker at another facility never dilutes their completion percentages.
+        ...staffFacilityWhere(dataFacilityIds),
       },
     });
   }

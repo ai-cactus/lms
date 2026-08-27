@@ -10,7 +10,6 @@ const {
   mockEnrollmentFindMany,
   mockOrgUserCount,
   mockForkCourse,
-  mockResolveFacilityScope,
   mockListAccessibleFacilities,
   mockOrgUserFindMany,
 } = vi.hoisted(() => ({
@@ -23,7 +22,6 @@ const {
   mockEnrollmentFindMany: vi.fn(),
   mockOrgUserCount: vi.fn(),
   mockForkCourse: vi.fn(),
-  mockResolveFacilityScope: vi.fn(),
   mockListAccessibleFacilities: vi.fn(),
   mockOrgUserFindMany: vi.fn(),
 }));
@@ -46,15 +44,14 @@ vi.mock('@/auth', () => ({ auth: mockAdminAuth }));
 vi.mock('@/auth.worker', () => ({ auth: mockWorkerAuth }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 vi.mock('@/lib/course/fork-course', () => ({ forkCourse: mockForkCourse }));
-// getDashboardData re-validates `requestedFacilityId` through resolveFacilityScope;
-// mocked here so facility-filter tests control the scope directly rather than
-// exercising scope.ts's own DB query (covered by its own unit suite).
+// getDashboardData re-validates its requested ids against `listAccessibleFacilities`;
+// mocked here so facility-scope tests control the accessible set directly rather
+// than exercising scope.ts's own DB query (covered by its own unit suite).
 // `isOrgWideFacilityRole` is kept REAL (it is a pure role-list lookup): the
 // roster-narrowing tests below turn on the genuine org-wide/facility-bound
 // split, and a stubbed verdict would prove nothing about it.
 vi.mock('@/lib/facility/scope', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/facility/scope')>()),
-  resolveFacilityScope: mockResolveFacilityScope,
   listAccessibleFacilities: mockListAccessibleFacilities,
 }));
 vi.mock('@/lib/logger', () => ({
@@ -93,12 +90,18 @@ describe('getDashboardData', () => {
     vi.clearAllMocks();
     // Post User/OrganizationUser split: the session carries organizationUserId
     // and organizationId directly — no separate `prisma.user` lookup.
+    // `role` is load-bearing: getDashboardData resolves its own facility scope
+    // from the session, and only an org-wide role gets the unfiltered shape.
     mockAdminAuth.mockResolvedValue({
-      user: { id: 'admin-1', organizationUserId: ORG_USER_ID, organizationId: ORG_ID },
+      user: {
+        id: 'admin-1',
+        role: 'admin',
+        organizationUserId: ORG_USER_ID,
+        organizationId: ORG_ID,
+      },
     });
     mockWorkerAuth.mockResolvedValue(null);
-    // Unfiltered path default — individual facility-scope tests override this.
-    mockResolveFacilityScope.mockResolvedValue({ mode: 'all' });
+    mockListAccessibleFacilities.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -331,7 +334,7 @@ describe('getDashboardData', () => {
     });
   });
 
-  describe('facility scope (requestedFacilityId)', () => {
+  describe('facility scope (requestedFacilityIds)', () => {
     beforeEach(() => {
       mockCourseFindMany.mockResolvedValue([]);
       wireGroupBy([], []);
@@ -339,53 +342,82 @@ describe('getDashboardData', () => {
       mockOrgUserCount.mockResolvedValue(0);
     });
 
-    it('re-validates the requested facility id through resolveFacilityScope rather than trusting it directly', async () => {
-      mockResolveFacilityScope.mockResolvedValue({ mode: 'all' });
+    it('re-validates the requested ids against the accessible set rather than trusting them', async () => {
+      mockListAccessibleFacilities.mockResolvedValue([{ id: 'fac-1' }]);
 
-      await getDashboardData('some-facility-id');
+      await getDashboardData(['fac-1']);
 
-      expect(mockResolveFacilityScope).toHaveBeenCalledWith(
+      expect(mockListAccessibleFacilities).toHaveBeenCalledWith(
         expect.objectContaining({ user: expect.objectContaining({ organizationId: ORG_ID }) }),
-        'some-facility-id',
       );
     });
 
-    it('narrows every enrollment-derived query to facilityId when the scope resolves to a single facility', async () => {
-      mockResolveFacilityScope.mockResolvedValue({
-        mode: 'single',
-        facility: { id: 'fac-1', name: 'Alpha', type: null, city: null },
-      });
+    it('narrows every enrollment-derived query to the requested facilities', async () => {
+      mockListAccessibleFacilities.mockResolvedValue([{ id: 'fac-1' }, { id: 'fac-2' }]);
 
-      await getDashboardData('fac-1');
+      await getDashboardData(['fac-1']);
 
       const groupByArgs = mockEnrollmentGroupBy.mock.calls.map((call) => call[0]);
-      expect(groupByArgs.every((args) => args.where.facilityId === 'fac-1')).toBe(true);
+      expect(groupByArgs.every((args) => args.where.facilityId?.in?.[0] === 'fac-1')).toBe(true);
       expect(mockEnrollmentFindMany).toHaveBeenCalledWith(
-        expect.objectContaining({ where: expect.objectContaining({ facilityId: 'fac-1' }) }),
+        expect.objectContaining({
+          where: expect.objectContaining({ facilityId: { in: ['fac-1'] } }),
+        }),
       );
     });
 
-    it('narrows the total-staff coverage base to members of that facility, not the whole org', async () => {
-      mockResolveFacilityScope.mockResolvedValue({
-        mode: 'single',
-        facility: { id: 'fac-1', name: 'Alpha', type: null, city: null },
-      });
+    it('narrows the total-staff coverage base to members of those facilities, not the whole org', async () => {
+      mockListAccessibleFacilities.mockResolvedValue([{ id: 'fac-1' }]);
 
-      await getDashboardData('fac-1');
+      await getDashboardData(['fac-1']);
 
       expect(mockOrgUserCount).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
-            facilities: { some: { facilityId: 'fac-1', active: true } },
+            facilities: { some: { facilityId: { in: ['fac-1'] }, active: true } },
           }),
         }),
       );
     });
 
-    it('leaves every query byte-identical to the unfiltered path when the scope falls back to "all" (e.g. a foreign/unknown facility id)', async () => {
-      mockResolveFacilityScope.mockResolvedValue({ mode: 'all' });
+    // Rewritten 2026-08-27: this asserted the OPPOSITE — an inaccessible id fell
+    // back to `{ mode: 'all' }` and every query widened to the organisation. That
+    // is the fail-open the `string[] | null` contract exists to remove.
+    it('narrows to NOTHING when no requested id is accessible, never back to the whole org', async () => {
+      mockListAccessibleFacilities.mockResolvedValue([{ id: 'fac-1' }]);
 
-      await getDashboardData('foreign-or-unknown-id');
+      await getDashboardData(['foreign-or-unknown-id']);
+
+      const groupByArgs = mockEnrollmentGroupBy.mock.calls.map((call) => call[0]);
+      expect(groupByArgs.every((args) => args.where.facilityId?.in?.length === 0)).toBe(true);
+      expect(mockOrgUserCount).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            facilities: { some: { facilityId: { in: [] }, active: true } },
+          }),
+        }),
+      );
+    });
+
+    it('narrows a facility-bound caller with no assignments to nothing when no ids are requested', async () => {
+      mockAdminAuth.mockResolvedValue({
+        user: {
+          id: 'supervisor-1',
+          role: 'supervisor',
+          organizationUserId: ORG_USER_ID,
+          organizationId: ORG_ID,
+        },
+      });
+      mockListAccessibleFacilities.mockResolvedValue([]);
+
+      await getDashboardData();
+
+      const groupByArgs = mockEnrollmentGroupBy.mock.calls.map((call) => call[0]);
+      expect(groupByArgs.every((args) => args.where.facilityId?.in?.length === 0)).toBe(true);
+    });
+
+    it('leaves every query byte-identical to the unfiltered path for an org-wide role with no requested ids', async () => {
+      await getDashboardData();
 
       const groupByArgs = mockEnrollmentGroupBy.mock.calls.map((call) => call[0]);
       expect(groupByArgs.every((args) => !('facilityId' in args.where))).toBe(true);

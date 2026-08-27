@@ -87,12 +87,11 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   // Fetch billing status alongside dashboard data so the Create Course button
   // can apply the same billing gate as the Courses list page.
   const [{ courses, stats }, organization] = await Promise.all([
-    // `getDashboardData` narrows to at most ONE facility, and a facility-bound
-    // role only reaches this branch when it can see at most one — anything more
-    // took the Global View above. Org-wide roles keep passing null so the
-    // organisation-wide query shape (which counts enrollments with no facility
-    // stamp) stays byte-identical.
-    getDashboardData(scopedFacility?.id ?? dataFacilityIds?.[0]),
+    // The same value every other read on this page uses, so the cards and the
+    // Status Tracker below can never disagree about scope. Org-wide roles pass
+    // null, keeping the organisation-wide query shape (which counts enrollments
+    // with no facility stamp) byte-identical.
+    getDashboardData(dataFacilityIds),
     organizationId
       ? prisma.organization.findUnique({
           where: { id: organizationId },

@@ -274,7 +274,9 @@ describe('DashboardPage — facility scope wiring', () => {
 
     expect(screen.queryByTestId('global-dashboard')).not.toBeInTheDocument();
     expect(screen.getByTestId('facility-switcher')).toBeInTheDocument();
-    expect(mockGetDashboardData).toHaveBeenCalledWith('fac-a');
+    // The `string[] | null` scope contract: the page hands getDashboardData the
+    // same dataFacilityIds every other read on it uses, not a single bare id.
+    expect(mockGetDashboardData).toHaveBeenCalledWith(['fac-a']);
     expect(mockGetGlobalDashboardData).not.toHaveBeenCalled();
   });
 
