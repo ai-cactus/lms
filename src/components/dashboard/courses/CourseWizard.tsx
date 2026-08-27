@@ -51,7 +51,7 @@ const INITIAL_FORM_DATA: CourseWizardData = {
   completionDeadlineDays: 30,
   objectives: ['', '', ''],
   quizTitle: '',
-  quizQuestionCount: '15',
+  quizQuestionCount: '5',
   quizDifficulty: 'medium',
   quizQuestionType: 'multiple_choice',
   quizDuration: '',
