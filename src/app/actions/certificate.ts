@@ -1,7 +1,9 @@
 'use server';
 
 import prisma from '@/lib/prisma';
-import { isAdminRole } from '@/lib/rbac/role-utils';
+import { dbRoleToRoleKey, isAdminRole } from '@/lib/rbac/role-utils';
+import { can } from '@/lib/rbac/permissions';
+import { resolveDataFacilityIds, staffFacilityWhere } from '@/lib/facility/staff-where';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
@@ -133,16 +135,38 @@ export async function getWorkerCertificates() {
 
 export async function getAdminWorkerCertificates(organizationUserId: string) {
   const session = await adminAuth();
-  if (!session?.user?.id || !isAdminRole(session.user.role) || !session.user.organizationId) {
+  if (!session?.user?.id || !session.user.organizationId) {
     throw new Error('Unauthorized');
   }
+
+  // This is the certificate half of the staff profile, so it must reach the same
+  // verdict as `getStaffDetails` — otherwise a target the profile 404s on still
+  // yields its full training history through this id-addressed action. `user.read`
+  // rather than `isAdminRole`, which admits Finance and Clinical Director.
+  const roleKey = dbRoleToRoleKey(session.user.role);
+  if (!roleKey || !can(roleKey, 'user.read')) {
+    logger.warn({
+      msg: '[certificate] Admin certificate read denied',
+      userId: session.user.id,
+      role: session.user.role,
+    });
+    throw new Error('Unauthorized');
+  }
+
+  // null for org-wide roles; an array (possibly empty) for a facility-bound one.
+  const dataFacilityIds = await resolveDataFacilityIds(session);
 
   const certificates = await prisma.certificate.findMany({
     where: {
       // Scoped by the caller's org so a membership id from another tenant
-      // simply resolves to nothing.
+      // simply resolves to nothing. The facility predicate composes into the
+      // same query for the same reason: an out-of-facility target must come
+      // back empty exactly as an unknown id does.
       organizationUserId,
-      organizationUser: { organizationId: session.user.organizationId },
+      organizationUser: {
+        organizationId: session.user.organizationId,
+        ...staffFacilityWhere(dataFacilityIds),
+      },
     },
     include: {
       course: { select: { title: true } },
