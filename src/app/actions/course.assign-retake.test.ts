@@ -128,21 +128,28 @@ describe('assignRetake — guards', () => {
     await expect(assignRetake(ENROLLMENT_ID)).rejects.toThrow('Enrollment not found');
   });
 
-  it('throws when the enrollment is not locked', async () => {
+  // Returned rather than thrown: Next.js redacts Server Action errors in
+  // production, so a thrown reason reached AssignRetakeModal as React error #441.
+  it('refuses when the enrollment is not locked', async () => {
     prismaMock.enrollment.findUnique.mockResolvedValue(
       makeLockedEnrollment({ status: 'completed' }),
     );
 
-    await expect(assignRetake(ENROLLMENT_ID)).rejects.toThrow('Enrollment is not locked');
+    const result = await assignRetake(ENROLLMENT_ID);
+
+    expect(result).toEqual({ success: false, refusedReason: 'Enrollment is not locked' });
     expect(prismaMock.enrollment.create).not.toHaveBeenCalled();
   });
 
-  it('throws when an active retake already exists for this enrollment', async () => {
+  it('refuses when an active retake already exists for this enrollment', async () => {
     prismaMock.enrollment.findFirst.mockResolvedValue({ id: 'existing-retake' });
 
-    await expect(assignRetake(ENROLLMENT_ID)).rejects.toThrow(
-      'An active retake already exists for this enrollment',
-    );
+    const result = await assignRetake(ENROLLMENT_ID);
+
+    expect(result).toEqual({
+      success: false,
+      refusedReason: 'An active retake already exists for this enrollment',
+    });
     expect(prismaMock.enrollment.create).not.toHaveBeenCalled();
   });
 });

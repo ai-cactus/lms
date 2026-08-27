@@ -142,10 +142,12 @@ describe('assignCourseToRoles — authorization and input', () => {
     expect(mockOrgUserFindMany).not.toHaveBeenCalled();
   });
 
-  it('rejects an unparseable deadline', async () => {
-    await expect(
-      assignCourseToRoles('course-1', ['nurse'], { dueDate: 'not-a-date' }),
-    ).rejects.toThrow('Invalid completion deadline');
+  it('refuses an unparseable deadline', async () => {
+    const result = await assignCourseToRoles('course-1', ['nurse'], { dueDate: 'not-a-date' });
+
+    expect(result.refusedReason).toBe('Invalid completion deadline');
+    expect(result.assignmentId).toBeNull();
+    expect(mockOrgUserFindMany).not.toHaveBeenCalled();
   });
 });
 

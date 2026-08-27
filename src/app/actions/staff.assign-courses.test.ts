@@ -73,6 +73,7 @@ function enrollResult(overrides: {
   newInvited?: string[];
   failed?: string[];
   deferred?: unknown[];
+  refusedReason?: string;
 }) {
   return {
     success: [],
@@ -270,7 +271,10 @@ describe('assignCoursesToStaffMember — per-course outcomes and the batched not
     expect(mockEnrollUsers).toHaveBeenCalledTimes(1);
   });
 
-  it('a billing-gate throw aborts the loop — later courses are never attempted', async () => {
+  // enrollUsers now RETURNS the billing refusal (it survives production error
+  // redaction that way), so the loop must abort on the returned reason — the
+  // gate is organization-wide, not course-specific.
+  it('a billing-gate refusal aborts the loop — later courses are never attempted', async () => {
     mockEnrollUsers
       .mockResolvedValueOnce(
         enrollResult({
@@ -278,8 +282,10 @@ describe('assignCoursesToStaffMember — per-course outcomes and the batched not
           deferred: [{ userId: 'user-1', courseId: 'course-1', courseTitle: 'Safety Training' }],
         }),
       )
-      .mockRejectedValueOnce(
-        new Error('Your organization needs an active subscription to assign courses.'),
+      .mockResolvedValueOnce(
+        enrollResult({
+          refusedReason: 'Your organization needs an active subscription to assign courses.',
+        }),
       );
 
     const result = await assignCoursesToStaffMember('staff-1', [

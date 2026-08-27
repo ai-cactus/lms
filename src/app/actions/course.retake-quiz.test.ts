@@ -13,7 +13,8 @@
  *
  * Fixed behavior under test:
  *  - never call quizAttempt.update (no mutation of history),
- *  - throws 'No attempts remaining' once completed count >= allowedAttempts,
+ *  - refuses with 'No attempts remaining' once completed count >= allowedAttempts
+ *    (returned, not thrown, so the learner sees it in production),
  *  - allows retake when completed count < allowedAttempts,
  *  - allows retake when allowedAttempts is null/0 (unlimited),
  *  - resolves a course-level quiz when lessons have no quiz (video course),
@@ -124,19 +125,24 @@ describe('retakeQuiz — never mutates quizAttempt history (regression guard)', 
 });
 
 describe('retakeQuiz — attempt limit enforcement', () => {
-  it('throws "No attempts remaining" when completed count equals allowedAttempts', async () => {
+  it('refuses with "No attempts remaining" when completed count equals allowedAttempts', async () => {
     prismaMock.enrollment.findUnique.mockResolvedValue(makeEnrollment());
     prismaMock.quizAttempt.count.mockResolvedValue(3);
 
-    await expect(retakeQuiz(ENROLLMENT_ID)).rejects.toThrow('No attempts remaining');
+    const result = await retakeQuiz(ENROLLMENT_ID);
+
+    expect(result).toEqual({ success: false, refusedReason: 'No attempts remaining' });
     expect(prismaMock.enrollment.update).not.toHaveBeenCalled();
   });
 
-  it('throws "No attempts remaining" when completed count exceeds allowedAttempts', async () => {
+  it('refuses with "No attempts remaining" when completed count exceeds allowedAttempts', async () => {
     prismaMock.enrollment.findUnique.mockResolvedValue(makeEnrollment());
     prismaMock.quizAttempt.count.mockResolvedValue(5);
 
-    await expect(retakeQuiz(ENROLLMENT_ID)).rejects.toThrow('No attempts remaining');
+    const result = await retakeQuiz(ENROLLMENT_ID);
+
+    expect(result).toEqual({ success: false, refusedReason: 'No attempts remaining' });
+    expect(prismaMock.enrollment.update).not.toHaveBeenCalled();
   });
 
   it('counts only COMPLETED attempts (timeTaken not null) against the limit', async () => {

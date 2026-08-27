@@ -2,9 +2,10 @@
  * Unit tests for assignCourseToUsers (src/app/actions/course.ts).
  *
  * Backs the courses-list "Assign to staff" modal. Covered here:
- *   - Defect B — billing-gated course assignment (defense in depth): reject
+ *   - Defect B — billing-gated course assignment (defense in depth): refuse
  *     with the billing message BEFORE any enrollment write when the org lacks
- *     active billing, mirroring the gate enrollUsers() applies.
+ *     active billing, mirroring the gate enrollUsers() applies. The refusal is
+ *     RETURNED, not thrown, so it survives production error redaction.
  *   - The authorization ruling: assigning requires `assignment.create` plus the
  *     course belonging to the caller's ORG — never creator-only, which locked
  *     admins/HR out of colleagues' courses (COU-004 family).
@@ -144,12 +145,17 @@ describe('assignCourseToUsers — auth / tenancy guards', () => {
     expect(result).toEqual({ success: true, count: 1, notFound: [] });
   });
 
-  it('throws when the caller has no organization', async () => {
+  it('refuses when the caller has no organization', async () => {
     mockAdminAuth.mockResolvedValue(sessionFor({ organizationId: null }));
 
-    await expect(assignCourseToUsers(COURSE_ID, ['staff@acme.com'])).rejects.toThrow(
-      'You must belong to an organization to assign courses',
-    );
+    const result = await assignCourseToUsers(COURSE_ID, ['staff@acme.com']);
+
+    expect(result).toEqual({
+      success: false,
+      message: 'You must belong to an organization to assign courses',
+      notFound: [],
+    });
+    expect(prismaMock.enrollment.createMany).not.toHaveBeenCalled();
   });
 });
 
@@ -170,12 +176,16 @@ describe('assignCourseToUsers — billing gate (Defect B)', () => {
       'a trialing subscription that is currently paused',
       { status: 'trialing', pausedAt: new Date('2026-01-01T00:00:00Z') },
     ],
-  ])('rejects with the billing message for %s, before any enrollment write', async (_desc, sub) => {
+  ])('refuses with the billing message for %s, before any enrollment write', async (_desc, sub) => {
     prismaMock.organization.findUnique.mockResolvedValue(orgWithSubscription(sub));
 
-    await expect(assignCourseToUsers(COURSE_ID, ['staff@acme.com'])).rejects.toThrow(
-      'Your organization needs an active subscription to assign courses.',
-    );
+    const result = await assignCourseToUsers(COURSE_ID, ['staff@acme.com']);
+
+    expect(result).toEqual({
+      success: false,
+      message: 'Your organization needs an active subscription to assign courses.',
+      notFound: [],
+    });
 
     expect(prismaMock.organizationUser.findMany).not.toHaveBeenCalled();
     expect(prismaMock.enrollment.createMany).not.toHaveBeenCalled();
@@ -259,10 +269,10 @@ describe('assignCourseToUsers — completion deadline', () => {
     );
   });
 
-  it('rejects an unparseable deadline before any write', async () => {
-    await expect(assignCourseToUsers(COURSE_ID, ['staff@acme.com'], 'not-a-date')).rejects.toThrow(
-      'Invalid completion deadline',
-    );
+  it('refuses an unparseable deadline before any write', async () => {
+    const result = await assignCourseToUsers(COURSE_ID, ['staff@acme.com'], 'not-a-date');
+
+    expect(result).toMatchObject({ success: false, message: 'Invalid completion deadline' });
 
     expect(prismaMock.courseAssignment.create).not.toHaveBeenCalled();
     expect(prismaMock.enrollment.createMany).not.toHaveBeenCalled();

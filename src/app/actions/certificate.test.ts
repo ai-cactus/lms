@@ -8,7 +8,7 @@
  * which only falls back on null/undefined (no score recorded at all).
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, assert } from 'vitest';
 
 const { mockAdminAuth, mockWorkerAuth, prismaMock, mockUploadFile, mockGeneratePdf } = vi.hoisted(
   () => ({
@@ -86,7 +86,9 @@ describe('issueCertificate — score fallback (F-039)', () => {
   it('preserves a genuine 0% score instead of defaulting it to 100', async () => {
     prismaMock.enrollment.findUnique.mockResolvedValue(makeEnrollment(0));
 
-    const certificate = await issueCertificate(ENROLLMENT_ID);
+    const result = await issueCertificate(ENROLLMENT_ID);
+    assert(result.ok);
+    const certificate = result.certificate;
 
     expect(certificate.score).toBe(0);
     const createCall = prismaMock.certificate.create.mock.calls[0][0];
@@ -96,7 +98,9 @@ describe('issueCertificate — score fallback (F-039)', () => {
   it('defaults to 100 when no score was ever recorded (null)', async () => {
     prismaMock.enrollment.findUnique.mockResolvedValue(makeEnrollment(null));
 
-    const certificate = await issueCertificate(ENROLLMENT_ID);
+    const result = await issueCertificate(ENROLLMENT_ID);
+    assert(result.ok);
+    const certificate = result.certificate;
 
     expect(certificate.score).toBe(100);
   });
@@ -104,7 +108,9 @@ describe('issueCertificate — score fallback (F-039)', () => {
   it('defaults to 100 when no score was ever recorded (undefined)', async () => {
     prismaMock.enrollment.findUnique.mockResolvedValue(makeEnrollment(undefined));
 
-    const certificate = await issueCertificate(ENROLLMENT_ID);
+    const result = await issueCertificate(ENROLLMENT_ID);
+    assert(result.ok);
+    const certificate = result.certificate;
 
     expect(certificate.score).toBe(100);
   });
@@ -112,7 +118,9 @@ describe('issueCertificate — score fallback (F-039)', () => {
   it('preserves a genuine, non-zero score unchanged', async () => {
     prismaMock.enrollment.findUnique.mockResolvedValue(makeEnrollment(87));
 
-    const certificate = await issueCertificate(ENROLLMENT_ID);
+    const result = await issueCertificate(ENROLLMENT_ID);
+    assert(result.ok);
+    const certificate = result.certificate;
 
     expect(certificate.score).toBe(87);
   });
