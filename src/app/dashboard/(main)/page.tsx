@@ -52,9 +52,11 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   // takes the same branch as the unscoped request.
   if (canSeeRosterMetrics && scope.mode !== 'single') {
     const globalData = await getGlobalDashboardData();
-    // An organisation with no facilities has nothing to compare across sites;
-    // it keeps the single-scope dashboard until one is created.
-    if (globalData.facilities.length > 0) {
+    // `facilities` is what THIS viewer can see, so one condition covers every
+    // case: a single-facility organisation, and a role bound to one facility,
+    // both get that facility's dashboard rather than a consolidated view of a
+    // single site. Two or more is the only shape a global view can describe.
+    if (globalData.facilities.length > 1) {
       return (
         <GlobalDashboardView
           data={globalData}
@@ -79,16 +81,31 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           select: { subscription: { select: { status: true, pausedAt: true } } },
         })
       : null,
-    scopedFacility ? listAccessibleFacilities(session) : Promise.resolve([]),
+    listAccessibleFacilities(session),
   ]);
 
   const hasBilling = hasActiveBilling(organization?.subscription);
+
+  // The security boundary for this page's roster reads, mirroring
+  // `requirePermissionWithFacilityScope`: null (no predicate) ONLY for an
+  // org-wide role viewing everything. A facility-bound role always gets an
+  // array — reaching this branch without a `?facility=` selection must narrow
+  // to their own facilities, never widen to the organisation.
+  const dataFacilityIds = scopedFacility
+    ? [scopedFacility.id]
+    : isOrgWideFacilityRole(role as Role)
+      ? null
+      : accessibleFacilities.map((facility) => facility.id);
 
   // Status Tracker overview — gated on roster-wide assignment visibility so
   // finance (an admin-tier role) never sees worker-training metrics.
   const statusTracker =
     canSeeRosterMetrics && organizationId
-      ? await getStatusTrackerSummaryForOrg(organizationId, new Date(), scopedFacility?.id)
+      ? await getStatusTrackerSummaryForOrg(
+          organizationId,
+          new Date(),
+          dataFacilityIds ?? undefined,
+        )
       : { overdueCount: 0, hardEscalationCount: 0, rows: [], nearDeadline: { count: 0, rows: [] } };
 
   // Merge overdue + due-soon rows (same order as the full Status Tracker page:
@@ -165,12 +182,10 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
               Dashboard
             </h1>
             <div className="flex flex-wrap items-center gap-3">
-              {scopedFacility && (
-                <FacilityScopeSwitcher
-                  facilities={accessibleFacilities}
-                  selectedFacilityIds={[scopedFacility.id]}
-                />
-              )}
+              <FacilityScopeSwitcher
+                facilities={accessibleFacilities}
+                selectedFacilityIds={scopedFacility ? [scopedFacility.id] : []}
+              />
               <DashboardCreateCourseButton hasBilling={hasBilling} />
             </div>
           </div>
