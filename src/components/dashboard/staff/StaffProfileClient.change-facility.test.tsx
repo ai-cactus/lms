@@ -1,8 +1,10 @@
 /**
  * Gating tests for the staff-profile "Change Facility" button (design: Staff
  * Profile header, next to Assign Course). The button must render only for
- * viewers holding user.edit, only when facilities exist, and never for the
- * organization owner's own profile (the owner's facilities are immutable).
+ * viewers holding user.edit, only when the viewer has MULTI-facility access
+ * (a viewer who can see one site has nowhere to reassign anyone to), and never
+ * for the organization owner's own profile (the owner's facilities are
+ * immutable).
  */
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';

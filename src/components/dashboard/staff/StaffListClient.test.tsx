@@ -89,6 +89,16 @@ function memberEntry(id: string, name: string, role = 'hr') {
   };
 }
 
+/**
+ * The viewer's accessible facilities. Change Facility now requires MULTI-facility
+ * access — a viewer who can see only one site has nowhere to reassign anyone to —
+ * so the action's tests need two.
+ */
+const MULTI_FACILITIES = [
+  { id: 'fac-1', name: 'Main Site', type: null, city: null },
+  { id: 'fac-2', name: 'North Wing', type: null, city: null },
+];
+
 /** The row whose visible text contains `text` (skips the header row). */
 function rowFor(text: string) {
   return screen.getByText(text).closest('tr') as HTMLElement;
@@ -182,7 +192,7 @@ describe('StaffListClient — Remove Staff never offered on the viewer’s own r
         pendingInviteCount={0}
         inviterRole="admin"
         viewerOrganizationUserId="ou-admin-viewer"
-        facilities={[{ id: 'fac-1', name: 'Main Site', type: null, city: null }]}
+        facilities={MULTI_FACILITIES}
       />,
     );
 
@@ -236,7 +246,7 @@ describe('StaffListClient — row Action cell (Figma roster design)', () => {
         pendingInviteCount={0}
         inviterRole="owner"
         viewerOrganizationUserId="ou-viewer"
-        facilities={[{ id: 'fac-1', name: 'Main Site', type: null, city: null }]}
+        facilities={MULTI_FACILITIES}
       />,
     );
 
