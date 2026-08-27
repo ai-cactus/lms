@@ -5,12 +5,18 @@
  * it's stubbed to render its `actions` prop as plain buttons so assertions
  * target this component's own `buildRowActions` gating logic, not Radix.
  */
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
+import { fireEvent } from '@testing-library/dom';
 import userEvent from '@testing-library/user-event';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { RowAction } from '@/components/ui';
 import type { CourseWithStats } from '@/types/course';
 import type { Role } from '@/types/next-auth';
+import {
+  PENDING_GENERATION_KEY,
+  writePendingGeneration,
+  type PendingGenerationJob,
+} from '@/lib/course/pending-generation';
 
 const { mockPush, mockDeleteCourse, mockDuplicateCourse, mockUpdateCourse } = vi.hoisted(() => ({
   mockPush: vi.fn(),
@@ -29,6 +35,10 @@ vi.mock('@/app/actions/course', () => ({
   updateCourse: mockUpdateCourse,
 }));
 vi.mock('@/app/actions/course-ai-v4.6', () => ({ checkCourseGenerationJobV46: vi.fn() }));
+vi.mock('@/lib/logger', () => ({
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+  maskEmail: (email: string) => email,
+}));
 vi.mock('@/components/dashboard/billing/BillingGateModal', () => ({
   default: () => null,
 }));
@@ -69,7 +79,10 @@ vi.mock('@/components/ui', () => ({
   ),
 }));
 
+import { checkCourseGenerationJobV46 } from '@/app/actions/course-ai-v4.6';
 import CoursesListClient from './CoursesListClient';
+
+const mockCheckJob = vi.mocked(checkCourseGenerationJobV46);
 
 function makeCourse(overrides: Partial<CourseWithStats> = {}): CourseWithStats {
   return {
@@ -283,5 +296,258 @@ describe('CoursesListClient — create/prebuilt affordances gated on course.crea
 
     expect(screen.queryByRole('button', { name: /Create Course/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Prebuilt Courses/i })).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PendingGenerationBanner — polling truthfulness (fix/course-generation-banner-truthfulness)
+//
+// Regression context: this path previously had ZERO coverage because no test
+// ever seeded localStorage, so `readPendingGeneration()` always returned null
+// and the banner stayed `hidden` — the entire polling loop went untested. That
+// gap is why a live bug (jobs failed, banner still said "still being
+// generated") shipped unnoticed.
+//
+// The critical shape distinction under test: a genuinely failed job returns
+// BOTH `status: 'failed'` AND `error` together — the client checks `status`
+// FIRST so that shape routes to `failed` immediately. A bare `{ error }` with
+// NO `status` is a different, undetermined signal ('Job not found', a thrown
+// network error) that must NOT be treated as a failure — it only counts
+// toward the 3-consecutive-poll tolerance before the banner gives up as
+// `unknown`.
+// ---------------------------------------------------------------------------
+function seedPendingGeneration(
+  jobs: PendingGenerationJob[] = [{ moduleIndex: 0, jobId: 'job-1' }],
+) {
+  writePendingGeneration(jobs);
+}
+
+/** Advances the 5s poll interval by one tick and flushes the async callback. */
+async function advancePoll(ms = 5000) {
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(ms);
+  });
+}
+
+describe('CoursesListClient — pending generation banner', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('all jobs completed renders the done banner with a Resume Setup link', async () => {
+    seedPendingGeneration([
+      { moduleIndex: 0, jobId: 'job-1' },
+      { moduleIndex: 1, jobId: 'job-2' },
+    ]);
+    mockCheckJob.mockResolvedValue({ status: 'completed' });
+
+    render(<CoursesListClient courses={[]} hasBilling viewerRole="owner" />);
+
+    // Confirm we are actually on the polling path before asserting anything else.
+    expect(screen.getByText(/still being generated/i)).toBeInTheDocument();
+
+    await advancePoll();
+
+    expect(screen.getByText(/Course generation complete/i)).toBeInTheDocument();
+    const link = screen.getByRole('link', { name: /Resume Setup/i });
+    expect(link).toHaveAttribute('href', '/dashboard/courses/create');
+    expect(mockCheckJob).toHaveBeenCalledTimes(2);
+  });
+
+  it('a job reporting status: failed (with error) shows the failed banner on the first poll and stops polling', async () => {
+    seedPendingGeneration([
+      { moduleIndex: 0, jobId: 'job-1' },
+      { moduleIndex: 1, jobId: 'job-2' },
+    ]);
+    mockCheckJob.mockImplementation(async (jobId: string) =>
+      jobId === 'job-1'
+        ? { status: 'failed', error: 'Course generation failed. Please start a new course.' }
+        : { status: 'processing' },
+    );
+
+    render(<CoursesListClient courses={[]} hasBilling viewerRole="owner" />);
+    expect(screen.getByText(/still being generated/i)).toBeInTheDocument();
+
+    await advancePoll();
+
+    expect(
+      screen.getByText('Course generation failed. Please start a new course.'),
+    ).toBeInTheDocument();
+    expect(mockCheckJob).toHaveBeenCalledTimes(2);
+
+    // The interval must be cleared — no further polling after `failed`.
+    await advancePoll(15000);
+    expect(mockCheckJob).toHaveBeenCalledTimes(2);
+  });
+
+  it('does NOT route a bare { error } (no status) to failed — old buggy behaviour regression guard', async () => {
+    seedPendingGeneration();
+    // No `status` field at all — this must never be mistaken for status: 'failed'.
+    mockCheckJob.mockResolvedValue({ error: 'Job not found' });
+
+    render(<CoursesListClient courses={[]} hasBilling viewerRole="owner" />);
+    expect(screen.getByText(/still being generated/i)).toBeInTheDocument();
+
+    await advancePoll();
+    expect(screen.queryByText(/Course generation failed/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/still being generated/i)).toBeInTheDocument();
+  });
+
+  it('tolerates two consecutive bare-{ error } polls, then gives up as unknown on the third', async () => {
+    seedPendingGeneration();
+    mockCheckJob.mockResolvedValue({ error: 'Job not found' });
+
+    render(<CoursesListClient courses={[]} hasBilling viewerRole="owner" />);
+    expect(screen.getByText(/still being generated/i)).toBeInTheDocument();
+
+    await advancePoll(); // poll 1 — undetermined, tolerated
+    expect(screen.getByText(/still being generated/i)).toBeInTheDocument();
+
+    await advancePoll(); // poll 2 — undetermined, tolerated
+    expect(screen.getByText(/still being generated/i)).toBeInTheDocument();
+
+    await advancePoll(); // poll 3 — gives up
+    expect(screen.getByText(/We couldn.t check on your course generation/i)).toBeInTheDocument();
+    expect(mockCheckJob).toHaveBeenCalledTimes(3);
+  });
+
+  it('treats a thrown poll error the same as a bare { error } — same 1/2/3 progression to unknown', async () => {
+    seedPendingGeneration();
+    mockCheckJob.mockRejectedValue(new Error('network blip'));
+
+    render(<CoursesListClient courses={[]} hasBilling viewerRole="owner" />);
+    expect(screen.getByText(/still being generated/i)).toBeInTheDocument();
+
+    await advancePoll();
+    expect(screen.getByText(/still being generated/i)).toBeInTheDocument();
+
+    await advancePoll();
+    expect(screen.getByText(/still being generated/i)).toBeInTheDocument();
+
+    await advancePoll();
+    expect(screen.getByText(/We couldn.t check on your course generation/i)).toBeInTheDocument();
+  });
+
+  it('resets the consecutive-failure counter on a clean poll, so alternating blips never accumulate to unknown', async () => {
+    seedPendingGeneration();
+    mockCheckJob
+      .mockRejectedValueOnce(new Error('blip 1'))
+      .mockRejectedValueOnce(new Error('blip 2'))
+      .mockResolvedValueOnce({ status: 'processing' })
+      .mockRejectedValueOnce(new Error('blip 3'))
+      .mockRejectedValueOnce(new Error('blip 4'));
+
+    render(<CoursesListClient courses={[]} hasBilling viewerRole="owner" />);
+    expect(screen.getByText(/still being generated/i)).toBeInTheDocument();
+
+    for (let i = 0; i < 5; i++) {
+      await advancePoll();
+    }
+
+    expect(screen.getByText(/still being generated/i)).toBeInTheDocument();
+    expect(
+      screen.queryByText(/We couldn.t check on your course generation/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it('one job throwing while another completes leaves the state undetermined, not done', async () => {
+    seedPendingGeneration([
+      { moduleIndex: 0, jobId: 'job-1' },
+      { moduleIndex: 1, jobId: 'job-2' },
+    ]);
+    mockCheckJob.mockImplementation(async (jobId: string) => {
+      if (jobId === 'job-1') throw new Error('transient');
+      return { status: 'completed' };
+    });
+
+    render(<CoursesListClient courses={[]} hasBilling viewerRole="owner" />);
+    expect(screen.getByText(/still being generated/i)).toBeInTheDocument();
+
+    await advancePoll();
+
+    expect(screen.queryByText(/Course generation complete/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/still being generated/i)).toBeInTheDocument();
+  });
+
+  it('unknown renders the Check Job Queue link, and dismiss clears the pending payload', async () => {
+    seedPendingGeneration();
+    mockCheckJob.mockResolvedValue({ error: 'Job not found' });
+
+    render(<CoursesListClient courses={[]} hasBilling viewerRole="owner" />);
+    expect(screen.getByText(/still being generated/i)).toBeInTheDocument();
+
+    for (let i = 0; i < 3; i++) {
+      await advancePoll();
+    }
+
+    const link = screen.getByRole('link', { name: /Check Job Queue/i });
+    expect(link).toHaveAttribute('href', '/dashboard/courses/queue');
+
+    fireEvent.click(screen.getByRole('button', { name: /dismiss/i }));
+
+    expect(
+      screen.queryByText(/We couldn.t check on your course generation/i),
+    ).not.toBeInTheDocument();
+    expect(localStorage.getItem(PENDING_GENERATION_KEY)).toBeNull();
+  });
+
+  it('does NOT clear the pending payload on its own when giving up as unknown', async () => {
+    seedPendingGeneration();
+    mockCheckJob.mockResolvedValue({ error: 'Job not found' });
+
+    render(<CoursesListClient courses={[]} hasBilling viewerRole="owner" />);
+    expect(screen.getByText(/still being generated/i)).toBeInTheDocument();
+
+    for (let i = 0; i < 3; i++) {
+      await advancePoll();
+    }
+
+    expect(screen.getByText(/We couldn.t check on your course generation/i)).toBeInTheDocument();
+    // Deliberate: an unresumed `unknown` payload must survive so the wizard
+    // can still resume it — only an explicit dismiss discards it.
+    expect(localStorage.getItem(PENDING_GENERATION_KEY)).not.toBeNull();
+  });
+
+  it('with no pending generation in localStorage the banner stays hidden and never polls', async () => {
+    render(<CoursesListClient courses={[]} hasBilling viewerRole="owner" />);
+
+    expect(screen.queryByText(/still being generated/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Course generation complete/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Course generation failed/i)).not.toBeInTheDocument();
+
+    await advancePoll(20000);
+
+    expect(mockCheckJob).not.toHaveBeenCalled();
+  });
+
+  it('multi-module: every job is polled each tick, and any one failing routes to failed', async () => {
+    seedPendingGeneration([
+      { moduleIndex: 0, jobId: 'job-1' },
+      { moduleIndex: 1, jobId: 'job-2' },
+      { moduleIndex: 2, jobId: 'job-3' },
+    ]);
+    mockCheckJob.mockImplementation(async (jobId: string) => {
+      if (jobId === 'job-3') {
+        return { status: 'failed', error: 'Course generation failed. Please start a new course.' };
+      }
+      return { status: 'processing' };
+    });
+
+    render(<CoursesListClient courses={[]} hasBilling viewerRole="owner" />);
+    expect(screen.getByText(/still being generated/i)).toBeInTheDocument();
+
+    await advancePoll();
+
+    expect(mockCheckJob).toHaveBeenCalledWith('job-1');
+    expect(mockCheckJob).toHaveBeenCalledWith('job-2');
+    expect(mockCheckJob).toHaveBeenCalledWith('job-3');
+    expect(mockCheckJob).toHaveBeenCalledTimes(3);
+    expect(
+      screen.getByText('Course generation failed. Please start a new course.'),
+    ).toBeInTheDocument();
   });
 });

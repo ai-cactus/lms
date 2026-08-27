@@ -27,7 +27,12 @@ vi.mock('@/app/actions/video-progress', () => ({
   saveVideoProgress: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock('@/app/actions/course', () => ({
+  retakeQuiz: vi.fn(),
+}));
+
 import { saveVideoProgress } from '@/app/actions/video-progress';
+import { retakeQuiz } from '@/app/actions/course';
 import type { LearnPayload } from '@/lib/learn/get-learn-payload';
 import LearnClient from './LearnClient';
 
@@ -498,5 +503,258 @@ describe('Proceed to Quiz gate (commit 78c5795)', () => {
     expect(
       screen.queryByText('Work through every module to unlock the quiz'),
     ).not.toBeInTheDocument();
+ * Quiz error surfacing (fix/learner-quiz-and-slide-picker).
+ *
+ * These three routes previously either threw away the response body (submit),
+ * never checked res.ok at all (start — every 403 was silently ignored and the
+ * learner was dropped into a quiz they could never submit), or alert()ed a
+ * fixed string (retake). The fix replaces all three with an in-page `quizError`
+ * rendered via the shared `Alert` (role="alert"), never `window.alert`.
+ */
+describe('LearnClient — quiz error surfacing', () => {
+  let alertSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    alertSpy.mockRestore();
+  });
+
+  // Two questions, no video lesson — keeps these tests focused on the quiz
+  // flow instead of the (separately covered) video watch-gate.
+  const textCoursePayload = (overrides: Partial<LearnPayload> = {}): LearnPayload => {
+    const payload = makePayload(overrides);
+    payload.course.lessons = [
+      {
+        id: 'lesson-1',
+        title: 'Exposure control',
+        content: '<p>Lesson body</p>',
+        slideContent: null,
+        duration: 45,
+        order: 1,
+        videoProvider: null,
+        videoStorageUri: null,
+        videoDurationSeconds: null,
+      },
+    ];
+    return payload;
+  };
+
+  const activeAttemptPayload = () => {
+    const payload = textCoursePayload();
+    payload.enrollment.quizAttempts = [
+      {
+        id: 'qa-active',
+        score: 0,
+        attemptCount: 1,
+        answers: [{ questionId: 'q1', selectedAnswer: '4' }],
+        timeTaken: null,
+        completedAt: new Date().toISOString(),
+      },
+    ];
+    return payload;
+  };
+
+  const retakePendingPayload = () => {
+    const payload = textCoursePayload();
+    payload.enrollment.score = null;
+    payload.enrollment.quizAttempts = [
+      {
+        id: 'qa-1',
+        score: 40,
+        attemptCount: 1,
+        answers: [],
+        timeTaken: 120,
+        completedAt: '2026-08-01T00:00:00.000Z',
+      },
+    ];
+    return payload;
+  };
+
+  const reviewPendingRetakePayload = () => {
+    // Not 'locked' or completed/attested: hasQuizAttempt && !activeAttempt &&
+    // score != null lands on the review screen with a failing, retakeable score.
+    const payload = textCoursePayload();
+    payload.enrollment.status = 'in_progress';
+    payload.enrollment.score = 40;
+    payload.enrollment.quizAttempts = [
+      {
+        id: 'qa-1',
+        score: 40,
+        attemptCount: 1,
+        answers: [],
+        timeTaken: 120,
+        completedAt: '2026-08-01T00:00:00.000Z',
+      },
+    ];
+    return payload;
+  };
+
+  it('renders the server message on submit failure, never alert()s, and keeps the attempt in progress', async () => {
+    fetchMock.mockImplementation((url: string) => {
+      if (url.includes('/submit')) {
+        return Promise.resolve({
+          ok: false,
+          json: async () => ({
+            error: 'No attempts remaining',
+            attemptsUsed: 2,
+            allowedAttempts: 3,
+          }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+
+    render(<LearnClient initialData={activeAttemptPayload()} />);
+
+    // q1 is restored as answered; advance to q2 and answer it so Submit Quiz enables.
+    fireEvent.click(screen.getByRole('button', { name: 'Next Question' }));
+    const q2Option = screen.getByText('5').closest('[data-quiz-option]');
+    expect(q2Option).not.toBeNull();
+    fireEvent.click(q2Option as Element);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Submit Quiz' }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText('No attempts remaining. You have used 2 of 3 allowed attempts.'),
+      ).toBeInTheDocument(),
+    );
+
+    expect(alertSpy).not.toHaveBeenCalled();
+    // Still on the active quiz view, not the full-page `error` early-return —
+    // that would have discarded the in-progress attempt.
+    expect(screen.queryByText(/^Error:/)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Submit Quiz' })).toBeInTheDocument();
+    // The learner's answer for q2 survived the failed submit.
+    expect(q2Option).toHaveAttribute('data-selected', 'true');
+  });
+
+  it('falls back to the bare error string when the submit body has no attemptsUsed/allowedAttempts', async () => {
+    fetchMock.mockImplementation((url: string) => {
+      if (url.includes('/submit')) {
+        return Promise.resolve({
+          ok: false,
+          json: async () => ({ error: 'No attempts remaining' }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+
+    render(<LearnClient initialData={activeAttemptPayload()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Next Question' }));
+    fireEvent.click(screen.getByText('5').closest('[data-quiz-option]') as Element);
+    fireEvent.click(screen.getByRole('button', { name: 'Submit Quiz' }));
+
+    await waitFor(() => expect(screen.getByText('No attempts remaining')).toBeInTheDocument());
+    expect(alertSpy).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the default message when the submit error body is unparsable JSON', async () => {
+    fetchMock.mockImplementation((url: string) => {
+      if (url.includes('/submit')) {
+        return Promise.resolve({
+          ok: false,
+          json: async () => {
+            throw new SyntaxError('Unexpected end of JSON input');
+          },
+        });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+
+    render(<LearnClient initialData={activeAttemptPayload()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Next Question' }));
+    fireEvent.click(screen.getByText('5').closest('[data-quiz-option]') as Element);
+    fireEvent.click(screen.getByRole('button', { name: 'Submit Quiz' }));
+
+    await waitFor(() =>
+      expect(screen.getByText('Failed to submit quiz. Please try again.')).toBeInTheDocument(),
+    );
+    expect(alertSpy).not.toHaveBeenCalled();
+  });
+
+  it('does not advance past the intro when /start 403s, and prefers the human message over the machine token', async () => {
+    fetchMock.mockImplementation((url: string) => {
+      if (url.includes('/start')) {
+        return Promise.resolve({
+          ok: false,
+          json: async () => ({
+            error: 'QUIZ_LOCKED_MAX_ATTEMPTS',
+            message: 'You have used all allowed attempts for this quiz.',
+          }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+
+    render(<LearnClient initialData={retakePendingPayload()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Start Quiz' }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText('You have used all allowed attempts for this quiz.'),
+      ).toBeInTheDocument(),
+    );
+
+    expect(alertSpy).not.toHaveBeenCalled();
+    // A learner must never see the raw machine token.
+    expect(screen.queryByText('QUIZ_LOCKED_MAX_ATTEMPTS')).toBeNull();
+    // The res.ok check must keep the learner at the intro — not dropped into
+    // a quiz they can never submit.
+    expect(screen.queryByText(/^Question 1 of/)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Start Quiz' })).toBeInTheDocument();
+  });
+
+  it('falls back to the default message when the start error body is empty', async () => {
+    fetchMock.mockImplementation((url: string) => {
+      if (url.includes('/start')) {
+        return Promise.resolve({ ok: false, json: async () => ({}) });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+
+    render(<LearnClient initialData={retakePendingPayload()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Start Quiz' }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText('Failed to start quiz session. Please try again.'),
+      ).toBeInTheDocument(),
+    );
+    expect(alertSpy).not.toHaveBeenCalled();
+  });
+
+  it('still opens the quiz normally on a successful /start (regression guard)', async () => {
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+
+    render(<LearnClient initialData={retakePendingPayload()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Start Quiz' }));
+
+    await waitFor(() => expect(screen.getByText(/^Question 1 of 2/)).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'Start Quiz' })).toBeNull();
+    expect(alertSpy).not.toHaveBeenCalled();
+  });
+
+  it('shows the fixed retake-failure string (not the thrown message) and never alert()s', async () => {
+    vi.mocked(retakeQuiz).mockRejectedValueOnce(
+      new Error('internal cause the learner must not see'),
+    );
+
+    render(<LearnClient initialData={reviewPendingRetakePayload()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Retake Quiz' }));
+
+    // retakeQuiz is a Server Action; Next.js redacts thrown messages in
+    // production, so the UI must show the fixed fallback, never the real one.
+    await waitFor(() =>
+      expect(screen.getByText('Failed to start retake. Please try again.')).toBeInTheDocument(),
+    );
+    expect(screen.queryByText('internal cause the learner must not see')).toBeNull();
+    expect(alertSpy).not.toHaveBeenCalled();
+    // Still on the results view, not the full-page `error` early-return.
+    expect(screen.queryByText(/^Error:/)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Retake Quiz' })).toBeInTheDocument();
   });
 });
