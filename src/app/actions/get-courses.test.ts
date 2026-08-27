@@ -186,3 +186,51 @@ describe('getCourses — org-manager visibility (#15)', () => {
     });
   });
 });
+
+/**
+ * The per-course headline figures (enrolled/completion) must not disagree with
+ * the roster beneath them: getCourseById's roster is facility-narrowed for a
+ * supervisor, so a card reporting an organisation-wide "42 enrolled" over that
+ * narrowed roster would itself be a leak of the same kind.
+ */
+describe('getCourses — facility-scoped enrollment tallies', () => {
+  const sessionFor = (role: string) => ({
+    user: { id: 'u-1', role, organizationUserId: 'ou-1', organizationId: 'org-1' },
+  });
+
+  beforeEach(() => {
+    mockCourseFindMany.mockResolvedValue([]);
+    mockOfferingFindMany.mockResolvedValue([]);
+    mockEnrollmentGroupBy.mockResolvedValue([]);
+    mockWorkerAuth.mockResolvedValue(null);
+  });
+
+  it('an ORG-WIDE role (admin) applies NO facility filter to the enrollment tally', async () => {
+    mockAuth.mockResolvedValue(sessionFor('admin'));
+
+    await getCourses();
+
+    const where = mockEnrollmentGroupBy.mock.calls[0][0].where;
+    expect(where.facilityId).toBeUndefined();
+  });
+
+  it('a FACILITY-BOUND role (supervisor) narrows the enrollment tally to their accessible facilities', async () => {
+    mockAuth.mockResolvedValue(sessionFor('supervisor'));
+    mockFacilityFindMany.mockResolvedValue([{ id: 'fac-1' }]);
+
+    await getCourses();
+
+    const where = mockEnrollmentGroupBy.mock.calls[0][0].where;
+    expect(where.facilityId).toEqual({ in: ['fac-1'] });
+  });
+
+  it('FAIL-CLOSED: a facility-bound role with no accessible facilities narrows the tally to an impossible `in: []`', async () => {
+    mockAuth.mockResolvedValue(sessionFor('supervisor'));
+    mockFacilityFindMany.mockResolvedValue([]);
+
+    await getCourses();
+
+    const where = mockEnrollmentGroupBy.mock.calls[0][0].where;
+    expect(where.facilityId).toEqual({ in: [] });
+  });
+});
