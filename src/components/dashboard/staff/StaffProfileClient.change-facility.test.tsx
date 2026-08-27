@@ -91,6 +91,18 @@ describe('StaffProfileClient — Change Facility button', () => {
     expect(screen.queryByRole('button', { name: /Change Facility/ })).not.toBeInTheDocument();
   });
 
+  it('QA #21 / D-01: is hidden when the viewer has only ONE accessible facility — nowhere to reassign anyone to', () => {
+    render(
+      <StaffProfileClient
+        staff={makeStaff()}
+        viewerRole={'owner' as Role}
+        facilities={[FACILITIES[0]]}
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: /Change Facility/ })).not.toBeInTheDocument();
+  });
+
   it('shows the role and facility chip from the design', () => {
     render(
       <StaffProfileClient

@@ -262,6 +262,29 @@ describe('StaffListClient — row Action cell (Figma roster design)', () => {
     expect(items.map((item) => item.textContent)).toEqual(['Change Facility', 'Remove Staff']);
   });
 
+  it('QA #21 / D-01: hides Change Facility from the kebab when the viewer has only ONE accessible facility — nowhere to reassign anyone to', async () => {
+    const user = userEvent.setup();
+    render(
+      <StaffListClient
+        users={[memberEntry('ou-hr', 'HR Person')]}
+        hasOrganization={true}
+        organizationId="org-1"
+        planLimit={null}
+        planName="Professional"
+        currentWorkerCount={1}
+        pendingInviteCount={0}
+        inviterRole="owner"
+        viewerOrganizationUserId="ou-viewer"
+        facilities={[{ id: 'fac-1', name: 'Main Site', type: null, city: null }]}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Row actions' }));
+    const items = screen.getAllByRole('menuitem');
+    expect(items.map((item) => item.textContent)).toEqual(['Remove Staff']);
+    expect(screen.queryByRole('menuitem', { name: 'Change Facility' })).not.toBeInTheDocument();
+  });
+
   it('does not navigate from a pending-invite row but keeps its invite actions', async () => {
     const user = userEvent.setup();
     render(
