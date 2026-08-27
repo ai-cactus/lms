@@ -1,23 +1,28 @@
 ---
 name: gotcha-role-assign-count-vs-reach
-description: Don't facility-scope getRoleHolderCounts while assignCourseToRoleTargets still enrolls org-wide — the wizard would understate what the assignment does
+description: getRoleHolderCounts and assignCourseToRoleTargets are now both facility-scoped and must stay coupled; CourseAssignment still has no facility column so FUTURE role holders enroll org-wide
 metadata:
   type: project
 ---
 
-`getRoleHolderCounts` (src/app/actions/enrollment.ts) and the mutation behind
-`assignCourseToRoles` — `assignCourseToRoleTargets`, same file — must be
-narrowed together or not at all. The count feeds the assign wizard's "this will
-enroll N workers"; the mutation enrolls `organizationUser.findMany({ organizationId, role: { in: targetRoles }, active: true })`,
-which is org-wide with no facility predicate.
+`getRoleHolderCounts` and `assignCourseToRoleTargets` (both
+src/app/actions/enrollment.ts) are facility-scoped as of 2026-08-27 via
+`resolveDataFacilityIds` / `staffFacilityWhere`. They must be changed
+**together**, always.
 
-**Why:** during the 2026-08-27 facility read-scoping pass, item 6 of the brief
-proposed facility-scoping the count. Narrowing only the read would make a
-supervisor's wizard promise 3 enrolments and perform 40 — worse than the
-current honest-but-broad number. Left unchanged and flagged instead.
+**Why:** the count feeds the assign wizard's "this will enroll N workers" and
+the mutation is what actually enrolls. Narrowing either alone produces a UI
+that promises one number and performs another — the reason the earlier pass
+refused to narrow the count on its own while the mutation was still org-wide.
 
-**How to apply:** the real defect is on the mutation (a facility-bound role
-assigning by role reaches every facility). Fix that first, in the same change
-as the count. Until then treat the org-wide count as deliberate.
+**Remaining gap (needs a schema change, deliberately not done):**
+`CourseAssignment` stores `targetRoles` but no facility, so `enrollUserForRoleTargets`
+still auto-enrolls FUTURE holders of a targeted role organisation-wide — a
+supervisor's role assignment leaks reach over time even though its immediate
+enrolment is scoped. Closing it means a facility column on `CourseAssignment`.
 
-See also [[project_facility_scope_one_condition]].
+**How to apply:** org-wide roles are unaffected — `resolveDataFacilityIds`
+returns `null` for them and `staffFacilityWhere(null)` is `{}`. An empty
+accessible list yields `{ in: [] }`, i.e. nobody.
+
+See also [[project_facility_scope_one_condition]], [[gotcha_assignment_action_authorization_split]].
