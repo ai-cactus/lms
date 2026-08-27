@@ -517,7 +517,7 @@ async function runPipelineV46(
     // ── Stage B + C: Slides + Quiz (parallel) ──
 
     const desiredSlideCount = parseInt(data.notesCount) || 10;
-    const questionCount = parseInt(data.quizQuestionCount) || 10;
+    const questionCount = parseInt(data.quizQuestionCount) || 5;
     const difficulty = (
       ['easy', 'medium', 'hard'].includes(data.quizDifficulty) ? data.quizDifficulty : 'medium'
     ) as QuizDifficulty;

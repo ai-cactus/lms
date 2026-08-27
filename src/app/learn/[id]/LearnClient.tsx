@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 // isAdminRole is deliberately NOT imported here: the learn view mode comes from
 // the server as `userData.isAdminView`. Re-deriving it from the role string is
 // exactly the D-16 defect — a manager in Learn mode carries an admin role by
@@ -17,6 +17,7 @@ import CourseArticle from '@/components/courses/CourseArticle';
 import AdminQuizEditor from '@/components/courses/AdminQuizEditor';
 import AdminLessonEditor from '@/components/courses/AdminLessonEditor';
 import AdminCourseReview from '@/components/courses/AdminCourseReview';
+import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { VideoPlayer } from '@/components/video/VideoPlayer';
 import { isQuizUnlocked } from '@/lib/video/gating';
@@ -301,6 +302,43 @@ function deriveSeed(data: LearnPayload): SeededState {
   return seed;
 }
 
+const SUBMIT_QUIZ_FALLBACK = 'Failed to submit quiz. Please try again.';
+const START_QUIZ_FALLBACK = 'Failed to start quiz session. Please try again.';
+const RETAKE_QUIZ_FALLBACK = 'Failed to start retake. Please try again.';
+
+interface QuizErrorBody {
+  error?: string;
+  message?: string;
+  attemptsUsed?: number;
+  allowedAttempts?: number | null;
+}
+
+/**
+ * Turns a failed quiz API response into a message the learner can act on.
+ *
+ * The quiz routes are route handlers, not Server Actions, so their JSON bodies
+ * reach the client unredacted — throwing them away is what left QA with an
+ * undiagnosable "Failed to submit quiz". `message` is preferred over `error`
+ * because the start route puts a machine code (`QUIZ_LOCKED_MAX_ATTEMPTS`) in
+ * `error` and the human text in `message`.
+ */
+async function readQuizErrorMessage(res: Response, fallback: string): Promise<string> {
+  let body: QuizErrorBody | null = null;
+  try {
+    body = (await res.json()) as QuizErrorBody;
+  } catch {
+    // Non-JSON body (proxy error page, empty 502) — nothing to surface.
+  }
+
+  const detail = body?.message ?? body?.error;
+  if (!detail) return fallback;
+
+  if (typeof body?.attemptsUsed === 'number' && typeof body?.allowedAttempts === 'number') {
+    return `${detail}. You have used ${body.attemptsUsed} of ${body.allowedAttempts} allowed attempts.`;
+  }
+  return detail;
+}
+
 interface LearnClientProps {
   /**
    * Server-rendered payload. When present the mount fetch is skipped entirely
@@ -339,6 +377,10 @@ export default function LearnClient({ initialData }: LearnClientProps) {
   const [timeLeft, setTimeLeft] = useState(seed?.timeLeft ?? 0);
   const [quizResults, setQuizResults] = useState<QuizResultsData | null>(seed?.quizResults ?? null);
   const [submitting, setSubmitting] = useState(false);
+  // Non-fatal quiz failures. Kept separate from `error`, which replaces the
+  // whole learn view — blowing the page away mid-attempt would discard the
+  // learner's answers.
+  const [quizError, setQuizError] = useState('');
 
   // Modal State
   const [showQuizGateModal, setShowQuizGateModal] = useState(false);
@@ -346,6 +388,10 @@ export default function LearnClient({ initialData }: LearnClientProps) {
 
   // Mobile Rail Toggle
   const [railOpen, setRailOpen] = useState(false);
+
+  // Article view renders every module into one scroll container, so selecting a
+  // module from the Table of Contents has to bring its section into view.
+  const moduleRefs = useRef<Array<HTMLDivElement | null>>([]);
 
   // Quiz unlocked flag
   const [quizUnlocked, setQuizUnlocked] = useState(seed?.quizUnlocked ?? false);
@@ -381,6 +427,7 @@ export default function LearnClient({ initialData }: LearnClientProps) {
   const handleSubmitQuiz = React.useCallback(async () => {
     if (!course?.quiz || !enrollment) return;
     setSubmitting(true);
+    setQuizError('');
     const answers = Object.entries(quizAnswers).map(([qId, val]) => ({
       questionId: qId,
       selectedAnswer: val,
@@ -401,13 +448,20 @@ export default function LearnClient({ initialData }: LearnClientProps) {
           timeTaken: timeTaken,
         }),
       });
-      if (!res.ok) throw new Error('Failed to submit');
+      if (!res.ok) {
+        throw new Error(await readQuizErrorMessage(res, SUBMIT_QUIZ_FALLBACK));
+      }
       const result = await res.json();
       setQuizResults(result);
       setQuizStep('review');
     } catch (err) {
-      logger.error({ msg: 'Error:', err: err });
-      alert('Failed to submit quiz');
+      logger.error({
+        msg: '[learn] Quiz submission failed',
+        err,
+        quizId: course.quiz.id,
+        enrollmentId: enrollment.id,
+      });
+      setQuizError(err instanceof Error ? err.message : SUBMIT_QUIZ_FALLBACK);
     } finally {
       setSubmitting(false);
     }
@@ -453,11 +507,19 @@ export default function LearnClient({ initialData }: LearnClientProps) {
       return;
     }
 
-    // Standard Lesson Selection
-    if (index <= highestUnlockedIndex || userData?.isAdminView === true) {
-      setIsQuizActive(false);
-      setActiveIndex(index);
-    }
+    // Standard Lesson Selection — learners may jump to any module.
+    // Browsing deliberately does NOT advance highestUnlockedIndex: the quiz gate
+    // above reads it, so quiz access stays earned through handleNext alone.
+    if (index < 0 || index >= course.lessons.length) return;
+    setIsQuizActive(false);
+    setActiveIndex(index);
+  };
+
+  const scrollToModule = (index: number) => {
+    // Deferred so the scroll runs after the activeIndex re-render has committed.
+    requestAnimationFrame(() => {
+      moduleRefs.current[index]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
   };
 
   const handleNext = () => {
@@ -513,12 +575,21 @@ export default function LearnClient({ initialData }: LearnClientProps) {
   const handleStartQuiz = async () => {
     if (!course?.quiz || !enrollment) return;
 
+    setQuizError('');
+
     try {
-      await fetch(`/api/quiz/${course.quiz.id}/start`, {
+      const res = await fetch(`/api/quiz/${course.quiz.id}/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enrollmentId: enrollment.id }),
       });
+
+      // The route rejects exhausted attempts, a locked enrollment and paused
+      // billing with a 403. Ignoring that let the learner into a quiz they
+      // could never submit.
+      if (!res.ok) {
+        throw new Error(await readQuizErrorMessage(res, START_QUIZ_FALLBACK));
+      }
 
       setQuizStep('active');
       setCurrentQuestionIndex(0);
@@ -528,8 +599,13 @@ export default function LearnClient({ initialData }: LearnClientProps) {
         : (course?.quiz?.questions.length || 5) * 60;
       setTimeLeft(limit);
     } catch (err) {
-      logger.error({ msg: 'Failed to start quiz', err: err });
-      alert('Failed to start quiz session. Please try again.');
+      logger.error({
+        msg: '[learn] Failed to start quiz session',
+        err,
+        quizId: course.quiz.id,
+        enrollmentId: enrollment.id,
+      });
+      setQuizError(err instanceof Error ? err.message : START_QUIZ_FALLBACK);
     }
   };
 
@@ -673,10 +749,21 @@ export default function LearnClient({ initialData }: LearnClientProps) {
 
   const isQuizLocked = isQuizActive && quizStep === 'active' && !userData?.isAdminView === true;
 
+  // Modules are freely browsable, so reaching the foot of the article no longer
+  // implies having worked through it. Gate the article's own quiz shortcut on
+  // the same earned progress the rail and the "Complete All Modules First"
+  // modal already require, or browsing to the end would bypass all three.
+  const hasCompletedAllModules = !!course && highestUnlockedIndex >= course.lessons.length - 1;
+  const isProceedBlocked =
+    isVideoGateBlocked || (!hasCompletedAllModules && userData?.isAdminView !== true);
+
+  // Every lesson is freely selectable. CourseRail derives the quiz's lock from
+  // this same index (lessons.length > unlockedIndex), so stopping at the last
+  // lesson keeps the rail's quiz entry gated while unlocking all modules.
   const railUnlockedIndex =
     quizUnlocked || quizResults || userData?.isAdminView === true
-      ? course?.lessons.length || 9999
-      : highestUnlockedIndex;
+      ? course.lessons.length
+      : Math.max(0, course.lessons.length - 1);
 
   // Whether to show the shared rail + topbar (quiz views only)
   const showSharedLayout = isQuizIndex || (quizStep === 'review' && quizResults);
@@ -686,6 +773,12 @@ export default function LearnClient({ initialData }: LearnClientProps) {
   const completedAttemptCount =
     enrollment?.quizAttempts?.filter((a) => a.timeTaken !== null).length ?? 0;
   const activeDraftAttempt = enrollment?.quizAttempts?.find((a) => a.timeTaken === null);
+
+  const quizErrorAlert = quizError ? (
+    <Alert variant="error" className="mb-6 text-left">
+      {quizError}
+    </Alert>
+  ) : null;
 
   return (
     <div className="flex flex-row-reverse max-md:flex-col h-[100dvh] w-full overflow-hidden bg-background-secondary font-sans text-[#1a1a1a]">
@@ -763,6 +856,7 @@ export default function LearnClient({ initialData }: LearnClientProps) {
         <div className="relative h-full flex-1 overflow-hidden bg-[#f8f7f4]">
           {quizStep === 'review' && quizResults ? (
             <div style={{ overflow: 'auto', height: '100%', padding: 24 }}>
+              {quizErrorAlert}
               <QuizResults
                 courseId={courseId}
                 enrollmentId={enrollment?.id || ''}
@@ -791,15 +885,22 @@ export default function LearnClient({ initialData }: LearnClientProps) {
                   setEnrollment((prev) => (prev ? { ...prev, status: 'attested' } : prev));
                 }}
                 onRetake={async () => {
-                  if (enrollment?.id) {
-                    try {
-                      const { retakeQuiz } = await import('@/app/actions/course');
-                      await retakeQuiz(enrollment.id);
-                      window.location.reload();
-                    } catch (err) {
-                      logger.error({ msg: 'Failed to retake quiz:', err: err });
-                      alert('Failed to start retake. Please try again.');
-                    }
+                  if (!enrollment?.id) return;
+                  setQuizError('');
+                  try {
+                    const { retakeQuiz } = await import('@/app/actions/course');
+                    await retakeQuiz(enrollment.id);
+                    window.location.reload();
+                  } catch (err) {
+                    logger.error({
+                      msg: '[learn] Failed to start quiz retake',
+                      err,
+                      enrollmentId: enrollment.id,
+                    });
+                    // retakeQuiz is a Server Action: Next.js redacts thrown
+                    // messages in production builds, so only the log carries
+                    // the real cause.
+                    setQuizError(RETAKE_QUIZ_FALLBACK);
                   }
                 }}
               />
@@ -824,6 +925,7 @@ export default function LearnClient({ initialData }: LearnClientProps) {
                   <div className="flex flex-1 flex-col px-12 pt-10 pb-5 max-md:px-4 max-md:pt-5 max-md:pb-4">
                     {quizStep === 'intro' && (
                       <div className="mt-10 flex w-full flex-col items-center text-center">
+                        {quizErrorAlert}
                         <h1 className="mb-4 text-[32px] font-extrabold tracking-[-0.02em] text-[#111827] max-md:text-[22px] max-[480px]:text-[20px]">
                           {course.quiz?.title}
                         </h1>
@@ -967,6 +1069,7 @@ export default function LearnClient({ initialData }: LearnClientProps) {
                             );
                           })}
                         </div>
+                        {quizErrorAlert}
                         <div className="flex items-center justify-between border-t border-[#f3f4f6] pt-3 max-md:flex-wrap max-md:gap-2">
                           <Button
                             variant="outline"
@@ -1043,18 +1146,9 @@ export default function LearnClient({ initialData }: LearnClientProps) {
               lessons={course.lessons}
               activeIndex={activeIndex}
               onSelectModule={(index) => {
-                if (index === course.lessons.length) {
-                  handleRailSelect(index);
-                } else if (index <= highestUnlockedIndex || userData?.isAdminView === true) {
-                  setIsQuizActive(false);
-                  setActiveIndex(index);
-                  // Scroll to the module in article view
-                  requestAnimationFrame(() => {
-                    const el = document.getElementById(`module-${index}`);
-                    if (el) {
-                      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                    }
-                  });
+                handleRailSelect(index);
+                if (index < course.lessons.length) {
+                  scrollToModule(index);
                 }
               }}
               onToggleView={isVideoCourse ? undefined : () => setViewMode('slides')}
@@ -1069,8 +1163,12 @@ export default function LearnClient({ initialData }: LearnClientProps) {
                 setQuizStep(quizResults ? 'review' : 'intro');
                 setActiveIndex(course.lessons.length);
               }}
-              proceedDisabled={isVideoGateBlocked}
-              proceedHint="Watch the video to unlock the quiz"
+              proceedDisabled={isProceedBlocked}
+              proceedHint={
+                isVideoGateBlocked
+                  ? 'Watch the video to unlock the quiz'
+                  : 'Work through every module to unlock the quiz'
+              }
               hasQuiz={!!course.quiz}
               onNext={handleNext}
               onPrev={handlePrev}
@@ -1081,6 +1179,9 @@ export default function LearnClient({ initialData }: LearnClientProps) {
                 <div
                   key={lesson.id}
                   id={`module-${idx}`}
+                  ref={(el) => {
+                    moduleRefs.current[idx] = el;
+                  }}
                   style={{ marginBottom: idx < course.lessons.length - 1 ? '48px' : '0' }}
                 >
                   {userData?.isAdminView === true ? (
