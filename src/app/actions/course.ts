@@ -1007,9 +1007,16 @@ export async function assignCourseToUsers(
     throw new Error('Forbidden');
   }
 
+  // Refused by return, not thrown: each of these is guidance the admin acts on,
+  // and a thrown message reaches the browser redacted in production builds.
+  // Every one of them returns before any offering, assignment or enrollment write.
   const organizationId = session.user.organizationId;
   if (!organizationId) {
-    throw new Error('You must belong to an organization to assign courses');
+    return {
+      success: false,
+      message: 'You must belong to an organization to assign courses',
+      notFound: [],
+    };
   }
 
   const course = await prisma.course.findUnique({
@@ -1076,7 +1083,7 @@ export async function assignCourseToUsers(
 
   const deadline = dueAt ? new Date(dueAt) : null;
   if (deadline && Number.isNaN(deadline.getTime())) {
-    throw new Error('Invalid completion deadline');
+    return { success: false, message: 'Invalid completion deadline', notFound };
   }
 
   // Persist the deadline on the org's CourseAssignment for this course so the
@@ -1177,14 +1184,26 @@ export async function assignCoursesToUser(
     throw new Error('Forbidden');
   }
 
+  // Refused by return, as in assignCourseToUsers above: these are user-facing
+  // messages, and nothing is written before any of them.
   const organizationId = session.user.organizationId;
   if (!organizationId) {
-    throw new Error('You must belong to an organization to assign courses');
+    return {
+      assigned: 0,
+      alreadyAssigned: 0,
+      failed: 0,
+      error: 'You must belong to an organization to assign courses',
+    };
   }
 
   const uniqueCourseIds = [...new Set(courseIds.filter(Boolean))];
   if (uniqueCourseIds.length === 0) {
-    throw new Error('Select at least one course to assign');
+    return {
+      assigned: 0,
+      alreadyAssigned: 0,
+      failed: 0,
+      error: 'Select at least one course to assign',
+    };
   }
 
   const target = await prisma.organizationUser.findUnique({
@@ -1206,7 +1225,7 @@ export async function assignCoursesToUser(
 
   const deadline = dueAt ? new Date(dueAt) : null;
   if (deadline && Number.isNaN(deadline.getTime())) {
-    throw new Error('Invalid completion deadline');
+    return { assigned: 0, alreadyAssigned: 0, failed: 0, error: 'Invalid completion deadline' };
   }
 
   const result: AssignCoursesToUserResult = { assigned: 0, alreadyAssigned: 0, failed: 0 };
