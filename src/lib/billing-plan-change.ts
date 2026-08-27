@@ -6,10 +6,10 @@ import type { PlanKey, BillingCycle } from '@/lib/billing-plans';
  * The billing policy (Phase 4, Issue 3) splits a plan change into three cases:
  *  - `no_op`             — target equals the live plan/cycle; nothing to do.
  *  - `scheduled`         — the change takes effect at the current period end
- *                          with NO charge today (same-tier cycle changes, any
- *                          downgrade, and "almost-expired" upgrades).
- *  - `immediate_prorate` — a genuine tier upgrade with ≥ 1 month remaining;
- *                          Stripe prorates and charges the difference now.
+ *                          with NO charge today (same-tier cycle changes and
+ *                          any downgrade).
+ *  - `immediate_prorate` — any tier upgrade; Stripe prorates and charges the
+ *                          difference now (product decision 2026-08-27).
  *
  * Intentionally free of Stripe/Prisma dependencies so it can be exercised in
  * isolation and reused by both the checkout and preview routes.
@@ -30,7 +30,14 @@ export interface ClassifyPlanChangeInput {
   currentCycle: BillingCycle;
   targetPlanKey: PlanKey;
   targetCycle: BillingCycle;
+  /**
+   * Subscription state the classification is made against. Not consulted since
+   * the 2026-08-27 upgrade policy removed the last time-based rule; kept on the
+   * input so callers keep passing the full context a future date-sensitive rule
+   * would need, rather than the signature churning back and forth.
+   */
   currentPeriodEnd: Date;
+  /** Clock override for the same reason as {@link currentPeriodEnd}. */
   now?: Date;
 }
 
@@ -40,21 +47,7 @@ export interface PlanChangeClassificationResult {
   cycleChanged: boolean;
 }
 
-/**
- * Whether strictly less than one calendar month remains before the period ends.
- *
- * Uses calendar-month (`setMonth`) arithmetic, consistent with `pauseEndDate()`
- * in `billing.ts`. An exact one-month boundary counts as "≥ 1 month" (returns
- * false), so an upgrade sitting exactly one month out is prorated immediately.
- */
-export function isLessThanOneMonthRemaining(currentPeriodEnd: Date, now: Date): boolean {
-  const oneMonthBeforeEnd = new Date(currentPeriodEnd);
-  oneMonthBeforeEnd.setMonth(oneMonthBeforeEnd.getMonth() - 1);
-  return now.getTime() > oneMonthBeforeEnd.getTime();
-}
-
 export function classifyPlanChange(input: ClassifyPlanChangeInput): PlanChangeClassificationResult {
-  const now = input.now ?? new Date();
   const tierDelta = PLAN_TIER_ORDER[input.targetPlanKey] - PLAN_TIER_ORDER[input.currentPlanKey];
   const cycleChanged = input.currentCycle !== input.targetCycle;
   const tierDirection = tierDelta === 0 ? 'same' : tierDelta > 0 ? 'upgrade' : 'downgrade';
@@ -75,21 +68,20 @@ export function classifyPlanChange(input: ClassifyPlanChangeInput): PlanChangeCl
     return { classification: 'scheduled', tierDirection, cycleChanged };
   }
 
-  // Upgrade: prorate and charge now, unless the period is almost over — in which
-  // case there is little value in charging a tiny proration, so schedule it.
+  // Upgrade: always prorate and charge now, on every cycle and no matter how
+  // little of the period is left.
   //
-  // INTENDED per product decision (2026-07-17): a MONTHLY subscription's period
-  // is exactly one month, so `isLessThanOneMonthRemaining` is true for any moment
-  // after the subscription start — meaning a monthly tier upgrade ALWAYS resolves
-  // to `scheduled`. That is deliberate: the current monthly tier runs to the end
-  // of the month and the higher tier takes effect (and is charged) at renewal,
-  // rather than proration mid-month. `immediate_prorate` is therefore reachable
-  // only for quarterly/yearly cycles (periods > 1 month). Do NOT "fix" this to
-  // force monthly upgrades to charge immediately without re-confirming the policy.
-  const classification = isLessThanOneMonthRemaining(input.currentPeriodEnd, now)
-    ? 'scheduled'
-    : 'immediate_prorate';
-  return { classification, tierDirection, cycleChanged };
+  // Product decision (2026-08-27), REVERSING the 2026-07-17 policy: upgrades used
+  // to be deferred to period end whenever less than one calendar month remained,
+  // which — because a monthly period IS one month — silently made every monthly
+  // upgrade `scheduled`. An admin who upgraded expecting more capacity today did
+  // not get it. The upgrade is now honoured immediately; Stripe prorates the
+  // difference and the charge either succeeds or the change is rejected outright
+  // (see the checkout route's `error_if_incomplete` handling).
+  //
+  // Downgrades and same-tier cycle changes are unaffected and still defer to
+  // period end — only the upgrade direction charges today.
+  return { classification: 'immediate_prorate', tierDirection, cycleChanged };
 }
 
 /**

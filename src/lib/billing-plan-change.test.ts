@@ -10,32 +10,25 @@
  * `Date.now()` — so these tests are fully deterministic regardless of when
  * they run. "Today" for the policy (per the Phase 4 spec) is 2026-07-17.
  *
- * CYCLE-CONSISTENCY INVARIANT (product decision, 2026-07-17): a live QA run
- * found that the previous version of this file asserted `immediate_prorate`
- * for upgrade scenarios using a `currentPeriodEnd` picked out of thin air
- * (e.g. "2 months out") while `currentCycle: 'monthly'` — a combination that
- * can never occur for a real subscription, since a monthly subscription's
- * `currentPeriodEnd` is ALWAYS exactly one calendar month after its period
- * start. Those tests passed while hiding a real bug: for a monthly
- * subscription, `isLessThanOneMonthRemaining(currentPeriodEnd, now)` is true
- * for every instant strictly after the period start, so a monthly tier
- * upgrade can NEVER classify as `immediate_prorate` — it always resolves to
- * `scheduled`. That is intentional and confirmed by the product owner: a
- * monthly upgrade runs to the end of the month and is charged at renewal,
- * never prorated mid-month. `immediate_prorate` is reachable only for
- * quarterly/yearly cycles, whose periods exceed one month.
+ * UPGRADE POLICY (product decision, 2026-08-27 — REVERSES 2026-07-17): every
+ * tier upgrade now classifies as `immediate_prorate`, on every cycle and at
+ * every point in the period. The previous policy deferred an upgrade to period
+ * end whenever less than one calendar month remained, which — because a monthly
+ * period IS exactly one month — silently made every monthly upgrade
+ * `scheduled`. The upgrade branch is therefore time-independent, and the
+ * upgrade tests below assert that across cycles and across the whole period.
  *
- * All `classifyPlanChange` upgrade tests below therefore derive
- * `currentPeriodEnd` from a realistic subscription start via `periodEndFor`,
- * so the period end is never divorced from the cycle attached to it. The
- * `isLessThanOneMonthRemaining` describe block below is the one exception —
- * it tests a pure, cycle-agnostic function by design, so arbitrary dates
- * remain valid there.
+ * Upgrade tests still derive `currentPeriodEnd` from a realistic subscription
+ * start via `periodEndFor`, so no test asserts against a period end that could
+ * not occur for the cycle attached to it — the classification must not depend
+ * on that pair, and pinning realistic pairs is what proves it.
+ *
+ * Downgrades and same-tier cycle changes are unchanged: both still resolve to
+ * `scheduled` (or `no_op`).
  */
 import { describe, it, expect } from 'vitest';
 import {
   classifyPlanChange,
-  isLessThanOneMonthRemaining,
   PLAN_TIER_ORDER,
   CYCLE_DURATION,
   type ClassifyPlanChangeInput,
@@ -50,9 +43,9 @@ const SUBSCRIPTION_START = new Date('2026-07-01T00:00:00Z');
 /**
  * Derives a realistic `currentPeriodEnd` from a subscription start and its
  * billing cycle, using the same calendar-month (`setMonth`) arithmetic as
- * the product code (see `isLessThanOneMonthRemaining` / `pauseEndDate()` in
- * billing.ts). This keeps every upgrade test's `now`/`currentPeriodEnd` pair
- * tied to a cycle that could actually occur, instead of a hand-picked date.
+ * the product code (see `pauseEndDate()` in billing.ts). This keeps every
+ * upgrade test's `now`/`currentPeriodEnd` pair tied to a cycle that could
+ * actually occur, instead of a hand-picked date.
  */
 function periodEndFor(start: Date, cycle: BillingCycle): Date {
   const end = new Date(start);
@@ -107,54 +100,6 @@ describe('CYCLE_DURATION', () => {
 
   it('maps yearly to a 1-year Stripe phase duration', () => {
     expect(CYCLE_DURATION.yearly).toEqual({ interval: 'year', intervalCount: 1 });
-  });
-});
-
-// ── isLessThanOneMonthRemaining — boundary math (pure, cycle-agnostic) ──────
-
-describe('isLessThanOneMonthRemaining', () => {
-  it('returns false (not less than) when exactly one calendar month remains', () => {
-    // now = 2026-07-17, periodEnd = 2026-08-17 — the task's own worked example.
-    expect(isLessThanOneMonthRemaining(new Date('2026-08-17T12:00:00Z'), NOW)).toBe(false);
-  });
-
-  it('returns true (less than) when the period ends only ~3 weeks out', () => {
-    // now = 2026-07-17, periodEnd = 2026-08-10 — the task's own worked example.
-    expect(isLessThanOneMonthRemaining(new Date('2026-08-10T12:00:00Z'), NOW)).toBe(true);
-  });
-
-  it('flips to true one millisecond after the exact one-month boundary', () => {
-    const periodEnd = new Date('2026-08-17T12:00:00Z');
-    const justAfterBoundary = new Date(NOW.getTime() + 1);
-    expect(isLessThanOneMonthRemaining(periodEnd, justAfterBoundary)).toBe(true);
-  });
-
-  it('stays false one millisecond before the exact one-month boundary', () => {
-    const periodEnd = new Date('2026-08-17T12:00:00Z');
-    const justBeforeBoundary = new Date(NOW.getTime() - 1);
-    expect(isLessThanOneMonthRemaining(periodEnd, justBeforeBoundary)).toBe(false);
-  });
-
-  it('returns false when now is well before the period end (many months remaining)', () => {
-    expect(isLessThanOneMonthRemaining(new Date('2027-07-17T12:00:00Z'), NOW)).toBe(false);
-  });
-
-  it('returns true when now is exactly at (or past) the period end itself', () => {
-    expect(isLessThanOneMonthRemaining(NOW, NOW)).toBe(true); // period already over — 0 months remain
-    expect(isLessThanOneMonthRemaining(new Date(NOW.getTime() - 1), NOW)).toBe(true); // period already past
-  });
-
-  it('documents the setMonth month-length overflow: Mar 31 minus 1 calendar month rolls to Mar 3, not Feb 28', () => {
-    // 2026 is not a leap year, so February has 28 days. `new Date(2026-03-31)
-    // .setMonth(1)` (February) overflows the nonexistent Feb 31 forward into
-    // March, landing on Mar 3 — consistent with pauseEndDate()'s calendar-month
-    // arithmetic elsewhere in this codebase (see billing.ts). This pins that
-    // documented behavior rather than the naive "Feb 28" expectation.
-    const periodEnd = new Date('2026-03-31T12:00:00Z');
-    const dayBeforeOverflowBoundary = new Date('2026-03-02T12:00:00Z');
-    const dayAfterOverflowBoundary = new Date('2026-03-04T12:00:00Z');
-    expect(isLessThanOneMonthRemaining(periodEnd, dayBeforeOverflowBoundary)).toBe(false);
-    expect(isLessThanOneMonthRemaining(periodEnd, dayAfterOverflowBoundary)).toBe(true);
   });
 });
 
@@ -417,7 +362,7 @@ describe('classifyPlanChange — pro tier transitions', () => {
     });
   });
 
-  it('schedules a starter -> pro monthly upgrade (charged at renewal, never mid-month proration)', () => {
+  it('charges immediately for a starter -> pro monthly upgrade (2026-08-27 policy)', () => {
     const proMonthlyPeriodEnd = periodEndFor(SUBSCRIPTION_START, 'monthly');
     const result = classifyPlanChange(
       input({
@@ -430,7 +375,7 @@ describe('classifyPlanChange — pro tier transitions', () => {
       }),
     );
     expect(result).toEqual({
-      classification: 'scheduled',
+      classification: 'immediate_prorate',
       tierDirection: 'upgrade',
       cycleChanged: false,
     });
@@ -456,26 +401,24 @@ describe('classifyPlanChange — pro tier transitions', () => {
   });
 });
 
-// ── classifyPlanChange — MONTHLY tier upgrades (anti-regression guard) ─────
+// ── classifyPlanChange — MONTHLY tier upgrades (regression guard) ──────────
 //
-// The classification for an upgrade depends only on `currentCycle` (via
-// `currentPeriodEnd`), never on `targetCycle` — so ANY upgrade whose CURRENT
-// subscription is monthly always schedules, regardless of what cycle it's
-// upgrading to.
+// Monthly is the cycle the 2026-07-17 policy silently swallowed: its period is
+// exactly one calendar month, so the old "< 1 month remaining" rule matched
+// every instant after the period start and no monthly upgrade could ever
+// charge. These cases lock in the 2026-08-27 reversal.
 
-describe('classifyPlanChange — monthly tier upgrade always schedules to period end — charged at renewal, never mid-month proration (product decision 2026-07-17)', () => {
+describe('classifyPlanChange — monthly tier upgrade always charges immediately (product decision 2026-08-27, reversing 2026-07-17)', () => {
   const monthlyPeriodEnd = periodEndFor(SUBSCRIPTION_START, 'monthly'); // 2026-08-01T00:00:00Z
 
-  // `now` values strictly after the period start. The literal period-start
-  // instant itself (0 elapsed time, exactly 1 month remaining) is the sole
-  // exception carved out by `isLessThanOneMonthRemaining`'s own boundary
-  // rule (see the boundary describe block above) and is not exercised here.
   it.each<[string, Date]>([
+    ['at the period start itself', SUBSCRIPTION_START],
     ['1ms after period start', new Date(SUBSCRIPTION_START.getTime() + 1)],
     ['1 second after period start', new Date(SUBSCRIPTION_START.getTime() + 1000)],
     ['3 days into the period', addDays(SUBSCRIPTION_START, 3)],
     ['20 days into the period (past the midpoint)', addDays(SUBSCRIPTION_START, 20)],
-  ])('schedules starter -> growth (monthly) at %s — never immediate_prorate', (_label, now) => {
+    ['on the final day of the period', addDays(SUBSCRIPTION_START, 30)],
+  ])('prorates starter -> growth (monthly) at %s — never deferred to renewal', (_label, now) => {
     const result = classifyPlanChange(
       input({
         currentPlanKey: 'starter',
@@ -487,13 +430,13 @@ describe('classifyPlanChange — monthly tier upgrade always schedules to period
       }),
     );
     expect(result).toEqual({
-      classification: 'scheduled',
+      classification: 'immediate_prorate',
       tierDirection: 'upgrade',
       cycleChanged: false,
     });
   });
 
-  it('schedules a monthly upgrade even when it is ALSO a cycle change to yearly (target cycle never grants immediate_prorate)', () => {
+  it('prorates a monthly upgrade that is ALSO a cycle change to yearly', () => {
     const result = classifyPlanChange(
       input({
         currentPlanKey: 'starter',
@@ -505,13 +448,13 @@ describe('classifyPlanChange — monthly tier upgrade always schedules to period
       }),
     );
     expect(result).toEqual({
-      classification: 'scheduled',
+      classification: 'immediate_prorate',
       tierDirection: 'upgrade',
       cycleChanged: true,
     });
   });
 
-  it('schedules enterprise-bound monthly upgrades too (growth -> enterprise, monthly)', () => {
+  it('prorates enterprise-bound monthly upgrades too (growth -> enterprise, monthly)', () => {
     const result = classifyPlanChange(
       input({
         currentPlanKey: 'growth',
@@ -522,13 +465,13 @@ describe('classifyPlanChange — monthly tier upgrade always schedules to period
         now: addDays(SUBSCRIPTION_START, 10),
       }),
     );
-    expect(result.classification).toBe('scheduled');
+    expect(result.classification).toBe('immediate_prorate');
   });
 });
 
 // ── classifyPlanChange — QUARTERLY tier upgrades ────────────────────────────
 
-describe('classifyPlanChange — quarterly tier upgrade (immediate_prorate early, scheduled once inside the final month)', () => {
+describe('classifyPlanChange — quarterly tier upgrade (immediate_prorate throughout the period)', () => {
   const quarterlyPeriodEnd = periodEndFor(SUBSCRIPTION_START, 'quarterly'); // 2026-10-01T00:00:00Z
 
   it('charges immediately for starter -> growth (quarterly) early in the period, ~3 months remaining', () => {
@@ -567,8 +510,7 @@ describe('classifyPlanChange — quarterly tier upgrade (immediate_prorate early
     });
   });
 
-  it('charges immediately at exactly the 1-month boundary (2 months elapsed of the 3-month period)', () => {
-    // oneMonthBeforeEnd for this period is 2026-09-01T00:00:00Z exactly.
+  it('charges immediately two months into the 3-month period', () => {
     const result = classifyPlanChange(
       input({
         currentPlanKey: 'starter',
@@ -582,7 +524,7 @@ describe('classifyPlanChange — quarterly tier upgrade (immediate_prorate early
     expect(result.classification).toBe('immediate_prorate');
   });
 
-  it('schedules starter -> growth (quarterly) once inside the final month, < 1 month remaining', () => {
+  it('charges immediately for starter -> growth (quarterly) inside the final month too', () => {
     const result = classifyPlanChange(
       input({
         currentPlanKey: 'starter',
@@ -594,7 +536,7 @@ describe('classifyPlanChange — quarterly tier upgrade (immediate_prorate early
       }),
     );
     expect(result).toEqual({
-      classification: 'scheduled',
+      classification: 'immediate_prorate',
       tierDirection: 'upgrade',
       cycleChanged: false,
     });
@@ -603,7 +545,7 @@ describe('classifyPlanChange — quarterly tier upgrade (immediate_prorate early
 
 // ── classifyPlanChange — YEARLY tier upgrades ───────────────────────────────
 
-describe('classifyPlanChange — yearly tier upgrade (immediate_prorate early, scheduled once inside the final month)', () => {
+describe('classifyPlanChange — yearly tier upgrade (immediate_prorate throughout the period)', () => {
   const yearlyPeriodEnd = periodEndFor(SUBSCRIPTION_START, 'yearly'); // 2027-07-01T00:00:00Z
 
   it('charges immediately for growth -> enterprise (yearly) early in the period, ~12 months remaining', () => {
@@ -624,7 +566,7 @@ describe('classifyPlanChange — yearly tier upgrade (immediate_prorate early, s
     });
   });
 
-  it('schedules growth -> enterprise (yearly) once inside the final month, < 1 month remaining', () => {
+  it('charges immediately for growth -> enterprise (yearly) inside the final month too', () => {
     const result = classifyPlanChange(
       input({
         currentPlanKey: 'growth',
@@ -636,13 +578,13 @@ describe('classifyPlanChange — yearly tier upgrade (immediate_prorate early, s
       }),
     );
     expect(result).toEqual({
-      classification: 'scheduled',
+      classification: 'immediate_prorate',
       tierDirection: 'upgrade',
       cycleChanged: false,
     });
   });
 
-  it('schedules a combined yearly upgrade + cycle change once inside the final month (tier upgrade is real but time-limited, cycle change is incidental)', () => {
+  it('charges immediately for a combined yearly upgrade + cycle change inside the final month', () => {
     const result = classifyPlanChange(
       input({
         currentPlanKey: 'growth',
@@ -654,29 +596,40 @@ describe('classifyPlanChange — yearly tier upgrade (immediate_prorate early, s
       }),
     );
     expect(result).toEqual({
-      classification: 'scheduled',
+      classification: 'immediate_prorate',
       tierDirection: 'upgrade',
       cycleChanged: true,
     });
   });
 });
 
-// ── now defaulting ───────────────────────────────────────────────────────────
+// ── time-independence of the upgrade branch ─────────────────────────────────
 
-describe('classifyPlanChange — now defaulting', () => {
-  it('defaults `now` to the real current time when omitted', () => {
-    // A yearly period end far in the future relative to the real clock must
-    // always classify as immediate_prorate for an upgrade — this exercises
-    // the `now ?? new Date()` fallback without asserting on a specific
-    // instant. Cycle is yearly (not monthly) so this stays consistent with
-    // the monthly-always-schedules invariant locked in above.
-    const result = classifyPlanChange({
+describe('classifyPlanChange — upgrades are time-independent', () => {
+  it('classifies an upgrade the same with `now` omitted as with `now` pinned', () => {
+    // `now` is no longer consulted for any branch. Omitting it (the shape both
+    // billing routes use) must therefore give the identical verdict, and must
+    // not fall back to a real-clock comparison against `currentPeriodEnd`.
+    const withoutNow = classifyPlanChange({
       currentPlanKey: 'starter',
-      currentCycle: 'yearly',
+      currentCycle: 'monthly',
       targetPlanKey: 'growth',
-      targetCycle: 'yearly',
-      currentPeriodEnd: new Date(Date.now() + 1000 * 60 * 60 * 24 * 300), // ~300 days out
+      targetCycle: 'monthly',
+      // Deliberately already in the past: under the old policy this was the
+      // strongest possible "schedule it" signal.
+      currentPeriodEnd: new Date('2020-01-01T00:00:00Z'),
     });
-    expect(result.classification).toBe('immediate_prorate');
+    const withNow = classifyPlanChange(
+      input({
+        currentPlanKey: 'starter',
+        currentCycle: 'monthly',
+        targetPlanKey: 'growth',
+        targetCycle: 'monthly',
+        currentPeriodEnd: new Date('2020-01-01T00:00:00Z'),
+        now: NOW,
+      }),
+    );
+    expect(withoutNow.classification).toBe('immediate_prorate');
+    expect(withoutNow).toEqual(withNow);
   });
 });

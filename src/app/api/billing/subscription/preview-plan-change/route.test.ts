@@ -210,7 +210,7 @@ describe('POST /api/billing/subscription/preview-plan-change — classification'
     expect(stripeMock.invoices.createPreview).not.toHaveBeenCalled();
   });
 
-  it('returns scheduled (not immediate_prorate) for an upgrade with < 1 month remaining', async () => {
+  it('does NOT schedule an upgrade just because the period is nearly over (2026-08-27 policy)', async () => {
     prismaMock.subscription.findUnique.mockResolvedValue(
       liveSubscription({
         plan: 'starter',
@@ -218,12 +218,16 @@ describe('POST /api/billing/subscription/preview-plan-change — classification'
         currentPeriodEnd: new Date(Date.now() + 1000 * 60 * 60 * 24 * 3), // 3 days out
       }),
     );
+    stripeMock.subscriptions.retrieve.mockResolvedValue({
+      items: { data: [{ id: 'si_1' }] },
+    });
+    stripeMock.invoices.createPreview.mockResolvedValue({ amount_due: 1234, currency: 'usd' });
 
     const res = await POST(makeReq({ planKey: 'growth', billingCycle: 'monthly' }));
     const body = await res.json();
 
-    expect(body.classification).toBe('scheduled');
-    expect(stripeMock.invoices.createPreview).not.toHaveBeenCalled();
+    expect(body.classification).toBe('immediate_prorate');
+    expect(stripeMock.invoices.createPreview).toHaveBeenCalled();
   });
 });
 
