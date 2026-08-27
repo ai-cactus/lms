@@ -4,8 +4,13 @@
  * Phase 4 / Issue 3 added a 409 guard: a subscription with a pending
  * `stripeScheduleId` (a scheduled plan change) cannot be paused, since a
  * Stripe Subscription Schedule and `pause_collection` would otherwise
- * conflict. The admin must cancel the scheduled change first. This test
- * covers that guard plus the pre-existing pause behavior it now gates.
+ * conflict. The admin must cancel the scheduled change first.
+ *
+ * Product decision 2026-08-27 made the pause DEFERRED: the route now records
+ * intent only (`pauseStartsAt` = currentPeriodEnd, `pauseEndsAt` measured from
+ * that boundary) and makes NO Stripe call. `pausedAt`, `hasAuditorAccess` and
+ * therefore every access gate stay untouched until the sweep materializes the
+ * pause. These tests cover that, the three 409 guards, and the RBAC gate.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -49,11 +54,15 @@ import { POST } from './route';
 
 const ADMIN_USER = { role: 'owner', organizationId: 'org-1' };
 
+const PERIOD_END = new Date('2026-09-01T00:00:00Z');
+
 const PAUSABLE_SUB = {
   id: 'sub-row-1',
   organizationId: 'org-1',
   stripeSubscriptionId: 'sub_x',
   status: 'active',
+  currentPeriodEnd: PERIOD_END,
+  pauseStartsAt: null,
   pausedAt: null,
   stripeScheduleId: null,
   scheduledEffectiveAt: null,
@@ -104,27 +113,59 @@ describe('POST /api/billing/subscription/pause — scheduled-change guard', () =
 });
 
 describe('POST /api/billing/subscription/pause — normal path (no pending schedule)', () => {
-  it('pauses the subscription via native pause_collection and restores auditor access to false', async () => {
+  it('records a pending pause at period end without calling Stripe or withdrawing access', async () => {
     prismaMock.subscription.findUnique.mockResolvedValue(PAUSABLE_SUB);
-    stripeMock.subscriptions.update.mockResolvedValue({});
 
     const res = await POST(makeReq({ months: 2 }));
     const body = await res.json();
 
     expect(res.status).toBe(200);
-    expect(stripeMock.subscriptions.update).toHaveBeenCalledWith('sub_x', {
-      pause_collection: { behavior: 'void' },
+    // No Stripe call: pause_collection takes effect immediately, which would
+    // stop collection mid-period. The sweep applies it at the boundary.
+    expect(stripeMock.subscriptions.update).not.toHaveBeenCalled();
+    expect(prismaMock.subscription.update).toHaveBeenCalledWith({
+      where: { organizationId: 'org-1' },
+      // pauseEndsAt is measured from the pause's real START, not from now, so
+      // the admin gets the full window they asked for.
+      data: { pauseStartsAt: PERIOD_END, pauseEndsAt: new Date('2026-11-01T00:00:00Z') },
     });
-    expect(prismaMock.subscription.update).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { organizationId: 'org-1' } }),
-    );
-    expect(prismaMock.organization.update).toHaveBeenCalledWith({
-      where: { id: 'org-1' },
-      data: { hasAuditorAccess: false },
-    });
+    // pausedAt is untouched, so hasActiveBilling() still reports active — the
+    // org keeps full access for the period it already paid for.
+    expect(prismaMock.organization.update).not.toHaveBeenCalled();
     expect(body).toEqual(
-      expect.objectContaining({ message: 'Subscription has been paused.', success: true }),
+      expect.objectContaining({
+        message: 'Your subscription will pause at the end of your current billing period.',
+        success: true,
+      }),
     );
+  });
+
+  it("audits the pause with mode 'pending'", async () => {
+    prismaMock.subscription.findUnique.mockResolvedValue(PAUSABLE_SUB);
+
+    await POST(makeReq({ months: 1 }));
+
+    expect(mockAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'billing.subscription.pause',
+        targetId: 'sub-row-1',
+        metadata: expect.objectContaining({ months: 1, mode: 'pending' }),
+      }),
+    );
+  });
+
+  it('returns 409 when a pause is already pending', async () => {
+    prismaMock.subscription.findUnique.mockResolvedValue({
+      ...PAUSABLE_SUB,
+      pauseStartsAt: PERIOD_END,
+    });
+
+    const res = await POST(makeReq());
+    const body = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(body.error).toMatch(/already scheduled to pause/i);
+    expect(prismaMock.subscription.update).not.toHaveBeenCalled();
   });
 
   it('returns 409 when the subscription is already paused', async () => {
@@ -195,13 +236,12 @@ describe('POST /api/billing/subscription/pause — RBAC (billing.edit registry e
       user: { id: 'user-1', role: 'finance', organizationId: 'org-1' },
     });
     prismaMock.subscription.findUnique.mockResolvedValue(PAUSABLE_SUB);
-    stripeMock.subscriptions.update.mockResolvedValue({});
 
     const res = await POST(makeReq({ months: 2 }));
 
     expect(res.status).toBe(200);
-    expect(stripeMock.subscriptions.update).toHaveBeenCalledWith('sub_x', {
-      pause_collection: { behavior: 'void' },
-    });
+    expect(prismaMock.subscription.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { organizationId: 'org-1' } }),
+    );
   });
 });

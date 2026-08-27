@@ -178,6 +178,13 @@ model Subscription {
   currentPeriodStart    DateTime                  @map("current_period_start")
   currentPeriodEnd      DateTime                  @map("current_period_end")
   cancelAtPeriodEnd     Boolean                   @default(false) @map("cancel_at_period_end")
+  // A pause the admin has REQUESTED but that has not taken effect yet: it lands
+  // at the end of the paid period they already bought. Set alone (pausedAt still
+  // null) this means "pending pause" and the org keeps FULL access; the sweep
+  // (lib/queue/billing-pause-sweep-worker.ts) flips it to pausedAt at the
+  // boundary. Deliberately NOT read by hasActiveBilling()/getPauseState(), which
+  // is what keeps every downstream access gate open during the pending window.
+  pauseStartsAt         DateTime?                 @map("pause_starts_at")
   // Set while billing is paused via Stripe `pause_collection`. Stripe keeps the
   // status as `active` when paused, so this is what gates access while paused.
   pausedAt              DateTime?                 @map("paused_at")
@@ -206,6 +213,9 @@ model Subscription {
   createdAt             DateTime                  @default(now()) @map("created_at")
   updatedAt             DateTime                  @updatedAt @map("updated_at")
 
+  // The pause sweep's only query predicate — it scans every org for pending
+  // pauses due at the cutoff, so this must not be a table scan.
+  @@index([pauseStartsAt])
   @@map("subscriptions")
 }
 
