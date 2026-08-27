@@ -5,7 +5,7 @@ import { Prisma } from '@/generated/prisma/client';
 import { dbRoleToRoleKey, isAdminRole, WORKER_ROLES } from '@/lib/rbac/role-utils';
 import { assertNoPhi } from '@/lib/documents/phiGate';
 import { can } from '@/lib/rbac/permissions';
-import { hasActiveBilling } from '@/lib/billing';
+import { hasActiveBilling, BILLING_GATE_ASSIGN_MESSAGE } from '@/lib/billing';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
@@ -1042,7 +1042,9 @@ export async function assignCourseToUsers(
       organizationId,
       userId: session.user.id,
     });
-    throw new Error('Your organization needs an active subscription to assign courses.');
+    // Refused by return so the reason survives production error redaction.
+    // Fail-closed: no offering, assignment or enrollment has been written yet.
+    return { success: false, message: BILLING_GATE_ASSIGN_MESSAGE, notFound: [] };
   }
 
   // Emails are stored lowercased, and Prisma's `in` is case-sensitive — normalise
