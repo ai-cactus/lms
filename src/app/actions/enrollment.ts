@@ -558,13 +558,10 @@ interface RoleTargetAssignmentResult {
  * role-write site, with the nightly sweep as a backstop.
  *
  * Requires `assignment.create`, scoped to the caller's own organization and to
- * the facilities their role admits.
- *
- * NOTE: only the IMMEDIATE enrolment is facility-scoped. The `CourseAssignment`
- * row this writes carries `targetRoles` but no facility, so future holders are
- * still auto-enrolled organisation-wide by {@link enrollUserForRoleTargets}.
- * Closing that needs a facility column on CourseAssignment — a schema change,
- * deliberately out of scope here.
+ * the facilities their role admits. That scope is RECORDED on the assignment
+ * row, not merely applied here: the immediate enrolment and every later
+ * auto-enrolment read the same stored value, so the assignment's reach cannot
+ * outgrow the assigner's as new staff join other facilities.
  */
 async function assignCourseToRoleTargets(
   courseId: string,
@@ -667,6 +664,13 @@ async function assignCourseToRoleTargets(
     });
   }
 
+  // Resolved once and used twice: it both narrows the immediate enrolment below
+  // and is persisted on the assignment, so the live auto-enroll hook and the
+  // nightly sweep apply exactly the reach this caller had at assignment time.
+  // null for org-wide roles, so owner/admin/HR/clinical director are untouched;
+  // an empty list narrows to nobody rather than to everybody.
+  const holderFacilityIds = await resolveDataFacilityIds(session);
+
   const assignmentId = await upsertCourseAssignment({
     organizationId,
     courseId,
@@ -678,6 +682,7 @@ async function assignCourseToRoleTargets(
     renewalCycle: options.renewalCycle,
     stageRows: options.stageRows,
     targetRoles,
+    facilityScope: holderFacilityIds,
   });
 
   logger.info({
@@ -698,10 +703,7 @@ async function assignCourseToRoleTargets(
   // nurse in the organisation. It must stay in step with getRoleHolderCounts,
   // which feeds the count the assign UI shows before this runs — a narrowed
   // count over an unnarrowed mutation would promise three enrolments and
-  // perform forty. resolveDataFacilityIds returns null for org-wide roles, so
-  // owner/admin/HR/clinical director keep their org-wide reach untouched, and
-  // an empty accessible list narrows to nobody rather than to everybody.
-  const holderFacilityIds = await resolveDataFacilityIds(session);
+  // perform forty.
   const holders = await prisma.organizationUser.findMany({
     where: {
       organizationId,

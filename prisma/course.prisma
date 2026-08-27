@@ -196,6 +196,15 @@ model CourseAssignment {
   /// `targetRoles` instead.
   targetRole        UserRole?                 @map("target_role")
   targetRoles       UserRole[]                @default([]) @map("target_roles")
+  /// The facility scope the assignment was created under, as the pair that
+  /// encodes `string[] | null` — the contract `resolveDataFacilityIds` returns.
+  /// Prisma cannot express an optional scalar list, so the discriminator is its
+  /// own column: `false` (the default, and therefore every pre-existing row)
+  /// means org-wide, and only when it is `true` does `facilityIds` narrow —
+  /// including to nobody when it is empty. Never read `facilityIds` alone; an
+  /// empty list must never be mistaken for "every facility".
+  facilityScoped    Boolean                   @default(false) @map("facility_scoped")
+  facilityIds       String[]                  @default([]) @map("facility_ids")
   scheduleAt        DateTime?                 @map("schedule_at")
   dueAt             DateTime?                 @map("due_at")
   dueWindowDays     Int?                      @map("due_window_days")
