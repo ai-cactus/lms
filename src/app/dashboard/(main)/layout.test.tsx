@@ -8,6 +8,7 @@
  * `resolveDataFacilityIds`, scoped for a facility-bound role and left
  * byte-identical (undefined — no predicate) for an org-wide one.
  */
+import type { JSX } from 'react';
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -66,7 +67,9 @@ vi.mock('@/components/dashboard/auditor/ExportJobsProvider', () => ({
   ExportJobsProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 vi.mock('@/components/billing/BillingPausedBanner', () => ({ default: () => null }));
-const mockStatusTrackerAlertBanner = vi.fn(() => <div data-testid="escalation-banner" />);
+const mockStatusTrackerAlertBanner = vi.fn<(props: unknown) => JSX.Element>(() => (
+  <div data-testid="escalation-banner" />
+));
 vi.mock('@/components/dashboard/StatusTrackerAlertBanner', () => ({
   default: (props: unknown) => mockStatusTrackerAlertBanner(props),
 }));
