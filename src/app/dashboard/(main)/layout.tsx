@@ -11,7 +11,7 @@ import { AdminSessionProvider } from '@/components/providers/AdminSessionProvide
 import { ExportJobsProvider } from '@/components/dashboard/auditor/ExportJobsProvider';
 import BillingPausedBanner from '@/components/billing/BillingPausedBanner';
 import StatusTrackerAlertBanner from '@/components/dashboard/StatusTrackerAlertBanner';
-import { getPauseState } from '@/lib/billing';
+import { getPauseState, hasPendingPause } from '@/lib/billing';
 import { getStatusTrackerSummaryForOrg } from '@/lib/reminders/status-tracker';
 import { resolveMembershipForActiveSession } from '@/lib/auth/membership';
 import { isOrgWideFacilityRole } from '@/lib/facility/scope';
@@ -62,16 +62,25 @@ const DashboardLayout: FC<WithChildren> = async ({ children }) => {
       )?.name ?? null)
     : null;
 
-  // Surface a site-wide banner to admins while billing is paused.
+  // Surface a site-wide banner to admins across the pause lifecycle: a pause
+  // that is merely SCHEDULED (pauseStartsAt, access intact) as well as one that
+  // is live. getPauseState deliberately reports 'none' for the pending case, so
+  // the two are resolved separately here.
   const subscription = organizationId
     ? (
         await prisma.organization.findUnique({
           where: { id: organizationId },
-          select: { subscription: { select: { pausedAt: true, pauseEndsAt: true } } },
+          select: {
+            subscription: {
+              select: { pauseStartsAt: true, pausedAt: true, pauseEndsAt: true },
+            },
+          },
         })
       )?.subscription
     : null;
-  const pauseState = isAdminRole(role) ? getPauseState(subscription) : 'none';
+  const isBillingAdmin = isAdminRole(role);
+  const pauseState = isBillingAdmin ? getPauseState(subscription) : 'none';
+  const showPendingPause = isBillingAdmin && pauseState === 'none' && hasPendingPause(subscription);
 
   // Surface a site-wide status-tracker banner when training is overdue by the
   // hard-escalation threshold. Gated on roster-wide assignment visibility so
@@ -97,9 +106,12 @@ const DashboardLayout: FC<WithChildren> = async ({ children }) => {
             roleDisplayName={roleDisplayName}
             facilityName={facilityName}
           >
-            {pauseState !== 'none' && (
+            {(pauseState !== 'none' || showPendingPause) && (
               <BillingPausedBanner
-                pauseState={pauseState}
+                pauseState={pauseState === 'none' ? 'pending' : pauseState}
+                pauseStartsAt={
+                  subscription?.pauseStartsAt ? subscription.pauseStartsAt.toISOString() : null
+                }
                 pauseEndsAt={
                   subscription?.pauseEndsAt ? subscription.pauseEndsAt.toISOString() : null
                 }

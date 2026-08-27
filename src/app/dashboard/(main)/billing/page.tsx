@@ -60,6 +60,7 @@ export default async function BillingPageRoute() {
               select: {
                 plan: true,
                 status: true,
+                pauseStartsAt: true,
                 pausedAt: true,
                 pauseEndsAt: true,
                 cancelAtPeriodEnd: true,
@@ -105,6 +106,7 @@ export default async function BillingPageRoute() {
       currentPlan={activePlan}
       planPrices={planPrices}
       hasLiveSubscription={hasLiveSubscription}
+      pauseStartsAt={sub?.pauseStartsAt ? sub.pauseStartsAt.toISOString() : null}
       pausedAt={sub?.pausedAt ? sub.pausedAt.toISOString() : null}
       pauseEndsAt={sub?.pauseEndsAt ? sub.pauseEndsAt.toISOString() : null}
       cancelAtPeriodEnd={sub?.cancelAtPeriodEnd ?? false}
