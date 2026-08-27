@@ -21,6 +21,7 @@ import {
   staffFacilityWhere,
   type FacilityScopeSession,
 } from '@/lib/facility/staff-where';
+import { CourseAccessError } from '@/lib/course/access-error';
 import { forkCourse } from '@/lib/course/fork-course';
 import { resolveOnCompletion } from '@/lib/reminders/sweep';
 import { combineDateAndTime } from '@/lib/reminders/deadline';
@@ -283,7 +284,7 @@ async function narrowRosterToFacilityScope(
 export async function getCourseById(courseId: string): Promise<CourseWithRelations> {
   const session = await resolveSession();
   if (!session?.user?.id) {
-    throw new Error('Unauthorized');
+    throw new CourseAccessError('unauthenticated');
   }
 
   const course = await prisma.course.findUnique({
@@ -292,7 +293,7 @@ export async function getCourseById(courseId: string): Promise<CourseWithRelatio
   });
 
   if (!course) {
-    throw new Error('Course not found');
+    throw new CourseAccessError('notFound');
   }
 
   // Allow access if the user is the creator, is enrolled, or is an admin-tier
@@ -309,7 +310,7 @@ export async function getCourseById(courseId: string): Promise<CourseWithRelatio
     can(dbRoleToRoleKey(session.user.role), 'course.read');
 
   if (!isCreator && !isEnrolled && !isSameOrgManager) {
-    throw new Error('Course not found');
+    throw new CourseAccessError('forbidden');
   }
 
   // Only the creator or an org admin may receive the full enrolled-staff roster.
@@ -336,25 +337,51 @@ export async function getCourseById(courseId: string): Promise<CourseWithRelatio
 }
 
 /**
- * Fetch a GLOBAL, published video course for an org admin to view, even when
+ * Fetch a GLOBAL, published video course for an org manager to view, even when
  * the org hasn't enrolled/offered it yet (the browse → "View" flow from the
  * available-courses list).
  *
- * Access is allowed to any org admin since the global catalog is public to
- * orgs, but enrollments are scoped to the CALLER'S organization so one org can
- * never see another org's enrolled staff. The creator/enrolled path stays in
- * getCourseById — this is only used as a fallback for global browse.
+ * The global catalog is public to orgs, so the course BODY is not creator- or
+ * enrolment-gated here — but the roster returned alongside it is staff PII, and
+ * this action had no role gate at all. Everything exported from a `'use server'`
+ * module is an HTTP endpoint (see the F-084 note at the top of
+ * course-ai-v4.6.ts), so any authenticated member — a worker included — could
+ * call it directly and read every enrollee's name, email, role and score. The
+ * page that fronts it is not the boundary; this gate is.
+ *
+ * The gate mirrors {@link getCourseById} exactly, and must stay in step with it:
+ * `course.read` decides access to the course, `user.read` decides access to
+ * other people's enrolment records. Enrollments are additionally scoped to the
+ * CALLER'S organization so one org can never see another org's staff, then
+ * narrowed to the caller's facilities.
  */
 export async function getCourseForOrgView(courseId: string): Promise<CourseWithRelations> {
   const session = await resolveSession();
   if (!session?.user?.id) {
-    throw new Error('Unauthorized');
+    throw new CourseAccessError('unauthenticated');
   }
 
   // Org is authoritative on the DB-revalidated session — no re-query.
   const organizationId = session.user.organizationId;
   if (!organizationId) {
-    throw new Error('Course not found');
+    throw new CourseAccessError('forbidden');
+  }
+
+  // `isAdminRole` is load-bearing alongside the permission: worker roles also
+  // hold `course.read` for their own enrolled courses, so the permission alone
+  // would admit every worker. A worker's route to a course they are enrolled on
+  // is getCourseById, which gates on that enrolment.
+  const isOrgManager =
+    isAdminRole(session.user.role) && can(dbRoleToRoleKey(session.user.role), 'course.read');
+
+  if (!isOrgManager) {
+    logger.warn({
+      msg: '[course] getCourseForOrgView denied — not an org manager with course.read',
+      courseId,
+      userId: session.user.id,
+      role: session.user.role,
+    });
+    throw new CourseAccessError('forbidden');
   }
 
   const course = await prisma.course.findFirst({
@@ -370,7 +397,18 @@ export async function getCourseForOrgView(courseId: string): Promise<CourseWithR
   });
 
   if (!course) {
-    throw new Error('Course not found');
+    throw new CourseAccessError('notFound');
+  }
+
+  // Same roster split as getCourseById: `user.read` is the staff-roster gate, so
+  // a manager without it (clinical director) sees only their own enrolment.
+  if (!can(dbRoleToRoleKey(session.user.role), 'user.read')) {
+    return {
+      ...course,
+      enrollments: course.enrollments.filter(
+        (enrollment) => enrollment.organizationUser.userId === session.user.id,
+      ),
+    };
   }
 
   return narrowRosterToFacilityScope(session, course);
