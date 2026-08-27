@@ -57,6 +57,8 @@
 - [Playback cache is in-process](gotcha_video_playback_cache_is_in_process.md) — one container, no Redis; spawned scripts/ can't evict it, so invalidate from the BullMQ handler.
 - [RSC vs JSON payload shapes](gotcha_rsc_vs_json_payload_shapes.md) — one builder for a route + a server page: normalise Dates to ISO, plus the wall-clock hydration trap and server-page auth conventions.
 - [Next 16 revalidateTag + no Prisma.validator](gotcha_next16_revalidatetag_and_prisma_validator.md) — revalidateTag needs a 2nd arg (`'max'`); new prisma-client generator has no Prisma.validator, use `satisfies` selects with `'asc' as const`.
+- [Billing decisions 2026-08-27](project_billing_2026_08_27_decisions.md) — upgrades now prorate immediately (reverses 2026-07-17); pauses defer to period end via a sweep
+- [pauseStartsAt must not gate access](gotcha_billing_pause_sweep_invariant.md) — never read it in hasActiveBilling/getPauseState; the separation IS the mechanism
 - [Billing schedule deferred scope](project_billing_schedule_deferred_scope.md) — checkout's missing pausedAt check, #27/#28, and pause's kept 409 are deliberate non-fixes; seat = every active member.
 - [CourseRail unlockedIndex gates the quiz too](gotcha_courserail_unlockedindex_conflates_quiz.md) — module nav is free, but railUnlockedIndex must stay at lessons.length-1 or the quiz gate opens.
 - [Quiz route error body shapes](gotcha_quiz_route_error_body_shapes.md) — start returns a CODE in `error` + human text in `message`; submit is human-in-`error`; read `message ?? error`.
