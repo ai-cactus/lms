@@ -1962,7 +1962,9 @@ export async function updateLessonContent(lessonId: string, content: string, tit
   return { success: true };
 }
 
-export async function retakeQuiz(enrollmentId: string) {
+export async function retakeQuiz(
+  enrollmentId: string,
+): Promise<{ success: boolean; refusedReason?: string }> {
   // Resolve BOTH sessions to handle cookie collision
   const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
   const adminId = admin?.user?.id;
@@ -2009,8 +2011,17 @@ export async function retakeQuiz(enrollmentId: string) {
     const completedCount = await prisma.quizAttempt.count({
       where: { enrollmentId, quizId: quiz.id, timeTaken: { not: null } },
     });
+    // Refused by return: the learner needs to know they are out of attempts, and
+    // a thrown message is redacted in production. Fail-closed — the enrollment
+    // reset below has not run.
     if (completedCount >= quiz.allowedAttempts) {
-      throw new Error('No attempts remaining');
+      logger.warn({
+        msg: '[course] Quiz retake refused — no attempts remaining',
+        enrollmentId,
+        quizId: quiz.id,
+        completedCount,
+      });
+      return { success: false, refusedReason: 'No attempts remaining' };
     }
   }
 
