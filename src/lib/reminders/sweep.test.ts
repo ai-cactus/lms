@@ -829,6 +829,87 @@ describe('runReminderSweep — role-target reconcile pre-pass', () => {
     expect(prismaMock.courseAssignment.findMany).not.toHaveBeenCalled();
     expect(mockCreateEnrollmentForUser).not.toHaveBeenCalled();
   });
+
+  // The backstop must reconcile toward the SAME reach the live hook
+  // (enrollUserForRoleTargets) applies, or it would re-widen every assignment
+  // the live hook narrowed — every night, for as long as the org exists.
+  describe("honours the assignment's recorded facility scope (the nightly backstop must not re-widen it)", () => {
+    it('enrolls a holder whose facility intersects a facility-scoped assignment', async () => {
+      wireCourseAssignmentFindMany({
+        roleTarget: [
+          makeRoleTargetAssignment({ facilityScoped: true, facilityIds: ['facility-1'] }),
+        ],
+      });
+      prismaMock.organizationUser.findMany.mockResolvedValue([
+        makeRoleHolder({ facilities: [{ facilityId: 'facility-1' }] }),
+      ]);
+      prismaMock.enrollment.findMany
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]);
+
+      const summary = await runReminderSweep(BASE_OPTS);
+
+      expect(mockCreateEnrollmentForUser).toHaveBeenCalledOnce();
+      expect(summary.roleTargetEnrolled).toBe(1);
+    });
+
+    it('SKIPS a holder whose facility is outside a facility-scoped assignment — the backstop must not re-widen it', async () => {
+      wireCourseAssignmentFindMany({
+        roleTarget: [
+          makeRoleTargetAssignment({ facilityScoped: true, facilityIds: ['facility-1'] }),
+        ],
+      });
+      prismaMock.organizationUser.findMany.mockResolvedValue([
+        makeRoleHolder({ facilities: [{ facilityId: 'facility-9' }] }),
+      ]);
+      prismaMock.enrollment.findMany
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]);
+
+      const summary = await runReminderSweep(BASE_OPTS);
+
+      expect(mockCreateEnrollmentForUser).not.toHaveBeenCalled();
+      expect(summary.roleTargetEnrolled).toBe(0);
+    });
+
+    it('FAIL-CLOSED: skips a holder with no facility assignments at all against a facility-scoped assignment', async () => {
+      wireCourseAssignmentFindMany({
+        roleTarget: [
+          makeRoleTargetAssignment({ facilityScoped: true, facilityIds: ['facility-1'] }),
+        ],
+      });
+      prismaMock.organizationUser.findMany.mockResolvedValue([makeRoleHolder({ facilities: [] })]);
+      prismaMock.enrollment.findMany
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]);
+
+      const summary = await runReminderSweep(BASE_OPTS);
+
+      expect(mockCreateEnrollmentForUser).not.toHaveBeenCalled();
+      expect(summary.roleTargetEnrolled).toBe(0);
+    });
+
+    it('an org-wide assignment (facilityScoped:false, the default for every pre-existing row) still enrolls regardless of facility', async () => {
+      wireCourseAssignmentFindMany({
+        roleTarget: [makeRoleTargetAssignment({ facilityScoped: false, facilityIds: [] })],
+      });
+      prismaMock.organizationUser.findMany.mockResolvedValue([
+        makeRoleHolder({ facilities: [{ facilityId: 'facility-9' }] }),
+      ]);
+      prismaMock.enrollment.findMany
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]);
+
+      const summary = await runReminderSweep(BASE_OPTS);
+
+      expect(mockCreateEnrollmentForUser).toHaveBeenCalledOnce();
+      expect(summary.roleTargetEnrolled).toBe(1);
+    });
+  });
 });
 
 // ─── Renewal re-trigger pre-pass (Issue #6 / TC-019) ──────────────────────────
