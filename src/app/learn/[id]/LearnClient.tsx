@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 // isAdminRole is deliberately NOT imported here: the learn view mode comes from
 // the server as `userData.isAdminView`. Re-deriving it from the role string is
 // exactly the D-16 defect — a manager in Learn mode carries an admin role by
@@ -347,6 +347,10 @@ export default function LearnClient({ initialData }: LearnClientProps) {
   // Mobile Rail Toggle
   const [railOpen, setRailOpen] = useState(false);
 
+  // Article view renders every module into one scroll container, so selecting a
+  // module from the Table of Contents has to bring its section into view.
+  const moduleRefs = useRef<Array<HTMLDivElement | null>>([]);
+
   // Quiz unlocked flag
   const [quizUnlocked, setQuizUnlocked] = useState(seed?.quizUnlocked ?? false);
 
@@ -453,11 +457,19 @@ export default function LearnClient({ initialData }: LearnClientProps) {
       return;
     }
 
-    // Standard Lesson Selection
-    if (index <= highestUnlockedIndex || userData?.isAdminView === true) {
-      setIsQuizActive(false);
-      setActiveIndex(index);
-    }
+    // Standard Lesson Selection — learners may jump to any module.
+    // Browsing deliberately does NOT advance highestUnlockedIndex: the quiz gate
+    // above reads it, so quiz access stays earned through handleNext alone.
+    if (index < 0 || index >= course.lessons.length) return;
+    setIsQuizActive(false);
+    setActiveIndex(index);
+  };
+
+  const scrollToModule = (index: number) => {
+    // Deferred so the scroll runs after the activeIndex re-render has committed.
+    requestAnimationFrame(() => {
+      moduleRefs.current[index]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
   };
 
   const handleNext = () => {
@@ -673,10 +685,13 @@ export default function LearnClient({ initialData }: LearnClientProps) {
 
   const isQuizLocked = isQuizActive && quizStep === 'active' && !userData?.isAdminView === true;
 
+  // Every lesson is freely selectable. CourseRail derives the quiz's lock from
+  // this same index (lessons.length > unlockedIndex), so stopping at the last
+  // lesson keeps the rail's quiz entry gated while unlocking all modules.
   const railUnlockedIndex =
     quizUnlocked || quizResults || userData?.isAdminView === true
-      ? course?.lessons.length || 9999
-      : highestUnlockedIndex;
+      ? course.lessons.length
+      : Math.max(0, course.lessons.length - 1);
 
   // Whether to show the shared rail + topbar (quiz views only)
   const showSharedLayout = isQuizIndex || (quizStep === 'review' && quizResults);
@@ -1043,18 +1058,9 @@ export default function LearnClient({ initialData }: LearnClientProps) {
               lessons={course.lessons}
               activeIndex={activeIndex}
               onSelectModule={(index) => {
-                if (index === course.lessons.length) {
-                  handleRailSelect(index);
-                } else if (index <= highestUnlockedIndex || userData?.isAdminView === true) {
-                  setIsQuizActive(false);
-                  setActiveIndex(index);
-                  // Scroll to the module in article view
-                  requestAnimationFrame(() => {
-                    const el = document.getElementById(`module-${index}`);
-                    if (el) {
-                      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                    }
-                  });
+                handleRailSelect(index);
+                if (index < course.lessons.length) {
+                  scrollToModule(index);
                 }
               }}
               onToggleView={isVideoCourse ? undefined : () => setViewMode('slides')}
@@ -1081,6 +1087,9 @@ export default function LearnClient({ initialData }: LearnClientProps) {
                 <div
                   key={lesson.id}
                   id={`module-${idx}`}
+                  ref={(el) => {
+                    moduleRefs.current[idx] = el;
+                  }}
                   style={{ marginBottom: idx < course.lessons.length - 1 ? '48px' : '0' }}
                 >
                   {userData?.isAdminView === true ? (
