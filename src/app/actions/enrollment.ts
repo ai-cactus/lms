@@ -824,8 +824,19 @@ export async function assignCourseToRoles(
   assignmentSettings?: RoleAssignmentSettingsInput,
 ) {
   const dueDate = assignmentSettings?.dueDate ? new Date(assignmentSettings.dueDate) : null;
+  // Refused by return, as the gates inside assignCourseToRoleTargets: the wizard
+  // shows this to the admin, and a thrown message is redacted in production.
+  // Fail-closed — nothing is written before the delegated call below.
   if (dueDate && Number.isNaN(dueDate.getTime())) {
-    throw new Error('Invalid completion deadline');
+    return {
+      assignmentId: null,
+      holderCount: 0,
+      enrolled: 0,
+      alreadyEnrolled: 0,
+      failed: 0,
+      refusedReason: 'Invalid completion deadline',
+      targetRoles: [...new Set(roles)],
+    };
   }
 
   const result = await assignCourseToRoleTargets(courseId, roles, {
