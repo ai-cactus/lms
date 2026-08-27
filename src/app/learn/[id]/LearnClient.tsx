@@ -685,6 +685,14 @@ export default function LearnClient({ initialData }: LearnClientProps) {
 
   const isQuizLocked = isQuizActive && quizStep === 'active' && !userData?.isAdminView === true;
 
+  // Modules are freely browsable, so reaching the foot of the article no longer
+  // implies having worked through it. Gate the article's own quiz shortcut on
+  // the same earned progress the rail and the "Complete All Modules First"
+  // modal already require, or browsing to the end would bypass all three.
+  const hasCompletedAllModules = !!course && highestUnlockedIndex >= course.lessons.length - 1;
+  const isProceedBlocked =
+    isVideoGateBlocked || (!hasCompletedAllModules && userData?.isAdminView !== true);
+
   // Every lesson is freely selectable. CourseRail derives the quiz's lock from
   // this same index (lessons.length > unlockedIndex), so stopping at the last
   // lesson keeps the rail's quiz entry gated while unlocking all modules.
@@ -1075,8 +1083,12 @@ export default function LearnClient({ initialData }: LearnClientProps) {
                 setQuizStep(quizResults ? 'review' : 'intro');
                 setActiveIndex(course.lessons.length);
               }}
-              proceedDisabled={isVideoGateBlocked}
-              proceedHint="Watch the video to unlock the quiz"
+              proceedDisabled={isProceedBlocked}
+              proceedHint={
+                isVideoGateBlocked
+                  ? 'Watch the video to unlock the quiz'
+                  : 'Work through every module to unlock the quiz'
+              }
               hasQuiz={!!course.quiz}
               onNext={handleNext}
               onPrev={handlePrev}
