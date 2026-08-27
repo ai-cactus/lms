@@ -733,6 +733,9 @@ function makeRoleTargetAssignment(overrides: Record<string, unknown> = {}) {
     courseId: 'course-role-1',
     targetRole: 'nurse',
     dueWindowDays: 14,
+    // Org-wide by default, as every row written before the scope columns existed.
+    facilityScoped: false,
+    facilityIds: [],
     course: { title: 'Role Course' },
     organization: { name: 'Acme Corp' },
     ...overrides,
@@ -746,6 +749,7 @@ function makeRoleHolder(overrides: Record<string, unknown> = {}) {
     role: 'nurse',
     roleAssignedAt: new Date('2024-06-01T00:00:00Z'),
     user: { email: 'holder@test.com' },
+    facilities: [{ facilityId: 'facility-1' }],
     ...overrides,
   };
 }

@@ -42,6 +42,7 @@ beforeEach(() => {
     roleAssignedAt: ROLE_JOINED_AT,
     user: { email: 'nurse1@test.com' },
     organization: { name: 'Acme Corp' },
+    facilities: [{ facilityId: 'facility-1' }],
   });
   mockAssignmentFindMany.mockResolvedValue([]);
   mockCreateEnrollmentForUser.mockResolvedValue({
@@ -70,6 +71,8 @@ describe('enrollUserForRoleTargets', () => {
         courseId: 'course-1',
         dueAt: null,
         dueWindowDays: 21,
+        facilityScoped: false,
+        facilityIds: [],
         course: { title: 'Infection Control' },
       },
     ]);
@@ -98,6 +101,8 @@ describe('enrollUserForRoleTargets', () => {
         courseId: 'legacy-course',
         dueAt: null,
         dueWindowDays: null,
+        facilityScoped: false,
+        facilityIds: [],
         course: { title: 'HIPAA Basics' },
       },
     ]);
@@ -118,6 +123,8 @@ describe('enrollUserForRoleTargets', () => {
         courseId: 'course-2',
         dueAt,
         dueWindowDays: 30,
+        facilityScoped: false,
+        facilityIds: [],
         course: { title: 'Annual Compliance' },
       },
     ]);
