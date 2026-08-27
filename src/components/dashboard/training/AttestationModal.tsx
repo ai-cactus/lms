@@ -45,8 +45,12 @@ export default function AttestationModal({
 
     try {
       await attestCourse(enrollmentId, signature, '');
-      const certificate = await issueCertificate(enrollmentId);
-      onSuccess(certificate.id);
+      const result = await issueCertificate(enrollmentId);
+      if (!result.ok) {
+        setError(result.reason);
+        return;
+      }
+      onSuccess(result.certificate.id);
     } catch (err: unknown) {
       const error = err as Error;
       setError(error.message || 'Failed to attest. Please try again.');
