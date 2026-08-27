@@ -9,7 +9,7 @@
  *  2. Without `initialData` the old fetch path is intact and behaves as before;
  *     it is the fallback whenever the server render could not produce a payload.
  */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('next/navigation', () => ({
@@ -244,6 +244,265 @@ describe('LearnClient without initialData', () => {
     await waitFor(() =>
       expect(screen.getByText('Error: Failed to load course')).toBeInTheDocument(),
     );
+  });
+});
+
+/**
+ * Free module navigation (feature/free-module-navigation, commit f2939fa).
+ *
+ * QA finding #3: clicking a later Table of Contents entry did nothing, because
+ * the ToC handler gated selection on `index <= highestUnlockedIndex`. The fix
+ * lets learners open any module, but MUST NOT let browsing advance
+ * `highestUnlockedIndex` or call `updateProgress` — that index is exactly what
+ * gates quiz entry. If free navigation ever touched it, clicking the last ToC
+ * entry would instantly unlock the quiz and bypass "Complete All Modules
+ * First" — a compliance hole, not just a nav convenience.
+ */
+const textLesson = (id: string, title: string, overrides: Record<string, unknown> = {}) => ({
+  id,
+  title,
+  content: `<p>${title} body</p>`,
+  slideContent: null,
+  duration: 10,
+  order: 1,
+  videoProvider: null,
+  videoStorageUri: null,
+  videoDurationSeconds: null,
+  ...overrides,
+});
+
+describe('Free module navigation (feature/free-module-navigation)', () => {
+  beforeEach(() => {
+    // jsdom does not implement scrollIntoView; scrollToModule also defers
+    // through requestAnimationFrame, which must resolve synchronously so the
+    // click's effects are observable inside the test without an extra await.
+    if (!Element.prototype.scrollIntoView) {
+      Element.prototype.scrollIntoView = function scrollIntoViewNoop() {};
+    }
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      cb(0);
+      return 0;
+    });
+  });
+
+  it('selecting the LAST module via the ToC does not unlock the quiz — "Complete All Modules First" still gates entry', () => {
+    const payload = makePayload();
+    payload.course.lessons = [
+      textLesson('lesson-1', 'Module 1: Intro'),
+      textLesson('lesson-2', 'Module 2: Hazards'),
+      textLesson('lesson-3', 'Module 3: Response'),
+    ];
+
+    render(<LearnClient initialData={payload} />);
+
+    const toc = screen.getByText('Table of Contents').parentElement!;
+    const tocButtons = within(toc).getAllByRole('button');
+    expect(tocButtons).toHaveLength(4); // 3 lessons + quiz row
+
+    // Jump straight to the last module — never visited module 2.
+    fireEvent.click(tocButtons[2]);
+    // Then try to enter the quiz directly from the ToC.
+    fireEvent.click(tocButtons[3]);
+
+    // If free navigation had advanced highestUnlockedIndex, this would be the
+    // "Ready for the Quiz?" gate modal instead — the distinction IS the test.
+    expect(screen.getByText('Complete All Modules First')).toBeInTheDocument();
+    expect(screen.queryByText('Ready for the Quiz?')).not.toBeInTheDocument();
+    expect(screen.queryByText('Start Quiz')).not.toBeInTheDocument();
+  });
+
+  it('selecting a middle module via the ToC moves the active module and scrolls it into view, without persisting progress', () => {
+    const payload = makePayload();
+    payload.course.lessons = [
+      textLesson('lesson-1', 'Module 1: Intro'),
+      textLesson('lesson-2', 'Module 2: Hazards'),
+      textLesson('lesson-3', 'Module 3: Response'),
+    ];
+
+    const { container } = render(<LearnClient initialData={payload} />);
+
+    const moduleEls = [0, 1, 2].map((i) => container.querySelector(`#module-${i}`) as HTMLElement);
+    const spies = moduleEls.map((el) =>
+      vi.spyOn(el, 'scrollIntoView').mockImplementation(() => {}),
+    );
+
+    const toc = screen.getByText('Table of Contents').parentElement!;
+    const tocButtons = within(toc).getAllByRole('button');
+    fireEvent.click(tocButtons[1]); // middle module
+
+    expect(spies[1]).toHaveBeenCalledTimes(1);
+    expect(spies[0]).not.toHaveBeenCalled();
+    expect(spies[2]).not.toHaveBeenCalled();
+
+    // Free browsing must never persist progress via the enrollment endpoint.
+    const progressCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes('/progress'));
+    expect(progressCalls).toHaveLength(0);
+  });
+
+  it('progress through Next still advances highestUnlockedIndex and persists to the server (regression guard)', async () => {
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+    const payload = makePayload();
+    payload.course.lessons = [
+      textLesson('lesson-1', 'Module 1: Intro'),
+      textLesson('lesson-2', 'Module 2: Hazards'),
+    ];
+
+    render(<LearnClient initialData={payload} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next' })); // module 1 -> module 2 (last)
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/enrollments/enr-1/progress',
+        expect.objectContaining({ body: JSON.stringify({ progress: 100 }) }),
+      );
+    });
+
+    // Reaching the end with earned progress hits the "ready" gate, never the
+    // "incomplete" one — proof highestUnlockedIndex was genuinely advanced.
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    expect(screen.getByText('Ready for the Quiz?')).toBeInTheDocument();
+    expect(screen.queryByText('Complete All Modules First')).not.toBeInTheDocument();
+  });
+
+  it('the video watch-gate still blocks quiz entry after free-navigating straight to the last (video) module', () => {
+    const payload = makePayload();
+    payload.course.lessons = [
+      textLesson('lesson-1', 'Module 1: Intro'),
+      {
+        id: 'lesson-2',
+        title: 'Module 2: Procedure video',
+        content: '<p>video lesson</p>',
+        slideContent: null,
+        duration: 10,
+        order: 2,
+        videoProvider: 'self',
+        videoStorageUri: 'minio://videos/lesson-2.mp4',
+        videoDurationSeconds: 600,
+      },
+    ];
+    payload.enrollment.videoPositionSeconds = 0; // unwatched
+
+    render(<LearnClient initialData={payload} />);
+
+    const toc = screen.getByText('Table of Contents').parentElement!;
+    const tocButtons = within(toc).getAllByRole('button');
+    fireEvent.click(tocButtons[1]); // jump directly to the unwatched video module
+    fireEvent.click(tocButtons[2]); // attempt quiz entry from the ToC
+
+    // isVideoQuizGateBlocked() returns before either modal — neither appears,
+    // and the quiz is never entered.
+    expect(screen.queryByText('Complete All Modules First')).not.toBeInTheDocument();
+    expect(screen.queryByText('Ready for the Quiz?')).not.toBeInTheDocument();
+    expect(screen.queryByText('Start Quiz')).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * "Proceed to Quiz" earned-progress gate (commit 78c5795).
+ *
+ * Free navigation (f2939fa) meant reaching the foot of the article no longer
+ * implied working through it. Before 78c5795 the button was gated only by
+ * `isVideoGateBlocked` — always false for a text course — so a learner could
+ * jump straight to the last module and click through to the quiz, bypassing
+ * the rail and the "Complete All Modules First" modal. `isProceedBlocked` now
+ * reuses the identical `highestUnlockedIndex >= lessons.length - 1` expression
+ * those two already use, so the three gates cannot disagree.
+ */
+describe('Proceed to Quiz gate (commit 78c5795)', () => {
+  beforeEach(() => {
+    if (!Element.prototype.scrollIntoView) {
+      Element.prototype.scrollIntoView = function scrollIntoViewNoop() {};
+    }
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      cb(0);
+      return 0;
+    });
+  });
+
+  it('text course, browsed to the last module via the ToC: Proceed to Quiz is disabled with the module-progress hint (the exact pre-78c5795 bypass)', () => {
+    const payload = makePayload();
+    payload.course.lessons = [
+      textLesson('lesson-1', 'Module 1: Intro'),
+      textLesson('lesson-2', 'Module 2: Hazards'),
+      textLesson('lesson-3', 'Module 3: Response'),
+    ];
+
+    render(<LearnClient initialData={payload} />);
+
+    const toc = screen.getByText('Table of Contents').parentElement!;
+    const tocButtons = within(toc).getAllByRole('button');
+    fireEvent.click(tocButtons[2]); // jump straight to the last module, never visited module 2
+
+    const proceedButton = screen.getByRole('button', { name: 'Proceed to Quiz' });
+    expect(proceedButton).toBeDisabled();
+    expect(screen.getByText('Work through every module to unlock the quiz')).toBeInTheDocument();
+
+    // Confirm clicking it while disabled truly does nothing — no quiz entry.
+    fireEvent.click(proceedButton);
+    expect(screen.queryByText('Start Quiz')).not.toBeInTheDocument();
+  });
+
+  it('text course, progress earned via Next to the end: Proceed to Quiz is enabled and clicking it enters the quiz', () => {
+    const payload = makePayload();
+    payload.course.lessons = [
+      textLesson('lesson-1', 'Module 1: Intro'),
+      textLesson('lesson-2', 'Module 2: Hazards'),
+    ];
+
+    render(<LearnClient initialData={payload} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next' })); // module 1 -> module 2 (last), earned
+
+    const proceedButton = screen.getByRole('button', { name: 'Proceed to Quiz' });
+    expect(proceedButton).not.toBeDisabled();
+    expect(
+      screen.queryByText('Work through every module to unlock the quiz'),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(proceedButton);
+    expect(screen.getByRole('button', { name: 'Start Quiz' })).toBeInTheDocument();
+  });
+
+  it('video course, unwatched: Proceed to Quiz stays disabled with the video-gate hint, not the module-progress hint (regression guard)', () => {
+    const payload = makePayload(); // default: single video lesson, videoPositionSeconds 0
+    render(<LearnClient initialData={payload} />);
+
+    const proceedButton = screen.getByRole('button', { name: 'Proceed to Quiz' });
+    expect(proceedButton).toBeDisabled();
+    // The per-video hint under the player also reads "Watch the video to unlock
+    // the quiz", so scope the assertion to the Proceed-to-Quiz hint specifically.
+    const proceedHint = proceedButton.parentElement!;
+    expect(within(proceedHint).getByText('Watch the video to unlock the quiz')).toBeInTheDocument();
+    expect(
+      within(proceedHint).queryByText('Work through every module to unlock the quiz'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('admin view is never blocked, consistent with every other gate in this file', () => {
+    const payload = makePayload();
+    payload.user.isAdminView = true;
+    payload.course.lessons = [
+      textLesson('lesson-1', 'Module 1: Intro'),
+      textLesson('lesson-2', 'Module 2: Hazards'),
+    ];
+
+    render(<LearnClient initialData={payload} />);
+
+    expect(screen.getByRole('button', { name: 'Proceed to Quiz' })).not.toBeDisabled();
+  });
+
+  it('single-lesson course: the gate is open immediately, matching the existing quiz gate\'s identical expression (intentional, pinned so it is not "fixed" into unreachable)', () => {
+    const payload = makePayload();
+    payload.course.lessons = [textLesson('lesson-1', 'Module 1: Intro')];
+
+    render(<LearnClient initialData={payload} />);
+
+    const proceedButton = screen.getByRole('button', { name: 'Proceed to Quiz' });
+    expect(proceedButton).not.toBeDisabled();
+    expect(
+      screen.queryByText('Work through every module to unlock the quiz'),
+    ).not.toBeInTheDocument();
   });
 });
 
