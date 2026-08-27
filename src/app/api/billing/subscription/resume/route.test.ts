@@ -67,6 +67,29 @@ const PAUSED_SUB_WITH_SCHEDULE = {
   scheduledEffectiveAt: new Date('2026-08-17T00:00:00Z'),
 };
 
+// A PENDING pause (product decision 2026-08-27): pauseStartsAt is set but
+// pausedAt is still null — nothing was ever applied on Stripe, so "resume"
+// here means "cancel the scheduled pause" and must stay entirely local.
+const PENDING_PAUSE_SUB = {
+  id: 'sub-row-1',
+  organizationId: 'org-1',
+  stripeSubscriptionId: 'sub_x',
+  status: 'active',
+  pausedAt: null,
+  pauseStartsAt: new Date('2026-09-01T00:00:00Z'),
+  stripeScheduleId: null,
+  scheduledEffectiveAt: null,
+};
+
+// Same pending pause, but also carrying a plan-change schedule — proves the
+// pending-pause branch is checked FIRST and returns before the
+// schedule-release logic ever runs, even when a schedule is present.
+const PENDING_PAUSE_SUB_WITH_SCHEDULE = {
+  ...PENDING_PAUSE_SUB,
+  stripeScheduleId: 'sub_sched_1',
+  scheduledEffectiveAt: new Date('2026-08-17T00:00:00Z'),
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   mockAuth.mockResolvedValue({ user: { id: 'user-1', role: 'owner', organizationId: 'org-1' } });
@@ -76,6 +99,64 @@ beforeEach(() => {
     status: 'active',
   });
   stripeMock.subscriptionSchedules.release.mockResolvedValue({});
+});
+
+describe('POST /api/billing/subscription/resume — pending pause (cancel before it takes effect)', () => {
+  it('clears pauseStartsAt/pauseEndsAt locally with NO Stripe call at all', async () => {
+    prismaMock.subscription.findUnique.mockResolvedValue(PENDING_PAUSE_SUB);
+
+    const res = await POST();
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toEqual({
+      message: 'Your scheduled pause has been cancelled.',
+      success: true,
+    });
+    expect(prismaMock.subscription.update).toHaveBeenCalledWith({
+      where: { organizationId: 'org-1' },
+      data: { pauseStartsAt: null, pauseEndsAt: null },
+    });
+    // Nothing was ever applied on Stripe for a pending pause, so nothing
+    // Stripe-side should be touched to undo it.
+    expect(stripeMock.subscriptions.update).not.toHaveBeenCalled();
+    expect(stripeMock.subscriptionSchedules.retrieve).not.toHaveBeenCalled();
+    expect(stripeMock.subscriptionSchedules.release).not.toHaveBeenCalled();
+    // Access was never withdrawn for a pending pause, so hasAuditorAccess is
+    // not touched either.
+    expect(prismaMock.organization.update).not.toHaveBeenCalled();
+  });
+
+  it("audits with mode 'pending-pause-cancelled'", async () => {
+    prismaMock.subscription.findUnique.mockResolvedValue(PENDING_PAUSE_SUB);
+
+    await POST();
+
+    expect(mockAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'billing.subscription.resume',
+        targetId: 'sub-row-1',
+        metadata: { mode: 'pending-pause-cancelled' },
+      }),
+    );
+  });
+
+  it('returns BEFORE any schedule-release work, even when a plan-change schedule is also present', async () => {
+    prismaMock.subscription.findUnique.mockResolvedValue(PENDING_PAUSE_SUB_WITH_SCHEDULE);
+
+    const res = await POST();
+
+    expect(res.status).toBe(200);
+    // The pending-pause branch takes priority: no schedule lookup/release
+    // happens, and the schedule columns are left completely untouched.
+    expect(stripeMock.subscriptionSchedules.retrieve).not.toHaveBeenCalled();
+    expect(stripeMock.subscriptionSchedules.release).not.toHaveBeenCalled();
+    expect(stripeMock.subscriptions.update).not.toHaveBeenCalled();
+    expect(prismaMock.subscription.update).toHaveBeenCalledWith({
+      where: { organizationId: 'org-1' },
+      data: { pauseStartsAt: null, pauseEndsAt: null },
+    });
+  });
 });
 
 describe('POST /api/billing/subscription/resume — pending plan-change schedule', () => {
