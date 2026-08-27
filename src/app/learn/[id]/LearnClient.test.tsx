@@ -503,6 +503,10 @@ describe('Proceed to Quiz gate (commit 78c5795)', () => {
     expect(
       screen.queryByText('Work through every module to unlock the quiz'),
     ).not.toBeInTheDocument();
+  });
+});
+
+/**
  * Quiz error surfacing (fix/learner-quiz-and-slide-picker).
  *
  * These three routes previously either threw away the response body (submit),
