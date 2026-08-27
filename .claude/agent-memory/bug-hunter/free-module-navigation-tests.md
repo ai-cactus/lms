@@ -47,7 +47,25 @@ clean way to assert *which* module scrolled (grab real DOM nodes via
 user decided to gate that button in a follow-up commit — a test pinning the
 soon-to-be-reversed behavior would have been dead on arrival. Good reminder to
 treat "document current behavior, don't endorse it" instructions as provisional
-right up until submission, not just at task start.
+right up until submission, not just at task start. That follow-up landed one
+task later as commit `78c5795` ("gate the article's quiz shortcut on earned
+progress" — `isProceedBlocked = isVideoGateBlocked || (!hasCompletedAllModules
+&& !admin)`, reusing the identical `highestUnlockedIndex >= lessons.length - 1`
+expression as the other two gates). Added a 5th describe block, "Proceed to
+Quiz gate (commit 78c5795)", with 5 tests: free-nav-to-last-module still
+disabled w/ module hint (the exact pre-fix bypass), Next-earned progress
+enables it and enters the quiz, video-course-unwatched keeps the video hint
+(not the module one — the two hints share the literal string "Watch the video
+to unlock the quiz" with the per-lesson watch-gate hint, so scope the
+assertion to the button's own `.parentElement`, not a bare `getByText`), admin
+never blocked, and single-lesson courses open immediately (intentional,
+pinned so it isn't "fixed" later). Same revert-and-confirm technique used
+again (see below) — swapped `proceedDisabled={isProceedBlocked}` back to
+`proceedDisabled={isVideoGateBlocked}`, confirmed the free-nav test fails
+specifically (button renders enabled instead of disabled), reverted via
+`/tmp` backup, confirmed `git diff` clean. Total for this file's "free
+navigation" work across both tasks: baseline 55/513 -> 56/524 (task 1) ->
+56/529 (task 2, +5 tests, no new files).
 
 **Revert-and-confirm still catches real regressions here**: temporarily
 reintroduced the exact bug this branch fixes (made the lesson-select branch
