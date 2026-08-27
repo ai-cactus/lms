@@ -17,6 +17,7 @@ import CourseArticle from '@/components/courses/CourseArticle';
 import AdminQuizEditor from '@/components/courses/AdminQuizEditor';
 import AdminLessonEditor from '@/components/courses/AdminLessonEditor';
 import AdminCourseReview from '@/components/courses/AdminCourseReview';
+import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { VideoPlayer } from '@/components/video/VideoPlayer';
 import { isQuizUnlocked } from '@/lib/video/gating';
@@ -301,6 +302,43 @@ function deriveSeed(data: LearnPayload): SeededState {
   return seed;
 }
 
+const SUBMIT_QUIZ_FALLBACK = 'Failed to submit quiz. Please try again.';
+const START_QUIZ_FALLBACK = 'Failed to start quiz session. Please try again.';
+const RETAKE_QUIZ_FALLBACK = 'Failed to start retake. Please try again.';
+
+interface QuizErrorBody {
+  error?: string;
+  message?: string;
+  attemptsUsed?: number;
+  allowedAttempts?: number | null;
+}
+
+/**
+ * Turns a failed quiz API response into a message the learner can act on.
+ *
+ * The quiz routes are route handlers, not Server Actions, so their JSON bodies
+ * reach the client unredacted — throwing them away is what left QA with an
+ * undiagnosable "Failed to submit quiz". `message` is preferred over `error`
+ * because the start route puts a machine code (`QUIZ_LOCKED_MAX_ATTEMPTS`) in
+ * `error` and the human text in `message`.
+ */
+async function readQuizErrorMessage(res: Response, fallback: string): Promise<string> {
+  let body: QuizErrorBody | null = null;
+  try {
+    body = (await res.json()) as QuizErrorBody;
+  } catch {
+    // Non-JSON body (proxy error page, empty 502) — nothing to surface.
+  }
+
+  const detail = body?.message ?? body?.error;
+  if (!detail) return fallback;
+
+  if (typeof body?.attemptsUsed === 'number' && typeof body?.allowedAttempts === 'number') {
+    return `${detail}. You have used ${body.attemptsUsed} of ${body.allowedAttempts} allowed attempts.`;
+  }
+  return detail;
+}
+
 interface LearnClientProps {
   /**
    * Server-rendered payload. When present the mount fetch is skipped entirely
@@ -339,6 +377,10 @@ export default function LearnClient({ initialData }: LearnClientProps) {
   const [timeLeft, setTimeLeft] = useState(seed?.timeLeft ?? 0);
   const [quizResults, setQuizResults] = useState<QuizResultsData | null>(seed?.quizResults ?? null);
   const [submitting, setSubmitting] = useState(false);
+  // Non-fatal quiz failures. Kept separate from `error`, which replaces the
+  // whole learn view — blowing the page away mid-attempt would discard the
+  // learner's answers.
+  const [quizError, setQuizError] = useState('');
 
   // Modal State
   const [showQuizGateModal, setShowQuizGateModal] = useState(false);
@@ -381,6 +423,7 @@ export default function LearnClient({ initialData }: LearnClientProps) {
   const handleSubmitQuiz = React.useCallback(async () => {
     if (!course?.quiz || !enrollment) return;
     setSubmitting(true);
+    setQuizError('');
     const answers = Object.entries(quizAnswers).map(([qId, val]) => ({
       questionId: qId,
       selectedAnswer: val,
@@ -401,13 +444,20 @@ export default function LearnClient({ initialData }: LearnClientProps) {
           timeTaken: timeTaken,
         }),
       });
-      if (!res.ok) throw new Error('Failed to submit');
+      if (!res.ok) {
+        throw new Error(await readQuizErrorMessage(res, SUBMIT_QUIZ_FALLBACK));
+      }
       const result = await res.json();
       setQuizResults(result);
       setQuizStep('review');
     } catch (err) {
-      logger.error({ msg: 'Error:', err: err });
-      alert('Failed to submit quiz');
+      logger.error({
+        msg: '[learn] Quiz submission failed',
+        err,
+        quizId: course.quiz.id,
+        enrollmentId: enrollment.id,
+      });
+      setQuizError(err instanceof Error ? err.message : SUBMIT_QUIZ_FALLBACK);
     } finally {
       setSubmitting(false);
     }
@@ -513,12 +563,21 @@ export default function LearnClient({ initialData }: LearnClientProps) {
   const handleStartQuiz = async () => {
     if (!course?.quiz || !enrollment) return;
 
+    setQuizError('');
+
     try {
-      await fetch(`/api/quiz/${course.quiz.id}/start`, {
+      const res = await fetch(`/api/quiz/${course.quiz.id}/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enrollmentId: enrollment.id }),
       });
+
+      // The route rejects exhausted attempts, a locked enrollment and paused
+      // billing with a 403. Ignoring that let the learner into a quiz they
+      // could never submit.
+      if (!res.ok) {
+        throw new Error(await readQuizErrorMessage(res, START_QUIZ_FALLBACK));
+      }
 
       setQuizStep('active');
       setCurrentQuestionIndex(0);
@@ -528,8 +587,13 @@ export default function LearnClient({ initialData }: LearnClientProps) {
         : (course?.quiz?.questions.length || 5) * 60;
       setTimeLeft(limit);
     } catch (err) {
-      logger.error({ msg: 'Failed to start quiz', err: err });
-      alert('Failed to start quiz session. Please try again.');
+      logger.error({
+        msg: '[learn] Failed to start quiz session',
+        err,
+        quizId: course.quiz.id,
+        enrollmentId: enrollment.id,
+      });
+      setQuizError(err instanceof Error ? err.message : START_QUIZ_FALLBACK);
     }
   };
 
@@ -687,6 +751,12 @@ export default function LearnClient({ initialData }: LearnClientProps) {
     enrollment?.quizAttempts?.filter((a) => a.timeTaken !== null).length ?? 0;
   const activeDraftAttempt = enrollment?.quizAttempts?.find((a) => a.timeTaken === null);
 
+  const quizErrorAlert = quizError ? (
+    <Alert variant="error" className="mb-6 text-left">
+      {quizError}
+    </Alert>
+  ) : null;
+
   return (
     <div className="flex flex-row-reverse max-md:flex-col h-[100dvh] w-full overflow-hidden bg-background-secondary font-sans text-[#1a1a1a]">
       {showSharedLayout && (
@@ -763,6 +833,7 @@ export default function LearnClient({ initialData }: LearnClientProps) {
         <div className="relative h-full flex-1 overflow-hidden bg-[#f8f7f4]">
           {quizStep === 'review' && quizResults ? (
             <div style={{ overflow: 'auto', height: '100%', padding: 24 }}>
+              {quizErrorAlert}
               <QuizResults
                 courseId={courseId}
                 enrollmentId={enrollment?.id || ''}
@@ -791,15 +862,22 @@ export default function LearnClient({ initialData }: LearnClientProps) {
                   setEnrollment((prev) => (prev ? { ...prev, status: 'attested' } : prev));
                 }}
                 onRetake={async () => {
-                  if (enrollment?.id) {
-                    try {
-                      const { retakeQuiz } = await import('@/app/actions/course');
-                      await retakeQuiz(enrollment.id);
-                      window.location.reload();
-                    } catch (err) {
-                      logger.error({ msg: 'Failed to retake quiz:', err: err });
-                      alert('Failed to start retake. Please try again.');
-                    }
+                  if (!enrollment?.id) return;
+                  setQuizError('');
+                  try {
+                    const { retakeQuiz } = await import('@/app/actions/course');
+                    await retakeQuiz(enrollment.id);
+                    window.location.reload();
+                  } catch (err) {
+                    logger.error({
+                      msg: '[learn] Failed to start quiz retake',
+                      err,
+                      enrollmentId: enrollment.id,
+                    });
+                    // retakeQuiz is a Server Action: Next.js redacts thrown
+                    // messages in production builds, so only the log carries
+                    // the real cause.
+                    setQuizError(RETAKE_QUIZ_FALLBACK);
                   }
                 }}
               />
@@ -824,6 +902,7 @@ export default function LearnClient({ initialData }: LearnClientProps) {
                   <div className="flex flex-1 flex-col px-12 pt-10 pb-5 max-md:px-4 max-md:pt-5 max-md:pb-4">
                     {quizStep === 'intro' && (
                       <div className="mt-10 flex w-full flex-col items-center text-center">
+                        {quizErrorAlert}
                         <h1 className="mb-4 text-[32px] font-extrabold tracking-[-0.02em] text-[#111827] max-md:text-[22px] max-[480px]:text-[20px]">
                           {course.quiz?.title}
                         </h1>
@@ -967,6 +1046,7 @@ export default function LearnClient({ initialData }: LearnClientProps) {
                             );
                           })}
                         </div>
+                        {quizErrorAlert}
                         <div className="flex items-center justify-between border-t border-[#f3f4f6] pt-3 max-md:flex-wrap max-md:gap-2">
                           <Button
                             variant="outline"
