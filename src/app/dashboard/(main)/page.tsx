@@ -71,22 +71,9 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
   const scopedFacility = scope.mode === 'single' ? scope.facility : null;
 
-  // Fetch billing status alongside dashboard data so the Create Course button
-  // can apply the same billing gate as the Courses list page.
-  const [{ courses, stats }, organization, accessibleFacilities] = await Promise.all([
-    getDashboardData(scopedFacility?.id),
-    organizationId
-      ? prisma.organization.findUnique({
-          where: { id: organizationId },
-          select: { subscription: { select: { status: true, pausedAt: true } } },
-        })
-      : null,
-    listAccessibleFacilities(session),
-  ]);
+  const accessibleFacilities = await listAccessibleFacilities(session);
 
-  const hasBilling = hasActiveBilling(organization?.subscription);
-
-  // The security boundary for this page's roster reads, mirroring
+  // The security boundary for every read below, mirroring
   // `requirePermissionWithFacilityScope`: null (no predicate) ONLY for an
   // org-wide role viewing everything. A facility-bound role always gets an
   // array — reaching this branch without a `?facility=` selection must narrow
@@ -96,6 +83,25 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     : isOrgWideFacilityRole(role as Role)
       ? null
       : accessibleFacilities.map((facility) => facility.id);
+
+  // Fetch billing status alongside dashboard data so the Create Course button
+  // can apply the same billing gate as the Courses list page.
+  const [{ courses, stats }, organization] = await Promise.all([
+    // `getDashboardData` narrows to at most ONE facility, and a facility-bound
+    // role only reaches this branch when it can see at most one — anything more
+    // took the Global View above. Org-wide roles keep passing null so the
+    // organisation-wide query shape (which counts enrollments with no facility
+    // stamp) stays byte-identical.
+    getDashboardData(scopedFacility?.id ?? dataFacilityIds?.[0]),
+    organizationId
+      ? prisma.organization.findUnique({
+          where: { id: organizationId },
+          select: { subscription: { select: { status: true, pausedAt: true } } },
+        })
+      : null,
+  ]);
+
+  const hasBilling = hasActiveBilling(organization?.subscription);
 
   // Status Tracker overview — gated on roster-wide assignment visibility so
   // finance (an admin-tier role) never sees worker-training metrics.
