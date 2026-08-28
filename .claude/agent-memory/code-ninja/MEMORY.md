@@ -16,7 +16,7 @@
 - [Proxy cookie lags membership](gotcha_proxy_cookie_lags_membership.md) — proxy gates read the raw cookie (no callbacks); pair any organizationId gate with a client `update()`.
 - [Server Action redirectTo must render](gotcha_server_action_redirectto_must_render.md) — any redirect ON the target (proxy gate or a `redirect()` stub page) crashes the client with E394.
 - [Auth revalidation cache TTL](auth_revalidation_cache_ttl.md) — JWT decode DB revalidation is Redis-cached (AUTH_REVALIDATE_TTL_SECONDS, def 30); sessionVersion bumps actively busted via invalidateRevalidationCache, TTL backstops the rest.
-- [Build type-checks everything](build_typecheck_scope.md) — `next build` type-checks scripts/ and tests too; `npm run lint` only covers src/.
+- [Build type-checks everything](build_typecheck_scope.md) — `next build` type-checks scripts/ and tests; `npm run lint` only covers src/; deleting a page fails typecheck on a stale `.next/` and `rm` is often blocked.
 - [RBAC role model](rbac_role_model.md) — 13 category-aware DB roles (5 manager + 8 worker, uniform worker perms); DEFAULT_SELF_SERVE_WORKER_ROLE + snake↔camel conversion in role-utils.ts.
 - [Org/Facility split](org_facility_split.md) — location/compliance fields moved to Facility; now genuinely multi-facility (OrganizationUserFacility); facility.* = owner+supervisor only.
 - [Offline migrations](project_offline_migrations.md) — dev DB (localhost:5433) often unreachable; scaffold Prisma migrations offline via `migrate diff --from-schema/--to-schema`.
@@ -64,3 +64,4 @@
 - [Facility scope = one condition](project_facility_scope_one_condition.md) — view/switch/reassign all gate on "viewer sees >1 accessible facility"; ORG_WIDE_FACILITY_ROLES is already correct, do not edit.
 - [Role-assign count vs reach](gotcha_role_assign_count_vs_reach.md) — count + mutation are now BOTH facility-scoped and must stay coupled; CourseAssignment has no facility column, so future role holders still enroll org-wide.
 - [Server Action refusals must return](gotcha_server_action_refusals_must_return.md) — prod redacts thrown messages to React #441; return `refusedReason` on the existing result type, keep the gate fail-closed.
+- [Dashboard banner slot bleeds](gotcha_dashboard_banner_slot_bleeds.md) — site-wide banners sit INSIDE the padded scroll container; negative-margin heroes paint over them (gate on `first:`).
