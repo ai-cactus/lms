@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Check, Search } from 'lucide-react';
+import { Check, Search, X } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -173,9 +173,9 @@ export default function FacilityScopePalette({
             type="button"
             aria-label="Close"
             onClick={() => onOpenChange(false)}
-            className="inline-flex h-5 min-w-5 shrink-0 cursor-pointer items-center justify-center rounded-[6px] border border-border bg-background px-1.5 font-sans text-[11px] leading-none font-medium text-text-secondary transition-colors hover:bg-background-secondary hover:text-foreground"
+            className="inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-background-secondary hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
           >
-            esc
+            <X className="size-4" aria-hidden="true" />
           </button>
         </div>
 
