@@ -1083,7 +1083,11 @@ export async function assignCourseToUsers(
 
   const deadline = dueAt ? new Date(dueAt) : null;
   if (deadline && Number.isNaN(deadline.getTime())) {
-    return { success: false, message: 'Invalid completion deadline', notFound };
+    return {
+      success: false,
+      message: "That completion deadline couldn't be read. Please pick the date again.",
+      notFound,
+    };
   }
 
   // Persist the deadline on the org's CourseAssignment for this course so the
@@ -1225,7 +1229,12 @@ export async function assignCoursesToUser(
 
   const deadline = dueAt ? new Date(dueAt) : null;
   if (deadline && Number.isNaN(deadline.getTime())) {
-    return { assigned: 0, alreadyAssigned: 0, failed: 0, error: 'Invalid completion deadline' };
+    return {
+      assigned: 0,
+      alreadyAssigned: 0,
+      failed: 0,
+      error: "That completion deadline couldn't be read. Please pick the date again.",
+    };
   }
 
   const result: AssignCoursesToUserResult = { assigned: 0, alreadyAssigned: 0, failed: 0 };
@@ -2021,7 +2030,11 @@ export async function retakeQuiz(
         quizId: quiz.id,
         completedCount,
       });
-      return { success: false, refusedReason: 'No attempts remaining' };
+      return {
+        success: false,
+        refusedReason:
+          "You've used all your attempts for this quiz. Ask your administrator to assign a retake.",
+      };
     }
   }
 
@@ -2103,7 +2116,11 @@ export async function assignRetake(
       status: lockedEnrollment.status,
       userId: session.user.id,
     });
-    return { success: false, refusedReason: 'Enrollment is not locked' };
+    return {
+      success: false,
+      refusedReason:
+        "This learner hasn't failed the assessment yet — retakes are only available once all attempts are used.",
+    };
   }
 
   const existingRetake = await prisma.enrollment.findFirst({
@@ -2118,7 +2135,7 @@ export async function assignRetake(
     });
     return {
       success: false,
-      refusedReason: 'An active retake already exists for this enrollment',
+      refusedReason: 'This learner already has a retake in progress for this course.',
     };
   }
 

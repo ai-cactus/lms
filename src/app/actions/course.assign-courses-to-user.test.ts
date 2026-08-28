@@ -220,7 +220,7 @@ describe('assignCoursesToUser() — fan-out and counting', () => {
       assigned: 0,
       alreadyAssigned: 0,
       failed: 0,
-      error: 'Invalid completion deadline',
+      error: "That completion deadline couldn't be read. Please pick the date again.",
     });
     expect(prismaMock.enrollment.createMany).not.toHaveBeenCalled();
   });

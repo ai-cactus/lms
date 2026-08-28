@@ -13,7 +13,7 @@
  *
  * Fixed behavior under test:
  *  - never call quizAttempt.update (no mutation of history),
- *  - refuses with 'No attempts remaining' once completed count >= allowedAttempts
+ *  - refuses with "You've used all your attempts for this quiz. Ask your administrator to assign a retake." once completed count >= allowedAttempts
  *    (returned, not thrown, so the learner sees it in production),
  *  - allows retake when completed count < allowedAttempts,
  *  - allows retake when allowedAttempts is null/0 (unlimited),
@@ -131,7 +131,11 @@ describe('retakeQuiz — attempt limit enforcement', () => {
 
     const result = await retakeQuiz(ENROLLMENT_ID);
 
-    expect(result).toEqual({ success: false, refusedReason: 'No attempts remaining' });
+    expect(result).toEqual({
+      success: false,
+      refusedReason:
+        "You've used all your attempts for this quiz. Ask your administrator to assign a retake.",
+    });
     expect(prismaMock.enrollment.update).not.toHaveBeenCalled();
   });
 
@@ -141,7 +145,11 @@ describe('retakeQuiz — attempt limit enforcement', () => {
 
     const result = await retakeQuiz(ENROLLMENT_ID);
 
-    expect(result).toEqual({ success: false, refusedReason: 'No attempts remaining' });
+    expect(result).toEqual({
+      success: false,
+      refusedReason:
+        "You've used all your attempts for this quiz. Ask your administrator to assign a retake.",
+    });
     expect(prismaMock.enrollment.update).not.toHaveBeenCalled();
   });
 

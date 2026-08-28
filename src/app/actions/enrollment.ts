@@ -834,7 +834,7 @@ export async function assignCourseToRoles(
       enrolled: 0,
       alreadyEnrolled: 0,
       failed: 0,
-      refusedReason: 'Invalid completion deadline',
+      refusedReason: "That completion deadline couldn't be read. Please pick the date again.",
       targetRoles: [...new Set(roles)],
     };
   }

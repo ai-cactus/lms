@@ -137,7 +137,11 @@ describe('assignRetake — guards', () => {
 
     const result = await assignRetake(ENROLLMENT_ID);
 
-    expect(result).toEqual({ success: false, refusedReason: 'Enrollment is not locked' });
+    expect(result).toEqual({
+      success: false,
+      refusedReason:
+        "This learner hasn't failed the assessment yet — retakes are only available once all attempts are used.",
+    });
     expect(prismaMock.enrollment.create).not.toHaveBeenCalled();
   });
 
@@ -148,7 +152,7 @@ describe('assignRetake — guards', () => {
 
     expect(result).toEqual({
       success: false,
-      refusedReason: 'An active retake already exists for this enrollment',
+      refusedReason: 'This learner already has a retake in progress for this course.',
     });
     expect(prismaMock.enrollment.create).not.toHaveBeenCalled();
   });

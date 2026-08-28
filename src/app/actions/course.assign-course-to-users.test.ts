@@ -272,7 +272,10 @@ describe('assignCourseToUsers — completion deadline', () => {
   it('refuses an unparseable deadline before any write', async () => {
     const result = await assignCourseToUsers(COURSE_ID, ['staff@acme.com'], 'not-a-date');
 
-    expect(result).toMatchObject({ success: false, message: 'Invalid completion deadline' });
+    expect(result).toMatchObject({
+      success: false,
+      message: "That completion deadline couldn't be read. Please pick the date again.",
+    });
 
     expect(prismaMock.courseAssignment.create).not.toHaveBeenCalled();
     expect(prismaMock.enrollment.createMany).not.toHaveBeenCalled();
