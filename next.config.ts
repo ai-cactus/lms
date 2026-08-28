@@ -44,6 +44,10 @@ const nextConfig: NextConfig = {
       "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https:",
+      // blob: is the locally-selected file previewed before upload; https: is the
+      // signed GCS/MinIO playback URL. Without this, media falls back to
+      // default-src 'self' and every preview player is blocked.
+      "media-src 'self' blob: https:",
       "font-src 'self' data:",
       "connect-src 'self' https:",
       "frame-ancestors 'none'",
