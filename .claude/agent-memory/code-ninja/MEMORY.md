@@ -60,3 +60,4 @@
 - [Billing schedule deferred scope](project_billing_schedule_deferred_scope.md) — checkout's missing pausedAt check, #27/#28, and pause's kept 409 are deliberate non-fixes; seat = every active member.
 - [CourseRail unlockedIndex gates the quiz too](gotcha_courserail_unlockedindex_conflates_quiz.md) — module nav is free, but railUnlockedIndex must stay at lessons.length-1 or the quiz gate opens.
 - [Quiz route error body shapes](gotcha_quiz_route_error_body_shapes.md) — start returns a CODE in `error` + human text in `message`; submit is human-in-`error`; read `message ?? error`.
+- [Courses video/reading consolidation](project_courses_video_reading_consolidation.md) — outer tabs deleted, catalog merged into the Video tab; Video is now the UNCONDITIONAL default, which breaks 7 e2e click paths.
