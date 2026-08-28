@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
+import Image from 'next/image';
+import Link from 'next/link';
 import { Award, Calendar, Check, Download } from 'lucide-react';
 import CertificateModal from './CertificateModal';
 import { Button } from '@/components/ui/button';
@@ -12,7 +14,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import EmptyTableState from '@/components/ui/EmptyTableState';
 import { formatCertificateId } from '@/lib/certificate-id';
 
 interface CertificateData {
@@ -119,7 +120,27 @@ export default function CertificateCardList({
       </div>
 
       {certificates.length === 0 ? (
-        <EmptyTableState message="No certificates available." />
+        <div className="flex flex-col items-center justify-center gap-6 px-6 py-12 md:py-16">
+          <Image
+            src="/images/certificates-empty-state.svg"
+            alt=""
+            width={482}
+            height={282}
+            aria-hidden="true"
+            className="h-[180px] w-auto md:h-[282px]"
+          />
+          <div className="flex max-w-[430px] flex-col gap-2 text-center">
+            <p className="text-[22px] font-semibold leading-[1.32] text-[#11181c] md:text-[25px]">
+              No certificate earned yet
+            </p>
+            <p className="text-[15px] leading-[1.5] text-[#475367] md:text-[16px]">
+              Complete a course to earn your certificate — once you do, it will appear here.
+            </p>
+          </div>
+          <Button asChild className="h-[47px] rounded-[12px] px-6 text-[16px] font-semibold">
+            <Link href="/worker/trainings">Browse trainings</Link>
+          </Button>
+        </div>
       ) : (
         <div className="flex flex-col gap-3">
           {certificates.map((cert) => (
