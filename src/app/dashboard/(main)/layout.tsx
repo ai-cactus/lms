@@ -16,6 +16,7 @@ import { getStatusTrackerSummaryForOrg } from '@/lib/reminders/status-tracker';
 import { resolveMembershipForActiveSession } from '@/lib/auth/membership';
 import { isOrgWideFacilityRole } from '@/lib/facility/scope';
 import { resolveMemberFacilityId } from '@/lib/facility/member-facility';
+import { resolveDataFacilityIds } from '@/lib/facility/staff-where';
 import { WithChildren } from '@/types/react';
 
 const DashboardLayout: FC<WithChildren> = async ({ children }) => {
@@ -78,9 +79,29 @@ const DashboardLayout: FC<WithChildren> = async ({ children }) => {
   // finance (an admin-tier role) never sees worker-training metrics; only queried
   // for eligible roles so other loads are unaffected.
   const canSeeStatusTracker = can(dbRoleToRoleKey(role as Role), 'assignment.read');
+  // Scoped like every other roster read: a facility-bound role must not be given
+  // an organisation-wide count either. `resolveDataFacilityIds` returns null —
+  // meaning no facility predicate — only for org-wide roles.
+  const bannerFacilityIds =
+    canSeeStatusTracker && organizationId && role
+      ? await resolveDataFacilityIds({
+          user: {
+            id: session.user.id,
+            role: role as Role,
+            organizationId,
+            organizationUserId: membership?.organizationUserId ?? null,
+          },
+        })
+      : null;
   const hardEscalationCount =
     canSeeStatusTracker && organizationId
-      ? (await getStatusTrackerSummaryForOrg(organizationId)).hardEscalationCount
+      ? (
+          await getStatusTrackerSummaryForOrg(
+            organizationId,
+            undefined,
+            bannerFacilityIds ?? undefined,
+          )
+        ).hardEscalationCount
       : 0;
 
   return (

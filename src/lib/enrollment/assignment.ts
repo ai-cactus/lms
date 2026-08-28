@@ -1,6 +1,7 @@
 import prisma from '@/lib/prisma';
 import { logger } from '@/lib/logger';
 import { REMINDER_STAGE_DEFAULTS, SWEEP_STAGES } from '@/lib/reminders/stages';
+import { assignmentFacilityScopeColumns } from './assignment-facility-scope';
 import type { RenewalCycle, ReminderStage, UserRole } from '@/generated/prisma/enums';
 
 /**
@@ -96,6 +97,17 @@ export interface UpsertCourseAssignmentParams {
    */
   targetRoles?: UserRole[] | null;
   /**
+   * The facility scope the assignment is created under, in
+   * `resolveDataFacilityIds`' vocabulary. `undefined` leaves an existing row's
+   * scope untouched (an individual re-assignment must not restate the role
+   * targeting's reach); `null` records org-wide; an array narrows to exactly
+   * those facilities, and an empty array to nobody.
+   *
+   * Note this null differs from `targetRoles`' — there `null` clears, here it is
+   * the org-wide value. See {@link assignmentFacilityScopeColumns}.
+   */
+  facilityScope?: string[] | null;
+  /**
    * `'write'` (default) overwrites an existing assignment's settings and stage
    * rows. `'preserve'` links the existing row without touching them — the row is
    * shared org-wide, so assigning to one worker must not silently retune the
@@ -119,6 +131,12 @@ function roleTargetColumns(targetRoles: UserRole[] | null | undefined) {
   return { targetRole: targetRoles[0], targetRoles };
 }
 
+/** As {@link roleTargetColumns}, for the recorded facility scope. */
+function facilityScopeColumns(facilityScope: string[] | null | undefined) {
+  if (facilityScope === undefined) return {};
+  return assignmentFacilityScopeColumns(facilityScope);
+}
+
 /**
  * Create or update the org's single {@link CourseAssignment} for a course and
  * reconcile its per-stage reminder cadence. One assignment per
@@ -133,6 +151,7 @@ export async function upsertCourseAssignment(
 ): Promise<string> {
   const { organizationId, courseId, targetRoles } = params;
   const roleColumns = roleTargetColumns(targetRoles);
+  const scopeColumns = facilityScopeColumns(params.facilityScope);
 
   const existing = await prisma.courseAssignment.findFirst({
     where: { organizationId, courseId },
@@ -162,6 +181,7 @@ export async function upsertCourseAssignment(
         remindersEnabled: params.remindersEnabled,
         renewalCycle: params.renewalCycle,
         ...roleColumns,
+        ...scopeColumns,
       },
     });
 
@@ -194,6 +214,7 @@ export async function upsertCourseAssignment(
       remindersEnabled: params.remindersEnabled,
       renewalCycle: params.renewalCycle,
       ...roleColumns,
+      ...scopeColumns,
       reminderStages: { create: params.stageRows },
     },
   });

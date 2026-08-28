@@ -567,7 +567,11 @@ interface RoleTargetAssignmentResult {
  * holders are auto-enrolled live by {@link enrollUserForRoleTargets} at each
  * role-write site, with the nightly sweep as a backstop.
  *
- * Requires `assignment.create`, strictly scoped to the caller's own organization.
+ * Requires `assignment.create`, scoped to the caller's own organization and to
+ * the facilities their role admits. That scope is RECORDED on the assignment
+ * row, not merely applied here: the immediate enrolment and every later
+ * auto-enrolment read the same stored value, so the assignment's reach cannot
+ * outgrow the assigner's as new staff join other facilities.
  */
 async function assignCourseToRoleTargets(
   courseId: string,
@@ -679,6 +683,13 @@ async function assignCourseToRoleTargets(
     });
   }
 
+  // Resolved once and used twice: it both narrows the immediate enrolment below
+  // and is persisted on the assignment, so the live auto-enroll hook and the
+  // nightly sweep apply exactly the reach this caller had at assignment time.
+  // null for org-wide roles, so owner/admin/HR/clinical director are untouched;
+  // an empty list narrows to nobody rather than to everybody.
+  const holderFacilityIds = await resolveDataFacilityIds(session);
+
   const assignmentId = await upsertCourseAssignment({
     organizationId,
     courseId,
@@ -690,6 +701,7 @@ async function assignCourseToRoleTargets(
     renewalCycle: options.renewalCycle,
     stageRows: options.stageRows,
     targetRoles,
+    facilityScope: holderFacilityIds,
   });
 
   logger.info({
@@ -701,11 +713,23 @@ async function assignCourseToRoleTargets(
     userId: session.user.id,
   });
 
-  // Enroll every CURRENT holder of any targeted role. Without an absolute
-  // deadline their window counts from the assignment start (now, unless a
-  // schedule date is set).
+  // Enroll every CURRENT holder of any targeted role that the caller's facility
+  // scope admits. Without an absolute deadline their window counts from the
+  // assignment start (now, unless a schedule date is set).
+  //
+  // The narrowing is what makes `enrollment.create` safe to grant a supervisor:
+  // unscoped, a facility-bound supervisor assigning to "nurse" enrolled every
+  // nurse in the organisation. It must stay in step with getRoleHolderCounts,
+  // which feeds the count the assign UI shows before this runs — a narrowed
+  // count over an unnarrowed mutation would promise three enrolments and
+  // perform forty.
   const holders = await prisma.organizationUser.findMany({
-    where: { organizationId, role: { in: targetRoles }, active: true },
+    where: {
+      organizationId,
+      role: { in: targetRoles },
+      active: true,
+      ...staffFacilityWhere(holderFacilityIds),
+    },
     select: { id: true, user: { select: { email: true } } },
   });
 
@@ -854,9 +878,16 @@ export async function assignCourseToRoles(
 }
 
 /**
- * Count the current holders of each assignable role in the caller's org, so the
- * assign UI can show how many workers a role-target assignment will enroll.
- * Requires `assignment.read`, scoped to the caller's own organization.
+ * Count the current holders of each assignable role that the caller may enroll,
+ * so the assign UI can show how many workers a role-target assignment will
+ * enroll. Requires `assignment.read`, scoped to the caller's own organization
+ * and to their facilities.
+ *
+ * The facility narrowing here is only correct because
+ * {@link assignCourseToRoleTargets} applies the SAME narrowing to the enrolment
+ * it performs. These two must be changed together: a narrowed count over an
+ * unnarrowed mutation is worse than no narrowing at all, because it tells the
+ * caller a smaller number than the one it acts on.
  */
 export async function getRoleHolderCounts(): Promise<Record<string, number>> {
   const session = await resolveSession();
@@ -878,9 +909,10 @@ export async function getRoleHolderCounts(): Promise<Record<string, number>> {
     return {};
   }
 
+  const dataFacilityIds = await resolveDataFacilityIds(session);
   const grouped = await prisma.organizationUser.groupBy({
     by: ['role'],
-    where: { organizationId, active: true },
+    where: { organizationId, active: true, ...staffFacilityWhere(dataFacilityIds) },
     _count: { _all: true },
   });
 

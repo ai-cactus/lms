@@ -1,8 +1,10 @@
 /**
  * Gating tests for the staff-profile "Change Facility" button (design: Staff
  * Profile header, next to Assign Course). The button must render only for
- * viewers holding user.edit, only when facilities exist, and never for the
- * organization owner's own profile (the owner's facilities are immutable).
+ * viewers holding user.edit, only when the viewer has MULTI-facility access
+ * (a viewer who can see one site has nowhere to reassign anyone to), and never
+ * for the organization owner's own profile (the owner's facilities are
+ * immutable).
  */
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -85,6 +87,18 @@ describe('StaffProfileClient — Change Facility button', () => {
 
   it('is hidden when there are no facilities to move to', () => {
     render(<StaffProfileClient staff={makeStaff()} viewerRole={'owner' as Role} facilities={[]} />);
+
+    expect(screen.queryByRole('button', { name: /Change Facility/ })).not.toBeInTheDocument();
+  });
+
+  it('QA #21 / D-01: is hidden when the viewer has only ONE accessible facility — nowhere to reassign anyone to', () => {
+    render(
+      <StaffProfileClient
+        staff={makeStaff()}
+        viewerRole={'owner' as Role}
+        facilities={[FACILITIES[0]]}
+      />,
+    );
 
     expect(screen.queryByRole('button', { name: /Change Facility/ })).not.toBeInTheDocument();
   });

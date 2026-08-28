@@ -181,7 +181,11 @@ export default function StaffProfileClient({
   const [certificateSearchQuery, setCertificateSearchQuery] = useState('');
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [isChangeFacilityOpen, setIsChangeFacilityOpen] = useState(false);
-  const canChangeFacility = canEdit && facilities.length > 0 && user.role !== 'owner';
+  // `facilities` is the VIEWER's accessible set, so "more than one" is exactly
+  // "has multi-facility access". A viewer locked to a single facility cannot
+  // reassign anyone out of it, so the action is hidden rather than offered as a
+  // dead end (the server action remains authoritative).
+  const canChangeFacility = canEdit && facilities.length > 1 && user.role !== 'owner';
   const [retakeEnrollment, setRetakeEnrollment] = useState<{
     id: string;
     courseName: string;

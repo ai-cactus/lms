@@ -329,3 +329,57 @@ describe('getStatusTrackerSummaryForOrg — nearDeadline (At Risk) view', () => 
     expect(nearDeadline).toEqual({ count: 0, rows: [] });
   });
 });
+
+// The `facilityId` param — no prior test ever passed a third argument at all.
+// The fix under test: an empty array must narrow to NOTHING, never fall back
+// to the org-wide `{}` shape (the `/dashboard/status-tracker` incident this
+// module's own doc comment describes).
+describe('getStatusTrackerSummaryForOrg — facilityId param', () => {
+  it('applies no facility predicate when facilityId is omitted (org-wide)', async () => {
+    prismaMock.enrollment.findMany.mockResolvedValue([]);
+
+    await getStatusTrackerSummaryForOrg('org-1');
+
+    const overdueCall = prismaMock.enrollment.findMany.mock.calls[0][0];
+    expect(overdueCall.where.facilityId).toBeUndefined();
+  });
+
+  it('narrows to a single facility when passed a bare string', async () => {
+    prismaMock.enrollment.findMany.mockResolvedValue([]);
+
+    await getStatusTrackerSummaryForOrg('org-1', NOW, 'fac-1');
+
+    const overdueCall = prismaMock.enrollment.findMany.mock.calls[0][0];
+    expect(overdueCall.where.facilityId).toBe('fac-1');
+  });
+
+  it('narrows to an `in` predicate for a non-empty array, on BOTH the overdue and near-deadline queries', async () => {
+    prismaMock.enrollment.findMany.mockResolvedValue([]);
+
+    await getStatusTrackerSummaryForOrg('org-1', NOW, ['fac-1', 'fac-2']);
+
+    const overdueCall = prismaMock.enrollment.findMany.mock.calls[0][0];
+    const nearDeadlineCall = prismaMock.enrollment.findMany.mock.calls[1][0];
+    expect(overdueCall.where.facilityId).toEqual({ in: ['fac-1', 'fac-2'] });
+    expect(nearDeadlineCall.where.facilityId).toEqual({ in: ['fac-1', 'fac-2'] });
+  });
+
+  it('FAIL-CLOSED: an empty array narrows to an impossible `in: []` — never falls back to org-wide `{}`', async () => {
+    prismaMock.enrollment.findMany.mockResolvedValue([]);
+
+    await getStatusTrackerSummaryForOrg('org-1', NOW, []);
+
+    const overdueCall = prismaMock.enrollment.findMany.mock.calls[0][0];
+    expect(overdueCall.where.facilityId).toEqual({ in: [] });
+    expect(overdueCall.where.facilityId).not.toBeUndefined();
+  });
+
+  it('null is treated the same as omitted — no facility predicate', async () => {
+    prismaMock.enrollment.findMany.mockResolvedValue([]);
+
+    await getStatusTrackerSummaryForOrg('org-1', NOW, null);
+
+    const overdueCall = prismaMock.enrollment.findMany.mock.calls[0][0];
+    expect(overdueCall.where.facilityId).toBeUndefined();
+  });
+});

@@ -78,6 +78,31 @@ describe('facilityScopeLabel', () => {
   });
 });
 
+describe('FacilityScopeSwitcher — hidden below multi-facility access (QA #21 / D-01)', () => {
+  it('renders nothing for a viewer with ZERO accessible facilities', () => {
+    const { container } = render(
+      <FacilityScopeSwitcher facilities={[]} selectedFacilityIds={[]} />,
+    );
+
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('renders nothing for a viewer with exactly ONE accessible facility — offering the control would advertise a capability they do not have', () => {
+    const { container } = render(
+      <FacilityScopeSwitcher facilities={[FACILITIES[0]]} selectedFacilityIds={[]} />,
+    );
+
+    expect(container).toBeEmptyDOMElement();
+    expect(screen.queryByRole('button', { name: /Facility scope/ })).not.toBeInTheDocument();
+  });
+
+  it('renders the trigger once the viewer has TWO or more accessible facilities', () => {
+    render(<FacilityScopeSwitcher facilities={FACILITIES} selectedFacilityIds={[]} />);
+
+    expect(trigger()).toBeInTheDocument();
+  });
+});
+
 describe('FacilityScopeSwitcher — trigger', () => {
   it.each([
     [[], 'All Facilities'],
