@@ -43,7 +43,7 @@ export default function AssignRetakeModal({
         router.refresh(); // Refresh the page to show the new retake assignment
         onClose();
       } else {
-        setError('Failed to assign retake. Please try again.');
+        setError(result.refusedReason ?? 'Failed to assign retake. Please try again.');
       }
     } catch (err) {
       setError(

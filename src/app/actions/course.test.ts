@@ -10,7 +10,8 @@ const {
   mockEnrollmentFindMany,
   mockOrgUserCount,
   mockForkCourse,
-  mockResolveFacilityScope,
+  mockListAccessibleFacilities,
+  mockOrgUserFindMany,
 } = vi.hoisted(() => ({
   mockAdminAuth: vi.fn(),
   mockWorkerAuth: vi.fn(),
@@ -21,7 +22,8 @@ const {
   mockEnrollmentFindMany: vi.fn(),
   mockOrgUserCount: vi.fn(),
   mockForkCourse: vi.fn(),
-  mockResolveFacilityScope: vi.fn(),
+  mockListAccessibleFacilities: vi.fn(),
+  mockOrgUserFindMany: vi.fn(),
 }));
 
 vi.mock('@/lib/prisma', () => {
@@ -34,7 +36,7 @@ vi.mock('@/lib/prisma', () => {
     enrollment: { groupBy: mockEnrollmentGroupBy, findMany: mockEnrollmentFindMany },
     // Post refactor: total org staff is counted on OrganizationUser (scoped to
     // WORKER_ROLES), not a raw `prisma.user.count`.
-    organizationUser: { count: mockOrgUserCount },
+    organizationUser: { count: mockOrgUserCount, findMany: mockOrgUserFindMany },
   };
   return { prisma, default: prisma };
 });
@@ -42,10 +44,16 @@ vi.mock('@/auth', () => ({ auth: mockAdminAuth }));
 vi.mock('@/auth.worker', () => ({ auth: mockWorkerAuth }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 vi.mock('@/lib/course/fork-course', () => ({ forkCourse: mockForkCourse }));
-// getDashboardData re-validates `requestedFacilityId` through resolveFacilityScope;
-// mocked here so facility-filter tests control the scope directly rather than
-// exercising scope.ts's own DB query (covered by its own unit suite).
-vi.mock('@/lib/facility/scope', () => ({ resolveFacilityScope: mockResolveFacilityScope }));
+// getDashboardData re-validates its requested ids against `listAccessibleFacilities`;
+// mocked here so facility-scope tests control the accessible set directly rather
+// than exercising scope.ts's own DB query (covered by its own unit suite).
+// `isOrgWideFacilityRole` is kept REAL (it is a pure role-list lookup): the
+// roster-narrowing tests below turn on the genuine org-wide/facility-bound
+// split, and a stubbed verdict would prove nothing about it.
+vi.mock('@/lib/facility/scope', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/facility/scope')>()),
+  listAccessibleFacilities: mockListAccessibleFacilities,
+}));
 vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
@@ -53,6 +61,7 @@ vi.mock('@/lib/logger', () => ({
 import {
   getDashboardData,
   getCourseById,
+  getCourseForOrgView,
   duplicateCourse,
   addPrebuiltCourseToOrg,
   getPrebuiltCourses,
@@ -60,6 +69,7 @@ import {
 import { ADMIN_ROLES, WORKER_ROLES, dbRoleToRoleKey } from '@/lib/rbac/role-utils';
 import { can } from '@/lib/rbac/permissions';
 import type { Role } from '@/types/next-auth';
+import { isOrgWideFacilityRole } from '@/lib/facility/scope';
 
 const ORG_USER_ID = 'ou-admin-1';
 const ORG_ID = 'org-1';
@@ -81,12 +91,18 @@ describe('getDashboardData', () => {
     vi.clearAllMocks();
     // Post User/OrganizationUser split: the session carries organizationUserId
     // and organizationId directly — no separate `prisma.user` lookup.
+    // `role` is load-bearing: getDashboardData resolves its own facility scope
+    // from the session, and only an org-wide role gets the unfiltered shape.
     mockAdminAuth.mockResolvedValue({
-      user: { id: 'admin-1', organizationUserId: ORG_USER_ID, organizationId: ORG_ID },
+      user: {
+        id: 'admin-1',
+        role: 'admin',
+        organizationUserId: ORG_USER_ID,
+        organizationId: ORG_ID,
+      },
     });
     mockWorkerAuth.mockResolvedValue(null);
-    // Unfiltered path default — individual facility-scope tests override this.
-    mockResolveFacilityScope.mockResolvedValue({ mode: 'all' });
+    mockListAccessibleFacilities.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -319,7 +335,7 @@ describe('getDashboardData', () => {
     });
   });
 
-  describe('facility scope (requestedFacilityId)', () => {
+  describe('facility scope (requestedFacilityIds)', () => {
     beforeEach(() => {
       mockCourseFindMany.mockResolvedValue([]);
       wireGroupBy([], []);
@@ -327,53 +343,82 @@ describe('getDashboardData', () => {
       mockOrgUserCount.mockResolvedValue(0);
     });
 
-    it('re-validates the requested facility id through resolveFacilityScope rather than trusting it directly', async () => {
-      mockResolveFacilityScope.mockResolvedValue({ mode: 'all' });
+    it('re-validates the requested ids against the accessible set rather than trusting them', async () => {
+      mockListAccessibleFacilities.mockResolvedValue([{ id: 'fac-1' }]);
 
-      await getDashboardData('some-facility-id');
+      await getDashboardData(['fac-1']);
 
-      expect(mockResolveFacilityScope).toHaveBeenCalledWith(
+      expect(mockListAccessibleFacilities).toHaveBeenCalledWith(
         expect.objectContaining({ user: expect.objectContaining({ organizationId: ORG_ID }) }),
-        'some-facility-id',
       );
     });
 
-    it('narrows every enrollment-derived query to facilityId when the scope resolves to a single facility', async () => {
-      mockResolveFacilityScope.mockResolvedValue({
-        mode: 'single',
-        facility: { id: 'fac-1', name: 'Alpha', type: null, city: null },
-      });
+    it('narrows every enrollment-derived query to the requested facilities', async () => {
+      mockListAccessibleFacilities.mockResolvedValue([{ id: 'fac-1' }, { id: 'fac-2' }]);
 
-      await getDashboardData('fac-1');
+      await getDashboardData(['fac-1']);
 
       const groupByArgs = mockEnrollmentGroupBy.mock.calls.map((call) => call[0]);
-      expect(groupByArgs.every((args) => args.where.facilityId === 'fac-1')).toBe(true);
+      expect(groupByArgs.every((args) => args.where.facilityId?.in?.[0] === 'fac-1')).toBe(true);
       expect(mockEnrollmentFindMany).toHaveBeenCalledWith(
-        expect.objectContaining({ where: expect.objectContaining({ facilityId: 'fac-1' }) }),
+        expect.objectContaining({
+          where: expect.objectContaining({ facilityId: { in: ['fac-1'] } }),
+        }),
       );
     });
 
-    it('narrows the total-staff coverage base to members of that facility, not the whole org', async () => {
-      mockResolveFacilityScope.mockResolvedValue({
-        mode: 'single',
-        facility: { id: 'fac-1', name: 'Alpha', type: null, city: null },
-      });
+    it('narrows the total-staff coverage base to members of those facilities, not the whole org', async () => {
+      mockListAccessibleFacilities.mockResolvedValue([{ id: 'fac-1' }]);
 
-      await getDashboardData('fac-1');
+      await getDashboardData(['fac-1']);
 
       expect(mockOrgUserCount).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
-            facilities: { some: { facilityId: 'fac-1', active: true } },
+            facilities: { some: { facilityId: { in: ['fac-1'] }, active: true } },
           }),
         }),
       );
     });
 
-    it('leaves every query byte-identical to the unfiltered path when the scope falls back to "all" (e.g. a foreign/unknown facility id)', async () => {
-      mockResolveFacilityScope.mockResolvedValue({ mode: 'all' });
+    // Rewritten 2026-08-27: this asserted the OPPOSITE — an inaccessible id fell
+    // back to `{ mode: 'all' }` and every query widened to the organisation. That
+    // is the fail-open the `string[] | null` contract exists to remove.
+    it('narrows to NOTHING when no requested id is accessible, never back to the whole org', async () => {
+      mockListAccessibleFacilities.mockResolvedValue([{ id: 'fac-1' }]);
 
-      await getDashboardData('foreign-or-unknown-id');
+      await getDashboardData(['foreign-or-unknown-id']);
+
+      const groupByArgs = mockEnrollmentGroupBy.mock.calls.map((call) => call[0]);
+      expect(groupByArgs.every((args) => args.where.facilityId?.in?.length === 0)).toBe(true);
+      expect(mockOrgUserCount).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            facilities: { some: { facilityId: { in: [] }, active: true } },
+          }),
+        }),
+      );
+    });
+
+    it('narrows a facility-bound caller with no assignments to nothing when no ids are requested', async () => {
+      mockAdminAuth.mockResolvedValue({
+        user: {
+          id: 'supervisor-1',
+          role: 'supervisor',
+          organizationUserId: ORG_USER_ID,
+          organizationId: ORG_ID,
+        },
+      });
+      mockListAccessibleFacilities.mockResolvedValue([]);
+
+      await getDashboardData();
+
+      const groupByArgs = mockEnrollmentGroupBy.mock.calls.map((call) => call[0]);
+      expect(groupByArgs.every((args) => args.where.facilityId?.in?.length === 0)).toBe(true);
+    });
+
+    it('leaves every query byte-identical to the unfiltered path for an org-wide role with no requested ids', async () => {
+      await getDashboardData();
 
       const groupByArgs = mockEnrollmentGroupBy.mock.calls.map((call) => call[0]);
       expect(groupByArgs.every((args) => !('facilityId' in args.where))).toBe(true);
@@ -592,6 +637,13 @@ const ROSTER_PRIVILEGED_ROLES = ADMIN_ROLES.filter((role) =>
 const ROSTER_UNPRIVILEGED_ADMIN_ROLES = ADMIN_ROLES.filter(
   (role) => !can(dbRoleToRoleKey(role), 'user.read'),
 );
+// Holding `user.read` is no longer enough to see the whole roster: a
+// facility-bound holder (supervisor) sees only their own facilities' rows, so
+// the two halves are asserted separately.
+const ROSTER_PRIVILEGED_ORG_WIDE_ROLES = ROSTER_PRIVILEGED_ROLES.filter(isOrgWideFacilityRole);
+const ROSTER_PRIVILEGED_FACILITY_BOUND_ROLES = ROSTER_PRIVILEGED_ROLES.filter(
+  (role) => !isOrgWideFacilityRole(role),
+);
 
 describe('getCourseById', () => {
   const CREATOR_USER_ID = 'creator-user-1';
@@ -659,6 +711,10 @@ describe('getCourseById', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // Facility-bound viewers default to "no accessible facility" so any test
+    // that does not opt in exercises the fail-closed path.
+    mockListAccessibleFacilities.mockResolvedValue([]);
+    mockOrgUserFindMany.mockResolvedValue([]);
   });
 
   it.each(WORKER_ROLES)(
@@ -731,8 +787,8 @@ describe('getCourseById', () => {
     );
   });
 
-  it.each(ROSTER_PRIVILEGED_ROLES)(
-    'a manager holding user.read (%s) who is NOT the creator still receives the full roster',
+  it.each(ROSTER_PRIVILEGED_ORG_WIDE_ROLES)(
+    'an ORG-WIDE manager holding user.read (%s) who is NOT the creator still receives the full roster',
     async (role) => {
       const adminId = 'admin-viewer';
       const otherA = makeEnrollment('staff-a', 1);
@@ -752,6 +808,28 @@ describe('getCourseById', () => {
       const emails = result.enrollments.map((e) => e.organizationUser.user.email);
       expect(emails).toContain('staff-a@example.com');
       expect(emails).toContain('staff-b@example.com');
+    },
+  );
+
+  it.each(ROSTER_PRIVILEGED_FACILITY_BOUND_ROLES)(
+    "a FACILITY-BOUND manager holding user.read (%s) receives only their own facilities' rows",
+    async (role) => {
+      const supervisorId = 'supervisor-viewer';
+      const sameFacility = makeEnrollment('staff-a', 1);
+      const otherFacility = makeEnrollment('staff-b', 2);
+      const own = makeEnrollment(supervisorId, 3);
+      mockCourseFindUnique.mockResolvedValue(makeCourse([sameFacility, own, otherFacility]));
+      mockListAccessibleFacilities.mockResolvedValue([{ id: 'fac-1' }]);
+      mockOrgUserFindMany.mockResolvedValue([{ id: 'ou-staff-a' }]);
+      setAdminSession(supervisorId, role);
+
+      const result = await getCourseById('course-1');
+
+      expect(result.enrollments.map((e) => e.organizationUser.userId).sort()).toEqual(
+        ['staff-a', supervisorId].sort(),
+      );
+      const emails = result.enrollments.map((e) => e.organizationUser.user.email);
+      expect(emails).not.toContain('staff-b@example.com');
     },
   );
 
@@ -828,5 +906,164 @@ describe('getCourseById', () => {
     setWorkerSession('worker-1', 'nurse');
 
     await expect(getCourseById('course-1')).rejects.toThrow('Course not found');
+  });
+});
+
+// THE PII LEAK (item 10 of the facility-scope PR): getCourseForOrgView had NO
+// role gate at all — any authenticated org member, worker included, could call
+// it directly and read every enrollee's name, email, role and score. These
+// tests assert on the ROSTER CONTENTS returned, not merely on whether the call
+// throws — a test that only checks "didn't throw" would have passed against
+// the leaky version too.
+describe('getCourseForOrgView', () => {
+  function orgEnrollment(userId: string, index: number) {
+    return {
+      id: `enrollment-${userId}`,
+      organizationUserId: `ou-${userId}`,
+      status: 'in_progress',
+      score: null,
+      progress: 40,
+      organizationUser: {
+        userId,
+        organizationId: ORG_ID,
+        role: 'nurse',
+        user: { email: `${userId}@example.com`, fullName: `Staff Member ${index}` },
+      },
+      certificate: null,
+    };
+  }
+
+  function makeGlobalCourse(enrollments: ReturnType<typeof orgEnrollment>[]) {
+    return {
+      id: 'course-1',
+      title: 'Bloodborne Pathogens',
+      type: 'video',
+      isGlobal: true,
+      status: 'published',
+      modules: [],
+      lessons: [],
+      quiz: null,
+      creator: null,
+      enrollments,
+    };
+  }
+
+  function setAdminSessionFor(userId: string, role: Role, organizationId = ORG_ID) {
+    mockAdminAuth.mockResolvedValue({
+      user: { id: userId, role, organizationId, organizationUserId: `ou-${userId}` },
+    });
+    mockWorkerAuth.mockResolvedValue(null);
+  }
+
+  function setWorkerSessionFor(userId: string, role: Role, organizationId = ORG_ID) {
+    mockAdminAuth.mockResolvedValue(null);
+    mockWorkerAuth.mockResolvedValue({
+      user: { id: userId, role, organizationId, organizationUserId: `ou-${userId}` },
+    });
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockListAccessibleFacilities.mockResolvedValue([]);
+    mockOrgUserFindMany.mockResolvedValue([]);
+  });
+
+  it.each(WORKER_ROLES)(
+    'SECURITY FIX: a worker (%s) is refused before any course query runs — no roster PII reaches them',
+    async (role) => {
+      setWorkerSessionFor('worker-1', role);
+
+      await expect(getCourseForOrgView('course-1')).rejects.toThrow('Course not found');
+      expect(mockCourseFindFirst).not.toHaveBeenCalled();
+    },
+  );
+
+  it('SECURITY FIX: finance (isAdminRole but no course.read post-2026-08-25) is refused before any query runs', async () => {
+    setAdminSessionFor('finance-1', 'finance' as Role);
+
+    await expect(getCourseForOrgView('course-1')).rejects.toThrow('Course not found');
+    expect(mockCourseFindFirst).not.toHaveBeenCalled();
+  });
+
+  it.each(['owner', 'admin', 'hr'] as Role[])(
+    "an ORG-WIDE manager (%s) gets the full, unnarrowed roster — including every enrollee's PII",
+    async (role) => {
+      const staffA = orgEnrollment('staff-a', 1);
+      const staffB = orgEnrollment('staff-b', 2);
+      mockCourseFindFirst.mockResolvedValue(makeGlobalCourse([staffA, staffB]));
+      setAdminSessionFor('manager-1', role);
+
+      const result = await getCourseForOrgView('course-1');
+
+      expect(result.enrollments.map((e) => e.organizationUser.userId).sort()).toEqual(
+        ['staff-a', 'staff-b'].sort(),
+      );
+      const emails = result.enrollments.map((e) => e.organizationUser.user.email);
+      expect(emails).toContain('staff-a@example.com');
+      expect(emails).toContain('staff-b@example.com');
+      // Org-wide roles never trigger the facility-narrowing query at all.
+      expect(mockOrgUserFindMany).not.toHaveBeenCalled();
+    },
+  );
+
+  it("a FACILITY-BOUND manager (supervisor) receives only their own facilities' roster rows — the roster is narrowed, not just the status", async () => {
+    const supervisorId = 'supervisor-viewer';
+    const sameFacility = orgEnrollment('staff-a', 1);
+    const otherFacility = orgEnrollment('staff-b', 2);
+    const own = orgEnrollment(supervisorId, 3);
+    mockCourseFindFirst.mockResolvedValue(makeGlobalCourse([sameFacility, own, otherFacility]));
+    mockListAccessibleFacilities.mockResolvedValue([{ id: 'fac-1' }]);
+    mockOrgUserFindMany.mockResolvedValue([{ id: 'ou-staff-a' }]);
+    setAdminSessionFor(supervisorId, 'supervisor');
+
+    const result = await getCourseForOrgView('course-1');
+
+    expect(result.enrollments.map((e) => e.organizationUser.userId).sort()).toEqual(
+      ['staff-a', supervisorId].sort(),
+    );
+    const emails = result.enrollments.map((e) => e.organizationUser.user.email);
+    expect(emails).not.toContain('staff-b@example.com');
+    expect(emails).toContain('staff-a@example.com');
+  });
+
+  it('KNOWN BEHAVIOUR CHANGE (pinned, not a bug): clinical director holds course.read but not user.read, so gets a self-only roster', async () => {
+    const staffA = orgEnrollment('staff-a', 1);
+    const selfId = 'cd-viewer';
+    const own = orgEnrollment(selfId, 2);
+    mockCourseFindFirst.mockResolvedValue(makeGlobalCourse([staffA, own]));
+    setAdminSessionFor(selfId, 'clinical_director');
+
+    const result = await getCourseForOrgView('course-1');
+
+    expect(result.enrollments).toHaveLength(1);
+    expect(result.enrollments[0].organizationUser.userId).toBe(selfId);
+    const emails = result.enrollments.map((e) => e.organizationUser.user.email);
+    expect(emails).not.toContain('staff-a@example.com');
+  });
+
+  it('FAIL-CLOSED: a facility-bound manager with NO accessible facilities gets an empty roster (own enrollment aside), never the full one', async () => {
+    const staffA = orgEnrollment('staff-a', 1);
+    mockCourseFindFirst.mockResolvedValue(makeGlobalCourse([staffA]));
+    mockListAccessibleFacilities.mockResolvedValue([]);
+    setAdminSessionFor('supervisor-empty', 'supervisor');
+
+    const result = await getCourseForOrgView('course-1');
+
+    expect(result.enrollments).toHaveLength(0);
+  });
+
+  it('throws Unauthorized before any query when there is no session at all', async () => {
+    mockAdminAuth.mockResolvedValue(null);
+    mockWorkerAuth.mockResolvedValue(null);
+
+    await expect(getCourseForOrgView('course-1')).rejects.toThrow('Unauthorized');
+    expect(mockCourseFindFirst).not.toHaveBeenCalled();
+  });
+
+  it('throws "Course not found" (same message as forbidden) when the global course does not exist', async () => {
+    mockCourseFindFirst.mockResolvedValue(null);
+    setAdminSessionFor('admin-1', 'owner');
+
+    await expect(getCourseForOrgView('course-1')).rejects.toThrow('Course not found');
   });
 });

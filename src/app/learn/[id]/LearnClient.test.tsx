@@ -761,4 +761,42 @@ describe('LearnClient — quiz error surfacing', () => {
     expect(screen.queryByText(/^Error:/)).toBeNull();
     expect(screen.getByRole('button', { name: 'Retake Quiz' })).toBeInTheDocument();
   });
+
+  // fix/server-action-error-messages: retakeQuiz's refusal is RETURNED
+  // (`{ success: false, refusedReason }`) rather than thrown, precisely so this
+  // specific reason reaches the learner instead of the fixed fallback string.
+  // A returned refusal that renders nothing (or the generic fallback) is no
+  // better than the redaction it replaced.
+  it('renders the returned refusedReason verbatim — not the generic fallback', async () => {
+    vi.mocked(retakeQuiz).mockResolvedValueOnce({
+      success: false,
+      refusedReason:
+        "You've used all your attempts for this quiz. Ask your administrator to assign a retake.",
+    });
+
+    render(<LearnClient initialData={reviewPendingRetakePayload()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Retake Quiz' }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          "You've used all your attempts for this quiz. Ask your administrator to assign a retake.",
+        ),
+      ).toBeInTheDocument(),
+    );
+    expect(screen.queryByText('Failed to start retake. Please try again.')).toBeNull();
+    expect(alertSpy).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the fixed string when retakeQuiz returns a refusal with no reason', async () => {
+    vi.mocked(retakeQuiz).mockResolvedValueOnce({ success: false });
+
+    render(<LearnClient initialData={reviewPendingRetakePayload()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Retake Quiz' }));
+
+    await waitFor(() =>
+      expect(screen.getByText('Failed to start retake. Please try again.')).toBeInTheDocument(),
+    );
+    expect(alertSpy).not.toHaveBeenCalled();
+  });
 });

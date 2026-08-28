@@ -1,6 +1,7 @@
 import prisma from '@/lib/prisma';
 import { logger } from '@/lib/logger';
 import { createEnrollmentForUser, type CreateEnrollmentContext } from './create';
+import { assignmentAdmitsHolder } from './assignment-facility-scope';
 import type { UserRole } from '@/generated/prisma/enums';
 
 /**
@@ -18,7 +19,11 @@ import type { UserRole } from '@/generated/prisma/enums';
  * membership's role-join date — `OrganizationUser.roleAssignedAt +
  * assignment.dueWindowDays` (falling through to the system default when the
  * window is unset). A late joiner therefore shares the cohort's hard deadline
- * when one was set at assignment time. Idempotent —
+ * when one was set at assignment time.
+ *
+ * An assignment reaches a new holder only inside the facility scope its author
+ * had — see {@link assignmentAdmitsHolder}. Org-wide assignments carry no scope
+ * and so reach everyone, exactly as before. Idempotent —
  * an already-enrolled user is a no-op via {@link createEnrollmentForUser}'s
  * existence check. Never throws: an auto-enroll failure must not abort the caller
  * (staff edit, invite accept, signup) — the sweep backstop reconciles anything
@@ -38,6 +43,7 @@ export async function enrollUserForRoleTargets(
         roleAssignedAt: true,
         user: { select: { email: true } },
         organization: { select: { name: true } },
+        facilities: { where: { active: true }, select: { facilityId: true } },
       },
     });
 
@@ -55,6 +61,8 @@ export async function enrollUserForRoleTargets(
         courseId: true,
         dueAt: true,
         dueWindowDays: true,
+        facilityScoped: true,
+        facilityIds: true,
         course: { select: { title: true } },
       },
     });
@@ -63,7 +71,22 @@ export async function enrollUserForRoleTargets(
       return;
     }
 
+    const holderFacilityIds = membership.facilities.map((link) => link.facilityId);
+
     for (const assignment of assignments) {
+      // Honour the reach the assigner actually had. Without this the assignment
+      // would keep enrolling new joiners at facilities its author cannot see, so
+      // a facility-bound supervisor's assignment would silently widen over time.
+      if (!assignmentAdmitsHolder(assignment, holderFacilityIds)) {
+        logger.info({
+          msg: '[enrollment] Role-target auto-enroll skipped — outside assignment facility scope',
+          organizationUserId,
+          assignmentId: assignment.id,
+          courseId: assignment.courseId,
+        });
+        continue;
+      }
+
       // Count the deadline window from the role-join date by feeding it as the
       // schedule/start; an absolute dueAt, when the assignment carries one, wins
       // over the window inside createEnrollmentForUser.

@@ -58,6 +58,12 @@ vi.mock('next/cache', () => ({ revalidatePath: mockRevalidatePath }));
 vi.mock('@/lib/logger', () => ({ logger: mockLogger, maskEmail: (e: string) => e }));
 
 import { assignCoursesToStaffMember } from './staff';
+// Real, unmocked module: staff.ts does an IDENTITY comparison against this
+// constant to decide whether to abort the loop. Building the mocked
+// refusedReason from the same import (rather than a hardcoded literal) means
+// this test breaks if staff.ts's comparison ever drifts from the shared
+// constant — the exact failure mode the identity check is meant to prevent.
+import { BILLING_GATE_ASSIGN_MESSAGE } from '@/lib/billing';
 
 function adminSession(role = 'owner') {
   return { user: { id: 'admin-1', email: 'admin@acme.com', role, organizationId: 'org-1' } };
@@ -73,6 +79,7 @@ function enrollResult(overrides: {
   newInvited?: string[];
   failed?: string[];
   deferred?: unknown[];
+  refusedReason?: string;
 }) {
   return {
     success: [],
@@ -270,7 +277,10 @@ describe('assignCoursesToStaffMember — per-course outcomes and the batched not
     expect(mockEnrollUsers).toHaveBeenCalledTimes(1);
   });
 
-  it('a billing-gate throw aborts the loop — later courses are never attempted', async () => {
+  // enrollUsers now RETURNS the billing refusal (it survives production error
+  // redaction that way), so the loop must abort on the returned reason — the
+  // gate is organization-wide, not course-specific.
+  it('a billing-gate refusal aborts the loop — later courses are never attempted', async () => {
     mockEnrollUsers
       .mockResolvedValueOnce(
         enrollResult({
@@ -278,8 +288,10 @@ describe('assignCoursesToStaffMember — per-course outcomes and the batched not
           deferred: [{ userId: 'user-1', courseId: 'course-1', courseTitle: 'Safety Training' }],
         }),
       )
-      .mockRejectedValueOnce(
-        new Error('Your organization needs an active subscription to assign courses.'),
+      .mockResolvedValueOnce(
+        enrollResult({
+          refusedReason: BILLING_GATE_ASSIGN_MESSAGE,
+        }),
       );
 
     const result = await assignCoursesToStaffMember('staff-1', [
@@ -289,8 +301,31 @@ describe('assignCoursesToStaffMember — per-course outcomes and the batched not
     ]);
 
     expect(mockEnrollUsers).toHaveBeenCalledTimes(2);
-    expect(result.error).toBe('Your organization needs an active subscription to assign courses.');
+    expect(result.error).toBe(BILLING_GATE_ASSIGN_MESSAGE);
     expect(result.assigned).toEqual([{ courseId: 'course-1', courseTitle: 'Safety Training' }]);
+  });
+
+  // A refusedReason that merely resembles the billing message but is not the
+  // SAME string (a divergent copy) must NOT trip the identity-compared abort —
+  // it is course-specific like any other refusal and the loop continues.
+  it('does not abort on a refusedReason that only resembles the billing message', async () => {
+    mockEnrollUsers
+      .mockResolvedValueOnce(
+        enrollResult({ refusedReason: 'Your organization needs an active subscription.' }),
+      )
+      .mockResolvedValueOnce(
+        enrollResult({
+          success: ['target@acme.com'],
+          deferred: [{ userId: 'user-1', courseId: 'course-2', courseTitle: 'HIPAA Basics' }],
+        }),
+      );
+
+    const result = await assignCoursesToStaffMember('staff-1', ['course-1', 'course-2']);
+
+    expect(mockEnrollUsers).toHaveBeenCalledTimes(2);
+    expect(result.error).toBeUndefined();
+    expect(result.failed).toEqual([{ courseId: 'course-1', courseTitle: 'Safety Training' }]);
+    expect(result.assigned).toEqual([{ courseId: 'course-2', courseTitle: 'HIPAA Basics' }]);
   });
 
   it('a generic throw on course 2 of 3 buckets only that course to failed and continues to course 3', async () => {

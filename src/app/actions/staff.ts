@@ -600,10 +600,10 @@ export async function assignCourseToStaffMember(
     return { success: [], alreadyEnrolled: [], newInvited: [], failed: [], error: 'Forbidden' };
   }
 
-  // enrollUsers throws on the billing gate (and other hard failures) and returns
-  // a `refusedReason` for the review gate. Normalize both into this action's
-  // return shape so the calling modal surfaces the specific message instead of
-  // falling back to a generic failed state.
+  // enrollUsers returns a `refusedReason` for the review and billing gates, and
+  // still throws on hard failures (unauthorized, unknown course). Normalize both
+  // into this action's return shape so the calling modal surfaces the specific
+  // message instead of falling back to a generic failed state.
   try {
     const outcome = await enrollUsers(courseId, [{ email: target.user.email }], assignmentSettings);
     if (outcome.refusedReason) {
@@ -752,10 +752,22 @@ export async function assignCoursesToStaffMember(
         },
       );
 
-      // Refused (course held for quality review): nothing was written for this
-      // course. Report it as failed like any other per-course problem — unlike
-      // the billing gate it is course-specific, so the loop continues.
       if (outcome.refusedReason) {
+        // The billing gate is organization-wide: no other course in this batch
+        // can succeed either, so abort rather than failing them one by one.
+        if (outcome.refusedReason === BILLING_GATE_ASSIGN_MESSAGE) {
+          logger.warn({
+            msg: '[enrollment] Multi-course staff assignment aborted — billing gate',
+            staffOrgUserId,
+            orgId: session.user.organizationId,
+            userId: session.user.id,
+          });
+          result.error = outcome.refusedReason;
+          break;
+        }
+
+        // Course held for quality review: nothing was written for this course.
+        // Report it as failed like any other per-course problem and continue.
         logger.warn({
           msg: '[enrollment] Course could not be assigned to staff member — held for quality review',
           staffOrgUserId,
@@ -783,18 +795,6 @@ export async function assignCoursesToStaffMember(
         result.failed.push({ courseId, courseTitle });
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to assign course';
-      if (message === BILLING_GATE_ASSIGN_MESSAGE) {
-        logger.warn({
-          msg: '[enrollment] Multi-course staff assignment aborted — billing gate',
-          staffOrgUserId,
-          orgId: session.user.organizationId,
-          userId: session.user.id,
-        });
-        result.error = message;
-        break;
-      }
-
       logger.error({
         msg: '[enrollment] Course could not be assigned to staff member',
         staffOrgUserId,
