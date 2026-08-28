@@ -20,16 +20,23 @@ import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { CourseWithStats } from '@/types/course';
 
-const { mockAuth, prismaMock, mockGetCourses, mockListGlobalVideoCatalogCourses, mockRedirect } =
-  vi.hoisted(() => ({
-    mockAuth: vi.fn(),
-    prismaMock: { organization: { findUnique: vi.fn() } },
-    mockGetCourses: vi.fn(),
-    mockListGlobalVideoCatalogCourses: vi.fn(),
-    mockRedirect: vi.fn(() => {
-      throw new Error('NEXT_REDIRECT');
-    }),
-  }));
+const {
+  mockAuth,
+  prismaMock,
+  mockGetCourses,
+  mockListGlobalVideoCatalogCourses,
+  mockRedirect,
+  mockLoggerError,
+} = vi.hoisted(() => ({
+  mockAuth: vi.fn(),
+  prismaMock: { organization: { findUnique: vi.fn() } },
+  mockGetCourses: vi.fn(),
+  mockListGlobalVideoCatalogCourses: vi.fn(),
+  mockRedirect: vi.fn(() => {
+    throw new Error('NEXT_REDIRECT');
+  }),
+  mockLoggerError: vi.fn(),
+}));
 
 vi.mock('@/auth', () => ({ auth: mockAuth }));
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock, default: prismaMock }));
@@ -42,6 +49,10 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/app/actions/course', () => ({ getCourses: mockGetCourses }));
 vi.mock('@/app/actions/offering', () => ({
   listGlobalVideoCatalogCourses: mockListGlobalVideoCatalogCourses,
+}));
+vi.mock('@/lib/logger', () => ({
+  logger: { info: vi.fn(), warn: vi.fn(), error: mockLoggerError, debug: vi.fn() },
+  maskEmail: (email: string) => email,
 }));
 vi.mock('@/components/dashboard/courses/CoursesListClient', () => ({
   default: ({ courses }: { courses: CourseWithStats[] }) => (
@@ -124,12 +135,47 @@ describe('CoursesPage — video course entry point', () => {
     expect(screen.queryAllByRole('listitem')).toHaveLength(0);
   });
 
-  it('still renders the page when the catalog lookup fails', async () => {
+  it('a catalog-only course appears', async () => {
+    mockGetCourses.mockResolvedValue([]);
+    mockListGlobalVideoCatalogCourses.mockResolvedValue([
+      makeCourse({ id: 'catalog-only', title: 'Catalog Only', isGlobalCatalog: true }),
+    ]);
+
+    render(await CoursesPage());
+
+    const rows = screen.getAllByRole('listitem');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toHaveTextContent('Catalog Only');
+    expect(rows[0]).toHaveAttribute('data-catalog', 'true');
+  });
+
+  it('an own-only course appears, with no catalog course to de-dupe against', async () => {
+    mockGetCourses.mockResolvedValue([makeCourse({ id: 'own-only', title: 'Own Only Course' })]);
+    mockListGlobalVideoCatalogCourses.mockResolvedValue([]);
+
+    render(await CoursesPage());
+
+    const rows = screen.getAllByRole('listitem');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toHaveTextContent('Own Only Course');
+    expect(rows[0]).toHaveAttribute('data-catalog', 'false');
+  });
+
+  it('still renders the page when the catalog lookup fails, and logs the failure rather than swallowing it', async () => {
     mockGetCourses.mockResolvedValue([makeCourse({ id: 'own-1', title: 'In-house course' })]);
-    mockListGlobalVideoCatalogCourses.mockRejectedValue(new Error('offering lookup down'));
+    const catalogError = new Error('offering lookup down');
+    mockListGlobalVideoCatalogCourses.mockRejectedValue(catalogError);
 
     render(await CoursesPage());
 
     expect(screen.getByText('In-house course')).toBeInTheDocument();
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
+    expect(mockLoggerError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        msg: expect.stringContaining('[course]'),
+        err: catalogError,
+        organizationId: 'org-1',
+      }),
+    );
   });
 });
