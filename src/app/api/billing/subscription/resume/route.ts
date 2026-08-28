@@ -10,11 +10,15 @@ import { audit, getClientContext } from '@/lib/audit';
 import { headers } from 'next/headers';
 import { releasePendingSchedule } from '@/lib/billing-schedule';
 
-// POST /api/billing/subscription/resume — resumes a paused subscription
-// (the "Continue Plan" action). Clears the pause window and restores access.
-// A pending plan-change schedule is released first rather than blocking the
-// request: Stripe refuses subscription updates while a schedule wraps it, and
-// a paused org can reach this state without ever seeing the pause guard.
+// POST /api/billing/subscription/resume — undoes a pause, in either state:
+//   • pending (`pauseStartsAt` set, not yet in effect) — the "Cancel pause"
+//     action. Local-only; nothing was applied on Stripe to undo.
+//   • active (`pausedAt` set) — the "Continue Plan" action. Clears the pause
+//     window on Stripe and locally, and restores access.
+// For the active case a pending plan-change schedule is released first rather
+// than blocking the request: Stripe refuses subscription updates while a
+// schedule wraps it, and a paused org can reach this state without ever seeing
+// the pause guard.
 export async function POST() {
   try {
     const session = await auth();
@@ -40,6 +44,40 @@ export async function POST() {
 
     if (!subscription) {
       return NextResponse.json({ error: 'No active subscription found' }, { status: 404 });
+    }
+
+    // Cancelling a PENDING pause — one that has not taken effect yet. Nothing
+    // was ever applied on Stripe and access was never withdrawn, so this is a
+    // purely local erasure of the intent. Returns before the schedule-release
+    // path below on purpose: that path exists to unblock Stripe subscription
+    // updates, and there is no Stripe update to make here.
+    if (!subscription.pausedAt && subscription.pauseStartsAt) {
+      await prisma.subscription.update({
+        where: { organizationId },
+        data: { pauseStartsAt: null, pauseEndsAt: null },
+      });
+
+      logger.info({
+        msg: '[billing] Pending pause cancelled before it took effect',
+        organizationId,
+      });
+
+      // F-001: record the sensitive billing mutation on the authorized path.
+      await audit({
+        action: 'billing.subscription.resume',
+        actorId: ctx.userId,
+        actorRole: ctx.role,
+        organizationId,
+        targetType: 'subscription',
+        targetId: subscription.id,
+        metadata: { mode: 'pending-pause-cancelled' },
+        ...getClientContext(await headers()),
+      });
+
+      return NextResponse.json({
+        message: 'Your scheduled pause has been cancelled.',
+        success: true,
+      });
     }
 
     if (!subscription.pausedAt) {

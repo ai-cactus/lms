@@ -47,6 +47,8 @@ interface BillingPageProps {
   planPrices: PlanPriceMap;
   /** Whether a plan change would swap the live Stripe subscription in place. */
   hasLiveSubscription?: boolean;
+  /** ISO timestamp a REQUESTED pause takes effect, or null. Full access until then. */
+  pauseStartsAt?: string | null;
   /** ISO timestamp when billing was paused, or null when not paused. */
   pausedAt?: string | null;
   /** ISO timestamp when the pause window ends, or null. */
@@ -69,6 +71,7 @@ export default function BillingPage({
   currentPlan,
   planPrices,
   hasLiveSubscription = false,
+  pauseStartsAt = null,
   pausedAt = null,
   pauseEndsAt = null,
   cancelAtPeriodEnd = false,
@@ -134,6 +137,7 @@ export default function BillingPage({
           currentPlan={currentPlan}
           planPrices={planPrices}
           hasLiveSubscription={hasLiveSubscription}
+          pauseStartsAt={pauseStartsAt}
           pausedAt={pausedAt}
           pauseEndsAt={pauseEndsAt}
           cancelAtPeriodEnd={cancelAtPeriodEnd}

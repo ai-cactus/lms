@@ -7,8 +7,18 @@ import { PauseCircle, Play, Loader2, X } from 'lucide-react';
 import { logger } from '@/lib/logger';
 import type { PauseState } from '@/lib/billing';
 
+/**
+ * The states this banner can actually be in. `getPauseState` never returns
+ * 'pending' — a scheduled pause is resolved separately by `hasPendingPause`,
+ * because access is untouched until it starts.
+ */
+type BannerPauseState = Exclude<PauseState, 'none'> | 'pending';
+
 interface Props {
-  pauseState: Exclude<PauseState, 'none'>;
+  /** 'pending' is a REQUESTED pause that has not taken effect — access is intact. */
+  pauseState: BannerPauseState;
+  /** ISO timestamp the pause takes effect. Only meaningful when pending. */
+  pauseStartsAt?: string | null;
   pauseEndsAt: string | null;
 }
 
@@ -25,7 +35,7 @@ function formatDate(iso: string): string {
  * subscription tipping over into `expired` — surfaces the banner afresh instead
  * of inheriting an earlier dismissal.
  */
-function dismissalKey(pauseState: PauseState, pauseEndsAt: string | null): string {
+function dismissalKey(pauseState: BannerPauseState, pauseEndsAt: string | null): string {
   return `billing-paused-banner-dismissed:${pauseState}:${pauseEndsAt ?? 'open-ended'}`;
 }
 
@@ -40,13 +50,18 @@ function dismissalKey(pauseState: PauseState, pauseEndsAt: string | null): strin
  * not dismissible — it is a blocking continue-or-cancel decision with no end
  * date that will clear it on its own.
  */
-export default function BillingPausedBanner({ pauseState, pauseEndsAt }: Props) {
+export default function BillingPausedBanner({
+  pauseState,
+  pauseStartsAt = null,
+  pauseEndsAt,
+}: Props) {
   const router = useRouter();
   const [resuming, setResuming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState(false);
 
   const expired = pauseState === 'expired';
+  const pending = pauseState === 'pending';
   const dismissible = !expired;
 
   // Read after mount, never during render: the server has no sessionStorage, so
@@ -107,14 +122,22 @@ export default function BillingPausedBanner({ pauseState, pauseEndsAt }: Props) 
         />
         <div className="text-sm">
           <p className="font-semibold text-foreground">
-            {expired ? 'Your subscription pause has ended' : 'Your subscription is paused'}
+            {pending
+              ? pauseStartsAt
+                ? `Your subscription will pause on ${formatDate(pauseStartsAt)}`
+                : 'Your subscription is scheduled to pause'
+              : expired
+                ? 'Your subscription pause has ended'
+                : 'Your subscription is paused'}
           </p>
           <p className="text-text-secondary">
-            {expired
-              ? 'Continue your plan to restore access, or cancel your subscription.'
-              : pauseEndsAt
-                ? `Access is limited until you continue. Paused until ${formatDate(pauseEndsAt)}.`
-                : 'Access is limited until you continue your plan.'}
+            {pending
+              ? 'Nothing changes until then — you keep full access for the period you have already paid for.'
+              : expired
+                ? 'Continue your plan to restore access, or cancel your subscription.'
+                : pauseEndsAt
+                  ? `Access is limited until you continue. Paused until ${formatDate(pauseEndsAt)}.`
+                  : 'Access is limited until you continue your plan.'}
             {error && <span className="ml-1 text-error">{error}</span>}
           </p>
         </div>
@@ -131,7 +154,7 @@ export default function BillingPausedBanner({ pauseState, pauseEndsAt }: Props) 
           ) : (
             <Play className="size-4" aria-hidden="true" />
           )}
-          Continue Plan
+          {pending ? 'Cancel pause' : 'Continue Plan'}
         </button>
         <Link
           href={expired ? '/dashboard/billing/cancel' : '/dashboard/billing'}

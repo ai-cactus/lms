@@ -6,7 +6,7 @@ import { BILLING_PLANS, BillingCycle, canSelectPlan } from '@/lib/billing-plans'
 import type { PlanPriceMap } from '@/lib/billing-prices';
 import type { PlanChangeClassification } from '@/lib/billing-plan-change';
 import { getPlanCardPrice, getDiscountPercent, formatCents } from '@/lib/billing-price-format';
-import { Flame, Check, Play, AlertTriangle, CalendarClock } from 'lucide-react';
+import { Flame, Check, Play, AlertTriangle, CalendarClock, PauseCircle } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -19,7 +19,7 @@ import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/alert';
 import { HCaptcha } from '@/components/ui';
 import { cn } from '@/lib/utils';
-import { MAX_PAUSE_MONTHS, getPauseState } from '@/lib/billing';
+import { MAX_PAUSE_MONTHS, getPauseState, hasPendingPause } from '@/lib/billing';
 
 type Tab = 'overview' | 'billing-history' | 'subscription' | 'payment-method';
 
@@ -30,6 +30,8 @@ interface Props {
   planPrices: PlanPriceMap;
   /** Whether selecting a plan swaps the live Stripe subscription in place. */
   hasLiveSubscription?: boolean;
+  /** ISO timestamp a REQUESTED pause takes effect, or null. Full access until then. */
+  pauseStartsAt?: string | null;
   pausedAt?: string | null;
   pauseEndsAt?: string | null;
   cancelAtPeriodEnd?: boolean;
@@ -215,6 +217,7 @@ export default function SubscriptionTab({
   currentPlan,
   planPrices,
   hasLiveSubscription = false,
+  pauseStartsAt = null,
   pausedAt = null,
   pauseEndsAt = null,
   cancelAtPeriodEnd = false,
@@ -228,6 +231,7 @@ export default function SubscriptionTab({
   const router = useRouter();
   const pauseState = getPauseState({ status: null, pausedAt, pauseEndsAt });
   const isPaused = pauseState !== 'none';
+  const pendingPause = hasPendingPause({ status: null, pauseStartsAt, pausedAt });
   const isCancelScheduled = Boolean(cancelAtPeriodEnd);
   const cancelDateLabel = currentPeriodEnd ? formatLongDate(currentPeriodEnd) : null;
   const billingCycleLabel = billingCycle
@@ -766,6 +770,38 @@ export default function SubscriptionTab({
               onClick={() => void handleCancelScheduledChange()}
             >
               Cancel scheduled change
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {pendingPause && pauseStartsAt && (
+        <div className={statusCardClass}>
+          <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+            <div>
+              <h3 className="text-base font-semibold text-foreground">Pause scheduled</h3>
+              <div className="mt-2 flex items-center gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3.5 py-2.5 text-[13px] text-warning">
+                <PauseCircle size={18} aria-hidden="true" />
+                Your subscription will pause on {formatLongDate(pauseStartsAt)}
+              </div>
+              <p className="mt-3 text-sm text-text-secondary">
+                Nothing changes until then — you keep full access for the period you have already
+                paid for.
+                {pauseEndsAt && ` Your pause would run until ${formatLongDate(pauseEndsAt)}.`}
+              </p>
+              {resumeError && (
+                <p className="mt-2 text-[13px] text-error" role="alert">
+                  {resumeError}
+                </p>
+              )}
+            </div>
+            <Button
+              variant="outline"
+              loading={resuming}
+              disabled={resuming}
+              onClick={() => void handleResumeSubscription()}
+            >
+              Cancel pause
             </Button>
           </div>
         </div>

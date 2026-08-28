@@ -3,13 +3,14 @@ import { authorize } from '@/lib/rbac/authorize';
 import { apiError } from '@/lib/api-response';
 import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
-import { getStripeClient } from '@/lib/stripe';
 import { guardApiSession } from '@/lib/auth-guard';
 import { logger } from '@/lib/logger';
 import { audit, getClientContext } from '@/lib/audit';
 import { MAX_PAUSE_MONTHS, pauseEndDate } from '@/lib/billing';
 
-// POST /api/billing/subscription/pause — pauses subscription for 1–3 months
+// POST /api/billing/subscription/pause — SCHEDULES a 1–3 month pause that takes
+// effect at the end of the current paid period. Records intent only: the org
+// keeps full access until the sweep materializes the pause at the boundary.
 export async function POST(request: NextRequest) {
   try {
     const session = await auth();
@@ -26,8 +27,6 @@ export async function POST(request: NextRequest) {
       return apiError('No organization found', 404);
     }
     const organizationId = ctx.organizationId;
-
-    const stripe = getStripeClient();
 
     // Pause duration in months (1–3). Defaults to the max if not provided.
     let months = MAX_PAUSE_MONTHS;
@@ -73,34 +72,40 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Subscription is already paused.' }, { status: 409 });
     }
 
-    const pausedAt = new Date();
-    const pauseEndsAt = pauseEndDate(pausedAt, months);
+    if (subscription.pauseStartsAt) {
+      const when = new Date(subscription.pauseStartsAt).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      });
+      return NextResponse.json(
+        { error: `Your subscription is already scheduled to pause on ${when}.` },
+        { status: 409 },
+      );
+    }
 
-    // Pause collection on Stripe. The app enforces the 1–3 month limit and
-    // prompts the admin to continue or cancel once it elapses, so we deliberately
-    // do NOT set `resumes_at` (which would silently auto-resume billing).
-    await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
-      pause_collection: { behavior: 'void' },
+    // The pause lands at the end of the period the org has already paid for
+    // (product decision 2026-08-27) — they keep full access until then. The
+    // pause window is measured from that boundary, not from now, so the admin
+    // gets the full 1–3 months of pause they asked for.
+    const pauseStartsAt = subscription.currentPeriodEnd;
+    const pauseEndsAt = pauseEndDate(pauseStartsAt, months);
+
+    // Deliberately NO Stripe call: `pause_collection` takes effect immediately
+    // and would stop collection mid-period. The sweep
+    // (lib/queue/billing-pause-sweep-worker.ts) applies it at the boundary.
+    // `pausedAt` and `hasAuditorAccess` are left untouched for the same reason —
+    // nothing about the org's access changes today.
+    await prisma.subscription.update({
+      where: { organizationId },
+      data: { pauseStartsAt, pauseEndsAt },
     });
 
-    // Reflect the pause locally right away so the billing gate is restored
-    // without waiting for the Stripe webhook to round-trip. Stripe keeps the
-    // status as `active` while paused, so `pausedAt` is what gates access.
-    await Promise.all([
-      prisma.subscription.update({
-        where: { organizationId },
-        data: { pausedAt, pauseEndsAt },
-      }),
-      prisma.organization.update({
-        where: { id: organizationId },
-        data: { hasAuditorAccess: false },
-      }),
-    ]);
-
     logger.info({
-      msg: '[POST /api/billing/subscription/pause] Subscription paused via native pause_collection',
+      msg: '[billing] Pause scheduled for the end of the current period',
       organizationId,
       months,
+      pauseStartsAt,
       pauseEndsAt,
     });
 
@@ -112,14 +117,14 @@ export async function POST(request: NextRequest) {
       organizationId,
       targetType: 'subscription',
       targetId: subscription.id,
-      metadata: { months },
+      metadata: { months, mode: 'pending', pauseStartsAt: pauseStartsAt.toISOString() },
       ...getClientContext(request.headers),
     });
 
     return NextResponse.json({
-      message: 'Subscription has been paused.',
+      message: 'Your subscription will pause at the end of your current billing period.',
       success: true,
-      pausedAt,
+      pauseStartsAt,
       pauseEndsAt,
     });
   } catch (error) {
