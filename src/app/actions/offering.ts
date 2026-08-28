@@ -138,47 +138,7 @@ const getGlobalVideoCatalog = unstable_cache(
 );
 
 // ---------------------------------------------------------------------------
-// 1. listAvailableVideoCourses
-//    Returns all published global video courses with this org's adoption state.
-// ---------------------------------------------------------------------------
-export async function listAvailableVideoCourses(): Promise<VideoCourseAvailabilityRow[]> {
-  const session = await resolveSession();
-  if (!session?.user?.id) {
-    throw new Error('Unauthorized');
-  }
-
-  const organizationId = resolveOrg(session.user);
-
-  const catalog = await getGlobalVideoCatalog();
-
-  // Per-org adoption state, joined AFTER the cached read so the cached catalog
-  // payload stays tenant-independent.
-  const offerings = catalog.length
-    ? await prisma.orgCourseOffering.findMany({
-        where: { organizationId, courseId: { in: catalog.map((c) => c.id) } },
-        select: { id: true, courseId: true },
-      })
-    : [];
-  const offeringByCourse = new Map(offerings.map((o) => [o.courseId, o.id]));
-
-  // Projected field-by-field rather than spread: the cached row now carries
-  // course-table columns this payload has no use for, and they must not be
-  // shipped to the client.
-  return catalog.map((course) => ({
-    id: course.id,
-    title: course.title,
-    description: course.description,
-    category: course.category,
-    durationSeconds: course.durationSeconds,
-    questionCount: course.questionCount,
-    hasPoster: course.hasPoster,
-    isOffered: offeringByCourse.has(course.id),
-    offeringId: offeringByCourse.get(course.id) ?? null,
-  }));
-}
-
-// ---------------------------------------------------------------------------
-// 1a. listGlobalVideoCatalogCourses
+// 1. listGlobalVideoCatalogCourses
 //     The same published global video catalog, projected into the Courses-list
 //     row shape so it can be merged into the org's own course list.
 //
@@ -246,7 +206,7 @@ export async function listGlobalVideoCatalogCourses(): Promise<CourseWithStats[]
 }
 
 // ---------------------------------------------------------------------------
-// 1b. listOfferedVideoCourses
+// 1a. listOfferedVideoCourses
 //     Returns ONLY the global video courses this org has adopted (offered),
 //     with the org's rebrand overrides + this org's staff enrollment count.
 //     Powers the dedicated "Video Courses" tab on the Courses page.
