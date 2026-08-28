@@ -17,6 +17,13 @@ export type CourseWithStats = {
    * `CourseVersion` of their own), and absent from views that do not query it.
    */
   sourceDocumentId?: string | null;
+  /**
+   * True for rows sourced from the platform-wide published video catalog that
+   * this organization has not adopted. Such a course is authored by another
+   * tenant, so it is view-only here: rename/delete would mutate it for every
+   * organization and the assign action rejects it on its creator-org check.
+   */
+  isGlobalCatalog?: boolean;
 };
 
 /**

@@ -3,6 +3,7 @@ import { auth } from '@/auth.worker';
 import prisma from '@/lib/prisma';
 import CoursePreview from '@/components/dashboard/training/CoursePreview';
 import { getCourseById } from '@/app/actions/course';
+import { isCourseAccessError } from '@/lib/course/access-error';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,15 +21,16 @@ export default async function WorkerCourseDetailsPage(props: PageProps) {
     redirect('/');
   }
 
-  // getCourseById THROWS 'Course not found' on denial rather than calling
-  // notFound(). Unguarded, that escapes the server component and renders as an
-  // HTTP 500 — the opaque failure team QA #15 reported. The dashboard
-  // equivalents already catch it; this call site never did, and it is the one a
-  // manager in learn mode opens.
+  // getCourseById THROWS on denial rather than calling notFound(). Unguarded,
+  // that escapes the server component and renders as an HTTP 500 — the opaque
+  // failure team QA #15 reported. Only an access refusal becomes a 404 here;
+  // anything else (a database fault, a bug) is rethrown rather than disguised as
+  // a missing course.
   let course;
   try {
     course = await getCourseById(params.id);
-  } catch {
+  } catch (error) {
+    if (!isCourseAccessError(error)) throw error;
     notFound();
   }
 

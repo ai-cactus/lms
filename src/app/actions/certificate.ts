@@ -1,7 +1,9 @@
 'use server';
 
 import prisma from '@/lib/prisma';
-import { isAdminRole } from '@/lib/rbac/role-utils';
+import { dbRoleToRoleKey, isAdminRole } from '@/lib/rbac/role-utils';
+import { can } from '@/lib/rbac/permissions';
+import { resolveDataFacilityIds, staffFacilityWhere } from '@/lib/facility/staff-where';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
@@ -11,13 +13,24 @@ import { formatCertificateId } from '@/lib/certificate-id';
 import { logger } from '@/lib/logger';
 import { audit, getClientContext } from '@/lib/audit';
 import { headers } from 'next/headers';
+import type { Certificate } from '@/generated/prisma/client';
 
 async function resolveSession() {
   const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
   return admin?.user?.id ? admin : worker?.user?.id ? worker : null;
 }
 
-export async function issueCertificate(enrollmentId: string) {
+/**
+ * Outcome of {@link issueCertificate}. A refusal is returned rather than thrown
+ * because Next.js redacts Server Action errors in production, which would show
+ * the learner React error #441 instead of what they need to do. A discriminated
+ * result is used here rather than the `refusedReason` field the assign actions
+ * carry, because the success value is a Certificate row with no room for one.
+ */
+export type IssueCertificateResult =
+  { ok: true; certificate: Certificate } | { ok: false; reason: string };
+
+export async function issueCertificate(enrollmentId: string): Promise<IssueCertificateResult> {
   const session = await resolveSession();
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
@@ -46,13 +59,20 @@ export async function issueCertificate(enrollmentId: string) {
     throw new Error('Unauthorized');
   }
 
+  // Refused by return: fail-closed, no certificate row, PDF or upload has been
+  // produced at this point.
   if (enrollment.status !== 'completed' && enrollment.status !== 'attested') {
-    throw new Error('Course must be completed to issue a certificate');
+    logger.warn({
+      msg: '[enrollment] Certificate issuance refused — course not completed',
+      enrollmentId,
+      status: enrollment.status,
+    });
+    return { ok: false, reason: 'Course must be completed to issue a certificate' };
   }
 
   // If already issued, return existing
   if (enrollment.certificate) {
-    return enrollment.certificate;
+    return { ok: true, certificate: enrollment.certificate };
   }
 
   // A certificate PDF is immutable once generated, so it must carry the
@@ -65,7 +85,10 @@ export async function issueCertificate(enrollmentId: string) {
       enrollmentId,
       organizationUserId: enrollment.organizationUserId,
     });
-    throw new Error('Set your full name in your profile before earning a certificate.');
+    return {
+      ok: false,
+      reason: 'Set your full name in your profile before earning a certificate.',
+    };
   }
 
   const issueDate = new Date();
@@ -111,7 +134,7 @@ export async function issueCertificate(enrollmentId: string) {
   revalidatePath('/dashboard/training');
   revalidatePath('/worker/certificates');
 
-  return certificate;
+  return { ok: true, certificate };
 }
 
 export async function getWorkerCertificates() {
@@ -133,16 +156,38 @@ export async function getWorkerCertificates() {
 
 export async function getAdminWorkerCertificates(organizationUserId: string) {
   const session = await adminAuth();
-  if (!session?.user?.id || !isAdminRole(session.user.role) || !session.user.organizationId) {
+  if (!session?.user?.id || !session.user.organizationId) {
     throw new Error('Unauthorized');
   }
+
+  // This is the certificate half of the staff profile, so it must reach the same
+  // verdict as `getStaffDetails` — otherwise a target the profile 404s on still
+  // yields its full training history through this id-addressed action. `user.read`
+  // rather than `isAdminRole`, which admits Finance and Clinical Director.
+  const roleKey = dbRoleToRoleKey(session.user.role);
+  if (!roleKey || !can(roleKey, 'user.read')) {
+    logger.warn({
+      msg: '[certificate] Admin certificate read denied',
+      userId: session.user.id,
+      role: session.user.role,
+    });
+    throw new Error('Unauthorized');
+  }
+
+  // null for org-wide roles; an array (possibly empty) for a facility-bound one.
+  const dataFacilityIds = await resolveDataFacilityIds(session);
 
   const certificates = await prisma.certificate.findMany({
     where: {
       // Scoped by the caller's org so a membership id from another tenant
-      // simply resolves to nothing.
+      // simply resolves to nothing. The facility predicate composes into the
+      // same query for the same reason: an out-of-facility target must come
+      // back empty exactly as an unknown id does.
       organizationUserId,
-      organizationUser: { organizationId: session.user.organizationId },
+      organizationUser: {
+        organizationId: session.user.organizationId,
+        ...staffFacilityWhere(dataFacilityIds),
+      },
     },
     include: {
       course: { select: { title: true } },

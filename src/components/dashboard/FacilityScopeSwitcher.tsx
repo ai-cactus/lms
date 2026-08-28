@@ -51,6 +51,13 @@ export function facilityScopeLabel(
  * Scope control for the dashboard header. Facility scope is URL state, never a
  * session claim — applying a selection rewrites `?facility=` on the current path
  * so the view is shareable, bookmarkable and re-authorised on every request.
+ *
+ * Renders nothing for a viewer with fewer than two accessible facilities. The
+ * guard lives here rather than at each call site so a future header cannot
+ * reintroduce it: `facilities` is always the viewer's ACCESSIBLE set, already
+ * narrowed for facility-bound roles, so "fewer than two" is exactly "cannot
+ * switch". Offering the control to a single-facility viewer would advertise a
+ * capability they do not have.
  */
 export default function FacilityScopeSwitcher({
   facilities,
@@ -63,6 +70,8 @@ export default function FacilityScopeSwitcher({
   const [open, setOpen] = React.useState(false);
 
   const label = facilityScopeLabel(facilities, selectedFacilityIds);
+
+  if (facilities.length < 2) return null;
 
   const handleApply = (facilityIds: string[]) => {
     router.push(buildFacilityScopeHref(pathname, searchParams.toString(), facilityIds));

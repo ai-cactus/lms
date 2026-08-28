@@ -282,12 +282,15 @@ before any of these cases can run.
 - **Role:** Owner / Admin / HR / Clinical Director
 - **Preconditions:** Active subscription; at least one global video course published
 - **Steps:**
-  1. Go to `/dashboard/courses` and select the **Video** tab (or the "Available Video Courses" page tab)
+  1. Go to `/dashboard/courses` and select the **Video** tab
 - **Expected Result:** Courses are displayed and appear in the video list as a video course
 - **Notes:** **Relocated** — the source export placed this on Courses > Create. The Video tab is on
   the Courses **list**, not the create wizard. Organizations **cannot author video courses at all**;
   video courses are platform-global, published by system admins at `/system/video-courses`, and orgs
   only browse and assign them.
+  **Updated:** the outer "My Courses" / "Available Video Courses" page tabs no longer exist. The
+  global video catalog is merged into the Video tab of the single Courses list, and Video is the
+  landing tab unless the org's only content is reading courses.
 
 **TC-CRS-002 — Create a reading course** `[OK]`
 
