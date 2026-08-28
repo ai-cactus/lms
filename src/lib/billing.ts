@@ -9,16 +9,44 @@
  */
 export interface BillingSubscriptionLike {
   status?: string | null | undefined;
+  /**
+   * A pause the admin REQUESTED that has not taken effect yet (see
+   * {@link hasPendingPause}). Declared here only so callers can pass a whole
+   * subscription row through; it is deliberately never read by
+   * {@link hasActiveBilling} or {@link getPauseState}.
+   */
+  pauseStartsAt?: Date | string | null;
   pausedAt?: Date | string | null;
   pauseEndsAt?: Date | string | null;
 }
 
+/**
+ * ⛔ `pauseStartsAt` MUST NOT be consulted here. A pause takes effect only at
+ * the end of the period the org already paid for (product decision 2026-08-27),
+ * so during the pending window billing is still fully active. Because this is
+ * the single choke point every access gate funnels through — worker portal,
+ * quiz submit, enrollment, course-assign, auditor access — reading
+ * `pauseStartsAt` here would revoke access the moment a pause is *scheduled*,
+ * which is exactly the bug the separate column exists to prevent.
+ */
 export function hasActiveBilling(
   subscription: BillingSubscriptionLike | null | undefined,
 ): boolean {
   if (!subscription) return false;
   if (subscription.pausedAt) return false;
   return subscription.status === 'active' || subscription.status === 'trialing';
+}
+
+/**
+ * Whether a pause has been requested but has not taken effect yet.
+ *
+ * UI ONLY — for rendering the "your subscription will pause on …" notice and its
+ * cancel action. It must never be folded into {@link hasActiveBilling} or
+ * {@link getPauseState}: a pending pause grants no less access than no pause at
+ * all, and both of those functions gate access.
+ */
+export function hasPendingPause(subscription: BillingSubscriptionLike | null | undefined): boolean {
+  return !!subscription?.pauseStartsAt && !subscription.pausedAt;
 }
 
 /**
@@ -40,6 +68,10 @@ export type PauseState = 'none' | 'paused' | 'expired';
  *  - `none`    — not paused
  *  - `paused`  — within the chosen pause window; admin can continue any time
  *  - `expired` — the pause window has elapsed; admin must continue or cancel
+ *
+ * A PENDING pause reports `none`, on purpose — see {@link hasPendingPause}.
+ * `pauseStartsAt` must not be read here for the same reason it must not be read
+ * in {@link hasActiveBilling}.
  */
 export function getPauseState(
   subscription: BillingSubscriptionLike | null | undefined,

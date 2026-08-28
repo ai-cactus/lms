@@ -322,7 +322,7 @@ before any of these cases can run.
   rename happens from the course list. Lesson body and quiz editing happen inside the learner view
   `/learn/<id>` via the admin lesson/quiz editors. Test both halves.
 
-**TC-CRS-004 — No pre-built course option exists** `[SPEC-DRIFT]`
+**TC-CRS-004 — No pre-built course option exists** `[OK]`
 
 - **Phase:** 4
 - **Role:** Owner
@@ -330,10 +330,14 @@ before any of these cases can run.
 - **Steps:**
   1. Inspect all course type options offered
 - **Expected Result:** "Pre-built course" is not an available option
-- **Notes:** **Expect FAIL.** Pre-built is still present at three entry points: the route
-  `/dashboard/courses/prebuilt`, a link inside wizard step 1 ("Or choose a prebuilt course on
-  Theraptly"), and a "Choose a prebuilt course" button on the courses empty state. The server action
-  is still live. Nothing was removed. Record all three locations as evidence.
+- **Notes:** **Expect PASS as of 2026-08-28**, when the adoption route was retired. This case
+  previously read "Expect FAIL … Nothing was removed" and listed three live entry points; all three
+  are now gone. The route `/dashboard/courses/prebuilt` and its catalog component were deleted, the
+  wizard step-1 link now points at `/dashboard/courses`, and the courses empty state's "Choose a
+  prebuilt course" button was removed. The `addPrebuiltCourseToOrg` / `getPrebuiltCourses` server
+  actions were deleted with them. Prebuilt courses are video courses owned by every org from
+  creation, so the catalog now lives in the Courses page's default Video tab rather than behind an
+  adoption step.
 
 **TC-CRS-005 — Course details page renders correctly** `[OK]`
 

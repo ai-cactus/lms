@@ -69,8 +69,9 @@ export async function register() {
     // idempotent globalThis singleton and each sweep installs an idempotent
     // BullMQ Job Scheduler (keyed by a stable id), so this cannot double-start a
     // worker or duplicate a schedule, and it survives dev HMR. Enable flags
-    // (REMINDER_SWEEP_ENABLED / VIDEO_SWEEP_ENABLED) are respected inside the
-    // getters — a disabled sweep returns null and starts nothing.
+    // (REMINDER_SWEEP_ENABLED / VIDEO_SWEEP_ENABLED /
+    // BILLING_PAUSE_SWEEP_ENABLED) are respected inside the getters — a
+    // disabled sweep returns null and starts nothing.
     //
     // NOTE: this boots the workers *inside the web process*. The proper fix is a
     // dedicated worker service (tracked in docs/rebuild/); until then this at
@@ -83,12 +84,14 @@ export async function register() {
         { getVideoSweepWorker },
         { getReminderSweepWorker },
         { getNotificationDigestWorker },
+        { getBillingPauseSweepWorker },
       ] = await Promise.all([
         import('@/lib/queue/manual-indexer-worker'),
         import('@/lib/queue/video-transcode-worker'),
         import('@/lib/queue/video-sweep-worker'),
         import('@/lib/queue/reminder-sweep-worker'),
         import('@/lib/queue/notification-digest-worker'),
+        import('@/lib/queue/billing-pause-sweep-worker'),
       ]);
 
       for (const worker of [
@@ -97,6 +100,7 @@ export async function register() {
         getVideoSweepWorker(),
         getReminderSweepWorker(),
         getNotificationDigestWorker(),
+        getBillingPauseSweepWorker(),
       ]) {
         // Sweep getters return null when disabled via their enable flag.
         if (worker) startedWorkers.push(worker);

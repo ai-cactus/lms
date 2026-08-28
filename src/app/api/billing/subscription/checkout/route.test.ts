@@ -306,6 +306,69 @@ describe('POST /api/billing/subscription/checkout — create path (no existing s
   });
 });
 
+// ---------------------------------------------------------------------------
+// A paused (or about-to-pause) subscription cannot take a plan change: the
+// immediate-proration branch would charge a subscription whose collection is
+// voided, and the scheduled branch would attach a schedule the pause sweep
+// then has to fight over. Product decision 2026-08-27 closed this gap by
+// checking the guard against BOTH pause fields, ahead of the
+// classifyPlanChange branch, so it fires no matter what the target plan is.
+// ---------------------------------------------------------------------------
+describe('POST /api/billing/subscription/checkout — paused-subscription guard', () => {
+  it('returns 409 when the subscription is already paused (pausedAt set)', async () => {
+    prismaMock.subscription.findUnique.mockResolvedValue(
+      existingSubscription({ pausedAt: new Date('2026-08-01T00:00:00Z'), pauseStartsAt: null }),
+    );
+
+    const res = await POST(makeReq({ planKey: 'starter', billingCycle: 'monthly' }));
+    const body = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(body.error).toMatch(/subscription is paused/i);
+    expect(body.error).toMatch(/continue your plan/i);
+    expect(stripeMock.subscriptions.retrieve).not.toHaveBeenCalled();
+    expect(stripeMock.subscriptions.update).not.toHaveBeenCalled();
+    expect(stripeMock.subscriptionSchedules.create).not.toHaveBeenCalled();
+    expect(stripeMock.checkout.sessions.create).not.toHaveBeenCalled();
+    expect(prismaMock.subscription.update).not.toHaveBeenCalled();
+  });
+
+  it('returns 409 with different wording when a pause is only PENDING (pauseStartsAt set, pausedAt null)', async () => {
+    prismaMock.subscription.findUnique.mockResolvedValue(
+      existingSubscription({
+        pausedAt: null,
+        pauseStartsAt: new Date('2026-09-01T00:00:00Z'),
+      }),
+    );
+
+    const res = await POST(makeReq({ planKey: 'growth', billingCycle: 'yearly' }));
+    const body = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(body.error).toMatch(/scheduled to pause/i);
+    expect(body.error).toMatch(/cancel the scheduled pause/i);
+    expect(stripeMock.subscriptions.retrieve).not.toHaveBeenCalled();
+    expect(stripeMock.checkout.sessions.create).not.toHaveBeenCalled();
+    expect(prismaMock.subscription.update).not.toHaveBeenCalled();
+  });
+
+  it('proceeds normally when neither pause field is set', async () => {
+    prismaMock.subscription.findUnique.mockResolvedValue(
+      existingSubscription({
+        plan: 'growth',
+        billingCycle: 'monthly',
+        pausedAt: null,
+        pauseStartsAt: null,
+      }),
+    );
+    stripeMock.subscriptions.retrieve.mockResolvedValue(liveStripeSub());
+
+    const res = await POST(makeReq({ planKey: 'growth', billingCycle: 'monthly' }));
+
+    expect(res.status).toBe(200);
+  });
+});
+
 describe('POST /api/billing/subscription/checkout — no_op branch', () => {
   it('is idempotent — no Stripe write at all when already on the requested plan/cycle', async () => {
     prismaMock.subscription.findUnique.mockResolvedValue(

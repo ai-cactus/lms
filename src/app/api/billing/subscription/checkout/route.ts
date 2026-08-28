@@ -137,9 +137,26 @@ export async function POST(request: NextRequest) {
         scheduledPlan: true,
         scheduledBillingCycle: true,
         scheduledEffectiveAt: true,
+        pausedAt: true,
+        pauseStartsAt: true,
         updatedAt: true,
       },
     });
+
+    // A paused (or about-to-pause) subscription cannot take a plan change: the
+    // immediate-proration branch would charge a subscription whose collection is
+    // voided, and the scheduled branch would attach a schedule that the pause
+    // sweep then has to fight over. Require the pause to be undone first.
+    if (existingSubscription?.pausedAt || existingSubscription?.pauseStartsAt) {
+      return NextResponse.json(
+        {
+          error: existingSubscription.pausedAt
+            ? 'Your subscription is paused. Continue your plan before changing it.'
+            : 'Your subscription is scheduled to pause. Cancel the scheduled pause before changing your plan.',
+        },
+        { status: 409 },
+      );
+    }
 
     const hasLiveSubscription =
       !!existingSubscription &&

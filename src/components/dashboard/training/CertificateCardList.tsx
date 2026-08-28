@@ -91,7 +91,9 @@ export default function CertificateCardList({
           </h1>
           <p className="m-0 text-sm text-[#525252] md:text-lg">{description}</p>
         </div>
-        {showExport && (
+        {/* Export acts on the certificates rendered below, so it only belongs with a
+            populated list — an empty page has nothing to export. */}
+        {showExport && certificates.length > 0 && (
           <div className="flex items-center gap-2.5">
             <Select defaultValue="7">
               <SelectTrigger

@@ -21,6 +21,7 @@ const {
   mockResolveDataFacilityIds,
   mockGetStatusTrackerSummaryForOrg,
   mockGetPauseState,
+  mockHasPendingPause,
 } = vi.hoisted(() => ({
   mockAuth: vi.fn(),
   mockRedirect: vi.fn(() => {
@@ -36,6 +37,7 @@ const {
   mockResolveDataFacilityIds: vi.fn(),
   mockGetStatusTrackerSummaryForOrg: vi.fn(),
   mockGetPauseState: vi.fn(() => 'none'),
+  mockHasPendingPause: vi.fn(() => false),
 }));
 
 vi.mock('@/auth', () => ({ auth: mockAuth }));
@@ -53,7 +55,13 @@ vi.mock('@/lib/facility/staff-where', () => ({
 vi.mock('@/lib/reminders/status-tracker', () => ({
   getStatusTrackerSummaryForOrg: mockGetStatusTrackerSummaryForOrg,
 }));
-vi.mock('@/lib/billing', () => ({ getPauseState: mockGetPauseState }));
+// layout.tsx reads BOTH: getPauseState covers a live pause, hasPendingPause the
+// scheduled-but-not-yet-active one. Mocking only the first leaves the second
+// undefined, which throws and takes every test in this file down with it.
+vi.mock('@/lib/billing', () => ({
+  getPauseState: mockGetPauseState,
+  hasPendingPause: mockHasPendingPause,
+}));
 vi.mock('@/components/dashboard/DashboardLayoutClient', () => ({
   default: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="layout-client">{children}</div>

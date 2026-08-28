@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import EmptyTableState from '@/components/ui/EmptyTableState';
-import { getPauseState } from '@/lib/billing';
+import { getPauseState, hasPendingPause } from '@/lib/billing';
 
 type Tab = 'overview' | 'billing-history' | 'subscription' | 'payment-method';
 
@@ -53,6 +53,8 @@ interface Subscription {
   status: string;
   currentPeriodEnd: string;
   cancelAtPeriodEnd: boolean;
+  /** ISO timestamp a REQUESTED pause takes effect, or null. Full access until then. */
+  pauseStartsAt: string | null;
   pausedAt: string | null;
   pauseEndsAt: string | null;
   discountPromoCode: string | null;
@@ -223,6 +225,7 @@ export default function OverviewTab({ onChangeTab, refreshKey }: Props) {
 
   const pauseState = getPauseState(subscription);
   const isPaused = pauseState !== 'none';
+  const pendingPause = hasPendingPause(subscription);
 
   return (
     <div className="flex flex-col gap-10">
@@ -292,6 +295,18 @@ export default function OverviewTab({ onChangeTab, refreshKey }: Props) {
                 <div className="mt-3 flex items-center gap-2 rounded-[8px] border border-[#fde68a] bg-[#fffbeb] p-[13px] text-[12px] leading-[16px] font-medium text-[#92400e]">
                   <AlertTriangle className="size-[18px] shrink-0" aria-hidden="true" />
                   Cancels on {formatDate(subscription.currentPeriodEnd)}
+                </div>
+              )}
+
+              {pendingPause && subscription.pauseStartsAt && (
+                <div className="mt-3 rounded-[8px] border border-[#fde68a] bg-[#fffbeb] p-[13px]">
+                  <p className="flex items-center gap-2 text-[12px] leading-[16px] font-semibold text-[#92400e]">
+                    <PauseCircle className="size-[18px] shrink-0" aria-hidden="true" />
+                    Pauses on {formatDate(subscription.pauseStartsAt)}
+                  </p>
+                  <p className="mt-1 text-[12px] leading-[16px] text-[#92400e]">
+                    You keep full access until then. Manage this from the Subscription tab.
+                  </p>
                 </div>
               )}
 
