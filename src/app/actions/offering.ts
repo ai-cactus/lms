@@ -32,21 +32,6 @@ function resolveOrg(sessionUser: { organizationId: string | null; role: Role }):
 }
 
 // ---------------------------------------------------------------------------
-// Return type for listAvailableVideoCourses
-// ---------------------------------------------------------------------------
-export interface VideoCourseAvailabilityRow {
-  id: string;
-  title: string;
-  description: string | null;
-  category: string | null;
-  durationSeconds: number | null;
-  questionCount: number;
-  hasPoster: boolean; // true when a preview poster exists (drives the card thumbnail)
-  isOffered: boolean;
-  offeringId: string | null;
-}
-
-// ---------------------------------------------------------------------------
 // Global video catalog (tenant-independent, cached)
 //   The published-global-video list is identical for every org between
 //   publishes, so it's cached for 1h and tagged `video-catalog`. The per-org
