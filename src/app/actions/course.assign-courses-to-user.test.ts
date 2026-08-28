@@ -108,10 +108,16 @@ describe('assignCoursesToUser() — authorization', () => {
     });
   });
 
-  it('rejects an empty selection', async () => {
-    await expect(assignCoursesToUser(STAFF_ORG_USER_ID, [])).rejects.toThrow(
-      'Select at least one course to assign',
-    );
+  it('refuses an empty selection', async () => {
+    const result = await assignCoursesToUser(STAFF_ORG_USER_ID, []);
+
+    expect(result).toEqual({
+      assigned: 0,
+      alreadyAssigned: 0,
+      failed: 0,
+      error: 'Select at least one course to assign',
+    });
+    expect(prismaMock.enrollment.createMany).not.toHaveBeenCalled();
   });
 });
 
@@ -207,10 +213,15 @@ describe('assignCoursesToUser() — fan-out and counting', () => {
     );
   });
 
-  it('rejects an unparseable deadline', async () => {
-    await expect(assignCoursesToUser(STAFF_ORG_USER_ID, ['c1'], 'not-a-date')).rejects.toThrow(
-      'Invalid completion deadline',
-    );
+  it('refuses an unparseable deadline', async () => {
+    const result = await assignCoursesToUser(STAFF_ORG_USER_ID, ['c1'], 'not-a-date');
+
+    expect(result).toEqual({
+      assigned: 0,
+      alreadyAssigned: 0,
+      failed: 0,
+      error: "That completion deadline couldn't be read. Please pick the date again.",
+    });
     expect(prismaMock.enrollment.createMany).not.toHaveBeenCalled();
   });
 

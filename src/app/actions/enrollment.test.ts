@@ -594,12 +594,18 @@ describe('enrollUsers — billing gate (Defect B)', () => {
       'a trialing subscription that is currently paused',
       { status: 'trialing', pausedAt: new Date('2026-01-01T00:00:00Z') },
     ],
-  ])('rejects with the billing message for %s, before any enrollment write', async (_desc, sub) => {
+  ])('refuses with the billing message for %s, before any enrollment write', async (_desc, sub) => {
     prismaMock.organization.findUnique.mockResolvedValue(orgWithSubscription(sub));
 
-    await expect(enrollUsers('own-course-001', [{ email: STAFF_EMAIL }])).rejects.toThrow(
+    // Returned, not thrown: a thrown message is redacted to React error #441
+    // in production, so the admin never learns the subscription lapsed.
+    const result = await enrollUsers('own-course-001', [{ email: STAFF_EMAIL }]);
+
+    expect(result.refusedReason).toBe(
       'Your organization needs an active subscription to assign courses.',
     );
+    expect(result.success).toEqual([]);
+    expect(result.newInvited).toEqual([]);
 
     expect(prismaMock.courseAssignment.create).not.toHaveBeenCalled();
     expect(prismaMock.enrollment.create).not.toHaveBeenCalled();

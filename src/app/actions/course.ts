@@ -5,7 +5,7 @@ import { Prisma } from '@/generated/prisma/client';
 import { dbRoleToRoleKey, isAdminRole, WORKER_ROLES } from '@/lib/rbac/role-utils';
 import { assertNoPhi } from '@/lib/documents/phiGate';
 import { can } from '@/lib/rbac/permissions';
-import { hasActiveBilling } from '@/lib/billing';
+import { hasActiveBilling, BILLING_GATE_ASSIGN_MESSAGE } from '@/lib/billing';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
@@ -1141,9 +1141,16 @@ export async function assignCourseToUsers(
     throw new Error('Forbidden');
   }
 
+  // Refused by return, not thrown: each of these is guidance the admin acts on,
+  // and a thrown message reaches the browser redacted in production builds.
+  // Every one of them returns before any offering, assignment or enrollment write.
   const organizationId = session.user.organizationId;
   if (!organizationId) {
-    throw new Error('You must belong to an organization to assign courses');
+    return {
+      success: false,
+      message: 'You must belong to an organization to assign courses',
+      notFound: [],
+    };
   }
 
   const course = await prisma.course.findUnique({
@@ -1176,7 +1183,9 @@ export async function assignCourseToUsers(
       organizationId,
       userId: session.user.id,
     });
-    throw new Error('Your organization needs an active subscription to assign courses.');
+    // Refused by return so the reason survives production error redaction.
+    // Fail-closed: no offering, assignment or enrollment has been written yet.
+    return { success: false, message: BILLING_GATE_ASSIGN_MESSAGE, notFound: [] };
   }
 
   // Emails are stored lowercased, and Prisma's `in` is case-sensitive — normalise
@@ -1208,7 +1217,11 @@ export async function assignCourseToUsers(
 
   const deadline = dueAt ? new Date(dueAt) : null;
   if (deadline && Number.isNaN(deadline.getTime())) {
-    throw new Error('Invalid completion deadline');
+    return {
+      success: false,
+      message: "That completion deadline couldn't be read. Please pick the date again.",
+      notFound,
+    };
   }
 
   // Persist the deadline on the org's CourseAssignment for this course so the
@@ -1309,14 +1322,26 @@ export async function assignCoursesToUser(
     throw new Error('Forbidden');
   }
 
+  // Refused by return, as in assignCourseToUsers above: these are user-facing
+  // messages, and nothing is written before any of them.
   const organizationId = session.user.organizationId;
   if (!organizationId) {
-    throw new Error('You must belong to an organization to assign courses');
+    return {
+      assigned: 0,
+      alreadyAssigned: 0,
+      failed: 0,
+      error: 'You must belong to an organization to assign courses',
+    };
   }
 
   const uniqueCourseIds = [...new Set(courseIds.filter(Boolean))];
   if (uniqueCourseIds.length === 0) {
-    throw new Error('Select at least one course to assign');
+    return {
+      assigned: 0,
+      alreadyAssigned: 0,
+      failed: 0,
+      error: 'Select at least one course to assign',
+    };
   }
 
   const target = await prisma.organizationUser.findUnique({
@@ -1338,7 +1363,12 @@ export async function assignCoursesToUser(
 
   const deadline = dueAt ? new Date(dueAt) : null;
   if (deadline && Number.isNaN(deadline.getTime())) {
-    throw new Error('Invalid completion deadline');
+    return {
+      assigned: 0,
+      alreadyAssigned: 0,
+      failed: 0,
+      error: "That completion deadline couldn't be read. Please pick the date again.",
+    };
   }
 
   const result: AssignCoursesToUserResult = { assigned: 0, alreadyAssigned: 0, failed: 0 };
@@ -2075,7 +2105,9 @@ export async function updateLessonContent(lessonId: string, content: string, tit
   return { success: true };
 }
 
-export async function retakeQuiz(enrollmentId: string) {
+export async function retakeQuiz(
+  enrollmentId: string,
+): Promise<{ success: boolean; refusedReason?: string }> {
   // Resolve BOTH sessions to handle cookie collision
   const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
   const adminId = admin?.user?.id;
@@ -2122,8 +2154,21 @@ export async function retakeQuiz(enrollmentId: string) {
     const completedCount = await prisma.quizAttempt.count({
       where: { enrollmentId, quizId: quiz.id, timeTaken: { not: null } },
     });
+    // Refused by return: the learner needs to know they are out of attempts, and
+    // a thrown message is redacted in production. Fail-closed — the enrollment
+    // reset below has not run.
     if (completedCount >= quiz.allowedAttempts) {
-      throw new Error('No attempts remaining');
+      logger.warn({
+        msg: '[course] Quiz retake refused — no attempts remaining',
+        enrollmentId,
+        quizId: quiz.id,
+        completedCount,
+      });
+      return {
+        success: false,
+        refusedReason:
+          "You've used all your attempts for this quiz. Ask your administrator to assign a retake.",
+      };
     }
   }
 
@@ -2147,7 +2192,22 @@ export async function retakeQuiz(enrollmentId: string) {
   return { success: true };
 }
 
-export async function assignRetake(enrollmentId: string, retakeReason?: string) {
+/**
+ * Outcome of {@link assignRetake}. A refusal is returned rather than thrown so
+ * the reason survives Next.js's production redaction of Server Action errors —
+ * see {@link AssignCoursesToUserResult} and `enrollUsers`' `refusedReason`.
+ */
+export interface AssignRetakeResult {
+  success: boolean;
+  retakeEnrollmentId?: string;
+  /** Set when the call was refused outright — no retake enrollment was created. */
+  refusedReason?: string;
+}
+
+export async function assignRetake(
+  enrollmentId: string,
+  retakeReason?: string,
+): Promise<AssignRetakeResult> {
   const session = await resolveSession();
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
@@ -2180,15 +2240,37 @@ export async function assignRetake(enrollmentId: string, retakeReason?: string) 
     throw new Error('Enrollment not found');
   }
 
+  // Refused by return, not thrown: the reason is guidance the admin acts on, and
+  // a thrown message is redacted to React error #441 in production builds.
+  // Fail-closed — no retake enrollment has been created at this point.
   if (lockedEnrollment.status !== 'locked') {
-    throw new Error('Enrollment is not locked');
+    logger.warn({
+      msg: '[course] assignRetake refused — enrollment is not locked',
+      enrollmentId,
+      status: lockedEnrollment.status,
+      userId: session.user.id,
+    });
+    return {
+      success: false,
+      refusedReason:
+        "This learner hasn't failed the assessment yet — retakes are only available once all attempts are used.",
+    };
   }
 
   const existingRetake = await prisma.enrollment.findFirst({
     where: { retakeOf: enrollmentId, status: 'enrolled' },
   });
   if (existingRetake) {
-    throw new Error('An active retake already exists for this enrollment');
+    logger.warn({
+      msg: '[course] assignRetake refused — an active retake already exists',
+      enrollmentId,
+      existingRetakeEnrollmentId: existingRetake.id,
+      userId: session.user.id,
+    });
+    return {
+      success: false,
+      refusedReason: 'This learner already has a retake in progress for this course.',
+    };
   }
 
   const retakeEnrollment = await prisma.enrollment.create({

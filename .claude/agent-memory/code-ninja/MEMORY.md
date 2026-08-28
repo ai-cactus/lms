@@ -62,3 +62,4 @@
 - [Quiz route error body shapes](gotcha_quiz_route_error_body_shapes.md) — start returns a CODE in `error` + human text in `message`; submit is human-in-`error`; read `message ?? error`.
 - [Facility scope = one condition](project_facility_scope_one_condition.md) — view/switch/reassign all gate on "viewer sees >1 accessible facility"; ORG_WIDE_FACILITY_ROLES is already correct, do not edit.
 - [Role-assign count vs reach](gotcha_role_assign_count_vs_reach.md) — count + mutation are now BOTH facility-scoped and must stay coupled; CourseAssignment has no facility column, so future role holders still enroll org-wide.
+- [Server Action refusals must return](gotcha_server_action_refusals_must_return.md) — prod redacts thrown messages to React #441; return `refusedReason` on the existing result type, keep the gate fail-closed.
