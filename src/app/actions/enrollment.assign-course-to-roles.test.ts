@@ -153,6 +153,58 @@ describe('assignCourseToRoles — authorization and input', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Billing gate — shared with enrollUsers/assignCourseToUsers via
+// hasActiveBilling(). Refused by RETURN (not thrown), so the reason survives
+// production error redaction. This is the gate CourseWizard reads
+// `refusedReason` from to show a specific banner instead of a generic one.
+// ---------------------------------------------------------------------------
+
+describe('assignCourseToRoles — billing gate', () => {
+  it.each([
+    ['no subscription row at all', null],
+    ['a canceled subscription', { status: 'canceled', pausedAt: null }],
+    [
+      'an active subscription that is currently paused',
+      { status: 'active', pausedAt: new Date('2026-01-01T00:00:00Z') },
+    ],
+  ])('refuses with the billing message for %s, before any write', async (_desc, sub) => {
+    mockOrganizationFindUnique.mockResolvedValue({ name: 'Acme Corp', subscription: sub });
+    mockOrgUserFindMany.mockResolvedValue([
+      { id: 'ou-nurse-1', user: { email: 'nurse1@test.com' } },
+    ]);
+
+    const result = await assignCourseToRoles('course-1', ['nurse']);
+
+    expect(result).toEqual({
+      assignmentId: null,
+      holderCount: 0,
+      enrolled: 0,
+      alreadyEnrolled: 0,
+      failed: 0,
+      refusedReason: 'Your organization needs an active subscription to assign courses.',
+      targetRoles: ['nurse'],
+    });
+    expect(mockAssignmentCreate).not.toHaveBeenCalled();
+    expect(mockAssignmentUpdate).not.toHaveBeenCalled();
+    expect(mockOrgUserFindMany).not.toHaveBeenCalled();
+    expect(mockCreateEnrollmentForUser).not.toHaveBeenCalled();
+    expect(mockOfferingUpsert).not.toHaveBeenCalled();
+  });
+
+  it('proceeds normally when the subscription is active and unpaused (regression guard)', async () => {
+    mockOrganizationFindUnique.mockResolvedValue({
+      name: 'Acme Corp',
+      subscription: { status: 'active', pausedAt: null },
+    });
+
+    const result = await assignCourseToRoles('course-1', ['nurse']);
+
+    expect(result.refusedReason).toBeUndefined();
+    expect(mockAssignmentCreate).toHaveBeenCalled();
+  });
+});
+
 describe('assignCourseToRoles — role targeting', () => {
   it('persists every targeted role, keeping the legacy single-value column on the first', async () => {
     await assignCourseToRoles('course-1', ['hr', 'nurse']);
