@@ -7,9 +7,16 @@ import { PauseCircle, Play, Loader2, X } from 'lucide-react';
 import { logger } from '@/lib/logger';
 import type { PauseState } from '@/lib/billing';
 
+/**
+ * The states this banner can actually be in. `getPauseState` never returns
+ * 'pending' — a scheduled pause is resolved separately by `hasPendingPause`,
+ * because access is untouched until it starts.
+ */
+type BannerPauseState = Exclude<PauseState, 'none'> | 'pending';
+
 interface Props {
   /** 'pending' is a REQUESTED pause that has not taken effect — access is intact. */
-  pauseState: Exclude<PauseState, 'none'> | 'pending';
+  pauseState: BannerPauseState;
   /** ISO timestamp the pause takes effect. Only meaningful when pending. */
   pauseStartsAt?: string | null;
   pauseEndsAt: string | null;
@@ -28,7 +35,7 @@ function formatDate(iso: string): string {
  * subscription tipping over into `expired` — surfaces the banner afresh instead
  * of inheriting an earlier dismissal.
  */
-function dismissalKey(pauseState: PauseState, pauseEndsAt: string | null): string {
+function dismissalKey(pauseState: BannerPauseState, pauseEndsAt: string | null): string {
   return `billing-paused-banner-dismissed:${pauseState}:${pauseEndsAt ?? 'open-ended'}`;
 }
 
@@ -54,6 +61,7 @@ export default function BillingPausedBanner({
   const [dismissed, setDismissed] = useState(false);
 
   const expired = pauseState === 'expired';
+  const pending = pauseState === 'pending';
   const dismissible = !expired;
 
   // Read after mount, never during render: the server has no sessionStorage, so
