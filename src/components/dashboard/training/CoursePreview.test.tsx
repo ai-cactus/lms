@@ -12,7 +12,7 @@
  * asserted here — only the className contract that the fix relies on. The
  * visual behavior is unverified by this suite without a real browser.
  */
-import { render, screen } from '@testing-library/react';
+import { render } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import type { CourseWithRelations } from '@/types/course';
 
