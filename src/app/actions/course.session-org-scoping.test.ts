@@ -49,6 +49,9 @@ vi.mock('@/lib/prisma', () => {
     // A retake is stamped with the member's CURRENT facility, resolved fresh.
     organizationUserFacility: { findFirst: vi.fn().mockResolvedValue(null) },
     notification: { updateMany: mockNotificationUpdateMany },
+    organizationUser: { findMany: vi.fn().mockResolvedValue([]) },
+    // Facility scope is resolved for anything but an org-wide role.
+    facility: { findMany: vi.fn().mockResolvedValue([]) },
   };
   return { prisma, default: prisma };
 });
@@ -141,7 +144,11 @@ describe('getCourseForOrgView — org-scoped enrollment visibility sourced from 
   };
 
   it('scopes the enrolled-staff include to the caller org (org-A) — never another org', async () => {
-    mockAdminAuth.mockResolvedValue({ user: { id: 'admin-1', organizationId: 'org-A' } });
+    // The role is load-bearing since the action gained its own role gate: it
+    // now requires an admin-tier role holding `course.read` before it queries.
+    mockAdminAuth.mockResolvedValue({
+      user: { id: 'admin-1', role: 'admin', organizationId: 'org-A' },
+    });
     mockWorkerAuth.mockResolvedValue(null);
     mockCourseFindFirst.mockResolvedValue(course);
 

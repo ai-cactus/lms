@@ -89,6 +89,16 @@ function memberEntry(id: string, name: string, role = 'hr') {
   };
 }
 
+/**
+ * The viewer's accessible facilities. Change Facility now requires MULTI-facility
+ * access — a viewer who can see only one site has nowhere to reassign anyone to —
+ * so the action's tests need two.
+ */
+const MULTI_FACILITIES = [
+  { id: 'fac-1', name: 'Main Site', type: null, city: null },
+  { id: 'fac-2', name: 'North Wing', type: null, city: null },
+];
+
 /** The row whose visible text contains `text` (skips the header row). */
 function rowFor(text: string) {
   return screen.getByText(text).closest('tr') as HTMLElement;
@@ -182,7 +192,7 @@ describe('StaffListClient — Remove Staff never offered on the viewer’s own r
         pendingInviteCount={0}
         inviterRole="admin"
         viewerOrganizationUserId="ou-admin-viewer"
-        facilities={[{ id: 'fac-1', name: 'Main Site', type: null, city: null }]}
+        facilities={MULTI_FACILITIES}
       />,
     );
 
@@ -236,7 +246,7 @@ describe('StaffListClient — row Action cell (Figma roster design)', () => {
         pendingInviteCount={0}
         inviterRole="owner"
         viewerOrganizationUserId="ou-viewer"
-        facilities={[{ id: 'fac-1', name: 'Main Site', type: null, city: null }]}
+        facilities={MULTI_FACILITIES}
       />,
     );
 
@@ -250,6 +260,29 @@ describe('StaffListClient — row Action cell (Figma roster design)', () => {
     await user.click(screen.getByRole('button', { name: 'Row actions' }));
     const items = screen.getAllByRole('menuitem');
     expect(items.map((item) => item.textContent)).toEqual(['Change Facility', 'Remove Staff']);
+  });
+
+  it('QA #21 / D-01: hides Change Facility from the kebab when the viewer has only ONE accessible facility — nowhere to reassign anyone to', async () => {
+    const user = userEvent.setup();
+    render(
+      <StaffListClient
+        users={[memberEntry('ou-hr', 'HR Person')]}
+        hasOrganization={true}
+        organizationId="org-1"
+        planLimit={null}
+        planName="Professional"
+        currentWorkerCount={1}
+        pendingInviteCount={0}
+        inviterRole="owner"
+        viewerOrganizationUserId="ou-viewer"
+        facilities={[{ id: 'fac-1', name: 'Main Site', type: null, city: null }]}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Row actions' }));
+    const items = screen.getAllByRole('menuitem');
+    expect(items.map((item) => item.textContent)).toEqual(['Remove Staff']);
+    expect(screen.queryByRole('menuitem', { name: 'Change Facility' })).not.toBeInTheDocument();
   });
 
   it('does not navigate from a pending-invite row but keeps its invite actions', async () => {

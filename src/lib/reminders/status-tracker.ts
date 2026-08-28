@@ -143,9 +143,13 @@ function displayName(enrollment: EnrollmentRow): string {
  * `now` is injectable (defaulting to the current instant) so callers/tests can
  * pin the clock — mirroring `runReminderSweep`'s explicit `now`.
  *
- * `facilityId` narrows the picture to the enrollments stamped with that facility,
- * for the facility-scoped dashboard. Callers must have already authorised the id
- * (see `resolveFacilityScope`); omit it for the organisation-wide view.
+ * `facilityId` narrows the picture to the enrollments stamped with those
+ * facilities, for the facility-scoped dashboard. Callers must have already
+ * authorised the ids (see `resolveFacilityScope`); omit it — do NOT pass an
+ * empty array — for the organisation-wide view. An empty array narrows to
+ * nothing, per the `resolveDataFacilityIds` contract in
+ * `@/lib/facility/staff-where`: a facility-bound caller with no assignments
+ * must see no rows, never every row.
  */
 export async function getStatusTrackerSummaryForOrg(
   orgId: string,
@@ -153,9 +157,7 @@ export async function getStatusTrackerSummaryForOrg(
   facilityId?: string | string[] | null,
 ): Promise<StatusTrackerSummary> {
   const facilityFilter = Array.isArray(facilityId)
-    ? facilityId.length > 0
-      ? { facilityId: { in: facilityId } }
-      : {}
+    ? { facilityId: { in: facilityId } }
     : facilityId
       ? { facilityId }
       : {};

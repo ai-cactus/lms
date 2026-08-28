@@ -42,6 +42,7 @@ beforeEach(() => {
     roleAssignedAt: ROLE_JOINED_AT,
     user: { email: 'nurse1@test.com' },
     organization: { name: 'Acme Corp' },
+    facilities: [{ facilityId: 'facility-1' }],
   });
   mockAssignmentFindMany.mockResolvedValue([]);
   mockCreateEnrollmentForUser.mockResolvedValue({
@@ -70,6 +71,8 @@ describe('enrollUserForRoleTargets', () => {
         courseId: 'course-1',
         dueAt: null,
         dueWindowDays: 21,
+        facilityScoped: false,
+        facilityIds: [],
         course: { title: 'Infection Control' },
       },
     ]);
@@ -98,6 +101,8 @@ describe('enrollUserForRoleTargets', () => {
         courseId: 'legacy-course',
         dueAt: null,
         dueWindowDays: null,
+        facilityScoped: false,
+        facilityIds: [],
         course: { title: 'HIPAA Basics' },
       },
     ]);
@@ -118,6 +123,8 @@ describe('enrollUserForRoleTargets', () => {
         courseId: 'course-2',
         dueAt,
         dueWindowDays: 30,
+        facilityScoped: false,
+        facilityIds: [],
         course: { title: 'Annual Compliance' },
       },
     ]);
@@ -143,5 +150,154 @@ describe('enrollUserForRoleTargets', () => {
     mockAssignmentFindMany.mockRejectedValue(new Error('db down'));
 
     await expect(enrollUserForRoleTargets(ORG_USER_ID, ORG_ID)).resolves.toBeUndefined();
+  });
+});
+
+// The assignment reaches a new holder only inside the facility scope its
+// author had. Without this, a facility-bound supervisor's assignment would
+// keep auto-enrolling new joiners at facilities they cannot see, growing the
+// assignment's reach past the assigner's own over time.
+describe('enrollUserForRoleTargets — facility-scoped assignments', () => {
+  it('enrolls a new holder whose facility intersects the assignment scope', async () => {
+    mockMembershipFindFirst.mockResolvedValue({
+      role: 'nurse',
+      roleAssignedAt: ROLE_JOINED_AT,
+      user: { email: 'nurse1@test.com' },
+      organization: { name: 'Acme Corp' },
+      facilities: [{ facilityId: 'facility-1' }],
+    });
+    mockAssignmentFindMany.mockResolvedValue([
+      {
+        id: 'scoped-assignment',
+        courseId: 'course-scoped',
+        dueAt: null,
+        dueWindowDays: 21,
+        facilityScoped: true,
+        facilityIds: ['facility-1', 'facility-2'],
+        course: { title: 'Infection Control' },
+      },
+    ]);
+
+    await enrollUserForRoleTargets(ORG_USER_ID, ORG_ID);
+
+    expect(mockCreateEnrollmentForUser).toHaveBeenCalledWith(
+      { email: 'nurse1@test.com' },
+      expect.objectContaining({ courseId: 'course-scoped', assignmentId: 'scoped-assignment' }),
+    );
+  });
+
+  it('skips a new holder whose facility is OUTSIDE the assignment scope', async () => {
+    mockMembershipFindFirst.mockResolvedValue({
+      role: 'nurse',
+      roleAssignedAt: ROLE_JOINED_AT,
+      user: { email: 'nurse1@test.com' },
+      organization: { name: 'Acme Corp' },
+      facilities: [{ facilityId: 'facility-9' }],
+    });
+    mockAssignmentFindMany.mockResolvedValue([
+      {
+        id: 'scoped-assignment',
+        courseId: 'course-scoped',
+        dueAt: null,
+        dueWindowDays: 21,
+        facilityScoped: true,
+        facilityIds: ['facility-1'],
+        course: { title: 'Infection Control' },
+      },
+    ]);
+
+    await enrollUserForRoleTargets(ORG_USER_ID, ORG_ID);
+
+    expect(mockCreateEnrollmentForUser).not.toHaveBeenCalled();
+  });
+
+  it('FAIL-CLOSED: skips a holder with NO facility assignments at all against a scoped assignment', async () => {
+    mockMembershipFindFirst.mockResolvedValue({
+      role: 'nurse',
+      roleAssignedAt: ROLE_JOINED_AT,
+      user: { email: 'nurse1@test.com' },
+      organization: { name: 'Acme Corp' },
+      facilities: [],
+    });
+    mockAssignmentFindMany.mockResolvedValue([
+      {
+        id: 'scoped-assignment',
+        courseId: 'course-scoped',
+        dueAt: null,
+        dueWindowDays: 21,
+        facilityScoped: true,
+        facilityIds: ['facility-1'],
+        course: { title: 'Infection Control' },
+      },
+    ]);
+
+    await enrollUserForRoleTargets(ORG_USER_ID, ORG_ID);
+
+    expect(mockCreateEnrollmentForUser).not.toHaveBeenCalled();
+  });
+
+  it('an org-wide assignment (facilityScoped:false) still enrolls a holder regardless of their facility', async () => {
+    mockMembershipFindFirst.mockResolvedValue({
+      role: 'nurse',
+      roleAssignedAt: ROLE_JOINED_AT,
+      user: { email: 'nurse1@test.com' },
+      organization: { name: 'Acme Corp' },
+      facilities: [{ facilityId: 'facility-9' }],
+    });
+    mockAssignmentFindMany.mockResolvedValue([
+      {
+        id: 'org-wide-assignment',
+        courseId: 'course-org-wide',
+        dueAt: null,
+        dueWindowDays: 21,
+        facilityScoped: false,
+        facilityIds: [],
+        course: { title: 'Infection Control' },
+      },
+    ]);
+
+    await enrollUserForRoleTargets(ORG_USER_ID, ORG_ID);
+
+    expect(mockCreateEnrollmentForUser).toHaveBeenCalledWith(
+      { email: 'nurse1@test.com' },
+      expect.objectContaining({ courseId: 'course-org-wide' }),
+    );
+  });
+
+  it('one scoped assignment matching and one not: only the matching one enrolls', async () => {
+    mockMembershipFindFirst.mockResolvedValue({
+      role: 'nurse',
+      roleAssignedAt: ROLE_JOINED_AT,
+      user: { email: 'nurse1@test.com' },
+      organization: { name: 'Acme Corp' },
+      facilities: [{ facilityId: 'facility-1' }],
+    });
+    mockAssignmentFindMany.mockResolvedValue([
+      {
+        id: 'matching-assignment',
+        courseId: 'course-match',
+        dueAt: null,
+        dueWindowDays: 21,
+        facilityScoped: true,
+        facilityIds: ['facility-1'],
+        course: { title: 'Matches' },
+      },
+      {
+        id: 'non-matching-assignment',
+        courseId: 'course-no-match',
+        dueAt: null,
+        dueWindowDays: 21,
+        facilityScoped: true,
+        facilityIds: ['facility-2'],
+        course: { title: 'Does not match' },
+      },
+    ]);
+
+    await enrollUserForRoleTargets(ORG_USER_ID, ORG_ID);
+
+    expect(mockCreateEnrollmentForUser).toHaveBeenCalledExactlyOnceWith(
+      { email: 'nurse1@test.com' },
+      expect.objectContaining({ courseId: 'course-match' }),
+    );
   });
 });

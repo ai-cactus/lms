@@ -103,9 +103,10 @@ export default function StaffListClient({
   const canRemoveStaff = can(inviterRoleKey, 'user.delete');
   const canEditInvite = can(inviterRoleKey, 'invite.edit');
   const canDeleteInvite = can(inviterRoleKey, 'invite.delete');
-  // Reassigning a facility is a membership edit; with no facilities to move
-  // between the action is a dead end, so it is hidden too.
-  const canChangeFacility = can(inviterRoleKey, 'user.edit') && facilities.length > 0;
+  // Reassigning a facility is a membership edit, and `facilities` is the
+  // VIEWER's accessible set — so "more than one" is exactly "has multi-facility
+  // access". A viewer scoped to a single facility has nowhere to move anyone to.
+  const canChangeFacility = can(inviterRoleKey, 'user.edit') && facilities.length > 1;
 
   // Total seats consumed = active workers + pending invites
   const totalUsed = currentWorkerCount + pendingInviteCount;

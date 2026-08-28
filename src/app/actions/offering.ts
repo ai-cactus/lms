@@ -6,6 +6,7 @@ import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath, unstable_cache } from 'next/cache';
 import type { Role } from '@/types/next-auth';
+import type { CourseWithStats } from '@/types/course';
 
 // ---------------------------------------------------------------------------
 // Session helper — mirrors the pattern in course.ts
@@ -31,50 +32,47 @@ function resolveOrg(sessionUser: { organizationId: string | null; role: Role }):
 }
 
 // ---------------------------------------------------------------------------
-// Return type for listAvailableVideoCourses
-// ---------------------------------------------------------------------------
-export interface VideoCourseAvailabilityRow {
-  id: string;
-  title: string;
-  description: string | null;
-  category: string | null;
-  durationSeconds: number | null;
-  questionCount: number;
-  hasPoster: boolean; // true when a preview poster exists (drives the card thumbnail)
-  isOffered: boolean;
-  offeringId: string | null;
-}
-
-// ---------------------------------------------------------------------------
 // Global video catalog (tenant-independent, cached)
 //   The published-global-video list is identical for every org between
-//   publishes, so it's cached for 1h and tagged `video-catalog`. The per-org
-//   "is this offered" flag is joined AFTER this read (see
-//   listAvailableVideoCourses) so the cached payload never carries a tenant id
-//   and one invalidation refreshes every org at once. Invalidate via
-//   revalidateTag('video-catalog') at every global-video create / edit /
-//   status-change site (see video-course.ts).
+//   publishes, so it's cached for 1h and tagged `video-catalog`. Anything
+//   tenant-specific — enrollment tallies, adoption state — is joined AFTER
+//   this read (see listGlobalVideoCatalogCourses) so the cached payload never
+//   carries a tenant id and one invalidation refreshes every org at once.
+//   Invalidate via revalidateTag('video-catalog') at every global-video
+//   create / edit / status-change site (see video-course.ts).
 //
 //   `hasPoster` is the one field NOT written by a server action: the poster is
 //   produced by scripts/transcode-worker.ts, a detached child process with no
 //   access to the Next cache, so it cannot revalidate the tag when it lands.
 //   A course therefore stays `hasPoster: false` here for up to the 1h
-//   `revalidate` after its transcode finishes. That is deliberate and safe —
-//   the card falls back to its gradient, which is exactly what it shows for a
-//   posterless course anyway, and suppressing the request is the whole point of
-//   carrying the flag. Adding the field needs no cache-key change (the key is
-//   the static ['global-video-catalog'] with no arguments) and no new
-//   invalidation site: every existing revalidateTag('video-catalog') call
-//   rebuilds the whole row including this field.
+//   `revalidate` after its transcode finishes. That staleness was deliberate
+//   and safe while a card consumed the flag: a false reading only meant the
+//   gradient placeholder, exactly what a posterless course shows anyway.
+//   No caller reads `hasPoster` since the catalog grid was removed — see the
+//   note on the unread fields below.
 // ---------------------------------------------------------------------------
 interface GlobalVideoCatalogRow {
   id: string;
   title: string;
   description: string | null;
+  // Currently unread by the sole consumer (listGlobalVideoCatalogCourses):
+  // these four served the removed catalog-grid card. Kept because dropping
+  // them also means narrowing this cached read's Prisma `select` (the
+  // `lessons` and `previewPosterStorageUri` branches), which is a separate,
+  // behaviour-affecting change rather than dead-code cleanup.
   category: string | null;
   durationSeconds: number | null;
   questionCount: number;
   hasPoster: boolean;
+  // Course-table fields, so the consolidated Courses list can be served from
+  // the same cached read. Timestamps are ISO strings, not Dates: this payload
+  // round-trips through the cache's serializer, which does not preserve Date.
+  status: string;
+  thumbnail: string | null;
+  durationMinutes: number | null;
+  lessonCount: number;
+  createdAtIso: string;
+  updatedAtIso: string;
 }
 
 const getGlobalVideoCatalog = unstable_cache(
@@ -89,6 +87,12 @@ const getGlobalVideoCatalog = unstable_cache(
         description: true,
         category: true,
         previewPosterStorageUri: true,
+        status: true,
+        thumbnail: true,
+        duration: true,
+        createdAt: true,
+        updatedAt: true,
+        _count: { select: { lessons: true } },
         lessons: {
           select: {
             videoDurationSeconds: true,
@@ -108,6 +112,12 @@ const getGlobalVideoCatalog = unstable_cache(
         durationSeconds: firstLesson?.videoDurationSeconds ?? null,
         questionCount: firstLesson?.quiz?._count?.questions ?? 0,
         hasPoster: Boolean(course.previewPosterStorageUri),
+        status: course.status,
+        thumbnail: course.thumbnail,
+        durationMinutes: course.duration,
+        lessonCount: course._count.lessons,
+        createdAtIso: course.createdAt.toISOString(),
+        updatedAtIso: course.updatedAt.toISOString(),
       };
     });
   },
@@ -116,10 +126,20 @@ const getGlobalVideoCatalog = unstable_cache(
 );
 
 // ---------------------------------------------------------------------------
-// 1. listAvailableVideoCourses
-//    Returns all published global video courses with this org's adoption state.
+// 1. listGlobalVideoCatalogCourses
+//     The same published global video catalog, projected into the Courses-list
+//     row shape so it can be merged into the org's own course list.
+//
+//     Product ruling (2026-08-10, re-confirmed 2026-08-27): every organization
+//     owns every video course from the moment it is created, so there is no
+//     "available / adopt" step to surface. `OrgCourseOffering` survives as
+//     internal bookkeeping — existing rows and their per-org custom titles are
+//     untouched — but adoption is no longer a user-facing action.
+//
+//     Enrollment tallies are scoped to THIS org's staff, matching how
+//     getCourses() counts adopted courses.
 // ---------------------------------------------------------------------------
-export async function listAvailableVideoCourses(): Promise<VideoCourseAvailabilityRow[]> {
+export async function listGlobalVideoCatalogCourses(): Promise<CourseWithStats[]> {
   const session = await resolveSession();
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
@@ -128,26 +148,53 @@ export async function listAvailableVideoCourses(): Promise<VideoCourseAvailabili
   const organizationId = resolveOrg(session.user);
 
   const catalog = await getGlobalVideoCatalog();
+  if (!catalog.length) return [];
 
-  // Per-org adoption state, joined AFTER the cached read so the cached catalog
-  // payload stays tenant-independent.
-  const offerings = catalog.length
-    ? await prisma.orgCourseOffering.findMany({
-        where: { organizationId, courseId: { in: catalog.map((c) => c.id) } },
-        select: { id: true, courseId: true },
-      })
-    : [];
-  const offeringByCourse = new Map(offerings.map((o) => [o.courseId, o.id]));
+  const counts = await prisma.enrollment.groupBy({
+    by: ['courseId', 'status'],
+    where: {
+      courseId: { in: catalog.map((c) => c.id) },
+      organizationUser: { organizationId },
+    },
+    _count: { _all: true },
+  });
 
-  return catalog.map((course) => ({
-    ...course,
-    isOffered: offeringByCourse.has(course.id),
-    offeringId: offeringByCourse.get(course.id) ?? null,
-  }));
+  const tallies = new Map<string, { total: number; completed: number }>();
+  for (const row of counts) {
+    const entry = tallies.get(row.courseId) ?? { total: 0, completed: 0 };
+    entry.total += row._count._all;
+    if (row.status === 'completed' || row.status === 'attested') {
+      entry.completed += row._count._all;
+    }
+    tallies.set(row.courseId, entry);
+  }
+
+  return catalog.map((course) => {
+    const tally = tallies.get(course.id) ?? { total: 0, completed: 0 };
+    return {
+      id: course.id,
+      title: course.title,
+      description: course.description,
+      thumbnail: course.thumbnail,
+      status: course.status,
+      // Pinned by the catalog's own `where` clause, which selects video only.
+      type: 'video',
+      duration: course.durationMinutes,
+      createdAt: new Date(course.createdAtIso),
+      updatedAt: new Date(course.updatedAtIso),
+      lessonsCount: course.lessonCount,
+      enrollmentsCount: tally.total,
+      completionRate: tally.total > 0 ? Math.round((tally.completed / tally.total) * 100) : 0,
+      // The source document belongs to the publishing tenant and must never be
+      // linkable from this one.
+      sourceDocumentId: null,
+      isGlobalCatalog: true,
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------
-// 1b. listOfferedVideoCourses
+// 1a. listOfferedVideoCourses
 //     Returns ONLY the global video courses this org has adopted (offered),
 //     with the org's rebrand overrides + this org's staff enrollment count.
 //     Powers the dedicated "Video Courses" tab on the Courses page.
@@ -177,7 +224,8 @@ export async function listOfferedVideoCourses(): Promise<OfferedVideoCourseRow[]
 
   const offerings = await prisma.orgCourseOffering.findMany({
     // Exclude soft-deleted (inactive) courses so a deactivated course drops out
-    // of the org's offered list, mirroring listAvailableVideoCourses.
+    // of the org's offered list, mirroring the cached global catalog's own
+    // `status: 'published'` filter.
     where: { organizationId, course: { status: 'published' } },
     orderBy: { createdAt: 'desc' },
     include: {

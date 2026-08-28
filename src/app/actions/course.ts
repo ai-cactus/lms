@@ -5,7 +5,7 @@ import { Prisma } from '@/generated/prisma/client';
 import { dbRoleToRoleKey, isAdminRole, WORKER_ROLES } from '@/lib/rbac/role-utils';
 import { assertNoPhi } from '@/lib/documents/phiGate';
 import { can } from '@/lib/rbac/permissions';
-import { hasActiveBilling } from '@/lib/billing';
+import { hasActiveBilling, BILLING_GATE_ASSIGN_MESSAGE } from '@/lib/billing';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
@@ -15,7 +15,13 @@ import { QuizQuestion } from '@/types/quiz';
 import type { StaffEntry } from '@/types/enrollment';
 import { logger } from '@/lib/logger';
 import { resolveMemberFacilityId, resolveMemberFacilityIds } from '@/lib/facility/member-facility';
-import { resolveFacilityScope } from '@/lib/facility/scope';
+import { isOrgWideFacilityRole, listAccessibleFacilities } from '@/lib/facility/scope';
+import {
+  resolveDataFacilityIds,
+  staffFacilityWhere,
+  type FacilityScopeSession,
+} from '@/lib/facility/staff-where';
+import { CourseAccessError } from '@/lib/course/access-error';
 import { forkCourse } from '@/lib/course/fork-course';
 import { resolveOnCompletion } from '@/lib/reminders/sweep';
 import { combineDateAndTime } from '@/lib/reminders/deadline';
@@ -129,14 +135,22 @@ export async function getCourses(): Promise<CourseWithStats[]> {
   const adoptedCourseIds = adoptedCourses.map((c) => c.id);
 
   // Per-course enrollment totals + completed/attested tallies via grouped
-  // aggregation (F-028 pattern). Own courses count ALL enrollments (unscoped,
-  // matching the prior behavior); adopted courses count only THIS org's staff.
+  // aggregation (F-028 pattern). Adopted courses count only THIS org's staff.
+  //
+  // Both are also facility-scoped: a supervisor's card must not report an
+  // organisation-wide "42 enrolled / 61% complete" over a roster they cannot
+  // open — the detail page's roster is narrowed the same way, and a headline
+  // figure that disagrees with the list beneath it is still leaked information.
+  const dataFacilityIds = await resolveDataFacilityIds(session);
+  const facilityFilter: Prisma.EnrollmentWhereInput =
+    dataFacilityIds === null ? {} : { facilityId: { in: dataFacilityIds } };
+
   const [ownCounts, adoptedCounts] = await Promise.all([
     prisma.enrollment.groupBy({
       by: ['courseId', 'status'],
       // Must track `authoredWhere` — otherwise a manager sees their colleagues'
       // courses listed with a permanent 0 enrolled / 0 completed.
-      where: { course: authoredWhere },
+      where: { course: authoredWhere, ...facilityFilter },
       _count: { _all: true },
     }),
     organizationId && adoptedCourseIds.length
@@ -145,6 +159,7 @@ export async function getCourses(): Promise<CourseWithStats[]> {
           where: {
             courseId: { in: adoptedCourseIds },
             organizationUser: { organizationId },
+            ...facilityFilter,
           },
           _count: { _all: true },
         })
@@ -219,10 +234,57 @@ export async function getCourses(): Promise<CourseWithStats[]> {
   return [...own, ...adopted.filter((c) => !seen.has(c.id))];
 }
 
+/**
+ * Narrow a course roster to the enrollments the viewer's facility scope admits.
+ *
+ * `courseDetailSelect.enrollments` carries staff PII (email, full name, role,
+ * score) for EVERY enrollment on the course, while the detail gates below are
+ * role-shaped only — and `isAdminRole` admits `supervisor`, who is bound to the
+ * facilities on their own assignments. Without this narrowing a supervisor reads
+ * every enrolled worker in the organisation, and on a course shared through an
+ * `orgCourseOffering` the roster is not even org-filtered.
+ *
+ * Applied AFTER the access decision, never before: those gates read this same
+ * roster to establish `isEnrolled`, so filtering first would deny a learner
+ * their own course. For the same reason the viewer's own enrollment always
+ * survives — it is theirs to see however their facility assignments are set up.
+ */
+async function narrowRosterToFacilityScope(
+  session: FacilityScopeSession,
+  course: CourseWithRelations,
+): Promise<CourseWithRelations> {
+  const dataFacilityIds = await resolveDataFacilityIds(session);
+  if (dataFacilityIds === null) return course;
+
+  const isSelf = (enrollment: CourseWithRelations['enrollments'][number]) =>
+    enrollment.organizationUser.userId === session.user.id;
+
+  // Fail closed: no accessible facility means see nothing, never see everything.
+  if (dataFacilityIds.length === 0 || course.enrollments.length === 0) {
+    return { ...course, enrollments: course.enrollments.filter(isSelf) };
+  }
+
+  const inScope = await prisma.organizationUser.findMany({
+    where: {
+      id: { in: course.enrollments.map((enrollment) => enrollment.organizationUserId) },
+      ...staffFacilityWhere(dataFacilityIds),
+    },
+    select: { id: true },
+  });
+  const allowed = new Set(inScope.map((member) => member.id));
+
+  return {
+    ...course,
+    enrollments: course.enrollments.filter(
+      (enrollment) => allowed.has(enrollment.organizationUserId) || isSelf(enrollment),
+    ),
+  };
+}
+
 export async function getCourseById(courseId: string): Promise<CourseWithRelations> {
   const session = await resolveSession();
   if (!session?.user?.id) {
-    throw new Error('Unauthorized');
+    throw new CourseAccessError('unauthenticated');
   }
 
   const course = await prisma.course.findUnique({
@@ -231,7 +293,7 @@ export async function getCourseById(courseId: string): Promise<CourseWithRelatio
   });
 
   if (!course) {
-    throw new Error('Course not found');
+    throw new CourseAccessError('notFound');
   }
 
   // Allow access if the user is the creator, is enrolled, or is an admin-tier
@@ -248,7 +310,7 @@ export async function getCourseById(courseId: string): Promise<CourseWithRelatio
     can(dbRoleToRoleKey(session.user.role), 'course.read');
 
   if (!isCreator && !isEnrolled && !isSameOrgManager) {
-    throw new Error('Course not found');
+    throw new CourseAccessError('forbidden');
   }
 
   // Only the creator or an org admin may receive the full enrolled-staff roster.
@@ -260,7 +322,12 @@ export async function getCourseById(courseId: string): Promise<CourseWithRelatio
   // from a learner who may only ever see their own.
   const isPrivileged = isCreator || can(dbRoleToRoleKey(session.user.role), 'user.read');
   if (isPrivileged) {
-    return course;
+    // The creator keeps the full roster of the course they authored: `isCreator`
+    // is an ownership gate that predates facility scope, and no facility-bound
+    // role holds `course.create`, so exempting it cannot widen what a supervisor
+    // sees. Everyone else reaching here does so through the role gate, which is
+    // exactly where `isAdminRole` lets a facility-bound supervisor through.
+    return isCreator ? course : narrowRosterToFacilityScope(session, course);
   }
 
   return {
@@ -270,25 +337,51 @@ export async function getCourseById(courseId: string): Promise<CourseWithRelatio
 }
 
 /**
- * Fetch a GLOBAL, published video course for an org admin to view, even when
+ * Fetch a GLOBAL, published video course for an org manager to view, even when
  * the org hasn't enrolled/offered it yet (the browse → "View" flow from the
  * available-courses list).
  *
- * Access is allowed to any org admin since the global catalog is public to
- * orgs, but enrollments are scoped to the CALLER'S organization so one org can
- * never see another org's enrolled staff. The creator/enrolled path stays in
- * getCourseById — this is only used as a fallback for global browse.
+ * The global catalog is public to orgs, so the course BODY is not creator- or
+ * enrolment-gated here — but the roster returned alongside it is staff PII, and
+ * this action had no role gate at all. Everything exported from a `'use server'`
+ * module is an HTTP endpoint (see the F-084 note at the top of
+ * course-ai-v4.6.ts), so any authenticated member — a worker included — could
+ * call it directly and read every enrollee's name, email, role and score. The
+ * page that fronts it is not the boundary; this gate is.
+ *
+ * The gate mirrors {@link getCourseById} exactly, and must stay in step with it:
+ * `course.read` decides access to the course, `user.read` decides access to
+ * other people's enrolment records. Enrollments are additionally scoped to the
+ * CALLER'S organization so one org can never see another org's staff, then
+ * narrowed to the caller's facilities.
  */
 export async function getCourseForOrgView(courseId: string): Promise<CourseWithRelations> {
   const session = await resolveSession();
   if (!session?.user?.id) {
-    throw new Error('Unauthorized');
+    throw new CourseAccessError('unauthenticated');
   }
 
   // Org is authoritative on the DB-revalidated session — no re-query.
   const organizationId = session.user.organizationId;
   if (!organizationId) {
-    throw new Error('Course not found');
+    throw new CourseAccessError('forbidden');
+  }
+
+  // `isAdminRole` is load-bearing alongside the permission: worker roles also
+  // hold `course.read` for their own enrolled courses, so the permission alone
+  // would admit every worker. A worker's route to a course they are enrolled on
+  // is getCourseById, which gates on that enrolment.
+  const isOrgManager =
+    isAdminRole(session.user.role) && can(dbRoleToRoleKey(session.user.role), 'course.read');
+
+  if (!isOrgManager) {
+    logger.warn({
+      msg: '[course] getCourseForOrgView denied — not an org manager with course.read',
+      courseId,
+      userId: session.user.id,
+      role: session.user.role,
+    });
+    throw new CourseAccessError('forbidden');
   }
 
   const course = await prisma.course.findFirst({
@@ -304,10 +397,21 @@ export async function getCourseForOrgView(courseId: string): Promise<CourseWithR
   });
 
   if (!course) {
-    throw new Error('Course not found');
+    throw new CourseAccessError('notFound');
   }
 
-  return course;
+  // Same roster split as getCourseById: `user.read` is the staff-roster gate, so
+  // a manager without it (clinical director) sees only their own enrolment.
+  if (!can(dbRoleToRoleKey(session.user.role), 'user.read')) {
+    return {
+      ...course,
+      enrollments: course.enrollments.filter(
+        (enrollment) => enrollment.organizationUser.userId === session.user.id,
+      ),
+    };
+  }
+
+  return narrowRosterToFacilityScope(session, course);
 }
 
 export async function createCourse(data: { title: string; description?: string }) {
@@ -680,24 +784,54 @@ export async function getPrebuiltCourses(): Promise<PrebuiltCourseRow[]> {
   });
 }
 
+/**
+ * The facilities this dashboard's figures may span, on the `string[] | null`
+ * contract used everywhere else (`null` = no predicate, `[]` = see nothing).
+ *
+ * The previous single-optional-id signature could not express "see nothing": a
+ * facility-bound caller with no assignments produced no id, and no id meant no
+ * predicate — the org-wide query shape. That is the fail-OPEN this replaces.
+ *
+ * The argument reaches a server action straight from the client, so it is a
+ * request and never a grant: ids the caller cannot view are dropped, and if
+ * that leaves nothing the answer is nothing rather than everything.
+ */
+async function resolveDashboardFacilityIds(
+  session: FacilityScopeSession,
+  requestedFacilityIds?: string[] | null,
+): Promise<string[] | null> {
+  if (requestedFacilityIds == null) {
+    if (isOrgWideFacilityRole(session.user.role)) return null;
+    return (await listAccessibleFacilities(session)).map((facility) => facility.id);
+  }
+
+  if (requestedFacilityIds.length === 0) return [];
+
+  const accessible = new Set(
+    (await listAccessibleFacilities(session)).map((facility) => facility.id),
+  );
+  return requestedFacilityIds.filter((id) => accessible.has(id));
+}
+
 // Get dashboard data (combines courses list and stats to prevent duplicate queries)
 /**
- * @param requestedFacilityId Narrows every enrollment-derived figure (staff
- *   assigned, average grade, per-course pass/fail, training coverage) to one
- *   facility. Re-validated here rather than trusted: an unknown or inaccessible
- *   id widens back to the whole organisation, so a facility-bound caller can
- *   never read a site they are not assigned to. Omit for the org-wide view.
+ * @param requestedFacilityIds Narrows every enrollment-derived figure (staff
+ *   assigned, average grade, per-course pass/fail, training coverage) to these
+ *   facilities. Omit (or pass null) for "the caller's own scope", which is the
+ *   whole organisation only for an org-wide role. See
+ *   {@link resolveDashboardFacilityIds} — the value is re-validated, never trusted.
  */
-export async function getDashboardData(requestedFacilityId?: string | null) {
+export async function getDashboardData(requestedFacilityIds?: string[] | null) {
   const session = await resolveSession();
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
   }
 
-  const scope = await resolveFacilityScope(session, requestedFacilityId);
-  const facilityId = scope.mode === 'single' ? scope.facility.id : null;
+  const dataFacilityIds = await resolveDashboardFacilityIds(session, requestedFacilityIds);
   // Spread into a `where` to leave the org-wide query shape byte-identical.
-  const facilityFilter = facilityId ? { facilityId } : {};
+  // An empty array narrows to nothing, which is the point.
+  const facilityFilter: Prisma.EnrollmentWhereInput =
+    dataFacilityIds === null ? {} : { facilityId: { in: dataFacilityIds } };
 
   // F-028: avoid the unbounded `enrollments: true` materialization that pulled
   // every enrollment row (all columns) for every course on each dashboard load.
@@ -765,9 +899,9 @@ export async function getDashboardData(requestedFacilityId?: string | null) {
         organizationId,
         active: true,
         role: { in: [...WORKER_ROLES] },
-        // Under facility scope the coverage base is that site's roster, so a
-        // worker at another facility never dilutes its completion percentages.
-        ...(facilityId ? { facilities: { some: { facilityId, active: true } } } : {}),
+        // Under facility scope the coverage base is those sites' roster, so a
+        // worker at another facility never dilutes their completion percentages.
+        ...staffFacilityWhere(dataFacilityIds),
       },
     });
   }
@@ -1007,9 +1141,16 @@ export async function assignCourseToUsers(
     throw new Error('Forbidden');
   }
 
+  // Refused by return, not thrown: each of these is guidance the admin acts on,
+  // and a thrown message reaches the browser redacted in production builds.
+  // Every one of them returns before any offering, assignment or enrollment write.
   const organizationId = session.user.organizationId;
   if (!organizationId) {
-    throw new Error('You must belong to an organization to assign courses');
+    return {
+      success: false,
+      message: 'You must belong to an organization to assign courses',
+      notFound: [],
+    };
   }
 
   const course = await prisma.course.findUnique({
@@ -1042,7 +1183,9 @@ export async function assignCourseToUsers(
       organizationId,
       userId: session.user.id,
     });
-    throw new Error('Your organization needs an active subscription to assign courses.');
+    // Refused by return so the reason survives production error redaction.
+    // Fail-closed: no offering, assignment or enrollment has been written yet.
+    return { success: false, message: BILLING_GATE_ASSIGN_MESSAGE, notFound: [] };
   }
 
   // Emails are stored lowercased, and Prisma's `in` is case-sensitive — normalise
@@ -1074,7 +1217,11 @@ export async function assignCourseToUsers(
 
   const deadline = dueAt ? new Date(dueAt) : null;
   if (deadline && Number.isNaN(deadline.getTime())) {
-    throw new Error('Invalid completion deadline');
+    return {
+      success: false,
+      message: "That completion deadline couldn't be read. Please pick the date again.",
+      notFound,
+    };
   }
 
   // Persist the deadline on the org's CourseAssignment for this course so the
@@ -1175,14 +1322,26 @@ export async function assignCoursesToUser(
     throw new Error('Forbidden');
   }
 
+  // Refused by return, as in assignCourseToUsers above: these are user-facing
+  // messages, and nothing is written before any of them.
   const organizationId = session.user.organizationId;
   if (!organizationId) {
-    throw new Error('You must belong to an organization to assign courses');
+    return {
+      assigned: 0,
+      alreadyAssigned: 0,
+      failed: 0,
+      error: 'You must belong to an organization to assign courses',
+    };
   }
 
   const uniqueCourseIds = [...new Set(courseIds.filter(Boolean))];
   if (uniqueCourseIds.length === 0) {
-    throw new Error('Select at least one course to assign');
+    return {
+      assigned: 0,
+      alreadyAssigned: 0,
+      failed: 0,
+      error: 'Select at least one course to assign',
+    };
   }
 
   const target = await prisma.organizationUser.findUnique({
@@ -1204,7 +1363,12 @@ export async function assignCoursesToUser(
 
   const deadline = dueAt ? new Date(dueAt) : null;
   if (deadline && Number.isNaN(deadline.getTime())) {
-    throw new Error('Invalid completion deadline');
+    return {
+      assigned: 0,
+      alreadyAssigned: 0,
+      failed: 0,
+      error: "That completion deadline couldn't be read. Please pick the date again.",
+    };
   }
 
   const result: AssignCoursesToUserResult = { assigned: 0, alreadyAssigned: 0, failed: 0 };
@@ -1941,7 +2105,9 @@ export async function updateLessonContent(lessonId: string, content: string, tit
   return { success: true };
 }
 
-export async function retakeQuiz(enrollmentId: string) {
+export async function retakeQuiz(
+  enrollmentId: string,
+): Promise<{ success: boolean; refusedReason?: string }> {
   // Resolve BOTH sessions to handle cookie collision
   const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
   const adminId = admin?.user?.id;
@@ -1988,8 +2154,21 @@ export async function retakeQuiz(enrollmentId: string) {
     const completedCount = await prisma.quizAttempt.count({
       where: { enrollmentId, quizId: quiz.id, timeTaken: { not: null } },
     });
+    // Refused by return: the learner needs to know they are out of attempts, and
+    // a thrown message is redacted in production. Fail-closed — the enrollment
+    // reset below has not run.
     if (completedCount >= quiz.allowedAttempts) {
-      throw new Error('No attempts remaining');
+      logger.warn({
+        msg: '[course] Quiz retake refused — no attempts remaining',
+        enrollmentId,
+        quizId: quiz.id,
+        completedCount,
+      });
+      return {
+        success: false,
+        refusedReason:
+          "You've used all your attempts for this quiz. Ask your administrator to assign a retake.",
+      };
     }
   }
 
@@ -2013,7 +2192,22 @@ export async function retakeQuiz(enrollmentId: string) {
   return { success: true };
 }
 
-export async function assignRetake(enrollmentId: string, retakeReason?: string) {
+/**
+ * Outcome of {@link assignRetake}. A refusal is returned rather than thrown so
+ * the reason survives Next.js's production redaction of Server Action errors —
+ * see {@link AssignCoursesToUserResult} and `enrollUsers`' `refusedReason`.
+ */
+export interface AssignRetakeResult {
+  success: boolean;
+  retakeEnrollmentId?: string;
+  /** Set when the call was refused outright — no retake enrollment was created. */
+  refusedReason?: string;
+}
+
+export async function assignRetake(
+  enrollmentId: string,
+  retakeReason?: string,
+): Promise<AssignRetakeResult> {
   const session = await resolveSession();
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
@@ -2046,15 +2240,37 @@ export async function assignRetake(enrollmentId: string, retakeReason?: string) 
     throw new Error('Enrollment not found');
   }
 
+  // Refused by return, not thrown: the reason is guidance the admin acts on, and
+  // a thrown message is redacted to React error #441 in production builds.
+  // Fail-closed — no retake enrollment has been created at this point.
   if (lockedEnrollment.status !== 'locked') {
-    throw new Error('Enrollment is not locked');
+    logger.warn({
+      msg: '[course] assignRetake refused — enrollment is not locked',
+      enrollmentId,
+      status: lockedEnrollment.status,
+      userId: session.user.id,
+    });
+    return {
+      success: false,
+      refusedReason:
+        "This learner hasn't failed the assessment yet — retakes are only available once all attempts are used.",
+    };
   }
 
   const existingRetake = await prisma.enrollment.findFirst({
     where: { retakeOf: enrollmentId, status: 'enrolled' },
   });
   if (existingRetake) {
-    throw new Error('An active retake already exists for this enrollment');
+    logger.warn({
+      msg: '[course] assignRetake refused — an active retake already exists',
+      enrollmentId,
+      existingRetakeEnrollmentId: existingRetake.id,
+      userId: session.user.id,
+    });
+    return {
+      success: false,
+      refusedReason: 'This learner already has a retake in progress for this course.',
+    };
   }
 
   const retakeEnrollment = await prisma.enrollment.create({

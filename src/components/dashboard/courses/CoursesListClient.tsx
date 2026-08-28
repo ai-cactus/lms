@@ -377,13 +377,13 @@ export default function CoursesListClient({
   const canEditCourse = can(viewerRoleKey, 'course.edit');
   const canDeleteCourse = can(viewerRoleKey, 'course.delete');
 
-  // Landing on an empty tab reads as "no courses", so open on the type the org
-  // actually has, preferring Video when both (or neither) are populated.
+  // Video is the landing tab, except for an org whose only content is reading
+  // courses — landing them on an empty tab hides everything they have behind a
+  // click. Read once as the initial value: the tab is the user's afterwards, so
+  // recomputing it when `courses` changes would yank them out of a tab they
+  // deliberately opened.
   const [activeTab, setActiveTab] = useState<CourseTypeTab>(() =>
-    courses.some((course) => course.type === COURSE_TYPE_BY_TAB.video) ||
-    !courses.some((course) => course.type === COURSE_TYPE_BY_TAB.slides)
-      ? 'video'
-      : 'slides',
+    courses.length > 0 && courses.every((course) => course.type !== 'video') ? 'slides' : 'video',
   );
 
   // Sync when server props change after revalidatePath
@@ -461,6 +461,13 @@ export default function CoursesListClient({
   };
 
   const buildRowActions = (course: CourseWithStats): RowAction[] => {
+    // A platform catalog course this org has not adopted is authored by another
+    // tenant: rename and delete would mutate it for every organization, its
+    // source document belongs to the publishing tenant, and assignCourseToUsers
+    // rejects it on its creator-organization check. The row stays view-only —
+    // exactly what the catalog card it replaces offered.
+    if (course.isGlobalCatalog) return [];
+
     const actions: RowAction[] = [];
 
     if (canAssign) {

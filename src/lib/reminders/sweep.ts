@@ -3,6 +3,7 @@ import { logger } from '@/lib/logger';
 import { createNotification } from '@/app/actions/notifications';
 import { runRetentionPurge, type RetentionPurgeSummary } from '@/lib/retention';
 import { createEnrollmentForUser, type CreateEnrollmentContext } from '@/lib/enrollment/create';
+import { assignmentAdmitsHolder } from '@/lib/enrollment/assignment-facility-scope';
 import { resolveMemberFacilityIds } from '@/lib/facility/member-facility';
 import type { UserRole, RenewalCycle } from '@/generated/prisma/enums';
 import { SWEEP_LADDER_STAGES, REMINDER_STAGE_DEFAULTS } from './stages';
@@ -253,6 +254,10 @@ async function runRetentionPrePass(
  * `dueAt`). This catches any role-write site the live hook missed and any user
  * who gained the role while the app was down.
  *
+ * Being a backstop, it reconciles toward the SAME reach the live hook applies:
+ * an assignment's recorded facility scope gates the holders it may enrol here
+ * too, or the nightly run would re-widen every narrowed assignment.
+ *
  * Bulk queries only (no N+1): one query for the assignments, one for all
  * candidate holders across every targeted (org, role), and one for their existing
  * enrollments. The per-user create runs only for genuinely missing enrollments,
@@ -277,6 +282,8 @@ async function runRoleTargetReconcilePrePass(
         courseId: true,
         targetRole: true,
         dueWindowDays: true,
+        facilityScoped: true,
+        facilityIds: true,
         course: { select: { title: true } },
         organization: { select: { name: true } },
       },
@@ -298,6 +305,7 @@ async function runRoleTargetReconcilePrePass(
         role: true,
         roleAssignedAt: true,
         user: { select: { email: true } },
+        facilities: { where: { active: true }, select: { facilityId: true } },
       },
     });
     if (holders.length === 0) return;
@@ -308,6 +316,10 @@ async function runRoleTargetReconcilePrePass(
       select: { organizationUserId: true, courseId: true },
     });
     const enrolledSet = new Set(existing.map((e) => `${e.organizationUserId}|${e.courseId}`));
+
+    const facilityIdsByHolder = new Map<string, string[]>(
+      holders.map((holder) => [holder.id, holder.facilities.map((link) => link.facilityId)]),
+    );
 
     // Index holders by `${organizationId}|${role}` for O(1) assignment matching.
     const holdersByOrgRole = new Map<string, typeof holders>();
@@ -326,6 +338,9 @@ async function runRoleTargetReconcilePrePass(
       for (const holder of matches) {
         const enrollmentKey = `${holder.id}|${assignment.courseId}`;
         if (enrolledSet.has(enrollmentKey)) continue;
+        // The backstop must reconcile toward the same reach the live hook
+        // applies, or it would re-widen every assignment the hook narrowed.
+        if (!assignmentAdmitsHolder(assignment, facilityIdsByHolder.get(holder.id) ?? [])) continue;
 
         try {
           const ctx: CreateEnrollmentContext = {

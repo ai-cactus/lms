@@ -274,7 +274,9 @@ describe('DashboardPage — facility scope wiring', () => {
 
     expect(screen.queryByTestId('global-dashboard')).not.toBeInTheDocument();
     expect(screen.getByTestId('facility-switcher')).toBeInTheDocument();
-    expect(mockGetDashboardData).toHaveBeenCalledWith('fac-a');
+    // The `string[] | null` scope contract: the page hands getDashboardData the
+    // same dataFacilityIds every other read on it uses, not a single bare id.
+    expect(mockGetDashboardData).toHaveBeenCalledWith(['fac-a']);
     expect(mockGetGlobalDashboardData).not.toHaveBeenCalled();
   });
 
@@ -289,5 +291,119 @@ describe('DashboardPage — facility scope wiring', () => {
 
     expect(screen.queryByTestId('global-dashboard')).not.toBeInTheDocument();
     expect(screen.getByTestId('my-courses')).toBeInTheDocument();
+  });
+
+  // The `> 1` branch (was `> 0`): `globalData.facilities` is THIS viewer's
+  // accessible set, so one condition covers both a single-facility
+  // organisation and a role bound to a single facility — both get that
+  // facility's dashboard, never a "global" view of one site.
+  describe('the >1 facility-count branch (single-facility org AND single-facility role both get the single dashboard)', () => {
+    it('an ORG-WIDE role (owner) with exactly ONE facility gets the single-facility dashboard, not Global', async () => {
+      mockGetGlobalDashboardData.mockResolvedValue({ facilities: [FACILITY_A] });
+
+      render(await DashboardPage(noSearchParams()));
+
+      expect(screen.queryByTestId('global-dashboard')).not.toBeInTheDocument();
+      expect(screen.getByTestId('my-courses')).toBeInTheDocument();
+    });
+
+    it('an ORG-WIDE role with TWO facilities gets the Global dashboard', async () => {
+      mockGetGlobalDashboardData.mockResolvedValue({ facilities: [FACILITY_A, FACILITY_B] });
+
+      render(await DashboardPage(noSearchParams()));
+
+      expect(screen.getByTestId('global-dashboard')).toBeInTheDocument();
+    });
+
+    it('a SUPERVISOR (facility-bound) with exactly ONE accessible facility gets the single-facility dashboard, not Global', async () => {
+      mockAuth.mockResolvedValue({
+        user: {
+          id: 'sup-1',
+          organizationUserId: 'ou-sup-1',
+          organizationId: 'org-42',
+          role: 'supervisor',
+        },
+      });
+      mockGetGlobalDashboardData.mockResolvedValue({ facilities: [FACILITY_A] });
+      mockListAccessibleFacilities.mockResolvedValue([FACILITY_A]);
+
+      render(await DashboardPage(noSearchParams()));
+
+      expect(screen.queryByTestId('global-dashboard')).not.toBeInTheDocument();
+      expect(screen.getByTestId('my-courses')).toBeInTheDocument();
+    });
+
+    it('a SUPERVISOR with TWO accessible facilities gets the Global dashboard (their own accessible set, not the whole org)', async () => {
+      mockAuth.mockResolvedValue({
+        user: {
+          id: 'sup-1',
+          organizationUserId: 'ou-sup-1',
+          organizationId: 'org-42',
+          role: 'supervisor',
+        },
+      });
+      mockGetGlobalDashboardData.mockResolvedValue({ facilities: [FACILITY_A, FACILITY_B] });
+      mockListAccessibleFacilities.mockResolvedValue([FACILITY_A, FACILITY_B]);
+
+      render(await DashboardPage(noSearchParams()));
+
+      expect(screen.getByTestId('global-dashboard')).toBeInTheDocument();
+    });
+  });
+
+  // Items 2/3 of the facility-scope PR: with the >1 branch change, a
+  // single-facility supervisor now reaches the classic-dashboard branch for
+  // the FIRST time — and previously that branch called getDashboardData(undefined)
+  // and getStatusTrackerSummaryForOrg(org, now, undefined), both org-wide reads,
+  // leaking org-wide staff names/emails and totals to a facility-bound viewer.
+  describe('leak fix: the classic-dashboard branch scopes every read for a facility-bound viewer (never undefined/org-wide)', () => {
+    it('passes the scoped facility ids (never undefined) to getDashboardData for a single-facility supervisor', async () => {
+      mockAuth.mockResolvedValue({
+        user: {
+          id: 'sup-1',
+          organizationUserId: 'ou-sup-1',
+          organizationId: 'org-42',
+          role: 'supervisor',
+        },
+      });
+      mockGetGlobalDashboardData.mockResolvedValue({ facilities: [FACILITY_A] });
+      mockListAccessibleFacilities.mockResolvedValue([FACILITY_A]);
+
+      await DashboardPage(noSearchParams());
+
+      expect(mockGetDashboardData).toHaveBeenCalledWith(['fac-a']);
+    });
+
+    it('passes the scoped facility ids (never undefined) to getStatusTrackerSummaryForOrg for a single-facility supervisor', async () => {
+      mockAuth.mockResolvedValue({
+        user: {
+          id: 'sup-1',
+          organizationUserId: 'ou-sup-1',
+          organizationId: 'org-42',
+          role: 'supervisor',
+        },
+      });
+      mockGetGlobalDashboardData.mockResolvedValue({ facilities: [FACILITY_A] });
+      mockListAccessibleFacilities.mockResolvedValue([FACILITY_A]);
+
+      await DashboardPage(noSearchParams());
+
+      expect(mockGetStatusTrackerSummaryForOrg).toHaveBeenCalledWith('org-42', expect.any(Date), [
+        'fac-a',
+      ]);
+    });
+
+    it('an ORG-WIDE role in the single-facility-org branch still gets the unfiltered (undefined) reads — byte-identical invariant', async () => {
+      mockGetGlobalDashboardData.mockResolvedValue({ facilities: [FACILITY_A] });
+
+      await DashboardPage(noSearchParams());
+
+      expect(mockGetDashboardData).toHaveBeenCalledWith(null);
+      expect(mockGetStatusTrackerSummaryForOrg).toHaveBeenCalledWith(
+        'org-42',
+        expect.any(Date),
+        undefined,
+      );
+    });
   });
 });

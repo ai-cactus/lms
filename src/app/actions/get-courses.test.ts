@@ -6,12 +6,14 @@ const {
   mockCourseFindMany,
   mockOfferingFindMany,
   mockEnrollmentGroupBy,
+  mockFacilityFindMany,
 } = vi.hoisted(() => ({
   mockAuth: vi.fn(),
   mockWorkerAuth: vi.fn(),
   mockCourseFindMany: vi.fn(),
   mockOfferingFindMany: vi.fn(),
   mockEnrollmentGroupBy: vi.fn(),
+  mockFacilityFindMany: vi.fn(),
 }));
 
 vi.mock('@/lib/prisma', () => {
@@ -19,6 +21,9 @@ vi.mock('@/lib/prisma', () => {
     course: { findMany: mockCourseFindMany },
     orgCourseOffering: { findMany: mockOfferingFindMany },
     enrollment: { groupBy: mockEnrollmentGroupBy },
+    // getCourses facility-scopes its enrollment tallies, which resolves the
+    // caller's accessible facilities for anything but an org-wide role.
+    facility: { findMany: mockFacilityFindMany },
   };
   return { prisma, default: prisma };
 });
@@ -33,10 +38,16 @@ beforeEach(() => {
   // membership id and org id directly — there is no separate `prisma.user`
   // lookup to enrich the session with org context.
   mockAuth.mockResolvedValue({
-    user: { id: 'admin-1', organizationUserId: 'ou-admin-1', organizationId: 'org-1' },
+    user: {
+      id: 'admin-1',
+      role: 'admin',
+      organizationUserId: 'ou-admin-1',
+      organizationId: 'org-1',
+    },
   });
   mockWorkerAuth.mockResolvedValue(null);
   mockEnrollmentGroupBy.mockResolvedValue([]);
+  mockFacilityFindMany.mockResolvedValue([]);
 });
 
 describe('getCourses', () => {
@@ -173,5 +184,53 @@ describe('getCourses — org-manager visibility (#15)', () => {
     expect(mockEnrollmentGroupBy.mock.calls[0][0].where).toEqual({
       course: { creator: { organizationId: 'org-1' } },
     });
+  });
+});
+
+/**
+ * The per-course headline figures (enrolled/completion) must not disagree with
+ * the roster beneath them: getCourseById's roster is facility-narrowed for a
+ * supervisor, so a card reporting an organisation-wide "42 enrolled" over that
+ * narrowed roster would itself be a leak of the same kind.
+ */
+describe('getCourses — facility-scoped enrollment tallies', () => {
+  const sessionFor = (role: string) => ({
+    user: { id: 'u-1', role, organizationUserId: 'ou-1', organizationId: 'org-1' },
+  });
+
+  beforeEach(() => {
+    mockCourseFindMany.mockResolvedValue([]);
+    mockOfferingFindMany.mockResolvedValue([]);
+    mockEnrollmentGroupBy.mockResolvedValue([]);
+    mockWorkerAuth.mockResolvedValue(null);
+  });
+
+  it('an ORG-WIDE role (admin) applies NO facility filter to the enrollment tally', async () => {
+    mockAuth.mockResolvedValue(sessionFor('admin'));
+
+    await getCourses();
+
+    const where = mockEnrollmentGroupBy.mock.calls[0][0].where;
+    expect(where.facilityId).toBeUndefined();
+  });
+
+  it('a FACILITY-BOUND role (supervisor) narrows the enrollment tally to their accessible facilities', async () => {
+    mockAuth.mockResolvedValue(sessionFor('supervisor'));
+    mockFacilityFindMany.mockResolvedValue([{ id: 'fac-1' }]);
+
+    await getCourses();
+
+    const where = mockEnrollmentGroupBy.mock.calls[0][0].where;
+    expect(where.facilityId).toEqual({ in: ['fac-1'] });
+  });
+
+  it('FAIL-CLOSED: a facility-bound role with no accessible facilities narrows the tally to an impossible `in: []`', async () => {
+    mockAuth.mockResolvedValue(sessionFor('supervisor'));
+    mockFacilityFindMany.mockResolvedValue([]);
+
+    await getCourses();
+
+    const where = mockEnrollmentGroupBy.mock.calls[0][0].where;
+    expect(where.facilityId).toEqual({ in: [] });
   });
 });
