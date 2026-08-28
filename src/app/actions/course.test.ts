@@ -58,14 +58,7 @@ vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-import {
-  getDashboardData,
-  getCourseById,
-  getCourseForOrgView,
-  duplicateCourse,
-  addPrebuiltCourseToOrg,
-  getPrebuiltCourses,
-} from './course';
+import { getDashboardData, getCourseById, getCourseForOrgView, duplicateCourse } from './course';
 import { ADMIN_ROLES, WORKER_ROLES, dbRoleToRoleKey } from '@/lib/rbac/role-utils';
 import { can } from '@/lib/rbac/permissions';
 import type { Role } from '@/types/next-auth';
@@ -503,127 +496,6 @@ describe('duplicateCourse', () => {
       targetOrganizationUserId: ORG_USER_ID,
       titleStrategy: 'duplicate',
     });
-  });
-});
-
-// ── addPrebuiltCourseToOrg ────────────────────────────────────────────────────
-
-describe('addPrebuiltCourseToOrg', () => {
-  function makeSession(role: string, overrides: Record<string, unknown> = {}) {
-    return {
-      user: {
-        id: 'user-1',
-        organizationId: ORG_ID,
-        organizationUserId: ORG_USER_ID,
-        role,
-        ...overrides,
-      },
-    };
-  }
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockAdminAuth.mockResolvedValue(makeSession('owner'));
-    mockWorkerAuth.mockResolvedValue(null);
-    mockCourseFindFirst.mockResolvedValue({ id: 'prebuilt-1' });
-    mockForkCourse.mockResolvedValue({ id: 'course-fork', title: 'Prebuilt Course' });
-  });
-
-  it('throws Unauthorized when there is no session', async () => {
-    mockAdminAuth.mockResolvedValue(null);
-    mockWorkerAuth.mockResolvedValue(null);
-
-    await expect(addPrebuiltCourseToOrg('prebuilt-1')).rejects.toThrow('Unauthorized');
-  });
-
-  it.each(['supervisor', 'finance'])('denies role=%s — lacks course.create', async (role) => {
-    mockAdminAuth.mockResolvedValue(makeSession(role));
-
-    await expect(addPrebuiltCourseToOrg('prebuilt-1')).rejects.toThrow('Insufficient permissions');
-  });
-
-  it("rejects a course that is not isGlobal — never a path to copy another tenant's private course", async () => {
-    mockCourseFindFirst.mockResolvedValue(null);
-
-    await expect(addPrebuiltCourseToOrg('someone-elses-course')).rejects.toThrow(
-      'Course not found',
-    );
-    expect(mockForkCourse).not.toHaveBeenCalled();
-  });
-
-  it('queries with an isGlobal:true filter, not merely an id lookup', async () => {
-    await addPrebuiltCourseToOrg('prebuilt-1');
-
-    expect(mockCourseFindFirst).toHaveBeenCalledWith({
-      where: { id: 'prebuilt-1', isGlobal: true },
-      select: { id: true },
-    });
-  });
-
-  it('forks with titleStrategy "catalog" (keeps the source title verbatim)', async () => {
-    await addPrebuiltCourseToOrg('prebuilt-1');
-
-    expect(mockForkCourse).toHaveBeenCalledWith({
-      sourceCourseId: 'prebuilt-1',
-      targetOrganizationUserId: ORG_USER_ID,
-      titleStrategy: 'catalog',
-    });
-  });
-});
-
-// ── getPrebuiltCourses ────────────────────────────────────────────────────────
-
-describe('getPrebuiltCourses', () => {
-  function makeSession(role: string, overrides: Record<string, unknown> = {}) {
-    return {
-      user: {
-        id: 'user-1',
-        organizationId: ORG_ID,
-        organizationUserId: ORG_USER_ID,
-        role,
-        ...overrides,
-      },
-    };
-  }
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockAdminAuth.mockResolvedValue(makeSession('owner'));
-    mockWorkerAuth.mockResolvedValue(null);
-    mockCourseFindMany.mockResolvedValue([
-      { id: 'c1', title: 'Course 1', description: null, duration: 30 },
-    ]);
-  });
-
-  it('throws Unauthorized when there is no session', async () => {
-    mockAdminAuth.mockResolvedValue(null);
-    mockWorkerAuth.mockResolvedValue(null);
-
-    await expect(getPrebuiltCourses()).rejects.toThrow('Unauthorized');
-  });
-
-  it('denies a role without course.read (defensive — every role currently holds it)', async () => {
-    mockAdminAuth.mockResolvedValue(makeSession('owner'));
-    // Simulate a stale/unrecognized role string.
-    mockAdminAuth.mockResolvedValue(makeSession('bogus-role'));
-
-    await expect(getPrebuiltCourses()).rejects.toThrow('Insufficient permissions');
-  });
-
-  it('queries only published, global courses with a narrow projection, ordered by title', async () => {
-    await getPrebuiltCourses();
-
-    expect(mockCourseFindMany).toHaveBeenCalledWith({
-      where: { isGlobal: true, status: 'published' },
-      select: { id: true, title: true, description: true, duration: true },
-      orderBy: { title: 'asc' },
-    });
-  });
-
-  it('returns the catalog rows as-is', async () => {
-    const result = await getPrebuiltCourses();
-
-    expect(result).toEqual([{ id: 'c1', title: 'Course 1', description: null, duration: 30 }]);
   });
 });
 

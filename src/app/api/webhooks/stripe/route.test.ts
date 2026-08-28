@@ -639,6 +639,83 @@ describe('POST /api/webhooks/stripe — scheduled-change carry-forward (Phase 4 
   });
 });
 
+// ---------------------------------------------------------------------------
+// pauseStartsAt is local-only intent (a DEFERRED pause, product decision
+// 2026-08-27): Stripe knows nothing about it, so it must never appear in
+// either branch of the subscription upsert. Asserting its literal ABSENCE
+// from the write (not just an unchanged value) is deliberate — Prisma only
+// touches the keys present in the payload, so an omitted key is what
+// guarantees a pending pause survives an unrelated webhook event untouched.
+// If a future change ever added `pauseStartsAt` back into this payload (even
+// as `pauseStartsAt: existing?.pauseStartsAt`), it would silently reintroduce
+// a race with the pause sweep and this test is what catches it.
+// ---------------------------------------------------------------------------
+describe('POST /api/webhooks/stripe — does not clobber a pending pause (pauseStartsAt)', () => {
+  it('omits pauseStartsAt from the update payload on an unrelated renewal event, leaving a pending pause intact', async () => {
+    prismaMock.subscription.findUnique.mockResolvedValue({
+      pausedAt: null,
+      pauseEndsAt: new Date('2026-11-20T00:00:00Z'),
+      pauseStartsAt: new Date('2026-09-01T00:00:00Z'),
+      stripeSubscriptionId: 'sub_current',
+      scheduledPlan: null,
+      scheduledBillingCycle: null,
+      scheduledPriceId: null,
+      scheduledEffectiveAt: null,
+      stripeScheduleId: null,
+    });
+
+    // A routine renewal/discount-refresh event — nothing about the pause is
+    // involved, and Stripe reports no pause_collection of its own.
+    const incoming = stripeSubscription({
+      id: 'sub_current',
+      status: 'active',
+      pause_collection: null,
+    });
+    stripeMock.webhooks.constructEvent.mockReturnValue({
+      id: 'evt_pending_pause_untouched',
+      type: 'customer.subscription.updated',
+      data: { object: incoming },
+    });
+
+    await POST(makeReq('{}'));
+
+    expect(prismaMock.subscription.upsert).toHaveBeenCalledOnce();
+    const call = prismaMock.subscription.upsert.mock.calls[0][0];
+    expect(call.update).not.toHaveProperty('pauseStartsAt');
+    expect(call.create).not.toHaveProperty('pauseStartsAt');
+  });
+
+  it('still omits pauseStartsAt even when Stripe itself reports pause_collection active', async () => {
+    prismaMock.subscription.findUnique.mockResolvedValue({
+      pausedAt: null,
+      pauseEndsAt: null,
+      pauseStartsAt: new Date('2026-09-01T00:00:00Z'),
+      stripeSubscriptionId: 'sub_current',
+      scheduledPlan: null,
+      scheduledBillingCycle: null,
+      scheduledPriceId: null,
+      scheduledEffectiveAt: null,
+      stripeScheduleId: null,
+    });
+
+    const incoming = stripeSubscription({
+      id: 'sub_current',
+      status: 'active',
+      pause_collection: { behavior: 'void' },
+    });
+    stripeMock.webhooks.constructEvent.mockReturnValue({
+      id: 'evt_portal_pause',
+      type: 'customer.subscription.updated',
+      data: { object: incoming },
+    });
+
+    await POST(makeReq('{}'));
+
+    const call = prismaMock.subscription.upsert.mock.calls[0][0];
+    expect(call.update).not.toHaveProperty('pauseStartsAt');
+  });
+});
+
 describe('POST /api/webhooks/stripe — invoice line-item period derivation', () => {
   it('invoice.paid persists the line-item-derived period (not the near-equal invoice-level fields) in BOTH create and update', async () => {
     const incoming = stripeInvoice();

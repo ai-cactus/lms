@@ -1,13 +1,24 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { PauseCircle, Play, Loader2 } from 'lucide-react';
+import { PauseCircle, Play, Loader2, X } from 'lucide-react';
+import { logger } from '@/lib/logger';
 import type { PauseState } from '@/lib/billing';
 
+/**
+ * The states this banner can actually be in. `getPauseState` never returns
+ * 'pending' — a scheduled pause is resolved separately by `hasPendingPause`,
+ * because access is untouched until it starts.
+ */
+type BannerPauseState = Exclude<PauseState, 'none'> | 'pending';
+
 interface Props {
-  pauseState: Exclude<PauseState, 'none'>;
+  /** 'pending' is a REQUESTED pause that has not taken effect — access is intact. */
+  pauseState: BannerPauseState;
+  /** ISO timestamp the pause takes effect. Only meaningful when pending. */
+  pauseStartsAt?: string | null;
   pauseEndsAt: string | null;
 }
 
@@ -20,16 +31,65 @@ function formatDate(iso: string): string {
 }
 
 /**
+ * Keyed by the pause it describes, so resuming and pausing again — or a paused
+ * subscription tipping over into `expired` — surfaces the banner afresh instead
+ * of inheriting an earlier dismissal.
+ */
+function dismissalKey(pauseState: BannerPauseState, pauseEndsAt: string | null): string {
+  return `billing-paused-banner-dismissed:${pauseState}:${pauseEndsAt ?? 'open-ended'}`;
+}
+
+/**
  * Site-wide banner shown to admins while billing is paused, so the paused state
  * (and the continue/cancel decision once it expires) is visible everywhere —
  * not only on the billing page.
+ *
+ * A scheduled pause can be dismissed for the current tab only: the subscription
+ * is still paused afterwards, so the notice must return on reload and in a new
+ * tab rather than being silenced for good. The `expired` state is deliberately
+ * not dismissible — it is a blocking continue-or-cancel decision with no end
+ * date that will clear it on its own.
  */
-export default function BillingPausedBanner({ pauseState, pauseEndsAt }: Props) {
+export default function BillingPausedBanner({
+  pauseState,
+  pauseStartsAt = null,
+  pauseEndsAt,
+}: Props) {
   const router = useRouter();
   const [resuming, setResuming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dismissed, setDismissed] = useState(false);
 
   const expired = pauseState === 'expired';
+  const pending = pauseState === 'pending';
+  const dismissible = !expired;
+
+  // Read after mount, never during render: the server has no sessionStorage, so
+  // seeding this from storage in the initial state would desync hydration.
+  useEffect(() => {
+    if (!dismissible) return;
+    try {
+      if (window.sessionStorage.getItem(dismissalKey(pauseState, pauseEndsAt)) === '1') {
+        setDismissed(true);
+      }
+    } catch (err) {
+      // Storage access throws outright in some privacy modes. Leaving the
+      // banner visible is the safe outcome for a billing notice, so this
+      // degrades rather than failing — but it is still recorded.
+      logger.debug({ msg: '[billing] Could not read paused-banner dismissal', err });
+    }
+  }, [dismissible, pauseState, pauseEndsAt]);
+
+  const handleDismiss = useCallback(() => {
+    setDismissed(true);
+    try {
+      window.sessionStorage.setItem(dismissalKey(pauseState, pauseEndsAt), '1');
+    } catch (err) {
+      // The banner still hides for this render; it simply returns on the next
+      // navigation because the choice could not be stored.
+      logger.debug({ msg: '[billing] Could not persist paused-banner dismissal', err });
+    }
+  }, [pauseState, pauseEndsAt]);
 
   const handleResume = useCallback(async () => {
     setResuming(true);
@@ -44,6 +104,8 @@ export default function BillingPausedBanner({ pauseState, pauseEndsAt }: Props) 
       setResuming(false);
     }
   }, [router]);
+
+  if (dismissed) return null;
 
   return (
     <div
@@ -60,14 +122,22 @@ export default function BillingPausedBanner({ pauseState, pauseEndsAt }: Props) 
         />
         <div className="text-sm">
           <p className="font-semibold text-foreground">
-            {expired ? 'Your subscription pause has ended' : 'Your subscription is paused'}
+            {pending
+              ? pauseStartsAt
+                ? `Your subscription will pause on ${formatDate(pauseStartsAt)}`
+                : 'Your subscription is scheduled to pause'
+              : expired
+                ? 'Your subscription pause has ended'
+                : 'Your subscription is paused'}
           </p>
           <p className="text-text-secondary">
-            {expired
-              ? 'Continue your plan to restore access, or cancel your subscription.'
-              : pauseEndsAt
-                ? `Access is limited until you continue. Paused until ${formatDate(pauseEndsAt)}.`
-                : 'Access is limited until you continue your plan.'}
+            {pending
+              ? 'Nothing changes until then — you keep full access for the period you have already paid for.'
+              : expired
+                ? 'Continue your plan to restore access, or cancel your subscription.'
+                : pauseEndsAt
+                  ? `Access is limited until you continue. Paused until ${formatDate(pauseEndsAt)}.`
+                  : 'Access is limited until you continue your plan.'}
             {error && <span className="ml-1 text-error">{error}</span>}
           </p>
         </div>
@@ -84,7 +154,7 @@ export default function BillingPausedBanner({ pauseState, pauseEndsAt }: Props) 
           ) : (
             <Play className="size-4" aria-hidden="true" />
           )}
-          Continue Plan
+          {pending ? 'Cancel pause' : 'Continue Plan'}
         </button>
         <Link
           href={expired ? '/dashboard/billing/cancel' : '/dashboard/billing'}
@@ -92,6 +162,16 @@ export default function BillingPausedBanner({ pauseState, pauseEndsAt }: Props) 
         >
           {expired ? 'Cancel Plan' : 'Manage billing'}
         </Link>
+        {dismissible && (
+          <button
+            type="button"
+            aria-label="Dismiss"
+            onClick={handleDismiss}
+            className="inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-foreground/5 hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+          >
+            <X className="size-4" aria-hidden="true" />
+          </button>
+        )}
       </div>
     </div>
   );

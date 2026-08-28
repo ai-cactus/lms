@@ -31,6 +31,7 @@ export default async function CancelSubscriptionPage() {
               status: true,
               currentPeriodEnd: true,
               cancelAtPeriodEnd: true,
+              pauseStartsAt: true,
               pausedAt: true,
               pauseEndsAt: true,
             },
@@ -54,6 +55,7 @@ export default async function CancelSubscriptionPage() {
     <CancelSubscriptionClient
       planName={planName}
       periodEnd={sub.currentPeriodEnd.toISOString()}
+      pauseStartsAt={sub.pauseStartsAt ? sub.pauseStartsAt.toISOString() : null}
       pausedAt={sub.pausedAt ? sub.pausedAt.toISOString() : null}
       pauseEndsAt={sub.pauseEndsAt ? sub.pauseEndsAt.toISOString() : null}
     />

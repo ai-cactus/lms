@@ -189,9 +189,14 @@ export default function CoursePreview({
 
   const isChapterOpen = (id: string, index: number) => openChapters[id] ?? index === 0; // first chapter defaults open
 
+  // The hero bleeds out of the layout's content padding, but only while this page
+  // really is the top of the scroll area. A site-wide notice (the billing pause
+  // banner) renders ahead of it in that same container, and an unconditional
+  // upward pull would drag the opaque hero over the notice instead of sitting
+  // below it.
   return (
-    <div className="min-h-screen bg-[#f9fafb]">
-      <div className="relative -m-10 mb-10 bg-[#1a202c] px-6 py-10 text-white md:px-[60px]">
+    <div className="min-h-screen bg-[#f9fafb] first:-mt-10">
+      <div className="relative -mx-10 mb-10 bg-[#1a202c] px-6 py-10 text-white md:px-[60px]">
         <div className="relative mx-auto max-w-[1200px]">
           <Link
             href={

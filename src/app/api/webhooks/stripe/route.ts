@@ -278,6 +278,9 @@ async function handleSubscriptionUpsert(sub: Stripe.Subscription) {
   // removed/expired discount clears the persisted columns automatically.
   const discountFields = await extractDiscountFields(sub);
 
+  // `pauseStartsAt` is deliberately absent from both upsert branches below: it
+  // is local-only intent Stripe knows nothing about, so echoing it here would
+  // let a portal-originated event clobber a pending pause.
   const pausedAt = isPaused ? (existing?.pausedAt ?? new Date()) : null;
   // F-040: a pause originating from the Stripe portal has no pauseEndsAt of our
   // own. Leaving it null makes getPauseState() report 'paused' forever — the

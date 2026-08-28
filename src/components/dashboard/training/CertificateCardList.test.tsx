@@ -1,9 +1,13 @@
 /**
  * Pins the illustrated empty state (7377c4f2) that replaced the bare
- * EmptyTableState, and the export-controls gating from the earlier,
- * separate `showExport && certificates.length > 0` fix — both conditions
+ * EmptyTableState, and the export-controls gating from #6 — both conditions
  * now live in the same component and must be verified independently so a
- * regression in one can't hide behind the other.
+ * regression in one cannot hide behind the other.
+ *
+ * #6: the date-range Select and Export button used to render even for an org
+ * with zero certificates, offering an export with nothing to export. They now
+ * require `certificates.length > 0` AND `showExport`. The <h1> and description
+ * stay unconditional — this component is both page chrome and card.
  */
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
@@ -119,6 +123,15 @@ describe('CertificateCardList — export controls gating', () => {
     expect(
       screen.getByText("Here's a quick summary of your earned certificates."),
     ).toBeInTheDocument();
+  });
+
+  it('stays gated with zero certificates even when showExport is explicitly true', () => {
+    render(<CertificateCardList certificates={[]} showExport={true} />);
+
+    expect(
+      screen.queryByRole('combobox', { name: 'Filter certificates by date range' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Export/ })).not.toBeInTheDocument();
   });
 
   it('shows the date-range filter and Export button once at least one certificate exists', () => {

@@ -14,6 +14,8 @@ import { cn } from '@/lib/utils';
 interface Props {
   planName: string;
   periodEnd: string;
+  /** ISO timestamp a REQUESTED pause takes effect, or null. Full access until then. */
+  pauseStartsAt: string | null;
   pausedAt: string | null;
   pauseEndsAt: string | null;
 }
@@ -42,9 +44,16 @@ function formatLongDate(iso: string): string {
   });
 }
 
-export default function CancelSubscriptionClient({ planName, periodEnd, pausedAt }: Props) {
+export default function CancelSubscriptionClient({
+  planName,
+  periodEnd,
+  pauseStartsAt,
+  pausedAt,
+}: Props) {
   const router = useRouter();
-  const alreadyPaused = !!pausedAt;
+  // A pause that is merely scheduled hides the offer just as a live one does —
+  // there is nothing left to request until the existing one is cancelled.
+  const alreadyPaused = !!pausedAt || !!pauseStartsAt;
 
   const [acknowledged, setAcknowledged] = useState(false);
   const [reason, setReason] = useState<string | null>(null);
@@ -242,6 +251,11 @@ export default function CancelSubscriptionClient({ planName, periodEnd, pausedAt
           <p className="text-center text-sm text-text-secondary">
             Pause your subscription and keep your courses, training records, certificates, and
             compliance history securely stored until you return.
+          </p>
+          <p className="text-center text-sm text-text-secondary">
+            The pause starts on <strong>{formatLongDate(periodEnd)}</strong>, at the end of the
+            period you have already paid for — nothing changes before then, and your pause duration
+            is counted from that date.
           </p>
 
           <div>

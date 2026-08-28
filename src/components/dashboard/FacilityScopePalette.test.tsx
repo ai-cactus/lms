@@ -1,7 +1,10 @@
 /**
  * Tests for the facility scope palette: search filtering, chip/row selection,
- * the three footer states (global / drill-down / compare) and the keyboard
- * contract (arrows navigate, space selects, enter applies, escape discards).
+ * the three footer states (global / drill-down / compare), the keyboard
+ * contract (arrows navigate, space selects, enter applies, escape discards)
+ * and the close control (#22 — an actual close button, not the literal text
+ * "esc"; the Escape *key* itself stays Radix's own concern and is covered
+ * separately below).
  */
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -268,6 +271,26 @@ describe('FacilityScopePalette — keyboard', () => {
 
     await user.click(row('Northside Clinic'));
     await user.keyboard('{Escape}');
+
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(onApply).not.toHaveBeenCalled();
+  });
+});
+
+describe('FacilityScopePalette — close button (#22)', () => {
+  it('exposes an accessible "Close" button and no longer renders the literal text "esc"', () => {
+    renderPalette();
+
+    expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument();
+    expect(screen.queryByText('esc')).not.toBeInTheDocument();
+  });
+
+  it('calls onOpenChange(false) without applying when clicked', async () => {
+    const user = userEvent.setup();
+    const { onApply, onOpenChange } = renderPalette();
+
+    await user.click(row('Northside Clinic'));
+    await user.click(screen.getByRole('button', { name: 'Close' }));
 
     expect(onOpenChange).toHaveBeenCalledWith(false);
     expect(onApply).not.toHaveBeenCalled();

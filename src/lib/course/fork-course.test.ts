@@ -1,7 +1,9 @@
 /**
  * Unit tests for src/lib/course/fork-course.ts — the deep-copy mechanic behind
- * both duplicateCourse (same org) and addPrebuiltCourseToOrg (adopt a
- * platform-global course). Covers: full content-tree copy, artifact
+ * duplicateCourse (same org). It also backed addPrebuiltCourseToOrg (adopt a
+ * platform-global course) until that action was retired on 2026-08-28, which
+ * is why the 'catalog' title strategy is still covered here even though no
+ * production caller selects it. Covers: full content-tree copy, artifact
  * by-pointer copy, category cross-tenant drop, approval-field reset,
  * title-strategy branching, and the two not-found error paths.
  */
