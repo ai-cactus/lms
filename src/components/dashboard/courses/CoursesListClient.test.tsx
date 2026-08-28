@@ -122,8 +122,7 @@ describe('CoursesListClient — Video/Reading Course tabs', () => {
     expect(screen.getByRole('tab', { name: 'Video 1' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Reading Course 2' })).toBeInTheDocument();
 
-    // Opens on the tab that actually has courses when only one type is populated... here
-    // both exist, so it defaults to Video per the "prefer Video" rule.
+    // Video is the landing tab.
     expect(screen.getByText('Video Course')).toBeInTheDocument();
     expect(screen.queryByText('Slides Course')).not.toBeInTheDocument();
 
@@ -134,7 +133,13 @@ describe('CoursesListClient — Video/Reading Course tabs', () => {
     expect(screen.getByText('Second Slides Course')).toBeInTheDocument();
   });
 
-  it('opens on the Reading Course tab when the org has only text courses', () => {
+  // The list used to open on whichever type the org had content for. It no
+  // longer does: the Video tab also carries the platform video catalog, so an
+  // empty Video tab no longer implies "this org has no video courses", and the
+  // design pins Video as the landing tab unconditionally.
+  it('still opens on Video when the org has only reading courses', async () => {
+    const user = userEvent.setup();
+
     render(
       <CoursesListClient
         courses={[makeCourse({ id: 's1', title: 'Slides Only', type: 'text' })]}
@@ -142,6 +147,11 @@ describe('CoursesListClient — Video/Reading Course tabs', () => {
         viewerRole="owner"
       />,
     );
+
+    expect(screen.getByRole('tab', { name: 'Video 0', selected: true })).toBeInTheDocument();
+    expect(screen.queryByText('Slides Only')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('tab', { name: 'Reading Course 1' }));
 
     expect(screen.getByText('Slides Only')).toBeInTheDocument();
   });

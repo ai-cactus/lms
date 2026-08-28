@@ -109,6 +109,27 @@ beforeEach(() => {
 //   prisma.orgCourseOffering.findMany join for the caller's adoption state.
 // ---------------------------------------------------------------------------
 
+// The cached catalog read now also selects the course-table columns the
+// consolidated Courses list needs, so fixtures must carry them or the mapper
+// dereferences an undefined Date.
+function catalogRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'c1',
+    title: 'T',
+    description: null,
+    category: null,
+    previewPosterStorageUri: null,
+    status: 'published',
+    thumbnail: null,
+    duration: null,
+    createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+    _count: { lessons: 0 },
+    lessons: [],
+    ...overrides,
+  };
+}
+
 describe('listAvailableVideoCourses', () => {
   it('queries global published video courses, then joins this org offerings separately', async () => {
     setupAdminSession();
@@ -134,7 +155,7 @@ describe('listAvailableVideoCourses', () => {
   it('joins offerings scoped to the caller org and the fetched catalog ids', async () => {
     setupAdminSession();
     mockCourseFindMany.mockResolvedValue([
-      { id: 'c-offered', title: 'Offered Course', description: 'desc', lessons: [] },
+      catalogRow({ id: 'c-offered', title: 'Offered Course', description: 'desc' }),
     ]);
     mockOrgCourseOfferingFindMany.mockResolvedValue([]);
 
@@ -150,23 +171,13 @@ describe('listAvailableVideoCourses', () => {
   it('marks isOffered true when an offering row exists for the org', async () => {
     setupAdminSession();
     mockCourseFindMany.mockResolvedValue([
-      {
+      catalogRow({
         id: 'c-offered',
         title: 'Offered Course',
         description: 'desc',
-        lessons: [
-          {
-            videoDurationSeconds: 300,
-            quiz: { _count: { questions: 5 } },
-          },
-        ],
-      },
-      {
-        id: 'c-not-offered',
-        title: 'Not Offered',
-        description: null,
-        lessons: [],
-      },
+        lessons: [{ videoDurationSeconds: 300, quiz: { _count: { questions: 5 } } }],
+      }),
+      catalogRow({ id: 'c-not-offered', title: 'Not Offered' }),
     ]);
     mockOrgCourseOfferingFindMany.mockResolvedValue([{ id: 'off-1', courseId: 'c-offered' }]);
 
@@ -184,12 +195,9 @@ describe('listAvailableVideoCourses', () => {
   it('maps durationSeconds from lessons[0].videoDurationSeconds', async () => {
     setupAdminSession();
     mockCourseFindMany.mockResolvedValue([
-      {
-        id: 'c1',
-        title: 'T',
-        description: null,
+      catalogRow({
         lessons: [{ videoDurationSeconds: 720, quiz: { _count: { questions: 3 } } }],
-      },
+      }),
     ]);
 
     const [row] = await listAvailableVideoCourses();
