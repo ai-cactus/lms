@@ -133,13 +133,10 @@ describe('CoursesListClient — Video/Reading Course tabs', () => {
     expect(screen.getByText('Second Slides Course')).toBeInTheDocument();
   });
 
-  // The list used to open on whichever type the org had content for. It no
-  // longer does: the Video tab also carries the platform video catalog, so an
-  // empty Video tab no longer implies "this org has no video courses", and the
-  // design pins Video as the landing tab unconditionally.
-  it('still opens on Video when the org has only reading courses', async () => {
-    const user = userEvent.setup();
-
+  // Video is the landing tab, EXCEPT for an org whose only content is reading
+  // courses — landing them on an empty Video tab would hide everything they
+  // have behind a click.
+  it('opens on Reading Course when the org has only reading courses', () => {
     render(
       <CoursesListClient
         courses={[makeCourse({ id: 's1', title: 'Slides Only', type: 'text' })]}
@@ -148,12 +145,25 @@ describe('CoursesListClient — Video/Reading Course tabs', () => {
       />,
     );
 
-    expect(screen.getByRole('tab', { name: 'Video 0', selected: true })).toBeInTheDocument();
-    expect(screen.queryByText('Slides Only')).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole('tab', { name: 'Reading Course 1' }));
-
+    expect(
+      screen.getByRole('tab', { name: 'Reading Course 1', selected: true }),
+    ).toBeInTheDocument();
     expect(screen.getByText('Slides Only')).toBeInTheDocument();
+  });
+
+  it('opens on Video when the org has any video course', () => {
+    render(
+      <CoursesListClient
+        courses={[
+          makeCourse({ id: 'v1', title: 'Video One', type: 'video' }),
+          makeCourse({ id: 's1', title: 'Slides Only', type: 'text' }),
+        ]}
+        hasBilling
+        viewerRole="owner"
+      />,
+    );
+
+    expect(screen.getByRole('tab', { name: 'Video 1', selected: true })).toBeInTheDocument();
   });
 });
 

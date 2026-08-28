@@ -377,11 +377,14 @@ export default function CoursesListClient({
   const canEditCourse = can(viewerRoleKey, 'course.edit');
   const canDeleteCourse = can(viewerRoleKey, 'course.delete');
 
-  // Video is the landing tab unconditionally, per the design. It used to open
-  // on whichever type the org had content for; that fallback is gone because
-  // the tab now also carries the platform video catalog, so "empty Video tab"
-  // no longer means "this org has no video courses".
-  const [activeTab, setActiveTab] = useState<CourseTypeTab>('video');
+  // Video is the landing tab, except for an org whose only content is reading
+  // courses — landing them on an empty tab hides everything they have behind a
+  // click. Read once as the initial value: the tab is the user's afterwards, so
+  // recomputing it when `courses` changes would yank them out of a tab they
+  // deliberately opened.
+  const [activeTab, setActiveTab] = useState<CourseTypeTab>(() =>
+    courses.length > 0 && courses.every((course) => course.type !== 'video') ? 'slides' : 'video',
+  );
 
   // Sync when server props change after revalidatePath
   useEffect(() => {
