@@ -1,7 +1,12 @@
 /**
  * Deep-copies a course into a new, independent course owned by another
- * membership. One mechanic serves both product surfaces: duplicating a course
- * inside an org, and adopting a platform prebuilt (`isGlobal`) course into one.
+ * membership. The live caller is duplicating a course inside an org.
+ *
+ * This also served adopting a platform prebuilt (`isGlobal`) course into an
+ * org until 2026-08-28, when that route was retired: prebuilt courses are
+ * video courses owned by every org from creation, so there is nothing to
+ * adopt. The `titleStrategy: 'catalog'` branch is what that surface used and
+ * currently has no production caller.
  *
  * The whole content tree — modules → lessons → quizzes → questions — is copied.
  * Artifacts are copied BY POINTER (the same `storageUri`), so no object storage
