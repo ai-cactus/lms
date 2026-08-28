@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { PauseCircle, Play, Loader2 } from 'lucide-react';
+import { PauseCircle, Play, Loader2, X } from 'lucide-react';
+import { logger } from '@/lib/logger';
 import type { PauseState } from '@/lib/billing';
 
 interface Props {
@@ -23,12 +24,24 @@ function formatDate(iso: string): string {
 }
 
 /**
- * Site-wide banner shown to admins about the pause lifecycle, so it is visible
- * everywhere — not only on the billing page. Three variants:
- *   • pending — a pause is scheduled but has NOT taken effect; access is
- *     completely intact and the banner is purely informational + cancellable.
- *   • paused  — the pause is live and access is limited.
- *   • expired — the pause window elapsed; continue or cancel is now required.
+ * Keyed by the pause it describes, so resuming and pausing again — or a paused
+ * subscription tipping over into `expired` — surfaces the banner afresh instead
+ * of inheriting an earlier dismissal.
+ */
+function dismissalKey(pauseState: PauseState, pauseEndsAt: string | null): string {
+  return `billing-paused-banner-dismissed:${pauseState}:${pauseEndsAt ?? 'open-ended'}`;
+}
+
+/**
+ * Site-wide banner shown to admins while billing is paused, so the paused state
+ * (and the continue/cancel decision once it expires) is visible everywhere —
+ * not only on the billing page.
+ *
+ * A scheduled pause can be dismissed for the current tab only: the subscription
+ * is still paused afterwards, so the notice must return on reload and in a new
+ * tab rather than being silenced for good. The `expired` state is deliberately
+ * not dismissible — it is a blocking continue-or-cancel decision with no end
+ * date that will clear it on its own.
  */
 export default function BillingPausedBanner({
   pauseState,
@@ -38,9 +51,37 @@ export default function BillingPausedBanner({
   const router = useRouter();
   const [resuming, setResuming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dismissed, setDismissed] = useState(false);
 
   const expired = pauseState === 'expired';
-  const pending = pauseState === 'pending';
+  const dismissible = !expired;
+
+  // Read after mount, never during render: the server has no sessionStorage, so
+  // seeding this from storage in the initial state would desync hydration.
+  useEffect(() => {
+    if (!dismissible) return;
+    try {
+      if (window.sessionStorage.getItem(dismissalKey(pauseState, pauseEndsAt)) === '1') {
+        setDismissed(true);
+      }
+    } catch (err) {
+      // Storage access throws outright in some privacy modes. Leaving the
+      // banner visible is the safe outcome for a billing notice, so this
+      // degrades rather than failing — but it is still recorded.
+      logger.debug({ msg: '[billing] Could not read paused-banner dismissal', err });
+    }
+  }, [dismissible, pauseState, pauseEndsAt]);
+
+  const handleDismiss = useCallback(() => {
+    setDismissed(true);
+    try {
+      window.sessionStorage.setItem(dismissalKey(pauseState, pauseEndsAt), '1');
+    } catch (err) {
+      // The banner still hides for this render; it simply returns on the next
+      // navigation because the choice could not be stored.
+      logger.debug({ msg: '[billing] Could not persist paused-banner dismissal', err });
+    }
+  }, [pauseState, pauseEndsAt]);
 
   const handleResume = useCallback(async () => {
     setResuming(true);
@@ -55,6 +96,8 @@ export default function BillingPausedBanner({
       setResuming(false);
     }
   }, [router]);
+
+  if (dismissed) return null;
 
   return (
     <div
@@ -111,6 +154,16 @@ export default function BillingPausedBanner({
         >
           {expired ? 'Cancel Plan' : 'Manage billing'}
         </Link>
+        {dismissible && (
+          <button
+            type="button"
+            aria-label="Dismiss"
+            onClick={handleDismiss}
+            className="inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-foreground/5 hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+          >
+            <X className="size-4" aria-hidden="true" />
+          </button>
+        )}
       </div>
     </div>
   );
