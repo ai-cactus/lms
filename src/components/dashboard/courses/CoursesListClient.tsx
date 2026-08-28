@@ -377,14 +377,11 @@ export default function CoursesListClient({
   const canEditCourse = can(viewerRoleKey, 'course.edit');
   const canDeleteCourse = can(viewerRoleKey, 'course.delete');
 
-  // Landing on an empty tab reads as "no courses", so open on the type the org
-  // actually has, preferring Video when both (or neither) are populated.
-  const [activeTab, setActiveTab] = useState<CourseTypeTab>(() =>
-    courses.some((course) => course.type === COURSE_TYPE_BY_TAB.video) ||
-    !courses.some((course) => course.type === COURSE_TYPE_BY_TAB.slides)
-      ? 'video'
-      : 'slides',
-  );
+  // Video is the landing tab unconditionally, per the design. It used to open
+  // on whichever type the org had content for; that fallback is gone because
+  // the tab now also carries the platform video catalog, so "empty Video tab"
+  // no longer means "this org has no video courses".
+  const [activeTab, setActiveTab] = useState<CourseTypeTab>('video');
 
   // Sync when server props change after revalidatePath
   useEffect(() => {
@@ -461,6 +458,13 @@ export default function CoursesListClient({
   };
 
   const buildRowActions = (course: CourseWithStats): RowAction[] => {
+    // A platform catalog course this org has not adopted is authored by another
+    // tenant: rename and delete would mutate it for every organization, its
+    // source document belongs to the publishing tenant, and assignCourseToUsers
+    // rejects it on its creator-organization check. The row stays view-only —
+    // exactly what the catalog card it replaces offered.
+    if (course.isGlobalCatalog) return [];
+
     const actions: RowAction[] = [];
 
     if (canAssign) {
