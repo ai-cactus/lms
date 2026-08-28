@@ -15,6 +15,7 @@ const {
   mockOrgCourseOfferingFindMany,
   mockCourseFindMany,
   mockCourseFindFirst,
+  mockEnrollmentGroupBy,
 } = vi.hoisted(() => {
   const mockAdminAuth = vi.fn();
   const mockWorkerAuth = vi.fn();
@@ -26,6 +27,7 @@ const {
   const mockOrgCourseOfferingFindMany = vi.fn();
   const mockCourseFindMany = vi.fn();
   const mockCourseFindFirst = vi.fn();
+  const mockEnrollmentGroupBy = vi.fn();
 
   return {
     mockAdminAuth,
@@ -38,6 +40,7 @@ const {
     mockOrgCourseOfferingFindMany,
     mockCourseFindMany,
     mockCourseFindFirst,
+    mockEnrollmentGroupBy,
   };
 });
 
@@ -51,6 +54,7 @@ vi.mock('@/lib/prisma', () => {
       delete: mockOrgCourseOfferingDelete,
       findMany: mockOrgCourseOfferingFindMany,
     },
+    enrollment: { groupBy: mockEnrollmentGroupBy },
   };
   return { prisma, default: prisma };
 });
@@ -58,17 +62,20 @@ vi.mock('@/lib/prisma', () => {
 vi.mock('@/auth', () => ({ auth: mockAdminAuth }));
 vi.mock('@/auth.worker', () => ({ auth: mockWorkerAuth }));
 // unstable_cache is a passthrough so a cached fetcher re-runs against the
-// current mock on every call rather than hitting Next's real cache store.
-// Nothing in this file exercises getGlobalVideoCatalog any more: the tests
-// that pinned its query shape/mapping went with listAvailableVideoCourses,
-// and its surviving caller (listGlobalVideoCatalogCourses) has no unit test
-// here — the Courses page test mocks it out wholesale.
+// current mock on every call rather than hitting Next's real cache store —
+// this lets the listGlobalVideoCatalogCourses tests below assert on the exact
+// Prisma `where`/`orderBy` getGlobalVideoCatalog builds on every call.
 vi.mock('next/cache', () => ({
   revalidatePath: mockRevalidate,
   unstable_cache: (fn: (...args: unknown[]) => unknown) => fn,
 }));
 
-import { offerCourseToOrg, updateOffering, withdrawOffering } from './offering';
+import {
+  offerCourseToOrg,
+  updateOffering,
+  withdrawOffering,
+  listGlobalVideoCatalogCourses,
+} from './offering';
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -97,6 +104,142 @@ beforeEach(() => {
   mockAdminAuth.mockResolvedValue(null);
   mockWorkerAuth.mockResolvedValue(null);
   mockOrgCourseOfferingFindMany.mockResolvedValue([]);
+  mockEnrollmentGroupBy.mockResolvedValue([]);
+});
+
+// ---------------------------------------------------------------------------
+// listGlobalVideoCatalogCourses
+//
+// The deleted `listAvailableVideoCourses` describe block was the only place
+// pinning getGlobalVideoCatalog's query shape and auth guards. This restores
+// that coverage against its surviving caller — see the note on the removed
+// block above `unstable_cache`.
+// ---------------------------------------------------------------------------
+
+function rawCourseRow(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    id: 'video-1',
+    title: 'Bloodborne Pathogens',
+    description: 'Annual refresher',
+    category: 'Compliance',
+    previewPosterStorageUri: null,
+    status: 'published',
+    thumbnail: '/thumb.png',
+    duration: 45,
+    createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    updatedAt: new Date('2026-01-02T00:00:00.000Z'),
+    _count: { lessons: 1 },
+    lessons: [{ videoDurationSeconds: 120, quiz: { _count: { questions: 3 } } }],
+    ...overrides,
+  };
+}
+
+describe('listGlobalVideoCatalogCourses', () => {
+  it('queries the cached catalog for published global video courses only, tenant-independent', async () => {
+    setupAdminSession();
+    mockCourseFindMany.mockResolvedValue([]);
+
+    await listGlobalVideoCatalogCourses();
+
+    expect(mockCourseFindMany).toHaveBeenCalledOnce();
+    const arg = mockCourseFindMany.mock.calls[0][0];
+    expect(arg.where).toEqual({ type: 'video', isGlobal: true, status: 'published' });
+    expect(arg.orderBy).toEqual({ createdAt: 'asc' });
+    // The cached read must never carry a tenant id — one invalidation refreshes
+    // every org at once, and a leaked organizationId here would mean one org's
+    // cache entry could serve another org's data.
+    expect(arg.where).not.toHaveProperty('organizationId');
+  });
+
+  it('throws Unauthorized when no session', async () => {
+    await expect(listGlobalVideoCatalogCourses()).rejects.toThrow('Unauthorized');
+    expect(mockCourseFindMany).not.toHaveBeenCalled();
+  });
+
+  it('throws "No organization" when the caller has no active membership', async () => {
+    mockAdminAuth.mockResolvedValue({
+      user: { id: ADMIN_USER_ID, organizationId: null, organizationUserId: null, role: 'owner' },
+    });
+    mockWorkerAuth.mockResolvedValue(null);
+
+    await expect(listGlobalVideoCatalogCourses()).rejects.toThrow('No organization');
+    expect(mockCourseFindMany).not.toHaveBeenCalled();
+  });
+
+  it('throws Forbidden when caller has a non-admin role', async () => {
+    mockAdminAuth.mockResolvedValue({
+      user: {
+        id: ADMIN_USER_ID,
+        organizationId: ORG_ID,
+        organizationUserId: 'ou-worker-1',
+        role: 'nurse',
+      },
+    });
+    mockWorkerAuth.mockResolvedValue(null);
+
+    await expect(listGlobalVideoCatalogCourses()).rejects.toThrow('Forbidden');
+    expect(mockCourseFindMany).not.toHaveBeenCalled();
+  });
+
+  it('skips the enrollment query entirely when the catalog is empty', async () => {
+    setupAdminSession();
+    mockCourseFindMany.mockResolvedValue([]);
+
+    const result = await listGlobalVideoCatalogCourses();
+
+    expect(result).toEqual([]);
+    expect(mockEnrollmentGroupBy).not.toHaveBeenCalled();
+  });
+
+  it("scopes enrollment tallies to the caller's own organization, not global counts", async () => {
+    setupAdminSession();
+    mockCourseFindMany.mockResolvedValue([rawCourseRow({ id: 'video-1' })]);
+    mockEnrollmentGroupBy.mockResolvedValue([
+      { courseId: 'video-1', status: 'completed', _count: { _all: 2 } },
+    ]);
+
+    await listGlobalVideoCatalogCourses();
+
+    expect(mockEnrollmentGroupBy).toHaveBeenCalledOnce();
+    const arg = mockEnrollmentGroupBy.mock.calls[0][0];
+    expect(arg.by).toEqual(['courseId', 'status']);
+    expect(arg.where.courseId).toEqual({ in: ['video-1'] });
+    // A cross-tenant count here would leak into a number every org's page can
+    // see, so it must be gated to THIS org's staff, never the whole platform.
+    expect(arg.where.organizationUser).toEqual({ organizationId: ORG_ID });
+  });
+
+  it('projects catalog rows into CourseWithStats shape with this org enrollment tallies joined', async () => {
+    setupAdminSession();
+    mockCourseFindMany.mockResolvedValue([rawCourseRow({ id: 'video-1' })]);
+    mockEnrollmentGroupBy.mockResolvedValue([
+      { courseId: 'video-1', status: 'completed', _count: { _all: 1 } },
+      { courseId: 'video-1', status: 'in_progress', _count: { _all: 3 } },
+    ]);
+
+    const [row] = await listGlobalVideoCatalogCourses();
+
+    expect(row).toMatchObject({
+      id: 'video-1',
+      title: 'Bloodborne Pathogens',
+      type: 'video',
+      enrollmentsCount: 4,
+      completionRate: 25,
+      sourceDocumentId: null,
+      isGlobalCatalog: true,
+    });
+  });
+
+  it('a course with no enrollment rows gets a zero tally instead of throwing', async () => {
+    setupAdminSession();
+    mockCourseFindMany.mockResolvedValue([rawCourseRow({ id: 'video-unenrolled' })]);
+    mockEnrollmentGroupBy.mockResolvedValue([]);
+
+    const [row] = await listGlobalVideoCatalogCourses();
+
+    expect(row.enrollmentsCount).toBe(0);
+    expect(row.completionRate).toBe(0);
+  });
 });
 
 // ---------------------------------------------------------------------------
