@@ -34,29 +34,32 @@ function resolveOrg(sessionUser: { organizationId: string | null; role: Role }):
 // ---------------------------------------------------------------------------
 // Global video catalog (tenant-independent, cached)
 //   The published-global-video list is identical for every org between
-//   publishes, so it's cached for 1h and tagged `video-catalog`. The per-org
-//   "is this offered" flag is joined AFTER this read (see
-//   listAvailableVideoCourses) so the cached payload never carries a tenant id
-//   and one invalidation refreshes every org at once. Invalidate via
-//   revalidateTag('video-catalog') at every global-video create / edit /
-//   status-change site (see video-course.ts).
+//   publishes, so it's cached for 1h and tagged `video-catalog`. Anything
+//   tenant-specific — enrollment tallies, adoption state — is joined AFTER
+//   this read (see listGlobalVideoCatalogCourses) so the cached payload never
+//   carries a tenant id and one invalidation refreshes every org at once.
+//   Invalidate via revalidateTag('video-catalog') at every global-video
+//   create / edit / status-change site (see video-course.ts).
 //
 //   `hasPoster` is the one field NOT written by a server action: the poster is
 //   produced by scripts/transcode-worker.ts, a detached child process with no
 //   access to the Next cache, so it cannot revalidate the tag when it lands.
 //   A course therefore stays `hasPoster: false` here for up to the 1h
-//   `revalidate` after its transcode finishes. That is deliberate and safe —
-//   the card falls back to its gradient, which is exactly what it shows for a
-//   posterless course anyway, and suppressing the request is the whole point of
-//   carrying the flag. Adding the field needs no cache-key change (the key is
-//   the static ['global-video-catalog'] with no arguments) and no new
-//   invalidation site: every existing revalidateTag('video-catalog') call
-//   rebuilds the whole row including this field.
+//   `revalidate` after its transcode finishes. That staleness was deliberate
+//   and safe while a card consumed the flag: a false reading only meant the
+//   gradient placeholder, exactly what a posterless course shows anyway.
+//   No caller reads `hasPoster` since the catalog grid was removed — see the
+//   note on the unread fields below.
 // ---------------------------------------------------------------------------
 interface GlobalVideoCatalogRow {
   id: string;
   title: string;
   description: string | null;
+  // Currently unread by the sole consumer (listGlobalVideoCatalogCourses):
+  // these four served the removed catalog-grid card. Kept because dropping
+  // them also means narrowing this cached read's Prisma `select` (the
+  // `lessons` and `previewPosterStorageUri` branches), which is a separate,
+  // behaviour-affecting change rather than dead-code cleanup.
   category: string | null;
   durationSeconds: number | null;
   questionCount: number;
@@ -221,7 +224,8 @@ export async function listOfferedVideoCourses(): Promise<OfferedVideoCourseRow[]
 
   const offerings = await prisma.orgCourseOffering.findMany({
     // Exclude soft-deleted (inactive) courses so a deactivated course drops out
-    // of the org's offered list, mirroring listAvailableVideoCourses.
+    // of the org's offered list, mirroring the cached global catalog's own
+    // `status: 'published'` filter.
     where: { organizationId, course: { status: 'published' } },
     orderBy: { createdAt: 'desc' },
     include: {

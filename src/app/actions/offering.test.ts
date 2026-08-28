@@ -57,9 +57,12 @@ vi.mock('@/lib/prisma', () => {
 
 vi.mock('@/auth', () => ({ auth: mockAdminAuth }));
 vi.mock('@/auth.worker', () => ({ auth: mockWorkerAuth }));
-// unstable_cache is a passthrough here so each test call re-runs the wrapped
-// fetcher against the current mock — this file doesn't exercise Next's real
-// cache store, only that getGlobalVideoCatalog's query shape/mapping is correct.
+// unstable_cache is a passthrough so a cached fetcher re-runs against the
+// current mock on every call rather than hitting Next's real cache store.
+// Nothing in this file exercises getGlobalVideoCatalog any more: the tests
+// that pinned its query shape/mapping went with listAvailableVideoCourses,
+// and its surviving caller (listGlobalVideoCatalogCourses) has no unit test
+// here — the Courses page test mocks it out wholesale.
 vi.mock('next/cache', () => ({
   revalidatePath: mockRevalidate,
   unstable_cache: (fn: (...args: unknown[]) => unknown) => fn,
