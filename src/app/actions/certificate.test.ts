@@ -45,7 +45,7 @@ const ENROLLMENT_ID = 'enrollment-abc-123';
 
 const ORG_USER_ID = 'ou-1';
 
-function makeEnrollment(score: number | null | undefined) {
+function makeEnrollment(score: number | null | undefined, overrides: Record<string, unknown> = {}) {
   return {
     id: ENROLLMENT_ID,
     organizationUserId: ORG_USER_ID,
@@ -59,6 +59,7 @@ function makeEnrollment(score: number | null | undefined) {
       organization: { name: 'Acme Co' },
     },
     course: { title: 'Safety 101' },
+    ...overrides,
   };
 }
 
@@ -123,5 +124,97 @@ describe('issueCertificate — score fallback (F-039)', () => {
     const certificate = result.certificate;
 
     expect(certificate.score).toBe(87);
+  });
+});
+
+/**
+ * fix/server-action-error-messages: issueCertificate's refusals are returned
+ * as `{ ok: false, reason }` instead of thrown, so the reason survives
+ * Next.js's production redaction of Server Action errors. Both refusal paths
+ * must be fail-closed — no certificate row, no PDF generation, no upload.
+ */
+describe('issueCertificate — refusals are returned, not thrown, and fail-closed', () => {
+  it('refuses when the course is not completed or attested', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue(
+      makeEnrollment(50, { status: 'in_progress' }),
+    );
+
+    const result = await issueCertificate(ENROLLMENT_ID);
+
+    expect(result).toEqual({
+      ok: false,
+      reason: 'Course must be completed to issue a certificate',
+    });
+    expect(prismaMock.certificate.create).not.toHaveBeenCalled();
+    expect(mockGeneratePdf).not.toHaveBeenCalled();
+    expect(mockUploadFile).not.toHaveBeenCalled();
+  });
+
+  it('refuses when the recipient has no full name on their profile', async () => {
+    const enrollment = makeEnrollment(90);
+    enrollment.organizationUser.user.fullName = '   ';
+    prismaMock.enrollment.findUnique.mockResolvedValue(enrollment);
+
+    const result = await issueCertificate(ENROLLMENT_ID);
+
+    expect(result).toEqual({
+      ok: false,
+      reason: 'Set your full name in your profile before earning a certificate.',
+    });
+    expect(prismaMock.certificate.create).not.toHaveBeenCalled();
+    expect(mockGeneratePdf).not.toHaveBeenCalled();
+    expect(mockUploadFile).not.toHaveBeenCalled();
+  });
+
+  it('refuses when fullName is null on the profile', async () => {
+    const enrollment = makeEnrollment(90);
+    enrollment.organizationUser.user.fullName = null as unknown as string;
+    prismaMock.enrollment.findUnique.mockResolvedValue(enrollment);
+
+    const result = await issueCertificate(ENROLLMENT_ID);
+
+    expect(result).toEqual({
+      ok: false,
+      reason: 'Set your full name in your profile before earning a certificate.',
+    });
+    expect(prismaMock.certificate.create).not.toHaveBeenCalled();
+  });
+
+  it('returns the existing certificate as ok:true without re-generating a PDF (idempotent)', async () => {
+    const existingCertificate = { id: 'cert-existing', score: 75 };
+    prismaMock.enrollment.findUnique.mockResolvedValue({
+      ...makeEnrollment(75),
+      certificate: existingCertificate,
+    });
+
+    const result = await issueCertificate(ENROLLMENT_ID);
+
+    expect(result).toEqual({ ok: true, certificate: existingCertificate });
+    expect(prismaMock.certificate.create).not.toHaveBeenCalled();
+    expect(mockGeneratePdf).not.toHaveBeenCalled();
+    expect(mockUploadFile).not.toHaveBeenCalled();
+  });
+
+  it('generic guards still throw — Unauthorized when neither session resolves', async () => {
+    mockAdminAuth.mockResolvedValue(null);
+    mockWorkerAuth.mockResolvedValue(null);
+
+    await expect(issueCertificate(ENROLLMENT_ID)).rejects.toThrow('Unauthorized');
+    expect(prismaMock.enrollment.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('generic guards still throw — Unauthorized for a caller who is neither the learner nor an admin in the org', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue(makeEnrollment(90));
+    mockWorkerAuth.mockResolvedValue({
+      user: {
+        id: 'other-worker',
+        role: 'worker',
+        organizationUserId: 'ou-someone-else',
+        organizationId: 'org-1',
+      },
+    });
+
+    await expect(issueCertificate(ENROLLMENT_ID)).rejects.toThrow('Unauthorized');
+    expect(prismaMock.certificate.create).not.toHaveBeenCalled();
   });
 });
