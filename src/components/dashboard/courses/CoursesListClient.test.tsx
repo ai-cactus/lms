@@ -165,6 +165,43 @@ describe('CoursesListClient — Video/Reading Course tabs', () => {
 
     expect(screen.getByRole('tab', { name: 'Video 1', selected: true })).toBeInTheDocument();
   });
+
+  // The landing tab is computed ONCE via a lazy useState initialiser — recomputing
+  // it whenever `courses` changes (e.g. after a revalidatePath refetch) would yank
+  // a user out of a tab they deliberately opened.
+  it('does not move the user off a tab they already selected when courses change afterward', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <CoursesListClient
+        courses={[
+          makeCourse({ id: 'v1', title: 'Video One', type: 'video' }),
+          makeCourse({ id: 's1', title: 'Slides Only', type: 'text' }),
+        ]}
+        hasBilling
+        viewerRole="owner"
+      />,
+    );
+
+    await user.click(screen.getByRole('tab', { name: 'Reading Course 1' }));
+    expect(
+      screen.getByRole('tab', { name: 'Reading Course 1', selected: true }),
+    ).toBeInTheDocument();
+
+    // Simulate a server refetch that now has only video courses — a fresh
+    // mount would default to the Video tab, but this is a prop update, not a
+    // remount, so the user's own tab choice must survive.
+    rerender(
+      <CoursesListClient
+        courses={[makeCourse({ id: 'v1', title: 'Video One', type: 'video' })]}
+        hasBilling
+        viewerRole="owner"
+      />,
+    );
+
+    expect(
+      screen.getByRole('tab', { name: 'Reading Course 0', selected: true }),
+    ).toBeInTheDocument();
+  });
 });
 
 describe('CoursesListClient — table columns', () => {
@@ -197,6 +234,85 @@ describe('CoursesListClient — table columns', () => {
     expect(
       within(screen.getByText('Undescribed').closest('tr')!).getByText('—'),
     ).toBeInTheDocument();
+  });
+});
+
+describe('CoursesListClient — row click navigates to the training detail route', () => {
+  it('navigates to /dashboard/training/courses/{id} when a row is clicked', async () => {
+    const user = userEvent.setup();
+    render(
+      <CoursesListClient
+        courses={[makeCourse({ id: 'course-42', title: 'Infection Control' })]}
+        hasBilling
+        viewerRole="owner"
+      />,
+    );
+
+    await user.click(screen.getByText('Infection Control'));
+
+    expect(mockPush).toHaveBeenCalledWith('/dashboard/training/courses/course-42');
+  });
+
+  it('clicking the row-actions cell does not also trigger row navigation', async () => {
+    const user = userEvent.setup();
+    render(
+      <CoursesListClient
+        courses={[makeCourse({ id: 'course-42', title: 'Infection Control' })]}
+        hasBilling
+        viewerRole="owner"
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Assign to staff' }));
+
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+});
+
+describe('CoursesListClient — search narrows within the active tab', () => {
+  it('a search term only matches within the active tab, never across it', async () => {
+    const user = userEvent.setup();
+    render(
+      <CoursesListClient
+        courses={[
+          makeCourse({ id: 'v1', title: 'Shared Name Video', type: 'video' }),
+          makeCourse({ id: 's1', title: 'Shared Name Slides', type: 'text' }),
+          makeCourse({ id: 'v2', title: 'Other Video', type: 'video' }),
+        ]}
+        hasBilling
+        viewerRole="owner"
+      />,
+    );
+
+    // Lands on Video by default.
+    await user.type(screen.getByRole('textbox', { name: 'Search courses' }), 'Shared Name');
+
+    expect(screen.getByText('Shared Name Video')).toBeInTheDocument();
+    expect(screen.queryByText('Other Video')).not.toBeInTheDocument();
+    // The matching Reading-Course-tab title must not leak into the Video tab.
+    expect(screen.queryByText('Shared Name Slides')).not.toBeInTheDocument();
+  });
+
+  it('switching tabs re-applies the same search term to the newly active tab only', async () => {
+    const user = userEvent.setup();
+    render(
+      <CoursesListClient
+        courses={[
+          makeCourse({ id: 'v1', title: 'Shared Name Video', type: 'video' }),
+          makeCourse({ id: 's1', title: 'Shared Name Slides', type: 'text' }),
+        ]}
+        hasBilling
+        viewerRole="owner"
+      />,
+    );
+
+    await user.type(screen.getByRole('textbox', { name: 'Search courses' }), 'Shared Name');
+    expect(screen.getByText('Shared Name Video')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('tab', { name: 'Reading Course 1' }));
+
+    expect(screen.queryByText('Shared Name Video')).not.toBeInTheDocument();
+    expect(screen.getByText('Shared Name Slides')).toBeInTheDocument();
   });
 });
 
@@ -274,6 +390,42 @@ describe('CoursesListClient — row action gating per role', () => {
 
     const row = screen.getByText('Infection Control').closest('tr')!;
     expect(within(row).queryByTestId('row-actions')).not.toBeInTheDocument();
+  });
+
+  // Guard against mutating a course every tenant shares: a catalog row that
+  // this org has not adopted is authored by another tenant, so buildRowActions
+  // returns [] for it regardless of the viewer's own grants — even an owner,
+  // who gets the full action set on their own courses, sees no actions here.
+  it('an isGlobalCatalog row has NO row actions for an owner — no Assign/Rename/Delete/View Source Document', () => {
+    const catalogCourse = makeCourse({
+      id: 'catalog-1',
+      title: 'Platform Catalog Course',
+      isGlobalCatalog: true,
+    });
+    render(<CoursesListClient courses={[catalogCourse]} hasBilling viewerRole="owner" />);
+
+    const row = screen.getByText('Platform Catalog Course').closest('tr')!;
+    expect(within(row).queryByTestId('row-actions')).not.toBeInTheDocument();
+  });
+
+  it('an own (non-catalog) row alongside a catalog row keeps its own full action set', () => {
+    const ownCourse = makeCourse({ id: 'own-1', title: 'Own Course' });
+    const catalogCourse = makeCourse({
+      id: 'catalog-1',
+      title: 'Platform Catalog Course',
+      isGlobalCatalog: true,
+    });
+    render(
+      <CoursesListClient courses={[ownCourse, catalogCourse]} hasBilling viewerRole="owner" />,
+    );
+
+    const ownRow = screen.getByText('Own Course').closest('tr')!;
+    expect(within(ownRow).getByRole('button', { name: 'Assign to staff' })).toBeInTheDocument();
+    expect(within(ownRow).getByRole('button', { name: 'Rename' })).toBeInTheDocument();
+    expect(within(ownRow).getByRole('button', { name: 'Delete' })).toBeInTheDocument();
+
+    const catalogRow = screen.getByText('Platform Catalog Course').closest('tr')!;
+    expect(within(catalogRow).queryByTestId('row-actions')).not.toBeInTheDocument();
   });
 });
 
