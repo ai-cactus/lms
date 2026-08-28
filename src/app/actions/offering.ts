@@ -6,6 +6,7 @@ import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath, unstable_cache } from 'next/cache';
 import type { Role } from '@/types/next-auth';
+import type { CourseWithStats } from '@/types/course';
 
 // ---------------------------------------------------------------------------
 // Session helper — mirrors the pattern in course.ts
@@ -75,6 +76,15 @@ interface GlobalVideoCatalogRow {
   durationSeconds: number | null;
   questionCount: number;
   hasPoster: boolean;
+  // Course-table fields, so the consolidated Courses list can be served from
+  // the same cached read. Timestamps are ISO strings, not Dates: this payload
+  // round-trips through the cache's serializer, which does not preserve Date.
+  status: string;
+  thumbnail: string | null;
+  durationMinutes: number | null;
+  lessonCount: number;
+  createdAtIso: string;
+  updatedAtIso: string;
 }
 
 const getGlobalVideoCatalog = unstable_cache(
@@ -89,6 +99,12 @@ const getGlobalVideoCatalog = unstable_cache(
         description: true,
         category: true,
         previewPosterStorageUri: true,
+        status: true,
+        thumbnail: true,
+        duration: true,
+        createdAt: true,
+        updatedAt: true,
+        _count: { select: { lessons: true } },
         lessons: {
           select: {
             videoDurationSeconds: true,
@@ -108,6 +124,12 @@ const getGlobalVideoCatalog = unstable_cache(
         durationSeconds: firstLesson?.videoDurationSeconds ?? null,
         questionCount: firstLesson?.quiz?._count?.questions ?? 0,
         hasPoster: Boolean(course.previewPosterStorageUri),
+        status: course.status,
+        thumbnail: course.thumbnail,
+        durationMinutes: course.duration,
+        lessonCount: course._count.lessons,
+        createdAtIso: course.createdAt.toISOString(),
+        updatedAtIso: course.updatedAt.toISOString(),
       };
     });
   },
@@ -139,11 +161,88 @@ export async function listAvailableVideoCourses(): Promise<VideoCourseAvailabili
     : [];
   const offeringByCourse = new Map(offerings.map((o) => [o.courseId, o.id]));
 
+  // Projected field-by-field rather than spread: the cached row now carries
+  // course-table columns this payload has no use for, and they must not be
+  // shipped to the client.
   return catalog.map((course) => ({
-    ...course,
+    id: course.id,
+    title: course.title,
+    description: course.description,
+    category: course.category,
+    durationSeconds: course.durationSeconds,
+    questionCount: course.questionCount,
+    hasPoster: course.hasPoster,
     isOffered: offeringByCourse.has(course.id),
     offeringId: offeringByCourse.get(course.id) ?? null,
   }));
+}
+
+// ---------------------------------------------------------------------------
+// 1a. listGlobalVideoCatalogCourses
+//     The same published global video catalog, projected into the Courses-list
+//     row shape so it can be merged into the org's own course list.
+//
+//     Product ruling (2026-08-10, re-confirmed 2026-08-27): every organization
+//     owns every video course from the moment it is created, so there is no
+//     "available / adopt" step to surface. `OrgCourseOffering` survives as
+//     internal bookkeeping — existing rows and their per-org custom titles are
+//     untouched — but adoption is no longer a user-facing action.
+//
+//     Enrollment tallies are scoped to THIS org's staff, matching how
+//     getCourses() counts adopted courses.
+// ---------------------------------------------------------------------------
+export async function listGlobalVideoCatalogCourses(): Promise<CourseWithStats[]> {
+  const session = await resolveSession();
+  if (!session?.user?.id) {
+    throw new Error('Unauthorized');
+  }
+
+  const organizationId = resolveOrg(session.user);
+
+  const catalog = await getGlobalVideoCatalog();
+  if (!catalog.length) return [];
+
+  const counts = await prisma.enrollment.groupBy({
+    by: ['courseId', 'status'],
+    where: {
+      courseId: { in: catalog.map((c) => c.id) },
+      organizationUser: { organizationId },
+    },
+    _count: { _all: true },
+  });
+
+  const tallies = new Map<string, { total: number; completed: number }>();
+  for (const row of counts) {
+    const entry = tallies.get(row.courseId) ?? { total: 0, completed: 0 };
+    entry.total += row._count._all;
+    if (row.status === 'completed' || row.status === 'attested') {
+      entry.completed += row._count._all;
+    }
+    tallies.set(row.courseId, entry);
+  }
+
+  return catalog.map((course) => {
+    const tally = tallies.get(course.id) ?? { total: 0, completed: 0 };
+    return {
+      id: course.id,
+      title: course.title,
+      description: course.description,
+      thumbnail: course.thumbnail,
+      status: course.status,
+      // Pinned by the catalog's own `where` clause, which selects video only.
+      type: 'video',
+      duration: course.durationMinutes,
+      createdAt: new Date(course.createdAtIso),
+      updatedAt: new Date(course.updatedAtIso),
+      lessonsCount: course.lessonCount,
+      enrollmentsCount: tally.total,
+      completionRate: tally.total > 0 ? Math.round((tally.completed / tally.total) * 100) : 0,
+      // The source document belongs to the publishing tenant and must never be
+      // linkable from this one.
+      sourceDocumentId: null,
+      isGlobalCatalog: true,
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------
