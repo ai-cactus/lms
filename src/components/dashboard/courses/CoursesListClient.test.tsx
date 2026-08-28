@@ -455,19 +455,29 @@ describe('CoursesListClient — "Assign to staff" opens the modal', () => {
   });
 });
 
-describe('CoursesListClient — create/prebuilt affordances gated on course.create', () => {
-  it('shows only the Create Course button for owner — no header Prebuilt button (per design)', () => {
+// The prebuilt-adoption affordances these cases used to guard were retired on
+// 2026-08-28, so the old `/Prebuilt Courses/i` header assertions became vacuous
+// — they pinned the absence of a button that no longer exists in any state. The
+// empty-state assertion below replaces them: it is the one prebuilt control
+// that did render, and it is what must stay gone.
+describe('CoursesListClient — create affordance gated on course.create', () => {
+  it('shows the Create Course button for owner', () => {
     render(<CoursesListClient courses={[makeCourse()]} hasBilling viewerRole="owner" />);
 
     expect(screen.getByRole('button', { name: /Create Course/i })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Prebuilt Courses/i })).not.toBeInTheDocument();
   });
 
-  it('hides Create Course + Prebuilt Courses buttons for supervisor (read-only)', () => {
+  it('hides the Create Course button for supervisor (read-only)', () => {
     render(<CoursesListClient courses={[makeCourse()]} hasBilling viewerRole="supervisor" />);
 
     expect(screen.queryByRole('button', { name: /Create Course/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Prebuilt Courses/i })).not.toBeInTheDocument();
+  });
+
+  it('offers no prebuilt-course affordance in the empty state — the catalog is the Video tab', () => {
+    render(<CoursesListClient courses={[]} hasBilling viewerRole="owner" />);
+
+    expect(screen.getByRole('button', { name: /Create your first course/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /prebuilt/i })).not.toBeInTheDocument();
   });
 });
 

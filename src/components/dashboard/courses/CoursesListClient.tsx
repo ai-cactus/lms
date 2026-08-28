@@ -420,14 +420,6 @@ export default function CoursesListClient({
     router.push('/dashboard/courses/create');
   }, [hasBilling, router]);
 
-  const startPrebuiltCatalog = useCallback(() => {
-    if (!hasBilling) {
-      setShowBillingGate(true);
-      return;
-    }
-    router.push('/dashboard/courses/prebuilt');
-  }, [hasBilling, router]);
-
   const tabCounts = useMemo(
     () => ({
       video: courseList.filter((course) => course.type === COURSE_TYPE_BY_TAB.video).length,
@@ -828,24 +820,14 @@ export default function CoursesListClient({
               </p>
             </div>
             {canCreateCourse && (
-              <div className="flex flex-col items-center gap-3 sm:flex-row">
-                <Button
-                  id="create-course-btn"
-                  size="lg"
-                  onClick={startCreateCourse}
-                  className="h-12 rounded-[12px] px-6 text-[15.5px] font-semibold tracking-[-0.31px]"
-                >
-                  Create your first course
-                </Button>
-                <Button
-                  variant="outline"
-                  size="lg"
-                  onClick={startPrebuiltCatalog}
-                  className="h-12 rounded-[12px] border-[#d4d4d4] px-6 text-[15.5px] font-semibold tracking-[-0.31px] text-primary hover:text-primary"
-                >
-                  Choose a prebuilt course
-                </Button>
-              </div>
+              <Button
+                id="create-course-btn"
+                size="lg"
+                onClick={startCreateCourse}
+                className="h-12 rounded-[12px] px-6 text-[15.5px] font-semibold tracking-[-0.31px]"
+              >
+                Create your first course
+              </Button>
             )}
           </div>
         </div>
