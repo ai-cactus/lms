@@ -672,26 +672,11 @@ test.describe('Video course playback — mobile viewport', () => {
   });
 });
 
-// ── Catalog grid (PR 5) — NOT COVERED, see note ─────────────────────────────
-
-test.describe('Video course catalog grid', () => {
-  test.skip('renders <img> posters instead of <video> elements and does not fire N preview-video requests', async () => {
-    // Genuine gap, not an oversight: VideoCourseCard
-    // (src/components/dashboard/courses/VideoCourseCard.tsx) and the server
-    // action it renders (listAvailableVideoCourses in
-    // src/app/actions/offering.ts) both exist and were touched by this PR
-    // series (PR 5 — "kill the catalog thumbnail hack" — is in
-    // VideoCourseCard.test.tsx's own header comment), but as of this branch
-    // NO page under src/app imports VideoCourseCard or calls
-    // listAvailableVideoCourses — grep confirms the only importers are the
-    // component's own file and its unit test. There is no live route to
-    // navigate Playwright to for this assertion.
-    //
-    // The <img>-not-<video> behavior itself IS covered, at the component
-    // level, by the pre-existing VideoCourseCard.test.tsx. This e2e gap is
-    // "no page renders this component yet," not "the component is
-    // untested" — worth confirming with the team whether a catalog route is
-    // still planned before writing e2e coverage that would have nothing to
-    // exercise.
-  });
-});
+// ── Catalog grid ────────────────────────────────────────────────────────────
+// No e2e here by design. The standalone video-catalog grid (VideoCourseCard +
+// listAvailableVideoCourses) was deleted when the Courses page dropped its
+// outer My Courses / Available Video Courses tabs; the global video catalog is
+// now merged into the single Courses table. The property this section used to
+// guard — posters render as <img>, so a grid of N courses does not fire N
+// preview-video requests — still holds structurally: that table renders
+// thumbnails through next/image (CoursesListClient.tsx), which emits <img>.

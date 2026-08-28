@@ -1,13 +1,14 @@
-import { Suspense } from 'react';
 import Link from 'next/link';
 import { ShieldAlert } from 'lucide-react';
 import { requirePermission } from '@/lib/rbac/require-permission';
 import prisma from '@/lib/prisma';
 import { getCourses } from '@/app/actions/course';
-import { listAvailableVideoCourses } from '@/app/actions/offering';
+import { listGlobalVideoCatalogCourses } from '@/app/actions/offering';
 import { hasActiveBilling } from '@/lib/billing';
+import { logger } from '@/lib/logger';
 import { Button } from '@/components/ui/button';
-import CoursesPageTabs from '@/components/dashboard/courses/CoursesPageTabs';
+import CoursesListClient from '@/components/dashboard/courses/CoursesListClient';
+import type { CourseWithStats } from '@/types/course';
 
 export const dynamic = 'force-dynamic';
 
@@ -54,21 +55,28 @@ export default async function CoursesPage() {
   // that is not paused. past_due, canceled and paused are treated as inactive.
   const hasBilling = hasActiveBilling(organization?.subscription);
 
-  // Fetch both data sources in parallel; a failure in the global video catalog
-  // must never take the page down with it — fall back to an empty list.
-  const [courses, availableCourses] = await Promise.all([
+  const [ownCourses, catalogCourses] = await Promise.all([
     getCourses(),
-    listAvailableVideoCourses().catch(() => []),
+    // Video courses are owned by the organization from creation, but that
+    // ownership is what the plan buys: an org without an active subscription
+    // sees only what it authored or already adopted. No tier mapping — the
+    // single hasActiveBilling() ruling, computed above with no extra read.
+    hasBilling
+      ? listGlobalVideoCatalogCourses().catch((err) => {
+          // The catalog is additive, so a failure here must degrade to the
+          // org's own courses rather than take the page down — but it is a
+          // real fault and is never swallowed silently.
+          logger.error({ msg: '[course] Global video catalog lookup failed', err, organizationId });
+          return [] as CourseWithStats[];
+        })
+      : Promise.resolve<CourseWithStats[]>([]),
   ]);
 
-  return (
-    <Suspense fallback={null}>
-      <CoursesPageTabs
-        courses={courses}
-        hasBilling={hasBilling}
-        viewerRole={ctx.role}
-        availableCourses={availableCourses}
-      />
-    </Suspense>
-  );
+  // One list, no "available" step. Own and adopted rows win the de-dupe: they
+  // carry this org's source-document lineage and full row affordances, which a
+  // catalog-only row deliberately does not.
+  const seen = new Set(ownCourses.map((course) => course.id));
+  const courses = [...ownCourses, ...catalogCourses.filter((course) => !seen.has(course.id))];
+
+  return <CoursesListClient courses={courses} hasBilling={hasBilling} viewerRole={ctx.role} />;
 }
