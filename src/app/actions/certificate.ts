@@ -11,13 +11,24 @@ import { formatCertificateId } from '@/lib/certificate-id';
 import { logger } from '@/lib/logger';
 import { audit, getClientContext } from '@/lib/audit';
 import { headers } from 'next/headers';
+import type { Certificate } from '@/generated/prisma/client';
 
 async function resolveSession() {
   const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
   return admin?.user?.id ? admin : worker?.user?.id ? worker : null;
 }
 
-export async function issueCertificate(enrollmentId: string) {
+/**
+ * Outcome of {@link issueCertificate}. A refusal is returned rather than thrown
+ * because Next.js redacts Server Action errors in production, which would show
+ * the learner React error #441 instead of what they need to do. A discriminated
+ * result is used here rather than the `refusedReason` field the assign actions
+ * carry, because the success value is a Certificate row with no room for one.
+ */
+export type IssueCertificateResult =
+  { ok: true; certificate: Certificate } | { ok: false; reason: string };
+
+export async function issueCertificate(enrollmentId: string): Promise<IssueCertificateResult> {
   const session = await resolveSession();
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
@@ -46,13 +57,20 @@ export async function issueCertificate(enrollmentId: string) {
     throw new Error('Unauthorized');
   }
 
+  // Refused by return: fail-closed, no certificate row, PDF or upload has been
+  // produced at this point.
   if (enrollment.status !== 'completed' && enrollment.status !== 'attested') {
-    throw new Error('Course must be completed to issue a certificate');
+    logger.warn({
+      msg: '[enrollment] Certificate issuance refused — course not completed',
+      enrollmentId,
+      status: enrollment.status,
+    });
+    return { ok: false, reason: 'Course must be completed to issue a certificate' };
   }
 
   // If already issued, return existing
   if (enrollment.certificate) {
-    return enrollment.certificate;
+    return { ok: true, certificate: enrollment.certificate };
   }
 
   // A certificate PDF is immutable once generated, so it must carry the
@@ -65,7 +83,10 @@ export async function issueCertificate(enrollmentId: string) {
       enrollmentId,
       organizationUserId: enrollment.organizationUserId,
     });
-    throw new Error('Set your full name in your profile before earning a certificate.');
+    return {
+      ok: false,
+      reason: 'Set your full name in your profile before earning a certificate.',
+    };
   }
 
   const issueDate = new Date();
@@ -111,7 +132,7 @@ export async function issueCertificate(enrollmentId: string) {
   revalidatePath('/dashboard/training');
   revalidatePath('/worker/certificates');
 
-  return certificate;
+  return { ok: true, certificate };
 }
 
 export async function getWorkerCertificates() {

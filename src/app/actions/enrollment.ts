@@ -166,7 +166,7 @@ export interface EnrollUsersResult {
   /**
    * Set when the call was refused outright — nothing was assigned, enrolled,
    * invited or emailed. Carries the user-facing reason; see
-   * {@link REVIEW_GATE_ASSIGN_MESSAGE}.
+   * {@link REVIEW_GATE_ASSIGN_MESSAGE} and `BILLING_GATE_ASSIGN_MESSAGE`.
    */
   refusedReason?: string;
 }
@@ -282,7 +282,17 @@ export async function enrollUsers(
       organizationId,
       userId: session.user.id,
     });
-    throw new Error(BILLING_GATE_ASSIGN_MESSAGE);
+    // Refused by return, as the review gate above: a lapsed subscription is the
+    // admin's to fix, and a thrown message is redacted in production builds.
+    // Fail-closed: no assignment, enrollment, invite or email has run yet.
+    return {
+      success: [],
+      alreadyEnrolled: [],
+      newInvited: [],
+      failed: [],
+      refusedReason: BILLING_GATE_ASSIGN_MESSAGE,
+      ...(options?.deferWorkerNotification ? { deferred: [] } : {}),
+    };
   }
 
   // Create a CourseAssignment batch to hold this assignment's schedule /
@@ -544,7 +554,7 @@ interface RoleTargetAssignmentResult {
   /**
    * Set when the call was refused outright — no assignment was written and no
    * holder was enrolled. Carries the user-facing reason; see
-   * {@link REVIEW_GATE_ASSIGN_MESSAGE}.
+   * {@link REVIEW_GATE_ASSIGN_MESSAGE} and `BILLING_GATE_ASSIGN_MESSAGE`.
    */
   refusedReason?: string;
 }
@@ -646,7 +656,16 @@ async function assignCourseToRoleTargets(
       organizationId,
       userId: session.user.id,
     });
-    throw new Error(BILLING_GATE_ASSIGN_MESSAGE);
+    // Refused by return, as in enrollUsers above, and equally fail-closed: the
+    // offering upsert and the assignment write both happen below this point.
+    return {
+      assignmentId: null,
+      holderCount: 0,
+      enrolled: 0,
+      alreadyEnrolled: 0,
+      failed: 0,
+      refusedReason: BILLING_GATE_ASSIGN_MESSAGE,
+    };
   }
 
   const { scheduleAt, dueAt, dueWindowDays } = options;
@@ -805,8 +824,19 @@ export async function assignCourseToRoles(
   assignmentSettings?: RoleAssignmentSettingsInput,
 ) {
   const dueDate = assignmentSettings?.dueDate ? new Date(assignmentSettings.dueDate) : null;
+  // Refused by return, as the gates inside assignCourseToRoleTargets: the wizard
+  // shows this to the admin, and a thrown message is redacted in production.
+  // Fail-closed — nothing is written before the delegated call below.
   if (dueDate && Number.isNaN(dueDate.getTime())) {
-    throw new Error('Invalid completion deadline');
+    return {
+      assignmentId: null,
+      holderCount: 0,
+      enrolled: 0,
+      alreadyEnrolled: 0,
+      failed: 0,
+      refusedReason: "That completion deadline couldn't be read. Please pick the date again.",
+      targetRoles: [...new Set(roles)],
+    };
   }
 
   const result = await assignCourseToRoleTargets(courseId, roles, {

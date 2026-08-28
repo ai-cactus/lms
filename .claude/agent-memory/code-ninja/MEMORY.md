@@ -60,3 +60,4 @@
 - [Billing schedule deferred scope](project_billing_schedule_deferred_scope.md) — checkout's missing pausedAt check, #27/#28, and pause's kept 409 are deliberate non-fixes; seat = every active member.
 - [CourseRail unlockedIndex gates the quiz too](gotcha_courserail_unlockedindex_conflates_quiz.md) — module nav is free, but railUnlockedIndex must stay at lessons.length-1 or the quiz gate opens.
 - [Quiz route error body shapes](gotcha_quiz_route_error_body_shapes.md) — start returns a CODE in `error` + human text in `message`; submit is human-in-`error`; read `message ?? error`.
+- [Server Action refusals must return](gotcha_server_action_refusals_must_return.md) — prod redacts thrown messages to React #441; return `refusedReason` on the existing result type, keep the gate fail-closed.

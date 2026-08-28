@@ -889,7 +889,11 @@ export default function LearnClient({ initialData }: LearnClientProps) {
                   setQuizError('');
                   try {
                     const { retakeQuiz } = await import('@/app/actions/course');
-                    await retakeQuiz(enrollment.id);
+                    const result = await retakeQuiz(enrollment.id);
+                    if (!result.success) {
+                      setQuizError(result.refusedReason ?? RETAKE_QUIZ_FALLBACK);
+                      return;
+                    }
                     window.location.reload();
                   } catch (err) {
                     logger.error({
@@ -897,9 +901,9 @@ export default function LearnClient({ initialData }: LearnClientProps) {
                       err,
                       enrollmentId: enrollment.id,
                     });
-                    // retakeQuiz is a Server Action: Next.js redacts thrown
-                    // messages in production builds, so only the log carries
-                    // the real cause.
+                    // Next.js redacts messages thrown from a Server Action in
+                    // production builds, so an unexpected failure has no reason
+                    // worth showing — refusals are returned instead (above).
                     setQuizError(RETAKE_QUIZ_FALLBACK);
                   }
                 }}

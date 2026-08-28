@@ -418,13 +418,26 @@ export default function CourseWizard() {
         // learners about a draft, so publishCourse replays the parked intent
         // once the warnings are acknowledged.
         let roleAssignmentFailed = false;
+        let roleAssignmentReason: string | null = null;
         if (!result.reviewRequired && targetsRoles) {
           try {
-            await assignCourseToRoles(result.courseId, roleTargets, {
+            const assignResult = await assignCourseToRoles(result.courseId, roleTargets, {
               dueDate: dueDate || null,
               dueTime: dueTime || null,
               ...roleAssignmentSettings,
             });
+            // A refusal (billing gate, invalid deadline) is returned rather than
+            // thrown, so it carries a reason worth showing instead of the
+            // generic banner.
+            if (assignResult.refusedReason) {
+              roleAssignmentFailed = true;
+              roleAssignmentReason = assignResult.refusedReason;
+              logger.warn({
+                msg: '[course] Published course was not assigned to roles — refused',
+                courseId: result.courseId,
+                reason: assignResult.refusedReason,
+              });
+            }
           } catch (assignError) {
             roleAssignmentFailed = true;
             logger.error({
@@ -464,7 +477,9 @@ export default function CourseWizard() {
 
         if (roleAssignmentFailed) {
           setWizardError(
-            'Course published, but assigning it to the selected roles failed. You can assign it from the training dashboard.',
+            roleAssignmentReason
+              ? `Course published, but it was not assigned to the selected roles. ${roleAssignmentReason} You can assign it from the training dashboard.`
+              : 'Course published, but assigning it to the selected roles failed. You can assign it from the training dashboard.',
           );
         }
       } else {
