@@ -388,6 +388,7 @@ describe('AddFacilityModal — update mode', () => {
     name: 'Sunrise Behavioral Health',
     type: `${COMMUNITY}, Mobile crisis`,
     address: '12 Elm Street',
+    staffCount: '11-49',
     supervisorEmail: 'courtney.henry@clinic.org',
   };
 
@@ -426,6 +427,7 @@ describe('AddFacilityModal — update mode', () => {
       name: 'Sunrise BH',
       type: `${COMMUNITY}, Mobile crisis`,
       address: '12 Elm Street',
+      staffCount: '11-49',
       supervisorEmail: undefined,
     });
     expect(onSaved).toHaveBeenCalledWith('Facility updated.');

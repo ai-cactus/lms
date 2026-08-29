@@ -16,6 +16,14 @@ import { Field } from '@/components/ui/field';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Alert } from '@/components/ui/alert';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { STAFF_COUNT_OPTIONS } from '@/lib/constants/location-options';
 import { SupervisorCombobox } from './SupervisorCombobox';
 import {
   createFacility,
@@ -40,6 +48,7 @@ export interface EditableFacility {
   name: string;
   type: string | null;
   address: string | null;
+  staffCount: string | null;
   supervisorEmail: string | null;
 }
 
@@ -56,6 +65,7 @@ interface FacilityFormValues {
   name: string;
   facilityTypes: FacilityTypeValue;
   address: string;
+  staffCount: string;
   supervisorEmail: string;
 }
 
@@ -67,6 +77,7 @@ const EMPTY_FORM: FacilityFormValues = {
   name: '',
   facilityTypes: { types: [], otherText: '' },
   address: '',
+  staffCount: '',
   supervisorEmail: '',
 };
 
@@ -76,6 +87,7 @@ function formValuesFor(facility: EditableFacility | null | undefined): FacilityF
     name: facility.name,
     facilityTypes: parseFacilityTypes(facility.type),
     address: facility.address ?? '',
+    staffCount: facility.staffCount ?? '',
     supervisorEmail: facility.supervisorEmail ?? '',
   };
 }
@@ -170,6 +182,7 @@ export default function AddFacilityModal({
         name,
         type: joinFacilityTypes(values.facilityTypes) || undefined,
         address,
+        staffCount: values.staffCount || undefined,
         supervisorEmail: changedSupervisor || undefined,
       });
 
@@ -186,6 +199,7 @@ export default function AddFacilityModal({
       name,
       types: facilityTypeList(values.facilityTypes),
       address,
+      staffCount: values.staffCount || undefined,
       supervisorEmail: supervisorEmail || undefined,
     });
 
@@ -284,6 +298,39 @@ export default function AddFacilityModal({
                 className={CONTROL_CLASS}
                 placeholder="Add facility address"
                 {...register('address')}
+              />
+            </Field>
+
+            <Field
+              label="Number of Staff"
+              error={errors.staffCount?.message}
+              className={FIELD_CLASS}
+            >
+              <Controller
+                name="staffCount"
+                control={control}
+                render={({ field }) => (
+                  <Select
+                    value={field.value || undefined}
+                    // Radix mirrors a hidden native select that echoes '' on
+                    // reset()/prefill inside a form; accepting that would clear a
+                    // valid selection the moment the modal re-opens for an edit.
+                    onValueChange={(value) => value && field.onChange(value)}
+                  >
+                    {/* Field renders a plain <label>, which does not attach to a
+                        Radix trigger — name it explicitly, as Step5Quiz does. */}
+                    <SelectTrigger className={CONTROL_CLASS} aria-label="Number of Staff">
+                      <SelectValue placeholder="Select number of staff" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {STAFF_COUNT_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               />
             </Field>
 
