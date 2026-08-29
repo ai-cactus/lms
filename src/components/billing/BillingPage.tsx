@@ -41,7 +41,8 @@ const BillingHistoryTab = dynamic(() => import('./BillingHistoryTab'), { ssr: fa
 const PaymentMethodTab = dynamic(() => import('./PaymentMethodTab'), { ssr: false });
 
 interface BillingPageProps {
-  staffCount: string | null;
+  /** Org-wide billable headcount (active non-owner members). */
+  orgStaffCount: number;
   currentPlan: string | null;
   /** Live Stripe-derived plan prices, keyed by plan and cycle. */
   planPrices: PlanPriceMap;
@@ -67,7 +68,7 @@ interface BillingPageProps {
 }
 
 export default function BillingPage({
-  staffCount,
+  orgStaffCount,
   currentPlan,
   planPrices,
   hasLiveSubscription = false,
@@ -133,7 +134,7 @@ export default function BillingPage({
       {activeTab === 'billing-history' && <BillingHistoryTab />}
       {activeTab === 'subscription' && (
         <SubscriptionTab
-          orgStaffCount={parseInt(staffCount ?? '0', 10)}
+          orgStaffCount={orgStaffCount}
           currentPlan={currentPlan}
           planPrices={planPrices}
           hasLiveSubscription={hasLiveSubscription}

@@ -265,12 +265,19 @@ test.describe('Billing — plan-switch confirmation (Defect A / Issue 3 classifi
     await page.goto('/dashboard/billing?tab=subscription');
     await expect(page.locator('#plan-btn-starter')).toBeVisible();
 
-    // Current plan is Growth (seeded) — clicking Subscribe on Starter
-    // triggers a preview call, THEN the confirmation dialog.
-    await page.locator('#plan-btn-starter').click();
+    // Starter (staffMax 10) is NOT selectable: the seeded org has more than ten
+    // billable members, and the picker gates on the real org headcount. It used
+    // to read one facility's declared staffCount, which the seed leaves null —
+    // `null ?? '0'` made the org look empty and every plan selectable (P3-001).
+    await expect(page.locator('#plan-btn-starter')).toBeDisabled();
+
+    // Pro (staffMax 150) is selectable — clicking Subscribe triggers a preview
+    // call, THEN the confirmation dialog. The preview is mocked below, so the
+    // classification under test is independent of this specific plan pair.
+    await page.locator('#plan-btn-pro').click();
 
     await expect.poll(() => previewCalls.length).toBe(1);
-    expect(previewCalls[0]).toEqual({ planKey: 'starter', billingCycle: 'yearly' });
+    expect(previewCalls[0]).toEqual({ planKey: 'pro', billingCycle: 'yearly' });
 
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
@@ -286,12 +293,12 @@ test.describe('Billing — plan-switch confirmation (Defect A / Issue 3 classifi
 
     // Re-open and Confirm ("Schedule change" for a scheduled classification) —
     // exactly one checkout call with the right payload.
-    await page.locator('#plan-btn-starter').click();
+    await page.locator('#plan-btn-pro').click();
     await expect(page.getByRole('dialog')).toBeVisible();
     await page.getByRole('button', { name: 'Schedule change' }).click();
 
     await expect.poll(() => checkoutCalls.length).toBe(1);
-    expect(checkoutCalls[0]).toEqual({ planKey: 'starter', billingCycle: 'yearly' });
+    expect(checkoutCalls[0]).toEqual({ planKey: 'pro', billingCycle: 'yearly' });
   });
 
   test('immediate_prorate classification shows the charge-now copy with the previewed amount', async ({
@@ -313,15 +320,15 @@ test.describe('Billing — plan-switch confirmation (Defect A / Issue 3 classifi
     });
 
     await page.goto('/dashboard/billing?tab=subscription');
-    await expect(page.locator('#plan-btn-starter')).toBeVisible();
+    await expect(page.locator('#plan-btn-pro')).toBeVisible();
 
-    // Current plan is Growth (seeded); clicking Starter is a real
-    // downgrade, which the server would normally classify as `scheduled` —
-    // but the preview call is fully mocked above, so the client renders
-    // whatever classification the server returns. This exercises the
-    // immediate_prorate copy branch as a UI-rendering contract, independent
-    // of which specific plan pair a real server would ever pair it with.
-    await page.locator('#plan-btn-starter').click();
+    // Current plan is Growth (seeded); Starter is unavailable to this org on
+    // headcount, so Pro is the plan a real user could actually pick. The preview
+    // call is fully mocked above, so the client renders whatever classification
+    // the server returns — this exercises the immediate_prorate copy branch as a
+    // UI-rendering contract, independent of which specific plan pair a real
+    // server would ever pair it with.
+    await page.locator('#plan-btn-pro').click();
 
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();

@@ -117,6 +117,7 @@ export default async function SettingsPageRoute() {
         name: true,
         type: true,
         address: true,
+        staffCount: true,
         userFacilities: {
           where: { active: true, organizationUser: { active: true, role: 'supervisor' } },
           select: {
@@ -161,6 +162,7 @@ export default async function SettingsPageRoute() {
       name: facility.name,
       type: facility.type,
       address: facility.address,
+      staffCount: facility.staffCount,
       supervisorName: supervisor?.fullName || null,
       supervisorEmail: supervisor?.email ?? null,
     };
