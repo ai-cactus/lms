@@ -6,6 +6,7 @@ import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
 import { getStripeClient } from '@/lib/stripe';
 import { guardApiSession } from '@/lib/auth-guard';
+import { countBillableStaff } from '@/lib/seat-limits';
 import { BILLING_PLANS, BillingCycle } from '@/lib/billing-plans';
 import { classifyPlanChange, CYCLE_DURATION } from '@/lib/billing-plan-change';
 import { logger } from '@/lib/logger';
@@ -85,7 +86,6 @@ export async function POST(request: NextRequest) {
         name: true,
         primaryEmail: true,
         stripeCustomerId: true,
-        facilities: { select: { staffCount: true }, take: 1 },
       },
     });
 
@@ -93,8 +93,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
     }
 
-    // Enforce plan restriction: orgs with more staff cannot downgrade
-    const orgStaffNum = parseInt(organization.facilities[0]?.staffCount ?? '0', 10);
+    // Enforce plan restriction: orgs with more staff cannot downgrade.
+    //
+    // Counted org-wide from real membership rows, NOT from `Facility.staffCount`
+    // — see countBillableStaff. Reading a single facility's self-declared string
+    // let any org with a second facility slip the gate entirely (P3-001).
+    const orgStaffNum = await countBillableStaff(organizationId);
     if (plan.staffMax !== null && orgStaffNum > plan.staffMax) {
       return NextResponse.json(
         { error: 'Your organization has too many staff members for this plan.' },

@@ -7,6 +7,7 @@ import prisma from '@/lib/prisma';
 import { redirect } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import BillingPage from '@/components/billing/BillingPage';
+import { countBillableStaff } from '@/lib/seat-limits';
 import { BILLING_PLANS } from '@/lib/billing-plans';
 import { getPlanPrices } from '@/lib/billing-prices';
 import type { Role } from '@/types/next-auth';
@@ -50,12 +51,11 @@ export default async function BillingPageRoute() {
 
   // Fetch org staff count + active subscription plan for the UI, plus live
   // Stripe plan prices — independent reads, so run them concurrently.
-  const [organization, planPrices] = await Promise.all([
+  const [organization, planPrices, orgStaffCount] = await Promise.all([
     organizationId
       ? prisma.organization.findUnique({
           where: { id: organizationId },
           select: {
-            facilities: { select: { staffCount: true }, take: 1 },
             subscription: {
               select: {
                 plan: true,
@@ -75,10 +75,14 @@ export default async function BillingPageRoute() {
         })
       : null,
     getPlanPrices(),
+    // Org-wide headcount from real membership rows — never a facility's
+    // self-declared string, which under-counts multi-facility orgs (P3-001).
+    // Must match the checkout route exactly, or the picker offers a plan the
+    // server then refuses.
+    organizationId ? countBillableStaff(organizationId) : 0,
   ]);
 
   const sub = organization?.subscription;
-  const staffCount = organization?.facilities[0]?.staffCount ?? null;
 
   // Expose the plan key only when the subscription is in a billable state.
   // A paused subscription keeps a Stripe status of `active`, so it still counts
@@ -102,7 +106,7 @@ export default async function BillingPageRoute() {
 
   return (
     <BillingPage
-      staffCount={staffCount}
+      orgStaffCount={orgStaffCount}
       currentPlan={activePlan}
       planPrices={planPrices}
       hasLiveSubscription={hasLiveSubscription}

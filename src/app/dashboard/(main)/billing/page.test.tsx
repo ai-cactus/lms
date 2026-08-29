@@ -12,7 +12,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const { mockAuth, prismaMock, mockRedirect, mockGetPlanPrices, makeSession } = vi.hoisted(() => ({
   mockAuth: vi.fn(),
-  prismaMock: { organization: { findUnique: vi.fn() } },
+  prismaMock: {
+    organization: { findUnique: vi.fn() },
+    // The page resolves org-wide headcount through countBillableStaff
+    // (src/lib/seat-limits.ts) rather than reading a facility's declared string.
+    organizationUser: { count: vi.fn() },
+    invite: { count: vi.fn() },
+  },
   mockRedirect: vi.fn(() => {
     throw new Error('NEXT_REDIRECT');
   }),
@@ -42,17 +48,17 @@ vi.mock('@/lib/billing-prices', () => ({ getPlanPrices: mockGetPlanPrices }));
 vi.mock('@/components/billing/BillingPage', () => ({
   default: ({
     currentPlan,
-    staffCount,
+    orgStaffCount,
     hasLiveSubscription,
     planPrices,
   }: {
     currentPlan: string | null;
-    staffCount: number | null;
+    orgStaffCount: number;
     hasLiveSubscription?: boolean;
     planPrices: unknown;
   }) => (
     <div data-testid="billing-page">
-      plan {currentPlan ?? 'none'} / staff {staffCount ?? 'n/a'} / hasLiveSubscription{' '}
+      plan {currentPlan ?? 'none'} / staff {orgStaffCount} / hasLiveSubscription{' '}
       {String(hasLiveSubscription)} / planPrices {planPrices ? 'present' : 'missing'}
     </div>
   ),
@@ -64,9 +70,10 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockAuth.mockResolvedValue(makeSession('owner'));
   prismaMock.organization.findUnique.mockResolvedValue({
-    facilities: [{ staffCount: 5 }],
     subscription: { plan: 'growth', status: 'active', pausedAt: null, pauseEndsAt: null },
   });
+  prismaMock.organizationUser.count.mockResolvedValue(5);
+  prismaMock.invite.count.mockResolvedValue(0);
   mockGetPlanPrices.mockResolvedValue({ starter: {}, growth: {}, enterprise: {} });
 });
 
@@ -145,7 +152,6 @@ describe('BillingPageRoute — hasLiveSubscription computation', () => {
 
   it('is true for an active subscription with a live Stripe subscription id', async () => {
     prismaMock.organization.findUnique.mockResolvedValue({
-      facilities: [{ staffCount: 5 }],
       subscription: {
         plan: 'growth',
         status: 'active',
@@ -163,7 +169,6 @@ describe('BillingPageRoute — hasLiveSubscription computation', () => {
 
   it('is true even while paused (Stripe keeps status active during a pause)', async () => {
     prismaMock.organization.findUnique.mockResolvedValue({
-      facilities: [{ staffCount: 5 }],
       subscription: {
         plan: 'growth',
         status: 'active',
@@ -181,7 +186,6 @@ describe('BillingPageRoute — hasLiveSubscription computation', () => {
 
   it('is false for a canceled subscription even if a Stripe id lingers', async () => {
     prismaMock.organization.findUnique.mockResolvedValue({
-      facilities: [{ staffCount: 5 }],
       subscription: {
         plan: 'growth',
         status: 'canceled',
@@ -199,7 +203,6 @@ describe('BillingPageRoute — hasLiveSubscription computation', () => {
 
   it('is false when there is no subscription row at all (brand-new subscriber)', async () => {
     prismaMock.organization.findUnique.mockResolvedValue({
-      facilities: [],
       subscription: null,
     });
 

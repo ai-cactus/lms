@@ -87,6 +87,37 @@ export async function getSeatUsage(
     return { staffMax: null, planName: planConfig?.name ?? null, current: 0 };
   }
 
+  return {
+    staffMax: planConfig.staffMax,
+    planName: planConfig.name,
+    current: await countBillableStaff(organizationId, { includePendingInvites, client }),
+  };
+}
+
+/**
+ * How many seats the organization currently consumes, ORG-WIDE.
+ *
+ * The authoritative answer to "how big is this organization" for every billing
+ * decision. Split out of {@link getSeatUsage} because plan SELECTION needs the
+ * headcount measured against a *target* plan, whereas `getSeatUsage` resolves
+ * `staffMax` from the plan the org is already on — and returns `current: 0`
+ * outright when there is no subscription yet, which is exactly the case a first
+ * checkout is in.
+ *
+ * Why it must not be derived from `Facility.staffCount`: that column is a
+ * self-declared string captured at onboarding for ONE facility. Any facility
+ * added later left it null, so an unordered `facilities.take(1)` could return
+ * the empty one and `parseInt(null ?? '0')` made the org look like zero staff —
+ * silently disabling the plan gate entirely (QA defect P3-001). Counting real
+ * membership rows cannot be under-declared and does not care how many
+ * facilities exist.
+ */
+export async function countBillableStaff(
+  organizationId: string,
+  options: SeatUsageOptions = {},
+): Promise<number> {
+  const { includePendingInvites = false, client = prisma } = options;
+
   // D2: every role EXCEPT `owner` consumes a plan seat.
   const [workerCount, pendingInviteCount] = await Promise.all([
     client.organizationUser.count({
@@ -104,11 +135,7 @@ export async function getSeatUsage(
       : Promise.resolve(0),
   ]);
 
-  return {
-    staffMax: planConfig.staffMax,
-    planName: planConfig.name,
-    current: workerCount + pendingInviteCount,
-  };
+  return workerCount + pendingInviteCount;
 }
 
 export interface AssertSeatOptions extends SeatUsageOptions {
