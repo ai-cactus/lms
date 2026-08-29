@@ -8,6 +8,7 @@ import { can } from '@/lib/rbac/permissions';
 import prisma from '@/lib/prisma';
 import { auth } from '@/auth';
 import { logger, maskEmail } from '@/lib/logger';
+import { STAFF_COUNT_OPTIONS } from '@/lib/constants/location-options';
 import { audit, getClientContext } from '@/lib/audit';
 import { headers } from 'next/headers';
 import { deriveTimezoneFromState } from '@/lib/reminders/us-state-timezone';
@@ -661,6 +662,20 @@ const createFacilitySchema = z.object({
     .min(1, 'Select at least one facility type')
     .max(12, 'Select at most 12 facility types'),
   address: z.string().trim().max(500).optional(),
+  // Offered at creation so a facility added after onboarding is not left with a
+  // permanently blank declared size. Optional on purpose: nothing enforces
+  // against it — the plan gate counts real membership rows (see
+  // countBillableStaff) — so it is descriptive metadata, not a control, and
+  // must not block creating a facility. Validated against the shared option
+  // list when supplied, so it cannot drift from what onboarding offers.
+  staffCount: z
+    .string()
+    .trim()
+    .refine(
+      (value) => STAFF_COUNT_OPTIONS.some((option) => option.value === value),
+      'Select a valid number of staff',
+    )
+    .optional(),
   // Blank is a first-class choice — the modal's copy is "leave empty if you'll
   // manage it yourself" — so an empty string must not fail email validation.
   supervisorEmail: z
@@ -719,7 +734,7 @@ export async function createFacility(input: CreateFacilityInput): Promise<{
       };
     }
 
-    const { name, types, address } = parsed.data;
+    const { name, types, address, staffCount } = parsed.data;
     const type = types.join(', ');
     const supervisorEmail = parsed.data.supervisorEmail?.trim().toLowerCase() || undefined;
 
@@ -732,7 +747,7 @@ export async function createFacility(input: CreateFacilityInput): Promise<{
     }
 
     const facility = await prisma.facility.create({
-      data: { organizationId, name, type, address },
+      data: { organizationId, name, type, address, staffCount },
       select: { id: true },
     });
 

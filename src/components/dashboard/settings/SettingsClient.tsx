@@ -26,6 +26,8 @@ export interface SettingsFacility {
   name: string;
   type: string | null;
   address: string | null;
+  /** Declared size band (e.g. "11-49"); null for facilities created before it was collected. */
+  staffCount: string | null;
   /** Active supervisor of this facility, or null when the seat is vacant. */
   supervisorName: string | null;
   supervisorEmail: string | null;

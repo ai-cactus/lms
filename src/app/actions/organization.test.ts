@@ -488,6 +488,7 @@ describe('createFacility', () => {
     name: 'Sunrise Behavioral',
     types: ['Behavioral health'],
     address: '1 Main St',
+    staffCount: '11-49',
   };
 
   beforeEach(() => {
@@ -551,9 +552,29 @@ describe('createFacility', () => {
         name: 'Sunrise Behavioral',
         type: 'Behavioral health',
         address: '1 Main St',
+        staffCount: '11-49',
       },
       select: { id: true },
     });
+  });
+
+  it('creates the facility without a declared staff count — the field is optional', async () => {
+    const { name, types, address } = input;
+
+    const result = await createFacility({ name, types, address });
+
+    expect(result.success).toBe(true);
+    expect(prisma.facility.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ staffCount: undefined }) }),
+    );
+  });
+
+  it('rejects a staff count outside the shared option list', async () => {
+    const result = await createFacility({ ...input, staffCount: '7 or so' });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/valid number of staff/i);
+    expect(prisma.facility.create).not.toHaveBeenCalled();
   });
 
   it('joins multiple selected types into the single free-form `type` column', async () => {

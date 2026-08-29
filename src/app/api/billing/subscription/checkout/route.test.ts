@@ -39,6 +39,11 @@ const { mockAuth, prismaMock, stripeMock } = vi.hoisted(() => {
     user: { findUnique: vi.fn() },
     organization: { findUnique: vi.fn(), update: vi.fn() },
     subscription: { findUnique: vi.fn(), update: vi.fn() },
+    // The staff-capacity gate counts real membership rows via
+    // countBillableStaff (src/lib/seat-limits.ts) — deliberately NOT mocked
+    // away, so these tests exercise the real query shape.
+    organizationUser: { count: vi.fn() },
+    invite: { count: vi.fn() },
   };
   const stripeMock = {
     customers: { create: vi.fn() },
@@ -119,9 +124,8 @@ const ORG = {
   name: 'Acme',
   primaryEmail: 'acme@example.com',
   stripeCustomerId: 'cus_123',
-  // staffCount moved to Facility in the Org/Facility split; the route reads
-  // organization.facilities[0].staffCount.
-  facilities: [{ staffCount: '5' }],
+  // No `facilities` here on purpose: the capacity gate is org-wide headcount
+  // now, and must not be reachable from facility data at all (P3-001).
 };
 
 const PERIOD_END_FAR_OUT = new Date('2026-12-17T12:00:00Z'); // >= 1 month from any test's implicit "now"
@@ -158,6 +162,8 @@ beforeEach(() => {
   mockAuth.mockResolvedValue({ user: { id: 'user-1', role: 'owner', organizationId: 'org-1' } });
   prismaMock.user.findUnique.mockResolvedValue(ADMIN_USER);
   prismaMock.organization.findUnique.mockResolvedValue(ORG);
+  prismaMock.organizationUser.count.mockResolvedValue(5);
+  prismaMock.invite.count.mockResolvedValue(0);
 });
 
 // ---------------------------------------------------------------------------
@@ -231,11 +237,8 @@ describe('POST /api/billing/subscription/checkout — create path (no existing s
     expect(body).toEqual({ url: 'https://checkout.stripe.com/session_2' });
   });
 
-  it('rejects a plan whose staffMax is below the facility staffCount — regression guard', async () => {
-    prismaMock.organization.findUnique.mockResolvedValue({
-      ...ORG,
-      facilities: [{ staffCount: '15' }], // exceeds starter's staffMax: 10
-    });
+  it('rejects a plan whose staffMax is below the org headcount — regression guard', async () => {
+    prismaMock.organizationUser.count.mockResolvedValue(15); // exceeds starter's staffMax: 10
     prismaMock.subscription.findUnique.mockResolvedValue(null);
 
     const res = await POST(makeReq({ planKey: 'starter', billingCycle: 'monthly' }));
@@ -246,11 +249,33 @@ describe('POST /api/billing/subscription/checkout — create path (no existing s
     expect(stripeMock.checkout.sessions.create).not.toHaveBeenCalled();
   });
 
-  it('rejects the pro plan for an org with 151+ staff — over the 51–150 pro band ceiling', async () => {
+  // P3-001: creating a second facility silently disabled the seat gate. The
+  // route used an UNORDERED `facilities.take(1)`, so Postgres could return the
+  // newly-added facility — which `createFacility` never populates a staffCount
+  // for — and `parseInt(null ?? '0')` made a 15-person org look like zero.
+  // A downgrade that was correctly blocked became permitted hours later.
+  it('gates on org headcount even when a facility declares no staff count (P3-001)', async () => {
     prismaMock.organization.findUnique.mockResolvedValue({
       ...ORG,
-      facilities: [{ staffCount: '151' }],
+      // Shape that used to defeat the gate entirely.
+      facilities: [{ staffCount: null }, { staffCount: '15' }],
     });
+    prismaMock.organizationUser.count.mockResolvedValue(15);
+    prismaMock.subscription.findUnique.mockResolvedValue(null);
+
+    const res = await POST(makeReq({ planKey: 'starter', billingCycle: 'monthly' }));
+
+    expect(res.status).toBe(422);
+    expect(stripeMock.checkout.sessions.create).not.toHaveBeenCalled();
+
+    // The gate must not be reachable from facility data at all — if `facilities`
+    // reappears in this select, the old bug can come back with it.
+    const select = prismaMock.organization.findUnique.mock.calls[0][0].select;
+    expect(select).not.toHaveProperty('facilities');
+  });
+
+  it('rejects the pro plan for an org with 151+ staff — over the 51–150 pro band ceiling', async () => {
+    prismaMock.organizationUser.count.mockResolvedValue(151);
     prismaMock.subscription.findUnique.mockResolvedValue(null);
 
     const res = await POST(makeReq({ planKey: 'pro', billingCycle: 'monthly' }));
@@ -261,13 +286,10 @@ describe('POST /api/billing/subscription/checkout — create path (no existing s
     expect(stripeMock.checkout.sessions.create).not.toHaveBeenCalled();
   });
 
-  it.each(['51', '100', '150'])(
+  it.each([51, 100, 150])(
     'accepts the pro plan for an org with %s staff — inside the 51–150 pro band',
     async (staffCount) => {
-      prismaMock.organization.findUnique.mockResolvedValue({
-        ...ORG,
-        facilities: [{ staffCount }],
-      });
+      prismaMock.organizationUser.count.mockResolvedValue(staffCount);
       prismaMock.subscription.findUnique.mockResolvedValue(null);
       stripeMock.checkout.sessions.create.mockResolvedValue({
         url: 'https://checkout.stripe.com/session_pro',
