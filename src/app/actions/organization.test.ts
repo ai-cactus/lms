@@ -559,9 +559,9 @@ describe('createFacility', () => {
   });
 
   it('creates the facility without a declared staff count — the field is optional', async () => {
-    const { staffCount: _omitted, ...withoutStaffCount } = input;
+    const { name, types, address } = input;
 
-    const result = await createFacility(withoutStaffCount);
+    const result = await createFacility({ name, types, address });
 
     expect(result.success).toBe(true);
     expect(prisma.facility.create).toHaveBeenCalledWith(
