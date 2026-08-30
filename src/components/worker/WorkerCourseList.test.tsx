@@ -123,3 +123,84 @@ describe('WorkerCourseList — Attempt N badge suppression on pass', () => {
     expect(screen.queryByText(/^Attempt/)).not.toBeInTheDocument();
   });
 });
+
+/**
+ * Bug A: the learner table had no Action column at all, so a worker holding an
+ * admin-assigned retake (a NEW enrollment with `retakeOf` set) had no way to
+ * start it, and a `locked` learner was offered nothing that named what happens
+ * next. A `locked` row must never offer Retry — attempts are exhausted and only
+ * an admin's assignRetake can reopen it.
+ */
+describe('WorkerCourseList — Action column', () => {
+  it('offers Start for an assigned course that is not a retake', () => {
+    render(<WorkerCourseList courses={[baseCourse({ status: 'assigned', progress: 0 })]} />);
+
+    expect(screen.getByRole('button', { name: 'Start' })).toBeInTheDocument();
+  });
+
+  it('offers Continue for an in-progress course', () => {
+    render(<WorkerCourseList courses={[baseCourse({ status: 'in_progress', progress: 40 })]} />);
+
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeInTheDocument();
+  });
+
+  it('offers Retry when the latest completed attempt failed and attempts remain', () => {
+    render(
+      <WorkerCourseList
+        courses={[
+          baseCourse({
+            status: 'in_progress',
+            passingScore: 70,
+            quizAttempts: [{ id: 'a1', attemptCount: 1, timeTaken: 120, score: 40 }],
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+  });
+
+  it('offers Retake and the "Retake required" badge for an assigned retake enrollment', () => {
+    render(
+      <WorkerCourseList
+        courses={[baseCourse({ status: 'enrolled', progress: 0, retakeOf: 'enr-old' })]}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Retake' })).toBeInTheDocument();
+    expect(screen.getByText('Retake required')).toBeInTheDocument();
+  });
+
+  it('offers NO action link on a locked row — never Retry — and says an admin retake is awaited', () => {
+    render(
+      <WorkerCourseList
+        courses={[
+          baseCourse({
+            status: 'locked',
+            progress: 100,
+            passingScore: 70,
+            quizAttempts: [{ id: 'a1', attemptCount: 3, timeTaken: 120, score: 40 }],
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retake' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Start' })).not.toBeInTheDocument();
+    expect(screen.getByText('Awaiting admin retake')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Actions for/ })).toBeInTheDocument();
+  });
+
+  it('offers View for a completed course', () => {
+    render(<WorkerCourseList courses={[baseCourse({ status: 'attested', progress: 100 })]} />);
+
+    expect(screen.getByRole('button', { name: 'View' })).toBeInTheDocument();
+  });
+
+  it('renders no kebab for a freshly assigned course (nothing to offer yet)', () => {
+    render(<WorkerCourseList courses={[baseCourse({ status: 'assigned', progress: 0 })]} />);
+
+    expect(screen.queryByRole('button', { name: /Actions for/ })).not.toBeInTheDocument();
+  });
+});

@@ -76,6 +76,7 @@ const makePayload = (overrides: Partial<LearnPayload> = {}): LearnPayload => ({
     quizAttempts: [],
   },
   quizResultsData: null,
+  attestEligible: true,
   user: {
     name: 'Jane Worker',
     role: 'nurse',
@@ -798,5 +799,70 @@ describe('LearnClient — quiz error surfacing', () => {
       expect(screen.getByText('Failed to start retake. Please try again.')).toBeInTheDocument(),
     );
     expect(alertSpy).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Bug B: "Done with no Attest". The gate is now one server verdict —
+ * `attestEligible` from the learn payload ANDed with the server's `passed` for
+ * the result on screen — instead of a client-side `isWorkerRole(role)` over a
+ * role that fell back to the non-existent literal 'worker', plus a `passed`
+ * re-derived from a locally defaulted passing score of 70.
+ */
+describe('LearnClient — attestation gate', () => {
+  const passedReviewPayload = (overrides: { attestEligible?: boolean } = {}) => {
+    const payload = makePayload();
+    payload.enrollment.status = 'in_progress';
+    payload.enrollment.score = 90;
+    payload.enrollment.quizAttempts = [
+      {
+        id: 'qa-1',
+        score: 90,
+        attemptCount: 1,
+        answers: [],
+        timeTaken: 120,
+        completedAt: '2026-08-01T00:00:00.000Z',
+      },
+    ];
+    payload.quizResultsData = {
+      score: 90,
+      passed: true,
+      correctCount: 2,
+      totalQuestions: 2,
+      answered: 2,
+      correct: 2,
+      wrong: 0,
+      time: 120,
+      attemptsUsed: 1,
+      allowedAttempts: 3,
+      questions: [],
+    };
+    payload.attestEligible = overrides.attestEligible ?? true;
+    return payload;
+  };
+
+  it('offers Attest (not just Done) to an eligible learner whose attempt passed', () => {
+    render(<LearnClient initialData={passedReviewPayload()} />);
+
+    expect(screen.getByRole('button', { name: 'Attest' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Done' })).toBeInTheDocument();
+  });
+
+  it('leaves Done alone for a viewer the server says may not attest', () => {
+    render(<LearnClient initialData={passedReviewPayload({ attestEligible: false })} />);
+
+    expect(screen.queryByRole('button', { name: 'Attest' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Done' })).toBeInTheDocument();
+  });
+
+  it('never offers Attest on a failing result, however eligible the viewer is', () => {
+    const payload = passedReviewPayload();
+    payload.enrollment.score = 40;
+    payload.quizResultsData = { ...payload.quizResultsData!, score: 40, passed: false };
+
+    render(<LearnClient initialData={payload} />);
+
+    expect(screen.queryByRole('button', { name: 'Attest' })).toBeNull();
+    expect(screen.getByText(/keep trying/i)).toBeInTheDocument();
   });
 });

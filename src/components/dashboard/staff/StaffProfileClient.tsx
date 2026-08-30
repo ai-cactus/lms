@@ -194,7 +194,7 @@ export default function StaffProfileClient({
     enrollmentId: string;
     courseName: string;
     score: number;
-    passingScore?: number;
+    passingScore: number;
     answered: number;
     correct: number;
     wrong: number;
@@ -740,6 +740,7 @@ export default function StaffProfileClient({
               courseId=""
               enrollmentId={viewingResult.enrollmentId}
               data={viewingResult}
+              passed={viewingResult.score >= viewingResult.passingScore}
               hideActions={true}
               userRole="admin"
               organizationName={viewingResult.organizationName}

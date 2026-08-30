@@ -5,10 +5,11 @@ import net from 'net';
  * Phase 3 QA regression coverage for:
  *  1. retakeQuiz()/quiz start/submit's append-history attempt-limit + lockout
  *     enforcement (src/app/actions/course.ts, src/app/api/quiz/[id]/{start,submit}).
- *  2. The attestation-gate fix in src/app/learn/[id]/page.tsx — showAttestation
- *     now uses isWorkerRole() instead of a strict `role === 'worker'` check, so
- *     a genuine job-specific sub-role (e.g. `nurse`) that passes the quiz can
- *     attest, which it never could before.
+ *  2. The attestation gate — now a single server-side verdict
+ *     (`attestEligible` on the learn payload, ANDed with the server's `passed`)
+ *     instead of a client-side role check against a payload role that fell back
+ *     to the literal 'worker'. A genuine job-specific sub-role (e.g. `nurse`)
+ *     that passes the quiz can attest, which it never could before.
  *
  * Seeded fixtures (prisma/seed.ts): the shared 'E2E Compliance Training'
  * course (1 question, passingScore 70, allowedAttempts 3), with three workers
@@ -198,10 +199,10 @@ test.describe('Attestation gate for sub-role workers (isWorkerRole fix)', () => 
 
     await expect(page.getByText(/nice work/i)).toBeVisible();
 
-    // Regression guard: before the fix, showAttestation checked
-    // `userData?.role === 'worker'` literally, which no real sub-role
-    // (including `nurse`) ever equals — the button never appeared.
-    const attestButton = page.getByRole('button', { name: 'Attestate' });
+    // Regression guard: the gate used to be re-derived on the client from a
+    // role that fell back to the literal 'worker' — a value no real sub-role
+    // (including `nurse`) ever equals, so the button silently never appeared.
+    const attestButton = page.getByRole('button', { name: 'Attest' });
     await expect(attestButton).toBeVisible();
     await attestButton.click();
 
