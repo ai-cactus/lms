@@ -42,3 +42,22 @@ export const auditOutlineButton =
 
 export const auditRowAction =
   'text-[14px] font-semibold text-primary hover:underline disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:no-underline';
+
+/**
+ * Course lifecycle pill for the Courses tab. The tab lists the WHOLE catalogue —
+ * drafts and retired courses included — so each row has to say which, otherwise
+ * a draft reading "0 assigned" is indistinguishable from a neglected published
+ * course.
+ */
+const auditStatusPillBase =
+  'inline-block rounded-full px-2.5 py-1 text-[12px] font-medium capitalize leading-4';
+
+const AUDIT_STATUS_TONE: Record<string, string> = {
+  published: 'bg-success/10 text-success',
+  draft: 'bg-warning/10 text-warning',
+  inactive: 'bg-muted text-text-secondary',
+};
+
+export function auditStatusPill(status: string): string {
+  return `${auditStatusPillBase} ${AUDIT_STATUS_TONE[status] ?? AUDIT_STATUS_TONE.inactive}`;
+}

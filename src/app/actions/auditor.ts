@@ -1,9 +1,10 @@
 'use server';
 
 import { auth } from '@/auth';
-import { dbRoleToRoleKey, getRoleDisplayName, WORKER_ROLES } from '@/lib/rbac/role-utils';
+import { dbRoleToRoleKey, getRoleDisplayName } from '@/lib/rbac/role-utils';
 import { can, type Permission } from '@/lib/rbac/permissions';
-import { resolveDataFacilityIds } from '@/lib/facility/staff-where';
+import { resolveAuditFacilityIds } from '@/lib/audit-reports/scope';
+import { orgCourseWhere } from '@/lib/course/org-scope';
 import type { Prisma } from '@/generated/prisma/client';
 import prisma from '@/lib/prisma';
 import { logger } from '@/lib/logger';
@@ -23,6 +24,9 @@ export interface AuditorCourseRow {
   id: string;
   title: string;
   thumbnail: string | null;
+  /** `CourseStatus` — draft, published or inactive. Drafts and inactive courses
+   * are listed too: an audit of a catalogue that hides them under-reports it. */
+  status: string;
   assignedStaff: number;
   completionRate: number;
   assignedDate: Date;
@@ -76,7 +80,10 @@ async function requireAuditorSession(permission: Permission) {
   }
   // D-01 + #17. `subjectWhere` narrows WHOSE records appear; the course
   // catalogue is org-level and is deliberately never narrowed by it.
-  const facilityIds = await resolveDataFacilityIds(session);
+  // `resolveAuditFacilityIds` — not `resolveDataFacilityIds` — because this
+  // surface is deliberately org-wide for supervisors; see its module comment
+  // for why that widening must not be copied anywhere that writes.
+  const facilityIds = await resolveAuditFacilityIds(session);
   const subjectWhere: Prisma.OrganizationUserWhereInput = facilityIds
     ? { facilities: { some: { facilityId: { in: facilityIds }, active: true } } }
     : {};
@@ -110,20 +117,23 @@ export async function getAuditorOverviewStats(
 ): Promise<AuditorOverviewStats> {
   const { organizationId, subjectWhere } = await requireAuditorSession('auditPack.read');
   const dateWhere = startedAtWhere(range);
+  const courseWhere = await orgCourseWhere(organizationId);
 
   const [totalCourses, enrollmentStats, staffCount] = await Promise.all([
-    // Course CATALOGUE — org-level, never facility-narrowed (#17).
-    prisma.course.count({
-      where: { creator: { organizationId }, status: 'published' },
-    }),
+    // Course CATALOGUE — org-level, never facility-narrowed (#17), and never
+    // status-narrowed: a draft or retired course is still part of what an
+    // auditor is shown the catalogue for.
+    prisma.course.count({ where: courseWhere }),
     // Enrollment stats — SUBJECT data, narrowed.
     prisma.enrollment.findMany({
       where: { organizationUser: { organizationId, ...subjectWhere }, ...dateWhere },
       select: { status: true },
     }),
-    // Staff count — SUBJECT data, narrowed.
+    // Staff count — SUBJECT data, narrowed. Every member counts, not just the
+    // eight worker roles: a manager who carries training is training this org
+    // has to evidence.
     prisma.organizationUser.count({
-      where: { organizationId, role: { in: [...WORKER_ROLES] }, ...subjectWhere },
+      where: { organizationId, ...subjectWhere },
     }),
   ]);
 
@@ -160,12 +170,14 @@ export async function getAuditorCourses(
 ): Promise<AuditorCourseRow[]> {
   const { organizationId, subjectWhere } = await requireAuditorSession('auditPack.read');
   const dateWhere = startedAtWhere(range);
+  const courseWhere = await orgCourseWhere(organizationId);
 
-  // Course list itself is NOT narrowed — org-level catalogue (#17).
+  // Course list itself is NOT narrowed — org-level catalogue (#17) — and spans
+  // every status, so the report reflects the whole catalogue rather than
+  // silently dropping drafts and retired courses.
   const courses = await prisma.course.findMany({
     where: {
-      creator: { organizationId },
-      status: 'published',
+      ...courseWhere,
       ...(search ? { title: { contains: search, mode: 'insensitive' } } : {}),
     },
     orderBy: { createdAt: 'desc' },
@@ -173,6 +185,7 @@ export async function getAuditorCourses(
       id: true,
       title: true,
       thumbnail: true,
+      status: true,
       createdAt: true,
       enrollments: {
         // Per-course stats reflect only enrollments started within the range,
@@ -195,6 +208,7 @@ export async function getAuditorCourses(
       id: course.id,
       title: course.title,
       thumbnail: course.thumbnail,
+      status: course.status,
       assignedStaff: total,
       completionRate: total > 0 ? Math.round((completed / total) * 100) : 0,
       assignedDate: course.createdAt,
@@ -213,11 +227,12 @@ export async function getAuditorStaff(
   const { organizationId, subjectWhere } = await requireAuditorSession('auditPack.read');
   const dateWhere = startedAtWhere(range);
 
-  const workers = await prisma.organizationUser.findMany({
-    // #17: the Workers tab shows only the caller's facilities.
+  const members = await prisma.organizationUser.findMany({
+    // Every member of the org, not just the eight worker roles — an owner,
+    // supervisor or HR manager who holds training has a record an auditor asks
+    // for by name.
     where: {
       organizationId,
-      role: { in: [...WORKER_ROLES] },
       ...subjectWhere,
       ...(search
         ? {
@@ -243,25 +258,25 @@ export async function getAuditorStaff(
     orderBy: { createdAt: 'desc' },
   });
 
-  return workers.map((worker) => {
-    const total = worker.enrollments.length;
-    const completed = worker.enrollments.filter((e) =>
+  return members.map((member) => {
+    const total = member.enrollments.length;
+    const completed = member.enrollments.filter((e) =>
       ['completed', 'attested'].includes(e.status),
     ).length;
     // Enrollments are ordered by start date, so the newest completion is not
     // necessarily the first one carrying a `completedAt` — take the maximum.
-    const lastCompletion = worker.enrollments.reduce<Date | null>(
+    const lastCompletion = member.enrollments.reduce<Date | null>(
       (latest, e) =>
         e.completedAt && (!latest || e.completedAt > latest) ? e.completedAt : latest,
       null,
     );
-    const roleDisplayName = getRoleDisplayName(worker.role);
+    const roleDisplayName = getRoleDisplayName(member.role);
 
     return {
-      id: worker.id,
-      name: worker.user.fullName ?? worker.user.email.split('@')[0],
-      email: worker.user.email,
-      roleLabel: worker.jobTitle ? `${worker.jobTitle}/ ${roleDisplayName}` : roleDisplayName,
+      id: member.id,
+      name: member.user.fullName ?? member.user.email.split('@')[0],
+      email: member.user.email,
+      roleLabel: member.jobTitle ? `${member.jobTitle}/ ${roleDisplayName}` : roleDisplayName,
       coursesAssigned: total,
       coursesCompleted: completed,
       lastCompletion,
@@ -283,17 +298,30 @@ export async function generateAuditorPackCsv(): Promise<string> {
     where: { organizationUser: { organizationId, ...subjectWhere } },
     include: {
       organizationUser: { include: { user: { select: { email: true, fullName: true } } } },
-      course: { select: { title: true } },
+      course: { select: { title: true, status: true } },
     },
     orderBy: { startedAt: 'desc' },
   });
 
   const rows = [
-    ['Staff Name', 'Email', 'Course', 'Status', 'Progress (%)', 'Started At', 'Completed At'],
+    [
+      'Staff Name',
+      'Email',
+      'Course',
+      // Two different states sit side by side here: the course's own lifecycle
+      // (the catalogue now spans drafts and retired courses) and this person's
+      // progress through it. Naming both avoids a bare, ambiguous "Status".
+      'Course Status',
+      'Enrollment Status',
+      'Progress (%)',
+      'Started At',
+      'Completed At',
+    ],
     ...enrollments.map((e) => [
       e.organizationUser.user.fullName ?? e.organizationUser.user.email,
       e.organizationUser.user.email,
       e.course.title,
+      e.course.status,
       e.status,
       String(e.progress),
       e.startedAt.toISOString(),

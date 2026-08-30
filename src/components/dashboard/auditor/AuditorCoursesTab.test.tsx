@@ -36,11 +36,14 @@ vi.mock('./AuditExportRangeModal', () => ({
 
 import AuditorCoursesTab from './AuditorCoursesTab';
 
+const STATUSES = ['published', 'draft', 'inactive'];
+
 function makeCourses(count: number) {
   return Array.from({ length: count }, (_, i) => ({
     id: `course-${i + 1}`,
     title: `Course ${i + 1}`,
     thumbnail: null,
+    status: STATUSES[i % STATUSES.length],
     assignedStaff: 8,
     completionRate: 95,
     assignedDate: new Date('2026-01-15T14:20:00Z'),
@@ -121,6 +124,28 @@ describe('AuditorCoursesTab — export flow', () => {
 
     expect(screen.getByRole('button', { name: /export all/i })).toBeDisabled();
     expect(screen.getAllByRole('button', { name: 'Export' })[0]).toBeDisabled();
+  });
+});
+
+describe('AuditorCoursesTab — course status', () => {
+  it('shows each row lifecycle status, drafts and inactive courses included', async () => {
+    render(<AuditorCoursesTab totalCourses={12} />);
+    await screen.findByText('Course 1');
+
+    // The column is dropped on a narrow card, so the pill also renders inline —
+    // both copies matter, and both must read the row's own status.
+    const draftRow = screen.getByText('Course 2').closest('tr')!;
+    expect(within(draftRow).getAllByText('draft').length).toBeGreaterThan(0);
+
+    const inactiveRow = screen.getByText('Course 3').closest('tr')!;
+    expect(within(inactiveRow).getAllByText('inactive').length).toBeGreaterThan(0);
+  });
+
+  it('labels the status column', async () => {
+    render(<AuditorCoursesTab totalCourses={12} />);
+    await screen.findByText('Course 1');
+
+    expect(screen.getByRole('columnheader', { name: 'Status' })).toBeInTheDocument();
   });
 });
 

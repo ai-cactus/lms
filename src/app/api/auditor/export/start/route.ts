@@ -1,6 +1,7 @@
 import { NextResponse, NextRequest } from 'next/server';
 import { authorize } from '@/lib/rbac/authorize';
-import { resolveDataFacilityIds } from '@/lib/facility/staff-where';
+import { resolveAuditFacilityIds } from '@/lib/audit-reports/scope';
+import { orgCourseWhere } from '@/lib/course/org-scope';
 import prisma from '@/lib/prisma';
 import { auditorExportQueue } from '@/lib/queue/auditor-export-queue';
 import { getExportWorker } from '@/lib/queue/auditor-export-worker';
@@ -23,8 +24,10 @@ export async function POST(req: NextRequest) {
 
     // D-01: the facility scope is derived from the SESSION here and stamped
     // into the job, never read from the request body — a caller must not be
-    // able to widen their own export. `null` = org-wide.
-    const facilityIds = await resolveDataFacilityIds({
+    // able to widen their own export. `null` = org-wide, which is what the
+    // audit surface deliberately gives a supervisor so the export cannot
+    // disagree with the screen it was launched from.
+    const facilityIds = await resolveAuditFacilityIds({
       user: {
         id: userId,
         role: authResult.ctx.role,
@@ -76,7 +79,9 @@ export async function POST(req: NextRequest) {
       // the org's courses; it is the enrollment DATA inside that is limited.
       if (!scopeId) return NextResponse.json({ error: 'scopeId required' }, { status: 400 });
       const course = await prisma.course.findFirst({
-        where: { id: scopeId, creator: { organizationId } },
+        // Adopted (platform-catalogue) courses are authored by another tenant,
+        // so a creator-only predicate 404s every video course the org offers.
+        where: { id: scopeId, ...(await orgCourseWhere(organizationId)) },
         select: { id: true },
       });
       if (!course) return NextResponse.json({ error: 'Course not found' }, { status: 404 });
