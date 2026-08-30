@@ -13,6 +13,10 @@ import { logger } from '@/lib/logger';
 import { invalidatePlaybackAuthz } from '@/lib/video/playback-cache';
 import type { StaffEntry } from '@/types/enrollment';
 import { resolveDataFacilityIds, staffFacilityWhere } from '@/lib/facility/staff-where';
+import {
+  partitionEmailsByFacility,
+  partitionOrgUsersByFacility,
+} from '@/lib/facility/target-scope';
 import { RenewalCycle, ReminderStage, UserRole } from '@/generated/prisma/enums';
 import {
   createEnrollmentForUser,
@@ -377,45 +381,28 @@ export async function enrollUsers(
   };
 
   // Facility gate: this action takes FREE-TEXT emails, so the narrowing applied
-  // to the picker (getAvailableUsers) was advisory only. A facility-bound
+  // to the picker (getAvailableUsers) was advisory only — a facility-bound
   // supervisor could enroll any member of the organisation by typing their
-  // address, and because reads ARE scoped, neither the assigner's own "Enrolled
-  // Staff" view nor their roster ever showed the crossing — the write was
-  // silent to both sides. Mirrors the narrowing assignCourseToRole already does
-  // for the role path.
-  //
-  // Only EXISTING members outside the caller's facilities are rejected here.
-  // An unknown email is left to the invite path, which is separately gated on
-  // `invite.create` (C8) — rejecting it here would break invites for any
-  // facility-bound role that legitimately holds that permission.
+  // address, and because reads ARE scoped, nothing surfaced the crossing to
+  // either side. Shared with every other write that takes a caller-named
+  // target; see src/lib/facility/target-scope.ts.
   const facilityRejectedEmails = new Set<string>();
-  const callerFacilityIds = await resolveDataFacilityIds(session);
-  if (callerFacilityIds !== null && organizationId) {
-    const normalizedEmails = staffEntries.map((e) => e.email.toLowerCase().trim());
-    const members = await prisma.organizationUser.findMany({
-      where: { organizationId, user: { email: { in: normalizedEmails } } },
-      select: {
-        user: { select: { email: true } },
-        // `active` matches staffFacilityWhere: membership is where the person is
-        // NOW, so a transferred worker is out of their former supervisor's reach.
-        facilities: { where: { active: true }, select: { facilityId: true } },
-      },
-    });
+  if (organizationId) {
+    const { rejected } = await partitionEmailsByFacility(
+      session,
+      organizationId,
+      staffEntries.map((e) => e.email),
+    );
+    for (const email of rejected) facilityRejectedEmails.add(email);
 
-    const scope = new Set(callerFacilityIds);
-    for (const member of members) {
-      const inScope = member.facilities.some((f) => scope.has(f.facilityId));
-      if (!inScope) facilityRejectedEmails.add(member.user.email.toLowerCase());
-    }
-
-    if (facilityRejectedEmails.size > 0) {
+    if (rejected.length > 0) {
       logger.warn({
         msg: "[enrollment] Course assignment blocked — targets outside the caller's facilities",
         organizationId,
         courseId,
         userId: session.user.id,
         role: session.user.role,
-        rejectedCount: facilityRejectedEmails.size,
+        rejectedCount: rejected.length,
       });
     }
   }
@@ -1234,6 +1221,23 @@ export async function removeWorkerAssignment(enrollmentId: string) {
   // Ensure the membership trying to remove the assignment is the course creator
   if (enrollment.course.createdByOrgUserId !== session.user.organizationUserId) {
     throw new Error('Access denied. Only the course creator can remove assignments.');
+  }
+
+  // Creating a course does not widen who you may act on: a facility-bound
+  // creator must still not strip an enrollment from another site's worker.
+  if (session.user.organizationId) {
+    const { rejected } = await partitionOrgUsersByFacility(session, session.user.organizationId, [
+      enrollment.organizationUserId,
+    ]);
+    if (rejected.length > 0) {
+      logger.warn({
+        msg: "[enrollment] removeWorkerAssignment denied — target outside the caller's facilities",
+        enrollmentId,
+        userId: session.user.id,
+        role: session.user.role,
+      });
+      throw new Error('Access denied. Only the course creator can remove assignments.');
+    }
   }
 
   // Prevent removing if completed (optional, depending on business logic, but usually we allow removal or maybe block it)
