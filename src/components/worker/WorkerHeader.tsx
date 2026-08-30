@@ -4,7 +4,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Bell, ChevronDown, Smile, LogOut, Menu } from 'lucide-react';
+import { Bell, ChevronDown, User, LogOut, Menu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import NotificationPanel from '@/components/notifications/NotificationPanel';
 import {
@@ -168,7 +168,7 @@ export default function WorkerHeader({ fullName, onMenuClick }: Omit<HeaderProps
                   className="flex w-full cursor-pointer items-center gap-3 rounded-xl border-none bg-none px-4 py-3 text-left text-sm font-medium text-[#718096] transition-all hover:bg-[#f7fafc] hover:text-[#2d3748] [&_svg]:text-[#a0aec0] hover:[&_svg]:text-[#4a5568]"
                   onClick={() => setIsOpen(false)}
                 >
-                  <Smile className="size-[18px]" />
+                  <User className="size-[18px]" />
                   Profile
                 </Link>
                 <button
