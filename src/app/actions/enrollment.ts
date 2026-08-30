@@ -376,6 +376,50 @@ export async function enrollUsers(
     ...(options?.deferWorkerNotification ? { deferWorkerNotification: true } : {}),
   };
 
+  // Facility gate: this action takes FREE-TEXT emails, so the narrowing applied
+  // to the picker (getAvailableUsers) was advisory only. A facility-bound
+  // supervisor could enroll any member of the organisation by typing their
+  // address, and because reads ARE scoped, neither the assigner's own "Enrolled
+  // Staff" view nor their roster ever showed the crossing — the write was
+  // silent to both sides. Mirrors the narrowing assignCourseToRole already does
+  // for the role path.
+  //
+  // Only EXISTING members outside the caller's facilities are rejected here.
+  // An unknown email is left to the invite path, which is separately gated on
+  // `invite.create` (C8) — rejecting it here would break invites for any
+  // facility-bound role that legitimately holds that permission.
+  const facilityRejectedEmails = new Set<string>();
+  const callerFacilityIds = await resolveDataFacilityIds(session);
+  if (callerFacilityIds !== null && organizationId) {
+    const normalizedEmails = staffEntries.map((e) => e.email.toLowerCase().trim());
+    const members = await prisma.organizationUser.findMany({
+      where: { organizationId, user: { email: { in: normalizedEmails } } },
+      select: {
+        user: { select: { email: true } },
+        // `active` matches staffFacilityWhere: membership is where the person is
+        // NOW, so a transferred worker is out of their former supervisor's reach.
+        facilities: { where: { active: true }, select: { facilityId: true } },
+      },
+    });
+
+    const scope = new Set(callerFacilityIds);
+    for (const member of members) {
+      const inScope = member.facilities.some((f) => scope.has(f.facilityId));
+      if (!inScope) facilityRejectedEmails.add(member.user.email.toLowerCase());
+    }
+
+    if (facilityRejectedEmails.size > 0) {
+      logger.warn({
+        msg: "[enrollment] Course assignment blocked — targets outside the caller's facilities",
+        organizationId,
+        courseId,
+        userId: session.user.id,
+        role: session.user.role,
+        rejectedCount: facilityRejectedEmails.size,
+      });
+    }
+  }
+
   // Seat gate (F-022): an unknown / org-less email consumes a plan seat when it
   // becomes a pending invite, so reject the batch's overflow up front — the same
   // accounting createInvites uses (active workers + non-expired pending invites,
@@ -433,6 +477,8 @@ export async function enrollUsers(
     }
   }
 
+  const skipEmails = new Set([...facilityRejectedEmails, ...seatRejectedEmails]);
+
   // Kill-switch (default OFF): the batched path collapses the per-user reads into
   // batched look-ups and runs the side-effects with bounded concurrency; the
   // sequential path is the instant fallback. Both return one outcome per entry in
@@ -440,8 +486,8 @@ export async function enrollUsers(
   // identical either way.
   const batchEnabled = process.env.ENROLLMENT_BATCH_ENABLED === 'true';
   const outcomes = batchEnabled
-    ? await createEnrollmentsForUsers(staffEntries, enrollmentContext, seatRejectedEmails)
-    : await enrollSequentially(staffEntries, enrollmentContext, seatRejectedEmails);
+    ? await createEnrollmentsForUsers(staffEntries, enrollmentContext, skipEmails)
+    : await enrollSequentially(staffEntries, enrollmentContext, skipEmails);
 
   const deferred: DeferredWorkerNotification[] = [];
 
