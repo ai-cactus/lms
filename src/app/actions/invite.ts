@@ -5,6 +5,7 @@ import { auth } from '@/auth';
 import { revalidatePath } from 'next/cache';
 import { sendInviteEmail } from '@/lib/email';
 import { logger, maskEmail } from '@/lib/logger';
+import { areFacilitiesInCallerScope } from '@/lib/facility/target-scope';
 import { getSeatUsage } from '@/lib/seat-limits';
 import { can } from '@/lib/rbac/permissions';
 import {
@@ -106,6 +107,20 @@ export async function createInvites(
       });
       return { success: false, results: [], error: 'Invalid facility for this organization.' };
     }
+
+    // Belonging to the org is necessary but not sufficient. A facility-bound
+    // caller must also be able to REACH the destination, or a crafted id would
+    // let them seed staff into a site they cannot see.
+    if (!(await areFacilitiesInCallerScope(session, [requestedFacility.id]))) {
+      logger.warn({
+        msg: "[invite] Requested facility rejected — outside the caller's facilities",
+        organizationId,
+        userId: session.user.id,
+        role: session.user.role,
+      });
+      return { success: false, results: [], error: 'Invalid facility for this organization.' };
+    }
+
     facilityId = requestedFacility.id;
   }
 
