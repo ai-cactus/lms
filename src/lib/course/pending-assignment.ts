@@ -11,8 +11,8 @@ import { logger } from '@/lib/logger';
  * once an admin acknowledges the warnings.
  *
  * Each variant mirrors the arguments of the call it defers — `enrollUsers` for
- * named individuals, `assignCourseToRoles` for whole roles. Step 9 targets one
- * or the other, never both.
+ * named individuals, `assignCourseToRoles` for whole roles. The wizard's assign
+ * & publish step targets one or the other, never both.
  */
 const pendingEmailAssignmentSchema = z.object({
   mode: z.literal('email'),
@@ -54,7 +54,8 @@ export interface RoleAssignmentIntent {
 }
 
 /**
- * Turn the wizard's step-9 selection into the payload to park on the course.
+ * Turn the wizard's assign & publish selection into the payload to park on the
+ * course.
  * Returns null when nothing was targeted, so an untargeted draft leaves the
  * column untouched.
  */

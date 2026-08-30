@@ -1573,15 +1573,15 @@ export async function createFullCourse(data: {
   quiz: QuizQuestion[];
   assignments: string[];
   /**
-   * Role-targeted assignment intent from wizard step 9. Only consulted when the
-   * quality gate holds the course back — the caller performs the assignment
-   * itself when the course publishes immediately. Mutually exclusive with
-   * {@link assignments}.
+   * Role-targeted assignment intent from the wizard's assign & publish step.
+   * Only consulted when the quality gate holds the course back — the caller
+   * performs the assignment itself when the course publishes immediately.
+   * Mutually exclusive with {@link assignments}.
    */
   roleAssignment?: RoleAssignmentIntent;
   dueDate?: Date;
   dueTime?: string;
-  // Quiz settings from Step 4
+  // Quiz settings from the wizard's quiz step
   quizTitle?: string;
   quizPassMark?: string;
   quizQuestionType?: string;

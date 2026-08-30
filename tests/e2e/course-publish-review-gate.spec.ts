@@ -81,7 +81,8 @@ interface Seeded {
  * Seed an org (active billing) + owner + a course held by the F-051 gate: a
  * draft, `reviewRequired: true`, with a `pendingAssignment` parked for
  * `parkedEmail` — the exact shape `createFullCourse` would have written for a
- * degraded generation whose wizard step-9 targeted that email (Issue #14).
+ * degraded generation whose wizard assign & publish step targeted that email
+ * (Issue #14).
  */
 async function seedHeldDraftCourse(parkedEmail: string): Promise<Seeded> {
   const client = await db();

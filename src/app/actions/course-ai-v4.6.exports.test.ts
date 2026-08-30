@@ -40,7 +40,7 @@ describe("course-ai-v4.6 'use server' surface", () => {
    * The only functions that should be reachable as actions:
    *   generateCourseAndQuizV46 — gates on scanText before creating a Job
    *   checkCourseGenerationJobV46 — job status polling
-   *   startModuleGenerationJobs — 9-step wizard batch wrapper; every module is
+   *   startModuleGenerationJobs — wizard batch wrapper; every module is
    *     routed through generateCourseAndQuizV46, so auth, rate limiting, and
    *     the PHI scan all still apply per module
    */

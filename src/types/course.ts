@@ -77,13 +77,8 @@ export interface CourseWizardData {
   dueDate: string;
   dueTime: string;
   modules: CourseWizardModule[];
-  // Set on the audience step; pre-fills the assignment step, which lands in a
-  // later phase of the design alignment.
-  audience: 'general' | 'specific';
-  audienceRoles: string[];
-  // Carried by the 9-step wizard shell but not yet read by any step: the
-  // assignment screen lands in a later phase of the design alignment. Kept here
-  // so drafts saved now survive that phase.
+  // Set on the assign & publish step, which targets whole roles or named
+  // individuals — never both.
   assignMode: 'roles' | 'email';
   assignRoles: string[];
   dueDeadlineEnabled: boolean;

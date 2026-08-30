@@ -844,7 +844,7 @@ export async function assignCourseToRole(
   return { ...result, targetRole };
 }
 
-/** The course wizard's step-9 assignment settings, in the wizard's own vocabulary. */
+/** The course wizard's assign & publish settings, in the wizard's own vocabulary. */
 export interface RoleAssignmentSettingsInput {
   /** Deadline date from the wizard's "Set Completion Deadline" toggle, when set. */
   dueDate?: string | Date | null;

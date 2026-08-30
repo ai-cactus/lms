@@ -5,6 +5,10 @@
  * `onModulesChange` carries committed modules into the wizard draft, and
  * `onDraftStatusChange` drives the wizard's Continue gate. PHI is a hard block —
  * a flagged document is never stored server-side, so the slot is cleared too.
+ *
+ * The per-module deadline is only offered from the second module onward: the
+ * first module may turn out to BE the whole course, and a whole course carries
+ * no per-module deadline.
  */
 import { createRef } from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
@@ -83,9 +87,22 @@ async function attestAndUpload(user: ReturnType<typeof userEvent.setup>, file = 
 async function fillTextFields(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText(/Module Title/i), 'Infection Prevention & Control');
   await user.type(screen.getByLabelText(/Objective/i), 'Apply safe hygiene practices.');
-  await user.click(screen.getByRole('combobox'));
-  await user.click(await screen.findByRole('option', { name: '2 days' }));
 }
+
+async function pickDeadline(user: ReturnType<typeof userEvent.setup>, label = '2 days') {
+  await user.click(screen.getByRole('combobox'));
+  await user.click(await screen.findByRole('option', { name: label }));
+}
+
+const COMMITTED_MODULE: CourseWizardModule = {
+  title: 'Infection Prevention & Control',
+  objective: 'Apply safe hygiene practices.',
+  completionDeadlineDays: null,
+  documentId: 'doc-existing',
+  fileName: 'existing.pdf',
+  fileSize: 1_000_000,
+  mimeType: 'application/pdf',
+};
 
 function lastStatus(onDraftStatusChange: ReturnType<typeof vi.fn>): ModuleDraftStatus {
   return onDraftStatusChange.mock.calls.at(-1)?.[0];
@@ -131,7 +148,7 @@ describe('Step2Modules', () => {
       {
         title: 'Infection Prevention & Control',
         objective: 'Apply safe hygiene practices.',
-        completionDeadlineDays: 2,
+        completionDeadlineDays: null,
         documentId: STORED_PDF.id,
         fileName: STORED_PDF.filename,
         fileSize: STORED_PDF.size,
@@ -172,9 +189,7 @@ describe('Step2Modules', () => {
 
     await user.click(screen.getByRole('button', { name: /Add module/i }));
     expect(onModulesChange).not.toHaveBeenCalled();
-    expect(
-      screen.getByText(/Add a title, objective, deadline and training document/i),
-    ).toBeVisible();
+    expect(screen.getByText(/Add a title, objective and training document/i)).toBeVisible();
   });
 
   it('will not upload until the PHI attestation is given', async () => {
@@ -209,7 +224,7 @@ describe('Step2Modules', () => {
 
     expect(ref.current?.commitDraft()).toMatchObject({
       title: 'Infection Prevention & Control',
-      completionDeadlineDays: 2,
+      completionDeadlineDays: null,
       documentId: STORED_PDF.id,
     });
     expect(onModulesChange).toHaveBeenCalledTimes(1);
@@ -221,7 +236,7 @@ describe('Step2Modules', () => {
       {
         title: 'Infection Prevention & Control',
         objective: 'Apply safe hygiene practices.',
-        completionDeadlineDays: 2,
+        completionDeadlineDays: null,
         documentId: 'doc-1',
         fileName: 'infection-control.pdf',
         fileSize: 2_202_010,
@@ -236,16 +251,87 @@ describe('Step2Modules', () => {
         fileSize: 900_000,
         mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       },
+      {
+        title: 'Fire Safety',
+        objective: 'Evacuate safely.',
+        completionDeadlineDays: 7,
+        documentId: 'doc-3',
+        fileName: 'fire-safety.pdf',
+        fileSize: 500_000,
+        mimeType: 'application/pdf',
+      },
     ];
     const { onModulesChange } = renderStep({ modules });
 
     expect(screen.getByText('Module 1')).toBeInTheDocument();
-    expect(screen.getByText('Module 2')).toBeInTheDocument();
+    expect(screen.getByText('Module 3')).toBeInTheDocument();
     expect(screen.getByText('Workplace Safety Guidelines')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Delete module 1' }));
 
-    expect(onModulesChange).toHaveBeenCalledWith([modules[1]]);
+    expect(onModulesChange).toHaveBeenCalledWith([modules[1], modules[2]]);
+  });
+
+  it('does not ask the first module for a deadline', () => {
+    renderStep();
+
+    expect(screen.queryByText(/Module Completion Deadline/i)).not.toBeInTheDocument();
+  });
+
+  it('asks every module after the first for a deadline and commits it', async () => {
+    const user = userEvent.setup();
+    const { onModulesChange } = renderStep({ modules: [COMMITTED_MODULE] });
+
+    expect(screen.getByText(/Module Completion Deadline/i)).toBeInTheDocument();
+
+    await fillTextFields(user);
+    await pickDeadline(user);
+    await attestAndUpload(user);
+    await screen.findByText(STORED_PDF.filename);
+    await user.click(screen.getByRole('button', { name: /Add module/i }));
+
+    expect(onModulesChange).toHaveBeenCalledWith([
+      COMMITTED_MODULE,
+      expect.objectContaining({ completionDeadlineDays: 2 }),
+    ]);
+  });
+
+  it('blocks a second module until its deadline is chosen', async () => {
+    const user = userEvent.setup();
+    const { onModulesChange, onDraftStatusChange } = renderStep({ modules: [COMMITTED_MODULE] });
+
+    await fillTextFields(user);
+    await attestAndUpload(user);
+    await screen.findByText(STORED_PDF.filename);
+
+    await waitFor(() => expect(lastStatus(onDraftStatusChange)).toBe('partial'));
+    await user.click(screen.getByRole('button', { name: /Add module/i }));
+
+    expect(onModulesChange).not.toHaveBeenCalled();
+    expect(
+      screen.getByText(/Add a title, objective, deadline and training document/i),
+    ).toBeVisible();
+  });
+
+  it("clears the survivor's deadline when deleting back down to a whole course", async () => {
+    const user = userEvent.setup();
+    const modules: CourseWizardModule[] = [
+      COMMITTED_MODULE,
+      {
+        title: 'Workplace Safety Guidelines',
+        objective: 'Follow site safety rules.',
+        completionDeadlineDays: 5,
+        documentId: 'doc-2',
+        fileName: 'workplace-safety.docx',
+        fileSize: 900_000,
+        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      },
+    ];
+    const { onModulesChange } = renderStep({ modules });
+
+    await user.click(screen.getByRole('button', { name: 'Delete module 1' }));
+
+    expect(onModulesChange).toHaveBeenCalledWith([{ ...modules[1], completionDeadlineDays: null }]);
   });
 
   it('pre-fills the slot with the deep-linked document', async () => {
