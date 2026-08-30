@@ -1,8 +1,9 @@
 /**
  * Gating tests for the staff-profile "Assign Course" button. It follows the
- * `assignment.create` gate `assignCoursesToUser` enforces — NOT the `user.edit`
- * roster gate next to it — so a Clinical Director may assign training without
- * holding any roster-edit rights, while a Finance viewer sees nothing.
+ * `assignment.create` gate `assignCoursesToStaffMember` enforces — NOT the
+ * `user.edit` roster gate next to it — so a Clinical Director may assign
+ * training without holding any roster-edit rights, while a Finance viewer sees
+ * nothing.
  */
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -18,10 +19,10 @@ vi.mock('@/app/actions/certificate', () => ({
 vi.mock('@/app/actions/staff', () => ({
   getEnrollmentQuizResult: vi.fn(),
   setStaffFacilities: vi.fn(),
+  assignCoursesToStaffMember: vi.fn(),
 }));
 vi.mock('@/app/actions/course', () => ({
   getCourses: vi.fn().mockResolvedValue([]),
-  assignCoursesToUser: vi.fn(),
 }));
 
 const STAFF = {
