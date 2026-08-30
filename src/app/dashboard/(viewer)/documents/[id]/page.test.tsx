@@ -165,3 +165,37 @@ describe('DocumentViewerPage meta line', () => {
     expect(screen.getByText('Preview not available for this file type.')).toBeInTheDocument();
   });
 });
+
+/**
+ * The access gate. `/dashboard/documents` moved to the registry in 867cda0, but
+ * this detail route kept `isAdminRole` — and ADMIN_ROLES includes `finance`,
+ * which holds no `document.*` grant at all. The list was closed while the record
+ * behind it stayed reachable by direct URL.
+ */
+describe('DocumentViewerPage access gate', () => {
+  it('refuses Finance — in ADMIN_ROLES, but holds no document.read', async () => {
+    mockAuth.mockResolvedValue({
+      user: { id: 'user-f', role: 'finance', organizationId: ORG_ID, name: 'Fin Ance' },
+    });
+
+    await expect(renderPage()).rejects.toThrow('NEXT_NOT_FOUND');
+    expect(mockNotFound).toHaveBeenCalled();
+  });
+
+  it('still admits HR, which does hold document.read', async () => {
+    mockAuth.mockResolvedValue({
+      user: { id: 'user-h', role: 'hr', organizationId: ORG_ID, name: 'H R' },
+    });
+
+    await expect(renderPage()).resolves.toBeDefined();
+    expect(mockNotFound).not.toHaveBeenCalled();
+  });
+
+  it('treats a cross-org document as not found rather than forbidden — existence must not leak', async () => {
+    prismaMock.document.findUnique.mockResolvedValue(
+      buildDocument({ organizationUser: { organizationId: 'other-org' } }),
+    );
+
+    await expect(renderPage()).rejects.toThrow('NEXT_NOT_FOUND');
+  });
+});

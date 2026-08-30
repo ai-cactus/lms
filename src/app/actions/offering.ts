@@ -1,7 +1,8 @@
 'use server';
 
 import prisma from '@/lib/prisma';
-import { isAdminRole } from '@/lib/rbac/role-utils';
+import { dbRoleToRoleKey, isAdminRole } from '@/lib/rbac/role-utils';
+import { can, type Permission } from '@/lib/rbac/permissions';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath, unstable_cache } from 'next/cache';
@@ -21,11 +22,24 @@ async function resolveSession() {
 // admin from the session. role/organizationId are authoritative on the
 // DB-revalidated session, so this needs no extra user query.
 // ---------------------------------------------------------------------------
-function resolveOrg(sessionUser: { organizationId: string | null; role: Role }): string {
+function resolveOrg(
+  sessionUser: { organizationId: string | null; role: Role },
+  permission: Permission,
+): string {
   if (!sessionUser.organizationId) {
     throw new Error('No organization');
   }
-  if (!isAdminRole(sessionUser.role)) {
+  // `isAdminRole` alone covered BOTH the reads and the mutations below, so a
+  // read-only admin-tier role (supervisor, finance, clinical_director — none of
+  // which hold a `course.*` write verb) could add a catalog course to the
+  // organisation, retitle it, or withdraw it entirely. The verb is now named per
+  // call site.
+  //
+  // The tier check STAYS, composed with the verb rather than replaced by it:
+  // `workerPermissions` grants every learner `course.read`, so gating the reads
+  // on the permission alone would open the admin catalog to the whole workforce.
+  // Same reasoning as course.ts:69.
+  if (!isAdminRole(sessionUser.role) || !can(dbRoleToRoleKey(sessionUser.role), permission)) {
     throw new Error('Forbidden');
   }
   return sessionUser.organizationId;
@@ -145,7 +159,7 @@ export async function listGlobalVideoCatalogCourses(): Promise<CourseWithStats[]
     throw new Error('Unauthorized');
   }
 
-  const organizationId = resolveOrg(session.user);
+  const organizationId = resolveOrg(session.user, 'course.read');
 
   const catalog = await getGlobalVideoCatalog();
   if (!catalog.length) return [];
@@ -220,7 +234,7 @@ export async function listOfferedVideoCourses(): Promise<OfferedVideoCourseRow[]
     throw new Error('Unauthorized');
   }
 
-  const organizationId = resolveOrg(session.user);
+  const organizationId = resolveOrg(session.user, 'course.read');
 
   const offerings = await prisma.orgCourseOffering.findMany({
     // Exclude soft-deleted (inactive) courses so a deactivated course drops out
@@ -285,7 +299,7 @@ export async function offerCourseToOrg(courseId: string, overrides?: OfferingOve
     throw new Error('Unauthorized');
   }
 
-  const organizationId = resolveOrg(session.user);
+  const organizationId = resolveOrg(session.user, 'course.create');
 
   const course = await prisma.course.findFirst({
     where: { id: courseId, isGlobal: true, type: 'video', status: 'published' },
@@ -320,7 +334,7 @@ export async function updateOffering(id: string, overrides: OfferingOverrides) {
     throw new Error('Unauthorized');
   }
 
-  const organizationId = resolveOrg(session.user);
+  const organizationId = resolveOrg(session.user, 'course.edit');
 
   const existing = await prisma.orgCourseOffering.findUnique({ where: { id } });
   if (!existing || existing.organizationId !== organizationId) {
@@ -352,7 +366,7 @@ export async function withdrawOffering(id: string) {
     throw new Error('Unauthorized');
   }
 
-  const organizationId = resolveOrg(session.user);
+  const organizationId = resolveOrg(session.user, 'course.delete');
 
   const existing = await prisma.orgCourseOffering.findUnique({ where: { id } });
   if (!existing || existing.organizationId !== organizationId) {

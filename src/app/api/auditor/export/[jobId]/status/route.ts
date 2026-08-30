@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { authorize } from '@/lib/rbac/authorize';
+import { resolveDataFacilityIds } from '@/lib/facility/staff-where';
 import { logger } from '@/lib/logger';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ jobId: string }> }) {
@@ -33,6 +34,39 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ jobI
           : null;
       if (!jobOwnerMembership) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
+
+      // Tenant isolation is not facility isolation. Same-org membership alone
+      // let one facility's supervisor poll another's export and watch it
+      // progress — no report content, but the existence, timing and completion
+      // of another site's audit run is itself scoped information.
+      //
+      // Mirrors the download route's rule so the two cannot drift: a
+      // facility-bound caller may only see a job whose recorded scope their own
+      // contains. `undefined` (a job predating that field) is treated as
+      // unknown, not as org-wide, and refused.
+      const callerFacilityIds = await resolveDataFacilityIds({
+        user: {
+          id: userId,
+          role: authResult.ctx.role,
+          organizationId,
+          organizationUserId: authResult.ctx.organizationUserId,
+        },
+      });
+      if (callerFacilityIds !== null) {
+        const jobFacilityIds = (job.payload as Record<string, unknown> | null)?.facilityIds as
+          string[] | null | undefined;
+        const visible =
+          Array.isArray(jobFacilityIds) &&
+          jobFacilityIds.every((id) => callerFacilityIds.includes(id));
+        if (!visible) {
+          logger.warn({
+            msg: '[auditor] Status refused — job scope exceeds caller scope',
+            userId,
+            jobId,
+          });
+          return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+        }
       }
     }
 
