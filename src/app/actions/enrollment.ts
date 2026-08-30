@@ -13,6 +13,10 @@ import { logger } from '@/lib/logger';
 import { invalidatePlaybackAuthz } from '@/lib/video/playback-cache';
 import type { StaffEntry } from '@/types/enrollment';
 import { resolveDataFacilityIds, staffFacilityWhere } from '@/lib/facility/staff-where';
+import {
+  partitionEmailsByFacility,
+  partitionOrgUsersByFacility,
+} from '@/lib/facility/target-scope';
 import { RenewalCycle, ReminderStage, UserRole } from '@/generated/prisma/enums';
 import {
   createEnrollmentForUser,
@@ -377,45 +381,28 @@ export async function enrollUsers(
   };
 
   // Facility gate: this action takes FREE-TEXT emails, so the narrowing applied
-  // to the picker (getAvailableUsers) was advisory only. A facility-bound
+  // to the picker (getAvailableUsers) was advisory only — a facility-bound
   // supervisor could enroll any member of the organisation by typing their
-  // address, and because reads ARE scoped, neither the assigner's own "Enrolled
-  // Staff" view nor their roster ever showed the crossing — the write was
-  // silent to both sides. Mirrors the narrowing assignCourseToRole already does
-  // for the role path.
-  //
-  // Only EXISTING members outside the caller's facilities are rejected here.
-  // An unknown email is left to the invite path, which is separately gated on
-  // `invite.create` (C8) — rejecting it here would break invites for any
-  // facility-bound role that legitimately holds that permission.
+  // address, and because reads ARE scoped, nothing surfaced the crossing to
+  // either side. Shared with every other write that takes a caller-named
+  // target; see src/lib/facility/target-scope.ts.
   const facilityRejectedEmails = new Set<string>();
-  const callerFacilityIds = await resolveDataFacilityIds(session);
-  if (callerFacilityIds !== null && organizationId) {
-    const normalizedEmails = staffEntries.map((e) => e.email.toLowerCase().trim());
-    const members = await prisma.organizationUser.findMany({
-      where: { organizationId, user: { email: { in: normalizedEmails } } },
-      select: {
-        user: { select: { email: true } },
-        // `active` matches staffFacilityWhere: membership is where the person is
-        // NOW, so a transferred worker is out of their former supervisor's reach.
-        facilities: { where: { active: true }, select: { facilityId: true } },
-      },
-    });
+  if (organizationId) {
+    const { rejected } = await partitionEmailsByFacility(
+      session,
+      organizationId,
+      staffEntries.map((e) => e.email),
+    );
+    for (const email of rejected) facilityRejectedEmails.add(email);
 
-    const scope = new Set(callerFacilityIds);
-    for (const member of members) {
-      const inScope = member.facilities.some((f) => scope.has(f.facilityId));
-      if (!inScope) facilityRejectedEmails.add(member.user.email.toLowerCase());
-    }
-
-    if (facilityRejectedEmails.size > 0) {
+    if (rejected.length > 0) {
       logger.warn({
         msg: "[enrollment] Course assignment blocked — targets outside the caller's facilities",
         organizationId,
         courseId,
         userId: session.user.id,
         role: session.user.role,
-        rejectedCount: facilityRejectedEmails.size,
+        rejectedCount: rejected.length,
       });
     }
   }
@@ -1214,10 +1201,21 @@ export async function requestCourseRetry(enrollmentId: string) {
 /**
  * Remove a worker's assignment (enrollment) from a course.
  */
-export async function removeWorkerAssignment(enrollmentId: string) {
+/**
+ * Withdraw one worker's assignment from a course.
+ *
+ * Refusals are RETURNED, never thrown. A thrown message is redacted to React
+ * error #441 in production, so every distinct reason would reach the UI as the
+ * same "something went wrong" — and this action has three the user can act on:
+ * they are not the course creator, the staff member is outside their
+ * facilities, or the row is already gone.
+ */
+export async function removeWorkerAssignment(
+  enrollmentId: string,
+): Promise<{ success: boolean; error?: string }> {
   const session = await resolveSession();
   if (!session?.user?.id) {
-    throw new Error('Unauthorized');
+    return { success: false, error: 'Not authenticated' };
   }
 
   const enrollment = await prisma.enrollment.findUnique({
@@ -1228,15 +1226,37 @@ export async function removeWorkerAssignment(enrollmentId: string) {
   });
 
   if (!enrollment) {
-    throw new Error('Enrollment not found');
+    return { success: false, error: 'That assignment no longer exists.' };
   }
 
   // Ensure the membership trying to remove the assignment is the course creator
   if (enrollment.course.createdByOrgUserId !== session.user.organizationUserId) {
-    throw new Error('Access denied. Only the course creator can remove assignments.');
+    return {
+      success: false,
+      error: 'Only the person who created this course can withdraw its assignments.',
+    };
   }
 
-  // Prevent removing if completed (optional, depending on business logic, but usually we allow removal or maybe block it)
+  // Creating a course does not widen who you may act on: a facility-bound
+  // creator must still not strip an enrollment from another site's worker.
+  if (session.user.organizationId) {
+    const { rejected } = await partitionOrgUsersByFacility(session, session.user.organizationId, [
+      enrollment.organizationUserId,
+    ]);
+    if (rejected.length > 0) {
+      logger.warn({
+        msg: "[enrollment] removeWorkerAssignment denied — target outside the caller's facilities",
+        enrollmentId,
+        userId: session.user.id,
+        role: session.user.role,
+      });
+      return {
+        success: false,
+        error: 'That staff member is outside the facilities you manage.',
+      };
+    }
+  }
+
   await prisma.enrollment.delete({
     where: { id: enrollmentId },
   });

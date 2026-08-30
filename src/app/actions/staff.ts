@@ -17,6 +17,10 @@ import type { EnrollmentStatus, UserRole } from '@/generated/prisma/enums';
 import { enrollUsers, type AssignmentSettingsInput } from '@/app/actions/enrollment';
 import { enrollUserForRoleTargets } from '@/lib/enrollment/role-targets';
 import { resolveDataFacilityIds, staffFacilityWhere } from '@/lib/facility/staff-where';
+import {
+  areFacilitiesInCallerScope,
+  partitionOrgUsersByFacility,
+} from '@/lib/facility/target-scope';
 import { logger, maskEmail } from '@/lib/logger';
 import type { DeferredWorkerNotification } from '@/lib/enrollment/create';
 import { collectDeferredNotices, notifyCoursesAssigned } from '@/lib/enrollment/notify';
@@ -489,6 +493,26 @@ export async function setStaffFacilities(
     return { success: false, error: 'Forbidden' };
   }
 
+  // A facility-bound caller may only move staff they can already reach, and only
+  // INTO facilities they can reach — otherwise reassignment becomes a way to
+  // grant oneself access to a site, or to strand a worker somewhere invisible.
+  const { rejected: outOfScopeTargets } = await partitionOrgUsersByFacility(
+    session,
+    session.user.organizationId,
+    [organizationUserId],
+  );
+  if (
+    outOfScopeTargets.length > 0 ||
+    !(await areFacilitiesInCallerScope(session, targetFacilityIds))
+  ) {
+    logger.warn({
+      msg: '[staff] setStaffFacilities denied — target or destination outside caller facilities',
+      userId: session.user.id,
+      role: session.user.role,
+    });
+    return { success: false, error: 'Forbidden' };
+  }
+
   // The owner spans the whole organization — their facility scope is not
   // reassignable by anyone.
   if (target.role === 'owner') {
@@ -597,6 +621,22 @@ export async function assignCourseToStaffMember(
     select: { organizationId: true, user: { select: { email: true } } },
   });
   if (!target || target.organizationId !== session.user.organizationId) {
+    return { success: [], alreadyEnrolled: [], newInvited: [], failed: [], error: 'Forbidden' };
+  }
+
+  // Tenant isolation is not facility isolation — narrow to the caller's own
+  // facilities as well, so a named id cannot reach another site's staff.
+  const { rejected: outOfFacility } = await partitionOrgUsersByFacility(
+    session,
+    session.user.organizationId,
+    [staffOrgUserId],
+  );
+  if (outOfFacility.length > 0) {
+    logger.warn({
+      msg: '[staff] assignCourseToStaffMember denied — target outside caller facilities',
+      userId: session.user.id,
+      role: session.user.role,
+    });
     return { success: [], alreadyEnrolled: [], newInvited: [], failed: [], error: 'Forbidden' };
   }
 
@@ -1029,6 +1069,21 @@ export async function removeStaff(organizationUserId: string) {
     }
 
     if (staffOrgUser.organizationId !== admin.organizationId) {
+      throw new Error('User does not belong to your organization');
+    }
+
+    // A facility-bound caller may only remove staff their facilities admit.
+    const { rejected: outOfScope } = await partitionOrgUsersByFacility(
+      { user: session.user },
+      admin.organizationId,
+      [organizationUserId],
+    );
+    if (outOfScope.length > 0) {
+      logger.warn({
+        msg: '[staff] removeStaff denied — target outside caller facilities',
+        userId: session.user.id,
+        role: session.user.role,
+      });
       throw new Error('User does not belong to your organization');
     }
 

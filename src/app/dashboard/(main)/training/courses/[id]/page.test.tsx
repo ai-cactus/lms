@@ -8,8 +8,9 @@
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockLoadCourseDetail, mockNotFound } = vi.hoisted(() => ({
+const { mockLoadCourseDetail, mockNotFound, mockAuth } = vi.hoisted(() => ({
   mockLoadCourseDetail: vi.fn(),
+  mockAuth: vi.fn(),
   mockNotFound: vi.fn(() => {
     throw new Error('NEXT_NOT_FOUND');
   }),
@@ -17,8 +18,11 @@ const { mockLoadCourseDetail, mockNotFound } = vi.hoisted(() => ({
 
 vi.mock('@/lib/course/load-course-detail', () => ({ loadCourseDetail: mockLoadCourseDetail }));
 vi.mock('next/navigation', () => ({ notFound: mockNotFound }));
+vi.mock('@/auth', () => ({ auth: mockAuth }));
 vi.mock('@/components/dashboard/training/TrainingDetails', () => ({
-  default: () => <div data-testid="training-details" />,
+  default: ({ canWithdrawAssignments }: { canWithdrawAssignments?: boolean }) => (
+    <div data-testid="training-details" data-can-withdraw={String(!!canWithdrawAssignments)} />
+  ),
 }));
 
 import CourseDetailsPage from './page';
@@ -27,6 +31,9 @@ const params = Promise.resolve({ id: 'course-1' });
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockAuth.mockResolvedValue({
+    user: { id: 'u-1', organizationUserId: 'ou-1', organizationId: 'org-1', role: 'owner' },
+  });
 });
 
 describe('CourseDetailsPage', () => {
@@ -51,5 +58,37 @@ describe('CourseDetailsPage', () => {
 
     await expect(CourseDetailsPage({ params })).rejects.toBe(dbError);
     expect(mockNotFound).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The withdraw control's gate is computed HERE, mirroring
+ * removeWorkerAssignment's own course-creator rule, so the action is never
+ * offered where it would be refused.
+ */
+describe('CourseDetailsPage — withdraw gate', () => {
+  it('allows withdrawing when the viewer created the course', async () => {
+    mockLoadCourseDetail.mockResolvedValue({ id: 'course-1', createdByOrgUserId: 'ou-1' });
+
+    render(await CourseDetailsPage({ params }));
+
+    expect(screen.getByTestId('training-details')).toHaveAttribute('data-can-withdraw', 'true');
+  });
+
+  it('withholds it when someone else created the course — reading a roster is not withdrawing from it', async () => {
+    mockLoadCourseDetail.mockResolvedValue({ id: 'course-1', createdByOrgUserId: 'ou-other' });
+
+    render(await CourseDetailsPage({ params }));
+
+    expect(screen.getByTestId('training-details')).toHaveAttribute('data-can-withdraw', 'false');
+  });
+
+  it('withholds it when there is no session membership', async () => {
+    mockAuth.mockResolvedValue(null);
+    mockLoadCourseDetail.mockResolvedValue({ id: 'course-1', createdByOrgUserId: 'ou-1' });
+
+    render(await CourseDetailsPage({ params }));
+
+    expect(screen.getByTestId('training-details')).toHaveAttribute('data-can-withdraw', 'false');
   });
 });
