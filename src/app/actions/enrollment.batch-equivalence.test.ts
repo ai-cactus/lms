@@ -135,6 +135,7 @@ const ownCourse = {
   id: COURSE_ID,
   title: 'Safety Training',
   createdByOrgUserId: ADMIN_ORG_USER_ID,
+  creator: { organizationId: ORG_ID },
   isGlobal: false,
   status: 'published',
 };

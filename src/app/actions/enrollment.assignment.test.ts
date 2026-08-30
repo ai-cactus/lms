@@ -109,6 +109,7 @@ beforeEach(() => {
     id: 'course-1',
     title: 'Course',
     createdByOrgUserId: ADMIN_ORG_USER_ID,
+    creator: { organizationId: 'org-1' },
     isGlobal: false,
   });
   // Defect B billing gate: enrollUsers now requires active, unpaused billing —
@@ -176,6 +177,7 @@ describe('enrollUsers assignment batch', () => {
       id: 'course-2',
       title: 'Catalog Course',
       createdByOrgUserId: 'ou-system-user',
+      creator: { organizationId: 'org-platform' },
       isGlobal: true,
       status: 'published',
     });
