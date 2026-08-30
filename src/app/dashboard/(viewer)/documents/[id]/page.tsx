@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { logger } from '@/lib/logger';
 import { can } from '@/lib/rbac/permissions';
-import { isAdminRole, dbRoleToRoleKey } from '@/lib/rbac/role-utils';
+import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
 import { formatRelativeTime } from '@/lib/utils';
 
 export default async function DocumentViewerPage({ params }: { params: Promise<{ id: string }> }) {
@@ -32,13 +32,20 @@ export default async function DocumentViewerPage({ params }: { params: Promise<{
     },
   });
 
-  // Org-scoped Document Hub: any org admin may view any document uploaded within
-  // their organization. A cross-org document — or any access by a non-admin — is
-  // treated as not found so existence is never leaked.
+  // Org-scoped Document Hub: a role granted `document.read` may view any
+  // document uploaded within their organization. A cross-org document — or any
+  // access by a role without that grant — is treated as not found so existence
+  // is never leaked.
+  //
+  // Registry-gated rather than isAdminRole: ADMIN_ROLES includes `finance`,
+  // which holds no `document.*` grant at all. The list page moved to the
+  // registry in 867cda0; this detail route did not, so a Finance session could
+  // still open any document by its direct URL — the list was closed and the
+  // record behind it was not.
   if (
     !doc ||
     !session?.user?.id ||
-    !isAdminRole(session.user.role) ||
+    !can(dbRoleToRoleKey(session.user.role), 'document.read') ||
     doc.organizationUser.organizationId !== session.user.organizationId
   ) {
     notFound();
