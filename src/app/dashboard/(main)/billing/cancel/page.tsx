@@ -1,5 +1,7 @@
 import { auth } from '@/auth';
-import { isAdminRole } from '@/lib/rbac/role-utils';
+import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
+import { can } from '@/lib/rbac/permissions';
+import type { Role } from '@/types/next-auth';
 import prisma from '@/lib/prisma';
 import { redirect } from 'next/navigation';
 import { BILLING_PLANS } from '@/lib/billing-plans';
@@ -17,7 +19,12 @@ export default async function CancelSubscriptionPage() {
   }
 
   const { role, organizationId } = session.user;
-  if (!isAdminRole(role)) {
+  // Matches the verb the cancel API itself requires (`billing.edit`), so the
+  // page is only reachable by someone who could actually complete the flow.
+  // Was `isAdminRole`, which admits HR, supervisor and clinical_director — none
+  // holds any `billing.*` grant, yet the page loaded and rendered the
+  // organisation's plan, period end and cancellation state to them.
+  if (!can(dbRoleToRoleKey(role as Role), 'billing.edit')) {
     redirect('/dashboard');
   }
 
