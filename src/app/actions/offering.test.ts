@@ -434,3 +434,56 @@ describe('withdrawOffering', () => {
     expect(mockRevalidate).toHaveBeenCalledWith('/dashboard');
   });
 });
+
+/**
+ * Offering gates: tier AND verb.
+ *
+ * One `isAdminRole` check used to cover both the catalog reads and the
+ * offer/update/withdraw mutations, so every admin-tier role could mutate the
+ * organisation's catalog — including supervisor, finance and clinical_director,
+ * none of which hold a `course.*` write verb.
+ *
+ * The tier check is composed with the verb rather than replaced by it:
+ * `workerPermissions` grants every learner `course.read`, so gating the reads on
+ * the permission alone would open the admin catalog to the whole workforce.
+ */
+describe('offering permission gates', () => {
+  function setSession(role: string) {
+    mockAdminAuth.mockResolvedValue({
+      user: { id: ADMIN_USER_ID, organizationId: ORG_ID, organizationUserId: 'ou-1', role },
+    });
+    mockWorkerAuth.mockResolvedValue(null);
+  }
+
+  it('refuses a supervisor the offer mutation — admin-tier, but no course.create', async () => {
+    setSession('supervisor');
+
+    await expect(offerCourseToOrg('course-1')).rejects.toThrow('Forbidden');
+  });
+
+  it('refuses a supervisor the withdraw mutation — no course.delete', async () => {
+    setSession('supervisor');
+
+    await expect(withdrawOffering('offering-1')).rejects.toThrow('Forbidden');
+  });
+
+  it('refuses a supervisor the update mutation — no course.edit', async () => {
+    setSession('supervisor');
+
+    await expect(updateOffering('offering-1', {})).rejects.toThrow('Forbidden');
+  });
+
+  it('still allows a supervisor to READ the catalog — they hold course.read', async () => {
+    setSession('supervisor');
+
+    await expect(listGlobalVideoCatalogCourses()).resolves.toBeDefined();
+  });
+
+  it('still refuses a worker the catalog read — the tier check is what stops them', async () => {
+    // A learner holds `course.read` via workerPermissions, so the verb alone
+    // would admit them. Only the tier check keeps the admin catalog closed.
+    setSession('nurse');
+
+    await expect(listGlobalVideoCatalogCourses()).rejects.toThrow('Forbidden');
+  });
+});
