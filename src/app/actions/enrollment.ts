@@ -1201,10 +1201,21 @@ export async function requestCourseRetry(enrollmentId: string) {
 /**
  * Remove a worker's assignment (enrollment) from a course.
  */
-export async function removeWorkerAssignment(enrollmentId: string) {
+/**
+ * Withdraw one worker's assignment from a course.
+ *
+ * Refusals are RETURNED, never thrown. A thrown message is redacted to React
+ * error #441 in production, so every distinct reason would reach the UI as the
+ * same "something went wrong" — and this action has three the user can act on:
+ * they are not the course creator, the staff member is outside their
+ * facilities, or the row is already gone.
+ */
+export async function removeWorkerAssignment(
+  enrollmentId: string,
+): Promise<{ success: boolean; error?: string }> {
   const session = await resolveSession();
   if (!session?.user?.id) {
-    throw new Error('Unauthorized');
+    return { success: false, error: 'Not authenticated' };
   }
 
   const enrollment = await prisma.enrollment.findUnique({
@@ -1215,12 +1226,15 @@ export async function removeWorkerAssignment(enrollmentId: string) {
   });
 
   if (!enrollment) {
-    throw new Error('Enrollment not found');
+    return { success: false, error: 'That assignment no longer exists.' };
   }
 
   // Ensure the membership trying to remove the assignment is the course creator
   if (enrollment.course.createdByOrgUserId !== session.user.organizationUserId) {
-    throw new Error('Access denied. Only the course creator can remove assignments.');
+    return {
+      success: false,
+      error: 'Only the person who created this course can withdraw its assignments.',
+    };
   }
 
   // Creating a course does not widen who you may act on: a facility-bound
@@ -1236,11 +1250,13 @@ export async function removeWorkerAssignment(enrollmentId: string) {
         userId: session.user.id,
         role: session.user.role,
       });
-      throw new Error('Access denied. Only the course creator can remove assignments.');
+      return {
+        success: false,
+        error: 'That staff member is outside the facilities you manage.',
+      };
     }
   }
 
-  // Prevent removing if completed (optional, depending on business logic, but usually we allow removal or maybe block it)
   await prisma.enrollment.delete({
     where: { id: enrollmentId },
   });

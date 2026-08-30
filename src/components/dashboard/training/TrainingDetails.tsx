@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useTransition } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -15,8 +15,20 @@ import { RowActionsMenu } from '@/components/ui';
 import Link from 'next/link';
 import CertificateModal from './CertificateModal';
 import AssignRetakeModal from './AssignRetakeModal';
+import { removeWorkerAssignment } from '@/app/actions/enrollment';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import {
   RotateCcw,
+  UserMinus,
   ArrowLeft,
   CheckCircle2,
   Clock,
@@ -33,6 +45,7 @@ import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 
 import { Badge } from '@/components/ui/badge';
+import { Alert } from '@/components/ui/alert';
 import EmptyTableState from '@/components/ui/EmptyTableState';
 import { courseTypeLabel, courseTypeBadgeVariant } from '@/lib/video/course-type-label';
 import { courseStatusBadge } from '@/lib/course/course-status-label';
@@ -40,6 +53,12 @@ import { CourseWithRelations } from '@/types/course';
 
 interface TrainingDetailsProps {
   course: CourseWithRelations;
+  /**
+   * Whether this viewer may withdraw an assignment. Computed on the server to
+   * mirror removeWorkerAssignment's own gate, so the action is never offered
+   * where it would be refused.
+   */
+  canWithdrawAssignments?: boolean;
 }
 
 const headCls =
@@ -48,8 +67,32 @@ const cellCls = 'h-[71px] px-5 text-[17.5px] font-medium tracking-[0.35px] text-
 const tagCls =
   'inline-flex items-center gap-2 rounded-full px-3 py-1 text-[14px] font-medium whitespace-nowrap lg:text-[16.5px]';
 
-export default function TrainingDetails({ course }: TrainingDetailsProps) {
+export default function TrainingDetails({
+  course,
+  canWithdrawAssignments = false,
+}: TrainingDetailsProps) {
   const router = useRouter();
+  const [withdrawTarget, setWithdrawTarget] = useState<{ id: string; name: string } | null>(null);
+  const [withdrawError, setWithdrawError] = useState<string | null>(null);
+  const [isWithdrawing, startWithdraw] = useTransition();
+
+  const confirmWithdraw = () => {
+    if (!withdrawTarget) return;
+    const { id } = withdrawTarget;
+    setWithdrawTarget(null);
+    setWithdrawError(null);
+
+    startWithdraw(async () => {
+      const result = await removeWorkerAssignment(id);
+      if (result.success) {
+        router.refresh();
+      } else {
+        // The action RETURNS its refusals, so the specific reason survives
+        // production error redaction and can be shown verbatim.
+        setWithdrawError(result.error ?? 'Could not withdraw that assignment.');
+      }
+    });
+  };
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'staff' | 'certificates'>('staff');
   const [selectedCertId, setSelectedCertId] = useState<string | null>(null);
@@ -241,6 +284,17 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
           </button>
         </div>
 
+        {withdrawError && (
+          <Alert variant="error" className="mt-4">
+            {withdrawError}
+          </Alert>
+        )}
+        {isWithdrawing && (
+          <p className="mt-4 text-sm text-text-secondary" role="status">
+            Withdrawing assignment…
+          </p>
+        )}
+
         {activeTab === 'staff' ? (
           <>
             <div className="mb-6 flex flex-wrap items-center gap-3">
@@ -363,6 +417,25 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
                                   courseName: course.title,
                                 }),
                             },
+                            // Offered only to the course creator, matching the
+                            // action's gate — see canWithdrawAssignments.
+                            ...(canWithdrawAssignments
+                              ? [
+                                  {
+                                    label: 'Withdraw assignment',
+                                    icon: <UserMinus className="size-4" />,
+                                    variant: 'destructive' as const,
+                                    onSelect: () =>
+                                      setWithdrawTarget({
+                                        id: enrollment.id,
+                                        name:
+                                          enrollment.organizationUser?.user?.fullName ||
+                                          enrollment.organizationUser?.user?.email ||
+                                          'this staff member',
+                                      }),
+                                  },
+                                ]
+                              : []),
                           ]}
                         />
                       </div>
@@ -455,6 +528,32 @@ export default function TrainingDetails({ course }: TrainingDetailsProps) {
         courseName={retakeEnrollment?.courseName || ''}
         userName=""
       />
+
+      <AlertDialog
+        open={!!withdrawTarget}
+        onOpenChange={(open) => !open && setWithdrawTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Withdraw this assignment?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {withdrawTarget?.name} will be removed from &ldquo;{course.title}&rdquo; and will lose
+              access to it immediately, including any video already in progress. Their completion
+              history for this course is removed with it, so this cannot be undone — assign the
+              course again to restore access.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep assignment</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmWithdraw}
+              className="bg-error text-white hover:bg-error/90"
+            >
+              Withdraw
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
