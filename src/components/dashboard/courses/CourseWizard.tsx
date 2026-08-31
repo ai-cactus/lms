@@ -7,7 +7,6 @@ import Step2Modules, {
   type ModuleDraftStatus,
   type Step2ModulesHandle,
 } from './steps/Step2Modules';
-import Step3Audience, { isAudienceSelectionValid } from './steps/Step3Audience';
 import Step4Details from './steps/Step4Details';
 import Step5Quiz from './steps/Step5Quiz';
 import GenerationController from './steps/GenerationController';
@@ -40,6 +39,13 @@ import {
   type PendingGenerationJob,
 } from '@/lib/course/pending-generation';
 import { logger } from '@/lib/logger';
+import {
+  TOTAL_STEPS,
+  getWizardStep,
+  stepIndexForKey,
+  stepTitle,
+  type WizardStepKey,
+} from './wizardSteps';
 
 const INITIAL_FORM_DATA: CourseWizardData = {
   categoryId: '',
@@ -61,8 +67,6 @@ const INITIAL_FORM_DATA: CourseWizardData = {
   dueDate: '',
   dueTime: '',
   modules: [],
-  audience: 'general',
-  audienceRoles: [],
   assignMode: 'roles',
   assignRoles: [],
   dueDeadlineEnabled: false,
@@ -75,32 +79,13 @@ const INITIAL_FORM_DATA: CourseWizardData = {
   renewalCycle: 'none',
 };
 
-// Bumped with the 7 → 9 step renumbering: a draft saved by the previous shell
-// stores a step number that no longer points at the same screen, so old drafts
-// must not be resumed.
-const DRAFT_KEY = 'lms_course_wizard_draft_v2';
-
-/**
- * Figma gives each step its own content column. Max widths include the 20px
- * gutter so the inner column lands on the Figma measure (740 / 880 / 1080 /
- * 1200) at 1440px. The steps that end well above the fold (1 and 3) also grow to
- * fill the viewport so their nav row sits at the bottom, as in the frames.
- */
-function getContentColumnClass(step: number): string {
-  switch (step) {
-    case 1:
-      return 'max-w-[920px] flex-1 justify-between pt-14 pb-[60px] md:pt-[170px] md:pb-[70px]';
-    case 2:
-      return 'max-w-[760px] pt-10 pb-[60px] md:pt-[90px]';
-    case 3:
-      return 'max-w-[1120px] flex-1 justify-between pt-10 pb-[60px] md:pt-[90px] md:pb-[70px]';
-    case 8:
-    case 9:
-      return 'max-w-[1240px] pt-10 pb-[60px] md:pt-[90px]';
-    default:
-      return 'max-w-[1120px] pt-10 pb-[60px] md:pt-[90px]';
-  }
-}
+// Final bump. Earlier versions stored the step as an integer, so every change to
+// the ladder silently resumed a draft on the wrong screen — a v2 `step: 7` meant
+// "review generated content", but index 7 is now past the end. This version
+// stores the step's key, which survives reordering (an unrecognised key restarts
+// at the first step), so the ladder can change again without another bump.
+const DRAFT_KEY = 'lms_course_wizard_draft_v3';
+const SUPERSEDED_DRAFT_KEYS = ['lms_course_wizard_draft', 'lms_course_wizard_draft_v2'];
 
 export default function CourseWizard() {
   const router = useRouter();
@@ -108,10 +93,10 @@ export default function CourseWizard() {
   const initialDocId = searchParams.get('documentId');
   const analyzedDocId = useRef<string | null>(null);
 
-  const [currentStep, setCurrentStep] = useState(1);
+  const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [pendingJobs, setPendingJobs] = useState<PendingGenerationJob[] | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
-  const totalSteps = 9;
+  const step = getWizardStep(currentStepIndex);
   const [formData, setFormData] = useState<CourseWizardData>(INITIAL_FORM_DATA);
   const [customCategoryName, setCustomCategoryName] = useState('');
 
@@ -144,7 +129,7 @@ export default function CourseWizard() {
 
   const [showResumeBanner, setShowResumeBanner] = useState(false);
   const [draftToRestore, setDraftToRestore] = useState<{
-    step: number;
+    stepKey?: WizardStepKey;
     formData: CourseWizardData;
     generatedContent: GeneratedCourse | null;
   } | null>(null);
@@ -187,7 +172,7 @@ export default function CourseWizard() {
       if (pending) {
         setPendingJobs(pending.jobs);
       }
-      sessionStorage.removeItem('lms_course_wizard_draft');
+      SUPERSEDED_DRAFT_KEYS.forEach((key) => sessionStorage.removeItem(key));
 
       const raw = sessionStorage.getItem(DRAFT_KEY);
       if (raw) {
@@ -207,10 +192,10 @@ export default function CourseWizard() {
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       if (showResumeBanner) return;
-      if (currentStep === 1 && formData.categoryId === '') return;
+      if (step.key === 'category' && formData.categoryId === '') return;
 
       const draft = {
-        step: currentStep,
+        stepKey: step.key,
         formData,
         generatedContent,
         savedAt: Date.now(),
@@ -219,7 +204,7 @@ export default function CourseWizard() {
     }, 500);
 
     return () => clearTimeout(timeoutId);
-  }, [currentStep, formData, generatedContent, showResumeBanner]);
+  }, [step.key, formData, generatedContent, showResumeBanner]);
 
   const handleAutoAnalyze = async (docId: string) => {
     setIsAnalyzing(true);
@@ -252,12 +237,14 @@ export default function CourseWizard() {
     if (content.duration) {
       setFormData((prev) => ({ ...prev, duration: content.duration }));
     }
-    // Generation owns step 6; the aggregated result is reviewed on step 7.
-    setCurrentStep(7);
+    // Generating and reviewing the result are two sub-phases of ONE step: the
+    // controller swaps its own screen once it holds content, and the shell shows
+    // the nav row off `isGenerating` — cleared just above — rather than off the
+    // step. So there is no step change to make here.
   };
 
   const handleNext = async () => {
-    if (currentStep === 1) {
+    if (step.key === 'category') {
       const typedName = customCategoryName.trim();
       // A typed name only becomes a category once the admin commits to it by
       // advancing, so the wizard creates it here rather than on every keystroke.
@@ -268,7 +255,7 @@ export default function CourseWizard() {
           setFormData((prev) => ({ ...prev, categoryId: newCategory.id }));
           setCustomCategoryName('');
           setWizardError(null);
-          setCurrentStep(2);
+          setCurrentStepIndex(currentStepIndex + 1);
         } catch (err) {
           logger.error({ msg: '[course] Failed to create custom category', err });
           setWizardError('Could not create that category. Please try again.');
@@ -279,7 +266,7 @@ export default function CourseWizard() {
       }
     }
 
-    if (currentStep === 2) {
+    if (step.key === 'modules') {
       // A module that is fully filled in but not yet added is committed here, so
       // advancing never silently discards it.
       const committed =
@@ -290,7 +277,7 @@ export default function CourseWizard() {
       const sourceDocId = formData.modules[0]?.documentId ?? committed?.documentId ?? null;
 
       if (!sourceDocId || analyzedDocId.current === sourceDocId) {
-        setCurrentStep(currentStep + 1);
+        setCurrentStepIndex(currentStepIndex + 1);
         return;
       }
 
@@ -316,26 +303,32 @@ export default function CourseWizard() {
         logger.error({ msg: 'Error analyzing stored doc:', err: err });
       } finally {
         setIsAnalyzing(false);
-        setCurrentStep(currentStep + 1);
+        setCurrentStepIndex(currentStepIndex + 1);
       }
       return;
     }
 
-    if (currentStep < totalSteps) {
-      // Step 6 is the generation screen: it owns the viewport (no nav row) from
-      // the moment it mounts, so the flag flips before the step changes.
-      if (currentStep === 5 && !generatedContent) {
+    if (currentStepIndex < TOTAL_STEPS - 1) {
+      // The generation step owns the viewport (no nav row) from the moment it
+      // mounts, so the flag flips before the step changes. The `!generatedContent`
+      // guard is load-bearing: without it, going Back to Quiz and forward again
+      // would raise the flag while the controller mounts with `initialContent`
+      // and therefore never reports `onGeneratingChange(true)` — hiding the nav
+      // row permanently, with no way off the step.
+      if (step.key === 'quiz' && !generatedContent) {
         setIsGenerating(true);
       }
       setWizardError(null);
-      setCurrentStep(currentStep + 1);
+      setCurrentStepIndex(currentStepIndex + 1);
     } else {
       if (!formData.title?.trim()) {
         setWizardError('Please enter a course title');
         return;
       }
       if (!generatedContent?.modules || generatedContent.modules.length === 0) {
-        setWizardError('No course content generated. Please go back to Step 6.');
+        setWizardError(
+          `No course content generated. Please go back to the ${stepTitle('generate')} step.`,
+        );
         return;
       }
 
@@ -449,7 +442,7 @@ export default function CourseWizard() {
         }
 
         // Reset all wizard state so the next course creation starts fresh
-        setCurrentStep(1);
+        setCurrentStepIndex(0);
         setFormData(INITIAL_FORM_DATA);
         setCustomCategoryName('');
         setGeneratedContent(null);
@@ -527,16 +520,16 @@ export default function CourseWizard() {
   };
 
   const handleBack = () => {
-    if (currentStep > 1) {
-      setCurrentStep(currentStep - 1);
+    if (currentStepIndex > 0) {
+      setCurrentStepIndex(currentStepIndex - 1);
     } else {
       router.back();
     }
   };
 
   const renderStep = () => {
-    switch (currentStep) {
-      case 1:
+    switch (step.key) {
+      case 'category':
         return (
           <Step1Category
             selectedCategoryId={formData.categoryId}
@@ -545,7 +538,7 @@ export default function CourseWizard() {
             onCustomCategoryNameChange={setCustomCategoryName}
           />
         );
-      case 2:
+      case 'modules':
         return (
           <Step2Modules
             // Re-keyed so the deep-linked document, which resolves after mount,
@@ -558,31 +551,25 @@ export default function CourseWizard() {
             initialDocument={initialModuleDocument}
           />
         );
-      case 3:
-        return (
-          <Step3Audience
-            data={formData}
-            onChange={(field, val) => setFormData({ ...formData, [field]: val })}
-          />
-        );
-      case 4:
+      case 'details':
         return (
           <Step4Details
             data={formData}
             onChange={(field, val) => setFormData({ ...formData, [field]: val })}
           />
         );
-      case 5:
+      case 'quiz':
         return (
           <Step5Quiz
             data={formData}
             onChange={(field, val) => setFormData({ ...formData, [field]: val })}
           />
         );
-      // Steps 6 and 7 share the generation/review screen: 6 runs one generation
-      // job per module and 7 reviews the aggregated result.
-      case 6:
-      case 7:
+      // One step, two sub-phases: the controller runs a job per module, then
+      // swaps itself for the review of the aggregated result. Deliberately
+      // unkeyed — remounting it would re-run `useMultiJobStatus` with
+      // `enabled: !hasInitialContent` and can start a second generation.
+      case 'generate':
         return (
           <GenerationController
             data={formData}
@@ -592,7 +579,7 @@ export default function CourseWizard() {
             onGeneratingChange={setIsGenerating}
           />
         );
-      case 8:
+      case 'quizReview':
         return (
           <Step8QuizReview
             data={formData}
@@ -603,68 +590,62 @@ export default function CourseWizard() {
             }
           />
         );
-      case 9:
+      case 'assign':
         return (
           <Step9AssignPublish
             data={formData}
             onChange={(field, val) => setFormData((prev) => ({ ...prev, [field]: val }))}
           />
         );
-      default:
-        return <div>Step {currentStep} Content</div>;
     }
   };
 
-  const isNextDisabled = () => {
-    if (currentStep === 1) {
-      if (!formData.categoryId && !customCategoryName.trim()) return true;
-      if (isCreatingCategory) return true;
-      return false;
-    }
-    if (currentStep === 2) {
-      if (isAnalyzing) return true;
-      // A half-filled module would be lost on Next, so it blocks; a complete one
-      // is committed by `handleNext` before advancing.
-      if (moduleDraftStatus === 'partial') return true;
-      if (moduleDraftStatus === 'complete') return false;
-      return formData.modules.length === 0;
-    }
-    if (currentStep === 3) {
-      return !isAudienceSelectionValid(formData);
-    }
-    if (currentStep === 4) {
-      if (!formData.title?.trim()) return true;
-      if (!formData.description?.trim()) return true;
+  const isNextDisabled = (): boolean => {
+    switch (step.key) {
+      case 'category': {
+        if (!formData.categoryId && !customCategoryName.trim()) return true;
+        if (isCreatingCategory) return true;
+        return false;
+      }
+      case 'modules': {
+        if (isAnalyzing) return true;
+        // A half-filled module would be lost on Next, so it blocks; a complete one
+        // is committed by `handleNext` before advancing.
+        if (moduleDraftStatus === 'partial') return true;
+        if (moduleDraftStatus === 'complete') return false;
+        return formData.modules.length === 0;
+      }
+      case 'details': {
+        if (!formData.title?.trim()) return true;
+        if (!formData.description?.trim()) return true;
 
-      if (!formData.notesCount) return true;
-      if (!formData.completionDeadlineDays || formData.completionDeadlineDays < 1) return true;
-      if (!formData.objectives || formData.objectives.length < 3) return true;
-      if (formData.objectives.some((obj) => !obj.trim())) return true;
-      return false;
-    }
-    if (currentStep === 5) {
-      if (!formData.quizTitle?.trim()) return true;
-      if (!formData.quizQuestionCount) return true;
+        if (!formData.notesCount) return true;
+        if (!formData.completionDeadlineDays || formData.completionDeadlineDays < 1) return true;
+        if (!formData.objectives || formData.objectives.length < 3) return true;
+        if (formData.objectives.some((obj) => !obj.trim())) return true;
+        return false;
+      }
+      case 'quiz': {
+        if (!formData.quizTitle?.trim()) return true;
+        if (!formData.quizQuestionCount) return true;
 
-      const passMark = parseInt(formData.quizPassMark?.replace('%', '') || '0');
-      if (!formData.quizPassMark || isNaN(passMark) || passMark <= 0) return true;
-      return false;
+        const passMark = parseInt(formData.quizPassMark?.replace('%', '') || '0');
+        if (!formData.quizPassMark || isNaN(passMark) || passMark <= 0) return true;
+        return false;
+      }
+      case 'generate': {
+        if (!generatedContent?.modules || generatedContent.modules.length === 0) return true;
+        return false;
+      }
+      case 'quizReview': {
+        if (!generatedContent?.quiz || generatedContent.quiz.length === 0) return true;
+        return false;
+      }
+      case 'assign': {
+        return !isAssignSelectionValid(formData);
+      }
     }
-    if (currentStep === 6 || currentStep === 7) {
-      if (!generatedContent?.modules || generatedContent.modules.length === 0) return true;
-      return false;
-    }
-    if (currentStep === 8) {
-      if (!generatedContent?.quiz || generatedContent.quiz.length === 0) return true;
-      return false;
-    }
-    if (currentStep === 9) {
-      return !isAssignSelectionValid(formData);
-    }
-    return false;
   };
-
-  const contentColumnClass = getContentColumnClass(currentStep);
 
   const navRow = (
     <div className="flex w-full shrink-0 items-center justify-between gap-4">
@@ -685,7 +666,7 @@ export default function CourseWizard() {
         loading={isGenerating || isPublishing || isAnalyzing || isCreatingCategory}
         className="h-[52px] rounded-[12px] px-8 text-base font-semibold tracking-[0.36px] md:h-[56px] md:px-10 md:text-[18px]"
       >
-        {currentStep === totalSteps ? 'Publish Course' : 'Next Step'}
+        {currentStepIndex === TOTAL_STEPS - 1 ? 'Publish Course' : 'Next Step'}
       </Button>
     </div>
   );
@@ -698,12 +679,12 @@ export default function CourseWizard() {
         </div>
         <div className="flex flex-1 items-center justify-between gap-4 pl-4 pr-5 md:pl-[30px] md:pr-[60px]">
           <span className="truncate text-sm font-medium tracking-[0.38px] text-[#3e3e3e] md:text-[19px]">
-            Step {currentStep} of {totalSteps}
+            Step {currentStepIndex + 1} of {TOTAL_STEPS}
           </span>
           <Button
             variant="ghost"
             onClick={() => {
-              if (currentStep > 1) {
+              if (currentStepIndex > 0) {
                 setShowExitConfirm(true);
               } else {
                 router.push('/dashboard/courses');
@@ -719,7 +700,7 @@ export default function CourseWizard() {
       <div className="h-1.5 w-full shrink-0 bg-[#dbdbdb] md:h-2">
         <div
           className="h-full rounded-r-[210px] bg-primary transition-[width] duration-300 ease-[ease]"
-          style={{ width: `${(currentStep / totalSteps) * 100}%` }}
+          style={{ width: `${((currentStepIndex + 1) / TOTAL_STEPS) * 100}%` }}
         />
       </div>
 
@@ -750,7 +731,7 @@ export default function CourseWizard() {
                 onClick={() => {
                   if (draftToRestore) {
                     setFormData(draftToRestore.formData);
-                    setCurrentStep(draftToRestore.step);
+                    setCurrentStepIndex(stepIndexForKey(draftToRestore.stepKey));
                     setGeneratedContent(draftToRestore.generatedContent);
                     // The first module's document has already been analysed for
                     // the details step, so restoring must not re-run it.
@@ -766,12 +747,12 @@ export default function CourseWizard() {
           </div>
         )}
 
-        {currentStep === 6 || currentStep === 7 ? (
+        {step.ownsViewport ? (
           <>
             {renderStep()}
             {!isGenerating && (
               // The nav row tracks the width of whatever the controller rendered:
-              // the step-7 review is a wide multi-column layout, but step 6's
+              // the review sub-phase is a wide multi-column layout, but the
               // failure card is narrow and centred like every other step.
               <div
                 className={`mx-auto flex w-full shrink-0 flex-col gap-3 px-5 py-6 ${
@@ -788,7 +769,7 @@ export default function CourseWizard() {
             )}
           </>
         ) : (
-          <div className={`mx-auto flex w-full flex-col gap-14 px-5 ${contentColumnClass}`}>
+          <div className={`mx-auto flex w-full flex-col gap-14 px-5 ${step.columnClass}`}>
             {renderStep()}
 
             {wizardError && (

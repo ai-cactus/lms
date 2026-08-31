@@ -26,8 +26,6 @@ export const WIZARD_FORM_DATA: CourseWizardData = {
   dueDate: '',
   dueTime: '',
   modules: [],
-  audience: 'general',
-  audienceRoles: [],
   assignMode: 'roles',
   assignRoles: [],
   dueDeadlineEnabled: false,

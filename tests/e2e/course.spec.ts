@@ -77,7 +77,7 @@ test.describe('Course Flows', () => {
     await page.goto('/dashboard/courses');
     await page.getByRole('button', { name: 'Create Course' }).click();
     await page.waitForURL('**/dashboard/courses/create');
-    await expect(page.getByText(/step 1 of 9/i)).toBeVisible();
+    await expect(page.getByText(/step 1 of 7/i)).toBeVisible();
 
     // Step 1 — pick a (system) category so "Next Step" enables.
     await page.getByRole('combobox').first().click();
@@ -89,7 +89,7 @@ test.describe('Course Flows', () => {
     // half-filled module in progress; we intentionally do NOT complete or
     // advance past it (uploading, and the auto-analysis Next triggers, need
     // AI/PHI-scan calls unavailable in this environment).
-    await expect(page.getByText(/step 2 of 9/i)).toBeVisible();
+    await expect(page.getByText(/step 2 of 7/i)).toBeVisible();
     await page.getByLabel(/module title/i).fill('Draft module left behind on exit');
     await page.getByLabel(/verify this document contains no/i).click();
 
@@ -100,11 +100,11 @@ test.describe('Course Flows', () => {
 
     // ENG-024 fix: reopening starts a fresh wizard at Step 1 rather than
     // silently resuming at Step 2 with the half-filled module intact.
-    await expect(page.getByText(/step 1 of 9/i)).toBeVisible();
+    await expect(page.getByText(/step 1 of 7/i)).toBeVisible();
     await page.getByRole('combobox').first().click();
     await page.getByRole('option').first().click();
     await page.getByRole('button', { name: 'Next Step' }).click();
-    await expect(page.getByText(/step 2 of 9/i)).toBeVisible();
+    await expect(page.getByText(/step 2 of 7/i)).toBeVisible();
     await expect(page.getByLabel(/module title/i)).toHaveValue('');
     await expect(page.getByLabel(/verify this document contains no/i)).not.toBeChecked();
   });
