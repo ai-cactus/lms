@@ -20,6 +20,7 @@ import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { VideoPlayer } from '@/components/video/VideoPlayer';
 import { isQuizUnlocked } from '@/lib/video/gating';
+import { isWholeCourse } from '@/lib/course/structure';
 import { sanitizeHtml } from '@/lib/sanitize';
 import { logger } from '@/lib/logger';
 import type { LearnPayload } from '@/lib/learn/get-learn-payload';
@@ -61,6 +62,8 @@ interface CourseData {
   title: string;
   description: string | null;
   duration: number | null;
+  /** Module rows, not lessons — the input `isWholeCourse` reads. */
+  moduleCount: number;
   lessons: Lesson[];
   quiz?: Quiz;
 }
@@ -149,6 +152,7 @@ function toCourseData(payloadCourse: LearnPayload['course']): CourseData {
     title: payloadCourse.title,
     description: payloadCourse.description,
     duration: payloadCourse.duration,
+    moduleCount: payloadCourse.moduleCount,
     lessons: (payloadCourse.lessons || []).map((lesson, index) => ({
       ...lesson,
       moduleIndex: index,
@@ -746,6 +750,14 @@ export default function LearnClient({ initialData }: LearnClientProps) {
   // A video course = any lesson carries a video. Used to hide the article/slide
   // toggle ("View on Slides") which is meaningless for video content.
   const isVideoCourse = course.lessons.some((l) => Boolean(l.videoStorageUri));
+  // Presentation only: a whole course drops the numbered "Module N" headings so
+  // it reads as one document with titled sections. It deliberately changes
+  // NOTHING else — the article's ToC, top bar and Prev/Next footer all stay,
+  // because that footer is the sole caller of `handleNext`, the sole writer of
+  // `highestUnlockedIndex`, and therefore the only way `hasCompletedAllModules`
+  // ever becomes true. Hiding that chrome would lock a multi-lesson whole course
+  // out of its own quiz forever.
+  const isWhole = isWholeCourse(course.moduleCount);
   // For video lessons, the quiz stays locked until the watch-gate is met.
   // Admins bypass the gate; text lessons keep their existing (non-video) gating.
   const isVideoGateBlocked =
@@ -771,6 +783,16 @@ export default function LearnClient({ initialData }: LearnClientProps) {
 
   // Whether to show the shared rail + topbar (quiz views only)
   const showSharedLayout = isQuizIndex || (quizStep === 'review' && quizResults);
+
+  // The results action bar retires only once the learner has SIGNED — attesting
+  // is the terminal step, and `attested` is the only status that records it.
+  // `completed` deliberately does NOT qualify: it is a legacy status that no
+  // code in src/ writes any more (attestCourse sets `attested` directly, the
+  // quiz submit route sets `in_progress`/`locked`), so the rows still carrying
+  // it are exactly the learners who passed before attestation existed and were
+  // never asked to sign. Folding it back in here would strand them with no way
+  // to ever attest — `attestEligible` already excludes only `attested`.
+  const enrollmentIsSigned = enrollment?.status === 'attested';
 
   // Attempt counters derive from the (unsorted) quizAttempts array: completed
   // attempts have timeTaken !== null; at most one in-progress draft has null.
@@ -878,9 +900,7 @@ export default function LearnClient({ initialData }: LearnClientProps) {
                   userEmail: userData?.email,
                   jobTitle: userData?.jobTitle,
                 }}
-                hideActions={
-                  enrollment?.status === 'completed' || enrollment?.status === 'attested'
-                }
+                hideActions={enrollmentIsSigned}
                 passed={quizResults.passed}
                 // Both halves are server verdicts: `attestEligible` (role +
                 // not-yet-attested) from the learn payload, `passed` from
@@ -1210,27 +1230,12 @@ export default function LearnClient({ initialData }: LearnClientProps) {
                     />
                   ) : (
                     <>
-                      <h2
-                        style={{
-                          fontSize: '22px',
-                          fontWeight: 700,
-                          marginBottom: '8px',
-                          color: '#4C6EF5',
-                          letterSpacing: '0.5px',
-                        }}
-                      >
-                        Module {idx + 1}
-                      </h2>
-                      <h3
-                        style={{
-                          fontSize: '20px',
-                          fontWeight: 600,
-                          marginBottom: '16px',
-                          color: '#1A202C',
-                        }}
-                      >
-                        {lesson.title}
-                      </h3>
+                      {!isWhole && (
+                        <h2 className="mb-2 text-[22px] font-bold tracking-[0.5px] text-primary">
+                          Module {idx + 1}
+                        </h2>
+                      )}
+                      <h3 className="mb-4 text-xl font-semibold text-foreground">{lesson.title}</h3>
                       {lesson.videoStorageUri ? (
                         <>
                           <VideoPlayer

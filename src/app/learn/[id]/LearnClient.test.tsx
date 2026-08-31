@@ -42,6 +42,9 @@ const makePayload = (overrides: Partial<LearnPayload> = {}): LearnPayload => ({
     title: 'Bloodborne Pathogens',
     description: 'Annual refresher',
     duration: 45,
+    // Modular by default: these assertions predate the whole-course rule and
+    // expect the numbered "Module N" headings to render.
+    moduleCount: 3,
     lessons: [
       {
         id: 'lesson-1',
@@ -864,5 +867,186 @@ describe('LearnClient — attestation gate', () => {
 
     expect(screen.queryByRole('button', { name: 'Attest' })).toBeNull();
     expect(screen.getByText(/keep trying/i)).toBeInTheDocument();
+  });
+});
+
+/**
+ * The results action bar retires on `attested` ALONE. `completed` is a legacy
+ * enrollment status nothing in src/ writes any more, so the rows still holding
+ * it are learners who passed before attestation existed and were never asked to
+ * sign; hiding the bar for them left them permanently unable to attest even
+ * though the payload's `attestEligible` (which excludes only `attested`) says
+ * they may. Retake is deliberately NOT special-cased here — it stays governed by
+ * QuizResults' own "failed + attempts remaining" rule, which is why the passing
+ * legacy row this fix exists for cannot be offered one.
+ */
+describe('LearnClient — legacy completed enrollments can still attest', () => {
+  const textLesson = (n: number) => ({
+    id: `lesson-${n}`,
+    title: `Section ${n}`,
+    content: `<p>Body ${n}</p>`,
+    slideContent: null,
+    duration: 10,
+    order: n,
+    videoProvider: null,
+    videoStorageUri: null,
+    videoDurationSeconds: null,
+  });
+
+  /**
+   * A finished text course (no video watch-gate) seeded straight from the
+   * payload. Completed/attested enrollments land on the article, so the results
+   * screen is reached the way a learner reaches it: "Proceed to Quiz".
+   */
+  const finishedCoursePayload = (
+    status: 'completed' | 'attested',
+    overrides: { passed?: boolean; attestEligible?: boolean } = {},
+  ) => {
+    const passed = overrides.passed ?? true;
+    const score = passed ? 90 : 40;
+    const payload = makePayload();
+    payload.course.lessons = [textLesson(1)];
+    payload.enrollment.status = status;
+    payload.enrollment.score = score;
+    payload.enrollment.progress = 100;
+    payload.enrollment.quizAttempts = [
+      {
+        id: 'qa-1',
+        score,
+        attemptCount: 1,
+        answers: [],
+        timeTaken: 120,
+        completedAt: '2026-08-01T00:00:00.000Z',
+      },
+    ];
+    payload.quizResultsData = {
+      score,
+      passed,
+      correctCount: passed ? 2 : 0,
+      totalQuestions: 2,
+      answered: 2,
+      correct: passed ? 2 : 0,
+      wrong: passed ? 0 : 2,
+      time: 120,
+      attemptsUsed: 1,
+      allowedAttempts: 3,
+      questions: [],
+    };
+    payload.attestEligible = overrides.attestEligible ?? status !== 'attested';
+    return payload;
+  };
+
+  const openResults = () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Proceed to Quiz' }));
+  };
+
+  it('offers Attest to a completed, unattested learner who passed', () => {
+    render(<LearnClient initialData={finishedCoursePayload('completed')} />);
+    openResults();
+
+    expect(screen.getByRole('button', { name: 'Attest' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Done' })).toBeInTheDocument();
+  });
+
+  it('does not offer a passing completed learner a retake', () => {
+    render(<LearnClient initialData={finishedCoursePayload('completed')} />);
+    openResults();
+
+    expect(screen.queryByRole('button', { name: 'Retake Quiz' })).toBeNull();
+  });
+
+  it('still offers a retake on a completed enrollment whose attempt failed', () => {
+    render(<LearnClient initialData={finishedCoursePayload('completed', { passed: false })} />);
+    openResults();
+
+    expect(screen.getByRole('button', { name: 'Retake Quiz' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Attest' })).toBeNull();
+  });
+
+  it('shows no action bar at all once the enrollment is attested', () => {
+    render(<LearnClient initialData={finishedCoursePayload('attested')} />);
+    openResults();
+
+    expect(screen.getByText(/nice work/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Attest' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retake Quiz' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Done' })).toBeNull();
+  });
+});
+
+/**
+ * Whole course vs modular. A course with 0 or 1 `CourseModule` rows reads as one
+ * continuous document, so the numbered "Module N" headings go away — and NOTHING
+ * else does. The last test here is the one that matters: the article's Prev/Next
+ * footer is the only caller of `handleNext`, which is the only writer of
+ * `highestUnlockedIndex`, which is what unlocks "Proceed to Quiz". Suppressing
+ * the headings by dropping that chrome instead would lock a multi-lesson whole
+ * course out of its own quiz permanently.
+ */
+describe('LearnClient — whole-course headings', () => {
+  const textLesson = (n: number) => ({
+    id: `lesson-${n}`,
+    title: `Section ${n}`,
+    content: `<p>Body ${n}</p>`,
+    slideContent: null,
+    duration: 10,
+    order: n,
+    videoProvider: null,
+    videoStorageUri: null,
+    videoDurationSeconds: null,
+  });
+
+  const textCoursePayload = (moduleCount: number, lessonCount: number) => {
+    const payload = makePayload();
+    payload.course.moduleCount = moduleCount;
+    payload.course.lessons = Array.from({ length: lessonCount }, (_, i) => textLesson(i + 1));
+    return payload;
+  };
+
+  it.each([0, 1])(
+    'hides the numbered headings for a whole course (%i modules) but keeps every lesson title',
+    (moduleCount) => {
+      render(<LearnClient initialData={textCoursePayload(moduleCount, 3)} />);
+
+      expect(screen.queryByText(/^Module \d+$/)).toBeNull();
+      expect(screen.getAllByText('Section 1').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('Section 2').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('Section 3').length).toBeGreaterThan(0);
+    },
+  );
+
+  it.each([2, 7])(
+    'keeps the numbered headings for a modular course (%i modules)',
+    (moduleCount) => {
+      render(<LearnClient initialData={textCoursePayload(moduleCount, 3)} />);
+
+      expect(screen.getByText('Module 1')).toBeInTheDocument();
+      expect(screen.getByText('Module 2')).toBeInTheDocument();
+      expect(screen.getByText('Module 3')).toBeInTheDocument();
+    },
+  );
+
+  it('still lets a multi-lesson WHOLE course reach an enabled Proceed to Quiz', async () => {
+    render(<LearnClient initialData={textCoursePayload(1, 3)} />);
+
+    const proceed = screen.getByRole('button', { name: 'Proceed to Quiz' });
+    expect(proceed).toBeDisabled();
+
+    // Prev/Next is the only surface that advances highestUnlockedIndex.
+    const next = screen.getByRole('button', { name: 'Next' });
+    expect(next).toBeEnabled();
+    fireEvent.click(next);
+    fireEvent.click(next);
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Proceed to Quiz' })).toBeEnabled(),
+    );
+  });
+
+  it('gates a whole course exactly like a modular one before the last lesson', () => {
+    render(<LearnClient initialData={textCoursePayload(1, 3)} />);
+
+    expect(screen.getByRole('button', { name: 'Proceed to Quiz' })).toBeDisabled();
+    expect(screen.getByText('Work through every module to unlock the quiz')).toBeInTheDocument();
   });
 });

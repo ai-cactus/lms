@@ -113,6 +113,12 @@ export interface LearnPayload {
     title: string;
     description: string | null;
     duration: number | null;
+    /**
+     * How many `CourseModule` rows this course carries — the only input
+     * `isWholeCourse` needs. Legacy single-document courses predate the module
+     * builder and report 0.
+     */
+    moduleCount: number;
     lessons: LearnPayloadLesson[];
     quiz: LearnPayloadQuiz | null;
   };
@@ -204,6 +210,10 @@ export async function getLearnPayload(courseId: string): Promise<LearnPayload | 
         duration: true,
         isGlobal: true,
         status: true,
+        // A COUNT over the already-indexed course_modules.course_id, on a query
+        // that is streaming every lesson body anyway — cheaper than the extra
+        // round trip a separate query would cost.
+        _count: { select: { modules: true } },
         creator: {
           select: { organizationId: true },
         },
@@ -456,6 +466,7 @@ export async function getLearnPayload(courseId: string): Promise<LearnPayload | 
         title: course.title,
         description: course.description,
         duration: course.duration,
+        moduleCount: course._count.modules,
         lessons: course.lessons.map((l) => ({
           id: l.id,
           title: l.title,
