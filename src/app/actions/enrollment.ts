@@ -650,7 +650,10 @@ async function assignCourseToRoleTargets(
     throw new Error('Forbidden');
   }
 
-  const course = await prisma.course.findUnique({ where: { id: courseId } });
+  const course = await prisma.course.findUnique({
+    where: { id: courseId },
+    include: { creator: { select: { organizationId: true } } },
+  });
 
   const organization = await prisma.organization.findUnique({
     where: { id: organizationId },
@@ -658,6 +661,13 @@ async function assignCourseToRoleTargets(
   });
 
   const isOwnCourse = course?.createdByOrgUserId === session.user.organizationUserId;
+
+  // COU-004, as in enrollUsers above: a course belongs to the ORGANIZATION, not
+  // to the member who authored it. Without this a caller holding the assign
+  // verbs is refused a colleague's course as "Course not found" while the very
+  // same course assigns fine through the direct-target paths.
+  const isSameOrgCourse = course?.creator.organizationId === organizationId;
+
   const isOfferedGlobal =
     !isOwnCourse && course?.isGlobal === true
       ? (await prisma.orgCourseOffering.findUnique({
@@ -667,7 +677,7 @@ async function assignCourseToRoleTargets(
       : false;
   const isAssignableCatalog = course?.isGlobal === true && course.status === 'published';
 
-  if (!course || (!isOwnCourse && !isOfferedGlobal && !isAssignableCatalog)) {
+  if (!course || (!isOwnCourse && !isSameOrgCourse && !isOfferedGlobal && !isAssignableCatalog)) {
     throw new Error('Course not found');
   }
 
