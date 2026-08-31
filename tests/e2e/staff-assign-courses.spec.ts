@@ -1,8 +1,8 @@
 /**
  * E2E spec: staff-profile "Assign Course" flow (course-creation-wizard
  * redesign wave, new this session) — AssignCoursesModal.tsx, driven from
- * StaffProfileClient's header button and backed by assignCoursesToUser
- * (src/app/actions/course.ts).
+ * StaffProfileClient's header button and backed by assignCoursesToStaffMember
+ * (src/app/actions/staff.ts).
  *
  * This flow needs no AI generation — it only assigns already-published
  * courses to an existing staff member — so it is fully drivable end-to-end
@@ -121,9 +121,8 @@ async function seedFixture(): Promise<Seeded> {
       [crypto.randomUUID(), staffOrgUserId, facilityId],
     );
 
-    // Active subscription: assignCourseToUsers' billing gate (course.ts)
-    // requires it, same as assign-course-invite.spec.ts and
-    // worker-billing-gate.spec.ts.
+    // Active subscription: enrollUsers' billing gate (enrollment.ts) requires
+    // it, same as assign-course-invite.spec.ts and worker-billing-gate.spec.ts.
     const subNow = new Date();
     const subPeriodEnd = new Date(subNow);
     subPeriodEnd.setFullYear(subPeriodEnd.getFullYear() + 1);

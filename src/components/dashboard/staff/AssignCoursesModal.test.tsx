@@ -7,22 +7,29 @@
  * count drives both the pill and the CTA label, a suggested-deadline chip fills
  * the date field, and the confirmation reports the count the SERVER returned
  * (newly created enrollments) rather than the number of rows ticked.
+ *
+ * The flow posts to `assignCoursesToStaffMember` (src/app/actions/staff.ts) —
+ * the action that also emails and notifies the member. Wiring it to
+ * `assignCoursesToUser` instead is the regression these tests now guard: that
+ * action writes enrollments silently, and because the modal ignored the
+ * announcement outcome entirely, nothing surfaced it. Hence the coverage of the
+ * `emailSent: false` warning below.
  */
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import AssignCoursesModal from './AssignCoursesModal';
 
-const { mockGetCourses, mockAssignCoursesToUser, mockRefresh } = vi.hoisted(() => ({
+const { mockGetCourses, mockAssignCoursesToStaffMember, mockRefresh } = vi.hoisted(() => ({
   mockGetCourses: vi.fn(),
-  mockAssignCoursesToUser: vi.fn(),
+  mockAssignCoursesToStaffMember: vi.fn(),
   mockRefresh: vi.fn(),
 }));
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: mockRefresh }) }));
-vi.mock('@/app/actions/course', () => ({
-  getCourses: mockGetCourses,
-  assignCoursesToUser: mockAssignCoursesToUser,
+vi.mock('@/app/actions/course', () => ({ getCourses: mockGetCourses }));
+vi.mock('@/app/actions/staff', () => ({
+  assignCoursesToStaffMember: mockAssignCoursesToStaffMember,
 }));
 vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -47,6 +54,18 @@ function makeCourse(overrides: Record<string, unknown>) {
   };
 }
 
+/** An `AssignCoursesToStaffResult` with everything succeeding. */
+function assignResult(overrides: Record<string, unknown> = {}) {
+  return {
+    assigned: [{ courseId: 'vid-1', courseTitle: 'Workplace Safety' }],
+    alreadyAssigned: [],
+    failed: [],
+    invited: false,
+    emailSent: true,
+    ...overrides,
+  };
+}
+
 const COURSES = [
   makeCourse({ id: 'vid-1', title: 'Workplace Safety', type: 'video' }),
   makeCourse({ id: 'vid-2', title: 'Fire Drill Basics', type: 'video' }),
@@ -64,7 +83,7 @@ function renderModal(onClose = vi.fn()) {
 beforeEach(() => {
   vi.clearAllMocks();
   mockGetCourses.mockResolvedValue(COURSES);
-  mockAssignCoursesToUser.mockResolvedValue({ assigned: 1, alreadyAssigned: 0, failed: 0 });
+  mockAssignCoursesToStaffMember.mockResolvedValue(assignResult());
 });
 
 describe('AssignCoursesModal — course selection', () => {
@@ -161,25 +180,53 @@ describe('AssignCoursesModal — deadline step', () => {
 
   it('assigns without a deadline and shows the count the server reported', async () => {
     const user = userEvent.setup();
-    mockAssignCoursesToUser.mockResolvedValue({ assigned: 3, alreadyAssigned: 1, failed: 0 });
+    mockAssignCoursesToStaffMember.mockResolvedValue(
+      assignResult({
+        assigned: [
+          { courseId: 'vid-1', courseTitle: 'Workplace Safety' },
+          { courseId: 'vid-2', courseTitle: 'Fire Drill Basics' },
+          { courseId: 'read-1', courseTitle: 'Data Security Awareness' },
+        ],
+        alreadyAssigned: [{ courseId: 'read-2', courseTitle: 'Patient Rights and Consent' }],
+      }),
+    );
     await advanceToDeadline(user);
 
     await user.click(screen.getByRole('button', { name: 'Assign Course' }));
 
     expect(await screen.findByText('Courses Assigned Successfully')).toBeInTheDocument();
-    expect(mockAssignCoursesToUser).toHaveBeenCalledWith('ou-1', ['vid-1'], null);
+    expect(mockAssignCoursesToStaffMember).toHaveBeenCalledWith('ou-1', ['vid-1'], {
+      dueAt: null,
+    });
     expect(screen.getByText(/have been assigned to 3 courses/)).toBeInTheDocument();
     expect(screen.getByText('“Frank Doe”')).toBeInTheDocument();
   });
 
+  it('passes the chosen deadline to the server', async () => {
+    const user = userEvent.setup();
+    await advanceToDeadline(user);
+
+    await user.click(screen.getByRole('button', { name: '30 days' }));
+    await user.click(screen.getByRole('button', { name: 'Assign Course' }));
+
+    await screen.findByText('Courses Assigned Successfully');
+    const expected = new Date();
+    expected.setDate(expected.getDate() + 30);
+    expect(mockAssignCoursesToStaffMember).toHaveBeenCalledWith('ou-1', ['vid-1'], {
+      dueAt: expect.stringContaining(String(expected.getFullYear())),
+    });
+  });
+
   it('surfaces the server error and stays on the deadline step when nothing was assigned', async () => {
     const user = userEvent.setup();
-    mockAssignCoursesToUser.mockResolvedValue({
-      assigned: 0,
-      alreadyAssigned: 0,
-      failed: 1,
-      error: 'Your organization needs an active subscription to assign courses.',
-    });
+    mockAssignCoursesToStaffMember.mockResolvedValue(
+      assignResult({
+        assigned: [],
+        failed: [{ courseId: 'vid-1', courseTitle: 'Workplace Safety' }],
+        emailSent: false,
+        error: 'Your organization needs an active subscription to assign courses.',
+      }),
+    );
     await advanceToDeadline(user);
 
     await user.click(screen.getByRole('button', { name: 'Assign Course' }));
@@ -192,7 +239,13 @@ describe('AssignCoursesModal — deadline step', () => {
 
   it('reports an already-assigned batch instead of claiming zero courses were assigned', async () => {
     const user = userEvent.setup();
-    mockAssignCoursesToUser.mockResolvedValue({ assigned: 0, alreadyAssigned: 1, failed: 0 });
+    mockAssignCoursesToStaffMember.mockResolvedValue(
+      assignResult({
+        assigned: [],
+        alreadyAssigned: [{ courseId: 'vid-1', courseTitle: 'Workplace Safety' }],
+        emailSent: false,
+      }),
+    );
     await advanceToDeadline(user);
 
     await user.click(screen.getByRole('button', { name: 'Assign Course' }));
@@ -200,6 +253,53 @@ describe('AssignCoursesModal — deadline step', () => {
     expect(
       await screen.findByText('Frank Doe is already assigned to the selected course.'),
     ).toBeInTheDocument();
+    // Nothing was assigned, so the un-sent email is not a warning — it is simply
+    // the absence of an announcement, and must not muddy the refusal.
+    expect(screen.queryByText(/couldn’t email them/)).not.toBeInTheDocument();
+  });
+});
+
+describe('AssignCoursesModal — notification outcome', () => {
+  async function assign(user: ReturnType<typeof userEvent.setup>) {
+    renderModal();
+    await screen.findByRole('checkbox', { name: 'Workplace Safety' });
+    await user.click(screen.getByRole('checkbox', { name: 'Workplace Safety' }));
+    await user.click(screen.getByRole('button', { name: 'Assign Course' }));
+    await screen.findByText('Set Completion Deadline');
+    await user.click(screen.getByRole('button', { name: 'Assign Course' }));
+    await screen.findByText('Courses Assigned Successfully');
+  }
+
+  it('warns on the success step when the assignment landed but the email did not', async () => {
+    const user = userEvent.setup();
+    mockAssignCoursesToStaffMember.mockResolvedValue(assignResult({ emailSent: false }));
+
+    await assign(user);
+
+    const warning = screen.getByRole('alert');
+    expect(warning).toHaveTextContent('We couldn’t email them');
+    expect(warning).toHaveTextContent(/course is assigned and already visible to Frank Doe/);
+    // The assignment still succeeded — the warning must not read as a failure.
+    expect(screen.getByText(/have been assigned to 1 course/)).toBeInTheDocument();
+  });
+
+  it('shows no warning when the email was sent', async () => {
+    const user = userEvent.setup();
+
+    await assign(user);
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('shows no warning for an invited member, who was reached by the /join email', async () => {
+    const user = userEvent.setup();
+    mockAssignCoursesToStaffMember.mockResolvedValue(
+      assignResult({ emailSent: false, invited: true }),
+    );
+
+    await assign(user);
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });
 

@@ -14,7 +14,7 @@ import { CourseWithStats, CourseWithRelations, courseDetailSelect } from '@/type
 import { QuizQuestion } from '@/types/quiz';
 import type { StaffEntry } from '@/types/enrollment';
 import { logger } from '@/lib/logger';
-import { resolveMemberFacilityId, resolveMemberFacilityIds } from '@/lib/facility/member-facility';
+import { resolveMemberFacilityId } from '@/lib/facility/member-facility';
 import { isOrgWideFacilityRole, listAccessibleFacilities } from '@/lib/facility/scope';
 import {
   resolveDataFacilityIds,
@@ -32,6 +32,12 @@ import {
   type RoleAssignmentIntent,
 } from '@/lib/course/pending-assignment';
 import { defaultStageRows, upsertCourseAssignment } from '@/lib/enrollment/assignment';
+import {
+  createEnrollmentForUser,
+  createEnrollmentsForUsers,
+  type CreateEnrollmentContext,
+  type EnrollmentOutcome,
+} from '@/lib/enrollment/create';
 
 // Helper: resolve the active session from either auth instance
 async function resolveSession() {
@@ -1026,15 +1032,36 @@ export async function getDashboardData(requestedFacilityIds?: string[] | null) {
 /**
  * Emails that matched no active member of the caller's organization are always
  * reported, whether or not anyone else was assigned. `count` is the number of
- * enrollments newly CREATED — `skipDuplicates` absorbs members who already hold
- * the course, so a matched member can yield a count of 0.
+ * enrollments newly CREATED — a member who already holds the course is skipped,
+ * so a matched member can yield a count of 0.
  */
 export type AssignCourseToUsersResult =
   | { success: false; message: string; notFound: string[] }
   | { success: true; count: number; notFound: string[] };
 
 /**
+ * Sequential fallback for {@link assignCourseToUsers}, mirroring the loop
+ * `enrollUsers` keeps behind the `ENROLLMENT_BATCH_ENABLED` kill-switch.
+ * Module-private: a `'use server'` file may only export async functions.
+ */
+async function sequentialEnrollments(
+  entries: StaffEntry[],
+  ctx: CreateEnrollmentContext,
+): Promise<EnrollmentOutcome[]> {
+  const outcomes: EnrollmentOutcome[] = [];
+  for (const entry of entries) {
+    outcomes.push(await createEnrollmentForUser(entry, ctx));
+  }
+  return outcomes;
+}
+
+/**
  * Assign a course to existing org members by email.
+ *
+ * Each newly enrolled member is announced the way every other assignment path
+ * announces one — launch email, in-app COURSE_ASSIGNED notification and the
+ * `INITIAL_LAUNCH` reminder seed — via {@link createEnrollmentForUser}. A
+ * failed announcement never rolls the enrollment back.
  *
  * @param dueAt Optional completion deadline. Persisted on the org's
  *   {@link CourseAssignment} for the course and stamped on every enrollment
@@ -1095,6 +1122,7 @@ export async function assignCourseToUsers(
   const organization = await prisma.organization.findUnique({
     where: { id: organizationId },
     select: {
+      name: true,
       subscription: { select: { status: true, pausedAt: true } },
     },
   });
@@ -1165,37 +1193,56 @@ export async function assignCourseToUsers(
       })
     : null;
 
-  const facilityByMember = await resolveMemberFacilityIds(
-    prisma,
-    membersToAssign.map((m) => m.id),
-  );
-
-  const enrollmentData = membersToAssign.map((m) => ({
-    organizationUserId: m.id,
-    courseId: courseId,
-    facilityId: facilityByMember.get(m.id) ?? null,
-    status: 'enrolled' as const,
-    progress: 0,
-    startedAt: new Date(),
+  // The enrollment rows are written through the shared enrollment machinery
+  // rather than a bare `createMany`: that is what also sends the launch email,
+  // raises the COURSE_ASSIGNED notification, and seeds the INITIAL_LAUNCH
+  // reminder log. The seed matters beyond this call — the reminder sweep never
+  // backfills stage 1 (src/lib/reminders/stages.ts), so a course assigned
+  // without it would silently never nudge the learner.
+  const enrollmentContext: CreateEnrollmentContext = {
+    courseId,
+    courseTitle: course.title,
+    organizationId,
+    organizationName: organization?.name || 'Your Organization',
+    // Only ever read for an invited non-member; each existing member is stamped
+    // with their own facility inside createEnrollmentForUser.
+    facilityId: null,
     assignmentId,
-    dueAt: deadline,
-  }));
+    scheduleAt: null,
+    assignmentDueAt: deadline,
+    assignmentWindowDays: null,
+    enrolledByUserId: session.user.id,
+    // Only confirmed ACTIVE members of this org reach here — unmatched addresses
+    // were already bucketed into `notFound` — so the `/join` invite branch stays
+    // unreachable and assigning by email still never creates staff.
+    callerCanInvite: false,
+  };
 
-  const results = await prisma.enrollment.createMany({
-    data: enrollmentData,
-    skipDuplicates: true,
-  });
+  const entries: StaffEntry[] = membersToAssign.map((m) => ({ email: m.user.email }));
+
+  // Mirrors enrollUsers: the batched path stays behind the same kill-switch, so
+  // this caller never silently opts into it ahead of the others.
+  const outcomes =
+    process.env.ENROLLMENT_BATCH_ENABLED === 'true'
+      ? await createEnrollmentsForUsers(entries, enrollmentContext)
+      : await sequentialEnrollments(entries, enrollmentContext);
+
+  // `count` keeps its meaning: enrollments this call newly CREATED. An
+  // already-enrolled member yields no row, exactly as `skipDuplicates` did.
+  const enrolled = outcomes.filter((outcome) => outcome.status === 'enrolled').length;
 
   logger.info({
     msg: '[course] Users assigned to course',
     courseId,
     userId: session.user.id,
-    enrolled: results.count,
+    enrolled,
+    alreadyEnrolled: outcomes.filter((outcome) => outcome.status === 'alreadyEnrolled').length,
+    failed: outcomes.filter((outcome) => outcome.status === 'failed').length,
     notFoundCount: notFound.length,
     hasDeadline: deadline !== null,
   });
   revalidatePath('/dashboard/training');
-  return { success: true, count: results.count, notFound };
+  return { success: true, count: enrolled, notFound };
 }
 
 export interface AssignCoursesToUserResult {
@@ -1209,21 +1256,22 @@ export interface AssignCoursesToUserResult {
 }
 
 /**
- * Assign one or more courses to a SINGLE staff member — the staff-profile
- * "Assign Course" flow — with one optional completion deadline shared by them all.
+ * Assign one or more courses to a SINGLE staff member — with one optional
+ * completion deadline shared by them all.
+ *
+ * @deprecated Superseded by `assignCoursesToStaffMember` (src/app/actions/staff.ts),
+ * which the staff-profile "Assign Course" flow now calls: it announces the whole
+ * batch in ONE email and ONE in-app notification instead of one per course, and
+ * reports whether that announcement was actually sent. Kept only until the
+ * remaining callers are gone; do not wire anything new to it.
  *
  * Gated on `assignment.create` and strictly scoped to a member of the caller's
- * own organization, then delegated per course to {@link assignCourseToUsers} —
- * the same machinery the courses-list assign modal uses. Delegating there rather
- * than to `enrollUsers` is deliberate: only `assignCourseToUsers` applies the
- * COU-004 ruling that a course belongs to the ORG, so an admin/HR can assign a
- * colleague's course. `enrollUsers` still authorizes on creator identity and
- * rejects those with "Course not found".
+ * own organization, then delegated per course to {@link assignCourseToUsers}.
  *
  * Courses are assigned independently rather than in one transaction: a course
  * that fails never rolls back the ones that landed, and `assigned` counts only
- * enrollments this call newly created (`createMany`'s `skipDuplicates` absorbs
- * the rest, which are reported as `alreadyAssigned`).
+ * enrollments this call newly created (an already-held course is reported as
+ * `alreadyAssigned`).
  */
 export async function assignCoursesToUser(
   staffOrgUserId: string,

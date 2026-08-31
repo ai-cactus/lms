@@ -15,7 +15,8 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Alert } from '@/components/ui/alert';
 import DatePicker from '@/components/ui/DatePicker';
-import { assignCoursesToUser, getCourses } from '@/app/actions/course';
+import { getCourses } from '@/app/actions/course';
+import { assignCoursesToStaffMember } from '@/app/actions/staff';
 import type { CourseWithStats } from '@/types/course';
 import { logger } from '@/lib/logger';
 import { cn } from '@/lib/utils';
@@ -89,6 +90,7 @@ export default function AssignCoursesModal({
   const [dueDate, setDueDate] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [assignedCount, setAssignedCount] = useState(0);
+  const [notificationFailed, setNotificationFailed] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -100,6 +102,7 @@ export default function AssignCoursesModal({
     setSelectedIds([]);
     setDueDate('');
     setAssignedCount(0);
+    setNotificationFailed(false);
     setError(null);
 
     let cancelled = false;
@@ -147,22 +150,29 @@ export default function AssignCoursesModal({
     if (selectedCount === 0) return;
     setIsSubmitting(true);
     setError(null);
+    setNotificationFailed(false);
     try {
-      const result = await assignCoursesToUser(staffOrgUserId, selectedIds, dueDate || null);
+      const result = await assignCoursesToStaffMember(staffOrgUserId, selectedIds, {
+        dueAt: dueDate || null,
+      });
 
-      if (result.assigned === 0) {
+      if (result.assigned.length === 0) {
         setError(
           result.error ??
-            (result.alreadyAssigned > 0
+            (result.alreadyAssigned.length > 0
               ? `${staffName} is already assigned to the selected course${
-                  result.alreadyAssigned === 1 ? '' : 's'
+                  result.alreadyAssigned.length === 1 ? '' : 's'
                 }.`
               : 'Could not assign the selected courses.'),
         );
         return;
       }
 
-      setAssignedCount(result.assigned);
+      setAssignedCount(result.assigned.length);
+      // The enrollments are committed either way, so a failed announcement is a
+      // warning on the success step — never an error implying nothing landed.
+      // An invited address was reached by the `/join` email instead.
+      setNotificationFailed(!result.emailSent && !result.invited);
       setStep('success');
     } catch (err) {
       logger.error({ msg: '[staff] Failed to assign courses', err, staffOrgUserId });
@@ -390,6 +400,13 @@ export default function AssignCoursesModal({
               assigned to {assignedCount} course{assignedCount === 1 ? '' : 's'}. They can now
               access the courses and complete them before the set deadline.
             </DialogDescription>
+            {notificationFailed && (
+              <Alert variant="warning" title="We couldn’t email them" className="text-left">
+                The {assignedCount === 1 ? 'course is' : 'courses are'} assigned and already visible
+                to {staffName}, but the notification email could not be sent. Let them know
+                directly.
+              </Alert>
+            )}
             <Button type="button" onClick={handleDone} className="mt-2 w-full">
               Done
             </Button>
