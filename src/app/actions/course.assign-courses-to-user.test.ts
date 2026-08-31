@@ -1,34 +1,46 @@
 /**
- * Unit tests for assignCoursesToUser (src/app/actions/course.ts) — the
- * staff-profile "Assign Course" flow, which assigns MANY courses to ONE member.
+ * Unit tests for assignCoursesToUser (src/app/actions/course.ts), which assigns
+ * MANY courses to ONE member.
+ *
+ * DEPRECATED PATH: the staff-profile "Assign Course" flow now calls
+ * `assignCoursesToStaffMember` (src/app/actions/staff.ts) so the whole batch is
+ * announced in ONE email — see staff.assign-courses.test.ts. These tests are
+ * retained while the action still exists.
  *
  * The action is an authorization + tenancy shell that fans out to
  * `assignCourseToUsers`, so the assertions here are about that shell: the
  * `assignment.create` gate, the same-org check on the target membership, and the
- * counting rule the success copy depends on — `assigned` counts only enrollments
- * this call newly created, with `createMany`'s `skipDuplicates` no-ops reported
- * as `alreadyAssigned`.
+ * counting rule — `assigned` counts only enrollments this call newly created,
+ * with an already-held course reported as `alreadyAssigned`.
  *
  * The prisma surface mirrors course.assign-course-to-users.test.ts because the
  * fan-out target runs for real here rather than being mocked: that is the point
- * of the test — the staff-profile path must inherit the SAME org-ownership
- * ruling (COU-004) the courses-list assign modal uses.
+ * of the test — this path must inherit the SAME org-ownership ruling (COU-004)
+ * the courses-list assign modal uses. Only the enrollment machinery underneath
+ * (`@/lib/enrollment/create`) is stubbed.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { prismaMock, mockAdminAuth, mockWorkerAuth, mockRevalidatePath } = vi.hoisted(() => ({
+const {
+  prismaMock,
+  mockAdminAuth,
+  mockWorkerAuth,
+  mockRevalidatePath,
+  mockCreateEnrollmentForUser,
+  mockCreateEnrollmentsForUsers,
+} = vi.hoisted(() => ({
   prismaMock: {
     course: { findUnique: vi.fn() },
     organization: { findUnique: vi.fn() },
     organizationUser: { findUnique: vi.fn(), findMany: vi.fn() },
-    organizationUserFacility: { findMany: vi.fn() },
-    enrollment: { createMany: vi.fn() },
     courseAssignment: { findFirst: vi.fn(), update: vi.fn(), create: vi.fn() },
     assignmentReminderStage: { upsert: vi.fn() },
   },
   mockAdminAuth: vi.fn(),
   mockWorkerAuth: vi.fn(),
   mockRevalidatePath: vi.fn(),
+  mockCreateEnrollmentForUser: vi.fn(),
+  mockCreateEnrollmentsForUsers: vi.fn(),
 }));
 
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock, default: prismaMock }));
@@ -39,6 +51,10 @@ vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 vi.mock('@/lib/reminders/sweep', () => ({ resolveOnCompletion: vi.fn() }));
+vi.mock('@/lib/enrollment/create', () => ({
+  createEnrollmentForUser: mockCreateEnrollmentForUser,
+  createEnrollmentsForUsers: mockCreateEnrollmentsForUsers,
+}));
 
 import { assignCoursesToUser } from './course';
 
@@ -77,8 +93,12 @@ beforeEach(() => {
   prismaMock.organizationUser.findMany.mockResolvedValue([
     { id: STAFF_ORG_USER_ID, user: { email: STAFF_EMAIL } },
   ]);
-  prismaMock.organizationUserFacility.findMany.mockResolvedValue([]);
-  prismaMock.enrollment.createMany.mockResolvedValue({ count: 1 });
+  mockCreateEnrollmentForUser.mockResolvedValue({
+    status: 'enrolled',
+    email: STAFF_EMAIL,
+    userId: 'u-staff-001',
+    enrollmentId: 'e-001',
+  });
   prismaMock.courseAssignment.findFirst.mockResolvedValue(null);
   prismaMock.courseAssignment.create.mockResolvedValue({ id: 'assignment-001' });
 });
@@ -88,7 +108,7 @@ describe('assignCoursesToUser() — authorization', () => {
     mockAdminAuth.mockResolvedValue(null);
 
     await expect(assignCoursesToUser(STAFF_ORG_USER_ID, ['c1'])).rejects.toThrow('Unauthorized');
-    expect(prismaMock.enrollment.createMany).not.toHaveBeenCalled();
+    expect(mockCreateEnrollmentForUser).not.toHaveBeenCalled();
   });
 
   it('rejects a role without assignment.create before touching the database', async () => {
@@ -117,7 +137,7 @@ describe('assignCoursesToUser() — authorization', () => {
       failed: 0,
       error: 'Select at least one course to assign',
     });
-    expect(prismaMock.enrollment.createMany).not.toHaveBeenCalled();
+    expect(mockCreateEnrollmentForUser).not.toHaveBeenCalled();
   });
 });
 
@@ -131,7 +151,7 @@ describe('assignCoursesToUser() — tenancy', () => {
     await expect(assignCoursesToUser(STAFF_ORG_USER_ID, ['c1'])).rejects.toThrow(
       'Staff member not found or unauthorized',
     );
-    expect(prismaMock.enrollment.createMany).not.toHaveBeenCalled();
+    expect(mockCreateEnrollmentForUser).not.toHaveBeenCalled();
   });
 
   it('refuses an unknown membership with the same not-found message', async () => {
@@ -156,7 +176,7 @@ describe('assignCoursesToUser() — tenancy', () => {
       failed: 1,
       error: 'Course not found or unauthorized',
     });
-    expect(prismaMock.enrollment.createMany).not.toHaveBeenCalled();
+    expect(mockCreateEnrollmentForUser).not.toHaveBeenCalled();
   });
 });
 
@@ -164,7 +184,7 @@ describe('assignCoursesToUser() — fan-out and counting', () => {
   it("assigns a colleague's org-owned course, de-duplicating repeated ids", async () => {
     const result = await assignCoursesToUser(STAFF_ORG_USER_ID, ['c1', 'c2', 'c1']);
 
-    expect(prismaMock.enrollment.createMany).toHaveBeenCalledTimes(2);
+    expect(mockCreateEnrollmentForUser).toHaveBeenCalledTimes(2);
     expect(result).toEqual({ assigned: 2, alreadyAssigned: 0, failed: 0 });
   });
 
@@ -180,18 +200,21 @@ describe('assignCoursesToUser() — fan-out and counting', () => {
         }),
       }),
     );
-    expect(prismaMock.enrollment.createMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: [expect.objectContaining({ organizationUserId: STAFF_ORG_USER_ID, courseId: 'c1' })],
-        skipDuplicates: true,
-      }),
+    expect(mockCreateEnrollmentForUser).toHaveBeenCalledWith(
+      { email: STAFF_EMAIL },
+      expect.objectContaining({ courseId: 'c1', organizationId: ORG_ID }),
     );
   });
 
-  it('counts a skipped duplicate as already assigned, not as newly assigned', async () => {
-    prismaMock.enrollment.createMany
-      .mockResolvedValueOnce({ count: 1 })
-      .mockResolvedValueOnce({ count: 0 });
+  it('counts an already-held course as already assigned, not as newly assigned', async () => {
+    mockCreateEnrollmentForUser
+      .mockResolvedValueOnce({
+        status: 'enrolled',
+        email: STAFF_EMAIL,
+        userId: 'u-staff-001',
+        enrollmentId: 'e-001',
+      })
+      .mockResolvedValueOnce({ status: 'alreadyEnrolled', email: STAFF_EMAIL });
 
     const result = await assignCoursesToUser(STAFF_ORG_USER_ID, ['c1', 'c2']);
 
@@ -206,10 +229,9 @@ describe('assignCoursesToUser() — fan-out and counting', () => {
         data: expect.objectContaining({ dueAt: new Date('2026-12-31') }),
       }),
     );
-    expect(prismaMock.enrollment.createMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: [expect.objectContaining({ dueAt: new Date('2026-12-31') })],
-      }),
+    expect(mockCreateEnrollmentForUser).toHaveBeenCalledWith(
+      { email: STAFF_EMAIL },
+      expect.objectContaining({ assignmentDueAt: new Date('2026-12-31') }),
     );
   });
 
@@ -222,7 +244,7 @@ describe('assignCoursesToUser() — fan-out and counting', () => {
       failed: 0,
       error: "That completion deadline couldn't be read. Please pick the date again.",
     });
-    expect(prismaMock.enrollment.createMany).not.toHaveBeenCalled();
+    expect(mockCreateEnrollmentForUser).not.toHaveBeenCalled();
   });
 
   it('keeps assigning after one course fails and surfaces its message', async () => {
@@ -245,7 +267,7 @@ describe('assignCoursesToUser() — fan-out and counting', () => {
 
     expect(result.assigned).toBe(0);
     expect(result.error).toBe('Your organization needs an active subscription to assign courses.');
-    expect(prismaMock.enrollment.createMany).not.toHaveBeenCalled();
+    expect(mockCreateEnrollmentForUser).not.toHaveBeenCalled();
   });
 
   it('revalidates the staff profile so its trainings table reloads', async () => {

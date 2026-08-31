@@ -30,20 +30,20 @@
  *   - App running on http://localhost:3005 (Playwright webServer).
  *   - DATABASE_URL reachable for direct DB seeding/mutation.
  *
- * TODO(back-merge #502-follow-up): SKIPPED on this line. It arrived with the
- * main -> dev back-merge and cannot run here yet for two independent reasons:
+ * TODO(back-merge #502-follow-up): SKIPPED on this line for ONE remaining
+ * reason — `seed()` inserts `users (role, organization_id, facility_id)`, and
+ * those columns do not exist here: a person in an organization is an
+ * `organization_users` row, so the seed must be rewritten against the
+ * membership tables before a single assertion can execute.
  *
- *   1. `seed()` inserts `users (role, organization_id, facility_id)`. Those
- *      columns do not exist on this line — a person in an organization is an
- *      `organization_users` row, so the seed has to be rewritten against the
- *      membership tables before a single assertion can execute.
- *   2. It drives `assignCoursesToStaffMember`, which the staff-profile modal on
- *      this line does not call: `AssignCoursesModal` still posts to
- *      `assignCoursesToUser` (src/app/actions/course.ts), which writes
- *      enrollments with no email, no notification and no INITIAL_LAUNCH seed.
+ * The second blocker is gone: `AssignCoursesModal` now posts to
+ * `assignCoursesToStaffMember`, so the batched notice this spec asserts is the
+ * one the wired action actually emits. Un-skip once the seed is ported.
  *
- * Un-skip as part of that repair — porting the seed alone would leave it
- * asserting a batched notice the wired action never emits.
+ * A further deviation to expect when porting: the modal on this line takes no
+ * `enrolledCourseIds` prop, so it renders no disabled "Assigned" checkboxes —
+ * an already-enrolled course can be selected directly, without the reopen trick
+ * described above.
  */
 
 import { test, expect, type Page } from '@playwright/test';

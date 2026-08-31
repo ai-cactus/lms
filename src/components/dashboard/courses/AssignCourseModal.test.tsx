@@ -49,7 +49,12 @@ const assignButton = () => screen.getByRole('button', { name: /^Assign to \d+ st
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockAssignCourseToUsers.mockResolvedValue({ success: true, count: 2, notFound: [] });
+  mockAssignCourseToUsers.mockResolvedValue({
+    success: true,
+    count: 2,
+    notFound: [],
+    outOfScope: [],
+  });
 });
 
 describe('AssignCourseModal — header', () => {
@@ -174,6 +179,7 @@ describe('AssignCourseModal — submission', () => {
       success: true,
       count: 1,
       notFound: ['ghost@acme.com'],
+      outOfScope: [],
     });
 
     await user.click(emailField());
@@ -188,6 +194,28 @@ describe('AssignCourseModal — submission', () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
+  it('reports out-of-facility targets separately from unmatched ones', async () => {
+    const user = userEvent.setup();
+    const { onClose } = renderModal();
+    mockAssignCourseToUsers.mockResolvedValue({
+      success: true,
+      count: 1,
+      notFound: ['ghost@acme.com'],
+      outOfScope: ['other.facility@acme.com'],
+    });
+
+    await user.click(emailField());
+    await user.paste('a@acme.com ghost@acme.com other.facility@acme.com');
+    await user.click(assignButton());
+
+    expect(
+      await screen.findByText(
+        'Assigned to 1 staff. Not an active member of your organization: ghost@acme.com. Outside the facilities you manage: other.facility@acme.com.',
+      ),
+    ).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it('surfaces the server message when no email resolves to a member', async () => {
     const user = userEvent.setup();
     const { onClose } = renderModal();
@@ -195,6 +223,7 @@ describe('AssignCourseModal — submission', () => {
       success: false,
       message: 'No valid users found to assign.',
       notFound: ['ghost@acme.com'],
+      outOfScope: [],
     });
 
     await user.click(emailField());

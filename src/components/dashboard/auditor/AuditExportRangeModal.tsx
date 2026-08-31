@@ -95,7 +95,7 @@ export default function AuditExportRangeModal({
             <DatePicker
               value={from}
               onChange={setFrom}
-              placeholder="mm/dd/yyyy"
+              placeholder="MM/DD/YYYY"
               label="Export range start date"
               minDate={minSelectableDate()}
               showYearSelect
@@ -107,7 +107,7 @@ export default function AuditExportRangeModal({
             <DatePicker
               value={to}
               onChange={setTo}
-              placeholder="mm/dd/yyyy"
+              placeholder="MM/DD/YYYY"
               label="Export range end date"
               minDate={parseYmd(from) ?? minSelectableDate()}
               showYearSelect

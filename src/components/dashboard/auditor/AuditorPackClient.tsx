@@ -64,13 +64,13 @@ export default function AuditorPackClient({ stats }: AuditorPackClientProps) {
           icon={<GraduationCap />}
           label="All Courses"
           value={String(stats.totalCourses)}
-          hint="Total published courses in your organization"
+          hint="Every course in your organization — draft, published and inactive"
         />
         <StatCard
           icon={<UserPlus />}
           label="Staff Assigned"
           value={stats.totalStaffAssigned.toLocaleString()}
-          hint="Total active staff members in your organization"
+          hint="Every member of your organization, including managers"
         />
         <StatCard
           icon={<CheckCircle2 />}

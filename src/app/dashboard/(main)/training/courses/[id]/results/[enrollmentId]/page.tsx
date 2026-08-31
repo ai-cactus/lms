@@ -87,6 +87,7 @@ export default async function QuizResultsPage({
         courseId={id}
         enrollmentId={enrollmentId}
         data={resultsData}
+        passed={latestAttempt.score >= latestAttempt.quiz.passingScore}
         hideActions={true} // Hide redundant buttons in history view
         organizationName={enrollment.organizationUser.organization.name}
       />

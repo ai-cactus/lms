@@ -1,8 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import Link from 'next/link';
-import { ChevronDown, Library } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import { getCategories } from '@/app/actions/categories';
 import {
   Select,
@@ -125,14 +124,6 @@ export default function Step1Category({
             </SelectContent>
           </Select>
         )}
-
-        <Link
-          href="/dashboard/courses"
-          className="mt-2 inline-flex items-center gap-2 self-start text-sm font-semibold text-primary hover:underline md:text-base"
-        >
-          <Library className="size-4" aria-hidden="true" />
-          Or browse the ready-made video courses in your library
-        </Link>
       </div>
     </div>
   );

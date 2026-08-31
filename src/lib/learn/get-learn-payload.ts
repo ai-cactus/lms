@@ -1,4 +1,4 @@
-import { isAdminRole } from '@/lib/rbac/role-utils';
+import { isAdminRole, isWorkerRole } from '@/lib/rbac/role-utils';
 import prisma from '@/lib/prisma';
 import { getPortalSessions } from '@/lib/auth/portal-sessions';
 import { logger } from '@/lib/logger';
@@ -113,6 +113,12 @@ export interface LearnPayload {
     title: string;
     description: string | null;
     duration: number | null;
+    /**
+     * How many `CourseModule` rows this course carries — the only input
+     * `isWholeCourse` needs. Legacy single-document courses predate the module
+     * builder and report 0.
+     */
+    moduleCount: number;
     lessons: LearnPayloadLesson[];
     quiz: LearnPayloadQuiz | null;
   };
@@ -125,9 +131,21 @@ export interface LearnPayload {
     quizAttempts: LearnPayloadQuizAttempt[];
   };
   quizResultsData: LearnPayloadQuizResults | null;
+  /**
+   * Whether THIS viewer is allowed to attest THIS enrollment — a worker-category
+   * member of the organisation whose enrollment is not already attested.
+   *
+   * Deliberately attempt-independent. The pass verdict is never re-derived on
+   * the client (that divergence is the bug): the caller ANDs this with the
+   * server's own `passed` for the result on screen — `quizResultsData.passed` on
+   * the reload path, the submit route's `passed` on the fresh-submit path — so
+   * both paths reach the same answer from the same authority.
+   */
+  attestEligible: boolean;
   user: {
     name: string;
-    role: string;
+    /** The membership's real DB role, or null when the viewer has no membership. */
+    role: string | null;
     /**
      * Whether to render the ADMIN review/editing experience. Derived from the
      * PORTAL, not the role — a manager who chose Learn carries an admin role on
@@ -192,6 +210,10 @@ export async function getLearnPayload(courseId: string): Promise<LearnPayload | 
         duration: true,
         isGlobal: true,
         status: true,
+        // A COUNT over the already-indexed course_modules.course_id, on a query
+        // that is streaming every lesson body anyway — cheaper than the extra
+        // round trip a separate query would cost.
+        _count: { select: { modules: true } },
         creator: {
           select: { organizationId: true },
         },
@@ -430,12 +452,21 @@ export async function getLearnPayload(courseId: string): Promise<LearnPayload | 
       };
     }
 
+    // ONE server-side verdict for the attestation gate. The learn client used to
+    // re-derive the viewer's worker-ness from a payload role that fell back to
+    // the literal 'worker' — a value that is NOT in WORKER_ROLES — so whenever
+    // the membership lookup came back null the Attest button silently vanished
+    // and the learner was left with "Done" as the only option.
+    const attestEligible =
+      isWorkerRole(activeMembership?.role) && effectiveEnrollment.status !== 'attested';
+
     return {
       course: {
         id: course.id,
         title: course.title,
         description: course.description,
         duration: course.duration,
+        moduleCount: course._count.modules,
         lessons: course.lessons.map((l) => ({
           id: l.id,
           title: l.title,
@@ -458,9 +489,10 @@ export async function getLearnPayload(courseId: string): Promise<LearnPayload | 
         quizAttempts,
       },
       quizResultsData,
+      attestEligible,
       user: {
         name: activeMembership?.user.fullName || activeMembership?.user.email || '',
-        role: activeMembership?.role || 'worker',
+        role: activeMembership?.role ?? null,
         isAdminView: isAdmin,
         organizationName: activeMembership?.organization.name || undefined,
         email: activeMembership?.user.email || '',

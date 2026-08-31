@@ -120,23 +120,6 @@ export default function Step9AssignPublish({ data, onChange }: Step9AssignPublis
   const assignMode = data.assignMode;
   const selectedRoles = data.assignRoles as Role[];
 
-  // Step 3's audience seeds this screen once: "Specific Roles" carries its
-  // selection over, "General" starts empty. The admin can always edit it here —
-  // the seed only ever fills an untouched selection.
-  const seededFromAudience = useRef(false);
-  useEffect(() => {
-    if (seededFromAudience.current) return;
-    seededFromAudience.current = true;
-    if (data.audience !== 'specific') return;
-    if (data.assignRoles.length > 0) return;
-    const seed = ASSIGNABLE_ROLES.filter((role) => data.audienceRoles.includes(role));
-    if (seed.length > 0) {
-      onChange('assignRoles', seed);
-    }
-    // Mount-only seeding: re-running on every keystroke would fight the admin's edits.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   useEffect(() => {
     const timer = setTimeout(async () => {
       if (inputValue.length >= 2) {

@@ -489,7 +489,9 @@ export default function Step8QuizReview({
                   renderAddForm(section)
                 ) : (
                   <div className="flex items-center justify-between gap-4 rounded-[12px] border border-[#e5e7ea] px-5 py-4">
-                    <span className="text-base font-semibold text-foreground">{section.title}</span>
+                    <span className="text-base font-semibold text-foreground">
+                      Add new question
+                    </span>
                     <Button
                       variant="ghost"
                       size="icon-sm"

@@ -14,13 +14,14 @@ import { CourseWithStats, CourseWithRelations, courseDetailSelect } from '@/type
 import { QuizQuestion } from '@/types/quiz';
 import type { StaffEntry } from '@/types/enrollment';
 import { logger } from '@/lib/logger';
-import { resolveMemberFacilityId, resolveMemberFacilityIds } from '@/lib/facility/member-facility';
+import { resolveMemberFacilityId } from '@/lib/facility/member-facility';
 import { isOrgWideFacilityRole, listAccessibleFacilities } from '@/lib/facility/scope';
 import {
   resolveDataFacilityIds,
   staffFacilityWhere,
   type FacilityScopeSession,
 } from '@/lib/facility/staff-where';
+import { partitionEmailsByFacility } from '@/lib/facility/target-scope';
 import { CourseAccessError } from '@/lib/course/access-error';
 import { forkCourse } from '@/lib/course/fork-course';
 import { resolveOnCompletion } from '@/lib/reminders/sweep';
@@ -32,6 +33,12 @@ import {
   type RoleAssignmentIntent,
 } from '@/lib/course/pending-assignment';
 import { defaultStageRows, upsertCourseAssignment } from '@/lib/enrollment/assignment';
+import {
+  createEnrollmentForUser,
+  createEnrollmentsForUsers,
+  type CreateEnrollmentContext,
+  type EnrollmentOutcome,
+} from '@/lib/enrollment/create';
 
 // Helper: resolve the active session from either auth instance
 async function resolveSession() {
@@ -1026,15 +1033,49 @@ export async function getDashboardData(requestedFacilityIds?: string[] | null) {
 /**
  * Emails that matched no active member of the caller's organization are always
  * reported, whether or not anyone else was assigned. `count` is the number of
- * enrollments newly CREATED — `skipDuplicates` absorbs members who already hold
- * the course, so a matched member can yield a count of 0.
+ * enrollments newly CREATED — a member who already holds the course is skipped,
+ * so a matched member can yield a count of 0.
+ *
+ * `outOfScope` is the disjoint second refusal bucket: real members of the
+ * organization that the caller's own facilities do not admit. Kept apart from
+ * `notFound` because the two need different wording — one is "nobody here has
+ * that address", the other is "not yours to assign" — and because merging them
+ * would quietly redefine what `notFound` has always meant to its callers.
  */
 export type AssignCourseToUsersResult =
-  | { success: false; message: string; notFound: string[] }
-  | { success: true; count: number; notFound: string[] };
+  | { success: false; message: string; notFound: string[]; outOfScope: string[] }
+  | { success: true; count: number; notFound: string[]; outOfScope: string[] };
+
+/**
+ * Refusal shown when every named target sits outside the caller's facilities.
+ * Module-private: a `'use server'` file may only export async functions.
+ */
+const OUT_OF_FACILITY_ASSIGN_MESSAGE =
+  'You can only assign courses to staff in your own facilities.';
+
+/**
+ * Sequential fallback for {@link assignCourseToUsers}, mirroring the loop
+ * `enrollUsers` keeps behind the `ENROLLMENT_BATCH_ENABLED` kill-switch.
+ * Module-private: a `'use server'` file may only export async functions.
+ */
+async function sequentialEnrollments(
+  entries: StaffEntry[],
+  ctx: CreateEnrollmentContext,
+): Promise<EnrollmentOutcome[]> {
+  const outcomes: EnrollmentOutcome[] = [];
+  for (const entry of entries) {
+    outcomes.push(await createEnrollmentForUser(entry, ctx));
+  }
+  return outcomes;
+}
 
 /**
  * Assign a course to existing org members by email.
+ *
+ * Each newly enrolled member is announced the way every other assignment path
+ * announces one — launch email, in-app COURSE_ASSIGNED notification and the
+ * `INITIAL_LAUNCH` reminder seed — via {@link createEnrollmentForUser}. A
+ * failed announcement never rolls the enrollment back.
  *
  * @param dueAt Optional completion deadline. Persisted on the org's
  *   {@link CourseAssignment} for the course and stamped on every enrollment
@@ -1073,6 +1114,7 @@ export async function assignCourseToUsers(
       success: false,
       message: 'You must belong to an organization to assign courses',
       notFound: [],
+      outOfScope: [],
     };
   }
 
@@ -1095,6 +1137,7 @@ export async function assignCourseToUsers(
   const organization = await prisma.organization.findUnique({
     where: { id: organizationId },
     select: {
+      name: true,
       subscription: { select: { status: true, pausedAt: true } },
     },
   });
@@ -1108,7 +1151,7 @@ export async function assignCourseToUsers(
     });
     // Refused by return so the reason survives production error redaction.
     // Fail-closed: no offering, assignment or enrollment has been written yet.
-    return { success: false, message: BILLING_GATE_ASSIGN_MESSAGE, notFound: [] };
+    return { success: false, message: BILLING_GATE_ASSIGN_MESSAGE, notFound: [], outOfScope: [] };
   }
 
   // Emails are stored lowercased, and Prisma's `in` is case-sensitive — normalise
@@ -1129,13 +1172,49 @@ export async function assignCourseToUsers(
   const matched = new Set(membersToAssign.map((m) => m.user.email.toLowerCase()));
   const notFound = normalizedEmails.filter((email) => !matched.has(email));
 
-  if (membersToAssign.length === 0) {
+  // Facility gate on the TARGETS, not on the caller. This modal takes free-text
+  // addresses, so scoping the pickers elsewhere constrains nothing: a
+  // facility-bound supervisor could assign to any member of the organisation
+  // simply by typing their address, and because reads ARE scoped, neither side
+  // ever saw the crossing. One partition query for the whole batch, shared with
+  // every other caller-named write (src/lib/facility/target-scope.ts) — org-wide
+  // roles resolve to a `null` scope and are not narrowed at all. Addresses
+  // matching no member come back allowed here and are already carried by
+  // `notFound`, so the two buckets stay disjoint.
+  const { rejected: outOfScope } = await partitionEmailsByFacility(
+    session,
+    organizationId,
+    normalizedEmails,
+  );
+
+  if (outOfScope.length > 0) {
+    logger.warn({
+      msg: "[course] assignCourseToUsers: targets outside the caller's facilities",
+      courseId,
+      userId: session.user.id,
+      role: session.user.role,
+      rejectedCount: outOfScope.length,
+    });
+  }
+
+  const outOfScopeEmails = new Set(outOfScope);
+  const assignableMembers = membersToAssign.filter(
+    (m) => !outOfScopeEmails.has(m.user.email.toLowerCase()),
+  );
+
+  if (assignableMembers.length === 0) {
     logger.warn({
       msg: '[course] assignCourseToUsers: no valid users found',
       courseId,
       emailCount: normalizedEmails.length,
     });
-    return { success: false, message: 'No valid users found to assign.', notFound };
+    return {
+      success: false,
+      message:
+        outOfScope.length > 0 ? OUT_OF_FACILITY_ASSIGN_MESSAGE : 'No valid users found to assign.',
+      notFound,
+      outOfScope,
+    };
   }
 
   const deadline = dueAt ? new Date(dueAt) : null;
@@ -1144,6 +1223,7 @@ export async function assignCourseToUsers(
       success: false,
       message: "That completion deadline couldn't be read. Please pick the date again.",
       notFound,
+      outOfScope,
     };
   }
 
@@ -1165,37 +1245,57 @@ export async function assignCourseToUsers(
       })
     : null;
 
-  const facilityByMember = await resolveMemberFacilityIds(
-    prisma,
-    membersToAssign.map((m) => m.id),
-  );
-
-  const enrollmentData = membersToAssign.map((m) => ({
-    organizationUserId: m.id,
-    courseId: courseId,
-    facilityId: facilityByMember.get(m.id) ?? null,
-    status: 'enrolled' as const,
-    progress: 0,
-    startedAt: new Date(),
+  // The enrollment rows are written through the shared enrollment machinery
+  // rather than a bare `createMany`: that is what also sends the launch email,
+  // raises the COURSE_ASSIGNED notification, and seeds the INITIAL_LAUNCH
+  // reminder log. The seed matters beyond this call — the reminder sweep never
+  // backfills stage 1 (src/lib/reminders/stages.ts), so a course assigned
+  // without it would silently never nudge the learner.
+  const enrollmentContext: CreateEnrollmentContext = {
+    courseId,
+    courseTitle: course.title,
+    organizationId,
+    organizationName: organization?.name || 'Your Organization',
+    // Only ever read for an invited non-member; each existing member is stamped
+    // with their own facility inside createEnrollmentForUser.
+    facilityId: null,
     assignmentId,
-    dueAt: deadline,
-  }));
+    scheduleAt: null,
+    assignmentDueAt: deadline,
+    assignmentWindowDays: null,
+    enrolledByUserId: session.user.id,
+    // Only confirmed ACTIVE members of this org reach here — unmatched addresses
+    // were already bucketed into `notFound` — so the `/join` invite branch stays
+    // unreachable and assigning by email still never creates staff.
+    callerCanInvite: false,
+  };
 
-  const results = await prisma.enrollment.createMany({
-    data: enrollmentData,
-    skipDuplicates: true,
-  });
+  const entries: StaffEntry[] = assignableMembers.map((m) => ({ email: m.user.email }));
+
+  // Mirrors enrollUsers: the batched path stays behind the same kill-switch, so
+  // this caller never silently opts into it ahead of the others.
+  const outcomes =
+    process.env.ENROLLMENT_BATCH_ENABLED === 'true'
+      ? await createEnrollmentsForUsers(entries, enrollmentContext)
+      : await sequentialEnrollments(entries, enrollmentContext);
+
+  // `count` keeps its meaning: enrollments this call newly CREATED. An
+  // already-enrolled member yields no row, exactly as `skipDuplicates` did.
+  const enrolled = outcomes.filter((outcome) => outcome.status === 'enrolled').length;
 
   logger.info({
     msg: '[course] Users assigned to course',
     courseId,
     userId: session.user.id,
-    enrolled: results.count,
+    enrolled,
+    alreadyEnrolled: outcomes.filter((outcome) => outcome.status === 'alreadyEnrolled').length,
+    failed: outcomes.filter((outcome) => outcome.status === 'failed').length,
     notFoundCount: notFound.length,
+    outOfScopeCount: outOfScope.length,
     hasDeadline: deadline !== null,
   });
   revalidatePath('/dashboard/training');
-  return { success: true, count: results.count, notFound };
+  return { success: true, count: enrolled, notFound, outOfScope };
 }
 
 export interface AssignCoursesToUserResult {
@@ -1209,21 +1309,22 @@ export interface AssignCoursesToUserResult {
 }
 
 /**
- * Assign one or more courses to a SINGLE staff member — the staff-profile
- * "Assign Course" flow — with one optional completion deadline shared by them all.
+ * Assign one or more courses to a SINGLE staff member — with one optional
+ * completion deadline shared by them all.
+ *
+ * @deprecated Superseded by `assignCoursesToStaffMember` (src/app/actions/staff.ts),
+ * which the staff-profile "Assign Course" flow now calls: it announces the whole
+ * batch in ONE email and ONE in-app notification instead of one per course, and
+ * reports whether that announcement was actually sent. Kept only until the
+ * remaining callers are gone; do not wire anything new to it.
  *
  * Gated on `assignment.create` and strictly scoped to a member of the caller's
- * own organization, then delegated per course to {@link assignCourseToUsers} —
- * the same machinery the courses-list assign modal uses. Delegating there rather
- * than to `enrollUsers` is deliberate: only `assignCourseToUsers` applies the
- * COU-004 ruling that a course belongs to the ORG, so an admin/HR can assign a
- * colleague's course. `enrollUsers` still authorizes on creator identity and
- * rejects those with "Course not found".
+ * own organization, then delegated per course to {@link assignCourseToUsers}.
  *
  * Courses are assigned independently rather than in one transaction: a course
  * that fails never rolls back the ones that landed, and `assigned` counts only
- * enrollments this call newly created (`createMany`'s `skipDuplicates` absorbs
- * the rest, which are reported as `alreadyAssigned`).
+ * enrollments this call newly created (an already-held course is reported as
+ * `alreadyAssigned`).
  */
 export async function assignCoursesToUser(
   staffOrgUserId: string,
@@ -1573,15 +1674,15 @@ export async function createFullCourse(data: {
   quiz: QuizQuestion[];
   assignments: string[];
   /**
-   * Role-targeted assignment intent from wizard step 9. Only consulted when the
-   * quality gate holds the course back — the caller performs the assignment
-   * itself when the course publishes immediately. Mutually exclusive with
-   * {@link assignments}.
+   * Role-targeted assignment intent from the wizard's assign & publish step.
+   * Only consulted when the quality gate holds the course back — the caller
+   * performs the assignment itself when the course publishes immediately.
+   * Mutually exclusive with {@link assignments}.
    */
   roleAssignment?: RoleAssignmentIntent;
   dueDate?: Date;
   dueTime?: string;
-  // Quiz settings from Step 4
+  // Quiz settings from the wizard's quiz step
   quizTitle?: string;
   quizPassMark?: string;
   quizQuestionType?: string;

@@ -34,7 +34,7 @@ import {
 import { cn } from '@/lib/utils';
 
 interface AuditorStaffTabProps {
-  /** Population an "Export all" covers — every worker membership in the org. */
+  /** Population an "Export all" covers — every membership in the org. */
   totalStaff: number;
 }
 

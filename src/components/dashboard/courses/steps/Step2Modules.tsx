@@ -17,6 +17,7 @@ import { getDocuments, uploadDocument } from '@/app/actions/documents';
 import { formatFileSize } from '@/lib/utils';
 import { logger } from '@/lib/logger';
 import { CourseWizardModule, CourseWizardModuleDocument } from '@/types/course';
+import { isWholeCourse } from '@/lib/course/structure';
 import {
   wizardCardInputClass,
   wizardCardLabelClass,
@@ -92,10 +93,23 @@ export default function Step2Modules({
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
+  // The first module may turn out to BE the whole course — nobody knows until the
+  // admin does or does not add a second — and a whole course has no per-module
+  // deadline, so the field only appears from the second module onward.
+  const requiresDeadline = modules.length > 0;
+  // Deleting a committed module can turn the one being authored back into the
+  // first, so a deadline chosen while the field was showing must not leak into
+  // what is now a whole course.
+  const effectiveDeadlineDays = requiresDeadline ? deadlineDays : '';
+
   const isComplete = Boolean(
-    title.trim() && objective.trim() && deadlineDays && attachment && scanState !== 'uploading',
+    title.trim() &&
+    objective.trim() &&
+    (!requiresDeadline || effectiveDeadlineDays) &&
+    attachment &&
+    scanState !== 'uploading',
   );
-  const isEmpty = !title.trim() && !objective.trim() && !deadlineDays && !attachment;
+  const isEmpty = !title.trim() && !objective.trim() && !effectiveDeadlineDays && !attachment;
   const status: ModuleDraftStatus =
     scanState === 'uploading' ? 'partial' : isComplete ? 'complete' : isEmpty ? 'empty' : 'partial';
 
@@ -120,7 +134,7 @@ export default function Step2Modules({
     const committed: CourseWizardModule = {
       title: title.trim(),
       objective: objective.trim(),
-      completionDeadlineDays: Number(deadlineDays),
+      completionDeadlineDays: effectiveDeadlineDays ? Number(effectiveDeadlineDays) : null,
       documentId: attachment.documentId,
       fileName: attachment.fileName,
       fileSize: attachment.fileSize,
@@ -136,14 +150,26 @@ export default function Step2Modules({
 
   const handleAddModule = () => {
     if (!isComplete) {
-      setFormError('Add a title, objective, deadline and training document to add this module.');
+      setFormError(
+        requiresDeadline
+          ? 'Add a title, objective, deadline and training document to add this module.'
+          : 'Add a title, objective and training document to add this module.',
+      );
       return;
     }
     commitDraft();
   };
 
   const handleRemoveModule = (index: number) => {
-    onModulesChange(modules.filter((_, i) => i !== index));
+    const remaining = modules.filter((_, i) => i !== index);
+    // Dropping back to a whole course clears the survivor's deadline, so the
+    // "one module ⇒ no per-module deadline" invariant also holds in the database
+    // — the field is never offered for module 1, so it cannot be re-entered.
+    onModulesChange(
+      isWholeCourse(remaining.length)
+        ? remaining.map((module) => ({ ...module, completionDeadlineDays: null }))
+        : remaining,
+    );
   };
 
   const handleFilesSelected = async (files: File[]) => {
@@ -289,26 +315,28 @@ export default function Step2Modules({
               />
             </div>
 
-            <div className="flex flex-col gap-1.5">
-              <label className={wizardCardLabelClass} id="module-deadline-label">
-                Module Completion Deadline <span className="text-error">*</span>
-              </label>
-              <Select value={deadlineDays} onValueChange={setDeadlineDays}>
-                <SelectTrigger
-                  className={wizardCardControlClass}
-                  aria-labelledby="module-deadline-label"
-                >
-                  <SelectValue placeholder="Choose an option" />
-                </SelectTrigger>
-                <SelectContent>
-                  {DEADLINE_OPTIONS.map((days) => (
-                    <SelectItem key={days} value={String(days)}>
-                      {days === 1 ? '1 day' : `${days} days`}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {requiresDeadline && (
+              <div className="flex flex-col gap-1.5">
+                <label className={wizardCardLabelClass} id="module-deadline-label">
+                  Module Completion Deadline <span className="text-error">*</span>
+                </label>
+                <Select value={deadlineDays} onValueChange={setDeadlineDays}>
+                  <SelectTrigger
+                    className={wizardCardControlClass}
+                    aria-labelledby="module-deadline-label"
+                  >
+                    <SelectValue placeholder="Choose an option" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {DEADLINE_OPTIONS.map((days) => (
+                      <SelectItem key={days} value={String(days)}>
+                        {days === 1 ? '1 day' : `${days} days`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
 
           <div className="flex flex-col gap-2">

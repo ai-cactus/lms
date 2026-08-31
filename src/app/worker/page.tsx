@@ -9,6 +9,8 @@ import WorkerAchievements from '@/components/worker/WorkerAchievements';
 import WorkerEmptyState from '@/components/worker/WorkerEmptyState';
 import { getWorkerCertificates } from '@/app/actions/certificate';
 import { computeDisplayProgress } from '@/lib/enrollment-progress';
+import { selectDisplayEnrollments } from '@/lib/enrollment/display-selection';
+import type { LearnerCourseRow } from '@/types/enrollment';
 
 export default async function LearnerDashboard() {
   const session = await auth();
@@ -21,6 +23,7 @@ export default async function LearnerDashboard() {
           where: { organizationUserId },
           include: {
             course: { include: { quiz: { select: { passingScore: true } } } },
+            certificate: { select: { id: true } },
             quizAttempts: {
               orderBy: { completedAt: 'desc' },
               take: 1,
@@ -43,48 +46,24 @@ export default async function LearnerDashboard() {
 
   const profileIncomplete = !user?.firstName?.trim() || !user?.lastName?.trim();
 
-  // Deduplicate: one entry per course, preferring completed/attested, then latest enrollment
-  const latestByCourse = new Map<string, (typeof allEnrollments)[number]>();
-  const completedByCourse = new Map<string, (typeof allEnrollments)[number]>();
-
-  for (const e of allEnrollments) {
-    const existing = latestByCourse.get(e.courseId);
-    if (
-      !existing ||
-      (e.startedAt && existing.startedAt && e.startedAt > existing.startedAt) ||
-      (!existing.startedAt && e.startedAt)
-    ) {
-      latestByCourse.set(e.courseId, e);
-    }
-    if (e.status === 'completed' || e.status === 'attested') {
-      const existingCompleted = completedByCourse.get(e.courseId);
-      if (!existingCompleted || e.status === 'attested') {
-        completedByCourse.set(e.courseId, e);
-      }
-    }
-  }
-
-  const courses = [...latestByCourse.entries()].map(([courseId, e]) => {
-    const completed = completedByCourse.get(courseId);
-    const picked = completed ?? e;
-    return {
-      id: courseId,
-      enrollmentId: picked.id,
-      title: picked.course.title,
+  const courses: LearnerCourseRow[] = selectDisplayEnrollments(allEnrollments).map((picked) => ({
+    id: picked.courseId,
+    enrollmentId: picked.id,
+    title: picked.course.title,
+    status: picked.status,
+    progress: computeDisplayProgress({
       status: picked.status,
-      progress: computeDisplayProgress({
-        status: picked.status,
-        progress: picked.progress,
-        score: picked.score,
-        passingScore: picked.course.quiz?.passingScore ?? null,
-      }),
-      deadline: picked.dueAt,
-      duration: picked.course.duration || undefined,
-      quizAttempts: picked.quizAttempts,
+      progress: picked.progress,
+      score: picked.score,
       passingScore: picked.course.quiz?.passingScore ?? null,
-      retakeOf: picked.retakeOf,
-    };
-  });
+    }),
+    deadline: picked.dueAt,
+    duration: picked.course.duration || undefined,
+    quizAttempts: picked.quizAttempts,
+    passingScore: picked.course.quiz?.passingScore ?? null,
+    retakeOf: picked.retakeOf,
+    certificateId: picked.certificate?.id ?? null,
+  }));
 
   const totalCourses = courses.length;
   const completedCourses = courses.filter(

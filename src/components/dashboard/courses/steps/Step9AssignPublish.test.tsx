@@ -187,30 +187,6 @@ describe('Step9AssignPublish — role selection', () => {
   });
 });
 
-describe('Step9AssignPublish — prefill from the audience step', () => {
-  it('seeds the role selection from a "Specific Roles" audience', () => {
-    const { onChange } = renderStep({ audience: 'specific', audienceRoles: ['nurse', 'hr'] });
-
-    expect(onChange).toHaveBeenCalledWith('assignRoles', ['hr', 'nurse']);
-  });
-
-  it('seeds nothing for a "General" audience', () => {
-    const { onChange } = renderStep({ audience: 'general', audienceRoles: ['nurse'] });
-
-    expect(onChange).not.toHaveBeenCalled();
-  });
-
-  it('never overwrites a selection already made on this step', () => {
-    const { onChange } = renderStep({
-      audience: 'specific',
-      audienceRoles: ['nurse'],
-      assignRoles: ['hr'],
-    });
-
-    expect(onChange).not.toHaveBeenCalled();
-  });
-});
-
 describe('Step9AssignPublish — deadline, reminders and recurrence', () => {
   it('reveals the due date and time only while the deadline toggle is on', async () => {
     const user = userEvent.setup();

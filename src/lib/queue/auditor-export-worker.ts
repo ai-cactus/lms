@@ -5,7 +5,7 @@ import { AUDITOR_EXPORT_QUEUE_NAME } from './auditor-export-queue';
 import { logger } from '@/lib/logger';
 import { Prisma } from '@/generated/prisma/browser';
 import { startedAtWhere, toReportPeriod } from '@/lib/audit-reports/date-range';
-import { WORKER_ROLES } from '@/lib/rbac/role-utils';
+import { orgCourseWhere } from '@/lib/course/org-scope';
 import type { OrgReportInput } from '@/lib/audit-reports/types';
 
 export function getExportWorker() {
@@ -71,15 +71,15 @@ export function getExportWorker() {
       });
       const orgName = org?.name || 'Organization';
 
-      // D-01 + team finding #17. One id array is not enough, because the report
-      // has two axes that must scope differently:
+      // D-01 + team finding #17. The report has two axes that scope differently:
       //
       //   SUBJECTS — whose training records may appear. Facility-narrowed.
       //              This is the security boundary.
-      //   AUTHORS  — who created the organisation's courses. NEVER narrowed.
-      //              The course CATALOGUE is an org-level artifact.
+      //   CATALOGUE — which courses the organisation has. NEVER narrowed, and
+      //              never status-filtered: a draft or retired course is still
+      //              part of what the org has to account for.
       //
-      // Narrowing the author axis too would delete a course from a supervisor's
+      // Narrowing the catalogue too would delete a course from a supervisor's
       // report entirely whenever it happens to have been written by someone at
       // another facility — the report would read "this facility has no
       // bloodborne-pathogens course" when it has one with no local enrollments.
@@ -87,31 +87,34 @@ export function getExportWorker() {
       // for exactly this asymmetry: all courses listed, the DATA facility-limited.
       const facilityScoped = Array.isArray(facilityIds);
 
-      const authorOrgUserIds = await prisma.organizationUser
-        .findMany({ where: { organizationId, active: true }, select: { id: true } })
-        .then((u) => u.map((x) => x.id));
-
-      const subjectOrgUserIds = facilityScoped
-        ? await prisma.organizationUser
-            .findMany({
-              where: {
-                organizationId,
-                active: true,
-                // Membership, not Enrollment.facilityId: that column records the
-                // facility at enrollment time and is nullable, so a transferred
-                // worker's records would surface under their FORMER supervisor
-                // while their name is absent from that supervisor's roster.
-                facilities: { some: { facilityId: { in: facilityIds }, active: true } },
-              },
-              select: { id: true },
-            })
-            .then((u) => u.map((x) => x.id))
-        : authorOrgUserIds;
-
-      // The SUBJECT-side predicate for direct OrganizationUser queries below.
-      const subjectFacilityWhere = facilityScoped
+      // Membership, not Enrollment.facilityId: that column records the facility
+      // at enrollment time and is nullable, so a transferred worker's records
+      // would surface under their FORMER supervisor while their name is absent
+      // from that supervisor's roster.
+      const subjectFacilityWhere: Prisma.OrganizationUserWhereInput = facilityScoped
         ? { facilities: { some: { facilityId: { in: facilityIds }, active: true } } }
         : {};
+
+      // Expressed as a relation predicate rather than a materialised id list:
+      // widening the subject set to every member of the org made `{ in: [...] }`
+      // an unbounded read that also cost an extra round trip per job.
+      //
+      // Deactivated members are deliberately INCLUDED. The screen never filtered
+      // them out, and a departed employee's training record is precisely what an
+      // auditor asks for — hiding it makes the export both wrong and inconsistent
+      // with the page it was launched from.
+      const subjectMemberWhere: Prisma.OrganizationUserWhereInput = {
+        organizationId,
+        ...subjectFacilityWhere,
+      };
+      const subjectEnrollmentWhere: Prisma.EnrollmentWhereInput = {
+        organizationUser: subjectMemberWhere,
+      };
+
+      // The org's whole catalogue: authored in-house OR adopted from the
+      // platform offering. Adopted courses are authored by another tenant, so a
+      // creator-only predicate drops every one of them.
+      const courseWhere = await orgCourseWhere(organizationId);
 
       await updateDbJob(15, 'Fetching records...');
       await new Promise((r) => setTimeout(r, 600));
@@ -129,15 +132,18 @@ export function getExportWorker() {
       let result;
 
       if (scope === 'course' && scopeId) {
-        const course = await prisma.course.findUnique({
-          where: { id: scopeId },
+        const course = await prisma.course.findFirst({
+          // Scoped to the org's catalogue, not looked up by bare id — the job
+          // payload is server-derived, but a report must never be able to name a
+          // course this organisation does not have.
+          where: { id: scopeId, ...courseWhere },
           include: {
             quiz: { include: { _count: { select: { questions: true } } } },
             lessons: {
               include: { quiz: { include: { _count: { select: { questions: true } } } } },
             },
             enrollments: {
-              where: { organizationUserId: { in: subjectOrgUserIds }, ...dateWhere },
+              where: { ...subjectEnrollmentWhere, ...dateWhere },
               include: { organizationUser: { include: { user: true } }, quizAttempts: true },
             },
           },
@@ -205,7 +211,7 @@ export function getExportWorker() {
         // scopeId is the OrganizationUser id — the org-scoped staff identity —
         // not the bare global User id.
         const staff = await prisma.organizationUser.findFirst({
-          where: { id: scopeId, organizationId, ...subjectFacilityWhere },
+          where: { id: scopeId, ...subjectMemberWhere },
           include: {
             user: true,
             enrollments: {
@@ -250,27 +256,20 @@ export function getExportWorker() {
       } else if (scope === 'all-courses') {
         const [courses, totalStaff] = await Promise.all([
           prisma.course.findMany({
-            where: { createdByOrgUserId: { in: authorOrgUserIds }, status: 'published' },
+            where: courseWhere,
             select: {
               title: true,
               category: true,
               type: true,
               status: true,
               enrollments: {
-                where: { organizationUserId: { in: subjectOrgUserIds }, ...dateWhere },
+                where: { ...subjectEnrollmentWhere, ...dateWhere },
                 select: { status: true },
               },
             },
             orderBy: { title: 'asc' },
           }),
-          prisma.organizationUser.count({
-            where: {
-              organizationId,
-              active: true,
-              role: { in: [...WORKER_ROLES] },
-              ...subjectFacilityWhere,
-            },
-          }),
+          prisma.organizationUser.count({ where: subjectMemberWhere }),
         ]);
 
         await updateDbJob(60, 'Aggregating course activity...');
@@ -299,16 +298,9 @@ export function getExportWorker() {
           })),
         });
       } else if (scope === 'all-staff') {
-        const [workers, totalCourses] = await Promise.all([
+        const [members, totalCourses] = await Promise.all([
           prisma.organizationUser.findMany({
-            // #17: "when viewing the workers tab, the tab should display all
-            // workers in that specific facility only".
-            where: {
-              organizationId,
-              active: true,
-              role: { in: [...WORKER_ROLES] },
-              ...subjectFacilityWhere,
-            },
+            where: subjectMemberWhere,
             select: {
               role: true,
               jobTitle: true,
@@ -321,17 +313,15 @@ export function getExportWorker() {
             },
             orderBy: { createdAt: 'desc' },
           }),
-          prisma.course.count({
-            where: { createdByOrgUserId: { in: authorOrgUserIds }, status: 'published' },
-          }),
+          prisma.course.count({ where: courseWhere }),
         ]);
 
         await updateDbJob(60, 'Aggregating staff activity...');
         await new Promise((r) => setTimeout(r, 600));
 
-        const totalEnrollments = workers.reduce((sum, w) => sum + w.enrollments.length, 0);
-        const completedEnrollments = workers.reduce(
-          (sum, w) => sum + w.enrollments.filter((e) => isCompleted(e.status)).length,
+        const totalEnrollments = members.reduce((sum, m) => sum + m.enrollments.length, 0);
+        const completedEnrollments = members.reduce(
+          (sum, m) => sum + m.enrollments.filter((e) => isCompleted(e.status)).length,
           0,
         );
         const completionRate =
@@ -341,29 +331,20 @@ export function getExportWorker() {
           orgName,
           generatedAt: new Date(),
           period,
-          summary: { totalCourses, totalStaff: workers.length, completionRate },
-          staff: workers.map((w) => ({
-            staffName: w.user.fullName || w.user.email.split('@')[0],
-            roleLabel: w.jobTitle || w.role,
-            email: w.user.email,
-            coursesAssigned: w.enrollments.length,
-            coursesCompleted: w.enrollments.filter((e) => isCompleted(e.status)).length,
-            lastActivity: w.enrollments.find((e) => e.completedAt)?.completedAt ?? null,
+          summary: { totalCourses, totalStaff: members.length, completionRate },
+          staff: members.map((m) => ({
+            staffName: m.user.fullName || m.user.email.split('@')[0],
+            roleLabel: m.jobTitle || m.role,
+            email: m.user.email,
+            coursesAssigned: m.enrollments.length,
+            coursesCompleted: m.enrollments.filter((e) => isCompleted(e.status)).length,
+            lastActivity: m.enrollments.find((e) => e.completedAt)?.completedAt ?? null,
           })),
         });
       } else {
         const [totalCourses, totalStaff] = await Promise.all([
-          prisma.course.count({
-            where: { createdByOrgUserId: { in: authorOrgUserIds }, status: 'published' },
-          }),
-          prisma.organizationUser.count({
-            where: {
-              organizationId,
-              active: true,
-              role: { in: [...WORKER_ROLES] },
-              ...subjectFacilityWhere,
-            },
-          }),
+          prisma.course.count({ where: courseWhere }),
+          prisma.organizationUser.count({ where: subjectMemberWhere }),
         ]);
 
         await updateDbJob(60, 'Aggregating organization activity...');
@@ -380,7 +361,7 @@ export function getExportWorker() {
         let completed = 0;
         for (let skip = 0; ; skip += ENROLLMENT_BATCH_SIZE) {
           const batch = await prisma.enrollment.findMany({
-            where: { organizationUserId: { in: subjectOrgUserIds }, ...dateWhere },
+            where: { ...subjectEnrollmentWhere, ...dateWhere },
             include: {
               organizationUser: { include: { user: { select: { email: true, fullName: true } } } },
               course: { select: { title: true, category: true } },

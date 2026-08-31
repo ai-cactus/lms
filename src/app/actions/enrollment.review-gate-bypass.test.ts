@@ -92,6 +92,7 @@ const reviewRequiredCourse = {
   id: COURSE_ID,
   title: 'Degraded Course',
   createdByOrgUserId: ADMIN_ORG_USER_ID,
+  creator: { organizationId: ORG_ID },
   isGlobal: false,
   type: 'document',
   status: 'draft',

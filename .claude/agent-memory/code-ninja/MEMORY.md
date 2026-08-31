@@ -8,7 +8,7 @@
 - [Wizard PHI attestation](project_course-wizard-phi-attestation.md) — step 2's attestation checkbox isn't in the mock but is required: uploadDocument rejects FormData without phiAttested
 - [Document Hub scope](project_document-hub-scope.md) — rename dropped from the UI (action kept); list hover card cut, but the viewer's thumbnail rail was ruled back IN
 - [Step-7 review honest gaps](project_wizard-step7-review-honest-gaps.md) — no citation chips, "Key Points" not "Tip!", Edit button inert: deliberate, don't invent the missing data
-- [Assign-action authorization split](gotcha_assignment_action_authorization_split.md) — enrollUsers gates on creator identity, assignCourseToUsers on org ownership; wrong pick → "Course not found"
+- [Assign-action authorization split](gotcha_assignment_action_authorization_split.md) — RESOLVED: enrollUsers now gates on org ownership too; its course mocks must include `creator`
 - [npm install needs --allow-remote=all](gotcha_npm_install_allow_remote.md) — lockfile has ~293 npmmirror.com URLs; npm 12 aborts with EALLOWREMOTE without the flag.
 - [npm swallows --dry-run](gotcha_npm_swallows_dry_run.md) — scripts/ now execute by default; a dropped `--dry-run` is destructive, hence run.ts's rescue block.
 - [npm audit high gate](project_npm_audit_gate.md) — cleared via overrides; the load-bearing `minimatch@10` pin breaks ~12 currently-disabled react/import/jsx-a11y rules.
@@ -61,6 +61,7 @@
 - [pauseStartsAt must not gate access](gotcha_billing_pause_sweep_invariant.md) — never read it in hasActiveBilling/getPauseState; the separation IS the mechanism
 - [Billing schedule deferred scope](project_billing_schedule_deferred_scope.md) — checkout's missing pausedAt check, #27/#28, and pause's kept 409 are deliberate non-fixes; seat = every active member.
 - [CourseRail unlockedIndex gates the quiz too](gotcha_courserail_unlockedindex_conflates_quiz.md) — module nav is free, but railUnlockedIndex must stay at lessons.length-1 or the quiz gate opens.
+- [CourseArticle hasFullLayout gates the quiz](gotcha_coursearticle_hasfulllayout_gates_quiz.md) — one flag covers ToC + top bar + Prev/Next; hiding chrome via onSelectModule deadlocks the quiz gate.
 - [Quiz route error body shapes](gotcha_quiz_route_error_body_shapes.md) — start returns a CODE in `error` + human text in `message`; submit is human-in-`error`; read `message ?? error`.
 - [Courses video/reading consolidation](project_courses_video_reading_consolidation.md) — outer tabs deleted, catalog merged into the Video tab; Video is now the UNCONDITIONAL default, which breaks 7 e2e click paths.
 - [Facility scope = one condition](project_facility_scope_one_condition.md) — view/switch/reassign all gate on "viewer sees >1 accessible facility"; ORG_WIDE_FACILITY_ROLES is already correct, do not edit.

@@ -1,30 +1,26 @@
 ---
 name: gotcha-assignment-action-authorization-split
-description: Two course-assignment actions disagree on course authorization — enrollUsers gates on creator identity, assignCourseToUsers on org ownership (COU-004). Pick the right one when building any new assign entry point.
+description: RESOLVED 2026-08-31 — enrollUsers now authorizes courses by ORG ownership like assignCourseToUsers. History of the split, and the mock shape every enrollUsers test now needs.
 metadata:
   type: project
 ---
 
 `enrollUsers` (src/app/actions/enrollment.ts) and `assignCourseToUsers`
-(src/app/actions/course.ts) do NOT authorize courses the same way, and picking
-the wrong one silently breaks assignment with a misleading "Course not found".
+(src/app/actions/course.ts) used to disagree on course authorization, and
+picking the wrong one silently broke assignment with a misleading
+"Course not found".
 
-- `enrollUsers` authorizes on **creator identity**: `createdByOrgUserId === session.user.organizationUserId`, plus global-catalog/offering escapes. A course created by a COLLEAGUE in the same org fails it.
-- `assignCourseToUsers` authorizes on **org ownership**: `course.creator.organizationId === session.user.organizationId`. This is the COU-004 ruling — an org's admins/HR must be able to assign any course their organization owns. It has no global-catalog branch.
+- `enrollUsers` authorized on **creator identity**: `createdByOrgUserId === session.user.organizationUserId`, plus global-catalog/offering escapes. A course created by a COLLEAGUE in the same org failed it. Confirmed live 2026-08-14: every course in a seeded org's catalog was same-org, non-global, created by another member, so this path rejected all of them.
+- `assignCourseToUsers` authorized on **org ownership** (the COU-004 ruling).
 
-**Why:** COU-004 fixed the courses-list assign modal by routing it through
-`assignCourseToUsers`; `enrollUsers` was never updated, so the older creator-only
-rule still lives there. Confirmed live on 2026-08-14: every course in a seeded
-org's catalog was same-org, non-global, created by another member — so the
-`enrollUsers` path rejected all of them while `assignCourseToUsers` accepted all
-of them. Prebuilt/global courses are FORKED into the org on adoption
-(`addPrebuiltCourseToOrg` → `forkCourse`), so in practice an org's catalog is
-org-owned and the org-ownership rule is the one that matches reality.
+**Closed on branch `bugfix/assign-course-emails` (commit c03466de):** `enrollUsers`
+gained an `isSameOrgCourse` branch, so both actions now accept any course the
+caller's own organization owns. Not a privilege widening — every role holding
+`enrollment.create` also holds `assignment.create`, so the same caller could
+already assign the same course through the other action.
 
-**How to apply:** When building or reviewing any new assignment entry point,
-delegate to `assignCourseToUsers`, not `enrollUsers`, unless you specifically
-need `enrollUsers`' extras (invite-parking for non-members, seat gate,
-per-enrollment worker notification, INITIAL_LAUNCH reminder row). Those extras
-are the tradeoff you accept for correct org-level authorization. If you ever get
-"Course not found" from an assign flow, check this divergence first rather than
-the course data.
+**How to apply now:**
+
+- Either action is safe to build a new assign entry point on; choose by SHAPE, not authorization. `enrollUsers` adds invite-parking for non-members, the seat gate, and the batched-notice `deferWorkerNotification` option; `assignCourseToUsers` is the one-course/many-emails path and never invites.
+- `enrollUsers` selects `creator: { organizationId }`. **Any prisma mock returning a course from `course.findUnique` must include that relation** or the action throws `Cannot read properties of undefined`. A fixture meant to exercise only the global-catalog/offering branch needs a creator org that is NOT the caller's (`'org-platform'`), or it passes for the wrong reason.
+- **Still open:** `assignCourseToRoleTargets` (enrollment.ts, ~line 670) carries the same creator-identity gate and was deliberately left alone — role-target assignment of a colleague's non-global course still fails. Fix it the same way if it surfaces.

@@ -11,21 +11,31 @@
  *     admins/HR out of colleagues' courses (COU-004 family).
  *   - The optional completion deadline, persisted through the shared
  *     CourseAssignment upsert and stamped on each new enrollment.
+ *   - Delegation to the shared enrollment machinery
+ *     (`@/lib/enrollment/create`), which is what sends the launch email, raises
+ *     the COURSE_ASSIGNED notification and seeds the INITIAL_LAUNCH reminder
+ *     log. A bare `enrollment.createMany` here did none of the three, so an
+ *     assigned course reached the learner silently and never nudged them.
  *
  * Kept in its own file (mirroring enrollment.assignment.test.ts) rather than
  * folded into course.test.ts, which mocks a narrower prisma surface
  * (course.findMany/enrollment.groupBy) for getDashboardData and doesn't wire
- * course.findUnique / enrollment.createMany.
+ * course.findUnique.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { prismaMock, mockAdminAuth, mockWorkerAuth, mockRevalidatePath } = vi.hoisted(() => {
+const {
+  prismaMock,
+  mockAdminAuth,
+  mockWorkerAuth,
+  mockRevalidatePath,
+  mockCreateEnrollmentForUser,
+  mockCreateEnrollmentsForUsers,
+} = vi.hoisted(() => {
   const prismaMock = {
     course: { findUnique: vi.fn() },
     organization: { findUnique: vi.fn() },
     organizationUser: { findMany: vi.fn() },
-    organizationUserFacility: { findMany: vi.fn() },
-    enrollment: { createMany: vi.fn() },
     courseAssignment: { findFirst: vi.fn(), update: vi.fn(), create: vi.fn() },
     assignmentReminderStage: { upsert: vi.fn() },
   };
@@ -34,6 +44,8 @@ const { prismaMock, mockAdminAuth, mockWorkerAuth, mockRevalidatePath } = vi.hoi
     mockAdminAuth: vi.fn(),
     mockWorkerAuth: vi.fn(),
     mockRevalidatePath: vi.fn(),
+    mockCreateEnrollmentForUser: vi.fn(),
+    mockCreateEnrollmentsForUsers: vi.fn(),
   };
 });
 
@@ -45,6 +57,10 @@ vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 vi.mock('@/lib/reminders/sweep', () => ({ resolveOnCompletion: vi.fn() }));
+vi.mock('@/lib/enrollment/create', () => ({
+  createEnrollmentForUser: mockCreateEnrollmentForUser,
+  createEnrollmentsForUsers: mockCreateEnrollmentsForUsers,
+}));
 
 import { assignCourseToUsers } from './course';
 
@@ -56,6 +72,10 @@ const COURSE_ID = 'course-001';
 // Assignment is gated on the caller's ORG owning the course, not on the caller
 // having created it — an admin/HR must be able to assign a colleague's course.
 const ownCourse = { title: 'My Training', creator: { organizationId: ORG_ID } };
+
+function enrolled(email: string) {
+  return { status: 'enrolled' as const, email, userId: `u-${email}`, enrollmentId: `e-${email}` };
+}
 
 function orgWithSubscription(subscription: unknown) {
   return { subscription };
@@ -83,8 +103,9 @@ beforeEach(() => {
   prismaMock.organizationUser.findMany.mockResolvedValue([
     { id: 'ou-staff-1', user: { email: 'staff@acme.com' } },
   ]);
-  prismaMock.organizationUserFacility.findMany.mockResolvedValue([]);
-  prismaMock.enrollment.createMany.mockResolvedValue({ count: 1 });
+  mockCreateEnrollmentForUser.mockImplementation((entry: { email: string }) =>
+    Promise.resolve(enrolled(entry.email)),
+  );
   prismaMock.courseAssignment.findFirst.mockResolvedValue(null);
   prismaMock.courseAssignment.create.mockResolvedValue({ id: 'assignment-001' });
   prismaMock.organization.findUnique.mockResolvedValue(
@@ -111,7 +132,7 @@ describe('assignCourseToUsers — auth / tenancy guards', () => {
     await expect(assignCourseToUsers(COURSE_ID, ['staff@acme.com'])).rejects.toThrow('Forbidden');
 
     expect(prismaMock.course.findUnique).not.toHaveBeenCalled();
-    expect(prismaMock.enrollment.createMany).not.toHaveBeenCalled();
+    expect(mockCreateEnrollmentForUser).not.toHaveBeenCalled();
   });
 
   it('throws when the course does not exist', async () => {
@@ -132,7 +153,7 @@ describe('assignCourseToUsers — auth / tenancy guards', () => {
       'Course not found or unauthorized',
     );
 
-    expect(prismaMock.enrollment.createMany).not.toHaveBeenCalled();
+    expect(mockCreateEnrollmentForUser).not.toHaveBeenCalled();
   });
 
   it('allows a same-org admin who did NOT create the course to assign it (COU-004)', async () => {
@@ -142,7 +163,7 @@ describe('assignCourseToUsers — auth / tenancy guards', () => {
 
     const result = await assignCourseToUsers(COURSE_ID, ['staff@acme.com']);
 
-    expect(result).toEqual({ success: true, count: 1, notFound: [] });
+    expect(result).toEqual({ success: true, count: 1, notFound: [], outOfScope: [] });
   });
 
   it('refuses when the caller has no organization', async () => {
@@ -154,8 +175,9 @@ describe('assignCourseToUsers — auth / tenancy guards', () => {
       success: false,
       message: 'You must belong to an organization to assign courses',
       notFound: [],
+      outOfScope: [],
     });
-    expect(prismaMock.enrollment.createMany).not.toHaveBeenCalled();
+    expect(mockCreateEnrollmentForUser).not.toHaveBeenCalled();
   });
 });
 
@@ -185,10 +207,11 @@ describe('assignCourseToUsers — billing gate (Defect B)', () => {
       success: false,
       message: 'Your organization needs an active subscription to assign courses.',
       notFound: [],
+      outOfScope: [],
     });
 
     expect(prismaMock.organizationUser.findMany).not.toHaveBeenCalled();
-    expect(prismaMock.enrollment.createMany).not.toHaveBeenCalled();
+    expect(mockCreateEnrollmentForUser).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -199,13 +222,11 @@ describe('assignCourseToUsers — billing gate (Defect B)', () => {
 
     const result = await assignCourseToUsers(COURSE_ID, ['staff@acme.com']);
 
-    expect(prismaMock.enrollment.createMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: [expect.objectContaining({ organizationUserId: 'ou-staff-1', courseId: COURSE_ID })],
-        skipDuplicates: true,
-      }),
+    expect(mockCreateEnrollmentForUser).toHaveBeenCalledWith(
+      { email: 'staff@acme.com' },
+      expect.objectContaining({ courseId: COURSE_ID, organizationId: ORG_ID }),
     );
-    expect(result).toEqual({ success: true, count: 1, notFound: [] });
+    expect(result).toEqual({ success: true, count: 1, notFound: [], outOfScope: [] });
   });
 });
 
@@ -214,14 +235,15 @@ describe('assignCourseToUsers — billing gate (Defect B)', () => {
 // ---------------------------------------------------------------------------
 
 describe('assignCourseToUsers — completion deadline', () => {
-  it('writes no CourseAssignment and leaves enrollments deadline-free when no dueAt is passed', async () => {
+  it('writes no CourseAssignment and passes no explicit deadline when no dueAt is given', async () => {
     await assignCourseToUsers(COURSE_ID, ['staff@acme.com']);
 
     expect(prismaMock.courseAssignment.create).not.toHaveBeenCalled();
-    expect(prismaMock.enrollment.createMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: [expect.objectContaining({ assignmentId: null, dueAt: null })],
-      }),
+    // A null `assignmentDueAt` leaves the deadline to the shared window rule in
+    // computeDueAt, exactly as every other assign path does.
+    expect(mockCreateEnrollmentForUser).toHaveBeenCalledWith(
+      { email: 'staff@acme.com' },
+      expect.objectContaining({ assignmentId: null, assignmentDueAt: null }),
     );
   });
 
@@ -239,14 +261,11 @@ describe('assignCourseToUsers — completion deadline', () => {
         }),
       }),
     );
-    expect(prismaMock.enrollment.createMany).toHaveBeenCalledWith(
+    expect(mockCreateEnrollmentForUser).toHaveBeenCalledWith(
+      { email: 'staff@acme.com' },
       expect.objectContaining({
-        data: [
-          expect.objectContaining({
-            assignmentId: 'assignment-001',
-            dueAt: new Date('2026-12-24'),
-          }),
-        ],
+        assignmentId: 'assignment-001',
+        assignmentDueAt: new Date('2026-12-24'),
       }),
     );
   });
@@ -278,7 +297,7 @@ describe('assignCourseToUsers — completion deadline', () => {
     });
 
     expect(prismaMock.courseAssignment.create).not.toHaveBeenCalled();
-    expect(prismaMock.enrollment.createMany).not.toHaveBeenCalled();
+    expect(mockCreateEnrollmentForUser).not.toHaveBeenCalled();
   });
 });
 
@@ -297,7 +316,12 @@ describe('assignCourseToUsers — unmatched emails', () => {
         }),
       }),
     );
-    expect(result).toEqual({ success: true, count: 1, notFound: ['ghost@acme.com'] });
+    expect(result).toEqual({
+      success: true,
+      count: 1,
+      notFound: ['ghost@acme.com'],
+      outOfScope: [],
+    });
   });
 
   it('returns every email as notFound when none resolve to a member', async () => {
@@ -309,43 +333,73 @@ describe('assignCourseToUsers — unmatched emails', () => {
       success: false,
       message: 'No valid users found to assign.',
       notFound: ['ghost@acme.com'],
+      outOfScope: [],
     });
-    expect(prismaMock.enrollment.createMany).not.toHaveBeenCalled();
+    expect(mockCreateEnrollmentForUser).not.toHaveBeenCalled();
   });
 });
 
-describe('assignCourseToUsers — facility stamping', () => {
-  it("stamps each enrollment with its member's own active facility assignment", async () => {
+// ---------------------------------------------------------------------------
+// Delegation to the shared enrollment machinery. Facility stamping, the
+// INITIAL_LAUNCH seed and the launch email itself live in
+// src/lib/enrollment/create.ts and are covered by its own suites; what this
+// action owns is routing every matched member through it exactly once.
+// ---------------------------------------------------------------------------
+
+describe('assignCourseToUsers — delegation to the enrollment machinery', () => {
+  it('enrolls every matched member through createEnrollmentForUser', async () => {
     prismaMock.organizationUser.findMany.mockResolvedValue([
       { id: 'ou-staff-1', user: { email: 'staff1@acme.com' } },
       { id: 'ou-staff-2', user: { email: 'staff2@acme.com' } },
     ]);
-    prismaMock.organizationUserFacility.findMany.mockResolvedValue([
-      { organizationUserId: 'ou-staff-1', facilityId: 'fac-1' },
-      { organizationUserId: 'ou-staff-2', facilityId: 'fac-2' },
+
+    const result = await assignCourseToUsers(COURSE_ID, ['staff1@acme.com', 'staff2@acme.com']);
+
+    expect(mockCreateEnrollmentForUser).toHaveBeenCalledTimes(2);
+    expect(mockCreateEnrollmentForUser.mock.calls.map((call) => call[0])).toEqual([
+      { email: 'staff1@acme.com' },
+      { email: 'staff2@acme.com' },
     ]);
+    expect(result).toEqual({ success: true, count: 2, notFound: [], outOfScope: [] });
+  });
 
-    await assignCourseToUsers(COURSE_ID, ['staff1@acme.com', 'staff2@acme.com']);
+  it('refuses to invite: only confirmed members reach the machinery', async () => {
+    await assignCourseToUsers(COURSE_ID, ['staff@acme.com']);
 
-    expect(prismaMock.enrollment.createMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: [
-          expect.objectContaining({ organizationUserId: 'ou-staff-1', facilityId: 'fac-1' }),
-          expect.objectContaining({ organizationUserId: 'ou-staff-2', facilityId: 'fac-2' }),
-        ],
-      }),
+    expect(mockCreateEnrollmentForUser).toHaveBeenCalledWith(
+      { email: 'staff@acme.com' },
+      expect.objectContaining({ callerCanInvite: false }),
     );
   });
 
-  it('stamps facilityId: null for a member with no active facility assignment', async () => {
-    prismaMock.organizationUserFacility.findMany.mockResolvedValue([]);
+  it('counts only newly created enrollments — an already-enrolled member is not counted', async () => {
+    prismaMock.organizationUser.findMany.mockResolvedValue([
+      { id: 'ou-staff-1', user: { email: 'staff1@acme.com' } },
+      { id: 'ou-staff-2', user: { email: 'staff2@acme.com' } },
+    ]);
+    mockCreateEnrollmentForUser
+      .mockResolvedValueOnce(enrolled('staff1@acme.com'))
+      .mockResolvedValueOnce({ status: 'alreadyEnrolled', email: 'staff2@acme.com' });
 
-    await assignCourseToUsers(COURSE_ID, ['staff@acme.com']);
+    const result = await assignCourseToUsers(COURSE_ID, ['staff1@acme.com', 'staff2@acme.com']);
 
-    expect(prismaMock.enrollment.createMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: [expect.objectContaining({ organizationUserId: 'ou-staff-1', facilityId: null })],
-      }),
-    );
+    expect(result).toEqual({ success: true, count: 1, notFound: [], outOfScope: [] });
+  });
+
+  it('uses the batched path only when the kill-switch is on', async () => {
+    const previous = process.env.ENROLLMENT_BATCH_ENABLED;
+    process.env.ENROLLMENT_BATCH_ENABLED = 'true';
+    mockCreateEnrollmentsForUsers.mockResolvedValue([enrolled('staff@acme.com')]);
+
+    try {
+      const result = await assignCourseToUsers(COURSE_ID, ['staff@acme.com']);
+
+      expect(mockCreateEnrollmentsForUsers).toHaveBeenCalledTimes(1);
+      expect(mockCreateEnrollmentForUser).not.toHaveBeenCalled();
+      expect(result).toEqual({ success: true, count: 1, notFound: [], outOfScope: [] });
+    } finally {
+      if (previous === undefined) delete process.env.ENROLLMENT_BATCH_ENABLED;
+      else process.env.ENROLLMENT_BATCH_ENABLED = previous;
+    }
   });
 });

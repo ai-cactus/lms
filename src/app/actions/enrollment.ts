@@ -213,6 +213,7 @@ export async function enrollUsers(
   // Verify course exists and the calling admin is allowed to enroll staff into it.
   const course = await prisma.course.findUnique({
     where: { id: courseId },
+    include: { creator: { select: { organizationId: true } } },
   });
 
   // Get organization info for new user creation and offering checks.
@@ -225,6 +226,15 @@ export async function enrollUsers(
     : null;
 
   const isOwnCourse = course?.createdByOrgUserId === session.user.organizationUserId;
+
+  // COU-004: a course belongs to the ORGANIZATION, not to the member who
+  // authored it, so a caller holding the assign verbs may assign any course
+  // their own org owns — the ruling `assignCourseToUsers` and `getCourseById`
+  // already apply. Without it this action rejects a colleague's course as
+  // "Course not found", which is what left the staff-profile assign flow
+  // unusable for any org whose courses were authored by someone else.
+  const isSameOrgCourse =
+    organizationId !== null && course?.creator.organizationId === organizationId;
 
   // An org admin may also enroll staff into a global course that their
   // organization has explicitly offered (an OrgCourseOffering row exists).
@@ -241,7 +251,7 @@ export async function enrollUsers(
   // part of the assignment. (Non-global courses still require ownership.)
   const isAssignableCatalog = course?.isGlobal === true && course.status === 'published';
 
-  if (!course || (!isOwnCourse && !isOfferedGlobal && !isAssignableCatalog)) {
+  if (!course || (!isOwnCourse && !isSameOrgCourse && !isOfferedGlobal && !isAssignableCatalog)) {
     throw new Error('Course not found');
   }
 
@@ -640,7 +650,10 @@ async function assignCourseToRoleTargets(
     throw new Error('Forbidden');
   }
 
-  const course = await prisma.course.findUnique({ where: { id: courseId } });
+  const course = await prisma.course.findUnique({
+    where: { id: courseId },
+    include: { creator: { select: { organizationId: true } } },
+  });
 
   const organization = await prisma.organization.findUnique({
     where: { id: organizationId },
@@ -648,6 +661,13 @@ async function assignCourseToRoleTargets(
   });
 
   const isOwnCourse = course?.createdByOrgUserId === session.user.organizationUserId;
+
+  // COU-004, as in enrollUsers above: a course belongs to the ORGANIZATION, not
+  // to the member who authored it. Without this a caller holding the assign
+  // verbs is refused a colleague's course as "Course not found" while the very
+  // same course assigns fine through the direct-target paths.
+  const isSameOrgCourse = course?.creator.organizationId === organizationId;
+
   const isOfferedGlobal =
     !isOwnCourse && course?.isGlobal === true
       ? (await prisma.orgCourseOffering.findUnique({
@@ -657,7 +677,7 @@ async function assignCourseToRoleTargets(
       : false;
   const isAssignableCatalog = course?.isGlobal === true && course.status === 'published';
 
-  if (!course || (!isOwnCourse && !isOfferedGlobal && !isAssignableCatalog)) {
+  if (!course || (!isOwnCourse && !isSameOrgCourse && !isOfferedGlobal && !isAssignableCatalog)) {
     throw new Error('Course not found');
   }
 
@@ -844,7 +864,7 @@ export async function assignCourseToRole(
   return { ...result, targetRole };
 }
 
-/** The course wizard's step-9 assignment settings, in the wizard's own vocabulary. */
+/** The course wizard's assign & publish settings, in the wizard's own vocabulary. */
 export interface RoleAssignmentSettingsInput {
   /** Deadline date from the wizard's "Set Completion Deadline" toggle, when set. */
   dueDate?: string | Date | null;

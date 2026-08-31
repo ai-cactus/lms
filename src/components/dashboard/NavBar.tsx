@@ -17,7 +17,7 @@ import {
 import NotificationPanel from '@/components/notifications/NotificationPanel';
 import { useNotifications } from '@/components/notifications/useNotifications';
 import { clearSiblingSessionCookie } from '@/app/actions/session-bridge';
-import { Bell, Building2, ChevronDown, Smile, LogOut, Menu } from 'lucide-react';
+import { Bell, Building2, ChevronDown, User, LogOut, Menu } from 'lucide-react';
 
 interface DefaultDashboardNavBarProps {
   fullName: string;
@@ -107,7 +107,7 @@ const UserProfile: FC<UserProfileProps> = ({
             className="flex w-full cursor-pointer items-center gap-3 rounded-xl border-none bg-none px-4 py-3 text-left text-sm font-medium text-[#718096] transition-all hover:bg-[#f7fafc] hover:text-[#2d3748] [&_svg]:text-[#a0aec0] hover:[&_svg]:text-[#4a5568]"
             onClick={onProfileClick}
           >
-            <Smile className="size-[18px]" />
+            <User className="size-[18px]" />
             Profile
           </Link>
           <button
