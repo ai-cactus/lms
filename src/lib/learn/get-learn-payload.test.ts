@@ -491,3 +491,76 @@ describe('getLearnPayload — learner view mode (D-16)', () => {
     expect(payload.user.isAdminView).toBe(false);
   });
 });
+
+/**
+ * Bug B: "Done with no Attest". The payload used to fall back to the literal
+ * role `'worker'`, which is NOT a member of WORKER_ROLES, and LearnClient
+ * re-derived the attestation gate from it with `isWorkerRole`. Whenever the
+ * membership lookup came back null, Attest silently vanished and a learner who
+ * had passed was left with "Done" as the only option. The gate is now one
+ * server-side verdict.
+ */
+describe('getLearnPayload — attestEligible', () => {
+  const workerSession = {
+    user: { id: 'w1', organizationUserId: 'ou-worker', organizationId: 'org-1', role: 'nurse' },
+  };
+
+  const enrollment = (status: string) => ({
+    id: 'enr-1',
+    progress: 100,
+    status,
+    score: 90,
+    videoPositionSeconds: 0,
+    quizAttempts: [],
+  });
+
+  beforeEach(() => {
+    mockWorkerAuth.mockResolvedValue(workerSession);
+    mockCourseFindUnique.mockResolvedValue(makeCourse());
+  });
+
+  it('is true for a worker-category member whose enrollment is not yet attested', async () => {
+    mockEnrollmentFindFirst.mockResolvedValue(enrollment('in_progress'));
+
+    const payload = asPayload(await getLearnPayload('course-1'));
+
+    expect(payload.attestEligible).toBe(true);
+    expect(payload.user.role).toBe('nurse');
+  });
+
+  it('is false once the enrollment is already attested', async () => {
+    mockEnrollmentFindFirst.mockResolvedValue(enrollment('attested'));
+
+    const payload = asPayload(await getLearnPayload('course-1'));
+
+    expect(payload.attestEligible).toBe(false);
+  });
+
+  it('is false for a manager-category viewer', async () => {
+    mockOrganizationUserFindUnique.mockResolvedValue({
+      role: 'hr',
+      jobTitle: 'HR Lead',
+      user: { fullName: 'Manager One', email: 'm@example.com' },
+      organization: { name: 'Acme Health' },
+    });
+    mockEnrollmentFindFirst.mockResolvedValue(enrollment('in_progress'));
+
+    const payload = asPayload(await getLearnPayload('course-1'));
+
+    expect(payload.attestEligible).toBe(false);
+  });
+
+  it('reports a null role rather than the literal "worker" when there is no membership', async () => {
+    mockWorkerAuth.mockResolvedValue(null);
+    mockAdminAuth.mockResolvedValue({
+      user: { id: 'a1', organizationUserId: null, organizationId: 'org-1', role: 'owner' },
+    });
+    mockOrganizationUserFindUnique.mockResolvedValue(null);
+    mockEnrollmentFindFirst.mockResolvedValue(null);
+
+    const payload = asPayload(await getLearnPayload('course-1'));
+
+    expect(payload.user.role).toBeNull();
+    expect(payload.attestEligible).toBe(false);
+  });
+});

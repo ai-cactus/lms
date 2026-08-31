@@ -15,13 +15,20 @@ interface QuizResultsProps {
   courseId: string;
   enrollmentId: string;
   hideActions?: boolean;
-  showAttestation?: boolean; // Show attestation button
+  /**
+   * Server-computed pass verdict for the attempt being shown. Never re-derived
+   * here: this screen used to compare `score` against a locally defaulted
+   * passing score of 70, which could disagree with the server's verdict and
+   * leave a learner who had genuinely passed with "Done" as their only option.
+   */
+  passed: boolean;
+  /** Server-computed: this viewer may attest this enrollment for this result. */
+  canAttest?: boolean;
   onAttestSuccess?: () => void; // Callback after successful attestation
   onRetake?: () => void; // Callback for retake
   data?: {
     courseName: string;
     score: number;
-    passingScore?: number;
     answered?: number;
     correct?: number;
     wrong?: number;
@@ -40,7 +47,7 @@ interface QuizResultsProps {
     userEmail?: string;
     jobTitle?: string;
   };
-  userRole?: string;
+  userRole?: string | null;
   organizationName?: string;
 }
 
@@ -48,7 +55,8 @@ export default function QuizResults({
   courseId,
   enrollmentId,
   hideActions = false,
-  showAttestation = false,
+  passed,
+  canAttest = false,
   onAttestSuccess,
   onRetake,
   data,
@@ -71,9 +79,7 @@ export default function QuizResults({
 
   const questions = data?.questions || [];
 
-  const passingScore = data?.passingScore || 70;
-  const isPassed = stats.score >= passingScore;
-  const strokeColor = isPassed ? '#00C55E' : '#E53E3E'; // Green or Red
+  const strokeColor = passed ? '#00C55E' : '#E53E3E'; // Green or Red
 
   const handleAttestSuccess = () => {
     setIsAttestationOpen(false);
@@ -83,7 +89,7 @@ export default function QuizResults({
 
   const attemptsUsed = data?.attemptsUsed || 1;
   const allowedAttempts = data?.allowedAttempts || null;
-  const canRetake = !isPassed && (allowedAttempts === null || attemptsUsed < allowedAttempts);
+  const canRetake = !passed && (allowedAttempts === null || attemptsUsed < allowedAttempts);
 
   const handleRetake = () => {
     if (onRetake) {
@@ -107,15 +113,15 @@ export default function QuizResults({
 
       <div
         className={`relative mb-8 overflow-hidden rounded-2xl p-8 ${
-          isPassed ? 'bg-success/10' : 'bg-error/10'
+          passed ? 'bg-success/10' : 'bg-error/10'
         }`}
       >
         <div className="mb-8 flex flex-col items-start justify-between gap-4 md:flex-row">
           <div className="text-2xl font-bold leading-snug text-foreground md:max-w-[60%]">
-            {isPassed ? 'Nice work!' : 'Keep trying!'} You completed the{' '}
+            {passed ? 'Nice work!' : 'Keep trying!'} You completed the{' '}
             <span className="text-primary">{stats.courseName}</span> quiz in{' '}
             {Math.ceil((stats.time || 0) / 60)} minutes.
-            {!isPassed && allowedAttempts && (
+            {!passed && allowedAttempts && (
               <div className="mt-1 text-[13px] font-normal text-error">
                 Attempt {attemptsUsed} of {allowedAttempts}
               </div>
@@ -123,9 +129,9 @@ export default function QuizResults({
           </div>
           {!hideActions && (
             <div className="flex items-center gap-2">
-              {showAttestation && isPassed && (
+              {canAttest && (
                 <Button variant="default" size="sm" onClick={() => setIsAttestationOpen(true)}>
-                  Attestate
+                  Attest
                 </Button>
               )}
               {canRetake && (
@@ -133,7 +139,7 @@ export default function QuizResults({
                   Retake Quiz
                 </Button>
               )}
-              {isPassed && (
+              {passed && (
                 <Link href={dashboardPath}>
                   <Button variant="default" size="sm">
                     Done

@@ -5,7 +5,6 @@ import React, { useState, useEffect, useRef } from 'react';
 // the server as `userData.isAdminView`. Re-deriving it from the role string is
 // exactly the D-16 defect — a manager in Learn mode carries an admin role by
 // design (session-bridge.ts).
-import { isWorkerRole } from '@/lib/rbac/role-utils';
 import { useParams, useRouter } from 'next/navigation';
 import { Menu, AlertCircle } from 'lucide-react';
 import QuizResults from '@/components/dashboard/training/QuizResults';
@@ -107,7 +106,8 @@ interface QuizResultsData {
 
 interface UserData {
   name: string;
-  role: string;
+  /** The membership's real DB role; null when the viewer has no membership. */
+  role: string | null;
   /**
    * Server-decided view mode. NEVER re-derive this from `role`: a manager in
    * Learn mode legitimately carries an admin role on the worker session, which
@@ -131,6 +131,7 @@ interface SeededState {
   course: CourseData;
   enrollment: EnrollmentData;
   userData: UserData;
+  attestEligible: boolean;
   watchedPct: number;
   quizUnlocked: boolean;
   highestUnlockedIndex: number;
@@ -172,6 +173,7 @@ function deriveSeed(data: LearnPayload): SeededState {
     course,
     enrollment: data.enrollment,
     userData: data.user,
+    attestEligible: data.attestEligible,
     watchedPct: 0,
     quizUnlocked: false,
     highestUnlockedIndex: 0,
@@ -359,6 +361,7 @@ export default function LearnClient({ initialData }: LearnClientProps) {
   const [course, setCourse] = useState<CourseData | null>(seed?.course ?? null);
   const [enrollment, setEnrollment] = useState<EnrollmentData | null>(seed?.enrollment ?? null);
   const [userData, setUserData] = useState<UserData | null>(seed?.userData ?? null);
+  const [attestEligible, setAttestEligible] = useState(seed?.attestEligible ?? false);
   const [loading, setLoading] = useState(!initialData);
   const [error, setError] = useState('');
 
@@ -652,6 +655,7 @@ export default function LearnClient({ initialData }: LearnClientProps) {
         setCourse(fetched.course);
         setEnrollment(fetched.enrollment);
         setUserData(fetched.userData);
+        setAttestEligible(fetched.attestEligible);
         setWatchedPct(fetched.watchedPct);
         setQuizUnlocked(fetched.quizUnlocked);
         setHighestUnlockedIndex(fetched.highestUnlockedIndex);
@@ -870,7 +874,6 @@ export default function LearnClient({ initialData }: LearnClientProps) {
                   questions: quizResults.questions || [],
                   attemptsUsed: quizResults.attemptsUsed,
                   allowedAttempts: quizResults.allowedAttempts,
-                  passingScore: course.quiz?.passingScore,
                   userName: userData?.name,
                   userEmail: userData?.email,
                   jobTitle: userData?.jobTitle,
@@ -878,7 +881,12 @@ export default function LearnClient({ initialData }: LearnClientProps) {
                 hideActions={
                   enrollment?.status === 'completed' || enrollment?.status === 'attested'
                 }
-                showAttestation={isWorkerRole(userData?.role) && quizResults.passed}
+                passed={quizResults.passed}
+                // Both halves are server verdicts: `attestEligible` (role +
+                // not-yet-attested) from the learn payload, `passed` from
+                // whichever server produced the result on screen — the payload
+                // on reload, the submit route on a fresh attempt.
+                canAttest={attestEligible && quizResults.passed}
                 userRole={userData?.role}
                 organizationName={userData?.organizationName}
                 onAttestSuccess={() => {
