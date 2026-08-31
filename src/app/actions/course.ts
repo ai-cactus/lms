@@ -21,6 +21,7 @@ import {
   staffFacilityWhere,
   type FacilityScopeSession,
 } from '@/lib/facility/staff-where';
+import { partitionEmailsByFacility } from '@/lib/facility/target-scope';
 import { CourseAccessError } from '@/lib/course/access-error';
 import { forkCourse } from '@/lib/course/fork-course';
 import { resolveOnCompletion } from '@/lib/reminders/sweep';
@@ -1034,10 +1035,23 @@ export async function getDashboardData(requestedFacilityIds?: string[] | null) {
  * reported, whether or not anyone else was assigned. `count` is the number of
  * enrollments newly CREATED — a member who already holds the course is skipped,
  * so a matched member can yield a count of 0.
+ *
+ * `outOfScope` is the disjoint second refusal bucket: real members of the
+ * organization that the caller's own facilities do not admit. Kept apart from
+ * `notFound` because the two need different wording — one is "nobody here has
+ * that address", the other is "not yours to assign" — and because merging them
+ * would quietly redefine what `notFound` has always meant to its callers.
  */
 export type AssignCourseToUsersResult =
-  | { success: false; message: string; notFound: string[] }
-  | { success: true; count: number; notFound: string[] };
+  | { success: false; message: string; notFound: string[]; outOfScope: string[] }
+  | { success: true; count: number; notFound: string[]; outOfScope: string[] };
+
+/**
+ * Refusal shown when every named target sits outside the caller's facilities.
+ * Module-private: a `'use server'` file may only export async functions.
+ */
+const OUT_OF_FACILITY_ASSIGN_MESSAGE =
+  'You can only assign courses to staff in your own facilities.';
 
 /**
  * Sequential fallback for {@link assignCourseToUsers}, mirroring the loop
@@ -1100,6 +1114,7 @@ export async function assignCourseToUsers(
       success: false,
       message: 'You must belong to an organization to assign courses',
       notFound: [],
+      outOfScope: [],
     };
   }
 
@@ -1136,7 +1151,7 @@ export async function assignCourseToUsers(
     });
     // Refused by return so the reason survives production error redaction.
     // Fail-closed: no offering, assignment or enrollment has been written yet.
-    return { success: false, message: BILLING_GATE_ASSIGN_MESSAGE, notFound: [] };
+    return { success: false, message: BILLING_GATE_ASSIGN_MESSAGE, notFound: [], outOfScope: [] };
   }
 
   // Emails are stored lowercased, and Prisma's `in` is case-sensitive — normalise
@@ -1157,13 +1172,49 @@ export async function assignCourseToUsers(
   const matched = new Set(membersToAssign.map((m) => m.user.email.toLowerCase()));
   const notFound = normalizedEmails.filter((email) => !matched.has(email));
 
-  if (membersToAssign.length === 0) {
+  // Facility gate on the TARGETS, not on the caller. This modal takes free-text
+  // addresses, so scoping the pickers elsewhere constrains nothing: a
+  // facility-bound supervisor could assign to any member of the organisation
+  // simply by typing their address, and because reads ARE scoped, neither side
+  // ever saw the crossing. One partition query for the whole batch, shared with
+  // every other caller-named write (src/lib/facility/target-scope.ts) — org-wide
+  // roles resolve to a `null` scope and are not narrowed at all. Addresses
+  // matching no member come back allowed here and are already carried by
+  // `notFound`, so the two buckets stay disjoint.
+  const { rejected: outOfScope } = await partitionEmailsByFacility(
+    session,
+    organizationId,
+    normalizedEmails,
+  );
+
+  if (outOfScope.length > 0) {
+    logger.warn({
+      msg: "[course] assignCourseToUsers: targets outside the caller's facilities",
+      courseId,
+      userId: session.user.id,
+      role: session.user.role,
+      rejectedCount: outOfScope.length,
+    });
+  }
+
+  const outOfScopeEmails = new Set(outOfScope);
+  const assignableMembers = membersToAssign.filter(
+    (m) => !outOfScopeEmails.has(m.user.email.toLowerCase()),
+  );
+
+  if (assignableMembers.length === 0) {
     logger.warn({
       msg: '[course] assignCourseToUsers: no valid users found',
       courseId,
       emailCount: normalizedEmails.length,
     });
-    return { success: false, message: 'No valid users found to assign.', notFound };
+    return {
+      success: false,
+      message:
+        outOfScope.length > 0 ? OUT_OF_FACILITY_ASSIGN_MESSAGE : 'No valid users found to assign.',
+      notFound,
+      outOfScope,
+    };
   }
 
   const deadline = dueAt ? new Date(dueAt) : null;
@@ -1172,6 +1223,7 @@ export async function assignCourseToUsers(
       success: false,
       message: "That completion deadline couldn't be read. Please pick the date again.",
       notFound,
+      outOfScope,
     };
   }
 
@@ -1218,7 +1270,7 @@ export async function assignCourseToUsers(
     callerCanInvite: false,
   };
 
-  const entries: StaffEntry[] = membersToAssign.map((m) => ({ email: m.user.email }));
+  const entries: StaffEntry[] = assignableMembers.map((m) => ({ email: m.user.email }));
 
   // Mirrors enrollUsers: the batched path stays behind the same kill-switch, so
   // this caller never silently opts into it ahead of the others.
@@ -1239,10 +1291,11 @@ export async function assignCourseToUsers(
     alreadyEnrolled: outcomes.filter((outcome) => outcome.status === 'alreadyEnrolled').length,
     failed: outcomes.filter((outcome) => outcome.status === 'failed').length,
     notFoundCount: notFound.length,
+    outOfScopeCount: outOfScope.length,
     hasDeadline: deadline !== null,
   });
   revalidatePath('/dashboard/training');
-  return { success: true, count: enrolled, notFound };
+  return { success: true, count: enrolled, notFound, outOfScope };
 }
 
 export interface AssignCoursesToUserResult {

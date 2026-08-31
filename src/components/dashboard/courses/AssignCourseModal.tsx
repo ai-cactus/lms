@@ -180,10 +180,21 @@ export default function AssignCourseModal({
         return;
       }
 
+      // Two disjoint refusal buckets, reported separately: an unknown address is
+      // the assigner's typo to fix, while an out-of-facility one is a boundary
+      // they cannot cross at all.
+      const skipped: string[] = [];
       if (result.notFound.length > 0) {
+        skipped.push(`Not an active member of your organization: ${result.notFound.join(', ')}`);
+      }
+      if (result.outOfScope.length > 0) {
+        skipped.push(`Outside the facilities you manage: ${result.outOfScope.join(', ')}`);
+      }
+
+      if (skipped.length > 0) {
         setNotice({
           type: 'warning',
-          text: `Assigned to ${result.count} staff. Not an active member of your organization: ${result.notFound.join(', ')}.`,
+          text: `Assigned to ${result.count} staff. ${skipped.join('. ')}.`,
         });
         router.refresh();
         return;

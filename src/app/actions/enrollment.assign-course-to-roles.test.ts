@@ -79,6 +79,7 @@ const ownCourse = {
   id: 'course-1',
   title: 'Infection Control',
   createdByOrgUserId: ADMIN_ORG_USER_ID,
+  creator: { organizationId: ORG_ID },
   isGlobal: false,
   type: 'document',
 };
@@ -150,6 +151,35 @@ describe('assignCourseToRoles — authorization and input', () => {
     );
     expect(result.assignmentId).toBeNull();
     expect(mockOrgUserFindMany).not.toHaveBeenCalled();
+  });
+
+  // -------------------------------------------------------------------------
+  // COU-004: a course belongs to the ORG, not to its author. This path gated on
+  // authorship, so a colleague's non-global course was refused as "Course not
+  // found" while the very same course assigned fine from the courses list.
+  // -------------------------------------------------------------------------
+  it("assigns a colleague's course owned by the same organization", async () => {
+    mockCourseFindUnique.mockResolvedValue({
+      ...ownCourse,
+      createdByOrgUserId: 'ou-colleague-1',
+      creator: { organizationId: ORG_ID },
+    });
+
+    const result = await assignCourseToRoles('course-1', ['nurse']);
+
+    expect(result.assignmentId).toBe('assignment-roles-1');
+    expect(mockAssignmentCreate).toHaveBeenCalled();
+  });
+
+  it('still refuses a non-global course owned by another organization', async () => {
+    mockCourseFindUnique.mockResolvedValue({
+      ...ownCourse,
+      createdByOrgUserId: 'ou-outsider-1',
+      creator: { organizationId: 'org-other' },
+    });
+
+    await expect(assignCourseToRoles('course-1', ['nurse'])).rejects.toThrow('Course not found');
+    expect(mockAssignmentCreate).not.toHaveBeenCalled();
   });
 });
 

@@ -163,7 +163,7 @@ describe('assignCourseToUsers — auth / tenancy guards', () => {
 
     const result = await assignCourseToUsers(COURSE_ID, ['staff@acme.com']);
 
-    expect(result).toEqual({ success: true, count: 1, notFound: [] });
+    expect(result).toEqual({ success: true, count: 1, notFound: [], outOfScope: [] });
   });
 
   it('refuses when the caller has no organization', async () => {
@@ -175,6 +175,7 @@ describe('assignCourseToUsers — auth / tenancy guards', () => {
       success: false,
       message: 'You must belong to an organization to assign courses',
       notFound: [],
+      outOfScope: [],
     });
     expect(mockCreateEnrollmentForUser).not.toHaveBeenCalled();
   });
@@ -206,6 +207,7 @@ describe('assignCourseToUsers — billing gate (Defect B)', () => {
       success: false,
       message: 'Your organization needs an active subscription to assign courses.',
       notFound: [],
+      outOfScope: [],
     });
 
     expect(prismaMock.organizationUser.findMany).not.toHaveBeenCalled();
@@ -224,7 +226,7 @@ describe('assignCourseToUsers — billing gate (Defect B)', () => {
       { email: 'staff@acme.com' },
       expect.objectContaining({ courseId: COURSE_ID, organizationId: ORG_ID }),
     );
-    expect(result).toEqual({ success: true, count: 1, notFound: [] });
+    expect(result).toEqual({ success: true, count: 1, notFound: [], outOfScope: [] });
   });
 });
 
@@ -314,7 +316,12 @@ describe('assignCourseToUsers — unmatched emails', () => {
         }),
       }),
     );
-    expect(result).toEqual({ success: true, count: 1, notFound: ['ghost@acme.com'] });
+    expect(result).toEqual({
+      success: true,
+      count: 1,
+      notFound: ['ghost@acme.com'],
+      outOfScope: [],
+    });
   });
 
   it('returns every email as notFound when none resolve to a member', async () => {
@@ -326,6 +333,7 @@ describe('assignCourseToUsers — unmatched emails', () => {
       success: false,
       message: 'No valid users found to assign.',
       notFound: ['ghost@acme.com'],
+      outOfScope: [],
     });
     expect(mockCreateEnrollmentForUser).not.toHaveBeenCalled();
   });
@@ -352,7 +360,7 @@ describe('assignCourseToUsers — delegation to the enrollment machinery', () =>
       { email: 'staff1@acme.com' },
       { email: 'staff2@acme.com' },
     ]);
-    expect(result).toEqual({ success: true, count: 2, notFound: [] });
+    expect(result).toEqual({ success: true, count: 2, notFound: [], outOfScope: [] });
   });
 
   it('refuses to invite: only confirmed members reach the machinery', async () => {
@@ -375,7 +383,7 @@ describe('assignCourseToUsers — delegation to the enrollment machinery', () =>
 
     const result = await assignCourseToUsers(COURSE_ID, ['staff1@acme.com', 'staff2@acme.com']);
 
-    expect(result).toEqual({ success: true, count: 1, notFound: [] });
+    expect(result).toEqual({ success: true, count: 1, notFound: [], outOfScope: [] });
   });
 
   it('uses the batched path only when the kill-switch is on', async () => {
@@ -388,7 +396,7 @@ describe('assignCourseToUsers — delegation to the enrollment machinery', () =>
 
       expect(mockCreateEnrollmentsForUsers).toHaveBeenCalledTimes(1);
       expect(mockCreateEnrollmentForUser).not.toHaveBeenCalled();
-      expect(result).toEqual({ success: true, count: 1, notFound: [] });
+      expect(result).toEqual({ success: true, count: 1, notFound: [], outOfScope: [] });
     } finally {
       if (previous === undefined) delete process.env.ENROLLMENT_BATCH_ENABLED;
       else process.env.ENROLLMENT_BATCH_ENABLED = previous;

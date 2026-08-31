@@ -116,6 +116,7 @@ beforeEach(() => {
     id: 'course-1',
     title: 'Infection Control',
     createdByOrgUserId: ADMIN_ORG_USER_ID,
+    creator: { organizationId: ORG_ID },
     isGlobal: false,
     reviewRequired: false,
   });
