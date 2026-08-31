@@ -31,11 +31,12 @@ import {
   auditRowAction,
   auditSearch,
   auditSearchWrap,
+  auditStatusPill,
 } from './audit-ui';
 import { cn } from '@/lib/utils';
 
 interface AuditorCoursesTabProps {
-  /** Population an "Export all" covers — every published course in the org. */
+  /** Population an "Export all" covers — every course in the org, any status. */
   totalCourses: number;
 }
 
@@ -134,13 +135,16 @@ export default function AuditorCoursesTab({ totalCourses }: AuditorCoursesTabPro
             <TableHeader className={auditHeaderGroup}>
               <TableRow className="border-0 hover:bg-transparent">
                 <TableHead className={auditHead}>Course Name</TableHead>
-                <TableHead className={cn(auditHead, 'hidden @md:table-cell @md:w-[170px]')}>
+                <TableHead className={cn(auditHead, 'hidden @md:table-cell @md:w-[140px]')}>
                   Assigned Staff
                 </TableHead>
-                <TableHead className={cn(auditHead, 'hidden @xl:table-cell @xl:w-[170px]')}>
+                <TableHead className={cn(auditHead, 'hidden @xl:table-cell @xl:w-[140px]')}>
                   Completion Rate
                 </TableHead>
-                <TableHead className={cn(auditHead, 'hidden @3xl:table-cell @3xl:w-[180px]')}>
+                <TableHead className={cn(auditHead, 'hidden @2xl:table-cell @2xl:w-[120px]')}>
+                  Status
+                </TableHead>
+                <TableHead className={cn(auditHead, 'hidden @3xl:table-cell @3xl:w-[170px]')}>
                   Assigned Date
                 </TableHead>
                 <TableHead className={cn(auditHead, 'w-[92px] @md:w-[110px]')}>Action</TableHead>
@@ -166,12 +170,19 @@ export default function AuditorCoursesTab({ totalCourses }: AuditorCoursesTabPro
                           <GraduationCap className="size-5 text-white/70" />
                         )}
                       </div>
-                      <span
-                        className="min-w-0 truncate text-[15.5px] font-medium tracking-[0.31px] text-[#1e1e1e]"
-                        title={course.title}
-                      >
-                        {course.title}
-                      </span>
+                      <div className="min-w-0">
+                        <div
+                          className="truncate text-[15.5px] font-medium tracking-[0.31px] text-[#1e1e1e]"
+                          title={course.title}
+                        >
+                          {course.title}
+                        </div>
+                        {/* The Status column is dropped below @2xl, so the pill
+                            moves inline rather than disappearing. */}
+                        <span className={cn(auditStatusPill(course.status), 'mt-1 @2xl:hidden')}>
+                          {course.status}
+                        </span>
+                      </div>
                     </div>
                   </TableCell>
                   <TableCell className={cn(auditCell, 'hidden @md:table-cell')}>
@@ -179,6 +190,9 @@ export default function AuditorCoursesTab({ totalCourses }: AuditorCoursesTabPro
                   </TableCell>
                   <TableCell className={cn(auditCell, 'hidden font-semibold @xl:table-cell')}>
                     {course.completionRate}%
+                  </TableCell>
+                  <TableCell className={cn(auditCell, 'hidden @2xl:table-cell')}>
+                    <span className={auditStatusPill(course.status)}>{course.status}</span>
                   </TableCell>
                   <TableCell
                     className={cn(

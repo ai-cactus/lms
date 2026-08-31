@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { generateAuditReportPdf } from './pdf';
-import type { CourseReportResult, StaffReportResult, OrgReportResult } from './types';
+import type {
+  AllCoursesReportResult,
+  CourseReportResult,
+  StaffReportResult,
+  OrgReportResult,
+} from './types';
 
 const isPdf = (b: Buffer) => b.length > 0 && b.subarray(0, 5).toString() === '%PDF-';
 
@@ -64,6 +69,25 @@ describe('generateAuditReportPdf', () => {
           dateCompleted: '2026-06-10T10:00:00.000Z',
         },
       ],
+    };
+    expect(isPdf(await generateAuditReportPdf(r))).toBe(true);
+  });
+
+  it('renders an all-courses report spanning every course status', async () => {
+    const r: AllCoursesReportResult = {
+      scope: 'all-courses',
+      generatedAt: '2026-06-19T10:00:00.000Z',
+      orgName: 'Acme',
+      summary: { totalCourses: 3, totalStaff: 8, completionRate: 50 },
+      courses: (['published', 'draft', 'inactive'] as const).map((status, i) => ({
+        courseTitle: `Course ${i + 1}`,
+        category: 'Compliance',
+        type: 'text',
+        status,
+        assignedStaff: 4,
+        completed: 2,
+        completionRate: 50,
+      })),
     };
     expect(isPdf(await generateAuditReportPdf(r))).toBe(true);
   });

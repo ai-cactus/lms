@@ -245,17 +245,21 @@ async function renderAllCourses(r: AllCoursesReportResult): Promise<Buffer> {
   y = ensureSpace(doc, y, 80);
   y = drawSectionHeading(doc, 'Courses', y);
   const cols: Column<AllCoursesRow>[] = [
-    { label: 'Course', width: 230, align: 'left', value: (c) => truncate(c.courseTitle, 46) },
-    { label: 'Category', width: 110, align: 'left', value: (c) => truncate(c.category || '—', 20) },
-    { label: 'Type', width: 70, align: 'left', value: (c) => c.type },
-    { label: 'Staff', width: 70, align: 'right', value: (c) => String(c.assignedStaff) },
-    { label: 'Completed', width: 90, align: 'right', value: (c) => String(c.completed) },
+    { label: 'Course', width: 210, align: 'left', value: (c) => truncate(c.courseTitle, 42) },
+    { label: 'Category', width: 105, align: 'left', value: (c) => truncate(c.category || '—', 19) },
+    { label: 'Type', width: 65, align: 'left', value: (c) => c.type },
+    // The catalogue spans every status, so the report has to say which — a
+    // draft course showing 0 enrolled means something different to an auditor
+    // than a published one showing 0.
+    { label: 'Status', width: 80, align: 'left', value: (c) => c.status },
+    { label: 'Staff', width: 65, align: 'right', value: (c) => String(c.assignedStaff) },
+    { label: 'Completed', width: 85, align: 'right', value: (c) => String(c.completed) },
     { label: 'Completion', width: 85, align: 'right', value: (c) => `${c.completionRate}%` },
   ];
   if (r.courses.length) {
     drawTable(doc, cols, r.courses, y);
   } else {
-    drawKeyValues(doc, [['', 'No published courses in this organization.']], y);
+    drawKeyValues(doc, [['', 'No courses in this organization.']], y);
   }
 
   return finalize(doc, r.orgName);
