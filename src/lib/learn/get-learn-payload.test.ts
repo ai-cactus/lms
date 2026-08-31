@@ -63,6 +63,7 @@ const makeCourse = (opts?: {
   isGlobal?: boolean;
   status?: string;
   quiz?: unknown;
+  moduleCount?: number;
 }) => ({
   id: 'course-1',
   title: 'Intro Course',
@@ -70,6 +71,7 @@ const makeCourse = (opts?: {
   duration: 30,
   isGlobal: opts?.isGlobal ?? false,
   status: opts?.status ?? 'published',
+  _count: { modules: opts?.moduleCount ?? 3 },
   creator: { organizationId: opts?.creatorOrgId ?? 'org-1' },
   quiz: opts && 'quiz' in opts ? opts.quiz : null,
   lessons: [
@@ -212,6 +214,40 @@ describe('getLearnPayload — access matrix', () => {
     const question = payload.course.quiz!.questions[0];
     expect(question).not.toHaveProperty('correctAnswer');
     expect(question).not.toHaveProperty('explanation');
+  });
+
+  it.each([0, 1, 2, 7])('carries the real module count (%i) through to the payload', async (n) => {
+    mockWorkerAuth.mockResolvedValue({
+      user: { id: 'w1', organizationUserId: 'ou-worker', role: 'nurse' },
+    });
+    mockCourseFindUnique.mockResolvedValue(makeCourse({ moduleCount: n }));
+    mockEnrollmentFindFirst.mockResolvedValue({
+      id: 'enr-1',
+      progress: 0,
+      status: 'in_progress',
+      score: null,
+      videoPositionSeconds: 0,
+      quizAttempts: [],
+    });
+
+    const payload = asPayload(await getLearnPayload('course-1'));
+
+    expect(payload.course.moduleCount).toBe(n);
+  });
+
+  it('counts modules in the same query that loads the lessons', async () => {
+    mockWorkerAuth.mockResolvedValue({
+      user: { id: 'w1', organizationUserId: 'ou-worker', role: 'nurse' },
+    });
+    mockCourseFindUnique.mockResolvedValue(makeCourse());
+    mockEnrollmentFindFirst.mockResolvedValue(null);
+
+    await getLearnPayload('course-1');
+
+    expect(mockCourseFindUnique).toHaveBeenCalledTimes(1);
+    expect(mockCourseFindUnique.mock.calls[0][0]).toMatchObject({
+      select: { _count: { select: { modules: true } } },
+    });
   });
 
   it('returns a 500 result instead of throwing when the query fails', async () => {

@@ -55,6 +55,7 @@ const makeCourse = (opts?: {
   isGlobal?: boolean;
   status?: string;
   quiz?: unknown;
+  moduleCount?: number;
 }) => ({
   id: 'course-1',
   title: 'Intro Course',
@@ -62,6 +63,7 @@ const makeCourse = (opts?: {
   duration: 30,
   isGlobal: opts?.isGlobal ?? false,
   status: opts?.status ?? 'published',
+  _count: { modules: opts?.moduleCount ?? 3 },
   creator: { organizationId: opts?.creatorOrgId ?? 'org-1' },
   quiz: opts && 'quiz' in opts ? opts.quiz : null,
   lessons: [

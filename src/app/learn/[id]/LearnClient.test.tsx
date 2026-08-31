@@ -42,6 +42,9 @@ const makePayload = (overrides: Partial<LearnPayload> = {}): LearnPayload => ({
     title: 'Bloodborne Pathogens',
     description: 'Annual refresher',
     duration: 45,
+    // Modular by default: these assertions predate the whole-course rule and
+    // expect the numbered "Module N" headings to render.
+    moduleCount: 3,
     lessons: [
       {
         id: 'lesson-1',
@@ -864,5 +867,82 @@ describe('LearnClient — attestation gate', () => {
 
     expect(screen.queryByRole('button', { name: 'Attest' })).toBeNull();
     expect(screen.getByText(/keep trying/i)).toBeInTheDocument();
+  });
+});
+
+/**
+ * Whole course vs modular. A course with 0 or 1 `CourseModule` rows reads as one
+ * continuous document, so the numbered "Module N" headings go away — and NOTHING
+ * else does. The last test here is the one that matters: the article's Prev/Next
+ * footer is the only caller of `handleNext`, which is the only writer of
+ * `highestUnlockedIndex`, which is what unlocks "Proceed to Quiz". Suppressing
+ * the headings by dropping that chrome instead would lock a multi-lesson whole
+ * course out of its own quiz permanently.
+ */
+describe('LearnClient — whole-course headings', () => {
+  const textLesson = (n: number) => ({
+    id: `lesson-${n}`,
+    title: `Section ${n}`,
+    content: `<p>Body ${n}</p>`,
+    slideContent: null,
+    duration: 10,
+    order: n,
+    videoProvider: null,
+    videoStorageUri: null,
+    videoDurationSeconds: null,
+  });
+
+  const textCoursePayload = (moduleCount: number, lessonCount: number) => {
+    const payload = makePayload();
+    payload.course.moduleCount = moduleCount;
+    payload.course.lessons = Array.from({ length: lessonCount }, (_, i) => textLesson(i + 1));
+    return payload;
+  };
+
+  it.each([0, 1])(
+    'hides the numbered headings for a whole course (%i modules) but keeps every lesson title',
+    (moduleCount) => {
+      render(<LearnClient initialData={textCoursePayload(moduleCount, 3)} />);
+
+      expect(screen.queryByText(/^Module \d+$/)).toBeNull();
+      expect(screen.getAllByText('Section 1').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('Section 2').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('Section 3').length).toBeGreaterThan(0);
+    },
+  );
+
+  it.each([2, 7])(
+    'keeps the numbered headings for a modular course (%i modules)',
+    (moduleCount) => {
+      render(<LearnClient initialData={textCoursePayload(moduleCount, 3)} />);
+
+      expect(screen.getByText('Module 1')).toBeInTheDocument();
+      expect(screen.getByText('Module 2')).toBeInTheDocument();
+      expect(screen.getByText('Module 3')).toBeInTheDocument();
+    },
+  );
+
+  it('still lets a multi-lesson WHOLE course reach an enabled Proceed to Quiz', async () => {
+    render(<LearnClient initialData={textCoursePayload(1, 3)} />);
+
+    const proceed = screen.getByRole('button', { name: 'Proceed to Quiz' });
+    expect(proceed).toBeDisabled();
+
+    // Prev/Next is the only surface that advances highestUnlockedIndex.
+    const next = screen.getByRole('button', { name: 'Next' });
+    expect(next).toBeEnabled();
+    fireEvent.click(next);
+    fireEvent.click(next);
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Proceed to Quiz' })).toBeEnabled(),
+    );
+  });
+
+  it('gates a whole course exactly like a modular one before the last lesson', () => {
+    render(<LearnClient initialData={textCoursePayload(1, 3)} />);
+
+    expect(screen.getByRole('button', { name: 'Proceed to Quiz' })).toBeDisabled();
+    expect(screen.getByText('Work through every module to unlock the quiz')).toBeInTheDocument();
   });
 });
