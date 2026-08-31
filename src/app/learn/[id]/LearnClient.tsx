@@ -784,6 +784,16 @@ export default function LearnClient({ initialData }: LearnClientProps) {
   // Whether to show the shared rail + topbar (quiz views only)
   const showSharedLayout = isQuizIndex || (quizStep === 'review' && quizResults);
 
+  // The results action bar retires only once the learner has SIGNED — attesting
+  // is the terminal step, and `attested` is the only status that records it.
+  // `completed` deliberately does NOT qualify: it is a legacy status that no
+  // code in src/ writes any more (attestCourse sets `attested` directly, the
+  // quiz submit route sets `in_progress`/`locked`), so the rows still carrying
+  // it are exactly the learners who passed before attestation existed and were
+  // never asked to sign. Folding it back in here would strand them with no way
+  // to ever attest — `attestEligible` already excludes only `attested`.
+  const enrollmentIsSigned = enrollment?.status === 'attested';
+
   // Attempt counters derive from the (unsorted) quizAttempts array: completed
   // attempts have timeTaken !== null; at most one in-progress draft has null.
   const completedAttemptCount =
@@ -890,9 +900,7 @@ export default function LearnClient({ initialData }: LearnClientProps) {
                   userEmail: userData?.email,
                   jobTitle: userData?.jobTitle,
                 }}
-                hideActions={
-                  enrollment?.status === 'completed' || enrollment?.status === 'attested'
-                }
+                hideActions={enrollmentIsSigned}
                 passed={quizResults.passed}
                 // Both halves are server verdicts: `attestEligible` (role +
                 // not-yet-attested) from the learn payload, `passed` from

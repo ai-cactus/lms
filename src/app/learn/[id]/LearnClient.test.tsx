@@ -871,6 +871,110 @@ describe('LearnClient — attestation gate', () => {
 });
 
 /**
+ * The results action bar retires on `attested` ALONE. `completed` is a legacy
+ * enrollment status nothing in src/ writes any more, so the rows still holding
+ * it are learners who passed before attestation existed and were never asked to
+ * sign; hiding the bar for them left them permanently unable to attest even
+ * though the payload's `attestEligible` (which excludes only `attested`) says
+ * they may. Retake is deliberately NOT special-cased here — it stays governed by
+ * QuizResults' own "failed + attempts remaining" rule, which is why the passing
+ * legacy row this fix exists for cannot be offered one.
+ */
+describe('LearnClient — legacy completed enrollments can still attest', () => {
+  const textLesson = (n: number) => ({
+    id: `lesson-${n}`,
+    title: `Section ${n}`,
+    content: `<p>Body ${n}</p>`,
+    slideContent: null,
+    duration: 10,
+    order: n,
+    videoProvider: null,
+    videoStorageUri: null,
+    videoDurationSeconds: null,
+  });
+
+  /**
+   * A finished text course (no video watch-gate) seeded straight from the
+   * payload. Completed/attested enrollments land on the article, so the results
+   * screen is reached the way a learner reaches it: "Proceed to Quiz".
+   */
+  const finishedCoursePayload = (
+    status: 'completed' | 'attested',
+    overrides: { passed?: boolean; attestEligible?: boolean } = {},
+  ) => {
+    const passed = overrides.passed ?? true;
+    const score = passed ? 90 : 40;
+    const payload = makePayload();
+    payload.course.lessons = [textLesson(1)];
+    payload.enrollment.status = status;
+    payload.enrollment.score = score;
+    payload.enrollment.progress = 100;
+    payload.enrollment.quizAttempts = [
+      {
+        id: 'qa-1',
+        score,
+        attemptCount: 1,
+        answers: [],
+        timeTaken: 120,
+        completedAt: '2026-08-01T00:00:00.000Z',
+      },
+    ];
+    payload.quizResultsData = {
+      score,
+      passed,
+      correctCount: passed ? 2 : 0,
+      totalQuestions: 2,
+      answered: 2,
+      correct: passed ? 2 : 0,
+      wrong: passed ? 0 : 2,
+      time: 120,
+      attemptsUsed: 1,
+      allowedAttempts: 3,
+      questions: [],
+    };
+    payload.attestEligible = overrides.attestEligible ?? status !== 'attested';
+    return payload;
+  };
+
+  const openResults = () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Proceed to Quiz' }));
+  };
+
+  it('offers Attest to a completed, unattested learner who passed', () => {
+    render(<LearnClient initialData={finishedCoursePayload('completed')} />);
+    openResults();
+
+    expect(screen.getByRole('button', { name: 'Attest' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Done' })).toBeInTheDocument();
+  });
+
+  it('does not offer a passing completed learner a retake', () => {
+    render(<LearnClient initialData={finishedCoursePayload('completed')} />);
+    openResults();
+
+    expect(screen.queryByRole('button', { name: 'Retake Quiz' })).toBeNull();
+  });
+
+  it('still offers a retake on a completed enrollment whose attempt failed', () => {
+    render(<LearnClient initialData={finishedCoursePayload('completed', { passed: false })} />);
+    openResults();
+
+    expect(screen.getByRole('button', { name: 'Retake Quiz' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Attest' })).toBeNull();
+  });
+
+  it('shows no action bar at all once the enrollment is attested', () => {
+    render(<LearnClient initialData={finishedCoursePayload('attested')} />);
+    openResults();
+
+    expect(screen.getByText(/nice work/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Attest' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retake Quiz' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Done' })).toBeNull();
+  });
+});
+
+/**
  * Whole course vs modular. A course with 0 or 1 `CourseModule` rows reads as one
  * continuous document, so the numbered "Module N" headings go away — and NOTHING
  * else does. The last test here is the one that matters: the article's Prev/Next
