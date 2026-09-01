@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/select';
 import Stepper from '@/components/onboarding/Stepper';
 import { logger } from '@/lib/logger';
+import { useOnboardingStep } from '@/lib/analytics/use-onboarding-step';
 import {
   ADDITIONAL_BUSINESS_TYPES,
   OTHER_OPTION_ID,
@@ -147,6 +148,7 @@ function OptionCheckboxGrid({
 }
 
 export default function OnboardingStep3() {
+  const { captureStepCompleted } = useOnboardingStep(3);
   const router = useRouter();
   const {
     control,
@@ -226,6 +228,7 @@ export default function OnboardingStep3() {
         };
         localStorage.setItem('onboarding_data', JSON.stringify(draft));
       }
+      captureStepCompleted();
       router.push('/onboarding/step4');
     } catch (error) {
       logger.error({ msg: '[onboarding] Step 3 local save failed', err: error });

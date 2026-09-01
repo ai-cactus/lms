@@ -16,6 +16,8 @@ import {
   getRoleDisplayName,
 } from '@/lib/rbac/role-utils';
 import type { InviteStatus, UserRole } from '@/generated/prisma/enums';
+import { captureServer } from '@/lib/analytics/server';
+import { toCountBand } from '@/lib/analytics/events';
 
 export interface InviteResultItem {
   email: string;
@@ -346,6 +348,17 @@ export async function createInvites(
         organizationId,
         count: newInvitesData.length,
       });
+
+      // Banded, not the raw count: "invited 47 staff" is close to a fingerprint
+      // for a specific facility once combined with anything else.
+      captureServer(
+        'staff_invited',
+        () => ({
+          role: newInvitesData[0]?.role ?? 'unknown',
+          batch_size_band: toCountBand(newInvitesData.length),
+        }),
+        { distinctId: inviterId, organizationId },
+      );
     }
 
     // Send / resend emails concurrently

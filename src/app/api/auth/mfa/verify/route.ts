@@ -4,6 +4,7 @@ import { verifyUserMfaCode } from '@/app/actions/mfa';
 import { peekMfaChallenge, redeemMfaChallenge } from '@/lib/mfa-challenge';
 import { stampSessionMfaVerified } from '@/lib/auth/mfa-session-stamp';
 import { logger } from '@/lib/logger';
+import { captureServer } from '@/lib/analytics/server';
 
 /**
  * POST /api/auth/mfa/verify
@@ -95,6 +96,17 @@ export async function POST(req: Request) {
     });
 
     logger.info({ msg: '[mfa] Verification successful during login', userId });
+    // Portal comes from the CHALLENGE's recorded role, which is authoritative —
+    // the Cookie header is not trusted here for the same reason the stamp above
+    // does not use it.
+    captureServer(
+      'mfa_verified',
+      {
+        portal: role === 'worker' ? 'worker' : 'admin',
+        used_recovery_code: Boolean(result.usedRecoveryCode),
+      },
+      { distinctId: userId },
+    );
     return response;
   } catch (error) {
     logger.error({ msg: '[mfa] Verify error', err: error });

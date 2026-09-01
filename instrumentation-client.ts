@@ -1,0 +1,147 @@
+/**
+ * Browser-side PostHog initialisation.
+ *
+ * Next.js runs this file once, before the app's client code (the client-side
+ * counterpart to src/instrumentation.ts). It follows the same opt-in rule the
+ * OTel registration uses: with NEXT_PUBLIC_POSTHOG_KEY unset, nothing is
+ * imported, nothing is initialised, and no request is made — so local dev, CI
+ * and the e2e build carry no analytics and cannot leak.
+ *
+ * ⚠️  NEXT_PUBLIC_* is inlined at BUILD time. The key must be supplied as a
+ * Docker build arg (see Dockerfile), not only in the runtime env file, or the
+ * shipped bundle has analytics permanently disabled with nothing to show for it.
+ */
+import posthog from 'posthog-js';
+import { isAllowedEvent } from '@/lib/analytics/events';
+import { sanitizeProperties, sanitizeExceptionProperties } from '@/lib/analytics/sanitize';
+
+const key = process.env.NEXT_PUBLIC_POSTHOG_KEY;
+
+if (key) {
+  posthog.init(key, {
+    // Same-origin ingest through the Next.js rewrites in next.config.ts.
+    // PostHog's own managed proxy is documented as NOT HIPAA-compliant, and
+    // routing through this app also keeps the strict CSP untouched.
+    api_host: process.env.NEXT_PUBLIC_POSTHOG_HOST || '/ingest',
+    ui_host: process.env.NEXT_PUBLIC_POSTHOG_UI_HOST || 'https://us.posthog.com',
+
+    // Pins SDK behaviour to a known generation so a library upgrade cannot
+    // silently switch on a new default that captures more than we intend.
+    defaults: '2026-06-25',
+
+    /**
+     * posthog-js silently discards events from automated browsers — it flags the
+     * session `$internal_or_test_user` and drops them BEFORE before_send runs.
+     * That is correct in production, and it is left on there.
+     *
+     * It also makes the e2e egress guard (tests/e2e/analytics.spec.ts) vacuous:
+     * with no event ever captured, every "this must never be sent" assertion
+     * passes while testing nothing — a green suite that checks nothing is worse
+     * than no suite. This opts out of that filter ONLY when the e2e flag is set,
+     * which no deployed environment sets (it is absent from .env.example's
+     * deploy vars, the Dockerfile build args, and both deploy workflows).
+     */
+    opt_out_useragent_filter: process.env.NEXT_PUBLIC_ANALYTICS_E2E === '1',
+
+    // ── The no-PHI posture ──────────────────────────────────────────────────
+    // Autocapture reads DOM text and element context. On this app that means
+    // staff names and clinically-derived course content, so it is off — this is
+    // the single most important line in the file.
+    autocapture: false,
+    // Same reasoning, one layer down: rageclick/dead-click detection also
+    // inspects the elements around a click.
+    capture_dead_clicks: false,
+    capture_heatmaps: false,
+    // Exception autocapture ships raw error messages and stacks, and error text
+    // is the least controlled string in this system — a Vertex failure echoes
+    // the prompt (source-document text), a database error echoes column values.
+    // Left OFF here and turned on deliberately once capture runs through
+    // sanitizeErrorText(). Its default is `undefined`, which means remote config
+    // can decide; pinning it to false removes that possibility.
+    capture_exceptions: false,
+    // Replay is a full DOM recording. Off here AND at the project level, since
+    // remote config could otherwise re-enable it without a deploy.
+    disable_session_recording: true,
+    // Belt-and-braces: if replay were ever switched on, text is masked by default.
+    mask_all_text: true,
+    mask_all_element_attributes: true,
+    // Anonymous marketing visitors create no person profile. This is what lets
+    // us run without a consent banner: there is no profile to consent to until
+    // a user signs in and is deliberately identified.
+    person_profiles: 'identified_only',
+
+    // PostHog's automatic pageview sends $current_url verbatim, which on this
+    // app would ship the /join/:token invite credential. Pageviews are captured
+    // manually from normalized paths instead (see PostHogProvider).
+    capture_pageview: false,
+    capture_pageleave: true,
+
+    // Drop URL-ish properties the SDK attaches on its own. Belt-and-braces with
+    // before_send below, which rewrites the ones we do want to keep.
+    //
+    // NOTE: property_denylist is documented as applying to CAPTURE CALLS. It does
+    // not cover the person_properties the SDK sends on its feature-flag request —
+    // see advanced_disable_flags below, which is what actually closes that hole.
+    property_denylist: ['$initial_current_url', '$initial_pathname', '$initial_referrer'],
+
+    /**
+     * ⛔ CLOSES A REAL LEAK, found by tests/e2e/analytics.spec.ts.
+     *
+     * posthog-js evaluates feature flags from the browser, and that request
+     * carries `person_properties` including `$initial_current_url` and
+     * `$initial_pathname` — the RAW address of the first page of the session.
+     * On this app that is routinely `/join/<invite-token>`, i.e. a credential,
+     * or `/learn/<uuid>`. Neither property_denylist (capture calls only) nor
+     * before_send (events only) applies to that request, so the token went out
+     * intact.
+     *
+     * Disabling it costs nothing here: flags are evaluated SERVER-side in
+     * src/lib/analytics/flags.ts and bootstrapped into the client, which is
+     * also the only way to avoid a variant flashing on first render.
+     */
+    advanced_disable_flags: true,
+
+    /**
+     * Deny-by-default egress guard — the last thing that runs before anything
+     * leaves the browser.
+     *
+     * `sanitize_properties` can only scrub an event; returning null here DROPS
+     * it. That difference matters because this hook also sees events our typed
+     * helpers never touch — anything the SDK or a future PostHog feature
+     * originates. An allowlist is the only way to be sure a library upgrade
+     * cannot start sending something new.
+     */
+    before_send: (event) => {
+      if (!event) return null;
+      if (!isAllowedEvent(event.event)) return null;
+
+      // Exceptions take a structure-preserving scrub. The normal sanitiser
+      // drops non-primitives, which would flatten away `$exception_list` and
+      // leave an untriageable error with no stack.
+      if (event.event === '$exception') {
+        return { ...event, properties: sanitizeExceptionProperties(event.properties ?? {}) };
+      }
+
+      // sanitizeProperties also reduces every URL-ish property to its route
+      // shape, so tokens and record ids never leave while funnels still work.
+      const properties = sanitizeProperties(event.properties ?? {});
+
+      /**
+       * ⛔ CLOSES A REAL LEAK, found by tests/e2e/analytics.spec.ts.
+       *
+       * `$set` and `$set_once` are SIBLINGS of `properties` on the event, not
+       * entries within it, so sanitizing `properties` never touched them. They
+       * carry the SDK's initial person info — `$initial_current_url` and
+       * `$initial_pathname` — which is the session's first URL verbatim, query
+       * string included. On this app that is `/join/<invite-token>` (a
+       * credential) or a raw record id.
+       *
+       * `property_denylist` does not cover them either; it filters `properties`.
+       * They are dropped wholesale rather than scrubbed: person properties are
+       * not something this integration sets from the browser at all — identity
+       * is set deliberately in client.ts, with only a role.
+       */
+      return { ...event, properties, $set: undefined, $set_once: undefined };
+    },
+  });
+}

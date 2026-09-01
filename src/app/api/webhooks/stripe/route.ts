@@ -6,6 +6,7 @@ import { logger } from '@/lib/logger';
 import { audit } from '@/lib/audit';
 import { MAX_PAUSE_MONTHS, pauseEndDate } from '@/lib/billing';
 import { deriveInvoiceServicePeriod } from '@/lib/stripe-invoice-period';
+import { captureServer } from '@/lib/analytics/server';
 import type {
   SubscriptionPlan,
   SubscriptionBillingCycle,
@@ -242,6 +243,9 @@ async function handleSubscriptionUpsert(sub: Stripe.Subscription) {
   const existing = await prisma.subscription.findUnique({
     where: { organizationId: organization.id },
     select: {
+      // Previous plan, so a webhook that changes it can be told apart from a
+      // routine renewal that does not.
+      plan: true,
       pausedAt: true,
       pauseEndsAt: true,
       stripeSubscriptionId: true,
@@ -314,6 +318,21 @@ async function handleSubscriptionUpsert(sub: Stripe.Subscription) {
         scheduledEffectiveAt: existing?.scheduledEffectiveAt ?? null,
         stripeScheduleId: existing?.stripeScheduleId ?? null,
       };
+
+  // A plan change only COMPLETES when Stripe says the subscription now carries
+  // the new price — for a scheduled downgrade that is at period end, long after
+  // the request. Compared against the stored plan so a routine renewal webhook
+  // (same plan) is not counted as a change.
+  if (existing?.plan && existing.plan !== planKey) {
+    captureServer(
+      'billing_plan_change_completed',
+      { from_plan: existing.plan, to_plan: planKey },
+      // Webhooks carry no session. This is an ORGANIZATION-level fact, and the
+      // org group is what billing analysis actually pivots on, so a synthetic
+      // actor is correct here rather than guessing at an admin.
+      { distinctId: 'system-billing', organizationId: organization.id },
+    );
+  }
 
   // Upsert subscription record and grant/revoke auditor access atomically
   await Promise.all([

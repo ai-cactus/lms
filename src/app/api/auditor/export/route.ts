@@ -3,6 +3,7 @@ import { authorize } from '@/lib/rbac/authorize';
 import prisma from '@/lib/prisma';
 import { generateAuditorPackCsv } from '@/app/actions/auditor';
 import { logger } from '@/lib/logger';
+import { captureServer } from '@/lib/analytics/server';
 
 export async function GET() {
   try {
@@ -12,7 +13,7 @@ export async function GET() {
     const authResult = await authorize('auditPack.create');
     if (!authResult.ok) return authResult.response;
 
-    const { organizationId } = authResult.ctx;
+    const { organizationId, userId } = authResult.ctx;
     if (!organizationId) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
@@ -37,6 +38,17 @@ export async function GET() {
       msg: '[auditor] CSV export generated',
       data: { organizationId },
     });
+
+    // The compliance deliverable — the reason a facility buys this product, so
+    // export frequency is a direct retention signal. The CSV itself, which is
+    // full of staff names and training records, is obviously never sent.
+    captureServer(
+      'audit_report_exported',
+      // The Auditor Pack is a CSV; range_days is null because the export covers
+      // the org's whole history rather than a selected window.
+      { format: 'csv', range_days: null },
+      { distinctId: userId, organizationId },
+    );
 
     return new NextResponse(csv, {
       status: 200,

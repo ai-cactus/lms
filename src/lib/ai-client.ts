@@ -1,5 +1,6 @@
 import { GoogleAuth } from 'google-auth-library';
 import { logger } from '@/lib/logger';
+import { captureGeneration, type AiTelemetry } from '@/lib/analytics/llm';
 
 const DEFAULT_MAX_RETRIES = 5;
 const BASE_DELAY_MS = 1000;
@@ -97,6 +98,12 @@ export interface VertexAIConfig {
   temperature?: number;
   maxOutputTokens?: number;
   model?: string;
+  /**
+   * Optional LLM-analytics context. Omit it and the call is simply not recorded
+   * — nothing else changes — so wiring a call site is additive and a background
+   * job with no user never produces an event attributed to an invented person.
+   */
+  telemetry?: AiTelemetry;
 }
 
 /**
@@ -146,6 +153,32 @@ export async function callVertexAI(prompt: string, config?: VertexAIConfig): Pro
 
   let lastError: Error | null = null;
 
+  // Wall clock across ALL attempts, which is what the caller actually waited.
+  // Per-attempt timing would understate a stage that succeeded only after two
+  // backoffs, and backoff is the dominant cost when Vertex is rate-limiting.
+  const startedAt = Date.now();
+
+  /**
+   * Records the generation. Called on every terminal path — success, non-
+   * retryable throw, and retries-exhausted — so a stage that always fails is as
+   * visible as one that succeeds. No-ops unless a telemetry context was passed.
+   */
+  const record = (outcome: {
+    attempt: number;
+    inputTokens: number;
+    outputTokens: number;
+    finishReason?: string | null;
+    error?: unknown;
+  }): void => {
+    if (!config?.telemetry) return;
+    captureGeneration({
+      telemetry: config.telemetry,
+      model,
+      latencyMs: Date.now() - startedAt,
+      ...outcome,
+    });
+  };
+
   for (let attempt = 0; attempt < DEFAULT_MAX_RETRIES; attempt++) {
     // Each attempt gets its own AbortController so a timeout on one
     // attempt doesn't interfere with retries.
@@ -190,15 +223,32 @@ export async function callVertexAI(prompt: string, config?: VertexAIConfig): Pro
 
       const json = await response.json();
       const textPart = json.candidates?.[0]?.content?.parts?.[0]?.text;
+      const finishReason: string | null = json.candidates?.[0]?.finishReason ?? null;
+
+      // Vertex reports exact token counts here and this response was previously
+      // discarded, leaving the pipeline's real cost unmeasurable. These are the
+      // authoritative numbers — estimateTokens() above is only a pre-flight
+      // guess for budgeting.
+      const inputTokens: number = json.usageMetadata?.promptTokenCount ?? 0;
+      const outputTokens: number = json.usageMetadata?.candidatesTokenCount ?? 0;
 
       if (!textPart) {
         logger.error({ msg: '[ai-client] Vertex AI returned no content', data: json });
-        const finishReason = json.candidates?.[0]?.finishReason;
+        record({
+          attempt,
+          inputTokens,
+          outputTokens,
+          finishReason,
+          // A truthful token count still applies: an empty completion blocked by
+          // a SAFETY finishReason was billed for its input.
+          error: new Error('no content'),
+        });
         throw new Error(
           `Vertex AI returned no content in response. Finish Reason: ${finishReason || 'unknown'}`,
         );
       }
 
+      record({ attempt, inputTokens, outputTokens, finishReason });
       return textPart;
     } catch (err: unknown) {
       const error = err as Error;
@@ -221,13 +271,24 @@ export async function callVertexAI(prompt: string, config?: VertexAIConfig): Pro
         continue;
       }
       // Non-retryable errors: throw immediately
+      record({ attempt, inputTokens: 0, outputTokens: 0, error });
       throw err;
     } finally {
       clearTimeout(timeoutId);
     }
   }
 
-  throw lastError || new Error('Vertex AI call failed after all retries.');
+  // Retries exhausted. Recorded so a stage that ALWAYS fails is as visible as
+  // one that succeeds — otherwise the only signal is an absence of events,
+  // which reads identically to the feature not being used.
+  const exhausted = lastError || new Error('Vertex AI call failed after all retries.');
+  record({
+    attempt: DEFAULT_MAX_RETRIES - 1,
+    inputTokens: 0,
+    outputTokens: 0,
+    error: exhausted,
+  });
+  throw exhausted;
 }
 
 /**

@@ -136,6 +136,41 @@ export default function PrivacyPage() {
         <p className={textClass}>
           This information is used for security, performance monitoring, and system improvement.
         </p>
+
+        <h3 className={subSectionTitleClass}>5.5 Product Analytics</h3>
+        <p className={textClass}>
+          We use a third-party product-analytics service (PostHog) to understand how the Platform is
+          used so we can improve it. This is deliberately limited:
+        </p>
+        <ul className={listClass}>
+          <li className={listItemClass}>
+            We send only a defined list of product events — for example that a course was published
+            or a quiz was completed — together with non-identifying details such as counts, scores
+            and durations.
+          </li>
+          <li className={listItemClass}>
+            We do <strong>not</strong> send Protected Health Information, customer-uploaded document
+            content, course or quiz text, quiz answers, email addresses, or names.
+          </li>
+          <li className={listItemClass}>
+            Users are identified to this service only by an internal account identifier and their
+            role. Page addresses are reduced to a general page type before being sent, so record
+            identifiers and invitation links are never transmitted.
+          </li>
+          <li className={listItemClass}>
+            We do <strong>not</strong> use session recording, screen replay, or automatic capture of
+            on-screen text or form input.
+          </li>
+          <li className={listItemClass}>
+            Analytics requests are routed through our own servers rather than directly to the
+            third-party service.
+          </li>
+        </ul>
+        <p className={textClass}>
+          Visitors who are not signed in are not assigned an analytics profile. If you are signed in
+          and would prefer your usage not to be included, contact us using the details in the
+          Contact section and we will exclude your account.
+        </p>
       </section>
 
       <section className={sectionClass}>

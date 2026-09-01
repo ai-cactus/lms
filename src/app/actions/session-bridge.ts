@@ -8,6 +8,7 @@ import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
 import { logger, maskEmail } from '@/lib/logger';
 import { audit } from '@/lib/audit';
+import { captureServer } from '@/lib/analytics/server';
 import { isAdminRole, isWorkerRole } from '@/lib/rbac/role-utils';
 import { expireSiblingSessionCookies } from '@/lib/auth/session-cookies';
 import {
@@ -206,6 +207,7 @@ export async function switchOrganization(organizationId: string): Promise<void> 
   const instance: 'admin' | 'worker' = isWorkerRole(membership.role) ? 'worker' : 'admin';
 
   let minted = false;
+  let switched: { userId: string; organizationId: string } | null = null;
   try {
     const cookieName = sessionCookieName(instance);
     const secret = resolveAuthSecret();
@@ -262,12 +264,37 @@ export async function switchOrganization(organizationId: string): Promise<void> 
     });
 
     minted = true;
+    switched = { userId: fresh.id, organizationId: membership.organizationId };
   } catch (err) {
     logger.error({ msg: '[org] switchOrganization failed to mint session', userId, err });
   }
 
   if (!minted) {
     redirect('/select-organization');
+  }
+
+  // Analytics runs AFTER the switch has succeeded and outside its try block.
+  // captureServer's thunk only protects SYNCHRONOUS derivation, so an awaited
+  // query for a property has to be guarded separately — inside the operation's
+  // try, a failure here would abort the switch itself.
+  //
+  // Answers how often multi-org identities actually switch: the feature is
+  // costly to maintain (dual cookies, per-membership scoping) and nothing else
+  // measures whether it is used. One indexed count is fine — switching is a
+  // deliberate, infrequent action, not a hot path.
+  if (switched) {
+    try {
+      const membershipCount = await prisma.organizationUser.count({
+        where: { userId: switched.userId, active: true },
+      });
+      captureServer(
+        'organization_selected',
+        { membership_count: membershipCount },
+        { distinctId: switched.userId, organizationId: switched.organizationId },
+      );
+    } catch (err) {
+      logger.error({ msg: '[analytics] organization_selected capture failed', err });
+    }
   }
   redirect(instance === 'worker' ? '/worker' : '/dashboard');
 }

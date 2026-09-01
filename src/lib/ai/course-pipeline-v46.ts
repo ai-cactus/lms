@@ -154,6 +154,7 @@ export async function generateArticleV46(
     rawResponse = await callVertexAI(prompt, {
       temperature: 0.7,
       maxOutputTokens: 16384,
+      telemetry: { stage: 'article' },
     });
   } catch (error) {
     logger.error({ msg: '[v4.6] Vertex AI Call Failed during Article Generation:', err: error });
@@ -218,6 +219,7 @@ export async function generateSlidesV46(
     rawResponse = await callVertexAI(prompt, {
       temperature: 0.4,
       maxOutputTokens: 8192,
+      telemetry: { stage: 'slides' },
     });
   } catch (error) {
     logger.error({ msg: '[v4.6] Vertex AI Call Failed during Slides Generation:', err: error });
@@ -340,6 +342,7 @@ async function generateQuizChunkV46(
     rawResponse = await callVertexAI(prompt, {
       temperature: 0.5,
       maxOutputTokens: quizOutputTokenBudget(count),
+      telemetry: { stage: 'quiz' },
     });
   } catch (error) {
     logger.error({ msg: '[v4.6] Vertex AI Call Failed during Quiz Generation:', err: error });
@@ -514,6 +517,7 @@ export async function judgeQuizV46(
     rawResponse = await callVertexAI(prompt, {
       temperature: 0.2,
       maxOutputTokens: 8192,
+      telemetry: { stage: 'judge' },
     });
   } catch (error) {
     logger.error({ msg: '[v4.6] Vertex AI Call Failed during Judge Generation:', err: error });
@@ -571,6 +575,7 @@ export async function regenFlaggedV46(
     rawResponse = await callVertexAI(prompt, {
       temperature: 0.5,
       maxOutputTokens: 8192,
+      telemetry: { stage: 'regen' },
     });
   } catch (error) {
     logger.error({ msg: '[v4.6] Vertex AI Call Failed during Question Regen:', err: error });

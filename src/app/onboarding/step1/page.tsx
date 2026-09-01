@@ -16,6 +16,7 @@ import {
 import Stepper from '@/components/onboarding/Stepper';
 import { US_STATES } from '@/lib/constants/location-options';
 import { logger } from '@/lib/logger';
+import { useOnboardingStep } from '@/lib/analytics/use-onboarding-step';
 
 interface Step1FormData {
   legalName: string;
@@ -33,6 +34,7 @@ interface Step1FormData {
 }
 
 export default function OnboardingStep1() {
+  const { captureStepCompleted } = useOnboardingStep(1);
   const router = useRouter();
   const {
     register,
@@ -64,6 +66,7 @@ export default function OnboardingStep1() {
         const updated = { ...existing, step1: data };
         localStorage.setItem('onboarding_data', JSON.stringify(updated));
       }
+      captureStepCompleted();
       router.push('/onboarding/step2');
     } catch (error) {
       logger.error({ msg: 'Local save error:', err: error });

@@ -18,6 +18,7 @@ import { isWorkerRole } from '@/lib/rbac/role-utils';
 import { resolveActiveMembership } from '@/lib/auth/membership';
 import { verifyCaptcha } from '@/lib/captcha';
 import { audit, getClientContext } from '@/lib/audit';
+import { captureServer } from '@/lib/analytics/server';
 import { BCRYPT_COST } from '@/lib/bcrypt-config';
 import { invalidateRevalidationCache } from '@/lib/auth/session-revalidation-cache';
 
@@ -55,6 +56,14 @@ export async function authenticate(
     });
     return { error: 'Too many login attempts. Please try again in 15 minutes.' };
   }
+
+  // Hoisted out of the try so the catch can attribute the attempt. signIn()
+  // signals SUCCESS by throwing a redirect, so the only place that knows how a
+  // login actually ended is the catch block below — and these are declared
+  // inside the try.
+  let attemptUserId: string | null = null;
+  let attemptPortal: 'admin' | 'worker' = 'admin';
+  let attemptMfaRequired = false;
 
   try {
     const email = formData.get('email') as string;
@@ -99,6 +108,14 @@ export async function authenticate(
     // actionable message instead of routing to a signIn that authorize() would
     // reject as generic invalid credentials.
     if (resolution.kind === 'revoked') {
+      // Distinct from bad credentials: the password was fine, the membership is
+      // gone. Conflating the two would hide offboarded staff still trying to
+      // sign in, which is a support signal rather than a security one.
+      captureServer(
+        'login_failed',
+        { portal: role, reason: 'no_membership' },
+        { distinctId: lookupUser.id },
+      );
       return {
         error:
           'Your access to this organization has been removed. Please contact your administrator.',
@@ -126,12 +143,17 @@ export async function authenticate(
       email: maskEmail(email),
     });
 
+    attemptUserId = lookupUser.id;
+    attemptPortal = role;
+    attemptMfaRequired = lookupUser.mfaEnabled;
+
     // Determine redirect target — if MFA is enabled, create a challenge token
     // and redirect to the MFA verify page with the opaque token (no userId in URL)
     let mfaRedirect: string | null = null;
     if (lookupUser.mfaEnabled) {
       const challengeToken = await createMfaChallenge(lookupUser.id, role);
       mfaRedirect = `/mfa/verify?challenge=${challengeToken}`;
+      captureServer('mfa_challenge_sent', { portal: role }, { distinctId: lookupUser.id });
     }
 
     // Two or more active memberships and no remembered org — land on the picker
@@ -171,12 +193,41 @@ export async function authenticate(
 
     return { success: true };
   } catch (error: unknown) {
+    // A redirect IS the success signal: signIn() only gets this far once
+    // authorize() has accepted the credentials.
     if (isRedirectError(error)) {
+      if (attemptUserId) {
+        captureServer(
+          'login_succeeded',
+          {
+            portal: attemptPortal,
+            method: 'credentials',
+            mfa_required: attemptMfaRequired,
+          },
+          { distinctId: attemptUserId },
+        );
+      }
       throw error;
     }
 
     logger.error({ msg: 'Auth action error', error: String(error) });
     if (error instanceof AuthError) {
+      // `reason` is a fixed enum. The AuthError message is deliberately not
+      // used — it is free text that can echo the submitted credentials.
+      if (attemptUserId) {
+        captureServer(
+          'login_failed',
+          {
+            portal: attemptPortal,
+            reason:
+              (error as AuthError).type === 'CredentialsSignin'
+                ? 'bad_credentials'
+                : 'no_membership',
+          },
+          { distinctId: attemptUserId },
+        );
+      }
+
       switch ((error as AuthError).type) {
         case 'CredentialsSignin':
           return { error: 'Invalid credentials.' };

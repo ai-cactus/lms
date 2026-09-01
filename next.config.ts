@@ -1,5 +1,21 @@
 import type { NextConfig } from 'next';
 
+// PostHog ingest is reverse-proxied through this app under /ingest rather than
+// called directly, for three reasons:
+//
+//   1. COMPLIANCE. PostHog's own managed reverse proxy is documented as NOT
+//      HIPAA-compliant, so it cannot sit in front of a healthcare product. This
+//      one is ours and runs inside our trust boundary.
+//   2. CSP. Same-origin ingest means the strict `script-src 'self'` /
+//      `connect-src 'self'` policy below keeps working untouched — the naive
+//      integration would require whitelisting a third-party script origin.
+//   3. Requests are not lost to tracking blockers.
+//
+// The three rules must stay in THIS order: the two asset rules are more specific
+// than the catch-all and would otherwise never match.
+const POSTHOG_ASSET_HOST = 'https://us-assets.i.posthog.com';
+const POSTHOG_API_HOST = 'https://us.i.posthog.com';
+
 const nextConfig: NextConfig = {
   experimental: {
     serverActions: {
@@ -15,6 +31,28 @@ const nextConfig: NextConfig = {
     qualities: [75, 100],
   },
   serverExternalPackages: ['pdf-parse', 'pdfkit', '@google-cloud/storage'],
+  // Required by the PostHog ingest endpoints, which are trailing-slash
+  // sensitive (e.g. /e/). Without this Next.js issues a redirect that silently
+  // breaks event capture.
+  skipTrailingSlashRedirect: true,
+  async rewrites() {
+    return [
+      {
+        source: '/ingest/static/:path*',
+        destination: `${POSTHOG_ASSET_HOST}/static/:path*`,
+      },
+      {
+        // Remote config (/array/:token/config.js) is served by the asset host so
+        // it arrives with cacheable headers.
+        source: '/ingest/array/:path*',
+        destination: `${POSTHOG_ASSET_HOST}/array/:path*`,
+      },
+      {
+        source: '/ingest/:path*',
+        destination: `${POSTHOG_API_HOST}/:path*`,
+      },
+    ];
+  },
   async redirects() {
     return [
       {

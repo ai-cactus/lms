@@ -116,8 +116,14 @@ function isEmailKey(key: string): boolean {
   return EMAIL_KEY_FRAGMENTS.some((fragment) => k.includes(fragment));
 }
 
-/** Masks any email-shaped substring inside a free-text value. */
-function maskEmailsInText(value: string): string {
+/**
+ * Masks any email-shaped substring inside a free-text value.
+ *
+ * Exported so the analytics layer (src/lib/analytics/sanitize.ts) scrubs
+ * outbound properties and exception text under this SAME policy rather than
+ * reimplementing it — one place to fix a PII rule, not two that drift.
+ */
+export function maskEmailsInText(value: string): string {
   return value.replace(EMAIL_PATTERN, (match) => maskEmail(match));
 }
 

@@ -19,6 +19,8 @@ import { headers } from 'next/headers';
 import { revalidatePath } from 'next/cache';
 import { Prisma } from '@/generated/prisma/client';
 import type { AuthSession } from '@/types/next-auth';
+import { captureServer } from '@/lib/analytics/server';
+import { analyticsContextFrom } from '@/lib/analytics/identity';
 
 // Spec: only .pdf and .docx are accepted. The upload modal enforces this
 // client-side; these mirror that server-side so a crafted request can't slip
@@ -158,6 +160,24 @@ export async function uploadDocuments(
     total: files.length,
     succeeded,
   });
+
+  const analytics = analyticsContextFrom(session);
+  if (analytics) {
+    // One event per successfully-stored file, so "documents uploaded" counts
+    // documents rather than batches. Filenames are NOT sent — a document is
+    // routinely named after the policy or the resident it concerns.
+    for (const file of files.filter((_, index) => results[index]?.ok)) {
+      captureServer(
+        'document_uploaded',
+        () => ({
+          file_type: file.type || 'unknown',
+          size_band: file.size < 1_000_000 ? 'small' : file.size < 10_000_000 ? 'medium' : 'large',
+          page_count: null,
+        }),
+        analytics,
+      );
+    }
+  }
 
   if (succeeded > 0) {
     revalidatePath('/dashboard/documents');

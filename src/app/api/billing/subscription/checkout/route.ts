@@ -8,10 +8,11 @@ import { getStripeClient } from '@/lib/stripe';
 import { guardApiSession } from '@/lib/auth-guard';
 import { countBillableStaff } from '@/lib/seat-limits';
 import { BILLING_PLANS, BillingCycle } from '@/lib/billing-plans';
-import { classifyPlanChange, CYCLE_DURATION } from '@/lib/billing-plan-change';
+import { PLAN_TIER_ORDER, classifyPlanChange, CYCLE_DURATION } from '@/lib/billing-plan-change';
 import { logger } from '@/lib/logger';
 import { audit, getClientContext } from '@/lib/audit';
 import type { SubscriptionPlan, SubscriptionBillingCycle } from '@/generated/prisma/enums';
+import { captureServer } from '@/lib/analytics/server';
 
 // The five columns that describe a pending scheduled change; cleared together.
 const CLEARED_SCHEDULE_FIELDS = {
@@ -198,6 +199,25 @@ export async function POST(request: NextRequest) {
         targetCycle: billingCycle,
         currentPeriodEnd: existingSubscription.currentPeriodEnd,
       });
+
+      // Captured on the real intent only — a no_op is re-selecting the live
+      // plan, which is not a plan change. Direction comes from the tier order
+      // rather than being inferred from price, so a cycle switch at the same
+      // tier is not mislabelled.
+      if (result.classification !== 'no_op') {
+        captureServer(
+          'billing_plan_change_started',
+          () => ({
+            from_plan: existingSubscription.plan,
+            to_plan: plan.key,
+            direction:
+              PLAN_TIER_ORDER[plan.key] > PLAN_TIER_ORDER[existingSubscription.plan]
+                ? ('upgrade' as const)
+                : ('downgrade' as const),
+          }),
+          { distinctId: ctx.userId, organizationId },
+        );
+      }
 
       // ── no_op: target equals the live plan/cycle ────────────────────────────
       if (result.classification === 'no_op') {

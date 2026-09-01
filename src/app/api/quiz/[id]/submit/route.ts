@@ -95,6 +95,7 @@ No markdown, no extra text.`;
     const textPart = await callVertexAI(prompt, {
       temperature: 0.3,
       maxOutputTokens: 4096,
+      telemetry: { stage: 'quiz_grade' },
     });
 
     if (!textPart) return {};

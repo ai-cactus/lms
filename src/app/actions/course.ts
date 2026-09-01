@@ -39,6 +39,8 @@ import {
   type CreateEnrollmentContext,
   type EnrollmentOutcome,
 } from '@/lib/enrollment/create';
+import { captureServer } from '@/lib/analytics/server';
+import { analyticsContextFrom } from '@/lib/analytics/identity';
 
 // Helper: resolve the active session from either auth instance
 async function resolveSession() {
@@ -523,7 +525,15 @@ export async function publishCourse(courseId: string, opts?: { acknowledgeWarnin
     throw new Error('Insufficient permissions');
   }
 
-  const existing = await prisma.course.findUnique({ where: { id: courseId } });
+  const existing = await prisma.course.findUnique({
+    where: { id: courseId },
+    // Lesson shape is selected alongside the ownership check rather than queried
+    // again after the update: publishing is the activation moment we most want
+    // to measure, and it should not cost an extra round trip to record it.
+    include: {
+      lessons: { select: { videoStorageUri: true, quiz: { select: { id: true } } } },
+    },
+  });
   if (!existing || existing.createdByOrgUserId !== session.user.organizationUserId) {
     logger.warn({
       msg: '[course] publishCourse: not found or unauthorized',
@@ -631,6 +641,23 @@ export async function publishCourse(courseId: string, opts?: { acknowledgeWarnin
   } else {
     logger.info({ msg: '[course] Course published', courseId, userId: session.user.id });
   }
+
+  const analytics = analyticsContextFrom(session);
+  if (analytics) {
+    // Thunk, not a literal: these values are derived from a relation, and that
+    // derivation belongs inside captureServer's try/catch rather than in the
+    // publish path. See captureServer's docblock.
+    captureServer(
+      'course_published',
+      () => ({
+        lesson_count: existing.lessons.length,
+        has_quiz: existing.lessons.some((lesson) => lesson.quiz !== null),
+        has_video: existing.lessons.some((lesson) => Boolean(lesson.videoStorageUri)),
+      }),
+      analytics,
+    );
+  }
+
   revalidatePath('/dashboard/training');
   return { ...course, assignmentFailed };
 }
@@ -1942,6 +1969,18 @@ export async function attestCourse(enrollmentId: string, signature: string, role
     userId: enrollment.organizationUser.userId,
   });
 
+  // Attributed to the enrollment's OWNER, not the calling session: attestation
+  // is the learner's compliance act even when an admin drives the browser.
+  // The signature itself is never sent — it is a name.
+  captureServer(
+    'attestation_signed',
+    { course_id: enrollment.courseId },
+    {
+      distinctId: enrollment.organizationUser.userId,
+      organizationId: enrollment.organizationUser.organizationId,
+    },
+  );
+
   // Clear any open overdue/escalation/retake reminders for this enrollment now
   // that it has reached a terminal status, so the compliance banner/page
   // self-clear. Never throws (errors are logged internally).
@@ -1973,15 +2012,20 @@ export async function startCourse(courseId: string) {
 
   // Try to find enrollment for either session user
   let enrollment = null;
+  // Which identity the enrollment was matched on — analytics must attribute the
+  // start to the LEARNER, and an admin in learn mode holds both cookies.
+  let learnerId: string | undefined;
   if (workerId) {
     enrollment = await prisma.enrollment.findFirst({
       where: { courseId, organizationUser: { userId: workerId } },
     });
+    if (enrollment) learnerId = workerId;
   }
   if (!enrollment && adminId) {
     enrollment = await prisma.enrollment.findFirst({
       where: { courseId, organizationUser: { userId: adminId } },
     });
+    if (enrollment) learnerId = adminId;
   }
 
   if (!enrollment) {
@@ -2003,6 +2047,27 @@ export async function startCourse(courseId: string) {
       courseId,
       enrollmentId: enrollment.id,
     });
+
+    // Inside the status guard, so this fires exactly once per enrollment rather
+    // than on every re-open of the course.
+    if (learnerId) {
+      const started = enrollment;
+      captureServer(
+        'course_started',
+        () => ({
+          course_id: courseId,
+          is_retake: Boolean(started.retakeOf),
+          // `startedAt` defaults to now() at ENROLLMENT creation and is only
+          // preserved (never overwritten) when a learner opens the course, so
+          // it dates the assignment — which is what "how long did this sit
+          // untouched" needs.
+          assigned_days_ago: started.startedAt
+            ? Math.floor((Date.now() - started.startedAt.getTime()) / 86_400_000)
+            : null,
+        }),
+        { distinctId: learnerId },
+      );
+    }
     revalidatePath('/dashboard/worker');
     revalidatePath(`/worker/courses/${courseId}`);
   }

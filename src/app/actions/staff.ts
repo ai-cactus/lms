@@ -28,6 +28,7 @@ import { audit, getClientContext } from '@/lib/audit';
 import { headers } from 'next/headers';
 import { invalidateRevalidationCache } from '@/lib/auth/session-revalidation-cache';
 import type { ActivityReportEnrollment } from '@/lib/pdf-reports';
+import { captureServer } from '@/lib/analytics/server';
 
 // Caller-facing copy for each role-change denial. `target_not_reachable` and
 // `role_not_grantable` are only reachable when an owner is involved (owner is in
@@ -301,6 +302,15 @@ export async function updateStaffDetails(
         fromRole: target.role,
         toRole: data.role,
       });
+
+      // Attributed to the ADMIN who made the change, not the staff member —
+      // this is an administrative action, and the roles are enum values, not
+      // identifying data.
+      captureServer(
+        'staff_role_changed',
+        { from_role: target.role, to_role: data.role },
+        { distinctId: session.user.id, organizationId: session.user.organizationId },
+      );
 
       // Live auto-enroll: the user now holds a new role, so enroll them in any
       // active role-target assignments for it. Never throws.

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Mail, Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import EmptyTableState from '@/components/ui/EmptyTableState';
@@ -19,6 +19,7 @@ import {
 import type { HelpPlanPricing } from '@/lib/help/pricing';
 import { InlineBold } from './InlineBold';
 import { HelpPricingTable } from './HelpPricingTable';
+import { capture } from '@/lib/analytics/client';
 
 const SUPPORT_EMAIL = process.env.NEXT_PUBLIC_SUPPORT_EMAIL ?? 'support@theraptly.com';
 
@@ -61,6 +62,13 @@ function HelpArticleBody({
   );
 }
 
+/** The help centre renders on three surfaces; `audience` is what distinguishes them. */
+const SURFACE_BY_AUDIENCE: Record<HelpAudience, 'marketing' | 'dashboard' | 'worker'> = {
+  admin: 'dashboard',
+  worker: 'worker',
+  all: 'marketing',
+};
+
 export default function HelpCenterContent({ audience, planPricing }: HelpCenterContentProps) {
   const [query, setQuery] = useState('');
 
@@ -79,6 +87,34 @@ export default function HelpCenterContent({ audience, planPricing }: HelpCenterC
       }))
       .filter((category) => category.articles.length > 0);
   }, [categories, query]);
+
+  const resultCount = useMemo(
+    () => filteredCategories.reduce((total, category) => total + category.articles.length, 0),
+    [filteredCategories],
+  );
+
+  /**
+   * Debounced so a search is one event, not one per keystroke — an undebounced
+   * capture would produce a dozen events per query and bury the real signal.
+   *
+   * The QUERY TEXT IS NEVER SENT, only its length: staff type real clinical
+   * scenarios into search boxes. Zero-result searches are still identifiable
+   * via result_count, which is the actionable part.
+   */
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (!trimmed) return;
+
+    const timer = setTimeout(() => {
+      capture('help_search_performed', {
+        query_length: trimmed.length,
+        result_count: resultCount,
+        surface: SURFACE_BY_AUDIENCE[audience],
+      });
+    }, 800);
+
+    return () => clearTimeout(timer);
+  }, [query, resultCount, audience]);
 
   return (
     <div className="mx-auto w-full max-w-3xl">
@@ -134,7 +170,20 @@ export default function HelpCenterContent({ audience, planPricing }: HelpCenterC
           {filteredCategories.map((category) => (
             <section key={category.slug}>
               <h2 className="mb-4 text-base font-semibold text-foreground">{category.title}</h2>
-              <Accordion type="single" collapsible className="flex flex-col gap-3">
+              <Accordion
+                type="single"
+                collapsible
+                className="flex flex-col gap-3"
+                onValueChange={(slug) => {
+                  // Fires on open only — Radix passes '' when the item collapses.
+                  if (slug) {
+                    capture('help_article_viewed', {
+                      article_slug: slug,
+                      surface: SURFACE_BY_AUDIENCE[audience],
+                    });
+                  }
+                }}
+              >
                 {category.articles.map((article) => (
                   <AccordionItem key={article.slug} value={article.slug}>
                     <AccordionTrigger>{article.question}</AccordionTrigger>
