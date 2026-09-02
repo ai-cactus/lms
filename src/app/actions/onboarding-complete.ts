@@ -14,6 +14,8 @@ import { logger } from '@/lib/logger';
 import { deriveTimezoneFromState } from '@/lib/reminders/us-state-timezone';
 import { createMembership } from '@/lib/auth/membership';
 import { seedDefaultDocumentCategories } from '@/lib/documents/document-categories';
+import { captureServer, identifyOrganization } from '@/lib/analytics/server';
+import { toCountBand } from '@/lib/analytics/events';
 
 // Define types for the data we expect
 // Note: We are using 'any' for simplicity here to match the flexible structure,
@@ -337,6 +339,29 @@ export async function completeOnboarding(data: OnboardingData): Promise<Complete
         ),
       ),
     ).catch((e) => logger.error({ msg: 'Error sending invite emails background:', err: e }));
+
+    // The end of the activation funnel: an organization now exists with an owner
+    // attached. Also the first point the org can be identified as a GROUP, which
+    // is what makes every subsequent event attributable to a customer.
+    identifyOrganization({ organizationId: result.org.id, name: result.org.name });
+
+    captureServer(
+      'onboarding_completed',
+      () => ({
+        total_minutes: null,
+        steps_skipped: 0,
+      }),
+      { distinctId: userId, organizationId: result.org.id },
+    );
+
+    captureServer(
+      'staff_invited',
+      () => ({
+        role: 'mixed',
+        batch_size_band: toCountBand(result.invitesToSend.length),
+      }),
+      { distinctId: userId, organizationId: result.org.id },
+    );
 
     return { success: true, organizationId: result.org.id };
   } catch (error) {

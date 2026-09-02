@@ -14,6 +14,7 @@ import { enrollInviteCourses } from '@/lib/enrollment/invite-courses';
 import { emitNotificationEvent } from '@/lib/notifications/emit';
 import { getRoleDisplayName } from '@/lib/rbac/role-utils';
 import { createMembership } from '@/lib/auth/membership';
+import { captureServer } from '@/lib/analytics/server';
 
 const acceptInviteSchema = z.object({
   token: z.string().min(1, 'Token is required'),
@@ -215,6 +216,20 @@ export async function POST(req: Request) {
       linkUrl: `/dashboard/staff/${membership.organizationUserId}`,
       context: { workerName: fullName, roleLabel, addedVia: 'invite' },
     });
+
+    // The invite's own createdAt dates the send, so this measures how long an
+    // invite sat before the recipient acted — the number that justifies (or
+    // kills) the reminder cadence.
+    captureServer(
+      'invite_accepted',
+      () => ({
+        role: invite.role,
+        days_since_invited: invite.createdAt
+          ? Math.floor((Date.now() - invite.createdAt.getTime()) / 86_400_000)
+          : null,
+      }),
+      { distinctId: newUser.id, organizationId: invite.organizationId },
+    );
 
     return NextResponse.json({ success: true, userId: newUser.id });
   } catch (error: unknown) {

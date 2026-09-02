@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Logo } from '@/components/ui';
 import { Button } from '@/components/ui/button';
+import { capture } from '@/lib/analytics/client';
 
 export default function VerifyEmailPage() {
   const router = useRouter();
@@ -52,6 +53,11 @@ export default function VerifyEmailPage() {
       const data = await response.json();
 
       if (data.success) {
+        // Client-side because no User row exists until verification completes —
+        // signup only creates a token, so the server has no id to attribute
+        // this to. Only RESENDS are captured: the first send coincides with
+        // signup_submitted and would be a duplicate.
+        capture('email_verification_sent', { resend: true });
         setResendSuccess(true);
         setResendCooldown(60);
       } else {

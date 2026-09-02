@@ -1,16 +1,21 @@
 /**
  * Regression tests for the learner course-list selection rule.
  *
- * Bug: `/worker` and `/worker/trainings` both ended their dedupe with
+ * Bug 1: `/worker` and `/worker/trainings` both ended their dedupe with
  * `const picked = completed ?? e`, so a completed/attested enrollment always
- * beat the newest one. A learner holding an admin-assigned retake (a NEW
- * enrollment row with `retakeOf` set) therefore still saw the old "Attested"
- * row, while `/learn/[id]` — which selects `orderBy: { startedAt: 'desc' }` —
- * was already operating on the retake. The two views must agree.
+ * beat the newest one and an admin-assigned retake was invisible.
+ *
+ * Bug 2: the first fix replaced that with "newest ACTIONABLE row, falling back
+ * to terminal", which inverted the bug rather than removing it — see the
+ * `fail → lock → retake → attest` case below. Every test here previously had
+ * the actionable row ALSO be the newest, which is exactly why that shipped.
+ *
+ * The rule is now plain newest-by-`startedAt`, matching `/learn/[id]`
+ * (`orderBy: { startedAt: 'desc' }`). The two views must agree.
  */
 import { describe, it, expect } from 'vitest';
 
-import { selectDisplayEnrollments, isActionableEnrollmentStatus } from './display-selection';
+import { selectDisplayEnrollments } from './display-selection';
 
 function enrollment(overrides: Partial<Row> & Pick<Row, 'id'>): Row {
   return {
@@ -30,22 +35,6 @@ interface Row {
 
 const ids = (rows: Row[]) => rows.map((r) => r.id);
 
-describe('isActionableEnrollmentStatus', () => {
-  it.each(['enrolled', 'assigned', 'in_progress', 'lessons_complete', 'locked'])(
-    'treats %s as actionable',
-    (status) => {
-      expect(isActionableEnrollmentStatus(status)).toBe(true);
-    },
-  );
-
-  it.each(['completed', 'attested', 'failed', 'retry_requested'])(
-    'treats %s as terminal',
-    (status) => {
-      expect(isActionableEnrollmentStatus(status)).toBe(false);
-    },
-  );
-});
-
 describe('selectDisplayEnrollments', () => {
   it('prefers a newer retake enrollment over an attested one for the same course', () => {
     const picked = selectDisplayEnrollments([
@@ -64,7 +53,48 @@ describe('selectDisplayEnrollments', () => {
     expect(ids(picked)).toEqual(['retake']);
   });
 
-  it('still prefers the actionable row when it is listed first', () => {
+  // The exact journey qa-mafia found broken on staging: a worker exhausts their
+  // attempts (old row -> `locked`), an admin assigns a retake (NEW row), and the
+  // worker passes and attests it (new row -> `attested`). The old `locked` row
+  // is "actionable" and the new `attested` row is terminal, so any rule that
+  // ranks tier above recency shows the learner "Locked" after they have
+  // genuinely finished — with the certificate already issued.
+  it('shows the attested retake, not the locked row it superseded', () => {
+    const picked = selectDisplayEnrollments([
+      enrollment({
+        id: 'original-locked',
+        status: 'locked',
+        startedAt: new Date('2026-01-01T00:00:00.000Z'),
+      }),
+      enrollment({
+        id: 'retake-attested',
+        status: 'attested',
+        startedAt: new Date('2026-02-01T00:00:00.000Z'),
+      }),
+    ]);
+
+    expect(ids(picked)).toEqual(['retake-attested']);
+  });
+
+  // Same shape, one step earlier: the retake is passed but not yet signed.
+  it('shows a completed retake over the locked row it superseded', () => {
+    const picked = selectDisplayEnrollments([
+      enrollment({
+        id: 'original-locked',
+        status: 'locked',
+        startedAt: new Date('2026-01-01T00:00:00.000Z'),
+      }),
+      enrollment({
+        id: 'retake-completed',
+        status: 'completed',
+        startedAt: new Date('2026-02-01T00:00:00.000Z'),
+      }),
+    ]);
+
+    expect(ids(picked)).toEqual(['retake-completed']);
+  });
+
+  it('picks the newest row even when it is listed first', () => {
     const picked = selectDisplayEnrollments([
       enrollment({
         id: 'retake',
@@ -81,7 +111,7 @@ describe('selectDisplayEnrollments', () => {
     expect(ids(picked)).toEqual(['retake']);
   });
 
-  it('keeps a locked enrollment visible rather than masking it with an older completion', () => {
+  it('keeps a newer locked enrollment visible over an older completion', () => {
     const picked = selectDisplayEnrollments([
       enrollment({
         id: 'completed',
@@ -98,7 +128,7 @@ describe('selectDisplayEnrollments', () => {
     expect(ids(picked)).toEqual(['locked']);
   });
 
-  it('falls back to the newest terminal row when nothing is actionable', () => {
+  it('picks the newest row when every row is terminal', () => {
     const picked = selectDisplayEnrollments([
       enrollment({
         id: 'old',

@@ -28,6 +28,9 @@ import {
 } from '@/lib/ai/course-pipeline-v46';
 import { extractTextFromFile } from '@/lib/file-parser';
 import { scanText } from '@/lib/documents/phiScanner';
+import { runWithAiContext, getAiContext } from '@/lib/analytics/ai-context';
+import { captureServer } from '@/lib/analytics/server';
+import type { AnalyticsEventProperties } from '@/lib/analytics/events';
 import { recordPhiDecision } from '@/lib/documents/phiDecision';
 import { MAX_DOCUMENT_UPLOAD_BYTES } from '@/lib/documents/upload-config';
 import { checkRateLimit } from '@/lib/rate-limit';
@@ -261,13 +264,33 @@ export async function generateCourseAndQuizV46(
     },
   });
 
+  captureServer(
+    'course_generation_started',
+    () => ({
+      source: file ? ('document' as const) : ('topic' as const),
+      requested_quiz_count: Number(rawData ? JSON.parse(rawData)?.questionCount : 0) || 0,
+    }),
+    { distinctId: userId, organizationId: session.user.organizationId },
+  );
+
   // Use after() to ensure background processing survives the server action's
   // request lifecycle. A bare fire-and-forget promise can be terminated when
   // Next.js cleans up the request context after the action returns.
   const jobId = job.id;
   after(async () => {
     try {
-      await processBackgroundV46(jobId, sourceText, docFilename, rawData);
+      // Binds LLM-analytics identity for every Vertex call the pipeline makes,
+      // including the ones several stage functions deep. The Job id doubles as
+      // the trace id, so stages A-E render as one trace in PostHog and that
+      // trace can be tied back to the job row by id.
+      await runWithAiContext(
+        {
+          traceId: jobId,
+          distinctId: userId,
+          organizationId: session.user.organizationId,
+        },
+        () => processBackgroundV46(jobId, sourceText, docFilename, rawData),
+      );
     } catch (err: unknown) {
       const error = err as Error;
       logger.error({
@@ -351,6 +374,22 @@ export async function startModuleGenerationJobs(
   return { jobs };
 }
 
+/**
+ * Emits a generation outcome using the ambient AI run context bound by the
+ * caller (runWithAiContext). Keeps the pipeline free of a threaded identity
+ * argument, exactly as the $ai_generation events do.
+ */
+function captureGenerationOutcome<
+  E extends 'course_generation_completed' | 'course_generation_failed',
+>(event: E, properties: () => AnalyticsEventProperties[E]): void {
+  const run = getAiContext();
+  if (!run?.distinctId) return;
+  captureServer(event, properties, {
+    distinctId: run.distinctId,
+    organizationId: run.organizationId,
+  });
+}
+
 async function processBackgroundV46(
   jobId: string,
   sourceText: string,
@@ -384,6 +423,10 @@ async function processBackgroundV46(
   } catch (err: unknown) {
     const error = err as Error;
     logger.error({ msg: `[v4.6 Background] Job ${jobId} aborted:`, err: error.message });
+    captureGenerationOutcome('course_generation_failed', () => ({
+      stage: 'unknown' as const,
+      reason: error instanceof GenerationTimeoutError ? ('timeout' as const) : ('unknown' as const),
+    }));
     // Only write failed if the pipeline hasn't already settled the Job.
     if (settle()) {
       try {
@@ -410,6 +453,9 @@ async function runPipelineV46(
   rawData: string,
   settle: () => boolean,
 ) {
+  // Measures the PIPELINE, not the enclosing job: retries and backoff inside
+  // the stages are the cost an admin actually waits on.
+  const startedAt = Date.now();
   logger.info({
     msg: `[v4.6 Background] runPipelineV46 ENTERED for job ${jobId}. sourceText length: ${sourceText.length}, docFilename: ${docFilename}`,
   });
@@ -463,6 +509,10 @@ async function runPipelineV46(
     let articleMarkdown = '';
     let rawArticleMetaJson = '';
     let errorMsg = '';
+    // Fixed reason for the failure event. Stage A retries, so this records WHY
+    // it gave up, not the raw message (which echoes document text).
+    let stageAReason: AnalyticsEventProperties['course_generation_failed']['reason'] =
+      'model_error';
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
@@ -486,6 +536,7 @@ async function runPipelineV46(
         const err = error as Error;
         // Don't retry insufficient source errors — the source text won't change
         if (err instanceof InsufficientSourceError) {
+          stageAReason = 'insufficient_source';
           errorMsg = err.message;
           logger.warn({
             msg: `[v4.6 Background] Stage A: insufficient source, not retrying for job ${jobId}`,
@@ -511,6 +562,10 @@ async function runPipelineV46(
           data: { status: 'failed', payload: { error: `Stage A failed: ${errorMsg}` } },
         });
       }
+      captureGenerationOutcome('course_generation_failed', () => ({
+        stage: 'article' as const,
+        reason: stageAReason,
+      }));
       return;
     }
 
@@ -657,6 +712,12 @@ async function runPipelineV46(
         data: { status: 'completed', result: resultPayload as unknown as Prisma.InputJsonValue }, // Cast to unknown before InputJsonValue for Prisma Json
       });
       logger.info({ msg: `[v4.6 Background] Job ${jobId} marked as COMPLETED successfully.` });
+      captureGenerationOutcome('course_generation_completed', () => ({
+        duration_seconds: Math.round((Date.now() - startedAt) / 1000),
+        section_count: articleMeta?.sections.length ?? 0,
+        slide_count: slidesJson?.slides.length ?? 0,
+        quiz_count: quizJson?.questions.length ?? 0,
+      }));
     } else {
       logger.warn({
         msg: `[v4.6 Background] Job ${jobId} already settled (timed out) — discarding completed result.`,
@@ -665,6 +726,10 @@ async function runPipelineV46(
   } catch (err: unknown) {
     const error = err as Error;
     logger.error({ msg: `[v4.6 Background] Uncaught fatal error in job ${jobId}:`, err: error });
+    captureGenerationOutcome('course_generation_failed', () => ({
+      stage: 'unknown' as const,
+      reason: 'unknown' as const,
+    }));
     // Skip if the wall-clock timeout already settled the Job.
     if (settle()) {
       try {

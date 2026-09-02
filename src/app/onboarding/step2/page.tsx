@@ -18,6 +18,7 @@ import {
 import Stepper from '@/components/onboarding/Stepper';
 import { logger } from '@/lib/logger';
 import type { OnboardingDocument } from '@/app/actions/onboarding-complete';
+import { useOnboardingStep } from '@/lib/analytics/use-onboarding-step';
 
 interface Step2FormData {
   licenseNumber: string;
@@ -39,6 +40,7 @@ function readDraft(): Record<string, unknown> {
 }
 
 export default function OnboardingStep2() {
+  const { captureStepCompleted } = useOnboardingStep(2);
   const router = useRouter();
   const {
     register,
@@ -73,6 +75,7 @@ export default function OnboardingStep2() {
         draft.step2 = { ...data, documents };
         localStorage.setItem('onboarding_data', JSON.stringify(draft));
       }
+      captureStepCompleted();
       router.push('/onboarding/step3');
     } catch (error) {
       logger.error({ msg: 'Local save error:', err: error });

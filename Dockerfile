@@ -42,9 +42,17 @@ RUN npx prisma generate
 # into the image (they are already public / publishable values).
 ARG NEXT_PUBLIC_APP_URL
 ARG NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+# PostHog project token. Public by design (it only permits writes), and required
+# HERE rather than in the runtime env file: Next.js inlines NEXT_PUBLIC_* into the
+# client bundle during `next build`, so a token supplied only at runtime produces
+# an image with analytics permanently dead and no error to show for it.
+# Leave it unset to build an image with analytics disabled — the SDK never
+# initialises without it (see instrumentation-client.ts).
+ARG NEXT_PUBLIC_POSTHOG_KEY
 
 ENV NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
 ENV NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY}
+ENV NEXT_PUBLIC_POSTHOG_KEY=${NEXT_PUBLIC_POSTHOG_KEY}
 
 ENV NODE_ENV=production
 

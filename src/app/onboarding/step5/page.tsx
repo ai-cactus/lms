@@ -27,6 +27,7 @@ import {
 } from '@/lib/staff-csv';
 import { Alert } from '@/components/ui';
 import { logger } from '@/lib/logger';
+import { useOnboardingStep } from '@/lib/analytics/use-onboarding-step';
 
 interface WorkerInviteRow {
   email: string;
@@ -49,6 +50,7 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const EMPTY_ROW: WorkerInviteRow = { email: '', role: '' };
 
 export default function OnboardingStep5() {
+  const { captureStepCompleted } = useOnboardingStep(5);
   const router = useRouter();
   const {
     control,
@@ -138,6 +140,7 @@ export default function OnboardingStep5() {
         localStorage.removeItem('onboarding_org_id');
       }
 
+      captureStepCompleted();
       router.push('/onboarding/complete');
     } catch (e) {
       logger.error({ msg: 'Error completing onboarding', err: e });

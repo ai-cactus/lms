@@ -19,4 +19,10 @@ regexes = [
   '''whsec_ci_dummy_not_real''',
   '''pk_test_ci_dummy_not_real''',
   '''ci_dummy_password''',
+  # Synthetic invite token used by the analytics sanitiser tests. A test that
+  # proves "an invite token never reaches PostHog" has to contain one, so the
+  # scanner flags the fixture that exists to prevent the very leak it is
+  # scanning for. Not a credential: this value matches nothing the app issues.
+  # See src/lib/analytics/sanitize.test.ts and tests/e2e/analytics.spec.ts.
+  '''PkS8x2Lm9QvT4nR7''',
 ]

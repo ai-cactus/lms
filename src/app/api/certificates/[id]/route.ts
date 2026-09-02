@@ -5,6 +5,7 @@ import { auth as workerAuth } from '@/auth.worker';
 import { downloadFile } from '@/lib/storage';
 import { logger } from '@/lib/logger';
 import { audit, getClientContext } from '@/lib/audit';
+import { captureServer } from '@/lib/analytics/server';
 export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   try {
@@ -18,6 +19,9 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
       where: { id: params.id },
       include: {
         organizationUser: { select: { organizationId: true } },
+        // Selected alongside the authorization lookup rather than queried again:
+        // the download path should not cost an extra round trip to be measurable.
+        enrollment: { select: { courseId: true } },
       },
     });
 
@@ -50,6 +54,18 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
       targetId: params.id,
       ...getClientContext(request.headers),
     });
+
+    // Beside the existing audit row, which already establishes this as the one
+    // authorized download path. Attributed to whichever session passed the
+    // check above — a learner fetching their own, or an admin fetching theirs.
+    captureServer(
+      'certificate_downloaded',
+      { course_id: certificate.enrollment?.courseId ?? '', format: 'pdf' },
+      {
+        distinctId: (isWorker ? workerSession?.user?.id : adminSession?.user?.id) ?? '',
+        organizationId: certificate.organizationUser.organizationId,
+      },
+    );
 
     return new NextResponse(new Uint8Array(fileBuffer), {
       headers: {

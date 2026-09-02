@@ -76,6 +76,7 @@ jobs:
           build-args: |
             NEXT_PUBLIC_APP_URL=${{ secrets.STAGING_NEXT_PUBLIC_APP_URL }}
             NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=${{ secrets.STAGING_NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY }}
+            NEXT_PUBLIC_POSTHOG_KEY=${{ secrets.STAGING_NEXT_PUBLIC_POSTHOG_KEY }}
           # GitHub Actions cache dramatically speeds up subsequent builds
           cache-from: type=gha
           cache-to: type=gha,mode=max

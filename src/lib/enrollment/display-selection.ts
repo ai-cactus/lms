@@ -3,31 +3,27 @@
  *
  * A retake or a renewal is a brand new `Enrollment` row (`assignRetake` creates
  * one with `retakeOf` set while the failed row stays `locked`), so a course
- * routinely has several rows for the same learner. The learn player and
- * `getLearnPayload` both resolve that ambiguity with
- * `orderBy: { startedAt: 'desc' }` — newest wins. The learner dashboard used to
- * prefer the completed/attested row instead, so a worker who had been assigned a
- * retake still saw the old "Attested" row and had no way to reach the retake the
- * player was already operating on.
+ * routinely has several rows for the same learner. The rule is simply **newest
+ * by `startedAt`**, which is exactly what the learn player and `getLearnPayload`
+ * already do (`orderBy: { startedAt: 'desc' }`). The two views must agree: any
+ * other rule shows the learner a row the player is not operating on.
+ *
+ * Two bugs came from not doing this, and the second is why the rule is now a
+ * plain sort rather than anything cleverer:
+ *
+ *   1. `/worker` and `/worker/trainings` used to end their dedupe with
+ *      `const picked = completed ?? e`, so a completed/attested row always beat
+ *      the newest one and an admin-assigned retake was invisible.
+ *   2. The first fix replaced that with "newest ACTIONABLE row, falling back to
+ *      terminal" — which inverted the bug instead of removing it. `locked` is
+ *      actionable, so once a learner passed and attested a retake they had an
+ *      old `locked` row (actionable) and a new `attested` row (terminal), and
+ *      the old one won. The worker's own list still read "Locked" after they
+ *      had genuinely completed and signed.
+ *
+ * Both cases are a tier beating recency. Recency alone resolves both, because
+ * the newer row is the one the learner is actually on.
  */
-
-/**
- * Non-terminal statuses — the learner still has something to do on this row.
- * `locked` counts: the learner cannot act, but an admin-assigned retake is the
- * pending outcome, so the row must stay visible rather than be masked by an
- * older completed one.
- */
-const ACTIONABLE_STATUSES: ReadonlySet<string> = new Set([
-  'enrolled',
-  'assigned',
-  'in_progress',
-  'lessons_complete',
-  'locked',
-]);
-
-export function isActionableEnrollmentStatus(status: string): boolean {
-  return ACTIONABLE_STATUSES.has(status);
-}
 
 /** The minimum an enrollment must expose to be ranked. */
 export interface DisplayableEnrollment {
@@ -43,33 +39,32 @@ function startedAtMs(enrollment: DisplayableEnrollment): number {
 }
 
 /**
- * One enrollment per course: the newest actionable one, falling back to the
- * newest terminal one (completed / attested / …) only when the learner has
- * nothing left to act on. Courses keep the order in which they first appear in
- * `enrollments`, and a `startedAt` tie keeps the earlier row so the caller's
- * ordering stays authoritative.
+ * One enrollment per course: the newest by `startedAt`. Courses keep the order
+ * in which they first appear in `enrollments`, and a tie keeps the earlier row
+ * so the caller's ordering stays authoritative.
  */
 export function selectDisplayEnrollments<T extends DisplayableEnrollment>(
   enrollments: readonly T[],
 ): T[] {
-  const actionable = new Map<string, T>();
-  const terminal = new Map<string, T>();
+  const newest = new Map<string, T>();
   const courseOrder: string[] = [];
 
   for (const enrollment of enrollments) {
     const { courseId } = enrollment;
-    if (!actionable.has(courseId) && !terminal.has(courseId)) {
+    const incumbent = newest.get(courseId);
+
+    if (!incumbent) {
       courseOrder.push(courseId);
+      newest.set(courseId, enrollment);
+      continue;
     }
 
-    const bucket = isActionableEnrollmentStatus(enrollment.status) ? actionable : terminal;
-    const incumbent = bucket.get(courseId);
-    if (!incumbent || startedAtMs(enrollment) > startedAtMs(incumbent)) {
-      bucket.set(courseId, enrollment);
+    if (startedAtMs(enrollment) > startedAtMs(incumbent)) {
+      newest.set(courseId, enrollment);
     }
   }
 
   return courseOrder
-    .map((courseId) => actionable.get(courseId) ?? terminal.get(courseId))
+    .map((courseId) => newest.get(courseId))
     .filter((enrollment): enrollment is T => enrollment !== undefined);
 }

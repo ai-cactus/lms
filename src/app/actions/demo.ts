@@ -5,6 +5,7 @@ import { headers } from 'next/headers';
 import { sendDemoRequestEmail } from '@/lib/email';
 import { logger } from '@/lib/logger';
 import { verifyCaptcha } from '@/lib/captcha';
+import { captureServer } from '@/lib/analytics/server';
 
 const demoFormSchema = z.object({
   fullName: z.string().min(1, 'Full Name is required'),
@@ -68,6 +69,19 @@ export async function submitDemoRequest(prevState: unknown, formData: FormData) 
         error: 'Failed to submit your request at this time. Please try again later.',
       };
     }
+
+    // No session and no User row — a demo request is anonymous. The org NAME is
+    // never sent (it identifies the prospect); only whether they wrote a message
+    // and, if given, a bucketed size. Attributed to a stable synthetic id: this
+    // is a marketing conversion, not a person, so it must not create a profile.
+    captureServer(
+      'demo_requested',
+      () => ({
+        organization_size_band: null,
+        has_message: Boolean(String(data.helpUs ?? '').trim()),
+      }),
+      { distinctId: 'anonymous-demo-request' },
+    );
 
     return { success: true, message: 'Your demo request has been submitted successfully.' };
   } catch (error) {

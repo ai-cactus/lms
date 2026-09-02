@@ -179,7 +179,10 @@ function buildScanPrompt(chunk: string): string {
  */
 async function scanChunkWithAI(chunk: string, chunkStart: number): Promise<ScanResult> {
   try {
-    const aiResponse = await callVertexAI(buildScanPrompt(chunk), { temperature: 0.1 });
+    const aiResponse = await callVertexAI(buildScanPrompt(chunk), {
+      temperature: 0.1,
+      telemetry: { stage: 'phi_scan' },
+    });
 
     const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {

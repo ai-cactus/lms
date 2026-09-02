@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
@@ -15,6 +15,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { signup } from '@/app/actions/auth';
 import { validatePassword } from '@/lib/password-policy';
 import { logger } from '@/lib/logger';
+import { capture } from '@/lib/analytics/client';
 import PasswordStrengthIndicator from '@/components/ui/PasswordStrengthIndicator';
 
 export default function SignupPage() {
@@ -31,6 +32,13 @@ export default function SignupPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isMicrosoftLoading, setIsMicrosoftLoading] = useState(false);
   const [isFormLoading, setIsFormLoading] = useState(false);
+
+  // Top of the funnel. Fired on mount rather than on first keystroke so the
+  // reach-the-page → submit drop-off is measurable; an interaction-triggered
+  // event would silently exclude everyone who bounced without typing.
+  useEffect(() => {
+    capture('signup_started', { entry_point: 'direct' });
+  }, []);
 
   const handleMicrosoftSignup = () => {
     setIsMicrosoftLoading(true);
@@ -108,6 +116,12 @@ export default function SignupPage() {
       });
 
       if (result.success) {
+        // Captured CLIENT-side deliberately. At this point no User row exists —
+        // signup only creates a verification token — so the server has no id to
+        // attribute the event to. The browser already holds an anonymous
+        // distinct_id, and identify() on first login links these events to the
+        // person, so the funnel still joins across the identity boundary.
+        capture('signup_submitted', { used_captcha: false });
         localStorage.setItem('pendingVerificationEmail', formData.email);
         router.push('/verify-email');
       } else {

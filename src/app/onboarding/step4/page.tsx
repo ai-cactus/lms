@@ -23,6 +23,7 @@ import {
   buildManagerCsvTemplate,
 } from '@/lib/staff-csv';
 import { logger } from '@/lib/logger';
+import { useOnboardingStep } from '@/lib/analytics/use-onboarding-step';
 
 interface ManagerInviteRow {
   email: string;
@@ -66,6 +67,7 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const EMPTY_ROW: ManagerInviteRow = { email: '', role: '' };
 
 export default function OnboardingStep4() {
+  const { captureStepCompleted } = useOnboardingStep(4);
   const router = useRouter();
   const {
     control,
@@ -88,6 +90,7 @@ export default function OnboardingStep4() {
       const updated = { ...existing, step4: { managerInvites: invites } };
       localStorage.setItem('onboarding_data', JSON.stringify(updated));
     }
+    captureStepCompleted();
     router.push('/onboarding/step5');
   };
 

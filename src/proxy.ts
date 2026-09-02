@@ -323,6 +323,15 @@ async function handleProxy(req: NextRequest, correlationId: string): Promise<Nex
 
 export const config = {
   // ✅ Explicitly list all protected segments — no catch-all regex surprises
+  //
+  // ⛔ DO NOT add '/ingest/:path*' or widen a rule to cover it. That path is the
+  // PostHog reverse proxy (see the rewrites in next.config.ts). Matching it here
+  // would send unauthenticated ingest requests through gateApiRoute, which
+  // answers 401 — and because posthog-js does not surface transport failures,
+  // capture() calls would appear to succeed while nothing was ever recorded.
+  // This is a documented Next.js 16 footgun: `middleware.ts` was renamed to
+  // `proxy.ts`, so a matcher that predates an analytics integration silently
+  // swallows it. src/proxy.test.ts asserts /ingest stays unmatched.
   matcher: [
     '/dashboard/:path*',
     '/onboarding/:path*',
