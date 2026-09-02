@@ -5,7 +5,12 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['./vitest.setup.ts'],
-    exclude: [...defaultExclude, 'tests/e2e/**/*'],
+    // `.claude/worktrees/**` holds full checkouts created for parallel agent
+    // work. vitest walks them, so a leftover worktree makes a bare run report
+    // hundreds of phantom failures from a stale copy of the tree. `.git/info/exclude`
+    // hides them from git but not from vitest, and this repo leans on the LOCAL
+    // heavy tier for pre-push, so a run that looks broken is a real cost.
+    exclude: [...defaultExclude, 'tests/e2e/**/*', '.claude/**'],
     // Local dev boxes have many cores but comparatively little RAM per core.
     // Unbounded, vitest spawns one jsdom fork per core (22 here), which starved
     // React's act() timers, producing intermittent failures in Step2Modules /
