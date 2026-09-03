@@ -183,7 +183,13 @@ describe('StaffListClient — Remove Staff never offered on the viewer’s own r
     const user = userEvent.setup();
     render(
       <StaffListClient
-        users={[memberEntry('ou-owner', 'The Owner', 'owner'), memberEntry('ou-hr', 'HR Person')]}
+        users={[
+          memberEntry('ou-owner', 'The Owner', 'owner'),
+          // A facility-BOUND role, so the comparison row still carries both
+          // actions — an org-wide one (the fixture default, `hr`) no longer
+          // offers Change Facility at all.
+          memberEntry('ou-nurse', 'Nina Nurse', 'nurse'),
+        ]}
         hasOrganization={true}
         organizationId="org-1"
         planLimit={null}
@@ -201,8 +207,60 @@ describe('StaffListClient — Remove Staff never offered on the viewer’s own r
       within(rowFor('The Owner')).queryByRole('button', { name: 'Row actions' }),
     ).not.toBeInTheDocument();
 
-    await user.click(within(rowFor('HR Person')).getByRole('button', { name: 'Row actions' }));
+    await user.click(within(rowFor('Nina Nurse')).getByRole('button', { name: 'Row actions' }));
     expect(screen.getByRole('menuitem', { name: /remove staff/i })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /change facility/i })).toBeInTheDocument();
+  });
+
+  // An org-wide role has no facility scope to reassign, so the whole action is
+  // inapplicable — not merely blocked. `setStaffFacilities` refuses it too.
+  it.each(['admin', 'hr', 'clinical_director', 'finance'])(
+    'does not offer Change Facility on a %s row',
+    async (role) => {
+      const user = userEvent.setup();
+      render(
+        <StaffListClient
+          users={[
+            memberEntry('ou-target', 'Global Person', role),
+            memberEntry('ou-nurse', 'Nina Nurse', 'nurse'),
+          ]}
+          hasOrganization={true}
+          organizationId="org-1"
+          planLimit={null}
+          planName="Professional"
+          currentWorkerCount={2}
+          pendingInviteCount={0}
+          inviterRole="owner"
+          viewerOrganizationUserId="ou-owner-viewer"
+          facilities={MULTI_FACILITIES}
+        />,
+      );
+
+      await user.click(
+        within(rowFor('Global Person')).getByRole('button', { name: 'Row actions' }),
+      );
+      expect(screen.queryByRole('menuitem', { name: /change facility/i })).not.toBeInTheDocument();
+    },
+  );
+
+  it('still offers Change Facility on a facility-bound supervisor row', async () => {
+    const user = userEvent.setup();
+    render(
+      <StaffListClient
+        users={[memberEntry('ou-sup', 'Sam Supervisor', 'supervisor')]}
+        hasOrganization={true}
+        organizationId="org-1"
+        planLimit={null}
+        planName="Professional"
+        currentWorkerCount={1}
+        pendingInviteCount={0}
+        inviterRole="owner"
+        viewerOrganizationUserId="ou-owner-viewer"
+        facilities={MULTI_FACILITIES}
+      />,
+    );
+
+    await user.click(within(rowFor('Sam Supervisor')).getByRole('button', { name: 'Row actions' }));
     expect(screen.getByRole('menuitem', { name: /change facility/i })).toBeInTheDocument();
   });
 });
@@ -237,7 +295,9 @@ describe('StaffListClient — row Action cell (Figma roster design)', () => {
     const user = userEvent.setup();
     render(
       <StaffListClient
-        users={[memberEntry('ou-hr', 'HR Person')]}
+        // Facility-BOUND, so both design actions apply — Change Facility does
+        // not apply to an org-wide role like the fixture's default `hr`.
+        users={[memberEntry('ou-hr', 'HR Person', 'nurse')]}
         hasOrganization={true}
         organizationId="org-1"
         planLimit={null}

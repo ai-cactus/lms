@@ -16,31 +16,14 @@ import prisma from '@/lib/prisma';
 import { logger } from '@/lib/logger';
 import { MIN_COMPARISON_FACILITIES, parseFacilityScopeParam } from '@/lib/facility/scope-param';
 import type { Prisma } from '@/generated/prisma/client';
-import type { AuthSession, Role } from '@/types/next-auth';
+import type { AuthSession } from '@/types/next-auth';
 
-/**
- * Roles whose facility scope spans the whole organisation. `supervisor` is
- * deliberately absent — per the RBAC matrix a supervisor's power is scope, not
- * verbs, so they see only the facilities on their own `OrganizationUserFacility`
- * rows. Worker roles are likewise limited to their own facilities.
- */
-const ORG_WIDE_FACILITY_ROLES: readonly Role[] = [
-  'owner',
-  'admin',
-  'hr',
-  'clinical_director',
-  'finance',
-];
+// The role list lives in a Prisma-free module so client components can import
+// it; re-exported here so every existing `@/lib/facility/scope` import still
+// resolves.
+import { isOrgWideFacilityRole } from '@/lib/facility/org-wide-roles';
 
-/**
- * Whether the role aggregates across the whole organisation. Facility-bound
- * roles (supervisor, workers) must have every query narrowed to the facilities
- * on their assignments — including the org-wide totals of a dashboard, which for
- * them means "total across my facilities", not "total across the org".
- */
-export function isOrgWideFacilityRole(role: Role): boolean {
-  return ORG_WIDE_FACILITY_ROLES.includes(role);
-}
+export { ORG_WIDE_FACILITY_ROLES, isOrgWideFacilityRole } from '@/lib/facility/org-wide-roles';
 
 const FACILITY_SELECT = {
   id: true,

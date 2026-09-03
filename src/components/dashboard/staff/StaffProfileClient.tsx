@@ -19,6 +19,7 @@ import AssignCoursesModal from './AssignCoursesModal';
 import ChangeFacilityModal from './ChangeFacilityModal';
 import type { AccessibleFacility } from '@/lib/facility/scope';
 import { getRoleDisplayName } from '@/lib/rbac/role-utils';
+import { isOrgWideFacilityRole } from '@/lib/facility/org-wide-roles';
 import AssignRetakeModal from '../training/AssignRetakeModal';
 import CertificateModal from '../training/CertificateModal';
 import QuizResults from '@/components/dashboard/training/QuizResults';
@@ -185,7 +186,18 @@ export default function StaffProfileClient({
   // "has multi-facility access". A viewer locked to a single facility cannot
   // reassign anyone out of it, so the action is hidden rather than offered as a
   // dead end (the server action remains authoritative).
-  const canChangeFacility = canEdit && facilities.length > 1 && user.role !== 'owner';
+  // Two different questions, deliberately kept apart:
+  //   VISIBLE  — does the VIEWER hold `user.edit` (owner, admin, HR) and reach
+  //              more than one facility? A single-facility viewer cannot move
+  //              anyone anywhere, so the action is absent rather than dead.
+  //   ENABLED  — is the TARGET facility-bound at all? An org-wide role has no
+  //              facility scope to change, so the control is shown greyed rather
+  //              than silently missing. `setStaffFacilities` refuses it too.
+  const canChangeFacility = canEdit && facilities.length > 1;
+  const targetIsOrgWide = isOrgWideFacilityRole(user.role as Role);
+  const changeFacilityBlockedReason = targetIsOrgWide
+    ? `${getRoleDisplayName(user.role as Role)} is an organization-wide role, so it is not assigned to a facility.`
+    : undefined;
   const [retakeEnrollment, setRetakeEnrollment] = useState<{
     id: string;
     courseName: string;
@@ -316,6 +328,8 @@ export default function StaffProfileClient({
                 {canChangeFacility && (
                   <Button
                     variant="outline"
+                    disabled={targetIsOrgWide}
+                    title={changeFacilityBlockedReason}
                     onClick={() => setIsChangeFacilityOpen(true)}
                     className="h-12 gap-2 rounded-[12px] px-6 text-[15.5px] font-semibold tracking-[-0.31px]"
                   >

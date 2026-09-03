@@ -73,16 +73,69 @@ describe('StaffProfileClient — Change Facility button', () => {
     expect(screen.queryByRole('button', { name: /Change Facility/ })).not.toBeInTheDocument();
   });
 
-  it('is hidden when the profile belongs to the organization owner', () => {
+  // An org-wide role is not assigned to a facility at all, so there is nothing
+  // to change. Shown DISABLED rather than hidden: on a standalone control that
+  // says "this exists but does not apply here", where a missing button just
+  // looks like a permission the viewer lacks. `setStaffFacilities` refuses it
+  // server-side regardless.
+  it.each(['owner', 'admin', 'hr', 'clinical_director', 'finance'])(
+    'is present but disabled when the profile belongs to a %s',
+    (role) => {
+      render(
+        <StaffProfileClient
+          staff={makeStaff(role)}
+          viewerRole={'admin' as Role}
+          facilities={FACILITIES}
+        />,
+      );
+
+      expect(screen.getByRole('button', { name: /Change Facility/ })).toBeDisabled();
+    },
+  );
+
+  it.each(['supervisor', 'nurse', 'front_desk_admin'])(
+    'stays enabled for a facility-bound %s',
+    (role) => {
+      render(
+        <StaffProfileClient
+          staff={makeStaff(role)}
+          viewerRole={'admin' as Role}
+          facilities={FACILITIES}
+        />,
+      );
+
+      expect(screen.getByRole('button', { name: /Change Facility/ })).toBeEnabled();
+    },
+  );
+
+  it('explains why it is disabled rather than leaving a dead control', () => {
     render(
       <StaffProfileClient
-        staff={makeStaff('owner')}
+        staff={makeStaff('finance')}
         viewerRole={'admin' as Role}
         facilities={FACILITIES}
       />,
     );
 
-    expect(screen.queryByRole('button', { name: /Change Facility/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Change Facility/ })).toHaveAttribute(
+      'title',
+      'Finance is an organization-wide role, so it is not assigned to a facility.',
+    );
+  });
+
+  it('does not open the modal when the target is org-wide', async () => {
+    const user = userEvent.setup();
+    render(
+      <StaffProfileClient
+        staff={makeStaff('hr')}
+        viewerRole={'admin' as Role}
+        facilities={FACILITIES}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /Change Facility/ }));
+
+    expect(screen.queryByRole('heading', { name: 'Change facility' })).not.toBeInTheDocument();
   });
 
   it('is hidden when there are no facilities to move to', () => {
