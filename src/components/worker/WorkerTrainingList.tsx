@@ -43,40 +43,29 @@ interface WorkerTrainingListProps {
   courses: LearnerCourseRow[];
 }
 
-type TabKey = 'active' | 'completed' | 'all';
+type TabKey = 'all' | 'completed';
 
 const TABS: { key: TabKey; label: string }[] = [
-  { key: 'active', label: 'Active' },
-  { key: 'completed', label: 'Completed' },
   { key: 'all', label: 'My Courses' },
+  { key: 'completed', label: 'Completed' },
 ];
 
 export default function WorkerTrainingList({ courses }: WorkerTrainingListProps) {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<TabKey>('active');
+  const [activeTab, setActiveTab] = useState<TabKey>('all');
 
-  // Both entry points land on the course preview rather than jumping straight
-  // into the player, so the learner sees the overview before starting.
-  const handleStartClick = (courseId: string) => {
-    router.push(`/worker/courses/${courseId}`);
-  };
-
+  // Lands on the course preview rather than jumping straight into the player,
+  // so the learner sees the overview before reviewing their result.
   const handleViewResultClick = (courseId: string) => {
     router.push(`/worker/courses/${courseId}`);
   };
 
-  const activeCourses = courses.filter((c) => c.status !== 'completed' && c.status !== 'attested');
   const completedCourses = courses.filter(
     (c) => c.status === 'completed' || c.status === 'attested',
   );
 
-  const displayedCourses = activeTab === 'active' ? activeCourses : completedCourses;
-
-  const tabCount = (key: TabKey) => {
-    if (key === 'active') return activeCourses.length;
-    if (key === 'completed') return completedCourses.length;
-    return courses.length;
-  };
+  const tabCount = (key: TabKey) =>
+    key === 'completed' ? completedCourses.length : courses.length;
 
   return (
     <section className="overflow-hidden rounded-xl border border-[#e2e8f0] bg-white">
@@ -115,81 +104,44 @@ export default function WorkerTrainingList({ courses }: WorkerTrainingListProps)
         </div>
       ) : (
         <div className="flex flex-col">
-          {displayedCourses.length > 0 ? (
-            displayedCourses.map((course) => {
-              const isCompleted = course.status === 'completed' || course.status === 'attested';
-              const isStarted = course.progress > 0;
-              const isFailed = course.status === 'failed';
-              const isLocked = course.status === 'locked';
-
-              let buttonText = 'Start Course';
-              let onClick = () => handleStartClick(course.id);
-
-              if (isLocked) {
-                buttonText = 'Locked';
-                onClick = () => {};
-              } else if (isCompleted) {
-                buttonText = 'View Result';
-                onClick = () => handleViewResultClick(course.id);
-              } else if (isStarted && !isFailed) {
-                buttonText = 'Continue';
-              } else if (isFailed) {
-                buttonText = 'Retry';
-              }
-
-              return (
-                <div
-                  key={course.id + '-' + course.enrollmentId}
-                  className="flex items-center justify-between border-b border-dashed border-[#e2e8f0] px-8 py-6 transition-all last:border-b-0 hover:bg-[#f8fafc] max-md:flex-col max-md:items-start max-md:gap-4 max-md:px-4 max-md:py-5"
-                >
-                  <div className="flex items-center gap-5 max-md:w-full max-md:gap-3">
-                    <div className="flex size-12 flex-shrink-0 items-center justify-center rounded-[10px] bg-[#1e293b] text-white max-md:size-10 max-md:rounded-lg">
-                      <Layers className="size-6" aria-hidden="true" />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <h3 className="text-base font-semibold text-[#1a202c] max-md:text-sm">
-                        {course.retakeOf ? (
-                          <span className="mr-2 font-semibold text-[#E53E3E]">Retake:</span>
-                        ) : null}
-                        {course.title}
-                      </h3>
-                      <p className="text-sm text-[#718096]">
-                        {course.category ? formatCategory(course.category) : 'General'}
-                      </p>
-                      <DeadlineMeta deadline={course.deadline} />
-                    </div>
+          {completedCourses.length > 0 ? (
+            completedCourses.map((course) => (
+              <div
+                key={course.id + '-' + course.enrollmentId}
+                className="flex items-center justify-between border-b border-dashed border-[#e2e8f0] px-8 py-6 transition-all last:border-b-0 hover:bg-[#f8fafc] max-md:flex-col max-md:items-start max-md:gap-4 max-md:px-4 max-md:py-5"
+              >
+                <div className="flex items-center gap-5 max-md:w-full max-md:gap-3">
+                  <div className="flex size-12 flex-shrink-0 items-center justify-center rounded-[10px] bg-[#1e293b] text-white max-md:size-10 max-md:rounded-lg">
+                    <Layers className="size-6" aria-hidden="true" />
                   </div>
-                  <div className="flex flex-col items-end gap-1 max-md:w-full">
-                    <button
-                      className={[
-                        'min-w-[120px] rounded-md px-5 py-2.5 text-center text-sm font-semibold transition-colors max-md:w-full',
-                        isLocked
-                          ? 'cursor-not-allowed bg-[#CBD5E1] text-[#475569] opacity-50'
-                          : 'bg-[#4730f7] text-white hover:bg-[#3720e3]',
-                      ].join(' ')}
-                      disabled={isLocked}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onClick();
-                      }}
-                    >
-                      {buttonText}
-                    </button>
-                    {isLocked && (
-                      <span className="text-[10px] text-[#EF4444]">Waiting for admin retake</span>
-                    )}
+                  <div className="flex flex-col gap-1">
+                    <h3 className="text-base font-semibold text-[#1a202c] max-md:text-sm">
+                      {course.retakeOf ? (
+                        <span className="mr-2 font-semibold text-[#E53E3E]">Retake:</span>
+                      ) : null}
+                      {course.title}
+                    </h3>
+                    <p className="text-sm text-[#718096]">
+                      {course.category ? formatCategory(course.category) : 'General'}
+                    </p>
+                    <DeadlineMeta deadline={course.deadline} />
                   </div>
                 </div>
-              );
-            })
+                <div className="flex flex-col items-end gap-1 max-md:w-full">
+                  <button
+                    className="min-w-[120px] rounded-md bg-[#4730f7] px-5 py-2.5 text-center text-sm font-semibold text-white transition-colors hover:bg-[#3720e3] max-md:w-full"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleViewResultClick(course.id);
+                    }}
+                  >
+                    View Result
+                  </button>
+                </div>
+              </div>
+            ))
           ) : (
-            <EmptyTableState
-              message={
-                activeTab === 'active'
-                  ? 'No active courses. All your courses are completed!'
-                  : 'No completed courses yet.'
-              }
-            />
+            <EmptyTableState message="No completed courses yet." />
           )}
         </div>
       )}

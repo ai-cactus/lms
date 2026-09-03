@@ -299,7 +299,9 @@ test.describe('Reminders & Escalations', () => {
 
     await page.goto('/worker/trainings');
     await expect(page.getByText(SEEDED_COURSE_TITLE)).toBeVisible();
-    await expect(page.getByText(`Due ${expectedDueLabel}`)).toBeVisible();
+    // "My Courses" is the landing tab; its deadline column prefixes "Due " only
+    // when the date has already passed, and this one is 21 days out.
+    await expect(page.getByText(expectedDueLabel)).toBeVisible();
   });
 
   // ---------------------------------------------------------------------------

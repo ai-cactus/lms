@@ -1,5 +1,5 @@
 /**
- * E2E spec: Issue #2 — "Start Course" and "Continue" on `/worker/trainings`
+ * E2E spec: Issue #2 — "Start" and "Continue" on `/worker/trainings`
  * used to jump straight into the player at `/learn/[id]`, skipping the course
  * preview entirely. `WorkerTrainingList.handleStartClick` now routes both
  * entry points through `/worker/courses/[id]` (CoursePreview in worker mode)
@@ -166,7 +166,7 @@ async function loginAs(page: Page, email: string, password: string): Promise<voi
 }
 
 test.describe('Worker trainings list routes through the course preview (Issue #2)', () => {
-  test('"Start Course" lands on /worker/courses/[id], and the preview\'s own Start button reaches /learn/[id]', async ({
+  test('"Start" lands on /worker/courses/[id], and the preview\'s own Start button reaches /learn/[id]', async ({
     page,
   }) => {
     test.setTimeout(90_000);
@@ -176,7 +176,9 @@ test.describe('Worker trainings list routes through the course preview (Issue #2
       await loginAs(page, seeded.email, seeded.password);
       await page.goto('/worker/trainings');
 
-      await page.getByRole('button', { name: 'Start Course' }).click();
+      // The trainings page opens on "My Courses", whose action column labels
+      // this "Start"; the preview page's own button is "Start Course".
+      await page.getByRole('button', { name: 'Start', exact: true }).click();
 
       // Never the old direct-to-player URL.
       await expect(page).toHaveURL(new RegExp(`/worker/courses/${seeded.courseId}$`), {
@@ -201,7 +203,7 @@ test.describe('Worker trainings list routes through the course preview (Issue #2
       await loginAs(page, seeded.email, seeded.password);
       await page.goto('/worker/trainings');
 
-      await page.getByRole('button', { name: 'Continue' }).click();
+      await page.getByRole('button', { name: 'Continue', exact: true }).click();
 
       await expect(page).toHaveURL(new RegExp(`/worker/courses/${seeded.courseId}$`), {
         timeout: 20000,
