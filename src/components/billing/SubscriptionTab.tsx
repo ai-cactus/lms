@@ -6,7 +6,7 @@ import { BILLING_PLANS, BillingCycle, canSelectPlan } from '@/lib/billing-plans'
 import type { PlanPriceMap } from '@/lib/billing-prices';
 import type { PlanChangeClassification } from '@/lib/billing-plan-change';
 import { getPlanCardPrice, getDiscountPercent, formatCents } from '@/lib/billing-price-format';
-import { Flame, Check, Play, AlertTriangle, CalendarClock, PauseCircle } from 'lucide-react';
+import { Flame, Check, AlertTriangle, CalendarClock, ChevronDown, PauseCircle } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -19,9 +19,22 @@ import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/alert';
 import { HCaptcha } from '@/components/ui';
 import { cn } from '@/lib/utils';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { MAX_PAUSE_MONTHS, getPauseState, hasPendingPause } from '@/lib/billing';
 
 type Tab = 'overview' | 'billing-history' | 'subscription' | 'payment-method';
+
+/** One entry in the status-aware "Update Plan" menu. */
+interface PlanAction {
+  label: string;
+  onSelect: () => void;
+  variant?: 'default' | 'destructive';
+}
 
 interface Props {
   orgStaffCount: number;
@@ -507,6 +520,101 @@ export default function SubscriptionTab({
     yearly: 'Yearly',
   };
 
+  // ── Subscription status → one status-aware "Update Plan" control ───────────
+  //
+  // This used to be four sibling cards, each with its own buttons, and the
+  // site-wide BillingPausedBanner added yet another resume button on top. A
+  // paused org therefore saw two competing controls on one screen. There is now
+  // exactly one action here, and the banner stands down on this route.
+  //
+  // Precedence: an active pause outranks a scheduled one, which outranks a
+  // scheduled cancellation. A cancellation scheduled UNDER a pause is still
+  // reported, as a second line, rather than being hidden by the pause.
+
+  const currentPlanName = BILLING_PLANS.find((p) => p.key === currentPlan)?.name;
+
+  const planStatus: {
+    heading: string;
+    notice: { icon: React.ReactNode; text: string } | null;
+    description: string;
+    /** Rendered under the description; the pause states can also be cancelling. */
+    footnote?: string;
+  } = isPaused
+    ? {
+        heading: pauseState === 'expired' ? 'Your pause has ended' : 'Your subscription is paused',
+        notice: null,
+        description:
+          pauseState === 'expired'
+            ? 'Restart your plan to restore access, or cancel your subscription.'
+            : pauseEndsAt
+              ? `All your data is safely stored. Paused until ${formatLongDate(pauseEndsAt)}.`
+              : 'All your data is safely stored until you restart your plan.',
+        footnote: isCancelScheduled
+          ? cancelDateLabel
+            ? `Your subscription is scheduled to cancel on ${cancelDateLabel}.`
+            : 'Your subscription is scheduled to cancel at the end of the billing period.'
+          : undefined,
+      }
+    : pendingPause && pauseStartsAt
+      ? {
+          heading: 'Pause scheduled',
+          notice: {
+            icon: <PauseCircle size={18} aria-hidden="true" />,
+            text: `Your subscription will pause on ${formatLongDate(pauseStartsAt)}`,
+          },
+          description: `Nothing changes until then — you keep full access for the period you have already paid for.${
+            pauseEndsAt ? ` Your pause would run until ${formatLongDate(pauseEndsAt)}.` : ''
+          }`,
+        }
+      : isCancelScheduled
+        ? {
+            heading: 'Your subscription is scheduled to cancel',
+            notice: {
+              icon: <AlertTriangle size={18} aria-hidden="true" />,
+              text: cancelDateLabel
+                ? `Cancels on ${cancelDateLabel}`
+                : 'Cancels at the end of the billing period',
+            },
+            description:
+              'You keep full access until then. Restart your subscription to keep it renewing automatically.',
+          }
+        : {
+            heading: `Your ${currentPlanName}${
+              billingCycleLabel ? ` - ${billingCycleLabel}` : ''
+            } subscription renews automatically${cancelDateLabel ? ` on ${cancelDateLabel}` : ''}`,
+            notice: null,
+            description: `Take a break for up to ${MAX_PAUSE_MONTHS} months, or cancel anytime — you can re-activate later at the regular price.`,
+          };
+
+  // Pause and Cancel both hand off to /dashboard/billing/cancel, which owns the
+  // duration picker, the retention copy and the confirmation modals. Restart is
+  // the only one resolved in place, because it needs no confirmation.
+  const goToCancelPage = () => router.push('/dashboard/billing/cancel');
+
+  const cancelAction: PlanAction = {
+    label: 'Cancel',
+    onSelect: goToCancelPage,
+    variant: 'destructive',
+  };
+
+  const planActions: PlanAction[] = isPaused
+    ? [
+        { label: 'Restart', onSelect: () => void handleResumeSubscription() },
+        // Already cancelling — offering Cancel again would be a no-op.
+        ...(isCancelScheduled ? [] : [cancelAction]),
+      ]
+    : pendingPause
+      ? [
+          { label: 'Cancel pause', onSelect: () => void handleResumeSubscription() },
+          ...(isCancelScheduled ? [] : [cancelAction]),
+        ]
+      : isCancelScheduled
+        ? [{ label: 'Restart', onSelect: () => void handleReactivateSubscription() }]
+        : [{ label: 'Pause', onSelect: goToCancelPage }, cancelAction];
+
+  const planActionBusy = resuming || reactivating;
+  const planActionError = resumeError ?? reactivateError;
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
@@ -775,153 +883,49 @@ export default function SubscriptionTab({
         </div>
       )}
 
-      {pendingPause && pauseStartsAt && (
+      {currentPlan && (
         <div className={statusCardClass}>
           <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
             <div>
-              <h3 className="text-base font-semibold text-foreground">Pause scheduled</h3>
-              <div className="mt-2 flex items-center gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3.5 py-2.5 text-[13px] text-warning">
-                <PauseCircle size={18} aria-hidden="true" />
-                Your subscription will pause on {formatLongDate(pauseStartsAt)}
-              </div>
-              <p className="mt-3 text-sm text-text-secondary">
-                Nothing changes until then — you keep full access for the period you have already
-                paid for.
-                {pauseEndsAt && ` Your pause would run until ${formatLongDate(pauseEndsAt)}.`}
-              </p>
-              {resumeError && (
+              <h3 className="text-base font-semibold text-foreground">{planStatus.heading}</h3>
+              {planStatus.notice && (
+                <div className="mt-2 flex items-center gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3.5 py-2.5 text-[13px] text-warning">
+                  {planStatus.notice.icon}
+                  {planStatus.notice.text}
+                </div>
+              )}
+              <p className="mt-3 text-sm text-text-secondary">{planStatus.description}</p>
+              {planStatus.footnote && (
+                <p className="mt-2 text-[13px] text-warning">{planStatus.footnote}</p>
+              )}
+              {planActionError && (
                 <p className="mt-2 text-[13px] text-error" role="alert">
-                  {resumeError}
+                  {planActionError}
                 </p>
               )}
             </div>
-            <Button
-              variant="outline"
-              loading={resuming}
-              disabled={resuming}
-              onClick={() => void handleResumeSubscription()}
-            >
-              Cancel pause
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {currentPlan && isPaused && (
-        <div className={statusCardClass}>
-          <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
-            <div>
-              <h3 className="text-base font-semibold text-foreground">
-                {pauseState === 'expired' ? 'Your pause has ended' : 'Your subscription is paused'}
-              </h3>
-              <p className="text-sm text-text-secondary">
-                {pauseState === 'expired'
-                  ? 'Continue your plan to restore access, or cancel your subscription.'
-                  : pauseEndsAt
-                    ? `All your data is safely stored. Paused until ${formatLongDate(pauseEndsAt)}.`
-                    : 'All your data is safely stored until you continue your plan.'}
-              </p>
-              {isCancelScheduled && (
-                <p className="mt-2 text-[13px] text-warning">
-                  {cancelDateLabel
-                    ? `Your subscription is scheduled to cancel on ${cancelDateLabel}.`
-                    : 'Your subscription is scheduled to cancel at the end of the billing period.'}
-                </p>
-              )}
-              {resumeError && (
-                <p className="mt-2 text-[13px] text-error" role="alert">
-                  {resumeError}
-                </p>
-              )}
-            </div>
-            <div className="flex gap-3">
-              {!isCancelScheduled && (
-                <Button variant="outline" onClick={() => router.push('/dashboard/billing/cancel')}>
-                  Cancel Subscription
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" loading={planActionBusy} disabled={planActionBusy}>
+                  Update Plan
+                  <ChevronDown className="size-4" aria-hidden="true" />
                 </Button>
-              )}
-              <Button
-                loading={resuming}
-                disabled={resuming}
-                onClick={() => void handleResumeSubscription()}
-              >
-                <Play className="size-4" aria-hidden="true" />
-                Continue Plan
-              </Button>
-            </div>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-[184px] rounded-xl p-1.5">
+                {planActions.map((action) => (
+                  <DropdownMenuItem
+                    key={action.label}
+                    variant={action.variant}
+                    onSelect={action.onSelect}
+                    className="cursor-pointer gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium"
+                  >
+                    {action.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
-      )}
-
-      {currentPlan && !isPaused && isCancelScheduled && (
-        <div className={statusCardClass}>
-          <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
-            <div>
-              <h3 className="text-base font-semibold text-foreground">
-                Your subscription is scheduled to cancel
-              </h3>
-              <div className="mt-2 flex items-center gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3.5 py-2.5 text-[13px] text-warning">
-                <AlertTriangle size={18} aria-hidden="true" />
-                {cancelDateLabel
-                  ? `Cancels on ${cancelDateLabel}`
-                  : 'Cancels at the end of the billing period'}
-              </div>
-              <p className="mt-3 text-sm text-text-secondary">
-                You keep full access until then. Resume your subscription to keep it renewing
-                automatically.
-              </p>
-              {reactivateError && (
-                <p className="mt-2 text-[13px] text-error" role="alert">
-                  {reactivateError}
-                </p>
-              )}
-            </div>
-            <Button
-              loading={reactivating}
-              disabled={reactivating}
-              onClick={() => void handleReactivateSubscription()}
-            >
-              <Play className="size-4" aria-hidden="true" />
-              Resume subscription
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {currentPlan && !isPaused && !isCancelScheduled && (
-        <>
-          <div className={statusCardClass}>
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-base font-semibold text-foreground">
-                  Your {BILLING_PLANS.find((p) => p.key === currentPlan)?.name}
-                  {billingCycleLabel ? ` - ${billingCycleLabel}` : ''} subscription renews
-                  automatically{cancelDateLabel ? ` on ${cancelDateLabel}` : ''}
-                </h3>
-                <p className="text-sm text-text-secondary">
-                  If you don&apos;t want to renew, you can pause or cancel your subscription.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className={statusCardClass}>
-            <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
-              <div>
-                <h3 className="text-base font-semibold text-foreground">
-                  Cancel or Pause Subscription
-                </h3>
-                <p className="text-sm text-text-secondary">
-                  Take a break for up to {MAX_PAUSE_MONTHS} months, or cancel anytime — you can
-                  re-activate later at the regular price.
-                </p>
-              </div>
-              <Button variant="outline" onClick={() => router.push('/dashboard/billing/cancel')}>
-                Cancel or Pause
-              </Button>
-            </div>
-          </div>
-        </>
       )}
 
       {/* ===== Plan-change confirmation ===== */}

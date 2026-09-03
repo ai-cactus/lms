@@ -9,10 +9,13 @@
  */
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+const { mockPathname } = vi.hoisted(() => ({ mockPathname: vi.fn(() => '/dashboard') }));
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ refresh: vi.fn() }),
+  usePathname: () => mockPathname(),
 }));
 
 vi.mock('@/lib/logger', () => ({
@@ -129,5 +132,42 @@ describe('BillingPausedBanner — fails safe when sessionStorage throws (#30)', 
     expect(screen.getByText('Your subscription is paused')).toBeInTheDocument();
 
     setItemSpy.mockRestore();
+  });
+});
+
+/**
+ * The billing page owns the real control — a status-aware "Update Plan" action
+ * at the bottom of its subscription tab. Rendering this banner there too put two
+ * resume buttons on one screen, which is what the team test reported.
+ */
+describe('BillingPausedBanner — stands down where the page owns the control', () => {
+  afterEach(() => {
+    mockPathname.mockReturnValue('/dashboard');
+  });
+
+  it('renders nothing on the billing page', () => {
+    mockPathname.mockReturnValue('/dashboard/billing');
+
+    const { container } = render(
+      <BillingPausedBanner pauseState="paused" pauseEndsAt="2026-09-01T00:00:00.000Z" />,
+    );
+
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('still renders on every other dashboard page', () => {
+    mockPathname.mockReturnValue('/dashboard/staff');
+
+    render(<BillingPausedBanner pauseState="paused" pauseEndsAt="2026-09-01T00:00:00.000Z" />);
+
+    expect(screen.getByRole('status')).toBeInTheDocument();
+  });
+
+  it('still renders on the separate cancel page, which has no resume control', () => {
+    mockPathname.mockReturnValue('/dashboard/billing/cancel');
+
+    render(<BillingPausedBanner pauseState="paused" pauseEndsAt="2026-09-01T00:00:00.000Z" />);
+
+    expect(screen.getByRole('status')).toBeInTheDocument();
   });
 });

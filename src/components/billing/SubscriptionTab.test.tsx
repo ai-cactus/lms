@@ -628,3 +628,139 @@ describe('SubscriptionTab — scheduled-change banner', () => {
     expect(props.onChangeTab).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * Team test 2026-09-03: the bottom of this tab was four sibling cards, each
+ * carrying its own buttons, while the site-wide BillingPausedBanner added yet
+ * another resume button above them — so a paused org saw two competing
+ * controls. There is now exactly ONE control, whose menu follows the
+ * subscription's status. (The banner's half of that fix is covered in
+ * BillingPausedBanner.test.tsx.)
+ */
+describe('SubscriptionTab — the single status-aware "Update Plan" control', () => {
+  const FUTURE = '2099-01-01T00:00:00.000Z';
+  const PAST = '2020-01-01T00:00:00.000Z';
+
+  async function openUpdatePlan() {
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /update plan/i }));
+    return user;
+  }
+
+  function menuItemNames(): string[] {
+    return screen.getAllByRole('menuitem').map((el) => el.textContent?.trim() ?? '');
+  }
+
+  it('offers Pause and Cancel while the subscription is simply active', async () => {
+    renderTab({ currentPlan: 'pro', hasLiveSubscription: true, billingCycle: 'yearly' });
+
+    await openUpdatePlan();
+
+    expect(menuItemNames()).toEqual(['Pause', 'Cancel']);
+  });
+
+  it('offers Restart and Cancel while paused', async () => {
+    renderTab({
+      currentPlan: 'pro',
+      hasLiveSubscription: true,
+      pausedAt: PAST,
+      pauseEndsAt: FUTURE,
+    });
+
+    expect(screen.getByText('Your subscription is paused')).toBeInTheDocument();
+    await openUpdatePlan();
+
+    expect(menuItemNames()).toEqual(['Restart', 'Cancel']);
+  });
+
+  it('offers Restart and Cancel once the pause has expired', async () => {
+    renderTab({ currentPlan: 'pro', hasLiveSubscription: true, pausedAt: PAST, pauseEndsAt: PAST });
+
+    expect(screen.getByText('Your pause has ended')).toBeInTheDocument();
+    await openUpdatePlan();
+
+    expect(menuItemNames()).toEqual(['Restart', 'Cancel']);
+  });
+
+  it('offers only Restart when a cancellation is already scheduled', async () => {
+    renderTab({ currentPlan: 'pro', hasLiveSubscription: true, cancelAtPeriodEnd: true });
+
+    expect(screen.getByText('Your subscription is scheduled to cancel')).toBeInTheDocument();
+    await openUpdatePlan();
+
+    expect(menuItemNames()).toEqual(['Restart']);
+  });
+
+  it('offers Cancel pause while a pause is scheduled but has not started', async () => {
+    renderTab({ currentPlan: 'pro', hasLiveSubscription: true, pauseStartsAt: FUTURE });
+
+    expect(screen.getByText('Pause scheduled')).toBeInTheDocument();
+    await openUpdatePlan();
+
+    expect(menuItemNames()).toEqual(['Cancel pause', 'Cancel']);
+  });
+
+  it('does not offer Cancel to a paused subscription that is already cancelling', async () => {
+    renderTab({
+      currentPlan: 'pro',
+      hasLiveSubscription: true,
+      pausedAt: PAST,
+      pauseEndsAt: FUTURE,
+      cancelAtPeriodEnd: true,
+      currentPeriodEnd: FUTURE,
+    });
+
+    await openUpdatePlan();
+
+    // Cancelling twice is a no-op, so the option is withheld — but the pending
+    // cancellation is still reported rather than hidden by the pause.
+    expect(menuItemNames()).toEqual(['Restart']);
+  });
+
+  it('renders exactly one action control, with none of the old per-state buttons', () => {
+    renderTab({
+      currentPlan: 'pro',
+      hasLiveSubscription: true,
+      pausedAt: PAST,
+      pauseEndsAt: FUTURE,
+    });
+
+    expect(screen.getAllByRole('button', { name: /update plan/i })).toHaveLength(1);
+    for (const legacy of [/cancel or pause/i, /^continue plan$/i, /^resume subscription$/i]) {
+      expect(screen.queryByRole('button', { name: legacy })).not.toBeInTheDocument();
+    }
+  });
+
+  it('Restart resumes in place rather than navigating away', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderTab({
+      currentPlan: 'pro',
+      hasLiveSubscription: true,
+      pausedAt: PAST,
+      pauseEndsAt: FUTURE,
+    });
+    const user = await openUpdatePlan();
+    await user.click(screen.getByRole('menuitem', { name: 'Restart' }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(String(fetchMock.mock.calls[0][0])).toContain('resume');
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it('Pause and Cancel hand off to the cancel page, which owns the confirmation flow', async () => {
+    renderTab({ currentPlan: 'pro', hasLiveSubscription: true });
+
+    const user = await openUpdatePlan();
+    await user.click(screen.getByRole('menuitem', { name: 'Pause' }));
+
+    expect(mockPush).toHaveBeenCalledWith('/dashboard/billing/cancel');
+  });
+
+  it('shows no control at all before the org has a plan', () => {
+    renderTab({ currentPlan: null });
+
+    expect(screen.queryByRole('button', { name: /update plan/i })).not.toBeInTheDocument();
+  });
+});
