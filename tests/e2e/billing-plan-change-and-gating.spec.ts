@@ -545,18 +545,15 @@ test.describe('Billing — resume refreshes Overview without a manual reload (De
         });
       });
 
-      // NOTE on locator scoping: while paused, the dashboard layout renders a
-      // SITE-WIDE BillingPausedBanner (src/components/billing/
-      // BillingPausedBanner.tsx) on every page, in addition to the billing
-      // page's own in-tab paused UI — both use the literal copy "Your
-      // subscription is paused" and both expose a "Continue Plan" button.
-      // The banner is server-rendered from the (unmocked) real DB state and
-      // stays paused for the rest of this test, since only the Stripe-bound
-      // mutation is intercepted, not the DB row itself. Use `.last()`
-      // throughout to target the billing page's own element (it always
-      // renders after the layout-level banner in DOM order) rather than the
-      // banner, and assert the FINAL state via OverviewTab's own unique copy
-      // instead of the (permanently-paused) shared banner text.
+      // NOTE on locator scoping: the site-wide BillingPausedBanner used to
+      // render here too, duplicating both the "Your subscription is paused"
+      // copy and the resume button, which is why this test scopes with
+      // `.last()`. That banner now stands down on /dashboard/billing (the page
+      // owns the control), so the duplication is gone — `.last()` is kept
+      // because it remains correct and costs nothing. The FINAL state is still
+      // asserted via OverviewTab's own unique copy: the DB row stays paused
+      // (only the Stripe-bound mutation is intercepted), so shared paused
+      // wording would be ambiguous.
       const OVERVIEW_PAUSED_TEXT = 'All your data is safely stored until you continue your plan.';
 
       // Land on Overview first (initialTab) — confirms the genuinely paused
@@ -576,8 +573,8 @@ test.describe('Billing — resume refreshes Overview without a manual reload (De
       // ?tab=subscription replace committed afterward and clobbered it).
       await page.getByRole('tab', { name: 'Subscription' }).click();
       await expect(page).toHaveURL(/[?&]tab=subscription/);
-      await expect(page.getByRole('button', { name: 'Continue Plan' }).last()).toBeVisible();
-      await page.getByRole('button', { name: 'Continue Plan' }).last().click();
+      await expect(page.getByRole('button', { name: 'Update Plan' }).last()).toBeVisible();
+      await updatePlan(page, 'Restart');
 
       // handleResumeSubscription auto-navigates to Overview on success. This is
       // a client-side (History API) route change with no full page load, so
@@ -687,6 +684,18 @@ async function setSubscriptionSchedule(
  * "Continue Plan" / "Cancel Subscription" button lookup to the SAME card,
  * rather than the banner's own button.
  */
+/**
+ * The subscription tab's bottom card carries ONE status-aware control: an
+ * "Update Plan" button whose menu follows the subscription's state (Restart /
+ * Pause / Cancel / Cancel pause). It replaced the four per-state cards that
+ * each had their own buttons — "Continue Plan" and "Resume subscription" among
+ * them.
+ */
+async function updatePlan(page: Page, action: 'Restart' | 'Pause' | 'Cancel' | 'Cancel pause') {
+  await page.getByRole('button', { name: 'Update Plan' }).click();
+  await page.getByRole('menuitem', { name: action, exact: true }).click();
+}
+
 function subscriptionTabPausedCard(page: Page) {
   const heading = page.getByRole('heading', { name: 'Your subscription is paused' });
   return { heading, card: heading.locator('..').locator('..') };
@@ -825,9 +834,8 @@ test.describe('Billing — resume auto-releases a pending schedule instead of bl
       const { heading, card } = subscriptionTabPausedCard(page);
       await expect(heading).toBeVisible();
 
-      const resumeButton = card.getByRole('button', { name: 'Continue Plan' });
-      await expect(resumeButton).toBeVisible();
-      await resumeButton.click();
+      await expect(card.getByRole('button', { name: 'Update Plan' })).toBeVisible();
+      await updatePlan(page, 'Restart');
 
       await expect(page).toHaveURL(/[?&]tab=overview/, { timeout: 20000 });
       // Real, unmocked overview re-read (no stripeCustomerId on this freshly
@@ -882,9 +890,8 @@ test.describe('Billing — resume auto-releases a pending schedule instead of bl
         });
       });
 
-      const resumeButton = card.getByRole('button', { name: 'Continue Plan' });
-      await expect(resumeButton).toBeVisible();
-      await resumeButton.click();
+      await expect(card.getByRole('button', { name: 'Update Plan' })).toBeVisible();
+      await updatePlan(page, 'Restart');
 
       // The old bug: this click would 409 with "pending plan change ...
       // cancel it first" and leave the org stuck paused. The fix releases the
@@ -893,10 +900,15 @@ test.describe('Billing — resume auto-releases a pending schedule instead of bl
         page.getByRole('alert').filter({ hasText: /cancel it first|pending plan change/i }),
       ).toHaveCount(0);
       await expect(page).toHaveURL(/[?&]tab=overview/, { timeout: 20000 });
-      // Real proof the pause cleared server-side: the layout-level, DB-driven
-      // banner disappears (checking the SubscriptionTab heading here would be
-      // vacuous — that tab is unmounted once activeTab flips to 'overview').
-      await expect(page.getByRole('status')).toHaveCount(0);
+      // Real proof the pause cleared server-side. The layout-level banner is no
+      // longer usable for this — it stands down on /dashboard/billing, so
+      // asserting it is absent would pass whether or not the pause cleared.
+      // OverviewTab re-reads the DB on mount, so its paused copy is the honest
+      // signal (the SubscriptionTab heading would be vacuous either way — that
+      // tab unmounts once activeTab flips to 'overview').
+      await expect(
+        page.getByText('All your data is safely stored until you continue your plan.'),
+      ).toHaveCount(0);
 
       await page.goto('/dashboard/billing?tab=subscription');
       await expect(page.getByText('Plan change scheduled')).toHaveCount(0);

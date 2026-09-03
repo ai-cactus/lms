@@ -371,8 +371,10 @@ test.describe('Remove staffer with in-flight training, then re-invite — clean 
         await reloginPage.waitForLoadState('networkidle');
 
         // The re-invite (a plain staff invite, not a course invite) parks no
-        // course — the in-flight course must NOT reappear on the Active tab.
-        await expect(reloginPage.getByRole('button', { name: /^active/i })).toContainText('0');
+        // course — the in-flight course must NOT reappear anywhere on the list.
+        // "My Courses" is the landing tab and holds every enrollment, so its
+        // count is the whole picture.
+        await expect(reloginPage.getByRole('button', { name: /^my courses/i })).toContainText('1');
         await expect(reloginPage.getByText(seeded.inFlightCourseTitle)).toHaveCount(0);
         // The completed course's history survives the removal — it lives under
         // the Completed tab (a plain button toggle), which must be selected

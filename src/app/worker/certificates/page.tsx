@@ -15,7 +15,7 @@ export default async function WorkerCertificatesPage() {
       <CertificateCardList
         certificates={certificates}
         title="Certificates"
-        description="Certificates you have earned will be displayed here"
+        description="Here's a brief overview of your certificates on the platform."
       />
     </div>
   );

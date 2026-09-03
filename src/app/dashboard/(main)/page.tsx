@@ -44,13 +44,27 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const { facility: facilityParam } = await searchParams;
   const scope = await resolveFacilityScopeSelection(session, facilityParam);
 
-  // Roster-wide training and compliance data — same gate as the Status Tracker
-  // widget below, so finance (an admin-tier role) keeps its own dashboard.
-  const canSeeRosterMetrics = can(dbRoleToRoleKey(role as Role), 'assignment.read');
+  const roleKey = dbRoleToRoleKey(role as Role);
+
+  // Two gates, deliberately separate — they used to be one, which is why finance
+  // never reached the All Facilities view.
+  //
+  // GLOBAL VIEW carries per-facility AGGREGATES only (counts, percentages, risk
+  // levels — see GlobalDashboardData); no staff name or email appears in it.
+  // Finance oversees the organisation and needs that org-wide picture, so the
+  // gate is "oversees training rosters OR oversees the organisation's finances".
+  // Expressed as verbs rather than a role list: `enrollment.read` would have
+  // been the obvious swap and is WRONG — every worker role holds it to read
+  // their own enrollments, which would open this to the whole org.
+  const canSeeGlobalDashboard = can(roleKey, 'assignment.read') || can(roleKey, 'billing.read');
+
+  // STATUS TRACKER rows carry `workerName` and `workerEmail`. That is the D-01
+  // boundary finance must stay outside of, so this keeps the narrower verb.
+  const canSeeRosterMetrics = can(roleKey, 'assignment.read');
 
   // A comparison is the Global View narrowed to the selected facilities, so it
   // takes the same branch as the unscoped request.
-  if (canSeeRosterMetrics && scope.mode !== 'single') {
+  if (canSeeGlobalDashboard && scope.mode !== 'single') {
     const globalData = await getGlobalDashboardData();
     // `facilities` is what THIS viewer can see, so one condition covers every
     // case: a single-facility organisation, and a role bound to one facility,

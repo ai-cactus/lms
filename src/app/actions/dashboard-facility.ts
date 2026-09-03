@@ -179,7 +179,12 @@ export async function getGlobalDashboardData(): Promise<GlobalDashboardData> {
 
   const { organizationId, role } = session.user;
 
-  if (!can(dbRoleToRoleKey(role), 'assignment.read')) {
+  // Mirrors the page's own gate: aggregates only (no staff name or email), so
+  // finance qualifies via `billing.read`. NOT `enrollment.read` — every worker
+  // role holds that, and this is a `'use server'` export a worker could POST to
+  // directly.
+  const roleKey = dbRoleToRoleKey(role);
+  if (!can(roleKey, 'assignment.read') && !can(roleKey, 'billing.read')) {
     logger.warn({
       msg: '[dashboard] Global facility dashboard denied',
       userId: session.user.id,

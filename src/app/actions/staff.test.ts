@@ -1493,6 +1493,33 @@ describe('setStaffFacilities', () => {
     expect(mockOrgUserFacilityUpdateMany).not.toHaveBeenCalled();
   });
 
+  // The check used to name `owner` alone, which left every other org-wide role
+  // reassignable: `resolveDataFacilityIds` returns null for them too, so the
+  // write changed no scope while the UI implied it had.
+  it.each(['admin', 'hr', 'clinical_director', 'finance'])(
+    'rejects reassigning a %s — the role is organization-wide, not facility-bound',
+    async (role) => {
+      mockOrgUserFindUnique.mockResolvedValue({ organizationId: 'org-1', role });
+
+      const result = await setStaffFacilities('target-global', ['fac-1']);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/organization-wide role/i);
+      expect(mockOrgUserFacilityUpdateMany).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['supervisor', 'nurse', 'front_desk_admin'])(
+    'still reassigns a facility-bound %s',
+    async (role) => {
+      mockOrgUserFindUnique.mockResolvedValue({ organizationId: 'org-1', role });
+
+      const result = await setStaffFacilities('target-bound', ['fac-1']);
+
+      expect(result).toEqual({ success: true });
+    },
+  );
+
   it('rejects an empty facility list rather than clearing every assignment', async () => {
     const result = await setStaffFacilities('target-1', []);
 
