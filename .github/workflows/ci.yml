@@ -11,8 +11,19 @@ name: CI
 # CI keeps only what a local hook cannot honestly replace:
 #   PR -> dev              : Static Checks + Build Check          (~5 min)
 #   PR -> staging | main   : the above + full unit suite + E2E    (~22 min)
+#   dependabot/** -> any   : the full tier too, see below         (~22 min)
 #   any PR with `run-e2e`  : E2E on demand
 #   workflow_dispatch      : E2E against any branch
+#
+# ── Why dependabot is exempt from the light tier ────────────────────────────
+# The light tier assumes a human reviews the diff and that `.husky/pre-push`
+# already ran the heavy tier locally. Neither holds for dependabot: nobody
+# pushes its branches, so the hook never fires, and a lockfile diff is not
+# reviewable by eye. On 2026-09-02 #567 merged 16 bumps into dev — Prisma,
+# Next, zod, @react-pdf/renderer, pdfkit — having run only lint and build.
+# A promotion PR is a bad place to discover that a dependency broke something.
+# Actions minutes are fully discounted on this plan, so the cost is
+# wall-clock, not money.
 # See CONTRIBUTING.md for the full policy.
 on:
   pull_request:
@@ -59,6 +70,7 @@ jobs:
         || github.base_ref == 'staging'
         || github.base_ref == 'main'
         || github.base_ref == 'master'
+        || startsWith(github.head_ref, 'dependabot/')
         || contains(github.event.pull_request.labels.*.name, 'run-e2e') }}
 
   # ──────────────────────────────────────────────
@@ -81,6 +93,7 @@ jobs:
       || github.base_ref == 'staging'
       || github.base_ref == 'main'
       || github.base_ref == 'master'
+      || startsWith(github.head_ref, 'dependabot/')
       || contains(github.event.pull_request.labels.*.name, 'run-e2e')) }}
     env:
       # Dummy values sufficient for Next.js compilation.
@@ -136,6 +149,7 @@ jobs:
       || github.base_ref == 'staging'
       || github.base_ref == 'main'
       || github.base_ref == 'master'
+      || startsWith(github.head_ref, 'dependabot/')
       || contains(github.event.pull_request.labels.*.name, 'run-e2e') }}
 
     services:
