@@ -24,6 +24,7 @@ vi.mock('@/lib/logger', () => ({
 }));
 
 import BillingPausedBanner from './BillingPausedBanner';
+import { DASHBOARD_BANNER_SHELL } from '@/components/dashboard/banner-shell';
 
 /** Mirrors the component's own `dismissalKey` (not exported) to assert on storage. */
 function dismissalKey(pauseState: string, pauseEndsAt: string | null): string {
@@ -169,5 +170,34 @@ describe('BillingPausedBanner — stands down where the page owns the control', 
     render(<BillingPausedBanner pauseState="paused" pauseEndsAt="2026-09-01T00:00:00.000Z" />);
 
     expect(screen.getByRole('status')).toBeInTheDocument();
+  });
+});
+
+/**
+ * Both site-wide banners render INSIDE the dashboard's padded scroll container,
+ * so they must read as contained cards. The billing one kept a full-bleed strip
+ * style (border-b, no margin) from when it rendered outside that container: it
+ * looked unpadded, and because only the status-tracker banner carried a bottom
+ * margin, a stack of both had no gap between them.
+ */
+describe('BillingPausedBanner — shares the dashboard banner shell', () => {
+  it('is a contained card with a bottom margin, not a full-bleed strip', () => {
+    render(<BillingPausedBanner pauseState="paused" pauseEndsAt="2026-09-01T00:00:00.000Z" />);
+
+    const banner = screen.getByRole('status');
+    expect(banner).toHaveClass(...DASHBOARD_BANNER_SHELL.split(' '));
+    // The strip leftovers that caused the report.
+    expect(banner.className).not.toContain('border-b ');
+    expect(banner.className.split(' ')).not.toContain('border-b');
+  });
+
+  it('keeps its own tone while sharing the shell', () => {
+    const { rerender } = render(
+      <BillingPausedBanner pauseState="paused" pauseEndsAt="2026-09-01T00:00:00.000Z" />,
+    );
+    expect(screen.getByRole('status')).toHaveClass('bg-warning/10');
+
+    rerender(<BillingPausedBanner pauseState="expired" pauseEndsAt={null} />);
+    expect(screen.getByRole('status')).toHaveClass('bg-error/10');
   });
 });

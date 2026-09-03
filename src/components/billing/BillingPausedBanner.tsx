@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { PauseCircle, Play, Loader2, X } from 'lucide-react';
 import { logger } from '@/lib/logger';
 import type { PauseState } from '@/lib/billing';
+import { DASHBOARD_BANNER_SHELL } from '@/components/dashboard/banner-shell';
 
 /**
  * The states this banner can actually be in. `getPauseState` never returns
@@ -124,7 +125,7 @@ export default function BillingPausedBanner({
   return (
     <div
       className={[
-        'flex flex-col items-start gap-3 border-b px-5 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-8',
+        DASHBOARD_BANNER_SHELL,
         expired ? 'border-error/30 bg-error/10' : 'border-warning/30 bg-warning/10',
       ].join(' ')}
       role="status"
