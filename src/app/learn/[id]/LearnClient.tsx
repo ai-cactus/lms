@@ -923,10 +923,11 @@ export default function LearnClient({ initialData }: LearnClientProps) {
                 }}
                 hideActions={enrollmentIsSigned}
                 passed={quizResults.passed}
-                // Both halves are server verdicts: `attestEligible` (role +
-                // not-yet-attested) from the learn payload, `passed` from
-                // whichever server produced the result on screen — the payload
-                // on reload, the submit route on a fresh attempt.
+                // Both halves are server verdicts: `attestEligible`
+                // (owns-this-enrollment + not-yet-attested) from the learn
+                // payload, `passed` from whichever server produced the result on
+                // screen — the payload on reload, the submit route on a fresh
+                // attempt.
                 canAttest={attestEligible && quizResults.passed}
                 userRole={userData?.role}
                 organizationName={userData?.organizationName}

@@ -1,4 +1,4 @@
-import { isAdminRole, isWorkerRole } from '@/lib/rbac/role-utils';
+import { isAdminRole } from '@/lib/rbac/role-utils';
 import prisma from '@/lib/prisma';
 import { getPortalSessions } from '@/lib/auth/portal-sessions';
 import { logger } from '@/lib/logger';
@@ -452,13 +452,19 @@ export async function getLearnPayload(courseId: string): Promise<LearnPayload | 
       };
     }
 
-    // ONE server-side verdict for the attestation gate. The learn client used to
-    // re-derive the viewer's worker-ness from a payload role that fell back to
-    // the literal 'worker' — a value that is NOT in WORKER_ROLES — so whenever
-    // the membership lookup came back null the Attest button silently vanished
-    // and the learner was left with "Done" as the only option.
-    const attestEligible =
-      isWorkerRole(activeMembership?.role) && effectiveEnrollment.status !== 'attested';
+    // ONE server-side verdict for the attestation gate, keyed on OWNERSHIP —
+    // exactly what `attestCourse` enforces (it checks that one of the caller's
+    // sessions owns the enrollment, and never looks at their role). Attestation
+    // is the enrollment owner's own compliance act, so any role can owe one:
+    // gating this on `isWorkerRole` left every manager-category learner who
+    // passed the assessment with "Done" as their only option, because
+    // `enterLearnMode` mints a worker session that carries the manager's real
+    // role (see session-bridge.ts).
+    //
+    // `enrollment` is only ever looked up by the viewer's OWN membership, so its
+    // presence is the ownership check; null is the admin preview, which has no
+    // enrollment to attest.
+    const attestEligible = enrollment !== null && effectiveEnrollment.status !== 'attested';
 
     return {
       course: {
