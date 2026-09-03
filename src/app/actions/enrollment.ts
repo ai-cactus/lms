@@ -1357,3 +1357,141 @@ export async function removeWorkerAssignment(
 
   return { success: true };
 }
+
+// ── Role-target assignment management ────────────────────────────────────────
+
+export interface RoleAssignmentRow {
+  id: string;
+  courseId: string;
+  courseTitle: string;
+  targetRoles: UserRole[];
+  dueWindowDays: number | null;
+  /** The assignment reaches only its recorded facilities when true. */
+  facilityScoped: boolean;
+  /** Enrollments this assignment has produced, within the caller's own scope. */
+  enrolledCount: number;
+  createdAt: Date;
+}
+
+/**
+ * The org's live role-target assignments — the rows that auto-enroll anyone who
+ * GAINS a targeted role later (see `enrollUserForRoleTargets`, plus the nightly
+ * reconcile pre-pass that backstops it).
+ *
+ * These were previously write-only: the course wizard created them and nothing
+ * listed, edited or removed them, so a new staff account could pick up courses
+ * with no way for an admin to see why or stop it. That is what this answers.
+ *
+ * The counts are narrowed to the caller's facilities — the rows themselves are
+ * org-level configuration, but "how many people did this enroll" is subject data.
+ */
+export async function listRoleAssignments(): Promise<RoleAssignmentRow[]> {
+  const session = await adminAuth();
+  const organizationId = session?.user?.organizationId;
+  const roleKey = session?.user?.role ? dbRoleToRoleKey(session.user.role) : null;
+
+  if (!session?.user?.id || !organizationId || !roleKey || !can(roleKey, 'assignment.read')) {
+    logger.warn({
+      msg: '[assignment] Role-assignment list denied',
+      userId: session?.user?.id,
+      role: session?.user?.role,
+    });
+    throw new Error('Unauthorized');
+  }
+
+  const assignments = await prisma.courseAssignment.findMany({
+    // `targetRoles` is the authoritative list; a revoked row keeps its settings
+    // but empties this, so `isEmpty: false` is exactly "still auto-enrolling".
+    where: { organizationId, targetRoles: { isEmpty: false } },
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true,
+      courseId: true,
+      targetRoles: true,
+      dueWindowDays: true,
+      facilityScoped: true,
+      createdAt: true,
+      course: { select: { title: true } },
+    },
+  });
+
+  if (assignments.length === 0) return [];
+
+  const dataFacilityIds = await resolveDataFacilityIds(session);
+
+  // One grouped query rather than a count per row.
+  const counts = await prisma.enrollment.groupBy({
+    by: ['assignmentId'],
+    where: {
+      assignmentId: { in: assignments.map((assignment) => assignment.id) },
+      organizationUser: { organizationId, ...staffFacilityWhere(dataFacilityIds) },
+    },
+    _count: { _all: true },
+  });
+  const countByAssignment = new Map(counts.map((row) => [row.assignmentId, row._count._all]));
+
+  return assignments.map((assignment) => ({
+    id: assignment.id,
+    courseId: assignment.courseId,
+    courseTitle: assignment.course.title,
+    targetRoles: assignment.targetRoles,
+    dueWindowDays: assignment.dueWindowDays,
+    facilityScoped: assignment.facilityScoped,
+    enrolledCount: countByAssignment.get(assignment.id) ?? 0,
+    createdAt: assignment.createdAt,
+  }));
+}
+
+/**
+ * Stop a role-target assignment from reaching FUTURE role holders.
+ *
+ * Clears the role-target columns rather than deleting the row: both the live
+ * hook (`targetRoles: { has: role }`) and the nightly reconcile pre-pass
+ * (`targetRole: { not: null }`) stop matching, while the row survives to keep
+ * carrying the schedule/deadline settings that `enrollInviteCourses` resolves
+ * per course. Existing enrollments are deliberately left alone — revoking the
+ * rule must not retract training people have already started.
+ */
+export async function revokeRoleAssignment(
+  assignmentId: string,
+): Promise<{ success: boolean; error?: string }> {
+  const session = await adminAuth();
+  const organizationId = session?.user?.organizationId;
+  const roleKey = session?.user?.role ? dbRoleToRoleKey(session.user.role) : null;
+
+  // `assignment.delete`, not `.create`: a supervisor may target roles within
+  // their own scope but may not revoke an assignment the org relies on.
+  if (!session?.user?.id || !organizationId || !roleKey || !can(roleKey, 'assignment.delete')) {
+    logger.warn({
+      msg: '[assignment] Role-assignment revoke denied',
+      userId: session?.user?.id,
+      role: session?.user?.role,
+    });
+    return { success: false, error: 'Unauthorized' };
+  }
+
+  // Tenancy: scoping the lookup means another org's id is simply not found.
+  const assignment = await prisma.courseAssignment.findFirst({
+    where: { id: assignmentId, organizationId },
+    select: { id: true, courseId: true },
+  });
+  if (!assignment) {
+    return { success: false, error: 'Assignment not found.' };
+  }
+
+  await prisma.courseAssignment.update({
+    where: { id: assignment.id },
+    data: { targetRole: null, targetRoles: [] },
+  });
+
+  logger.info({
+    msg: '[assignment] Role targets revoked — future role holders will not be auto-enrolled',
+    assignmentId: assignment.id,
+    courseId: assignment.courseId,
+    organizationId,
+    userId: session.user.id,
+  });
+
+  revalidatePath('/dashboard/courses');
+  return { success: true };
+}

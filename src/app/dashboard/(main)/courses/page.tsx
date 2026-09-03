@@ -8,6 +8,10 @@ import { hasActiveBilling } from '@/lib/billing';
 import { logger } from '@/lib/logger';
 import { Button } from '@/components/ui/button';
 import CoursesListClient from '@/components/dashboard/courses/CoursesListClient';
+import RoleAssignmentsCard from '@/components/dashboard/courses/RoleAssignmentsCard';
+import { listRoleAssignments } from '@/app/actions/enrollment';
+import { can } from '@/lib/rbac/permissions';
+import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
 import type { CourseWithStats } from '@/types/course';
 
 export const dynamic = 'force-dynamic';
@@ -55,7 +59,13 @@ export default async function CoursesPage() {
   // that is not paused. past_due, canceled and paused are treated as inactive.
   const hasBilling = hasActiveBilling(organization?.subscription);
 
-  const [ownCourses, catalogCourses] = await Promise.all([
+  const roleKey = dbRoleToRoleKey(ctx.role);
+  // Read-only for a viewer without `assignment.read` — the list itself is org
+  // configuration, but seeing WHY new staff arrive pre-enrolled is the point, so
+  // it degrades to nothing rather than taking the page down.
+  const canReadAssignments = !!roleKey && can(roleKey, 'assignment.read');
+
+  const [ownCourses, catalogCourses, roleAssignments] = await Promise.all([
     getCourses(),
     // Video courses are owned by the organization from creation, but that
     // ownership is what the plan buys: an org without an active subscription
@@ -70,6 +80,12 @@ export default async function CoursesPage() {
           return [] as CourseWithStats[];
         })
       : Promise.resolve<CourseWithStats[]>([]),
+    canReadAssignments
+      ? listRoleAssignments().catch((err) => {
+          logger.error({ msg: '[assignment] Role-assignment list failed', err, organizationId });
+          return [];
+        })
+      : Promise.resolve([]),
   ]);
 
   // One list, no "available" step. Own and adopted rows win the de-dupe: they
@@ -78,5 +94,15 @@ export default async function CoursesPage() {
   const seen = new Set(ownCourses.map((course) => course.id));
   const courses = [...ownCourses, ...catalogCourses.filter((course) => !seen.has(course.id))];
 
-  return <CoursesListClient courses={courses} hasBilling={hasBilling} viewerRole={ctx.role} />;
+  return (
+    <div className="flex flex-col gap-6">
+      <CoursesListClient courses={courses} hasBilling={hasBilling} viewerRole={ctx.role} />
+      {canReadAssignments && (
+        <RoleAssignmentsCard
+          assignments={roleAssignments}
+          canRevoke={!!roleKey && can(roleKey, 'assignment.delete')}
+        />
+      )}
+    </div>
+  );
 }
