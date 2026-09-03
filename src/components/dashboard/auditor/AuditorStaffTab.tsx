@@ -34,8 +34,13 @@ import {
 import { cn } from '@/lib/utils';
 
 interface AuditorStaffTabProps {
-  /** Population an "Export all" covers — every membership in the org. */
+  /** Population an "Export all" covers — every membership the caller may read. */
   totalStaff: number;
+  /**
+   * The caller reads only their own facilities' staff, so "All Staffs" would
+   * overstate what this table and its export contain.
+   */
+  facilityScoped?: boolean;
 }
 
 interface PendingExport {
@@ -52,7 +57,12 @@ function initials(name: string): string {
   return `${first}${last}`.toUpperCase();
 }
 
-export default function AuditorStaffTab({ totalStaff }: AuditorStaffTabProps) {
+export default function AuditorStaffTab({
+  totalStaff,
+  facilityScoped = false,
+}: AuditorStaffTabProps) {
+  const heading = facilityScoped ? 'Facility Staff' : 'All Staffs';
+  const exportAllLabel = facilityScoped ? 'Facility staff report' : 'All staff report';
   const [staff, setStaff] = useState<AuditorStaffRow[]>([]);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -93,7 +103,7 @@ export default function AuditorStaffTab({ totalStaff }: AuditorStaffTabProps) {
   return (
     <div className={auditCard}>
       <div className={auditCardHeader}>
-        <h2 className={auditCardTitle}>All Staffs</h2>
+        <h2 className={auditCardTitle}>{heading}</h2>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className={auditSearchWrap}>
             <Input
@@ -110,7 +120,7 @@ export default function AuditorStaffTab({ totalStaff }: AuditorStaffTabProps) {
             variant="outline"
             className={cn(auditOutlineButton, 'shrink-0 text-primary')}
             disabled={Boolean(activeJob)}
-            onClick={() => setPending({ label: 'All staff report', count: totalStaff })}
+            onClick={() => setPending({ label: exportAllLabel, count: totalStaff })}
           >
             <Upload className="size-3.5" />
             Export all
@@ -128,7 +138,9 @@ export default function AuditorStaffTab({ totalStaff }: AuditorStaffTabProps) {
           subMessage={
             search
               ? `No results matching ‘${search}’`
-              : 'Staff will appear here once they are added to your organization.'
+              : facilityScoped
+                ? 'Staff will appear here once they are added to your facilities.'
+                : 'Staff will appear here once they are added to your organization.'
           }
         />
       ) : (

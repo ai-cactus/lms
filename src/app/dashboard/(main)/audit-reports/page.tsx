@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { ChevronRight } from 'lucide-react';
 import prisma from '@/lib/prisma';
 import { requirePermission } from '@/lib/rbac/require-permission';
+import { isOrgWideFacilityRole } from '@/lib/facility/scope';
 import { getAuditorOverviewStats } from '@/app/actions/auditor';
 import { Button } from '@/components/ui/button';
 import AuditorPackClient from '@/components/dashboard/auditor/AuditorPackClient';
@@ -69,5 +70,11 @@ export default async function AuditorPackPage() {
 
   const stats = await getAuditorOverviewStats();
 
-  return <AuditorPackClient stats={stats} />;
+  // Every figure below the catalogue is narrowed to the caller's facilities for
+  // a facility-bound role, so the copy must not keep promising the whole org.
+  // Mirrors `resolveDataFacilityIds`'s own first branch, so the label and the
+  // query can never disagree about which one the reader is looking at.
+  const facilityScoped = !isOrgWideFacilityRole(ctx.role);
+
+  return <AuditorPackClient stats={stats} facilityScoped={facilityScoped} />;
 }

@@ -25,8 +25,16 @@ vi.mock('next/navigation', () => ({ redirect: mockRedirect }));
 vi.mock('next/image', () => ({ default: ({ alt }: { alt: string }) => <img alt={alt} /> }));
 vi.mock('@/app/actions/auditor', () => ({ getAuditorOverviewStats: mockGetStats }));
 vi.mock('@/components/dashboard/auditor/AuditorPackClient', () => ({
-  default: ({ stats }: { stats: { totalCourses: number } }) => (
-    <div data-testid="auditor-pack-client">courses {stats.totalCourses}</div>
+  default: ({
+    stats,
+    facilityScoped,
+  }: {
+    stats: { totalCourses: number };
+    facilityScoped?: boolean;
+  }) => (
+    <div data-testid="auditor-pack-client" data-facility-scoped={String(facilityScoped)}>
+      courses {stats.totalCourses}
+    </div>
   ),
 }));
 
@@ -124,6 +132,43 @@ describe('Audit Reports page — billing gate', () => {
 
       await expect(AuditorPackPage()).resolves.toBeTruthy();
       expect(mockRedirect).not.toHaveBeenCalled();
+    },
+  );
+});
+
+/**
+ * The page's own figures are facility-narrowed for a facility-bound role, so it
+ * must tell the client which reading it is showing. The flag mirrors
+ * `resolveDataFacilityIds`'s first branch — see the page for why they are kept
+ * in step rather than derived independently.
+ */
+describe('Audit Reports page — facility-scope flag', () => {
+  beforeEach(() => {
+    prismaMock.organization.findUnique.mockResolvedValue({ hasAuditorAccess: true });
+  });
+
+  it('marks a supervisor’s view as facility-scoped', async () => {
+    mockAuth.mockResolvedValue(session('supervisor'));
+
+    render(await AuditorPackPage());
+
+    expect(screen.getByTestId('auditor-pack-client')).toHaveAttribute(
+      'data-facility-scoped',
+      'true',
+    );
+  });
+
+  it.each(['owner', 'admin', 'hr', 'clinical_director'])(
+    'leaves a %s view org-wide',
+    async (role) => {
+      mockAuth.mockResolvedValue(session(role));
+
+      render(await AuditorPackPage());
+
+      expect(screen.getByTestId('auditor-pack-client')).toHaveAttribute(
+        'data-facility-scoped',
+        'false',
+      );
     },
   );
 });
