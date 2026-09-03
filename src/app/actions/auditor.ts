@@ -3,9 +3,8 @@
 import { auth } from '@/auth';
 import { dbRoleToRoleKey, getRoleDisplayName } from '@/lib/rbac/role-utils';
 import { can, type Permission } from '@/lib/rbac/permissions';
-import { resolveAuditFacilityIds } from '@/lib/audit-reports/scope';
+import { resolveDataFacilityIds, staffFacilityWhere } from '@/lib/facility/staff-where';
 import { orgCourseWhere } from '@/lib/course/org-scope';
-import type { Prisma } from '@/generated/prisma/client';
 import prisma from '@/lib/prisma';
 import { logger } from '@/lib/logger';
 import { startedAtWhere, type AuditDateRangeInput } from '@/lib/audit-reports/date-range';
@@ -80,13 +79,14 @@ async function requireAuditorSession(permission: Permission) {
   }
   // D-01 + #17. `subjectWhere` narrows WHOSE records appear; the course
   // catalogue is org-level and is deliberately never narrowed by it.
-  // `resolveAuditFacilityIds` — not `resolveDataFacilityIds` — because this
-  // surface is deliberately org-wide for supervisors; see its module comment
-  // for why that widening must not be copied anywhere that writes.
-  const facilityIds = await resolveAuditFacilityIds(session);
-  const subjectWhere: Prisma.OrganizationUserWhereInput = facilityIds
-    ? { facilities: { some: { facilityId: { in: facilityIds }, active: true } } }
-    : {};
+  //
+  // A supervisor is facility-scoped here like everywhere else (team test
+  // 2026-09-03). This surface used to widen them to the whole org via a local
+  // `resolveAuditFacilityIds`, which put the page out of step with the rest of
+  // the product AND broke their export outright: `export/start` stamped the
+  // widened scope onto the job while the status/download routes re-derived the
+  // narrow one and refused any job whose scope theirs did not contain.
+  const subjectWhere = staffFacilityWhere(await resolveDataFacilityIds(session));
 
   return { userId: session.user.id, organizationId, subjectWhere };
 }
