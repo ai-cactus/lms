@@ -1,7 +1,7 @@
 /**
  * Unit tests for src/app/actions/dashboard-facility.ts — getGlobalDashboardData.
  *
- * Priorities: the `assignment.read` RBAC gate, supervisor narrowing to their
+ * Priorities: the RBAC gate (rosters OR billing), supervisor narrowing to their
  * accessible facilities (vs org-wide roles aggregating everything), the
  * zero-facility early exit, and that the fixed-size Promise.all result is wired
  * into the right output buckets without any facility-by-facility looping.
@@ -145,14 +145,12 @@ describe('getGlobalDashboardData — auth & RBAC gate', () => {
     await expect(getGlobalDashboardData()).rejects.toThrow('Unauthorized');
   });
 
-  it('throws Forbidden for a role without assignment.read (e.g. finance)', async () => {
-    mockAuth.mockResolvedValue(baseSession({ role: 'finance' }));
-    await expect(getGlobalDashboardData()).rejects.toThrow('Forbidden');
-    expect(mockListAccessibleFacilities).not.toHaveBeenCalled();
-  });
-
-  it.each(['owner', 'admin', 'supervisor', 'hr', 'clinical_director'] as const)(
-    'allows role=%s (holds assignment.read)',
+  // This payload is per-facility AGGREGATES — counts, percentages, risk levels.
+  // No staff name or email appears in it, so overseeing the organisation's
+  // finances is reason enough to see it. Finance previously fell through to the
+  // single-facility dashboard because this gate was `assignment.read` alone.
+  it.each(['owner', 'admin', 'supervisor', 'hr', 'clinical_director', 'finance'] as const)(
+    'allows role=%s (oversees rosters or oversees billing)',
     async (role) => {
       mockAuth.mockResolvedValue(baseSession({ role }));
       mockListAccessibleFacilities.mockResolvedValue([]);
@@ -160,6 +158,25 @@ describe('getGlobalDashboardData — auth & RBAC gate', () => {
       await expect(getGlobalDashboardData()).resolves.toBeDefined();
     },
   );
+
+  // `'use server'` exports are POST-invocable directly, so the gate must exclude
+  // workers on its own. `enrollment.read` — the obvious way to admit finance —
+  // would NOT: every worker role holds it to read their own enrollments.
+  it.each([
+    'nurse',
+    'psychiatrist_prescriber',
+    'therapist_clinician',
+    'case_manager',
+    'behavioral_health_technician',
+    'peer_support_specialist',
+    'front_desk_admin',
+    'facilities_support',
+  ] as const)('throws Forbidden for worker role=%s', async (role) => {
+    mockAuth.mockResolvedValue(baseSession({ role }));
+
+    await expect(getGlobalDashboardData()).rejects.toThrow('Forbidden');
+    expect(mockListAccessibleFacilities).not.toHaveBeenCalled();
+  });
 });
 
 describe('getGlobalDashboardData — zero-facility exit', () => {

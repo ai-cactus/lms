@@ -7,8 +7,10 @@ import {
   ADMIN_ROLES,
   dbRoleToRoleKey,
   canChangeRole,
+  getRoleDisplayName,
   type RoleChangeDenyReason,
 } from '@/lib/rbac/role-utils';
+import { isOrgWideFacilityRole } from '@/lib/facility/org-wide-roles';
 import { can } from '@/lib/rbac/permissions';
 import { auth } from '@/auth';
 import { revalidatePath } from 'next/cache';
@@ -523,10 +525,20 @@ export async function setStaffFacilities(
     return { success: false, error: 'Forbidden' };
   }
 
-  // The owner spans the whole organization — their facility scope is not
-  // reassignable by anyone.
-  if (target.role === 'owner') {
-    return { success: false, error: "The organization owner's facilities cannot be changed." };
+  // An org-wide role has no facility scope to reassign: `resolveDataFacilityIds`
+  // returns null for owner, admin, HR, clinical director and finance, so their
+  // reads span the organisation whatever `OrganizationUserFacility` rows exist.
+  // Writing rows for one would change nothing about what they can reach while
+  // implying on screen that it had — so it is refused outright, not just hidden.
+  // Supervisors and worker roles ARE facility-bound and stay reassignable.
+  if (isOrgWideFacilityRole(target.role)) {
+    return {
+      success: false,
+      error:
+        target.role === 'owner'
+          ? "The organization owner's facilities cannot be changed."
+          : `${getRoleDisplayName(target.role)} is an organization-wide role, so it is not assigned to a facility.`,
+    };
   }
 
   // ...and every requested facility must belong to that same org, so a crafted

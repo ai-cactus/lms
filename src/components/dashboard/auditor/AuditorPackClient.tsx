@@ -13,6 +13,12 @@ type TabKey = 'courses' | 'staff';
 
 interface AuditorPackClientProps {
   stats: AuditorOverviewStats;
+  /**
+   * The caller reads only their own facilities' subject data. The course
+   * catalogue is org-level either way, so only the people-shaped figures and
+   * the Staff tab change wording.
+   */
+  facilityScoped?: boolean;
 }
 
 const TABS: { key: TabKey; label: string }[] = [
@@ -45,7 +51,10 @@ function StatCard({ icon, label, value, hint }: StatCardProps) {
   );
 }
 
-export default function AuditorPackClient({ stats }: AuditorPackClientProps) {
+export default function AuditorPackClient({
+  stats,
+  facilityScoped = false,
+}: AuditorPackClientProps) {
   const [activeTab, setActiveTab] = useState<TabKey>('courses');
 
   return (
@@ -70,13 +79,21 @@ export default function AuditorPackClient({ stats }: AuditorPackClientProps) {
           icon={<UserPlus />}
           label="Staff Assigned"
           value={stats.totalStaffAssigned.toLocaleString()}
-          hint="Every member of your organization, including managers"
+          hint={
+            facilityScoped
+              ? 'Every member of your facilities, including managers'
+              : 'Every member of your organization, including managers'
+          }
         />
         <StatCard
           icon={<CheckCircle2 />}
           label="Completion Rate"
           value={`${stats.completionRate}%`}
-          hint="Percentage of completed enrollments across all org courses"
+          hint={
+            facilityScoped
+              ? 'Percentage of completed enrollments for staff in your facilities'
+              : 'Percentage of completed enrollments across all org courses'
+          }
         />
       </div>
 
@@ -106,7 +123,7 @@ export default function AuditorPackClient({ stats }: AuditorPackClientProps) {
         {activeTab === 'courses' ? (
           <AuditorCoursesTab totalCourses={stats.totalCourses} />
         ) : (
-          <AuditorStaffTab totalStaff={stats.totalStaffAssigned} />
+          <AuditorStaffTab totalStaff={stats.totalStaffAssigned} facilityScoped={facilityScoped} />
         )}
       </div>
     </div>

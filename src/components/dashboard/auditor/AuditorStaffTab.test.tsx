@@ -96,6 +96,47 @@ describe('AuditorStaffTab — columns', () => {
   });
 });
 
+describe('AuditorStaffTab — facility-scoped copy', () => {
+  // The tab shows only the caller's own facilities' staff for a facility-bound
+  // role (supervisor), so "All Staffs" would overstate what is on screen and in
+  // the export it launches.
+  it('titles the card "Facility Staff" and labels the export accordingly', async () => {
+    const user = userEvent.setup();
+    render(<AuditorStaffTab totalStaff={8} facilityScoped />);
+    await screen.findByText('Alex Rivera');
+
+    expect(screen.getByRole('heading', { name: 'Facility Staff' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'All Staffs' })).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: /export all/i }));
+    await user.click(screen.getByRole('button', { name: /generate report/i }));
+
+    expect(mockStartExport).toHaveBeenCalledExactlyOnceWith({
+      scope: 'all-staff',
+      scopeId: undefined,
+      label: 'Facility staff report',
+      entity: 'staff',
+      count: 8,
+    });
+  });
+
+  it('points an empty table at the caller’s facilities rather than the organization', async () => {
+    mockGetAuditorStaff.mockResolvedValue([]);
+    render(<AuditorStaffTab totalStaff={0} facilityScoped />);
+
+    expect(
+      await screen.findByText('Staff will appear here once they are added to your facilities.'),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps the org-wide wording for an org-wide role', async () => {
+    render(<AuditorStaffTab totalStaff={30} />);
+    await screen.findByText('Alex Rivera');
+
+    expect(screen.getByRole('heading', { name: 'All Staffs' })).toBeInTheDocument();
+  });
+});
+
 describe('AuditorStaffTab — export flow', () => {
   it('starts an all-staff export counted by the org-wide staff total', async () => {
     const user = userEvent.setup();

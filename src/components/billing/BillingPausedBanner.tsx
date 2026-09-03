@@ -1,11 +1,12 @@
 'use client';
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { PauseCircle, Play, Loader2, X } from 'lucide-react';
 import { logger } from '@/lib/logger';
 import type { PauseState } from '@/lib/billing';
+import { DASHBOARD_BANNER_SHELL } from '@/components/dashboard/banner-shell';
 
 /**
  * The states this banner can actually be in. `getPauseState` never returns
@@ -13,6 +14,9 @@ import type { PauseState } from '@/lib/billing';
  * because access is untouched until it starts.
  */
 type BannerPauseState = Exclude<PauseState, 'none'> | 'pending';
+
+/** The page that owns the subscription controls this banner would duplicate. */
+const BILLING_PAGE_PATH = '/dashboard/billing';
 
 interface Props {
   /** 'pending' is a REQUESTED pause that has not taken effect — access is intact. */
@@ -44,6 +48,11 @@ function dismissalKey(pauseState: BannerPauseState, pauseEndsAt: string | null):
  * (and the continue/cancel decision once it expires) is visible everywhere —
  * not only on the billing page.
  *
+ * It stands down on `/dashboard/billing` itself, which owns the real control:
+ * the subscription tab already carries a status-aware "Update Plan" action, and
+ * rendering this banner there put two resume buttons on one screen (they even
+ * raced each other — see the import note in BillingPage.tsx).
+ *
  * A scheduled pause can be dismissed for the current tab only: the subscription
  * is still paused afterwards, so the notice must return on reload and in a new
  * tab rather than being silenced for good. The `expired` state is deliberately
@@ -56,6 +65,7 @@ export default function BillingPausedBanner({
   pauseEndsAt,
 }: Props) {
   const router = useRouter();
+  const pathname = usePathname();
   const [resuming, setResuming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState(false);
@@ -105,12 +115,17 @@ export default function BillingPausedBanner({
     }
   }, [router]);
 
+  // Query strings are not part of `pathname`, so this covers every `?tab=`.
+  // Deliberately an exact match: /dashboard/billing/cancel is a separate page
+  // with no resume control of its own.
+  if (pathname === BILLING_PAGE_PATH) return null;
+
   if (dismissed) return null;
 
   return (
     <div
       className={[
-        'flex flex-col items-start gap-3 border-b px-5 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-8',
+        DASHBOARD_BANNER_SHELL,
         expired ? 'border-error/30 bg-error/10' : 'border-warning/30 bg-warning/10',
       ].join(' ')}
       role="status"

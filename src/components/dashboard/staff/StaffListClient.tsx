@@ -36,6 +36,7 @@ import EmptyTableState from '@/components/ui/EmptyTableState';
 import { cn, formatRelativeTime } from '@/lib/utils';
 import { can } from '@/lib/rbac/permissions';
 import { dbRoleToRoleKey, getRoleDisplayName } from '@/lib/rbac/role-utils';
+import { isOrgWideFacilityRole } from '@/lib/facility/org-wide-roles';
 import type { AccessibleFacility } from '@/lib/facility/scope';
 import type { Role } from '@/types/next-auth';
 
@@ -608,10 +609,16 @@ export default function StaffListClient({
                                 : []),
                             ]
                           : [
-                              // The owner row is immutable for everyone: no
-                              // facility reassignment and no removal (the
-                              // server rejects both independently).
-                              ...(canChangeFacility && user.role !== 'owner'
+                              // An org-wide role (owner, admin, HR, clinical
+                              // director, finance) has no facility scope to
+                              // reassign — `setStaffFacilities` refuses it, so
+                              // the item is withheld rather than offered dead.
+                              // The profile page shows the same rule as a
+                              // DISABLED button, which is the right affordance
+                              // for a standalone control; inside a kebab it
+                              // would leave whole rows carrying a menu whose
+                              // only entry does nothing.
+                              ...(canChangeFacility && !isOrgWideFacilityRole(user.role as Role)
                                 ? [
                                     {
                                       label: 'Change Facility',

@@ -529,12 +529,18 @@ describe('getLearnPayload — learner view mode (D-16)', () => {
 });
 
 /**
- * Bug B: "Done with no Attest". The payload used to fall back to the literal
- * role `'worker'`, which is NOT a member of WORKER_ROLES, and LearnClient
- * re-derived the attestation gate from it with `isWorkerRole`. Whenever the
- * membership lookup came back null, Attest silently vanished and a learner who
- * had passed was left with "Done" as the only option. The gate is now one
- * server-side verdict.
+ * Bug B: "Done with no Attest", in two rounds.
+ *
+ * Round 1 — the payload fell back to the literal role `'worker'`, which is NOT a
+ * member of WORKER_ROLES, and LearnClient re-derived the gate from it with
+ * `isWorkerRole`; whenever the membership lookup came back null, Attest silently
+ * vanished. That moved the gate to one server-side verdict.
+ *
+ * Round 2 (team test) — that verdict still keyed on `isWorkerRole`, so every
+ * manager-category learner hit the same dead end: `enterLearnMode` mints a
+ * worker session carrying the manager's REAL role, so a supervisor who passed
+ * the assessment was left with "Done". The gate now keys on ownership, matching
+ * what `attestCourse` itself enforces.
  */
 describe('getLearnPayload — attestEligible', () => {
   const workerSession = {
@@ -555,7 +561,7 @@ describe('getLearnPayload — attestEligible', () => {
     mockCourseFindUnique.mockResolvedValue(makeCourse());
   });
 
-  it('is true for a worker-category member whose enrollment is not yet attested', async () => {
+  it('is true for a worker-category member whose own enrollment is not yet attested', async () => {
     mockEnrollmentFindFirst.mockResolvedValue(enrollment('in_progress'));
 
     const payload = asPayload(await getLearnPayload('course-1'));
@@ -572,21 +578,43 @@ describe('getLearnPayload — attestEligible', () => {
     expect(payload.attestEligible).toBe(false);
   });
 
-  it('is false for a manager-category viewer', async () => {
+  // The team-test report: a manager who is assigned a course, takes it and
+  // passes owes the same attestation a worker does. `attestCourse` authorizes
+  // on ownership alone, so the button must follow the same rule.
+  it.each(['owner', 'admin', 'supervisor', 'hr', 'clinical_director', 'finance'])(
+    'is true for a %s viewer whose own enrollment is not yet attested',
+    async (role) => {
+      mockOrganizationUserFindUnique.mockResolvedValue({
+        role,
+        jobTitle: 'Manager',
+        user: { fullName: 'Manager One', email: 'm@example.com' },
+        organization: { name: 'Acme Health' },
+      });
+      mockEnrollmentFindFirst.mockResolvedValue(enrollment('in_progress'));
+
+      const payload = asPayload(await getLearnPayload('course-1'));
+
+      expect(payload.attestEligible).toBe(true);
+    },
+  );
+
+  it('is false once a manager-category viewer has already attested', async () => {
     mockOrganizationUserFindUnique.mockResolvedValue({
       role: 'hr',
       jobTitle: 'HR Lead',
       user: { fullName: 'Manager One', email: 'm@example.com' },
       organization: { name: 'Acme Health' },
     });
-    mockEnrollmentFindFirst.mockResolvedValue(enrollment('in_progress'));
+    mockEnrollmentFindFirst.mockResolvedValue(enrollment('attested'));
 
     const payload = asPayload(await getLearnPayload('course-1'));
 
     expect(payload.attestEligible).toBe(false);
   });
 
-  it('reports a null role rather than the literal "worker" when there is no membership', async () => {
+  // Admin preview: an admin may open a same-org course with no enrollment of
+  // their own. There is nothing to attest, and `attestCourse` would reject it.
+  it('reports a null role rather than the literal "worker" when there is no membership, and offers no attestation', async () => {
     mockWorkerAuth.mockResolvedValue(null);
     mockAdminAuth.mockResolvedValue({
       user: { id: 'a1', organizationUserId: null, organizationId: 'org-1', role: 'owner' },
@@ -597,6 +625,24 @@ describe('getLearnPayload — attestEligible', () => {
     const payload = asPayload(await getLearnPayload('course-1'));
 
     expect(payload.user.role).toBeNull();
+    expect(payload.attestEligible).toBe(false);
+  });
+
+  it('is false in admin preview even for an enrolled-looking course with no enrollment row', async () => {
+    mockWorkerAuth.mockResolvedValue(null);
+    mockAdminAuth.mockResolvedValue({
+      user: { id: 'a1', organizationUserId: 'ou-admin', organizationId: 'org-1', role: 'admin' },
+    });
+    mockOrganizationUserFindUnique.mockResolvedValue({
+      role: 'admin',
+      jobTitle: 'Admin',
+      user: { fullName: 'Admin One', email: 'a@example.com' },
+      organization: { name: 'Acme Health' },
+    });
+    mockEnrollmentFindFirst.mockResolvedValue(null);
+
+    const payload = asPayload(await getLearnPayload('course-1'));
+
     expect(payload.attestEligible).toBe(false);
   });
 });

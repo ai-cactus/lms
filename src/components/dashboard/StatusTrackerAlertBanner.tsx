@@ -1,6 +1,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { ShieldAlert, ArrowRight } from 'lucide-react';
+import { DASHBOARD_BANNER_SHELL } from '@/components/dashboard/banner-shell';
 
 interface Props {
   /** Number of enrollments overdue by the hard-escalation threshold (7+ days). */
@@ -20,10 +21,7 @@ export default function StatusTrackerAlertBanner({ hardEscalationCount }: Props)
   const workerWord = hardEscalationCount === 1 ? 'worker has' : 'workers have';
 
   return (
-    <div
-      className="mx-auto mb-6 flex w-full max-w-[1400px] flex-col items-start gap-3 rounded-[12px] border border-[#fda29b] bg-[#fef3f2] px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5"
-      role="alert"
-    >
+    <div className={`${DASHBOARD_BANNER_SHELL} border-[#fda29b] bg-[#fef3f2]`} role="alert">
       <div className="flex items-start gap-2.5">
         <ShieldAlert className="mt-0.5 size-5 shrink-0 text-[#d92d20]" aria-hidden="true" />
         <div className="text-sm">

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Award, Calendar, Check, Download } from 'lucide-react';
@@ -32,13 +32,43 @@ interface CertificateCardListProps {
   showExport?: boolean;
 }
 
+/** Date windows offered by the header filter. */
+type CertificateRange = '7' | '30' | 'all';
+
+const RANGE_DAYS: Record<Exclude<CertificateRange, 'all'>, number> = { '7': 7, '30': 30 };
+
 export default function CertificateCardList({
   certificates,
   title = 'Certificates',
-  description = "Here's a quick summary of your earned certificates.",
+  description = "Here's a brief overview of your certificates on the platform.",
   showExport = true,
 }: CertificateCardListProps) {
   const [selectedCertId, setSelectedCertId] = useState<string | null>(null);
+  // Defaults to 'all', NOT the design's "Last 7 days" chip: a certificate is a
+  // long-lived record, so opening on a 7-day window would show the empty state
+  // to a learner who simply earned theirs a month ago. `cutoff` is resolved when
+  // the learner picks a range rather than during render — reading the clock in
+  // render would make the visible set depend on when React re-renders, and
+  // leaves the first server render and first client render free to disagree.
+  const [filter, setFilter] = useState<{ range: CertificateRange; cutoff: number | null }>({
+    range: 'all',
+    cutoff: null,
+  });
+
+  const hasNone = certificates.length === 0;
+
+  const selectRange = (range: CertificateRange) => {
+    setFilter({
+      range,
+      cutoff: range === 'all' ? null : Date.now() - RANGE_DAYS[range] * 24 * 60 * 60 * 1000,
+    });
+  };
+
+  const visible = useMemo(() => {
+    const { cutoff } = filter;
+    if (cutoff === null) return certificates;
+    return certificates.filter((c) => new Date(c.issuedAt).getTime() >= cutoff);
+  }, [certificates, filter]);
 
   // Pin a fixed timeZone so the server (UTC) and browser (local) render the
   // same string — otherwise React reports a hydration mismatch (#418).
@@ -67,7 +97,7 @@ export default function CertificateCardList({
     const csvContent =
       'data:text/csv;charset=utf-8,' +
       'Certificate ID,Course,Issued Date\n' +
-      certificates
+      visible
         .map(
           (c) =>
             `${formatCertificateId(c.enrollmentId)},"${c.course.title}",${new Date(c.issuedAt).toISOString()}`,
@@ -92,11 +122,18 @@ export default function CertificateCardList({
           </h1>
           <p className="m-0 text-sm text-[#525252] md:text-lg">{description}</p>
         </div>
-        {/* Export acts on the certificates rendered below, so it only belongs with a
-            populated list — an empty page has nothing to export. */}
-        {showExport && certificates.length > 0 && (
+        {/* Present in every state, as the design draws them, but inert until there
+            is something to filter or export — the design greys its own Export
+            button in the empty state. `disabled` carries the Button variant's
+            token-based grey, so this stays a design-system state rather than a
+            hardcoded one. */}
+        {showExport && (
           <div className="flex items-center gap-2.5">
-            <Select defaultValue="7">
+            <Select
+              value={filter.range}
+              onValueChange={(value) => selectRange(value as CertificateRange)}
+              disabled={hasNone}
+            >
               <SelectTrigger
                 aria-label="Filter certificates by date range"
                 className="h-[41px] w-[159px] justify-start gap-2 rounded-[8px] border-[#d6d6d6] bg-white px-3 text-base font-medium text-[#514346] shadow-none [&>svg:last-child]:ml-auto [&>svg:last-child]:size-[18px]"
@@ -113,6 +150,7 @@ export default function CertificateCardList({
             <Button
               className="h-[41px] gap-2 rounded-[12px] text-[15.5px] font-semibold has-[>svg]:px-6"
               onClick={handleExportAll}
+              disabled={visible.length === 0}
             >
               <Download className="size-[18px]" />
               Export
@@ -121,17 +159,19 @@ export default function CertificateCardList({
         )}
       </div>
 
-      {certificates.length === 0 ? (
-        <div className="flex flex-col items-center justify-center gap-6 px-6 py-12 md:py-16">
+      {hasNone ? (
+        // Design 15560:138390 seats the empty state in a white `Widget` card
+        // (r17, centred) rather than letting it float on the page background.
+        <div className="flex flex-col items-center justify-center gap-5 rounded-[17px] bg-white px-6 py-12 md:py-16">
           <Image
             src="/images/certificates-empty-state.svg"
             alt=""
-            width={482}
-            height={282}
+            width={154}
+            height={154}
             aria-hidden="true"
-            className="h-[180px] w-auto md:h-[282px]"
+            className="size-[120px] md:size-[154px]"
           />
-          <div className="flex max-w-[430px] flex-col gap-2 text-center">
+          <div className="flex max-w-[482px] flex-col gap-1.5 text-center">
             <p className="text-[22px] font-semibold leading-[1.32] text-[#11181c] md:text-[25px]">
               No certificate earned yet
             </p>
@@ -143,9 +183,38 @@ export default function CertificateCardList({
             <Link href="/worker/trainings">Browse trainings</Link>
           </Button>
         </div>
+      ) : visible.length === 0 ? (
+        // A filtered-to-nothing list is NOT "no certificate earned yet" — saying
+        // so would tell a learner who holds certificates that they hold none.
+        <div className="flex flex-col items-center justify-center gap-5 rounded-[17px] bg-white px-6 py-12 md:py-16">
+          <Image
+            src="/images/certificates-empty-state.svg"
+            alt=""
+            width={154}
+            height={154}
+            aria-hidden="true"
+            className="size-[120px] md:size-[154px]"
+          />
+          <div className="flex max-w-[482px] flex-col gap-1.5 text-center">
+            <p className="text-[22px] font-semibold leading-[1.32] text-[#11181c] md:text-[25px]">
+              Nothing in this date range
+            </p>
+            <p className="text-[15px] leading-[1.5] text-[#475367] md:text-[16px]">
+              None of your {certificates.length} certificates were issued in the selected period.
+              Widen the range to see them.
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            className="h-[47px] rounded-[12px] px-6 text-[16px] font-semibold"
+            onClick={() => selectRange('all')}
+          >
+            Show all time
+          </Button>
+        </div>
       ) : (
         <div className="flex flex-col gap-3">
-          {certificates.map((cert) => (
+          {visible.map((cert) => (
             <div
               key={cert.id}
               role="button"

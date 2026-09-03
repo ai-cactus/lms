@@ -5,13 +5,17 @@
  * naive "scope everything" or "widen everything" fix gets wrong:
  *
  *   ORG       — always applied. The tenant boundary. Never relaxed.
- *   FACILITY  — deliberately NOT applied here, supervisor included. An audit
- *               report that silently omits the facilities its reader does not
- *               sit in is a wrong report, not a partial one. The widening is
- *               local to `@/lib/audit-reports/scope`; `ORG_WIDE_FACILITY_ROLES`
- *               is untouched so every write surface stays narrowed.
- *   CATALOGUE — spans adopted (platform-offering) courses, which are authored
- *               by another tenant, and every status, drafts included.
+ *   FACILITY  — applied to SUBJECT data for every facility-bound role,
+ *               supervisor included. This surface briefly widened supervisors
+ *               org-wide via a local `@/lib/audit-reports/scope`; the team test
+ *               of 2026-09-03 reversed that, so there is now exactly ONE
+ *               resolver (`resolveDataFacilityIds`) behind the page, the export
+ *               job's stamped scope, and the status/download re-checks.
+ *   CATALOGUE — NOT facility-narrowed, and spans adopted (platform-offering)
+ *               courses authored by another tenant plus every status, drafts
+ *               included. A course with no in-facility enrollments still lists,
+ *               with zeroes — omitting it would read as "this facility has no
+ *               such course" when it has one.
  *   ROLE      — every member of the org, not just the eight worker roles.
  *
  * These assert on the Prisma `where` each action builds, because the asymmetry
@@ -33,10 +37,10 @@ const { prismaMock, mockAuth, mockResolveDataFacilityIds } = vi.hoisted(() => ({
 
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock, default: prismaMock }));
 vi.mock('@/auth', () => ({ auth: mockAuth }));
-// Only the underlying org-wide/facility-bound resolver is mocked — the audit
-// surface's own `resolveAuditFacilityIds` runs for real, so the supervisor
-// widening under test is the shipped one and not a test double.
-vi.mock('@/lib/facility/staff-where', () => ({
+// Only the resolver is mocked; `staffFacilityWhere` runs for real so these
+// assert on the predicate the shipped helper actually builds.
+vi.mock('@/lib/facility/staff-where', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/facility/staff-where')>()),
   resolveDataFacilityIds: mockResolveDataFacilityIds,
 }));
 vi.mock('@/lib/logger', () => ({
@@ -68,35 +72,65 @@ beforeEach(() => {
   mockResolveDataFacilityIds.mockResolvedValue(null);
 });
 
-describe('facility scope — the audit report is org-wide for every role that can read it', () => {
-  it('does not narrow the Staff tab for a supervisor', async () => {
+describe('facility scope — subject data follows the caller, the catalogue does not', () => {
+  it('narrows the Staff tab to a supervisor’s own facilities', async () => {
     mockAuth.mockResolvedValue(SUPERVISOR);
-    // The supervisor is a member of "annex" only; the surface must ignore that.
     mockResolveDataFacilityIds.mockResolvedValue(['annex']);
 
     await getAuditorStaff();
 
     const where = prismaMock.organizationUser.findMany.mock.calls[0][0].where;
-    expect(hasFacilityPredicate(where)).toBe(false);
+    expect(where.facilities).toEqual({ some: { facilityId: { in: ['annex'] }, active: true } });
     expect(where.organizationId).toBe(ORG);
   });
 
-  it('returns staff from a facility the supervisor is NOT a member of', async () => {
+  it('narrows the overview KPIs — staff count and the enrollment set behind the completion rate', async () => {
     mockAuth.mockResolvedValue(SUPERVISOR);
     mockResolveDataFacilityIds.mockResolvedValue(['annex']);
-    prismaMock.organizationUser.findMany.mockResolvedValue([
-      {
-        id: 'ou-riverside',
-        role: 'nurse',
-        jobTitle: 'RN',
-        user: { email: 'nurse@riverside.test', fullName: 'Riverside Nurse' },
-        enrollments: [],
-      },
-    ]);
 
-    const rows = await getAuditorStaff();
+    await getAuditorOverviewStats();
 
-    expect(rows.map((r) => r.id)).toEqual(['ou-riverside']);
+    expect(hasFacilityPredicate(prismaMock.organizationUser.count.mock.calls[0][0].where)).toBe(
+      true,
+    );
+    expect(
+      hasFacilityPredicate(prismaMock.enrollment.findMany.mock.calls[0][0].where.organizationUser),
+    ).toBe(true);
+  });
+
+  it('narrows the per-course rollups but still lists the whole catalogue', async () => {
+    mockAuth.mockResolvedValue(SUPERVISOR);
+    mockResolveDataFacilityIds.mockResolvedValue(['annex']);
+
+    await getAuditorCourses();
+
+    const call = prismaMock.course.findMany.mock.calls[0][0];
+    // The course list itself carries no facility predicate…
+    expect(hasFacilityPredicate(call.where)).toBe(false);
+    // …but the enrollments counted inside each row do.
+    expect(hasFacilityPredicate(call.select.enrollments.where.organizationUser)).toBe(true);
+  });
+
+  it('does NOT return staff from a facility the supervisor is not a member of', async () => {
+    mockAuth.mockResolvedValue(SUPERVISOR);
+    mockResolveDataFacilityIds.mockResolvedValue(['annex']);
+
+    await getAuditorStaff();
+
+    const where = prismaMock.organizationUser.findMany.mock.calls[0][0].where;
+    expect(where.facilities.some.facilityId.in).toEqual(['annex']);
+    expect(where.facilities.some.facilityId.in).not.toContain('riverside');
+  });
+
+  it('fail-closed: a supervisor with no facility assignments sees nothing, not everything', async () => {
+    mockAuth.mockResolvedValue(SUPERVISOR);
+    mockResolveDataFacilityIds.mockResolvedValue([]);
+
+    await getAuditorStaff();
+
+    // `[]` must become an impossible predicate, never an absent one.
+    const where = prismaMock.organizationUser.findMany.mock.calls[0][0].where;
+    expect(where.facilities).toEqual({ some: { facilityId: { in: [] }, active: true } });
   });
 
   it('still cannot reach another organisation — every subject query is org-anchored', async () => {
@@ -111,7 +145,6 @@ describe('facility scope — the audit report is org-wide for every role that ca
     expect(
       prismaMock.enrollment.findMany.mock.calls[0][0].where.organizationUser.organizationId,
     ).toBe(ORG);
-    // Nothing in the widened path can name the other tenant.
     const serialized = JSON.stringify(prismaMock.organizationUser.findMany.mock.calls[0][0]);
     expect(serialized).not.toContain(OTHER_ORG);
   });
@@ -128,10 +161,9 @@ describe('facility scope — the audit report is org-wide for every role that ca
     );
   });
 
-  it('keeps the widening local: supervisor is NOT an org-wide facility role globally', () => {
-    // Guards the boundary the audit widening is deliberately kept outside of —
-    // adding supervisor to ORG_WIDE_FACILITY_ROLES would reopen the
-    // cross-facility write escalation PR #552 closed.
+  it('leaves the global facility role set alone — supervisor is still not org-wide', () => {
+    // The write-side boundary PR #552 closed. Narrowing the audit read must not
+    // have nudged this in either direction.
     expect(isOrgWideFacilityRole('supervisor')).toBe(false);
   });
 

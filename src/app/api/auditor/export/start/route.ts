@@ -1,6 +1,6 @@
 import { NextResponse, NextRequest } from 'next/server';
 import { authorize } from '@/lib/rbac/authorize';
-import { resolveAuditFacilityIds } from '@/lib/audit-reports/scope';
+import { resolveDataFacilityIds, staffFacilityWhere } from '@/lib/facility/staff-where';
 import { orgCourseWhere } from '@/lib/course/org-scope';
 import prisma from '@/lib/prisma';
 import { auditorExportQueue } from '@/lib/queue/auditor-export-queue';
@@ -24,10 +24,11 @@ export async function POST(req: NextRequest) {
 
     // D-01: the facility scope is derived from the SESSION here and stamped
     // into the job, never read from the request body — a caller must not be
-    // able to widen their own export. `null` = org-wide, which is what the
-    // audit surface deliberately gives a supervisor so the export cannot
-    // disagree with the screen it was launched from.
-    const facilityIds = await resolveAuditFacilityIds({
+    // able to widen their own export. It MUST be the same resolver the
+    // status/download routes re-derive from: stamping a wider scope than they
+    // will accept produced a job a supervisor could start but never poll or
+    // download (403 on both).
+    const facilityIds = await resolveDataFacilityIds({
       user: {
         id: userId,
         role: authResult.ctx.role,
@@ -94,9 +95,7 @@ export async function POST(req: NextRequest) {
         where: {
           id: scopeId,
           organizationId,
-          ...(facilityIds
-            ? { facilities: { some: { facilityId: { in: facilityIds }, active: true } } }
-            : {}),
+          ...staffFacilityWhere(facilityIds),
         },
         select: { id: true },
       });
