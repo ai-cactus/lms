@@ -5,7 +5,7 @@
  * it's stubbed to render its `actions` prop as plain buttons so assertions
  * target this component's own `buildRowActions` gating logic, not Radix.
  */
-import { act, render, screen, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import { fireEvent } from '@testing-library/dom';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -27,7 +27,15 @@ const { mockPush, mockDeleteCourse, mockDuplicateCourse, mockUpdateCourse } = vi
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: mockPush, refresh: vi.fn() }) }));
 vi.mock('next/image', () => ({
-  default: ({ alt }: { alt: string }) => <img alt={alt} />,
+  default: ({ alt, src, className }: { alt: string; src: string; className?: string }) => (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      alt={alt}
+      src={typeof src === 'string' ? src : ''}
+      className={className}
+      data-testid="course-thumb"
+    />
+  ),
 }));
 vi.mock('@/app/actions/course', () => ({
   deleteCourse: mockDeleteCourse,
@@ -731,5 +739,161 @@ describe('CoursesListClient — pending generation banner', () => {
     expect(
       screen.getByText('Course generation failed. Please start a new course.'),
     ).toBeInTheDocument();
+  });
+});
+
+/**
+ * Design 15522:271922 — the row thumbnail is a 78x47 RECTANGULAR frame showing
+ * the course's own artwork, replacing the old 40x40 square. The design also
+ * washes the image in 40% teal so its 20%-white play badge reads; that wash is
+ * deliberately not applied (it would tint every customer's artwork), so the
+ * badge carries its own scrim instead.
+ */
+describe('CoursesListClient — row thumbnail', () => {
+  function thumbFrame(container: HTMLElement) {
+    return container.querySelector('img[data-testid="course-thumb"]')?.closest('div');
+  }
+
+  it('renders the course artwork in a rectangular frame, not a square', () => {
+    const { container } = render(
+      <CoursesListClient
+        courses={[makeCourse({ thumbnail: 'https://cdn.example.com/a.png' })]}
+        hasBilling
+        viewerRole={'owner' as Role}
+      />,
+    );
+
+    const img = screen.getByTestId('course-thumb');
+    expect(img).toHaveAttribute('src', 'https://cdn.example.com/a.png');
+    expect(img).toHaveClass('object-cover');
+
+    const frame = thumbFrame(container)!;
+    expect(frame.className).toContain('w-[56px]');
+    expect(frame.className).toContain('sm:w-[78px]');
+    expect(frame.className).toContain('sm:h-[47px]');
+    // The old square frame is gone.
+    expect(frame.className).not.toContain('size-10');
+  });
+
+  it('leaves the artwork untinted — no teal wash over the customer’s image', () => {
+    const { container } = render(
+      <CoursesListClient
+        courses={[makeCourse({ thumbnail: 'https://cdn.example.com/a.png' })]}
+        hasBilling
+        viewerRole={'owner' as Role}
+      />,
+    );
+
+    expect(thumbFrame(container)!.innerHTML).not.toMatch(/2c8f88/i);
+  });
+
+  it('marks the thumbnail decorative — the title beside it already names the course', () => {
+    render(
+      <CoursesListClient
+        courses={[makeCourse({ title: 'Infection Control', thumbnail: 'https://x/a.png' })]}
+        hasBilling
+        viewerRole={'owner' as Role}
+      />,
+    );
+
+    // alt={course.title} would make a screen reader announce the name twice.
+    expect(screen.getByTestId('course-thumb')).toHaveAttribute('alt', '');
+    expect(screen.getByText('Infection Control')).toBeInTheDocument();
+  });
+
+  it('falls back to the placeholder mark when a course has no artwork', () => {
+    render(
+      <CoursesListClient
+        courses={[makeCourse({ thumbnail: null })]}
+        hasBilling
+        viewerRole={'owner' as Role}
+      />,
+    );
+
+    expect(screen.getByTestId('course-thumb')).toHaveAttribute(
+      'src',
+      '/images/icon-course-blue.svg',
+    );
+  });
+
+  it('badges a video course', () => {
+    const { container } = render(
+      <CoursesListClient
+        courses={[makeCourse({ type: 'video', thumbnail: 'https://x/a.png' })]}
+        hasBilling
+        viewerRole={'owner' as Role}
+      />,
+    );
+
+    expect(thumbFrame(container)!.querySelector('svg')).toBeTruthy();
+  });
+
+  it('leaves a reading course unbadged', () => {
+    // Rendered in its own tree: an org with only reading courses lands on the
+    // Reading tab, so the row is actually on screen.
+    const { container } = render(
+      <CoursesListClient
+        courses={[makeCourse({ id: 's1', type: 'text', thumbnail: 'https://x/a.png' })]}
+        hasBilling
+        viewerRole={'owner' as Role}
+      />,
+    );
+
+    expect(thumbFrame(container)!.querySelector('svg')).toBeNull();
+  });
+});
+
+/**
+ * The delete path reported "Minified React error #441": the action THREW its
+ * refusal, Next.js redacted the message in production, and the client rendered
+ * the redaction placeholder as the error text. Refusals now come back as a
+ * value, and the row no longer offers Delete where it could never succeed.
+ */
+describe('CoursesListClient — delete refusals are readable', () => {
+  const ownCourse = () => makeCourse({ id: 'c1', title: 'Deletable Course' });
+
+  it('shows the server’s reason instead of a redacted React error', async () => {
+    const user = userEvent.setup();
+    mockDeleteCourse.mockResolvedValue({
+      success: false,
+      error: 'This course comes from the shared catalogue and cannot be deleted here.',
+    });
+
+    render(<CoursesListClient courses={[ownCourse()]} hasBilling viewerRole={'owner' as Role} />);
+
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+    await user.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Delete' }),
+    );
+
+    expect(await screen.findByText(/shared catalogue and cannot be deleted here/i)).toBeVisible();
+    // The row survives a refusal — nothing was removed optimistically.
+    expect(screen.getByText('Deletable Course')).toBeInTheDocument();
+  });
+
+  it('removes the row only when the server confirms the delete', async () => {
+    const user = userEvent.setup();
+    mockDeleteCourse.mockResolvedValue({ success: true });
+
+    render(<CoursesListClient courses={[ownCourse()]} hasBilling viewerRole={'owner' as Role} />);
+
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+    await user.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Delete' }),
+    );
+
+    await waitFor(() => expect(screen.queryByText('Deletable Course')).not.toBeInTheDocument());
+  });
+
+  it('does not offer Delete on a shared-catalogue row', () => {
+    render(
+      <CoursesListClient
+        courses={[makeCourse({ id: 'cat-1', title: 'Catalogue Course', isGlobalCatalog: true })]}
+        hasBilling
+        viewerRole={'owner' as Role}
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
   });
 });

@@ -46,10 +46,13 @@ vi.mock('next/navigation', () => ({
   usePathname: () => '/dashboard/courses',
   useSearchParams: () => new URLSearchParams(''),
 }));
-vi.mock('@/app/actions/course', () => ({ getCourses: mockGetCourses }));
-vi.mock('@/app/actions/offering', () => ({
-  listGlobalVideoCatalogCourses: mockListGlobalVideoCatalogCourses,
-}));
+// The page no longer merges the catalogue itself — it delegates to
+// `getAssignableCourses`, which the staff-profile assign modal also uses. The
+// merge/de-dupe/billing-gate assertions that used to live here now sit with
+// that action in `src/app/actions/offering.assignable-courses.test.ts`; keeping
+// them in two places is what let the two surfaces drift apart in the first
+// place (the modal showed an empty Video Courses tab while this page did not).
+vi.mock('@/app/actions/offering', () => ({ getAssignableCourses: mockGetCourses }));
 vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: mockLoggerError, debug: vi.fn() },
   maskEmail: (email: string) => email,
@@ -105,77 +108,24 @@ beforeEach(() => {
 });
 
 describe('CoursesPage — video course entry point', () => {
-  it('merges the global video catalog into the single course list', async () => {
-    render(await CoursesPage());
-
-    expect(mockListGlobalVideoCatalogCourses).toHaveBeenCalledTimes(1);
-    const row = screen.getByText('Bloodborne Pathogens');
-    expect(row).toHaveAttribute('data-catalog', 'true');
-  });
-
-  it("keeps the org's own row when it also appears in the catalog", async () => {
-    mockGetCourses.mockResolvedValue([makeCourse({ title: 'Adopted copy' })]);
-
-    render(await CoursesPage());
-
-    const rows = screen.getAllByRole('listitem');
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toHaveTextContent('Adopted copy');
-    expect(rows[0]).toHaveAttribute('data-catalog', 'false');
-  });
-
-  it('withholds the catalog from an organization without an active plan', async () => {
-    prismaMock.organization.findUnique.mockResolvedValue({
-      subscription: { status: 'canceled', pausedAt: null },
-    });
-
-    render(await CoursesPage());
-
-    expect(mockListGlobalVideoCatalogCourses).not.toHaveBeenCalled();
-    expect(screen.queryAllByRole('listitem')).toHaveLength(0);
-  });
-
-  it('a catalog-only course appears', async () => {
-    mockGetCourses.mockResolvedValue([]);
-    mockListGlobalVideoCatalogCourses.mockResolvedValue([
-      makeCourse({ id: 'catalog-only', title: 'Catalog Only', isGlobalCatalog: true }),
+  it('renders exactly the courses the shared assignable-courses action returns', async () => {
+    mockGetCourses.mockResolvedValue([
+      makeCourse({ id: 'own-1', title: 'In-house course' }),
+      makeCourse({ id: 'catalog-1', title: 'Catalog Only', isGlobalCatalog: true }),
     ]);
 
     render(await CoursesPage());
 
     const rows = screen.getAllByRole('listitem');
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toHaveTextContent('Catalog Only');
-    expect(rows[0]).toHaveAttribute('data-catalog', 'true');
+    expect(rows.map((row) => row.textContent)).toEqual(['In-house course', 'Catalog Only']);
+    expect(rows[1]).toHaveAttribute('data-catalog', 'true');
   });
 
-  it('an own-only course appears, with no catalog course to de-dupe against', async () => {
-    mockGetCourses.mockResolvedValue([makeCourse({ id: 'own-only', title: 'Own Only Course' })]);
-    mockListGlobalVideoCatalogCourses.mockResolvedValue([]);
+  it('renders an empty list without error when the org has no assignable courses', async () => {
+    mockGetCourses.mockResolvedValue([]);
 
     render(await CoursesPage());
 
-    const rows = screen.getAllByRole('listitem');
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toHaveTextContent('Own Only Course');
-    expect(rows[0]).toHaveAttribute('data-catalog', 'false');
-  });
-
-  it('still renders the page when the catalog lookup fails, and logs the failure rather than swallowing it', async () => {
-    mockGetCourses.mockResolvedValue([makeCourse({ id: 'own-1', title: 'In-house course' })]);
-    const catalogError = new Error('offering lookup down');
-    mockListGlobalVideoCatalogCourses.mockRejectedValue(catalogError);
-
-    render(await CoursesPage());
-
-    expect(screen.getByText('In-house course')).toBeInTheDocument();
-    expect(screen.getAllByRole('listitem')).toHaveLength(1);
-    expect(mockLoggerError).toHaveBeenCalledWith(
-      expect.objectContaining({
-        msg: expect.stringContaining('[course]'),
-        err: catalogError,
-        organizationId: 'org-1',
-      }),
-    );
+    expect(screen.queryAllByRole('listitem')).toHaveLength(0);
   });
 });

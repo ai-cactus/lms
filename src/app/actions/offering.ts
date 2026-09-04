@@ -8,6 +8,9 @@ import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath, unstable_cache } from 'next/cache';
 import type { Role } from '@/types/next-auth';
 import type { CourseWithStats } from '@/types/course';
+import { hasActiveBilling } from '@/lib/billing';
+import { logger } from '@/lib/logger';
+import { getCourses } from './course';
 
 // ---------------------------------------------------------------------------
 // Session helper — mirrors the pattern in course.ts
@@ -377,4 +380,67 @@ export async function withdrawOffering(id: string) {
 
   revalidatePath('/dashboard/courses');
   revalidatePath('/dashboard');
+}
+
+/**
+ * Every course the caller may assign to staff — authored, adopted, AND the
+ * global video catalogue.
+ *
+ * `getCourses()` alone returns authored courses plus offerings the org has
+ * already adopted. That is narrower than what the server will actually accept:
+ * `enrollUsers` assigns a global published course straight from the catalogue
+ * and creates the offering as part of the assignment (`isAssignableCatalog`),
+ * because video courses are owned by every organisation from creation — the
+ * adoption step was removed as friction on 2026-08-10.
+ *
+ * The staff-profile assign modal called `getCourses()` and so showed an EMPTY
+ * Video Courses tab to any org that had not already adopted a prebuilt course,
+ * while `/dashboard/courses` listed those same courses because it unioned the
+ * catalogue itself. Both surfaces now share this one function, so the two lists
+ * cannot drift apart again.
+ *
+ * Lives here rather than in `course.ts` on purpose: `offering.ts` owns the
+ * catalogue (and its `unstable_cache`), so importing it the other way round
+ * would drag that machinery into every module that touches courses.
+ *
+ * Billing-gated to match the courses list: an org without an active
+ * subscription sees only what it authored or already adopted. Assignment is
+ * separately billing-gated in `enrollUsers`, so this never offers a course the
+ * assign call would then refuse.
+ */
+export async function getAssignableCourses(): Promise<CourseWithStats[]> {
+  const session = await resolveSession();
+  if (!session?.user?.id) {
+    throw new Error('Unauthorized');
+  }
+
+  const organizationId = session.user.organizationId;
+  const organization = organizationId
+    ? await prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: { subscription: { select: { status: true, pausedAt: true } } },
+      })
+    : null;
+
+  const [ownCourses, catalogCourses] = await Promise.all([
+    getCourses(),
+    hasActiveBilling(organization?.subscription)
+      ? // Additive: a catalogue failure must degrade to the org's own courses
+        // rather than leave the assign modal unusable — but it is a real fault
+        // and is never swallowed silently.
+        listGlobalVideoCatalogCourses().catch((err) => {
+          logger.error({
+            msg: '[course] Global video catalog lookup failed for assignment',
+            err,
+            organizationId,
+          });
+          return [] as CourseWithStats[];
+        })
+      : Promise.resolve<CourseWithStats[]>([]),
+  ]);
+
+  // Own and adopted rows win the de-dupe: they carry this org's enrolment
+  // tallies and lineage, which a catalogue-only row deliberately does not.
+  const seen = new Set(ownCourses.map((course) => course.id));
+  return [...ownCourses, ...catalogCourses.filter((course) => !seen.has(course.id))];
 }

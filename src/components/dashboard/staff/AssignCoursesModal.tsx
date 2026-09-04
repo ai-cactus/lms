@@ -15,7 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Alert } from '@/components/ui/alert';
 import DatePicker from '@/components/ui/DatePicker';
-import { getCourses } from '@/app/actions/course';
+import { getAssignableCourses } from '@/app/actions/offering';
 import { assignCoursesToStaffMember } from '@/app/actions/staff';
 import type { CourseWithStats } from '@/types/course';
 import { logger } from '@/lib/logger';
@@ -107,7 +107,10 @@ export default function AssignCoursesModal({
 
     let cancelled = false;
     setIsLoadingCourses(true);
-    getCourses()
+    // NOT `getCourses()` — that omits the global video catalogue, so an org
+    // that had adopted no prebuilt course saw an empty Video Courses tab here
+    // while the same courses were listed (and assignable) elsewhere.
+    getAssignableCourses()
       .then((data) => {
         if (!cancelled) setCourses(data);
       })

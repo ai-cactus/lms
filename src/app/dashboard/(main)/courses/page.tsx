@@ -2,8 +2,7 @@ import Link from 'next/link';
 import { ShieldAlert } from 'lucide-react';
 import { requirePermission } from '@/lib/rbac/require-permission';
 import prisma from '@/lib/prisma';
-import { getCourses } from '@/app/actions/course';
-import { listGlobalVideoCatalogCourses } from '@/app/actions/offering';
+import { getAssignableCourses } from '@/app/actions/offering';
 import { hasActiveBilling } from '@/lib/billing';
 import { logger } from '@/lib/logger';
 import { Button } from '@/components/ui/button';
@@ -12,7 +11,6 @@ import RoleAssignmentsCard from '@/components/dashboard/courses/RoleAssignmentsC
 import { listRoleAssignments } from '@/app/actions/enrollment';
 import { can } from '@/lib/rbac/permissions';
 import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
-import type { CourseWithStats } from '@/types/course';
 
 export const dynamic = 'force-dynamic';
 
@@ -65,21 +63,11 @@ export default async function CoursesPage() {
   // it degrades to nothing rather than taking the page down.
   const canReadAssignments = !!roleKey && can(roleKey, 'assignment.read');
 
-  const [ownCourses, catalogCourses, roleAssignments] = await Promise.all([
-    getCourses(),
-    // Video courses are owned by the organization from creation, but that
-    // ownership is what the plan buys: an org without an active subscription
-    // sees only what it authored or already adopted. No tier mapping — the
-    // single hasActiveBilling() ruling, computed above with no extra read.
-    hasBilling
-      ? listGlobalVideoCatalogCourses().catch((err) => {
-          // The catalog is additive, so a failure here must degrade to the
-          // org's own courses rather than take the page down — but it is a
-          // real fault and is never swallowed silently.
-          logger.error({ msg: '[course] Global video catalog lookup failed', err, organizationId });
-          return [] as CourseWithStats[];
-        })
-      : Promise.resolve<CourseWithStats[]>([]),
+  const [courses, roleAssignments] = await Promise.all([
+    // Shared with the staff-profile assign modal. Keeping the union in ONE
+    // place is the point: this page listed the global video catalogue while the
+    // modal did not, so a course visible here could not be assigned there.
+    getAssignableCourses(),
     canReadAssignments
       ? listRoleAssignments().catch((err) => {
           logger.error({ msg: '[assignment] Role-assignment list failed', err, organizationId });
@@ -87,12 +75,6 @@ export default async function CoursesPage() {
         })
       : Promise.resolve([]),
   ]);
-
-  // One list, no "available" step. Own and adopted rows win the de-dupe: they
-  // carry this org's source-document lineage and full row affordances, which a
-  // catalog-only row deliberately does not.
-  const seen = new Set(ownCourses.map((course) => course.id));
-  const courses = [...ownCourses, ...catalogCourses.filter((course) => !seen.has(course.id))];
 
   return (
     <div className="flex flex-col gap-6">

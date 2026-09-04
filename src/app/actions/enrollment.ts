@@ -13,6 +13,7 @@ import { logger } from '@/lib/logger';
 import { invalidatePlaybackAuthz } from '@/lib/video/playback-cache';
 import type { StaffEntry } from '@/types/enrollment';
 import { resolveDataFacilityIds, staffFacilityWhere } from '@/lib/facility/staff-where';
+import { publishCourseOnAssignment } from '@/lib/course/publish-on-assign';
 import {
   partitionEmailsByFacility,
   partitionOrgUsersByFacility,
@@ -331,6 +332,9 @@ export async function enrollUsers(
         create: { organizationId, courseId, addedByAdminId: session.user.id },
       });
     }
+
+    // Every gate above has passed, so this course is going into service.
+    await publishCourseOnAssignment(course, session.user.id);
 
     const stageRows = assignmentSettings?.stages?.length
       ? assignmentSettings.stages.map((s) => ({
@@ -727,6 +731,10 @@ async function assignCourseToRoleTargets(
       refusedReason: BILLING_GATE_ASSIGN_MESSAGE,
     };
   }
+
+  // Same rule as enrollUsers: a role assignment puts the course into service for
+  // everyone who holds that role, now and later, so it is no longer a draft.
+  await publishCourseOnAssignment(course, session.user.id);
 
   const { scheduleAt, dueAt, dueWindowDays } = options;
 

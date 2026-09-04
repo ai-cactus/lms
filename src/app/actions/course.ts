@@ -662,10 +662,23 @@ export async function publishCourse(courseId: string, opts?: { acknowledgeWarnin
   return { ...course, assignmentFailed };
 }
 
-export async function deleteCourse(courseId: string) {
+/**
+ * Refusals are RETURNED, never thrown.
+ *
+ * Next.js redacts a thrown Server Action message in production: the client
+ * receives React error #441 and renders that literal string where the reason
+ * should be. Deleting a course authored by a colleague did exactly that — the
+ * user saw "Minified React error #441" instead of being told anything.
+ *
+ * Still fail-closed: every refusal returns BEFORE the delete, so the return
+ * value is only the reporting channel, never the gate.
+ */
+export async function deleteCourse(
+  courseId: string,
+): Promise<{ success: boolean; error?: string }> {
   const session = await resolveSession();
   if (!session?.user?.id) {
-    throw new Error('Unauthorized');
+    return { success: false, error: 'Your session has expired. Sign in and try again.' };
   }
 
   if (!can(dbRoleToRoleKey(session.user.role), 'course.delete')) {
@@ -675,23 +688,52 @@ export async function deleteCourse(courseId: string) {
       userId: session.user.id,
       role: session.user.role,
     });
-    throw new Error('Insufficient permissions');
+    return { success: false, error: 'You do not have permission to delete courses.' };
   }
 
-  const existing = await prisma.course.findUnique({ where: { id: courseId } });
-  if (!existing || existing.createdByOrgUserId !== session.user.organizationUserId) {
+  const organizationId = session.user.organizationId;
+  const existing = await prisma.course.findUnique({
+    where: { id: courseId },
+    select: {
+      id: true,
+      isGlobal: true,
+      creator: { select: { organizationId: true } },
+    },
+  });
+
+  // COU-002/COU-004 and PR #523 established that a course belongs to the
+  // ORGANIZATION, not to the member who authored it — `getCourses`,
+  // `getCourseById` and `enrollUsers` all scope that way. This check was still
+  // on authorship (`createdByOrgUserId`), so a manager could see a colleague's
+  // course, was offered Delete on it, and was then refused.
+  const ownedByCallerOrg =
+    !!organizationId && !!existing && existing.creator?.organizationId === organizationId;
+
+  if (!ownedByCallerOrg) {
     logger.warn({
-      msg: '[course] deleteCourse: not found or unauthorized',
+      msg: '[course] deleteCourse: not found or outside caller organization',
       courseId,
       userId: session.user.id,
     });
-    throw new Error('Course not found');
+    // A shared-catalogue course is authored by another tenant and merely
+    // offered here; deleting it would remove it for every organisation. Say so,
+    // rather than reporting a course the caller can plainly see as missing.
+    if (existing?.isGlobal) {
+      return {
+        success: false,
+        error: 'This course comes from the shared catalogue and cannot be deleted here.',
+      };
+    }
+    // Tenancy: anything else is reported as absent rather than forbidden, so the
+    // response never confirms that another organisation's course exists.
+    return { success: false, error: 'Course not found.' };
   }
 
   await prisma.course.delete({ where: { id: courseId } });
 
   logger.info({ msg: '[course] Course deleted', courseId, userId: session.user.id });
   revalidatePath('/dashboard/training');
+  revalidatePath('/dashboard/courses');
   return { success: true };
 }
 
