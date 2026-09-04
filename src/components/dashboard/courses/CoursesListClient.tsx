@@ -61,6 +61,7 @@ import {
   X,
   UserPlus,
   FileText,
+  Play,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { logger } from '@/lib/logger';
@@ -667,14 +668,51 @@ export default function CoursesListClient({
                     >
                       <TableCell className={cn(cellCls, 'px-2 md:px-[18px]')}>
                         <div className="flex items-center gap-3 sm:gap-[18px]">
-                          <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[#f1f5f9]">
-                            <Image
-                              src={course.thumbnail || '/images/icon-course-blue.svg'}
-                              alt={course.title}
-                              width={40}
-                              height={40}
-                              className="object-cover"
-                            />
+                          {/* Design 15522:271922 — a 78x47 rectangular frame, not
+                              the old 40x40 square. The image fills it
+                              (Figma scaleMode=FILL); the design's 40% teal wash
+                              over it is deliberately NOT applied, so a course's
+                              own artwork reads as itself. Narrower on small
+                              screens so the row stays compact. */}
+                          <div className="relative h-[34px] w-[56px] shrink-0 overflow-hidden bg-[#f1f5f9] sm:h-[47px] sm:w-[78px]">
+                            {course.thumbnail ? (
+                              <Image
+                                src={course.thumbnail}
+                                alt=""
+                                fill
+                                aria-hidden="true"
+                                sizes="78px"
+                                className="object-cover"
+                              />
+                            ) : (
+                              // No artwork: centre the placeholder mark rather
+                              // than stretching it to the frame's aspect ratio.
+                              <span className="flex size-full items-center justify-center">
+                                <Image
+                                  src="/images/icon-course-blue.svg"
+                                  alt=""
+                                  width={24}
+                                  height={24}
+                                  aria-hidden="true"
+                                />
+                              </span>
+                            )}
+                            {course.type === 'video' && (
+                              // The design's badge is 20% white over its teal
+                              // wash; without that wash it needs its own scrim
+                              // to stay legible on a light thumbnail.
+                              <span
+                                className="absolute inset-0 flex items-center justify-center"
+                                aria-hidden="true"
+                              >
+                                <span className="flex size-[18px] items-center justify-center rounded-full bg-black/45 sm:size-[22px]">
+                                  <Play
+                                    className="size-[8px] fill-white text-white sm:size-[10px]"
+                                    strokeWidth={0}
+                                  />
+                                </span>
+                              </span>
+                            )}
                           </div>
                           <span className="truncate text-[15px] font-semibold tracking-[0.35px] text-[#0d0d12] sm:text-[17.5px]">
                             {course.title}
