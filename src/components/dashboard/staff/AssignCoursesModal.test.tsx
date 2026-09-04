@@ -27,7 +27,11 @@ const { mockGetCourses, mockAssignCoursesToStaffMember, mockRefresh } = vi.hoist
 }));
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: mockRefresh }) }));
-vi.mock('@/app/actions/course', () => ({ getCourses: mockGetCourses }));
+// The modal now asks for everything it may ASSIGN — authored, adopted and the
+// global video catalogue — not just `getCourses()`, which omitted the
+// catalogue and left the Video Courses tab empty for orgs that had adopted
+// nothing.
+vi.mock('@/app/actions/offering', () => ({ getAssignableCourses: mockGetCourses }));
 vi.mock('@/app/actions/staff', () => ({
   assignCoursesToStaffMember: mockAssignCoursesToStaffMember,
 }));
