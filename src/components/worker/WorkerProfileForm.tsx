@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { ArrowLeft, Pencil } from 'lucide-react';
+import { Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -14,7 +14,7 @@ import {
 import { Alert } from '@/components/ui/alert';
 import { updateProfile, uploadAvatar } from '@/app/actions/user';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
+import ProfileSettingsShell from '../dashboard/profile/ProfileSettingsShell';
 import { ChangePasswordTab } from '../dashboard/ChangePasswordTab';
 import { TwoFactorAuthTab } from '../dashboard/TwoFactorAuthTab';
 
@@ -188,43 +188,21 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
     : '';
 
   const tabs = [
-    { key: 'profile' as const, label: 'EDIT PROFILE' },
-    { key: 'password' as const, label: 'CHANGE PASSWORD' },
-    { key: '2fa' as const, label: 'TWO FACTOR AUTH (2FA)' },
+    { key: 'profile' as const, label: 'My Profile' },
+    { key: 'password' as const, label: 'Change Password' },
+    { key: '2fa' as const, label: 'Two-factor Authentication' },
   ];
 
   return (
-    <div className="flex min-h-[calc(100vh-100px)] flex-col items-center justify-center p-6 max-[480px]:min-h-auto max-[480px]:p-3">
-      <Link
-        href="/worker"
-        className="mb-6 flex w-full max-w-[900px] items-center gap-2 text-sm font-medium text-[#4a5568] hover:text-[#2d3748]"
-      >
-        <ArrowLeft className="size-5" aria-hidden="true" />
-        Back to dashboard
-      </Link>
-
-      <div className="flex min-h-[600px] w-full max-w-[900px] flex-col rounded-xl border border-[#e2e8f0] bg-white shadow-sm max-[480px]:min-h-auto max-[480px]:rounded-lg">
-        <div className="px-10 max-md:px-6">
-          <div className="mt-6 flex w-full items-center gap-8 overflow-x-auto border-b border-[#e2e8f0] [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {tabs.map((tab) => (
-              <div
-                key={tab.key}
-                className={[
-                  'relative -bottom-px shrink-0 whitespace-nowrap border-b-2 px-1 py-3 text-[13px] font-semibold uppercase tracking-[0.05em] transition-all',
-                  activeTab === tab.key
-                    ? 'border-[#2563eb] text-[#2563eb]'
-                    : 'cursor-pointer border-transparent text-[#64748b]',
-                ].join(' ')}
-                onClick={() => setActiveTab(tab.key)}
-              >
-                {tab.label}
-              </div>
-            ))}
-          </div>
-        </div>
-
+    <ProfileSettingsShell
+      backHref="/worker"
+      navItems={tabs}
+      activeKey={activeTab}
+      onSelect={setActiveTab}
+    >
+      <>
         {activeTab === 'profile' && (
-          <div className="flex items-start gap-16 p-10 max-md:flex-col max-md:items-center max-md:gap-8 max-md:p-6 max-[480px]:gap-5 max-[480px]:p-4">
+          <div className="flex items-start gap-16 max-md:flex-col max-md:items-center max-md:gap-8 max-[480px]:gap-5">
             <div className="flex w-30 flex-shrink-0 justify-center pt-2 max-md:w-auto">
               <div className="relative flex size-30 items-center justify-center rounded-full bg-[#e2e8f0] text-5xl font-semibold text-[#64748b] shadow-md max-[480px]:size-20 max-[480px]:text-[32px]">
                 {avatarDisplayUrl ? (
@@ -364,10 +342,20 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
           </div>
         )}
 
-        {activeTab === 'password' && <ChangePasswordTab authProvider={user.authProvider} />}
+        {activeTab === 'password' && (
+          <div className="flex flex-col gap-6">
+            <h2 className="text-xl font-semibold text-foreground">Change Password</h2>
+            <ChangePasswordTab authProvider={user.authProvider} />
+          </div>
+        )}
 
-        {activeTab === '2fa' && <TwoFactorAuthTab userEmail={user.email} />}
-      </div>
+        {activeTab === '2fa' && (
+          <div className="flex flex-col gap-6">
+            <h2 className="text-xl font-semibold text-foreground">Two-factor Authentication</h2>
+            <TwoFactorAuthTab userEmail={user.email} />
+          </div>
+        )}
+      </>
 
       <Dialog
         open={showConfirm}
@@ -390,6 +378,6 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </ProfileSettingsShell>
   );
 }

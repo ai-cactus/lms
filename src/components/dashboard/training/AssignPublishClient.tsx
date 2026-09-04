@@ -217,13 +217,26 @@ export default function AssignPublishClient({
         }
       }
 
-      // Publish a still-draft course as part of finalizing (best-effort — a
-      // global/already-published course needs no status change).
+      // Assigning already publishes an unheld draft server-side
+      // (publishCourseOnAssignment), so this only still matters for the
+      // publish-without-assigning case and for clearing a review hold.
+      //
+      // publishCourse RETURNS its refusal rather than throwing — a quality-gate
+      // hold comes back as { success: false }. The old try/catch therefore
+      // caught nothing and the discarded result made a failed publish invisible,
+      // which is part of how courses stayed "Draft" while in use.
       if (courseStatus !== 'published') {
         try {
-          await publishCourse(courseId);
+          const publishResult = await publishCourse(courseId);
+          if (!publishResult.success) {
+            logger.warn({
+              msg: '[assign] Course assigned but not published',
+              courseId,
+              reason: publishResult.error,
+            });
+          }
         } catch (err) {
-          logger.warn({ msg: '[assign] publish skipped', err, courseId });
+          logger.error({ msg: '[assign] publish threw unexpectedly', err, courseId });
         }
       }
 
