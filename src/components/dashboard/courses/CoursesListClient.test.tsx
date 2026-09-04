@@ -5,7 +5,7 @@
  * it's stubbed to render its `actions` prop as plain buttons so assertions
  * target this component's own `buildRowActions` gating logic, not Radix.
  */
-import { act, render, screen, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import { fireEvent } from '@testing-library/dom';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -840,5 +840,61 @@ describe('CoursesListClient — row thumbnail', () => {
     );
 
     expect(thumbFrame(container)!.querySelector('svg')).toBeNull();
+  });
+});
+
+/**
+ * The delete path reported "Minified React error #441": the action THREW its
+ * refusal, Next.js redacted the message in production, and the client rendered
+ * the redaction placeholder as the error text. Refusals now come back as a
+ * value, and the row no longer offers Delete where it could never succeed.
+ */
+describe('CoursesListClient — delete refusals are readable', () => {
+  const ownCourse = () => makeCourse({ id: 'c1', title: 'Deletable Course' });
+
+  it('shows the server’s reason instead of a redacted React error', async () => {
+    const user = userEvent.setup();
+    mockDeleteCourse.mockResolvedValue({
+      success: false,
+      error: 'This course comes from the shared catalogue and cannot be deleted here.',
+    });
+
+    render(<CoursesListClient courses={[ownCourse()]} hasBilling viewerRole={'owner' as Role} />);
+
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+    await user.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Delete' }),
+    );
+
+    expect(await screen.findByText(/shared catalogue and cannot be deleted here/i)).toBeVisible();
+    // The row survives a refusal — nothing was removed optimistically.
+    expect(screen.getByText('Deletable Course')).toBeInTheDocument();
+  });
+
+  it('removes the row only when the server confirms the delete', async () => {
+    const user = userEvent.setup();
+    mockDeleteCourse.mockResolvedValue({ success: true });
+
+    render(<CoursesListClient courses={[ownCourse()]} hasBilling viewerRole={'owner' as Role} />);
+
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+    await user.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Delete' }),
+    );
+
+    await waitFor(() => expect(screen.queryByText('Deletable Course')).not.toBeInTheDocument());
+  });
+
+  it('does not offer Delete on a shared-catalogue row', async () => {
+    const user = userEvent.setup();
+    render(
+      <CoursesListClient
+        courses={[makeCourse({ id: 'cat-1', title: 'Catalogue Course', isGlobalCatalog: true })]}
+        hasBilling
+        viewerRole={'owner' as Role}
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
   });
 });

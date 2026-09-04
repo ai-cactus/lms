@@ -398,10 +398,18 @@ export default function CoursesListClient({
       setActionError(null);
       startTransition(async () => {
         try {
-          await deleteCourse(course.id);
+          // Refusals come back as a value — a thrown Server Action message is
+          // redacted in production and surfaces as React error #441.
+          const result = await deleteCourse(course.id);
+          if (!result.success) {
+            setActionError(result.error ?? 'Failed to delete course.');
+            setDeletingId(null);
+            return;
+          }
           setCourseList((prev) => prev.filter((c) => c.id !== course.id));
         } catch (err) {
-          setActionError(err instanceof Error ? err.message : 'Failed to delete course.');
+          logger.error({ msg: '[course] Delete failed', err, courseId: course.id });
+          setActionError('Failed to delete course.');
         }
         setDeletingId(null);
       });
@@ -496,7 +504,10 @@ export default function CoursesListClient({
       });
     }
 
-    if (canDeleteCourse) {
+    // A shared-catalogue row is authored by another tenant and only offered to
+    // this org, so it can never be deleted from here — offering the action was
+    // a guaranteed dead end.
+    if (canDeleteCourse && !course.isGlobalCatalog) {
       actions.push({
         label: deletingId === course.id ? 'Deleting…' : 'Delete',
         icon: <Trash2 className="size-4" />,
