@@ -475,3 +475,94 @@ describe('StaffListClient — All Staff role filter', () => {
     expect(screen.queryByText('Hilda Reyes')).not.toBeInTheDocument();
   });
 });
+
+/**
+ * Design 15522:275169 — the Role column is plain text (17.4px/500 #464646), not
+ * a pill. A pill reads as a STATUS: mutable, and often actionable. A role is
+ * neither, so a green pill made every row look like it carried an
+ * "active"-style badge. The same table still uses a pill for the "+N" facility
+ * overflow chip, so this is a targeted change, not a blanket de-pilling.
+ */
+describe('StaffListClient — Role column is plain text', () => {
+  function roleCell(name: string) {
+    // The role cell is the one whose text is exactly the role label.
+    return within(rowFor(name)).getByTitle('Nurse');
+  }
+
+  it('renders the role without pill styling', () => {
+    render(
+      <StaffListClient
+        users={[memberEntry('ou-1', 'Nina Nurse', 'nurse')]}
+        hasOrganization={true}
+        organizationId="org-1"
+        planLimit={null}
+        planName="Professional"
+        currentWorkerCount={1}
+        pendingInviteCount={0}
+        inviterRole="owner"
+        viewerOrganizationUserId="ou-viewer"
+        facilities={MULTI_FACILITIES}
+      />,
+    );
+
+    const cell = roleCell('Nina Nurse');
+    expect(cell).toHaveTextContent('Nurse');
+    // The pill's own signature: a full radius and a filled background.
+    expect(cell.className).not.toContain('rounded-full');
+    expect(cell.className).not.toContain('bg-[#dcfce7]');
+    expect(cell.className).toContain('text-[#464646]');
+  });
+
+  it('keeps the "+N" facility chip as a pill — pills still mean something here', () => {
+    render(
+      <StaffListClient
+        users={[
+          {
+            ...memberEntry('ou-1', 'Nina Nurse', 'nurse'),
+            facilities: [
+              { id: 'f1', name: 'Main Site' },
+              { id: 'f2', name: 'North Wing' },
+            ],
+          },
+        ]}
+        hasOrganization={true}
+        organizationId="org-1"
+        planLimit={null}
+        planName="Professional"
+        currentWorkerCount={1}
+        pendingInviteCount={0}
+        inviterRole="owner"
+        viewerOrganizationUserId="ou-viewer"
+        facilities={MULTI_FACILITIES}
+      />,
+    );
+
+    const chip = screen.getByText('+1');
+    expect(chip.className).toContain('rounded-full');
+  });
+
+  it('still truncates a long role name and keeps it readable on hover', () => {
+    render(
+      <StaffListClient
+        users={[memberEntry('ou-1', 'Bea Tech', 'behavioral_health_technician')]}
+        hasOrganization={true}
+        organizationId="org-1"
+        planLimit={null}
+        planName="Professional"
+        currentWorkerCount={1}
+        pendingInviteCount={0}
+        inviterRole="owner"
+        viewerOrganizationUserId="ou-viewer"
+        facilities={MULTI_FACILITIES}
+      />,
+    );
+
+    // The registry's display names are long — this one is 54 characters — which
+    // is why the cell keeps `truncate` plus a `title` now that the pill (and its
+    // own overflow handling) is gone.
+    const cell = within(rowFor('Bea Tech')).getByTitle(
+      'Behavioral Health Technician / Mental Health Associate',
+    );
+    expect(cell.className).toContain('truncate');
+  });
+});

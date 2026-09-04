@@ -528,14 +528,20 @@ export default function StaffListClient({
                       </div>
                     </TableCell>
 
+                    {/* Plain text, per design 15522:275169 (role reads 17.4px/500
+                        #464646 straight in the cell). A pill signals STATUS —
+                        something that changes and that you might act on. A role
+                        is neither, and dressing it as a green pill made every
+                        row look like it carried an "active"-style badge. The
+                        design does still use a pill in this table, for the "+N"
+                        facility overflow chip beside it — so the distinction is
+                        deliberate, not a blanket removal. */}
                     <TableCell className="hidden py-0 sm:table-cell sm:px-5">
                       <span
                         title={getRoleDisplayName(user.role as Role)}
-                        className="inline-flex h-[29px] max-w-full items-center rounded-full bg-[#dcfce7] px-2 text-[12px] font-semibold text-[#15803d] sm:px-[14px] sm:text-[13px]"
+                        className="block truncate text-[15.5px] font-medium text-[#464646]"
                       >
-                        {/* Ellipsis needs its own block — text-overflow never
-                            applies to a flex container's anonymous text item. */}
-                        <span className="truncate">{getRoleDisplayName(user.role as Role)}</span>
+                        {getRoleDisplayName(user.role as Role)}
                       </span>
                     </TableCell>
 
