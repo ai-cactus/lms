@@ -787,6 +787,22 @@ describe('CoursesListClient — row thumbnail', () => {
     expect(thumbFrame(container)!.innerHTML).not.toMatch(/2c8f88/i);
   });
 
+  it('keeps the full course name reachable on hover once the title truncates', () => {
+    // Staging QA: the 78px frame leaves the title less room than the old 40px
+    // square, so it truncates sooner. Without a tooltip the name was simply lost.
+    render(
+      <CoursesListClient
+        courses={[makeCourse({ title: 'A Very Long Course Title That Will Certainly Truncate' })]}
+        hasBilling
+        viewerRole={'owner' as Role}
+      />,
+    );
+
+    expect(screen.getByTitle('A Very Long Course Title That Will Certainly Truncate')).toHaveClass(
+      'truncate',
+    );
+  });
+
   it('marks the thumbnail decorative — the title beside it already names the course', () => {
     render(
       <CoursesListClient

@@ -725,7 +725,14 @@ export default function CoursesListClient({
                               </span>
                             )}
                           </div>
-                          <span className="truncate text-[15px] font-semibold tracking-[0.35px] text-[#0d0d12] sm:text-[17.5px]">
+                          {/* The 78px thumbnail leaves the title less room than
+                              the old 40px square did, so it truncates sooner —
+                              `title` gives the full name back on hover, as the
+                              Role and Facility columns already do. */}
+                          <span
+                            title={course.title}
+                            className="truncate text-[15px] font-semibold tracking-[0.35px] text-[#0d0d12] sm:text-[17.5px]"
+                          >
                             {course.title}
                           </span>
                         </div>
