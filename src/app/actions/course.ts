@@ -23,7 +23,7 @@ import {
 } from '@/lib/facility/staff-where';
 import { partitionEmailsByFacility } from '@/lib/facility/target-scope';
 import { CourseAccessError } from '@/lib/course/access-error';
-import { forkCourse } from '@/lib/course/fork-course';
+import { forkCourse, type ForkedCourse } from '@/lib/course/fork-course';
 import { resolveOnCompletion } from '@/lib/reminders/sweep';
 import { combineDateAndTime } from '@/lib/reminders/deadline';
 import { assignCourseToRoles, enrollUsers } from './enrollment';
@@ -231,16 +231,22 @@ export async function getCourses(): Promise<CourseWithStats[]> {
   // admin/HR must be able to open a colleague's source doc — COU-004). Only
   // cross-tenant offerings null it out: their document belongs to the
   // publishing org and must never be linked from this tenant.
-  const adopted = adoptedCourses.map((course) =>
-    toStats(
+  const adopted = adoptedCourses.map((course) => ({
+    ...toStats(
       course.creator.organizationId === organizationId ? course : { ...course, versions: [] },
       adoptedCountMap.get(course.id) ?? { total: 0, completed: 0 },
     ),
-  );
+    // An adopted course is usually another tenant's; only sometimes our own.
+    isOrgAuthored: course.creator.organizationId === organizationId,
+  }));
 
   // De-dupe in case the admin both created and adopted the same course id.
   const seen = new Set(own.map((c) => c.id));
-  return [...own, ...adopted.filter((c) => !seen.has(c.id))];
+  // `own` is by definition authored inside this organisation.
+  return [
+    ...own.map((c) => ({ ...c, isOrgAuthored: true })),
+    ...adopted.filter((c) => !seen.has(c.id)),
+  ];
 }
 
 /**
@@ -742,10 +748,18 @@ export async function deleteCourse(
  * the org rather than the individual author so a course can be duplicated by any
  * permitted colleague, not just whoever created it.
  */
-export async function duplicateCourse(courseId: string) {
+/**
+ * Refusals are RETURNED, never thrown: a thrown Server Action message is
+ * redacted in production and reaches the browser as React error #441. Staging
+ * QA hit exactly that — Duplicate 500'd on every adopted course and the reason
+ * was invisible.
+ */
+export async function duplicateCourse(
+  courseId: string,
+): Promise<{ success: true; course: ForkedCourse } | { success: false; error: string }> {
   const session = await resolveSession();
   if (!session?.user?.id || !session.user.organizationUserId || !session.user.organizationId) {
-    throw new Error('Unauthorized');
+    return { success: false, error: 'Your session has expired. Sign in and try again.' };
   }
 
   if (!can(dbRoleToRoleKey(session.user.role), 'course.create')) {
@@ -755,22 +769,26 @@ export async function duplicateCourse(courseId: string) {
       userId: session.user.id,
       role: session.user.role,
     });
-    throw new Error('Insufficient permissions');
+    return { success: false, error: 'You do not have permission to duplicate courses.' };
   }
 
-  // Tenant isolation: a course outside the caller's org is reported as not found
-  // so its existence is never leaked.
+  // AUTHORSHIP, not mere visibility. A course this org has ADOPTED is authored
+  // by another tenant and appears in the same list, so this is reachable — it is
+  // what 500'd on staging once Duplicate was offered on those rows.
   const existing = await prisma.course.findFirst({
     where: { id: courseId, creator: { organizationId: session.user.organizationId } },
     select: { id: true },
   });
   if (!existing) {
     logger.warn({
-      msg: '[course] duplicateCourse: not found or unauthorized',
+      msg: '[course] duplicateCourse: not found or not authored by this organization',
       courseId,
       userId: session.user.id,
     });
-    throw new Error('Course not found');
+    return {
+      success: false,
+      error: 'Only a course your organization created can be duplicated.',
+    };
   }
 
   const fork = await forkCourse({
@@ -780,7 +798,8 @@ export async function duplicateCourse(courseId: string) {
   });
 
   revalidatePath('/dashboard/training');
-  return fork;
+  revalidatePath('/dashboard/courses');
+  return { success: true, course: fork };
 }
 
 /**

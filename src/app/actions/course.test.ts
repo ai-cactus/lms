@@ -447,17 +447,27 @@ describe('duplicateCourse', () => {
     mockForkCourse.mockResolvedValue({ id: 'course-fork', title: 'Course (copy)' });
   });
 
-  it('throws Unauthorized when there is no session', async () => {
+  // Refusals are RETURNED, not thrown. A thrown Server Action message is
+  // redacted in production and reaches the browser as React error #441 — which
+  // is precisely what staging QA saw when Duplicate hit an adopted course.
+  // Note these used to assert `.rejects` and passed the whole time, because the
+  // promise really did reject; only the return value exposes the defect.
+  it('refuses readably when there is no session', async () => {
     mockAdminAuth.mockResolvedValue(null);
     mockWorkerAuth.mockResolvedValue(null);
 
-    await expect(duplicateCourse('course-1')).rejects.toThrow('Unauthorized');
+    const result = await duplicateCourse('course-1');
+
+    expect(result.success).toBe(false);
+    expect(result).not.toHaveProperty('course');
   });
 
   it.each(['supervisor', 'finance'])('denies role=%s — lacks course.create', async (role) => {
     mockAdminAuth.mockResolvedValue(makeSession(role));
 
-    await expect(duplicateCourse('course-1')).rejects.toThrow('Insufficient permissions');
+    const result = await duplicateCourse('course-1');
+
+    expect(result.success).toBe(false);
     expect(mockForkCourse).not.toHaveBeenCalled();
   });
 
@@ -468,14 +478,24 @@ describe('duplicateCourse', () => {
 
       const result = await duplicateCourse('course-1');
 
-      expect(result).toEqual({ id: 'course-fork', title: 'Course (copy)' });
+      expect(result).toEqual({
+        success: true,
+        course: { id: 'course-fork', title: 'Course (copy)' },
+      });
     },
   );
 
-  it('reports "not found" (never leaking existence) for a course outside the caller\'s org', async () => {
+  it('refuses a course this organization did not author, without forking', async () => {
+    // Includes ADOPTED courses: they are visible in the same list but authored
+    // by another tenant. Offering Duplicate on one is what 500'd on staging.
     mockCourseFindFirst.mockResolvedValue(null);
 
-    await expect(duplicateCourse('foreign-course')).rejects.toThrow('Course not found');
+    const result = await duplicateCourse('foreign-course');
+
+    expect(result).toEqual({
+      success: false,
+      error: 'Only a course your organization created can be duplicated.',
+    });
     expect(mockForkCourse).not.toHaveBeenCalled();
   });
 
