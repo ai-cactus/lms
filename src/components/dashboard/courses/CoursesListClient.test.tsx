@@ -885,8 +885,7 @@ describe('CoursesListClient — delete refusals are readable', () => {
     await waitFor(() => expect(screen.queryByText('Deletable Course')).not.toBeInTheDocument());
   });
 
-  it('does not offer Delete on a shared-catalogue row', async () => {
-    const user = userEvent.setup();
+  it('does not offer Delete on a shared-catalogue row', () => {
     render(
       <CoursesListClient
         courses={[makeCourse({ id: 'cat-1', title: 'Catalogue Course', isGlobalCatalog: true })]}
