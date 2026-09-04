@@ -2,6 +2,7 @@ import React from 'react';
 import { getStaffUsers } from '@/app/actions/user';
 import StaffListClient from '@/components/dashboard/staff/StaffListClient';
 import prisma from '@/lib/prisma';
+import { countBillableStaff } from '@/lib/seat-limits';
 import { BILLING_PLANS } from '@/lib/billing-plans';
 import { DEFAULT_SELF_SERVE_WORKER_ROLE } from '@/lib/rbac/role-utils';
 import { requirePermissionWithFacilityScope } from '@/lib/rbac/require-permission';
@@ -37,10 +38,14 @@ export default async function StaffPage() {
         where: { organizationId },
         select: { plan: true, status: true },
       }),
-      // D2: every role except `owner` consumes a plan seat.
-      prisma.organizationUser.count({
-        where: { organizationId, role: { not: 'owner' } },
-      }),
+      // D2: every role except `owner` consumes a plan seat — and only an ACTIVE
+      // membership does. This was a hand-rolled copy of `countBillableStaff`
+      // that had drifted from it: without `active: true` it kept counting staff
+      // who had been removed, so the seat gauge never went down and an org at
+      // its cap could not invite anyone again even with room on the roster
+      // (staging QA 2026-09-04). `removeStaff` deactivates rather than deletes,
+      // precisely so the training record survives.
+      countBillableStaff(organizationId),
       prisma.invite.count({
         where: {
           organizationId,
