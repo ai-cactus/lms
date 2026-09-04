@@ -332,7 +332,12 @@ describe('CoursesListClient — row action gating per role', () => {
     return within(row).getByTestId('row-actions');
   }
 
-  it('owner sees the design action set: Assign, View Source Document, Rename, Delete — no Duplicate', () => {
+  // UPDATED 2026-09-04 — Duplicate is now offered. The 2026-08-28 ruling this
+  // test encoded ("keep the kebab, add nothing") was about not replacing the
+  // kebab with the design's bare "View" button; it was never a decision to
+  // leave `duplicateCourse` — fully built, gated and unit-tested — unreachable,
+  // which staging QA reported as a defect.
+  it('owner sees the full action set: Assign, View Source Document, Duplicate, Rename, Delete', () => {
     render(<CoursesListClient courses={[course]} hasBilling viewerRole="owner" />);
 
     const actions = actionsForRow();
@@ -340,7 +345,7 @@ describe('CoursesListClient — row action gating per role', () => {
     expect(
       within(actions).getByRole('button', { name: 'View Source Document' }),
     ).toBeInTheDocument();
-    expect(within(actions).queryByRole('button', { name: 'Duplicate' })).not.toBeInTheDocument();
+    expect(within(actions).getByRole('button', { name: 'Duplicate' })).toBeInTheDocument();
     expect(within(actions).getByRole('button', { name: 'Rename' })).toBeInTheDocument();
     expect(within(actions).getByRole('button', { name: 'Delete' })).toBeInTheDocument();
   });
@@ -911,5 +916,68 @@ describe('CoursesListClient — delete refusals are readable', () => {
     );
 
     expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * `duplicateCourse` shipped fully built, RBAC-gated and unit-tested — and wired
+ * to nothing. Staging QA 2026-09-04 found no Duplicate action anywhere in the
+ * UI, which also left "an assigned course is no longer a draft" with no
+ * live-reachable way to reproduce it (duplicate → assign → published).
+ */
+describe('CoursesListClient — Duplicate action', () => {
+  it('duplicates the row the admin chose', async () => {
+    const user = userEvent.setup();
+    mockDuplicateCourse.mockResolvedValue({ id: 'copy-1' });
+    render(<CoursesListClient courses={[makeCourse()]} hasBilling viewerRole={'owner' as Role} />);
+
+    await user.click(screen.getByRole('button', { name: 'Duplicate' }));
+
+    expect(mockDuplicateCourse).toHaveBeenCalledWith('course-1');
+  });
+
+  it('opens the copy rather than leaving a new draft to be hunted for', async () => {
+    const user = userEvent.setup();
+    mockDuplicateCourse.mockResolvedValue({ id: 'copy-1' });
+    render(<CoursesListClient courses={[makeCourse()]} hasBilling viewerRole={'owner' as Role} />);
+
+    await user.click(screen.getByRole('button', { name: 'Duplicate' }));
+
+    await waitFor(() =>
+      expect(mockPush).toHaveBeenCalledWith('/dashboard/training/courses/copy-1'),
+    );
+  });
+
+  it('is withheld from a role without course.create', () => {
+    // supervisor may assign but authors nothing.
+    render(
+      <CoursesListClient courses={[makeCourse()]} hasBilling viewerRole={'supervisor' as Role} />,
+    );
+
+    expect(screen.queryByRole('button', { name: 'Duplicate' })).not.toBeInTheDocument();
+  });
+
+  it('does not offer Duplicate on a shared-catalogue row', () => {
+    // duplicateCourse forks a course the caller's ORG owns; a catalogue row
+    // belongs to another tenant, the same reason Delete is withheld.
+    render(
+      <CoursesListClient
+        courses={[makeCourse({ isGlobalCatalog: true })]}
+        hasBilling
+        viewerRole={'owner' as Role}
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: 'Duplicate' })).not.toBeInTheDocument();
+  });
+
+  it('surfaces a failure instead of leaving the action stuck', async () => {
+    const user = userEvent.setup();
+    mockDuplicateCourse.mockRejectedValue(new Error('nope'));
+    render(<CoursesListClient courses={[makeCourse()]} hasBilling viewerRole={'owner' as Role} />);
+
+    await user.click(screen.getByRole('button', { name: 'Duplicate' }));
+
+    expect(await screen.findByText(/could not duplicate that course/i)).toBeVisible();
   });
 });
