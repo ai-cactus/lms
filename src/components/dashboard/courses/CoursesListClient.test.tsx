@@ -107,6 +107,9 @@ function makeCourse(overrides: Partial<CourseWithStats> = {}): CourseWithStats {
     enrollmentsCount: 5,
     completionRate: 50,
     sourceDocumentId: 'doc-1',
+    // Authored inside the viewing org — the common case, and what gates the
+    // authoring actions (Duplicate, Delete).
+    isOrgAuthored: true,
     ...overrides,
   } as CourseWithStats;
 }
@@ -909,7 +912,14 @@ describe('CoursesListClient — delete refusals are readable', () => {
   it('does not offer Delete on a shared-catalogue row', () => {
     render(
       <CoursesListClient
-        courses={[makeCourse({ id: 'cat-1', title: 'Catalogue Course', isGlobalCatalog: true })]}
+        courses={[
+          makeCourse({
+            id: 'cat-1',
+            title: 'Catalogue Course',
+            isGlobalCatalog: true,
+            isOrgAuthored: false,
+          }),
+        ]}
         hasBilling
         viewerRole={'owner' as Role}
       />,
@@ -928,7 +938,7 @@ describe('CoursesListClient — delete refusals are readable', () => {
 describe('CoursesListClient — Duplicate action', () => {
   it('duplicates the row the admin chose', async () => {
     const user = userEvent.setup();
-    mockDuplicateCourse.mockResolvedValue({ id: 'copy-1' });
+    mockDuplicateCourse.mockResolvedValue({ success: true, course: { id: 'copy-1' } });
     render(<CoursesListClient courses={[makeCourse()]} hasBilling viewerRole={'owner' as Role} />);
 
     await user.click(screen.getByRole('button', { name: 'Duplicate' }));
@@ -938,7 +948,7 @@ describe('CoursesListClient — Duplicate action', () => {
 
   it('opens the copy rather than leaving a new draft to be hunted for', async () => {
     const user = userEvent.setup();
-    mockDuplicateCourse.mockResolvedValue({ id: 'copy-1' });
+    mockDuplicateCourse.mockResolvedValue({ success: true, course: { id: 'copy-1' } });
     render(<CoursesListClient courses={[makeCourse()]} hasBilling viewerRole={'owner' as Role} />);
 
     await user.click(screen.getByRole('button', { name: 'Duplicate' }));
@@ -962,7 +972,7 @@ describe('CoursesListClient — Duplicate action', () => {
     // belongs to another tenant, the same reason Delete is withheld.
     render(
       <CoursesListClient
-        courses={[makeCourse({ isGlobalCatalog: true })]}
+        courses={[makeCourse({ isGlobalCatalog: true, isOrgAuthored: false })]}
         hasBilling
         viewerRole={'owner' as Role}
       />,
@@ -979,5 +989,57 @@ describe('CoursesListClient — Duplicate action', () => {
     await user.click(screen.getByRole('button', { name: 'Duplicate' }));
 
     expect(await screen.findByText(/could not duplicate that course/i)).toBeVisible();
+  });
+});
+
+/**
+ * Staging QA 2026-09-04 (round 3): Duplicate 500'd on every course tried.
+ *
+ * The UI gate keyed on `isGlobalCatalog`, which marks ONLY catalogue rows the
+ * org has not adopted. An ADOPTED global course arrives through the org's own
+ * list without that flag but is still authored by another tenant, so
+ * `duplicateCourse` — which requires authorship — threw, and the throw reached
+ * the browser as React error #441. Staging's Video tab is exactly those courses,
+ * so it failed every time.
+ *
+ * The authoring actions now key on `isOrgAuthored`, which covers both cases.
+ */
+describe('CoursesListClient — authoring actions follow authorship, not catalogue flags', () => {
+  const adopted = () =>
+    makeCourse({
+      id: 'adopted-1',
+      title: 'Adopted Global Course',
+      // Not a catalogue-only row — the org has adopted it — but authored
+      // elsewhere. This exact shape is what crashed.
+      isGlobalCatalog: false,
+      isOrgAuthored: false,
+    });
+
+  it('offers neither Duplicate nor Delete on an ADOPTED course from another tenant', () => {
+    render(<CoursesListClient courses={[adopted()]} hasBilling viewerRole={'owner' as Role} />);
+
+    expect(screen.queryByRole('button', { name: 'Duplicate' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
+  });
+
+  it('still offers both on a course this organization authored', () => {
+    render(<CoursesListClient courses={[makeCourse()]} hasBilling viewerRole={'owner' as Role} />);
+
+    expect(screen.getByRole('button', { name: 'Duplicate' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument();
+  });
+
+  it('shows the server’s reason rather than a redacted error if one slips through', async () => {
+    const user = userEvent.setup();
+    mockDuplicateCourse.mockResolvedValue({
+      success: false,
+      error: 'Only a course your organization created can be duplicated.',
+    });
+    render(<CoursesListClient courses={[makeCourse()]} hasBilling viewerRole={'owner' as Role} />);
+
+    await user.click(screen.getByRole('button', { name: 'Duplicate' }));
+
+    expect(await screen.findByText(/only a course your organization created/i)).toBeVisible();
+    expect(mockPush).not.toHaveBeenCalled();
   });
 });

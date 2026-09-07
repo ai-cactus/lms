@@ -425,10 +425,15 @@ export default function CoursesListClient({
       setActionError(null);
       startTransition(async () => {
         try {
-          const copy = await duplicateCourse(course.id);
+          const result = await duplicateCourse(course.id);
+          if (!result.success) {
+            setActionError(result.error);
+            setDuplicatingId(null);
+            return;
+          }
           // A fork starts as a draft the admin still has to finish, so open it
           // rather than silently adding a row they then have to hunt for.
-          router.push(`/dashboard/training/courses/${copy.id}`);
+          router.push(`/dashboard/training/courses/${result.course.id}`);
         } catch (err) {
           logger.error({ msg: '[course] Duplicate failed', err, courseId: course.id });
           setActionError('Could not duplicate that course. Please try again.');
@@ -539,7 +544,7 @@ export default function CoursesListClient({
     //
     // Excluded on shared-catalogue rows for the same reason Delete is:
     // duplicateCourse forks a course the caller's ORG owns.
-    if (canCreateCourse && !course.isGlobalCatalog) {
+    if (canCreateCourse && course.isOrgAuthored) {
       actions.push({
         label: duplicatingId === course.id ? 'Duplicating…' : 'Duplicate',
         icon: <Copy className="size-4" />,
@@ -548,7 +553,7 @@ export default function CoursesListClient({
       });
     }
 
-    if (canDeleteCourse && !course.isGlobalCatalog) {
+    if (canDeleteCourse && course.isOrgAuthored) {
       actions.push({
         label: deletingId === course.id ? 'Deleting…' : 'Delete',
         icon: <Trash2 className="size-4" />,
