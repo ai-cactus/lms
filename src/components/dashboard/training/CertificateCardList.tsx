@@ -256,7 +256,7 @@ export default function CertificateCardList({
                   className="gap-1.5 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary"
                 >
                   <Check className="size-3" strokeWidth={3} />
-                  Approved
+                  Issued
                 </Badge>
               </div>
             </div>
