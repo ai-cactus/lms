@@ -24,6 +24,17 @@ export type CourseWithStats = {
    * organization and the assign action rejects it on its creator-org check.
    */
   isGlobalCatalog?: boolean;
+  /**
+   * True when a member of the VIEWING organization authored this course.
+   *
+   * `isGlobalCatalog` is not the inverse: it only marks catalogue rows the org
+   * has NOT adopted. An ADOPTED global course arrives through the org's own
+   * list without that flag, yet is still authored by another tenant — so any
+   * action that requires org authorship (duplicate, delete) must key on this,
+   * not on `isGlobalCatalog`. Offering Duplicate on an adopted course is what
+   * made it 500 on staging.
+   */
+  isOrgAuthored?: boolean;
 };
 
 /**

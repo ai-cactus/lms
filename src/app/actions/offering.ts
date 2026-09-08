@@ -206,6 +206,7 @@ export async function listGlobalVideoCatalogCourses(): Promise<CourseWithStats[]
       // linkable from this one.
       sourceDocumentId: null,
       isGlobalCatalog: true,
+      isOrgAuthored: false,
     };
   });
 }
