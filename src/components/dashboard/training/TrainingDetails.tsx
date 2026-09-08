@@ -59,6 +59,13 @@ interface TrainingDetailsProps {
    * where it would be refused.
    */
   canWithdrawAssignments?: boolean;
+  /**
+   * Where "Go Back" leads. Computed on the server from the viewer's own
+   * permissions: this page has no `course.read` gate but the courses list does,
+   * so a role without it (finance, since 2026-08-25) was sent to a route that
+   * redirected straight back and read as a dead button.
+   */
+  backHref?: string;
 }
 
 const headCls =
@@ -70,6 +77,7 @@ const tagCls =
 export default function TrainingDetails({
   course,
   canWithdrawAssignments = false,
+  backHref = '/dashboard',
 }: TrainingDetailsProps) {
   const router = useRouter();
   const [withdrawTarget, setWithdrawTarget] = useState<{ id: string; name: string } | null>(null);
@@ -130,7 +138,7 @@ export default function TrainingDetails({
     <div className="mx-auto flex w-full max-w-[1400px] flex-col">
       <div className="mb-5 flex flex-wrap items-center gap-4">
         <Link
-          href="/dashboard/courses"
+          href={backHref}
           className="inline-flex items-center gap-3 text-sm text-[#667185] transition-colors hover:text-[#101928]"
         >
           <span className="flex size-6 shrink-0 items-center justify-center rounded-[4px] border border-[#e4e7ec] bg-white">
