@@ -266,6 +266,86 @@ describe('uploadDocument — THER-003 PHI gate always fails closed', () => {
   });
 });
 
+/**
+ * Regression coverage for the wizard-attached-a-colleague's-document bug: a
+ * re-upload of a filename that already exists for this SAME organizationUser
+ * reuses the Document row (only a new DocumentVersion is created) — mirroring
+ * `tx.document.findFirst({ where: { organizationUserId, filename } })`, which
+ * scopes the match to the uploader, not the organization. The identity class
+ * of bug this fix closes is "identity re-derived from a non-unique attribute
+ * (filename) across too-wide a scope (the whole org, via getDocuments())";
+ * this suite pins the two branches `processSingleUpload` can resolve a
+ * document through so neither can regress back to that shape.
+ */
+describe('uploadDocument — returned document identity (existing vs. new Document row)', () => {
+  it('on a brand-new filename, returns the freshly created row (new-document branch)', async () => {
+    mockScanText.mockResolvedValue({ hasPHI: false, findings: [], decidedBy: 'ai' });
+    prismaMock._tx.document.findFirst.mockResolvedValue(null);
+    mockDocumentCreate('doc-new');
+    prismaMock._tx.documentVersion.create.mockResolvedValue({ id: 'ver-1' });
+
+    const result = await uploadDocument(null, makeFormData());
+
+    expect(prismaMock._tx.document.create).toHaveBeenCalledOnce();
+    expect(result.document).toEqual({
+      id: 'doc-new',
+      filename: 'policy.pdf',
+      mimeType: 'application/pdf',
+      size: 8,
+    });
+  });
+
+  it('on a re-upload of an existing filename, reuses the Document row and returns ITS stored metadata — not the new file’s', async () => {
+    // The existing row's stored size/mimeType intentionally differ from the
+    // incoming file's (8 bytes, 'application/pdf') so a regression that
+    // re-derived the response from `file` instead of the stored row would be
+    // caught by the metadata mismatch below, not just a missing id.
+    const existingDoc = {
+      id: 'doc-existing',
+      filename: 'policy.pdf',
+      mimeType: 'application/pdf',
+      size: 5000,
+      organizationUserId: 'ou-1',
+    };
+    prismaMock._tx.document.findFirst.mockResolvedValue(existingDoc);
+    prismaMock._tx.documentVersion.findFirst.mockResolvedValue({ id: 'ver-1', version: 2 });
+    prismaMock._tx.documentVersion.create.mockResolvedValue({ id: 'ver-3' });
+    mockScanText.mockResolvedValue({ hasPHI: false, findings: [], decidedBy: 'ai' });
+
+    const result = await uploadDocument(null, makeFormData());
+
+    // A new version is created against the EXISTING document, not a new one.
+    expect(prismaMock._tx.document.create).not.toHaveBeenCalled();
+    expect(prismaMock._tx.documentVersion.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ documentId: 'doc-existing', version: 3 }),
+      }),
+    );
+
+    // The wizard attaches whatever comes back here — it must be the stored
+    // row's metadata, unconditionally, never the just-uploaded File's.
+    expect(result.document).toEqual({
+      id: 'doc-existing',
+      filename: 'policy.pdf',
+      mimeType: 'application/pdf',
+      size: 5000,
+    });
+  });
+
+  it('the existing-document lookup is scoped to this uploader (organizationUserId), not the whole organization', async () => {
+    mockScanText.mockResolvedValue({ hasPHI: false, findings: [], decidedBy: 'ai' });
+    prismaMock._tx.document.findFirst.mockResolvedValue(null);
+    mockDocumentCreate();
+    prismaMock._tx.documentVersion.create.mockResolvedValue({ id: 'ver-1' });
+
+    await uploadDocument(null, makeFormData());
+
+    expect(prismaMock._tx.document.findFirst).toHaveBeenCalledWith({
+      where: { organizationUserId: 'ou-1', filename: 'policy.pdf' },
+    });
+  });
+});
+
 describe('uploadDocument — Issue #11: server-side PHI attestation gate', () => {
   it('rejects when phiAttested is missing from FormData, before any file processing', async () => {
     const result = await uploadDocument(null, makeFormData('policy.pdf', { attested: false }));
