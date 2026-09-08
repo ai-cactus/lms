@@ -32,8 +32,14 @@ Orchestration guidance:
 - **App Router**: Follows Next.js App Router conventions in `src/app/`.
 - **AI Pipeline (v4.6)**: Multi-stage orchestration for content generation and PHI scanning.
 - **Isolation**: Multi-tenant organization support and role-based access (`admin` vs `worker`).
-- **Data Persistence**: Prisma ORM with PostgreSQL backend in `src/prisma`.
-- **Authentication**: NextAuth.v5 handles sessions and role-based redirects (`src/auth.ts`, `src/middleware.ts`).
+- **Data Persistence**: Prisma ORM with PostgreSQL. The schema lives in `prisma/` and is
+  **split across domain files** (`course.prisma`, `enrollment.prisma`, `organization.prisma`, …)
+  via `prisma.config.ts` (`schema: 'prisma/'`); `prisma/schema.prisma` is only a datasource stub,
+  so grepping it alone will not find a model. Seeding is `migrations.seed` in `prisma.config.ts`,
+  not a `prisma.seed` key in `package.json`.
+- **Authentication**: NextAuth.v5 handles sessions and role-based redirects (`src/auth.ts`,
+  `src/proxy.ts`). Next.js 16 renamed middleware to **proxy** — there is no `src/middleware.ts`;
+  the route/role rules live in `src/proxy.ts` and log under the `[proxy]` prefix.
 
 ## Build, Test, and Development Commands
 
