@@ -104,6 +104,25 @@ import { emitNotificationEvent } from '@/lib/notifications/emit';
 
 const mockEmitNotificationEvent = vi.mocked(emitNotificationEvent);
 
+/**
+ * Mirrors Prisma: the created row carries back the data it was written with, so
+ * the metadata `uploadDocument` now returns is the row's, not an echo of the
+ * request.
+ */
+function mockDocumentCreate(id = 'doc-1') {
+  prismaMock._tx.document.create.mockImplementation(
+    async ({ data }: { data: Record<string, unknown> }) => ({ id, ...data }),
+  );
+}
+
+/** The Document row the default `makeFormData()` upload resolves to. */
+const UPLOADED_PDF = {
+  id: 'doc-1',
+  filename: 'policy.pdf',
+  mimeType: 'application/pdf',
+  size: 8,
+};
+
 function makeFormData(fileName = 'policy.pdf', opts: { attested?: boolean } = {}) {
   const { attested = true } = opts;
   const formData = new FormData();
@@ -220,13 +239,15 @@ describe('uploadDocument — THER-003 PHI gate always fails closed', () => {
   it('proceeds to storage + DB persistence for a clean (no PHI, scan succeeded) document', async () => {
     mockScanText.mockResolvedValue({ hasPHI: false, findings: [], decidedBy: 'ai' });
     prismaMock._tx.document.findFirst.mockResolvedValue(null);
-    prismaMock._tx.document.create.mockResolvedValue({ id: 'doc-1' });
+    mockDocumentCreate();
     prismaMock._tx.documentVersion.create.mockResolvedValue({ id: 'ver-1' });
 
     const result = await uploadDocument(null, makeFormData());
 
     expect(mockSaveFile).toHaveBeenCalledOnce();
-    expect(result).toEqual({ success: true, phiDetected: false });
+    // The stored document comes back with the upload: the course wizard attaches
+    // THIS id rather than matching an org-wide document by filename.
+    expect(result).toEqual({ success: true, phiDetected: false, document: UPLOADED_PDF });
 
     // F-092: the accepted decision is written INSIDE the upload transaction, so
     // it commits or rolls back with the DocumentVersion — an accepted document
@@ -241,6 +262,86 @@ describe('uploadDocument — THER-003 PHI gate always fails closed', () => {
       outcome: 'allowed',
       documentVersionId: 'ver-1',
       findingCount: 0,
+    });
+  });
+});
+
+/**
+ * Regression coverage for the wizard-attached-a-colleague's-document bug: a
+ * re-upload of a filename that already exists for this SAME organizationUser
+ * reuses the Document row (only a new DocumentVersion is created) — mirroring
+ * `tx.document.findFirst({ where: { organizationUserId, filename } })`, which
+ * scopes the match to the uploader, not the organization. The identity class
+ * of bug this fix closes is "identity re-derived from a non-unique attribute
+ * (filename) across too-wide a scope (the whole org, via getDocuments())";
+ * this suite pins the two branches `processSingleUpload` can resolve a
+ * document through so neither can regress back to that shape.
+ */
+describe('uploadDocument — returned document identity (existing vs. new Document row)', () => {
+  it('on a brand-new filename, returns the freshly created row (new-document branch)', async () => {
+    mockScanText.mockResolvedValue({ hasPHI: false, findings: [], decidedBy: 'ai' });
+    prismaMock._tx.document.findFirst.mockResolvedValue(null);
+    mockDocumentCreate('doc-new');
+    prismaMock._tx.documentVersion.create.mockResolvedValue({ id: 'ver-1' });
+
+    const result = await uploadDocument(null, makeFormData());
+
+    expect(prismaMock._tx.document.create).toHaveBeenCalledOnce();
+    expect(result.document).toEqual({
+      id: 'doc-new',
+      filename: 'policy.pdf',
+      mimeType: 'application/pdf',
+      size: 8,
+    });
+  });
+
+  it('on a re-upload of an existing filename, reuses the Document row and returns ITS stored metadata — not the new file’s', async () => {
+    // The existing row's stored size/mimeType intentionally differ from the
+    // incoming file's (8 bytes, 'application/pdf') so a regression that
+    // re-derived the response from `file` instead of the stored row would be
+    // caught by the metadata mismatch below, not just a missing id.
+    const existingDoc = {
+      id: 'doc-existing',
+      filename: 'policy.pdf',
+      mimeType: 'application/pdf',
+      size: 5000,
+      organizationUserId: 'ou-1',
+    };
+    prismaMock._tx.document.findFirst.mockResolvedValue(existingDoc);
+    prismaMock._tx.documentVersion.findFirst.mockResolvedValue({ id: 'ver-1', version: 2 });
+    prismaMock._tx.documentVersion.create.mockResolvedValue({ id: 'ver-3' });
+    mockScanText.mockResolvedValue({ hasPHI: false, findings: [], decidedBy: 'ai' });
+
+    const result = await uploadDocument(null, makeFormData());
+
+    // A new version is created against the EXISTING document, not a new one.
+    expect(prismaMock._tx.document.create).not.toHaveBeenCalled();
+    expect(prismaMock._tx.documentVersion.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ documentId: 'doc-existing', version: 3 }),
+      }),
+    );
+
+    // The wizard attaches whatever comes back here — it must be the stored
+    // row's metadata, unconditionally, never the just-uploaded File's.
+    expect(result.document).toEqual({
+      id: 'doc-existing',
+      filename: 'policy.pdf',
+      mimeType: 'application/pdf',
+      size: 5000,
+    });
+  });
+
+  it('the existing-document lookup is scoped to this uploader (organizationUserId), not the whole organization', async () => {
+    mockScanText.mockResolvedValue({ hasPHI: false, findings: [], decidedBy: 'ai' });
+    prismaMock._tx.document.findFirst.mockResolvedValue(null);
+    mockDocumentCreate();
+    prismaMock._tx.documentVersion.create.mockResolvedValue({ id: 'ver-1' });
+
+    await uploadDocument(null, makeFormData());
+
+    expect(prismaMock._tx.document.findFirst).toHaveBeenCalledWith({
+      where: { organizationUserId: 'ou-1', filename: 'policy.pdf' },
     });
   });
 });
@@ -325,12 +426,21 @@ describe('uploadDocument — Issue #13: .doc/.docx server-side extension guard',
     formData.set('phiAttested', 'true');
     mockScanText.mockResolvedValue({ hasPHI: false, findings: [] });
     prismaMock._tx.document.findFirst.mockResolvedValue(null);
-    prismaMock._tx.document.create.mockResolvedValue({ id: 'doc-1' });
+    mockDocumentCreate();
     prismaMock._tx.documentVersion.create.mockResolvedValue({ id: 'ver-1' });
 
     const result = await uploadDocument(null, formData);
 
-    expect(result).toEqual({ success: true, phiDetected: false });
+    expect(result).toEqual({
+      success: true,
+      phiDetected: false,
+      document: {
+        id: 'doc-1',
+        filename: 'policy.docx',
+        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        size: 8,
+      },
+    });
   });
 });
 
@@ -359,12 +469,12 @@ describe('Document Hub — per-role registry gate (RBAC billing+documents tighte
     });
     mockScanText.mockResolvedValue({ hasPHI: false, findings: [] });
     prismaMock._tx.document.findFirst.mockResolvedValue(null);
-    prismaMock._tx.document.create.mockResolvedValue({ id: 'doc-1' });
+    mockDocumentCreate();
     prismaMock._tx.documentVersion.create.mockResolvedValue({ id: 'ver-1' });
 
     const result = await uploadDocument(null, makeFormData());
 
-    expect(result).toEqual({ success: true, phiDetected: false });
+    expect(result).toEqual({ success: true, phiDetected: false, document: UPLOADED_PDF });
   });
 
   it('allows uploadDocument for role=clinical_director (full document access)', async () => {
@@ -378,12 +488,12 @@ describe('Document Hub — per-role registry gate (RBAC billing+documents tighte
     });
     mockScanText.mockResolvedValue({ hasPHI: false, findings: [] });
     prismaMock._tx.document.findFirst.mockResolvedValue(null);
-    prismaMock._tx.document.create.mockResolvedValue({ id: 'doc-1' });
+    mockDocumentCreate();
     prismaMock._tx.documentVersion.create.mockResolvedValue({ id: 'ver-1' });
 
     const result = await uploadDocument(null, makeFormData());
 
-    expect(result).toEqual({ success: true, phiDetected: false });
+    expect(result).toEqual({ success: true, phiDetected: false, document: UPLOADED_PDF });
   });
 
   // Finance has no document.* permission at all (not even read) — the
@@ -613,7 +723,7 @@ describe('uploadDocument — DOCUMENT_UPLOADED notification wiring', () => {
   it('emits DOCUMENT_UPLOADED with the uploader as actor, their facility, and the file name in context', async () => {
     mockScanText.mockResolvedValue({ hasPHI: false, findings: [] });
     prismaMock._tx.document.findFirst.mockResolvedValue(null);
-    prismaMock._tx.document.create.mockResolvedValue({ id: 'doc-1' });
+    mockDocumentCreate();
     prismaMock._tx.documentVersion.create.mockResolvedValue({ id: 'ver-1' });
     prismaMock.organizationUser.findUnique.mockResolvedValue({
       user: { fullName: 'Ada Owner' },
@@ -639,7 +749,7 @@ describe('uploadDocument — DOCUMENT_UPLOADED notification wiring', () => {
   it('falls back to the email-prefix name and a null facilityId when the uploader lookup fails', async () => {
     mockScanText.mockResolvedValue({ hasPHI: false, findings: [] });
     prismaMock._tx.document.findFirst.mockResolvedValue(null);
-    prismaMock._tx.document.create.mockResolvedValue({ id: 'doc-1' });
+    mockDocumentCreate();
     prismaMock._tx.documentVersion.create.mockResolvedValue({ id: 'ver-1' });
     mockAuth.mockResolvedValue({
       user: {

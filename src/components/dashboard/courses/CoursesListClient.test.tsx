@@ -18,10 +18,9 @@ import {
   type PendingGenerationJob,
 } from '@/lib/course/pending-generation';
 
-const { mockPush, mockDeleteCourse, mockDuplicateCourse, mockUpdateCourse } = vi.hoisted(() => ({
+const { mockPush, mockDeleteCourse, mockUpdateCourse } = vi.hoisted(() => ({
   mockPush: vi.fn(),
   mockDeleteCourse: vi.fn(),
-  mockDuplicateCourse: vi.fn(),
   mockUpdateCourse: vi.fn(),
 }));
 
@@ -39,7 +38,6 @@ vi.mock('next/image', () => ({
 }));
 vi.mock('@/app/actions/course', () => ({
   deleteCourse: mockDeleteCourse,
-  duplicateCourse: mockDuplicateCourse,
   updateCourse: mockUpdateCourse,
 }));
 vi.mock('@/app/actions/course-ai-v4.6', () => ({ checkCourseGenerationJobV46: vi.fn() }));
@@ -107,8 +105,7 @@ function makeCourse(overrides: Partial<CourseWithStats> = {}): CourseWithStats {
     enrollmentsCount: 5,
     completionRate: 50,
     sourceDocumentId: 'doc-1',
-    // Authored inside the viewing org — the common case, and what gates the
-    // authoring actions (Duplicate, Delete).
+    // Authored inside the viewing org — the common case, and what gates Delete.
     isOrgAuthored: true,
     ...overrides,
   } as CourseWithStats;
@@ -335,12 +332,7 @@ describe('CoursesListClient — row action gating per role', () => {
     return within(row).getByTestId('row-actions');
   }
 
-  // UPDATED 2026-09-04 — Duplicate is now offered. The 2026-08-28 ruling this
-  // test encoded ("keep the kebab, add nothing") was about not replacing the
-  // kebab with the design's bare "View" button; it was never a decision to
-  // leave `duplicateCourse` — fully built, gated and unit-tested — unreachable,
-  // which staging QA reported as a defect.
-  it('owner sees the full action set: Assign, View Source Document, Duplicate, Rename, Delete', () => {
+  it('owner sees the full action set: Assign, View Source Document, Rename, Delete', () => {
     render(<CoursesListClient courses={[course]} hasBilling viewerRole="owner" />);
 
     const actions = actionsForRow();
@@ -348,7 +340,6 @@ describe('CoursesListClient — row action gating per role', () => {
     expect(
       within(actions).getByRole('button', { name: 'View Source Document' }),
     ).toBeInTheDocument();
-    expect(within(actions).getByRole('button', { name: 'Duplicate' })).toBeInTheDocument();
     expect(within(actions).getByRole('button', { name: 'Rename' })).toBeInTheDocument();
     expect(within(actions).getByRole('button', { name: 'Delete' })).toBeInTheDocument();
   });
@@ -367,12 +358,11 @@ describe('CoursesListClient — row action gating per role', () => {
     expect(within(actions).getByRole('button', { name: 'Assign to staff' })).toBeInTheDocument();
     expect(within(actions).queryByRole('button', { name: 'Rename' })).not.toBeInTheDocument();
     expect(within(actions).queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
-    expect(within(actions).queryByRole('button', { name: 'Duplicate' })).not.toBeInTheDocument();
   });
 
-  it('supervisor still gets a disabled "View Source Document" for a forked course (item always listed per design)', () => {
-    const forkedCourse = makeCourse({ sourceDocumentId: null });
-    render(<CoursesListClient courses={[forkedCourse]} hasBilling viewerRole="supervisor" />);
+  it('supervisor still gets a disabled "View Source Document" when there is no source document (item always listed per design)', () => {
+    const sourcelessCourse = makeCourse({ sourceDocumentId: null });
+    render(<CoursesListClient courses={[sourcelessCourse]} hasBilling viewerRole="supervisor" />);
 
     const actions = actionsForRow();
     expect(within(actions).getByRole('button', { name: 'View Source Document' })).toBeDisabled();
@@ -385,7 +375,7 @@ describe('CoursesListClient — row action gating per role', () => {
     expect(within(row).queryByTestId('row-actions')).not.toBeInTheDocument();
   });
 
-  it('hr sees Assign, View Source Document, Duplicate, Rename, Delete (full course + assignment + document grants)', () => {
+  it('hr sees Assign, View Source Document, Rename, Delete (full course + assignment + document grants)', () => {
     render(<CoursesListClient courses={[course]} hasBilling viewerRole="hr" />);
 
     const actions = actionsForRow();
@@ -393,9 +383,9 @@ describe('CoursesListClient — row action gating per role', () => {
     expect(within(actions).getByRole('button', { name: 'Delete' })).toBeInTheDocument();
   });
 
-  it('shows a DISABLED "View Source Document" for a forked course (no sourceDocumentId) — listed per design, not clickable', () => {
-    const forkedCourse = makeCourse({ sourceDocumentId: null });
-    render(<CoursesListClient courses={[forkedCourse]} hasBilling viewerRole="owner" />);
+  it('shows a DISABLED "View Source Document" when there is no sourceDocumentId — listed per design, not clickable', () => {
+    const sourcelessCourse = makeCourse({ sourceDocumentId: null });
+    render(<CoursesListClient courses={[sourcelessCourse]} hasBilling viewerRole="owner" />);
 
     const actions = actionsForRow();
     expect(within(actions).getByRole('button', { name: 'View Source Document' })).toBeDisabled();
@@ -930,79 +920,13 @@ describe('CoursesListClient — delete refusals are readable', () => {
 });
 
 /**
- * `duplicateCourse` shipped fully built, RBAC-gated and unit-tested — and wired
- * to nothing. Staging QA 2026-09-04 found no Duplicate action anywhere in the
- * UI, which also left "an assigned course is no longer a draft" with no
- * live-reachable way to reproduce it (duplicate → assign → published).
- */
-describe('CoursesListClient — Duplicate action', () => {
-  it('duplicates the row the admin chose', async () => {
-    const user = userEvent.setup();
-    mockDuplicateCourse.mockResolvedValue({ success: true, course: { id: 'copy-1' } });
-    render(<CoursesListClient courses={[makeCourse()]} hasBilling viewerRole={'owner' as Role} />);
-
-    await user.click(screen.getByRole('button', { name: 'Duplicate' }));
-
-    expect(mockDuplicateCourse).toHaveBeenCalledWith('course-1');
-  });
-
-  it('opens the copy rather than leaving a new draft to be hunted for', async () => {
-    const user = userEvent.setup();
-    mockDuplicateCourse.mockResolvedValue({ success: true, course: { id: 'copy-1' } });
-    render(<CoursesListClient courses={[makeCourse()]} hasBilling viewerRole={'owner' as Role} />);
-
-    await user.click(screen.getByRole('button', { name: 'Duplicate' }));
-
-    await waitFor(() =>
-      expect(mockPush).toHaveBeenCalledWith('/dashboard/training/courses/copy-1'),
-    );
-  });
-
-  it('is withheld from a role without course.create', () => {
-    // supervisor may assign but authors nothing.
-    render(
-      <CoursesListClient courses={[makeCourse()]} hasBilling viewerRole={'supervisor' as Role} />,
-    );
-
-    expect(screen.queryByRole('button', { name: 'Duplicate' })).not.toBeInTheDocument();
-  });
-
-  it('does not offer Duplicate on a shared-catalogue row', () => {
-    // duplicateCourse forks a course the caller's ORG owns; a catalogue row
-    // belongs to another tenant, the same reason Delete is withheld.
-    render(
-      <CoursesListClient
-        courses={[makeCourse({ isGlobalCatalog: true, isOrgAuthored: false })]}
-        hasBilling
-        viewerRole={'owner' as Role}
-      />,
-    );
-
-    expect(screen.queryByRole('button', { name: 'Duplicate' })).not.toBeInTheDocument();
-  });
-
-  it('surfaces a failure instead of leaving the action stuck', async () => {
-    const user = userEvent.setup();
-    mockDuplicateCourse.mockRejectedValue(new Error('nope'));
-    render(<CoursesListClient courses={[makeCourse()]} hasBilling viewerRole={'owner' as Role} />);
-
-    await user.click(screen.getByRole('button', { name: 'Duplicate' }));
-
-    expect(await screen.findByText(/could not duplicate that course/i)).toBeVisible();
-  });
-});
-
-/**
- * Staging QA 2026-09-04 (round 3): Duplicate 500'd on every course tried.
+ * Staging QA 2026-09-04 (round 3): the authoring actions gated on
+ * `isGlobalCatalog`, which marks ONLY catalogue rows the org has not adopted.
+ * An ADOPTED global course arrives through the org's own list without that flag
+ * but is still authored by another tenant, so an authoring action offered on it
+ * was a guaranteed server-side refusal.
  *
- * The UI gate keyed on `isGlobalCatalog`, which marks ONLY catalogue rows the
- * org has not adopted. An ADOPTED global course arrives through the org's own
- * list without that flag but is still authored by another tenant, so
- * `duplicateCourse` — which requires authorship — threw, and the throw reached
- * the browser as React error #441. Staging's Video tab is exactly those courses,
- * so it failed every time.
- *
- * The authoring actions now key on `isOrgAuthored`, which covers both cases.
+ * They now key on `isOrgAuthored`, which covers both cases.
  */
 describe('CoursesListClient — authoring actions follow authorship, not catalogue flags', () => {
   const adopted = () =>
@@ -1015,31 +939,15 @@ describe('CoursesListClient — authoring actions follow authorship, not catalog
       isOrgAuthored: false,
     });
 
-  it('offers neither Duplicate nor Delete on an ADOPTED course from another tenant', () => {
+  it('offers no Delete on an ADOPTED course from another tenant', () => {
     render(<CoursesListClient courses={[adopted()]} hasBilling viewerRole={'owner' as Role} />);
 
-    expect(screen.queryByRole('button', { name: 'Duplicate' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
   });
 
-  it('still offers both on a course this organization authored', () => {
+  it('still offers Delete on a course this organization authored', () => {
     render(<CoursesListClient courses={[makeCourse()]} hasBilling viewerRole={'owner' as Role} />);
 
-    expect(screen.getByRole('button', { name: 'Duplicate' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument();
-  });
-
-  it('shows the server’s reason rather than a redacted error if one slips through', async () => {
-    const user = userEvent.setup();
-    mockDuplicateCourse.mockResolvedValue({
-      success: false,
-      error: 'Only a course your organization created can be duplicated.',
-    });
-    render(<CoursesListClient courses={[makeCourse()]} hasBilling viewerRole={'owner' as Role} />);
-
-    await user.click(screen.getByRole('button', { name: 'Duplicate' }));
-
-    expect(await screen.findByText(/only a course your organization created/i)).toBeVisible();
-    expect(mockPush).not.toHaveBeenCalled();
   });
 });

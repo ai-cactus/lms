@@ -39,11 +39,25 @@ type UploadSession = {
   >;
 };
 
+/** The stored Document a successful upload resolved to. */
+export interface UploadedDocument {
+  id: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+}
+
 /** Outcome of one file — the shape the single-file action has always returned. */
-interface SingleUploadResult {
+export interface SingleUploadResult {
   success?: boolean;
   error?: string;
   phiDetected?: boolean;
+  /**
+   * Present on success. Callers that attach the upload to something else MUST
+   * use this id: the same filename can belong to a colleague's document in the
+   * same organization, and matching one back by name attaches theirs.
+   */
+  document?: UploadedDocument;
 }
 
 /** Per-file outcome of a batch upload. */
@@ -59,9 +73,9 @@ function readCategory(formData: FormData): string | undefined {
 }
 
 export async function uploadDocument(
-  _prevState: { success?: boolean; error?: string; phiDetected?: boolean } | null,
+  _prevState: SingleUploadResult | null,
   formData: FormData,
-) {
+): Promise<SingleUploadResult> {
   const session = await auth();
   if (!session?.user?.id || !session.user.organizationId || !session.user.organizationUserId) {
     return { error: 'Not authenticated or not in an organization' };
@@ -314,23 +328,25 @@ async function processSingleUpload(
   }
 
   // 5. Persist metadata in DB (transactional)
+  let uploadedDocument: UploadedDocument;
   try {
-    const uploadedDocumentId = await prisma.$transaction(async (tx) => {
+    uploadedDocument = await prisma.$transaction(async (tx) => {
       const existingDoc = await tx.document.findFirst({
         where: { organizationUserId, filename: file.name },
       });
 
-      let docId = existingDoc?.id;
       let versionNumber = 1;
-
       if (existingDoc) {
         const latestVersion = await tx.documentVersion.findFirst({
           where: { documentId: existingDoc.id },
           orderBy: { version: 'desc' },
         });
         versionNumber = (latestVersion?.version || 0) + 1;
-      } else {
-        const newDoc = await tx.document.create({
+      }
+
+      const document =
+        existingDoc ??
+        (await tx.document.create({
           data: {
             organizationUserId,
             filename: file.name,
@@ -339,13 +355,11 @@ async function processSingleUpload(
             size: file.size,
             category: category ?? null,
           },
-        });
-        docId = newDoc.id;
-      }
+        }));
 
       const version = await tx.documentVersion.create({
         data: {
-          documentId: docId!,
+          documentId: document.id,
           version: versionNumber,
           storagePath,
           hash,
@@ -378,7 +392,8 @@ async function processSingleUpload(
         organizationId,
       });
 
-      return docId!;
+      const { id, filename, mimeType, size } = document;
+      return { id, filename, mimeType, size };
     });
 
     logger.info({
@@ -396,7 +411,7 @@ async function processSingleUpload(
       actorRole: session.user.role,
       organizationId,
       targetType: 'document',
-      targetId: uploadedDocumentId,
+      targetId: uploadedDocument.id,
       metadata: { size: file.size, mimeType: file.type, category },
       ...getClientContext(await headers()),
     });
@@ -446,7 +461,7 @@ async function processSingleUpload(
     context: { documentTitle: file.name, uploaderName },
   });
 
-  return { success: true, phiDetected: phiResult.hasPHI };
+  return { success: true, phiDetected: phiResult.hasPHI, document: uploadedDocument };
 }
 
 export async function getDocuments() {

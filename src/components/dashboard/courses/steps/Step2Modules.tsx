@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { getDocuments, uploadDocument } from '@/app/actions/documents';
+import { uploadDocument } from '@/app/actions/documents';
 import { formatFileSize } from '@/lib/utils';
 import { logger } from '@/lib/logger';
 import { CourseWizardModule, CourseWizardModuleDocument } from '@/types/course';
@@ -208,24 +208,25 @@ export default function Step2Modules({
         return;
       }
 
-      // `uploadDocument` reports success without the new id, so the stored
-      // document is matched back by filename (newest first).
-      const storedDocuments = await getDocuments();
-      const stored = storedDocuments.find((doc) => doc.filename === file.name);
-      if (!stored) {
+      // Fail loudly rather than resolving the upload by filename: documents are
+      // org-wide, so a colleague's identically-named file could be attached and
+      // the course generated from their material. A retry is the better outcome.
+      const { document } = result;
+      if (!document) {
+        logger.error({ msg: '[course] Upload reported success without a document' });
         setScanState('idle');
-        setUploadError('The uploaded document could not be found. Please try again.');
+        setUploadError('The uploaded document could not be attached. Please try again.');
         return;
       }
 
       setAttachment({
-        documentId: stored.id,
-        fileName: stored.filename,
-        fileSize: stored.size,
-        mimeType: stored.mimeType,
+        documentId: document.id,
+        fileName: document.filename,
+        fileSize: document.size,
+        mimeType: document.mimeType,
       });
       setScanState('clean');
-      logger.info({ msg: '[course] Module training document uploaded', documentId: stored.id });
+      logger.info({ msg: '[course] Module training document uploaded', documentId: document.id });
     } catch (err) {
       logger.error({ msg: '[course] Module training document upload failed', err });
       setScanState('idle');

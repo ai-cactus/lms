@@ -23,7 +23,6 @@ import {
 } from '@/lib/facility/staff-where';
 import { partitionEmailsByFacility } from '@/lib/facility/target-scope';
 import { CourseAccessError } from '@/lib/course/access-error';
-import { forkCourse, type ForkedCourse } from '@/lib/course/fork-course';
 import { resolveOnCompletion } from '@/lib/reminders/sweep';
 import { combineDateAndTime } from '@/lib/reminders/deadline';
 import { assignCourseToRoles, enrollUsers } from './enrollment';
@@ -741,65 +740,6 @@ export async function deleteCourse(
   revalidatePath('/dashboard/training');
   revalidatePath('/dashboard/courses');
   return { success: true };
-}
-
-/**
- * Deep-copies a course the caller's ORGANIZATION owns into a new draft. Scoped to
- * the org rather than the individual author so a course can be duplicated by any
- * permitted colleague, not just whoever created it.
- */
-/**
- * Refusals are RETURNED, never thrown: a thrown Server Action message is
- * redacted in production and reaches the browser as React error #441. Staging
- * QA hit exactly that — Duplicate 500'd on every adopted course and the reason
- * was invisible.
- */
-export async function duplicateCourse(
-  courseId: string,
-): Promise<{ success: true; course: ForkedCourse } | { success: false; error: string }> {
-  const session = await resolveSession();
-  if (!session?.user?.id || !session.user.organizationUserId || !session.user.organizationId) {
-    return { success: false, error: 'Your session has expired. Sign in and try again.' };
-  }
-
-  if (!can(dbRoleToRoleKey(session.user.role), 'course.create')) {
-    logger.warn({
-      msg: '[course] duplicateCourse denied — missing course.create',
-      courseId,
-      userId: session.user.id,
-      role: session.user.role,
-    });
-    return { success: false, error: 'You do not have permission to duplicate courses.' };
-  }
-
-  // AUTHORSHIP, not mere visibility. A course this org has ADOPTED is authored
-  // by another tenant and appears in the same list, so this is reachable — it is
-  // what 500'd on staging once Duplicate was offered on those rows.
-  const existing = await prisma.course.findFirst({
-    where: { id: courseId, creator: { organizationId: session.user.organizationId } },
-    select: { id: true },
-  });
-  if (!existing) {
-    logger.warn({
-      msg: '[course] duplicateCourse: not found or not authored by this organization',
-      courseId,
-      userId: session.user.id,
-    });
-    return {
-      success: false,
-      error: 'Only a course your organization created can be duplicated.',
-    };
-  }
-
-  const fork = await forkCourse({
-    sourceCourseId: courseId,
-    targetOrganizationUserId: session.user.organizationUserId,
-    titleStrategy: 'duplicate',
-  });
-
-  revalidatePath('/dashboard/training');
-  revalidatePath('/dashboard/courses');
-  return { success: true, course: fork };
 }
 
 /**
