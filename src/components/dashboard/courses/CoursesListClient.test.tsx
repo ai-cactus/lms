@@ -773,10 +773,27 @@ describe('CoursesListClient — row thumbnail', () => {
     expect(frame.className).not.toContain('size-10');
   });
 
-  it('leaves the artwork untinted — no teal wash over the customer’s image', () => {
+  // Reversed 2026-09-08: this previously asserted the wash was ABSENT, guarding
+  // the 2026-08-28 call to let a course's own artwork read as itself. Team test
+  // P01 ruled the thumbnail must match the design as drawn, so the wash is now
+  // required over artwork — and deliberately still absent over the placeholder,
+  // which the design never drew.
+  it('lays the design’s teal wash over the artwork', () => {
     const { container } = render(
       <CoursesListClient
         courses={[makeCourse({ thumbnail: 'https://cdn.example.com/a.png' })]}
+        hasBilling
+        viewerRole={'owner' as Role}
+      />,
+    );
+
+    expect(thumbFrame(container)!.innerHTML).toMatch(/2c8f88/i);
+  });
+
+  it('does not wash the placeholder mark when a course has no artwork', () => {
+    const { container } = render(
+      <CoursesListClient
+        courses={[makeCourse({ thumbnail: null })]}
         hasBilling
         viewerRole={'owner' as Role}
       />,

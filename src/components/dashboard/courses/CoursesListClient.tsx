@@ -681,20 +681,28 @@ export default function CoursesListClient({
                         <div className="flex items-center gap-3 sm:gap-[18px]">
                           {/* Design 15522:271922 — a 78x47 rectangular frame, not
                               the old 40x40 square. The image fills it
-                              (Figma scaleMode=FILL); the design's 40% teal wash
-                              over it is deliberately NOT applied, so a course's
-                              own artwork reads as itself. Narrower on small
-                              screens so the row stays compact. */}
+                              (Figma scaleMode=FILL) under the design's 40% teal
+                              wash. Narrower on small screens so the row stays
+                              compact. */}
                           <div className="relative h-[34px] w-[56px] shrink-0 overflow-hidden bg-[#f1f5f9] sm:h-[47px] sm:w-[78px]">
                             {course.thumbnail ? (
-                              <Image
-                                src={course.thumbnail}
-                                alt=""
-                                fill
-                                aria-hidden="true"
-                                sizes="78px"
-                                className="object-cover"
-                              />
+                              <>
+                                <Image
+                                  src={course.thumbnail}
+                                  alt=""
+                                  fill
+                                  aria-hidden="true"
+                                  sizes="78px"
+                                  className="object-cover"
+                                />
+                                {/* The wash belongs to the artwork. Over the
+                                    placeholder mark it would tint an icon the
+                                    design never drew. */}
+                                <span
+                                  className="absolute inset-0 bg-[#2c8f88]/40"
+                                  aria-hidden="true"
+                                />
+                              </>
                             ) : (
                               // No artwork: centre the placeholder mark rather
                               // than stretching it to the frame's aspect ratio.
@@ -709,16 +717,13 @@ export default function CoursesListClient({
                               </span>
                             )}
                             {course.type === 'video' && (
-                              // The design's badge is 20% white over its teal
-                              // wash; without that wash it needs its own scrim
-                              // to stay legible on a light thumbnail.
                               <span
                                 className="absolute inset-0 flex items-center justify-center"
                                 aria-hidden="true"
                               >
-                                <span className="flex size-[18px] items-center justify-center rounded-full bg-black/45 sm:size-[22px]">
+                                <span className="flex size-[11px] items-center justify-center rounded-full border-[0.5px] border-white/40 bg-white/20 shadow-[0px_1px_6px_0px_rgba(13,13,18,0.25)] backdrop-blur-[5px] sm:size-[13px]">
                                   <Play
-                                    className="size-[8px] fill-white text-white sm:size-[10px]"
+                                    className="size-[5px] fill-white text-white sm:size-[6px]"
                                     strokeWidth={0}
                                   />
                                 </span>
