@@ -15,14 +15,12 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockUploadDocument, mockGetDocuments } = vi.hoisted(() => ({
+const { mockUploadDocument } = vi.hoisted(() => ({
   mockUploadDocument: vi.fn(),
-  mockGetDocuments: vi.fn(),
 }));
 
 vi.mock('@/app/actions/documents', () => ({
   uploadDocument: mockUploadDocument,
-  getDocuments: mockGetDocuments,
 }));
 
 vi.mock('@/lib/logger', () => ({
@@ -110,13 +108,12 @@ function lastStatus(onDraftStatusChange: ReturnType<typeof vi.fn>): ModuleDraftS
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockUploadDocuments();
+  mockUploadDocument.mockResolvedValue({
+    success: true,
+    phiDetected: false,
+    document: STORED_PDF,
+  });
 });
-
-function mockUploadDocuments() {
-  mockUploadDocument.mockResolvedValue({ success: true, phiDetected: false });
-  mockGetDocuments.mockResolvedValue([STORED_PDF]);
-}
 
 describe('Step2Modules', () => {
   it('starts empty, with the module form and no committed cards', () => {
@@ -184,12 +181,28 @@ describe('Step2Modules', () => {
     // Nothing is attached, so the module cannot be added.
     expect(screen.queryByText(STORED_PDF.filename)).not.toBeInTheDocument();
     expect(fileInput()).toBeInTheDocument();
-    expect(mockGetDocuments).not.toHaveBeenCalled();
     await waitFor(() => expect(lastStatus(onDraftStatusChange)).toBe('partial'));
 
     await user.click(screen.getByRole('button', { name: /Add module/i }));
     expect(onModulesChange).not.toHaveBeenCalled();
     expect(screen.getByText(/Add a title, objective and training document/i)).toBeVisible();
+  });
+
+  it('refuses to attach when the upload returns no document, rather than guessing by filename', async () => {
+    // Documents are org-wide: resolving the upload by filename could attach a
+    // colleague's identically-named file and generate the course from it.
+    const user = userEvent.setup();
+    mockUploadDocument.mockResolvedValue({ success: true, phiDetected: false });
+    const { onModulesChange } = renderStep();
+
+    await fillTextFields(user);
+    await attestAndUpload(user);
+
+    expect(await screen.findByText(/could not be attached/i)).toBeVisible();
+    expect(screen.queryByText(STORED_PDF.filename)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /Add module/i }));
+    expect(onModulesChange).not.toHaveBeenCalled();
   });
 
   it('will not upload until the PHI attestation is given', async () => {
