@@ -13,8 +13,8 @@ export type CourseWithStats = {
   completionRate: number;
   /**
    * Document the course was generated from, when the caller loaded that lineage.
-   * Null for forked courses (duplicates and adopted prebuilts carry no
-   * `CourseVersion` of their own), and absent from views that do not query it.
+   * Null for a course that carries no `CourseVersion` of its own, and absent
+   * from views that do not query it.
    */
   sourceDocumentId?: string | null;
   /**
@@ -30,9 +30,8 @@ export type CourseWithStats = {
    * `isGlobalCatalog` is not the inverse: it only marks catalogue rows the org
    * has NOT adopted. An ADOPTED global course arrives through the org's own
    * list without that flag, yet is still authored by another tenant — so any
-   * action that requires org authorship (duplicate, delete) must key on this,
-   * not on `isGlobalCatalog`. Offering Duplicate on an adopted course is what
-   * made it 500 on staging.
+   * action that requires org authorship (delete) must key on this, not on
+   * `isGlobalCatalog`.
    */
   isOrgAuthored?: boolean;
 };

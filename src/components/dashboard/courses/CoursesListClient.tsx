@@ -45,7 +45,7 @@ import { useRouter } from 'next/navigation';
 import { CourseWithStats } from '@/types/course';
 import { checkCourseGenerationJobV46 } from '@/app/actions/course-ai-v4.6';
 import { clearPendingGeneration, readPendingGeneration } from '@/lib/course/pending-generation';
-import { deleteCourse, duplicateCourse, updateCourse } from '@/app/actions/course';
+import { deleteCourse, updateCourse } from '@/app/actions/course';
 import BillingGateModal from '@/components/dashboard/billing/BillingGateModal';
 import AssignCourseModal from './AssignCourseModal';
 import {
@@ -62,7 +62,6 @@ import {
   UserPlus,
   FileText,
   Play,
-  Copy,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { logger } from '@/lib/logger';
@@ -366,7 +365,6 @@ export default function CoursesListClient({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<CourseWithStats | null>(null);
-  const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
   const [courseToRename, setCourseToRename] = useState<{ id: string; title: string } | null>(null);
   const [courseToAssign, setCourseToAssign] = useState<{ id: string; title: string } | null>(null);
   const [, startTransition] = useTransition();
@@ -417,31 +415,6 @@ export default function CoursesListClient({
       });
     },
     [startTransition],
-  );
-
-  const handleDuplicate = useCallback(
-    (course: CourseWithStats) => {
-      setDuplicatingId(course.id);
-      setActionError(null);
-      startTransition(async () => {
-        try {
-          const result = await duplicateCourse(course.id);
-          if (!result.success) {
-            setActionError(result.error);
-            setDuplicatingId(null);
-            return;
-          }
-          // A fork starts as a draft the admin still has to finish, so open it
-          // rather than silently adding a row they then have to hunt for.
-          router.push(`/dashboard/training/courses/${result.course.id}`);
-        } catch (err) {
-          logger.error({ msg: '[course] Duplicate failed', err, courseId: course.id });
-          setActionError('Could not duplicate that course. Please try again.');
-          setDuplicatingId(null);
-        }
-      });
-    },
-    [router, startTransition],
   );
 
   const handleRenamed = useCallback((courseId: string, newTitle: string) => {
@@ -506,9 +479,9 @@ export default function CoursesListClient({
       });
     }
 
-    // Always listed per the design; forked courses (duplicates, adopted
-    // prebuilts) carry no CourseVersion, so the item is disabled rather than
-    // hidden when there is no source document to open.
+    // Always listed per the design; a course with no CourseVersion of its own
+    // (an adopted catalogue course) has no source document to open, so the item
+    // is disabled rather than hidden.
     if (canReadDocuments) {
       actions.push({
         label: 'View Source Document',
@@ -534,25 +507,6 @@ export default function CoursesListClient({
     // A shared-catalogue row is authored by another tenant and only offered to
     // this org, so it can never be deleted from here — offering the action was
     // a guaranteed dead end.
-    // `duplicateCourse` shipped fully built, RBAC-gated and unit-tested but
-    // wired to nothing — staging QA 2026-09-04 found no Duplicate anywhere in
-    // the UI. Adding it reverses the 2026-08-28 "keep the kebab, add nothing"
-    // ruling, which was about not replacing the kebab with the design's bare
-    // "View" button; it was never a decision to leave this action unreachable.
-    // It also restores the only way to reproduce "an assigned course is no
-    // longer a draft" from the UI.
-    //
-    // Excluded on shared-catalogue rows for the same reason Delete is:
-    // duplicateCourse forks a course the caller's ORG owns.
-    if (canCreateCourse && course.isOrgAuthored) {
-      actions.push({
-        label: duplicatingId === course.id ? 'Duplicating…' : 'Duplicate',
-        icon: <Copy className="size-4" />,
-        disabled: duplicatingId !== null,
-        onSelect: () => handleDuplicate(course),
-      });
-    }
-
     if (canDeleteCourse && course.isOrgAuthored) {
       actions.push({
         label: deletingId === course.id ? 'Deleting…' : 'Delete',
