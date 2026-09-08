@@ -6,7 +6,11 @@ import { Dialog, DialogClose, DialogContent, DialogTitle } from '@/components/ui
 import { Button } from '@/components/ui/button';
 import { getCertificateDetails } from '@/app/actions/certificate';
 import CertificateDocument, { CERT_HEIGHT, CERT_WIDTH } from './certificate/CertificateDocument';
-import { exportCertificatePdf, generateQrDataUrl } from '@/lib/certificate-export';
+import {
+  exportCertificatePdf,
+  formatCertificateIssueDate,
+  generateQrDataUrl,
+} from '@/lib/certificate-export';
 import { formatCertificateId } from '@/lib/certificate-id';
 
 type CertificateData = Awaited<ReturnType<typeof getCertificateDetails>>;
@@ -18,14 +22,6 @@ interface CertificateModalProps {
   isOpen: boolean;
   onClose: () => void;
   certificateId: string;
-}
-
-function formatIssueDate(date: Date | string): string {
-  return new Date(date).toLocaleDateString('en-GB', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  });
 }
 
 export default function CertificateModal({
@@ -191,7 +187,7 @@ export default function CertificateModal({
                   }
                   courseName={data.course?.title || 'Course Title'}
                   organizationName={data.organizationUser?.organization?.name}
-                  issueDate={formatIssueDate(data.issuedAt)}
+                  issueDate={formatCertificateIssueDate(data.issuedAt)}
                   certificateId={formatCertificateId(data.enrollmentId)}
                   qrDataUrl={qrDataUrl}
                 />

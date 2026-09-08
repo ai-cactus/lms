@@ -1,10 +1,12 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Award, Calendar, Check, Download } from 'lucide-react';
+import { Award, Calendar, Check, Download, Loader2 } from 'lucide-react';
 import CertificateModal from './CertificateModal';
+import CertificateDocument from './certificate/CertificateDocument';
+import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -14,7 +16,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { getCertificateDetails } from '@/app/actions/certificate';
+import {
+  exportCertificatesPdf,
+  formatCertificateIssueDate,
+  generateQrDataUrl,
+} from '@/lib/certificate-export';
 import { formatCertificateId } from '@/lib/certificate-id';
+import { logger } from '@/lib/logger';
 
 interface CertificateData {
   id: string;
@@ -37,6 +46,17 @@ type CertificateRange = '7' | '30' | 'all';
 
 const RANGE_DAYS: Record<Exclude<CertificateRange, 'all'>, number> = { '7': 7, '30': 30 };
 
+/** Everything one page of the exported PDF needs, resolved before any capture. */
+interface CertificateExportPage {
+  id: string;
+  studentName: string;
+  courseName: string;
+  organizationName?: string;
+  issueDate: string;
+  certificateId: string;
+  qrDataUrl?: string;
+}
+
 export default function CertificateCardList({
   certificates,
   title = 'Certificates',
@@ -54,6 +74,12 @@ export default function CertificateCardList({
     range: 'all',
     cutoff: null,
   });
+
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [exportPages, setExportPages] = useState<CertificateExportPage[] | null>(null);
+  const exportNodesRef = useRef<(HTMLDivElement | null)[]>([]);
 
   const hasNone = certificates.length === 0;
 
@@ -92,26 +118,117 @@ export default function CertificateCardList({
     });
   };
 
-  const handleExportAll = () => {
-    // Basic CSV export for demonstration
-    const csvContent =
-      'data:text/csv;charset=utf-8,' +
-      'Certificate ID,Course,Issued Date\n' +
-      visible
-        .map(
-          (c) =>
-            `${formatCertificateId(c.enrollmentId)},"${c.course.title}",${new Date(c.issuedAt).toISOString()}`,
-        )
-        .join('\n');
+  // The export renders the real `CertificateDocument` for every certificate and
+  // rasterises each into one page of a single PDF, so the download is the same
+  // artwork the learner sees in the preview modal — not a summary of it.
+  const handleExportAll = async () => {
+    if (exporting || visible.length === 0) return;
 
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', 'certificates_export.csv');
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    setExporting(true);
+    setExportError(null);
+
+    // Snapshot the filtered list: the range filter stays live during the
+    // export, and both the pages and the progress count must describe the set
+    // the learner actually asked for.
+    const selected = visible;
+    setProgress({ done: 0, total: selected.length });
+
+    const pages: CertificateExportPage[] = [];
+    for (const cert of selected) {
+      try {
+        const details = await getCertificateDetails(cert.id);
+
+        let qrDataUrl: string | undefined;
+        try {
+          qrDataUrl = await generateQrDataUrl(
+            `${window.location.origin}/verify-certificate/${cert.id}`,
+          );
+        } catch {
+          /* QR is decorative — a page without it is still a valid certificate */
+        }
+
+        pages.push({
+          id: cert.id,
+          studentName:
+            details.organizationUser?.user?.fullName ||
+            details.organizationUser?.user?.email ||
+            'Student Name',
+          courseName: details.course?.title || cert.course.title,
+          organizationName: details.organizationUser?.organization?.name,
+          issueDate: formatCertificateIssueDate(details.issuedAt),
+          certificateId: formatCertificateId(details.enrollmentId),
+          qrDataUrl,
+        });
+        setProgress({ done: pages.length, total: selected.length });
+      } catch (err) {
+        // Abort the whole export rather than quietly dropping a page: a
+        // certificate PDF is a compliance record, and a file that silently
+        // omits one is worse than no file at all.
+        logger.error({
+          msg: '[certificate] Bulk export aborted — certificate details failed to load',
+          err,
+          certificateId: cert.id,
+        });
+        setExportError(
+          `Could not load the certificate for “${cert.course.title}”, so nothing was downloaded. Please try again.`,
+        );
+        setExporting(false);
+        return;
+      }
+    }
+
+    exportNodesRef.current = [];
+    setExportPages(pages);
   };
+
+  // Capture runs only once React has committed the off-screen certificates, so
+  // it is driven by the render rather than by the click handler.
+  useEffect(() => {
+    if (!exportPages) return;
+
+    let cancelled = false;
+
+    const capture = async () => {
+      try {
+        const nodes = exportNodesRef.current.filter(
+          (node): node is HTMLDivElement => node !== null,
+        );
+        if (nodes.length !== exportPages.length) {
+          throw new Error(
+            `Rendered ${nodes.length} of ${exportPages.length} certificates for export`,
+          );
+        }
+
+        await exportCertificatesPdf(nodes, 'certificates');
+        logger.info({
+          msg: '[certificate] Bulk certificate export completed',
+          count: nodes.length,
+        });
+      } catch (err) {
+        logger.error({ msg: '[certificate] Bulk certificate export failed', err });
+        if (!cancelled) {
+          setExportError('Could not build the certificate PDF. Please try again.');
+        }
+      } finally {
+        if (!cancelled) {
+          setExportPages(null);
+          setExporting(false);
+        }
+      }
+    };
+
+    void capture();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [exportPages]);
+
+  const exportLabel = !exporting
+    ? 'Export'
+    : exportPages
+      ? 'Building PDF…'
+      : `Exporting ${progress.done} of ${progress.total}…`;
 
   return (
     <div className="mx-auto w-full max-w-[1200px]">
@@ -150,14 +267,24 @@ export default function CertificateCardList({
             <Button
               className="h-[41px] gap-2 rounded-[12px] text-[15.5px] font-semibold has-[>svg]:px-6"
               onClick={handleExportAll}
-              disabled={visible.length === 0}
+              disabled={visible.length === 0 || exporting}
             >
-              <Download className="size-[18px]" />
-              Export
+              {exporting ? (
+                <Loader2 className="size-[18px] animate-spin" aria-hidden="true" />
+              ) : (
+                <Download className="size-[18px]" aria-hidden="true" />
+              )}
+              {exportLabel}
             </Button>
           </div>
         )}
       </div>
+
+      {exportError && (
+        <Alert variant="error" title="Export failed" className="mb-6">
+          {exportError}
+        </Alert>
+      )}
 
       {hasNone ? (
         // Design 15560:138390 seats the empty state in a white `Widget` card
@@ -260,6 +387,27 @@ export default function CertificateCardList({
                 </Badge>
               </div>
             </div>
+          ))}
+        </div>
+      )}
+
+      {/* Pushed off-screen rather than hidden: `display:none` / `visibility:hidden`
+          collapse the node, and html-to-image would capture nothing. */}
+      {exportPages && (
+        <div aria-hidden="true" className="pointer-events-none fixed top-0 -left-[10000px]">
+          {exportPages.map((page, index) => (
+            <CertificateDocument
+              key={page.id}
+              ref={(node) => {
+                exportNodesRef.current[index] = node;
+              }}
+              studentName={page.studentName}
+              courseName={page.courseName}
+              organizationName={page.organizationName}
+              issueDate={page.issueDate}
+              certificateId={page.certificateId}
+              qrDataUrl={page.qrDataUrl}
+            />
           ))}
         </div>
       )}
