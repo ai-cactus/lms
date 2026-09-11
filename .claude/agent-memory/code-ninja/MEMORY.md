@@ -71,3 +71,4 @@
 - [Document identity is org-wide](gotcha_document_identity_is_org_wide.md) — never re-find an upload by filename via getDocuments(); uploadDocument returns the stored Document record.
 - [Certificate export render pipeline](gotcha_certificate_export_render_pipeline.md) — PDFs rasterise a live CertificateDocument; off-screen not hidden, jsPDF page-1 trap, card list has no student name.
 - [Assignment rows carry no role-target scope](gotcha_assignment_row_has_no_role_target_scope.md) — an individual assignment leaves facilityScoped=false, so a later in-place widen must be refused, not inherited.
+- [Course publish has three paths](gotcha_course_publish_has_three_paths.md) — assignment silently publishes drafts; only 2 of 3 paths record the D8 reviewer, and D8 needed no migration.
