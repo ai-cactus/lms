@@ -20,7 +20,7 @@ import { CourseWizardData, CourseWizardReminder } from '@/types/course';
 import { searchStaffUsers } from '@/app/actions/user';
 import { logger } from '@/lib/logger';
 
-interface Step9AssignPublishProps {
+interface Step7AssignProps {
   data: CourseWizardData;
   onChange: <K extends keyof CourseWizardData>(field: K, value: CourseWizardData[K]) => void;
 }
@@ -92,7 +92,7 @@ function ToggleSwitch({
   );
 }
 
-export default function Step9AssignPublish({ data, onChange }: Step9AssignPublishProps) {
+export default function Step7Assign({ data, onChange }: Step7AssignProps) {
   const [inputValue, setInputValue] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [suggestions, setSuggestions] = useState<Worker[]>([]);

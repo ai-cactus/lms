@@ -20,12 +20,12 @@ import {
 } from './wizardFormClasses';
 import { CourseWizardData } from '@/types/course';
 
-interface Step5QuizProps {
+interface Step4QuizProps {
   data: CourseWizardData;
   onChange: <K extends keyof CourseWizardData>(field: K, value: CourseWizardData[K]) => void;
 }
 
-export default function Step5Quiz({ data, onChange }: Step5QuizProps) {
+export default function Step4Quiz({ data, onChange }: Step4QuizProps) {
   return (
     <div className="flex w-full flex-col gap-10 md:gap-14">
       <div className="flex flex-col items-center gap-3">

@@ -333,7 +333,7 @@ function shuffleArray<T>(arr: T[]): T[] {
 }
 
 /**
- * Adapts v4.6 quiz questions into the format expected by Step8QuizReview
+ * Adapts v4.6 quiz questions into the format expected by Step6QuizReview
  * and createFullCourse: { question, options: string[], answer: number, ... }
  *
  * Options are SHUFFLED so the correct answer is randomly distributed across
@@ -372,7 +372,7 @@ const adaptQuizForRenderingV46 = (
     });
 
     return {
-      // Legacy-compatible fields expected by Step8QuizReview
+      // Legacy-compatible fields expected by Step6QuizReview
       question: q.question,
       options: shuffled.map((o) => o.text),
       answer: newCorrectIdx >= 0 ? newCorrectIdx : 0,
@@ -465,7 +465,11 @@ export default function GenerationController({
 
       for (const { moduleIndex, result } of results) {
         const wizardModule = data.modules[moduleIndex];
-        const moduleTitle = wizardModule?.title || `Module ${moduleIndex + 1}`;
+        // One document, one module (D1): the module is the course, so it is
+        // named and described by the course-level fields the admin filled in on
+        // the details step. The index fallback only fires for a course with no
+        // title yet, which the details step will not let through.
+        const moduleTitle = data.title || `Module ${moduleIndex + 1}`;
 
         const moduleLessons = adaptModulesForRenderingV46(
           result.articleMeta,
@@ -492,8 +496,10 @@ export default function GenerationController({
         courseModules.push({
           moduleIndex,
           title: moduleTitle,
-          objective: wizardModule?.objective || null,
-          completionDeadlineDays: wizardModule?.completionDeadlineDays ?? null,
+          objective: data.objectives?.filter(Boolean).join('; ') || null,
+          // A single-module course has no per-module deadline of its own; the
+          // whole-course deadline lives on the course.
+          completionDeadlineDays: null,
           documentId: wizardModule?.documentId ?? null,
           lessons: moduleLessons,
           quiz: moduleQuiz,
@@ -583,15 +589,15 @@ export default function GenerationController({
           if (!wizardModule?.documentId) {
             missingDocument.push({
               moduleIndex,
-              error: `“${wizardModule?.title || `Module ${moduleIndex + 1}`}” has no training document.`,
+              error: `“${data.title || `Module ${moduleIndex + 1}`}” has no training document.`,
             });
             continue;
           }
           requests.push({
             moduleIndex,
             documentId: wizardModule.documentId,
-            title: wizardModule.title,
-            objective: wizardModule.objective,
+            title: data.title,
+            objective: data.objectives?.filter(Boolean).join('; ') || undefined,
             quizQuestionCount: shares[moduleIndex],
           });
         }
@@ -673,7 +679,7 @@ export default function GenerationController({
                 className="flex items-center justify-between gap-4 rounded-[10px] border-[1.5px] border-[#e5e7ea] px-4 py-3"
               >
                 <span className="text-[15px] font-medium text-[#383838]">
-                  {wizardModules[job.moduleIndex]?.title || `Module ${job.moduleIndex + 1}`}
+                  {data.title || `Module ${job.moduleIndex + 1}`}
                 </span>
                 <Button variant="outline" size="sm" onClick={() => retryModule(job.moduleIndex)}>
                   Retry module

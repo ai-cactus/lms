@@ -84,14 +84,14 @@ test.describe('Course Flows', () => {
     await page.getByRole('option').first().click();
     await page.getByRole('button', { name: 'Next Step' }).click();
 
-    // Step 2 — the multi-module builder (Step2Modules): a module title field
-    // plus a PHI-attestation checkbox gating the upload dropzone. Leave a
-    // half-filled module in progress; we intentionally do NOT complete or
-    // advance past it (uploading, and the auto-analysis Next triggers, need
-    // AI/PHI-scan calls unavailable in this environment).
+    // Step 2 — the single-document upload step (Step2Upload, D1): a
+    // PHI-attestation checkbox gating the upload dropzone, no per-module
+    // fields. Leave it half-filled (attested but nothing uploaded yet) and
+    // intentionally do NOT advance past it (the real upload/PHI-scan pipeline
+    // is exercised live elsewhere — see course-creation-phi-rejection.spec.ts
+    // — and is out of scope for this unmount/reset regression guard).
     await expect(page.getByText(/step 2 of 7/i)).toBeVisible();
-    await page.getByLabel(/module title/i).fill('Draft module left behind on exit');
-    await page.getByLabel(/verify this document contains no/i).click();
+    await page.getByLabel(/contains no Personal Health Information/i).click();
 
     // Leave the wizard (unmount) without finishing, then reopen it.
     await page.goto('/dashboard/courses');
@@ -99,14 +99,13 @@ test.describe('Course Flows', () => {
     await page.waitForURL('**/dashboard/courses/create');
 
     // ENG-024 fix: reopening starts a fresh wizard at Step 1 rather than
-    // silently resuming at Step 2 with the half-filled module intact.
+    // silently resuming at Step 2 with the half-filled attestation intact.
     await expect(page.getByText(/step 1 of 7/i)).toBeVisible();
     await page.getByRole('combobox').first().click();
     await page.getByRole('option').first().click();
     await page.getByRole('button', { name: 'Next Step' }).click();
     await expect(page.getByText(/step 2 of 7/i)).toBeVisible();
-    await expect(page.getByLabel(/module title/i)).toHaveValue('');
-    await expect(page.getByLabel(/verify this document contains no/i)).not.toBeChecked();
+    await expect(page.getByLabel(/contains no Personal Health Information/i)).not.toBeChecked();
   });
 });
 
