@@ -3,10 +3,8 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Check, ChevronDown, Clock, Users, X } from 'lucide-react';
-import { RenewalCycle, ReminderStage } from '@/generated/prisma/enums';
-import { ALL_ROLES, getRoleDisplayName } from '@/lib/rbac/role-utils';
-import type { Role } from '@/types/next-auth';
+import { Check, ChevronDown, Clock, X } from 'lucide-react';
+import { RenewalCycle, ReminderStage, UserRole } from '@/generated/prisma/enums';
 import Logo from '@/components/ui/Logo';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/alert';
@@ -23,9 +21,12 @@ import {
 import DatePicker from '@/components/ui/DatePicker';
 import { cn } from '@/lib/utils';
 import { REMINDER_STAGE_DEFAULTS, SWEEP_STAGES } from '@/lib/reminders/stages';
+import RoleTargetPicker, {
+  type RoleTargetPickerMode,
+} from '@/components/dashboard/enrollment/RoleTargetPicker';
 import {
   enrollUsers,
-  assignCourseToRole,
+  assignCourseToRoles,
   type CourseAssignmentSettings,
 } from '@/app/actions/enrollment';
 import { publishCourse } from '@/app/actions/course';
@@ -71,6 +72,8 @@ interface AssignPublishClientProps {
   existingSettings?: CourseAssignmentSettings | null;
   /** Current headcount per role in the org, so role mode can preview enrollment. */
   roleHolderCounts?: Record<string, number>;
+  /** The viewer holds `assignment.delete`, so targeted roles may be removed (D6). */
+  canRevokeRoleTargets?: boolean;
   /** Emails assigned this course that haven't accepted their invite yet. */
   pendingInvitedEmails?: string[];
 }
@@ -86,6 +89,7 @@ export default function AssignPublishClient({
   courseStatus,
   existingSettings = null,
   roleHolderCounts = {},
+  canRevokeRoleTargets = false,
   pendingInvitedEmails = [],
 }: AssignPublishClientProps) {
   const router = useRouter();
@@ -99,10 +103,12 @@ export default function AssignPublishClient({
   // it to factory defaults.
   const hasExistingAssignment = existingSettings !== null;
 
-  // A course already assigned to a role re-opens in role mode.
-  const [mode, setMode] = useState<AssignMode>(existingSettings?.targetRole ? 'role' : 'people');
-  const [targetRole, setTargetRole] = useState<Role>(
-    (existingSettings?.targetRole as Role | null) ?? 'nurse',
+  // A course already assigned to one or more roles re-opens in role mode.
+  const [mode, setMode] = useState<AssignMode>(
+    existingSettings?.targetRoles.length ? 'role' : 'people',
+  );
+  const [targetRoles, setTargetRoles] = useState<UserRole[]>(
+    () => existingSettings?.targetRoles ?? [],
   );
 
   const [entries, setEntries] = useState<StaffEntry[]>([]);
@@ -170,12 +176,39 @@ export default function AssignPublishClient({
     setStages((prev) => prev.map((s) => (s.stage === stage ? { ...s, enabled } : s)));
 
   // ── Publish ──────────────────────────────────────────────────────────────
-  const roleHolderCount = roleHolderCounts[targetRole] ?? 0;
-  const canPublish = (mode === 'role' || entries.length > 0) && !submitting;
+  /**
+   * The picker writes through to a live assignment row itself (D5) — but only
+   * once that row is ALREADY role-targeted.
+   *
+   * A row created by an individual assignment carries no recorded facility scope
+   * (`facilityScoped: false`, i.e. org-wide), so editing it in place would let a
+   * facility-bound assigner inherit an org-wide reach. Going through submit
+   * instead records the assigner's own scope, which is what every later
+   * auto-enrolment is then held to. Clearing every role in place drops back to
+   * `draft` for the same reason — the row's recorded reach goes with them.
+   * `canCreate` needs no separate check: the page redirects anyone without
+   * `assignment.create` before it renders.
+   */
+  const pickerMode: RoleTargetPickerMode =
+    existingSettings && targetRoles.length > 0
+      ? {
+          kind: 'live',
+          assignmentId: existingSettings.assignmentId,
+          enrolledCount: existingSettings.enrolledCount,
+          canCreate: true,
+          canRevoke: canRevokeRoleTargets,
+        }
+      : { kind: 'draft' };
+
+  const canPublish = (mode === 'role' ? targetRoles.length > 0 : entries.length > 0) && !submitting;
 
   const handlePublish = async () => {
     if (mode === 'people' && entries.length === 0) {
       setError('Add at least one person to assign this course to.');
+      return;
+    }
+    if (mode === 'role' && targetRoles.length === 0) {
+      setError('Choose at least one role to assign this course to.');
       return;
     }
     setSubmitting(true);
@@ -183,8 +216,8 @@ export default function AssignPublishClient({
     try {
       if (mode === 'role') {
         // Role targets never carry an absolute due date — the deadline is computed
-        // per user from their role-join date and the window.
-        const res = await assignCourseToRole(courseId, targetRole, {
+        // per user from their role-join date and the window — so no dueDate is sent.
+        const res = await assignCourseToRoles(courseId, targetRoles, {
           scheduleAt: scheduleDate ? new Date(scheduleDate) : null,
           renewalCycle,
           remindersEnabled,
@@ -363,40 +396,14 @@ export default function AssignPublishClient({
                 </Button>
               </div>
             ) : (
-              <div className="flex flex-col gap-2">
-                <Select
-                  value={targetRole}
-                  onValueChange={(v) => setTargetRole(v as Role)}
-                  disabled={submitting}
-                >
-                  <SelectTrigger className="h-11 w-full sm:w-[320px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ALL_ROLES.map((role) => (
-                      <SelectItem key={role} value={role}>
-                        {getRoleDisplayName(role)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="flex items-center gap-1.5 text-sm text-text-secondary">
-                  <Users className="size-4 shrink-0" aria-hidden="true" />
-                  {roleHolderCount === 0 ? (
-                    <>
-                      No one currently holds this role. Anyone assigned{' '}
-                      {getRoleDisplayName(targetRole)} later will be enrolled automatically.
-                    </>
-                  ) : (
-                    <>
-                      <span className="font-semibold text-foreground">
-                        {roleHolderCount} {roleHolderCount === 1 ? 'person' : 'people'}
-                      </span>{' '}
-                      will be enrolled now — plus anyone assigned this role later.
-                    </>
-                  )}
-                </p>
-              </div>
+              <RoleTargetPicker
+                selectedRoles={targetRoles}
+                onSelectionChange={setTargetRoles}
+                mode={pickerMode}
+                roleHolderCounts={roleHolderCounts}
+                disabled={submitting}
+                onLiveUpdateError={setError}
+              />
             )}
           </div>
         </div>

@@ -1,11 +1,10 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { CalendarDays, ChevronDown, CirclePlus, Mail, User, X } from 'lucide-react';
+import { CalendarDays, CirclePlus, Mail, User, X } from 'lucide-react';
 import DatePicker from '@/components/ui/DatePicker';
 import TimePicker from '@/components/ui/TimePicker';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select,
   SelectContent,
@@ -13,8 +12,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { getRoleDisplayName, groupRolesForSelect } from '@/lib/rbac/role-utils';
-import type { Role } from '@/types/next-auth';
+import RoleTargetPicker from '@/components/dashboard/enrollment/RoleTargetPicker';
+import type { UserRole } from '@/generated/prisma/enums';
 import { wizardSubtitleClass, wizardTitleClass } from './wizardFormClasses';
 
 import { CourseWizardData, CourseWizardReminder } from '@/types/course';
@@ -34,19 +33,6 @@ interface Worker {
 }
 
 type AssignMode = CourseWizardData['assignMode'];
-
-/**
- * The assignable role catalog, grouped exactly as the design's dropdown is
- * ("MANAGERS" / "WORKERS / LEARNERS"). Derived from the RBAC registry via an
- * Owner's grant matrix, which is every role an organisation can hold except
- * `owner` itself (one seat, established at org creation — never a course target).
- */
-const ROLE_GROUPS = groupRolesForSelect('owner');
-const MANAGER_ROLES: Role[] =
-  ROLE_GROUPS.find((g) => g.label === 'Managers')?.roles.map((r) => r.value) ?? [];
-const WORKER_ROLES: Role[] =
-  ROLE_GROUPS.find((g) => g.label === 'Workers / Learners')?.roles.map((r) => r.value) ?? [];
-const ASSIGNABLE_ROLES: Role[] = [...MANAGER_ROLES, ...WORKER_ROLES];
 
 /**
  * How many "N days before" rows the schedule can carry. The server maps each row
@@ -113,12 +99,10 @@ export default function Step9AssignPublish({ data, onChange }: Step9AssignPublis
   const [isLoading, setIsLoading] = useState(false);
   const [knownEmails, setKnownEmails] = useState<Set<string>>(new Set()); // Track existing org members
   const [validationError, setValidationError] = useState('');
-  const [rolesOpen, setRolesOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const rolesRef = useRef<HTMLDivElement>(null);
 
   const assignMode = data.assignMode;
-  const selectedRoles = data.assignRoles as Role[];
+  const selectedRoles = data.assignRoles as UserRole[];
 
   useEffect(() => {
     const timer = setTimeout(async () => {
@@ -151,9 +135,6 @@ export default function Step9AssignPublish({ data, onChange }: Step9AssignPublis
     const handleClickOutside = (event: MouseEvent) => {
       if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
         setShowSuggestions(false);
-      }
-      if (rolesRef.current && !rolesRef.current.contains(event.target as Node)) {
-        setRolesOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -210,30 +191,6 @@ export default function Step9AssignPublish({ data, onChange }: Step9AssignPublis
     onChange('assignments', newAssignments);
   };
 
-  // Rebuilt from the catalog so the stored order stays stable however the boxes
-  // are ticked.
-  const setRoles = (next: Role[]) => {
-    onChange(
-      'assignRoles',
-      ASSIGNABLE_ROLES.filter((role) => next.includes(role)),
-    );
-  };
-
-  const toggleRole = (role: Role, checked: boolean) => {
-    setRoles(checked ? [...selectedRoles, role] : selectedRoles.filter((r) => r !== role));
-  };
-
-  const toggleGroup = (group: Role[], checked: boolean) => {
-    setRoles(
-      checked
-        ? [...selectedRoles, ...group]
-        : selectedRoles.filter((role) => !group.includes(role)),
-    );
-  };
-
-  const isGroupSelected = (group: Role[]) =>
-    group.length > 0 && group.every((role) => selectedRoles.includes(role));
-
   const updateReminder = (index: number, value: number) => {
     const next = data.reminders.map((reminder, i) =>
       i === index ? { ...reminder, value } : reminder,
@@ -265,7 +222,6 @@ export default function Step9AssignPublish({ data, onChange }: Step9AssignPublis
     if (mode === assignMode) return;
     onChange('assignMode', mode);
     setValidationError('');
-    setRolesOpen(false);
     setShowSuggestions(false);
   };
 
@@ -311,98 +267,11 @@ export default function Step9AssignPublish({ data, onChange }: Step9AssignPublis
           </div>
 
           {assignMode === 'roles' ? (
-            <div className="relative" ref={rolesRef}>
-              <div
-                className={`flex min-h-[52px] w-full flex-wrap items-center gap-1.5 rounded-[12px] border-[1.5px] bg-background px-[18px] py-2.5 transition-colors md:min-h-[56px] ${
-                  rolesOpen ? 'border-primary' : 'border-[#e5e7ea]'
-                }`}
-              >
-                {selectedRoles.map((role) => (
-                  <span
-                    key={role}
-                    className="flex items-center gap-1.5 rounded-2xl bg-primary/10 px-2.5 py-1 text-[13px] font-medium text-primary"
-                  >
-                    {getRoleDisplayName(role)}
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={`Remove ${getRoleDisplayName(role)}`}
-                      className="flex h-auto items-center justify-center border-none bg-transparent p-0 text-primary hover:text-error"
-                      onClick={() => toggleRole(role, false)}
-                    >
-                      <X className="h-3.5 w-3.5" strokeWidth={2} />
-                    </Button>
-                  </span>
-                ))}
-
-                <button
-                  type="button"
-                  aria-label="Choose roles"
-                  aria-expanded={rolesOpen}
-                  onClick={() => setRolesOpen((open) => !open)}
-                  className="flex min-w-[140px] flex-1 items-center justify-between gap-2 text-left text-base text-[#979797] md:text-[18px]"
-                >
-                  {selectedRoles.length === 0
-                    ? "Choose for specific roles (e.g. 'Nurse', 'HR')..."
-                    : 'Add another role...'}
-                  <ChevronDown className="size-5 shrink-0 text-[#666d80]" aria-hidden="true" />
-                </button>
-              </div>
-
-              {rolesOpen && (
-                <div
-                  role="group"
-                  aria-label="Assignable roles"
-                  className="absolute left-0 top-full z-50 mt-1 max-h-[420px] w-full overflow-y-auto rounded-[12px] border border-border bg-background py-2 shadow-[0_10px_30px_-12px_rgba(0,0,0,0.25)]"
-                >
-                  <p className="px-4 py-1.5 text-xs font-semibold tracking-[0.6px] text-[#98a2b3]">
-                    EVERYONE
-                  </p>
-                  <RoleOption
-                    id="assign-group-workers"
-                    label="Workers / Learners"
-                    checked={isGroupSelected(WORKER_ROLES)}
-                    onCheckedChange={(checked) => toggleGroup(WORKER_ROLES, checked)}
-                  />
-                  <RoleOption
-                    id="assign-group-managers"
-                    label="Managers"
-                    checked={isGroupSelected(MANAGER_ROLES)}
-                    onCheckedChange={(checked) => toggleGroup(MANAGER_ROLES, checked)}
-                  />
-
-                  <p className="px-4 py-1.5 text-xs font-semibold tracking-[0.6px] text-[#98a2b3]">
-                    MANAGERS
-                  </p>
-                  {MANAGER_ROLES.map((role) => (
-                    <RoleOption
-                      key={role}
-                      id={`assign-role-${role}`}
-                      label={getRoleDisplayName(role)}
-                      checked={selectedRoles.includes(role)}
-                      onCheckedChange={(checked) => toggleRole(role, checked)}
-                    />
-                  ))}
-
-                  <p className="px-4 py-1.5 text-xs font-semibold tracking-[0.6px] text-[#98a2b3]">
-                    WORKERS / LEARNERS
-                  </p>
-                  {WORKER_ROLES.map((role) => (
-                    <RoleOption
-                      key={role}
-                      id={`assign-role-${role}`}
-                      label={getRoleDisplayName(role)}
-                      checked={selectedRoles.includes(role)}
-                      onCheckedChange={(checked) => toggleRole(role, checked)}
-                    />
-                  ))}
-                </div>
-              )}
-
-              <p className="mt-2.5 text-sm font-medium text-[#666d80]">
-                Choose one or more roles to assign this course.
-              </p>
-            </div>
+            <RoleTargetPicker
+              selectedRoles={selectedRoles}
+              onSelectionChange={(roles) => onChange('assignRoles', roles)}
+              mode={{ kind: 'draft' }}
+            />
           ) : (
             <div>
               <div
@@ -635,32 +504,5 @@ export default function Step9AssignPublish({ data, onChange }: Step9AssignPublis
         </div>
       </div>
     </div>
-  );
-}
-
-function RoleOption({
-  id,
-  label,
-  checked,
-  onCheckedChange,
-}: {
-  id: string;
-  label: string;
-  checked: boolean;
-  onCheckedChange: (checked: boolean) => void;
-}) {
-  return (
-    <label
-      htmlFor={id}
-      className="flex cursor-pointer items-center gap-3 px-4 py-2 text-base text-[#0d0d12] transition-colors hover:bg-[#f7fafc]"
-    >
-      <Checkbox
-        id={id}
-        checked={checked}
-        onCheckedChange={(next) => onCheckedChange(next === true)}
-        className="size-5 shrink-0"
-      />
-      {label}
-    </label>
   );
 }

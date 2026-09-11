@@ -4,13 +4,8 @@ import { requirePermission } from '@/lib/rbac/require-permission';
 import prisma from '@/lib/prisma';
 import { getAssignableCourses } from '@/app/actions/offering';
 import { hasActiveBilling } from '@/lib/billing';
-import { logger } from '@/lib/logger';
 import { Button } from '@/components/ui/button';
 import CoursesListClient from '@/components/dashboard/courses/CoursesListClient';
-import RoleAssignmentsCard from '@/components/dashboard/courses/RoleAssignmentsCard';
-import { listRoleAssignments } from '@/app/actions/enrollment';
-import { can } from '@/lib/rbac/permissions';
-import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -57,34 +52,14 @@ export default async function CoursesPage() {
   // that is not paused. past_due, canceled and paused are treated as inactive.
   const hasBilling = hasActiveBilling(organization?.subscription);
 
-  const roleKey = dbRoleToRoleKey(ctx.role);
-  // Read-only for a viewer without `assignment.read` — the list itself is org
-  // configuration, but seeing WHY new staff arrive pre-enrolled is the point, so
-  // it degrades to nothing rather than taking the page down.
-  const canReadAssignments = !!roleKey && can(roleKey, 'assignment.read');
-
-  const [courses, roleAssignments] = await Promise.all([
-    // Shared with the staff-profile assign modal. Keeping the union in ONE
-    // place is the point: this page listed the global video catalogue while the
-    // modal did not, so a course visible here could not be assigned there.
-    getAssignableCourses(),
-    canReadAssignments
-      ? listRoleAssignments().catch((err) => {
-          logger.error({ msg: '[assignment] Role-assignment list failed', err, organizationId });
-          return [];
-        })
-      : Promise.resolve([]),
-  ]);
+  // Shared with the staff-profile assign modal. Keeping the union in ONE place
+  // is the point: this page listed the global video catalogue while the modal
+  // did not, so a course visible here could not be assigned there.
+  const courses = await getAssignableCourses();
 
   return (
     <div className="flex flex-col gap-6">
       <CoursesListClient courses={courses} hasBilling={hasBilling} viewerRole={ctx.role} />
-      {canReadAssignments && (
-        <RoleAssignmentsCard
-          assignments={roleAssignments}
-          canRevoke={!!roleKey && can(roleKey, 'assignment.delete')}
-        />
-      )}
     </div>
   );
 }

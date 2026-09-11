@@ -70,3 +70,4 @@
 - [Dashboard banner slot bleeds](gotcha_dashboard_banner_slot_bleeds.md) — site-wide banners sit INSIDE the padded scroll container; negative-margin heroes paint over them (gate on `first:`).
 - [Document identity is org-wide](gotcha_document_identity_is_org_wide.md) — never re-find an upload by filename via getDocuments(); uploadDocument returns the stored Document record.
 - [Certificate export render pipeline](gotcha_certificate_export_render_pipeline.md) — PDFs rasterise a live CertificateDocument; off-screen not hidden, jsPDF page-1 trap, card list has no student name.
+- [Assignment rows carry no role-target scope](gotcha_assignment_row_has_no_role_target_scope.md) — an individual assignment leaves facilityScoped=false, so a later in-place widen must be refused, not inherited.

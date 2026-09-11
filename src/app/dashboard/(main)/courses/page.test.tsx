@@ -128,4 +128,14 @@ describe('CoursesPage — video course entry point', () => {
 
     expect(screen.queryAllByRole('listitem')).toHaveLength(0);
   });
+
+  // D5: the revoke card that used to sit below the list is deleted — revoking now
+  // happens in the shared role picker. The page no longer imports from
+  // `@/app/actions/enrollment` at all, which is why nothing here mocks it.
+  it('no longer renders the automatic-role-assignments card (D5)', async () => {
+    render(await CoursesPage());
+
+    expect(screen.queryByText(/enrol staff automatically/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Revoke' })).not.toBeInTheDocument();
+  });
 });

@@ -28,17 +28,26 @@ import { logger } from '@/lib/logger';
  * Never throws: failing to relabel a course must not fail the assignment that
  * has already been authorised. It logs instead, because a silent skip here is
  * exactly how the original inconsistency stayed invisible.
+ *
+ * D9 — this is the THIRD publish path, and until now the only one that recorded
+ * no reviewer, so a course could go live attributed to nobody. The person who
+ * assigns a draft is taking responsibility for it going live, so the attribution
+ * is written alongside the status flip. It needs the caller's
+ * `OrganizationUser` id, not their `User` id: `approvedByOrgUserId` is a
+ * membership FK, which is also what lets the details-page hero render the
+ * approver's role without a second lookup.
  */
 export async function publishCourseOnAssignment(
   course: { id: string; status: string; isGlobal: boolean; reviewRequired: boolean },
   actorUserId: string,
+  approvedByOrgUserId: string | null,
 ): Promise<void> {
   if (course.status !== 'draft' || course.isGlobal || course.reviewRequired) return;
 
   try {
     await prisma.course.update({
       where: { id: course.id },
-      data: { status: 'published' },
+      data: { status: 'published', approvedByOrgUserId, approvedAt: new Date() },
     });
     logger.info({
       msg: '[course] Draft published because it was assigned to staff',
