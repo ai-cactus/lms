@@ -70,8 +70,15 @@ test.describe('Course creation wizard — PHI hard block on upload (D2)', () => 
     });
 
     // D2: the flagged document is never stored, so the slot is cleared and Next
-    // stays disabled.
-    await expect(page.getByText('PHI WARNING')).toBeVisible();
+    // stays disabled. The design replaced the "PHI WARNING" banner with a
+    // dismissible toast (role="alert") carrying the same warning copy. Next.js's
+    // own route announcer also carries an (empty, nameless) role="alert" — the
+    // `alert` role isn't named from its contents, so `hasText` (a text filter,
+    // not an accessible-name filter) is what actually narrows this to the toast.
+    const phiToast = page
+      .getByRole('alert')
+      .filter({ hasText: /Protected Health Information \(PHI\) detected/i });
+    await expect(phiToast).toBeVisible();
     await expect(page.getByText(/This document was not saved/i)).toBeVisible();
     await expect(page.getByText('confidential-intake-notes.docx')).not.toBeVisible();
     await expect(page.getByRole('button', { name: 'Next Step' })).toBeDisabled();

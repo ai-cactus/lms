@@ -1,5 +1,5 @@
 /**
- * Shared helpers and chrome for the wizard's step-7 "Review Course Content"
+ * Shared helpers and chrome for the wizard's step-5 "Review Course Content"
  * screen. These are wizard-only: the learner player renders the same generated
  * content with its own components, which must stay untouched.
  */
@@ -70,15 +70,15 @@ export function formatReviewDate(date: Date): string {
  * numbered circle callouts, which is how the pipeline's bolded key points read.
  */
 export const reviewProseClass = [
-  'text-[15px] leading-[1.7] text-[#424242]',
+  'text-[15px] leading-[1.7] text-text-secondary',
   '[&_p]:my-4',
-  '[&_h2]:mt-8 [&_h2]:mb-3 [&_h2]:text-xl [&_h2]:font-bold [&_h2]:text-[#0d0d12] md:[&_h2]:text-[22px]',
-  '[&_h3]:mt-7 [&_h3]:mb-3 [&_h3]:text-lg [&_h3]:font-bold [&_h3]:text-[#0d0d12]',
-  '[&_h4]:mt-6 [&_h4]:mb-2 [&_h4]:text-base [&_h4]:font-bold [&_h4]:text-[#0d0d12]',
-  '[&_strong]:font-semibold [&_strong]:text-[#0d0d12]',
+  '[&_h2]:mt-8 [&_h2]:mb-3 [&_h2]:text-xl [&_h2]:font-bold [&_h2]:text-foreground md:[&_h2]:text-[22px]',
+  '[&_h3]:mt-7 [&_h3]:mb-3 [&_h3]:text-lg [&_h3]:font-bold [&_h3]:text-foreground',
+  '[&_h4]:mt-6 [&_h4]:mb-2 [&_h4]:text-base [&_h4]:font-bold [&_h4]:text-foreground',
+  '[&_strong]:font-semibold [&_strong]:text-foreground',
   '[&_a]:text-primary [&_a]:underline [&_a]:underline-offset-2',
   '[&_ul]:my-5 [&_ul]:flex [&_ul]:list-none [&_ul]:flex-col [&_ul]:gap-4 [&_ul]:p-0 [&_ul]:[counter-reset:review-point]',
   '[&_ol]:my-5 [&_ol]:flex [&_ol]:list-none [&_ol]:flex-col [&_ol]:gap-4 [&_ol]:p-0 [&_ol]:[counter-reset:review-point]',
   '[&_li]:relative [&_li]:pl-9 [&_li]:[counter-increment:review-point]',
-  '[&_li]:before:absolute [&_li]:before:left-0 [&_li]:before:top-[3px] [&_li]:before:flex [&_li]:before:size-[22px] [&_li]:before:items-center [&_li]:before:justify-center [&_li]:before:rounded-full [&_li]:before:bg-[#eef1f6] [&_li]:before:text-[11px] [&_li]:before:font-semibold [&_li]:before:text-[#666d80] [&_li]:before:content-[counter(review-point)]',
+  '[&_li]:before:absolute [&_li]:before:left-0 [&_li]:before:top-[3px] [&_li]:before:flex [&_li]:before:size-[22px] [&_li]:before:items-center [&_li]:before:justify-center [&_li]:before:rounded-full [&_li]:before:bg-background-secondary [&_li]:before:text-[11px] [&_li]:before:font-semibold [&_li]:before:text-text-secondary [&_li]:before:content-[counter(review-point)]',
 ].join(' ');

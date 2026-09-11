@@ -8,7 +8,7 @@
  * the slot is cleared too and `onDocumentChange(null)` fires — this is the
  * single most important test in this file.
  */
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -124,13 +124,16 @@ describe('Step2Upload', () => {
 
     await attestAndUpload(user);
 
-    expect(await screen.findByText('PHI WARNING')).toBeVisible();
+    // The design replaced the amber "PHI WARNING" banner with a dismissible
+    // toast — assert on its role and copy rather than the retired heading text.
+    const toast = await screen.findByRole('alert');
+    expect(toast).toBeVisible();
     expect(
-      screen.getByText(
+      within(toast).getByText(
         /Protected Health Information \(PHI\) detected\. Ensure all uploads comply/i,
       ),
     ).toBeVisible();
-    expect(screen.getByText(/This document was not saved/i)).toBeVisible();
+    expect(within(toast).getByText(/This document was not saved/i)).toBeVisible();
 
     // The slot is cleared, never left holding the flagged file.
     expect(onDocumentChange).toHaveBeenCalledWith(null);

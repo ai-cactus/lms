@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, CheckCircle2, FileText, Loader2, Trash2 } from 'lucide-react';
+import { FileText, FolderUp, Loader2, Trash2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -10,7 +10,8 @@ import { uploadDocument } from '@/app/actions/documents';
 import { formatFileSize } from '@/lib/utils';
 import { logger } from '@/lib/logger';
 import { CourseWizardModuleDocument } from '@/types/course';
-import { wizardCardLabelClass, wizardSubtitleClass, wizardTitleClass } from './wizardFormClasses';
+import WizardToast from './WizardToast';
+import { wizardSubtitleClass, wizardTitleClass } from './wizardFormClasses';
 
 type ScanState = 'idle' | 'uploading' | 'clean' | 'phi';
 
@@ -58,6 +59,9 @@ export default function Step2Upload({
     document || initialDocument ? 'clean' : 'idle',
   );
   const [uploadError, setUploadError] = useState<string | null>(null);
+  // The scan result floats as a toast, which the admin can dismiss without
+  // undoing the upload it is reporting on.
+  const [isResultDismissed, setIsResultDismissed] = useState(false);
   const hasSeededLinkedDocument = useRef(false);
 
   // Seeding runs exactly once: without the ref, removing the deep-linked
@@ -85,6 +89,7 @@ export default function Step2Upload({
     }
 
     setScanState('uploading');
+    setIsResultDismissed(false);
 
     const uploadFormData = new FormData();
     uploadFormData.append('file', file);
@@ -138,10 +143,43 @@ export default function Step2Upload({
     onDocumentChange(null);
     setScanState('idle');
     setUploadError(null);
+    setIsResultDismissed(false);
   };
 
   return (
-    <div className="flex w-full flex-col gap-8 md:gap-10">
+    <div className="flex w-full flex-col gap-8 md:gap-12">
+      {scanState === 'clean' && !isResultDismissed && (
+        <WizardToast
+          variant="success"
+          onDismiss={() => setIsResultDismissed(true)}
+          dismissLabel="Dismiss the PHI scan result"
+        >
+          <p>
+            <span className="font-semibold">SUCCESS:</span> No Protected Health Information (PHI)
+            detected. Uploads are not subject to HIPAA restrictions. Authorized sharing is
+            permitted.
+          </p>
+        </WizardToast>
+      )}
+
+      {scanState === 'phi' && !isResultDismissed && (
+        <WizardToast
+          variant="warning"
+          role="alert"
+          onDismiss={() => setIsResultDismissed(true)}
+          dismissLabel="Dismiss the PHI warning"
+        >
+          <p>
+            <span className="font-semibold text-error">WARNING:</span> Protected Health Information
+            (PHI) detected. Ensure all uploads comply with HIPAA regulations. Unauthorized
+            disclosure is strictly prohibited.
+          </p>
+          <p className="text-text-secondary">
+            This document was not saved. Upload a document with no PHI to continue.
+          </p>
+        </WizardToast>
+      )}
+
       <div className="flex flex-col items-center gap-3">
         <h2 className={wizardTitleClass}>Upload Training Documents</h2>
         <p className={wizardSubtitleClass}>
@@ -150,107 +188,71 @@ export default function Step2Upload({
         </p>
       </div>
 
-      <section className="w-full rounded-[14px] border border-[#e9ebf2] bg-[#f8f9fc] p-5 md:p-6">
-        <div className="flex flex-col gap-2">
-          <span className={wizardCardLabelClass}>
-            Upload Training Document <span className="text-error">*</span>
-          </span>
-
-          {document ? (
-            <div className="relative flex h-full min-h-[200px] w-full flex-col gap-2 rounded-[10px] border border-dashed border-[#d7dbe7] bg-white p-4">
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={`Remove ${document.fileName}`}
-                onClick={handleRemoveAttachment}
-                className="absolute right-2 top-2 size-8 text-error hover:bg-error/10 hover:text-error"
-              >
-                <Trash2 className="size-4" />
-              </Button>
-              <FileTypeIcon fileName={document.fileName} mimeType={document.mimeType} />
-              <p
-                className="truncate pr-8 text-[13px] font-semibold text-[#0d0d12]"
-                title={document.fileName}
-              >
-                {document.fileName}
-              </p>
-              <p className="text-xs text-[#666d80]">{formatFileSize(document.fileSize)}</p>
-            </div>
-          ) : scanState === 'uploading' ? (
-            <div className="flex h-full min-h-[200px] w-full flex-col items-center justify-center gap-3 rounded-[10px] border border-dashed border-[#d7dbe7] bg-white text-center">
-              <Loader2 className="size-7 animate-spin text-primary" aria-hidden="true" />
-              <p className="text-sm font-medium text-text-secondary">Scanning for PHI…</p>
-            </div>
-          ) : (
-            <>
-              <div className="flex items-start gap-2 text-xs text-text-secondary">
-                <Checkbox
-                  id="upload-phi-attested"
-                  checked={phiAttested}
-                  onCheckedChange={(checked) => {
-                    setPhiAttested(checked === true);
-                    setUploadError(null);
-                  }}
-                  className="mt-0.5 size-4"
-                />
-                <label htmlFor="upload-phi-attested" className="cursor-pointer">
-                  I verify this document contains no Personal Health Information (PHI).
-                </label>
-              </div>
-              <FileUpload
-                onFilesSelected={handleFilesSelected}
-                accept=".pdf,.docx"
-                multiple={false}
-                className="min-h-[200px] rounded-[10px] border-[#d7dbe7] bg-white p-6"
-                label={
-                  <>
-                    Drop your file here or{' '}
-                    <span className="text-primary underline">Upload file</span>
-                  </>
-                }
-                description="Supported formats: PDF, DOCX"
-                error={uploadError ?? undefined}
-              />
-            </>
-          )}
-        </div>
-
-        {scanState === 'clean' && (
-          <div
-            role="status"
-            className="mt-5 flex items-start gap-3 rounded-lg border border-success/30 bg-success/10 px-4 py-3 text-sm"
-          >
-            <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-success" aria-hidden="true" />
-            <p className="text-foreground">
-              <span className="font-semibold text-success">SUCCESS:</span> No Protected Health
-              Information (PHI) detected. Uploads are not subject to HIPAA restrictions. Authorized
-              sharing is permitted.
+      {document ? (
+        <div className="relative flex w-full items-start gap-4 rounded-md border border-border bg-background p-5">
+          <FileTypeIcon
+            fileName={document.fileName}
+            mimeType={document.mimeType}
+            className="mt-0.5 size-8 shrink-0"
+          />
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <p className="truncate text-sm font-semibold text-foreground" title={document.fileName}>
+              {document.fileName}
             </p>
+            <p className="text-[13px] text-text-secondary">{formatFileSize(document.fileSize)}</p>
+            <p className="text-[13px] text-foreground">Upload completed!</p>
           </div>
-        )}
-
-        {scanState === 'phi' && (
-          <div
-            role="alert"
-            className="mt-5 overflow-hidden rounded-lg border border-warning/40 text-sm"
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={`Remove ${document.fileName}`}
+            onClick={handleRemoveAttachment}
+            className="shrink-0 text-error hover:bg-error/10 hover:text-error"
           >
-            <p className="bg-warning px-4 py-2 font-bold text-[#0d0d12]">PHI WARNING</p>
-            <div className="flex items-start gap-3 bg-error/10 px-4 py-3">
-              <AlertTriangle className="mt-0.5 size-5 shrink-0 text-error" aria-hidden="true" />
-              <div className="flex flex-col gap-1 text-foreground">
-                <p>
-                  <span className="font-semibold text-error">WARNING:</span> Protected Health
-                  Information (PHI) detected. Ensure all uploads comply with HIPAA regulations.
-                  Unauthorized disclosure is strictly prohibited.
-                </p>
-                <p className="text-text-secondary">
-                  This document was not saved. Upload a document with no PHI to continue.
-                </p>
-              </div>
-            </div>
+            <Trash2 className="size-[18px]" aria-hidden="true" />
+          </Button>
+        </div>
+      ) : scanState === 'uploading' ? (
+        <div className="flex min-h-[230px] w-full flex-col items-center justify-center gap-3 rounded-md border border-border bg-background text-center">
+          <Loader2 className="size-7 animate-spin text-primary" aria-hidden="true" />
+          <p className="text-sm font-medium text-text-secondary">Scanning for PHI…</p>
+        </div>
+      ) : (
+        <div className="flex w-full flex-col gap-4">
+          <FileUpload
+            onFilesSelected={handleFilesSelected}
+            accept=".pdf,.docx"
+            multiple={false}
+            icon={<FolderUp className="mb-2 size-10 text-text-secondary" aria-hidden="true" />}
+            className="min-h-[230px] rounded-md border-solid border-border bg-background hover:bg-primary/5"
+            label={
+              <span className="text-base text-foreground">
+                Drop your file here or{' '}
+                <span className="font-medium text-primary underline">Click to upload</span>
+              </span>
+            }
+            description="Supported formats: PDF, DOCX."
+            error={uploadError ?? undefined}
+          />
+
+          {/* Not in the frames, but the upload action rejects a document that
+              carries no attestation — the admin has to make the claim first. */}
+          <div className="flex items-start gap-2 text-sm text-text-secondary">
+            <Checkbox
+              id="upload-phi-attested"
+              checked={phiAttested}
+              onCheckedChange={(checked) => {
+                setPhiAttested(checked === true);
+                setUploadError(null);
+              }}
+              className="mt-0.5 size-4"
+            />
+            <label htmlFor="upload-phi-attested" className="cursor-pointer">
+              I verify this document contains no Personal Health Information (PHI).
+            </label>
           </div>
-        )}
-      </section>
+        </div>
+      )}
     </div>
   );
 }
