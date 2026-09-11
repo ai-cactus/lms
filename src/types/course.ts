@@ -250,6 +250,17 @@ export const courseDetailSelect = {
       user: { select: { email: true, fullName: true } },
     },
   },
+  /**
+   * Who signed off the publish (D8). Null for a course published before the
+   * reviewer was recorded, and for a draft still held by the quality gate — so
+   * the detail hero's "Approved by" line must tolerate its absence.
+   */
+  approvedBy: {
+    select: {
+      role: true,
+      user: { select: { fullName: true } },
+    },
+  },
 } satisfies Prisma.CourseSelect;
 
 export type CourseWithRelations = Prisma.CourseGetPayload<{ select: typeof courseDetailSelect }>;

@@ -337,10 +337,9 @@ export default function CourseWizard() {
     }
   };
 
-  const handlePublish = async (reviewerName: string) => {
+  const handlePublish = async () => {
     setIsPublishing(true);
     setShowConfirmModal(false);
-    logger.info({ msg: `Course reviewed and published by ${reviewerName}` });
 
     // Step 9 targets either whole roles or named individuals, never both: the
     // email list only reaches createFullCourse in email mode, and the role

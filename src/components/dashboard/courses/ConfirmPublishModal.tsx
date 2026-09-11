@@ -21,7 +21,7 @@ import { logger } from '@/lib/logger';
 interface ConfirmPublishModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (reviewerName: string) => void;
+  onConfirm: () => void;
   courseTitle: string;
   isPublishing: boolean;
 }
@@ -61,7 +61,8 @@ export default function ConfirmPublishModal({
   isPublishing,
 }: ConfirmPublishModalProps) {
   const { data: session } = useSession();
-  // Pre-fill reviewer with the logged-in admin name; falls back gracefully
+  // Display only. The reviewer persisted against the course is derived from the
+  // session server-side (D8) — this field merely shows the caller who they are.
   const reviewerName = session?.user?.name ?? 'Admin';
 
   const [isConfirmed, setIsConfirmed] = useState(false);
@@ -76,10 +77,6 @@ export default function ConfirmPublishModal({
         .catch((err) => logger.error({ msg: 'Failed to load courses for publish preview', err }));
     }
   }, [isOpen]);
-
-  const handleConfirm = () => {
-    onConfirm(reviewerName);
-  };
 
   const previewList: PreviewCourse[] = [
     {
@@ -202,7 +199,6 @@ export default function ConfirmPublishModal({
             </div>
 
             <div className="mb-6 flex flex-col gap-4">
-              {/* Reviewer — read-only input pre-filled with the admin's name */}
               <div className="flex items-center gap-4">
                 <label
                   htmlFor="confirm-reviewer"
@@ -213,7 +209,7 @@ export default function ConfirmPublishModal({
                 <Input
                   id="confirm-reviewer"
                   type="text"
-                  className="h-[48px] flex-1 cursor-default rounded-[10px] border-[1.5px] border-[#e5e7ea] bg-[#f8fafc] text-[15px] text-[#374151]"
+                  className="h-[48px] flex-1 cursor-default rounded-[10px] border-[1.5px] border-border bg-background-secondary text-[15px] text-text-secondary"
                   value={reviewerName}
                   readOnly
                   aria-label="Reviewer name"
@@ -246,7 +242,7 @@ export default function ConfirmPublishModal({
               </Button>
               <Button
                 variant="default"
-                onClick={handleConfirm}
+                onClick={onConfirm}
                 disabled={!isConfirmed || isPublishing}
                 loading={isPublishing}
                 className="h-[48px] rounded-[10px] px-8 text-[15px] font-semibold"
