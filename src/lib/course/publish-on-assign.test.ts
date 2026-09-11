@@ -37,22 +37,28 @@ beforeEach(() => {
 
 describe('publishCourseOnAssignment', () => {
   it('publishes an unheld draft — the reported case', async () => {
-    await publishCourseOnAssignment(draft, 'user-1');
+    await publishCourseOnAssignment(draft, 'user-1', 'ou-1');
 
     expect(mockUpdate).toHaveBeenCalledWith({
       where: { id: 'c1' },
-      data: { status: 'published' },
+      // D9: the assigner is recorded as the reviewer, so this path no longer
+      // publishes a course attributed to nobody.
+      data: {
+        status: 'published',
+        approvedByOrgUserId: 'ou-1',
+        approvedAt: expect.any(Date),
+      },
     });
   });
 
   it('is a no-op for an already-published course, so re-assigning writes nothing', async () => {
-    await publishCourseOnAssignment({ ...draft, status: 'published' }, 'user-1');
+    await publishCourseOnAssignment({ ...draft, status: 'published' }, 'user-1', 'ou-1');
 
     expect(mockUpdate).not.toHaveBeenCalled();
   });
 
   it('never touches a global catalogue course — its lifecycle belongs to another tenant', async () => {
-    await publishCourseOnAssignment({ ...draft, isGlobal: true }, 'user-1');
+    await publishCourseOnAssignment({ ...draft, isGlobal: true }, 'user-1', 'ou-1');
 
     expect(mockUpdate).not.toHaveBeenCalled();
   });
@@ -60,13 +66,13 @@ describe('publishCourseOnAssignment', () => {
   it('never publishes a course held for quality review', async () => {
     // Assignment is blocked upstream for these; only the quality gate may clear
     // the hold, so this must not relabel one behind its back.
-    await publishCourseOnAssignment({ ...draft, reviewRequired: true }, 'user-1');
+    await publishCourseOnAssignment({ ...draft, reviewRequired: true }, 'user-1', 'ou-1');
 
     expect(mockUpdate).not.toHaveBeenCalled();
   });
 
   it('leaves an inactive (retired) course alone rather than reviving it', async () => {
-    await publishCourseOnAssignment({ ...draft, status: 'inactive' }, 'user-1');
+    await publishCourseOnAssignment({ ...draft, status: 'inactive' }, 'user-1', 'ou-1');
 
     // Retirement is a deliberate act. Only `draft` — the "creation never
     // finished" state this fix is about — moves.
@@ -77,12 +83,28 @@ describe('publishCourseOnAssignment', () => {
     mockUpdate.mockRejectedValue(new Error('db down'));
 
     // The assignment is already authorised; losing the relabel must not undo it.
-    await expect(publishCourseOnAssignment(draft, 'user-1')).resolves.toBeUndefined();
+    await expect(publishCourseOnAssignment(draft, 'user-1', 'ou-1')).resolves.toBeUndefined();
     expect(mockLoggerError).toHaveBeenCalled();
   });
 
+  it('tolerates a null org-user id — publishes but records no reviewer', async () => {
+    // D10's permanent case: a caller with no OrganizationUser id (should not
+    // occur in practice, but the parameter type allows it) must still get the
+    // status flip; the hero's fallback-to-creator copy handles the null.
+    await publishCourseOnAssignment(draft, 'user-1', null);
+
+    expect(mockUpdate).toHaveBeenCalledWith({
+      where: { id: 'c1' },
+      data: {
+        status: 'published',
+        approvedByOrgUserId: null,
+        approvedAt: expect.any(Date),
+      },
+    });
+  });
+
   it('logs the transition, so a silent skip cannot hide again', async () => {
-    await publishCourseOnAssignment(draft, 'user-1');
+    await publishCourseOnAssignment(draft, 'user-1', 'ou-1');
 
     expect(mockLoggerInfo).toHaveBeenCalledWith(
       expect.objectContaining({ courseId: 'c1', userId: 'user-1' }),
