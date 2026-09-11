@@ -568,6 +568,11 @@ export async function publishCourse(courseId: string, opts?: { acknowledgeWarnin
     where: { id: courseId },
     data: {
       status: 'published',
+      // D8: the reviewer is definitionally whoever published, so it is resolved
+      // from the session here rather than accepted from the client — the modal's
+      // "Reviewed by" field is display-only and must never be authoritative.
+      approvedByOrgUserId: session.user.organizationUserId,
+      approvedAt: new Date(),
       // Clear the gate once warnings have been acknowledged and published.
       ...(existing.reviewRequired ? { reviewRequired: false } : {}),
       // Prisma reads `undefined` as "leave unchanged", so a nullable Json column
@@ -1769,6 +1774,12 @@ export async function createFullCourse(data: {
       duration: parseInt(data.duration) || 0,
       objectives: data.objectives || [],
       status: reviewRequired ? 'draft' : 'published',
+      // D8: attribute the review only when the course actually publishes here.
+      // A course the quality gate holds back has not been approved by anyone
+      // yet — publishCourse records the reviewer when the warnings are cleared.
+      ...(reviewRequired
+        ? {}
+        : { approvedByOrgUserId: session.user.organizationUserId, approvedAt: new Date() }),
       reviewRequired,
       qualityWarnings,
       pendingAssignment: pendingAssignment
