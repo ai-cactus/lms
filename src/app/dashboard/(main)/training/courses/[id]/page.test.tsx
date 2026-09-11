@@ -20,8 +20,18 @@ vi.mock('@/lib/course/load-course-detail', () => ({ loadCourseDetail: mockLoadCo
 vi.mock('next/navigation', () => ({ notFound: mockNotFound }));
 vi.mock('@/auth', () => ({ auth: mockAuth }));
 vi.mock('@/components/dashboard/training/TrainingDetails', () => ({
-  default: ({ canWithdrawAssignments }: { canWithdrawAssignments?: boolean }) => (
-    <div data-testid="training-details" data-can-withdraw={String(!!canWithdrawAssignments)} />
+  default: ({
+    canWithdrawAssignments,
+    backHref,
+  }: {
+    canWithdrawAssignments?: boolean;
+    backHref?: string;
+  }) => (
+    <div
+      data-testid="training-details"
+      data-can-withdraw={String(!!canWithdrawAssignments)}
+      data-back-href={backHref}
+    />
   ),
 }));
 
@@ -90,5 +100,65 @@ describe('CourseDetailsPage — withdraw gate', () => {
     render(await CourseDetailsPage({ params }));
 
     expect(screen.getByTestId('training-details')).toHaveAttribute('data-can-withdraw', 'false');
+  });
+});
+
+/**
+ * "Go Back" used to hardcode /dashboard/courses, which requirePermission
+ * ('course.read') redirects on deny — a dead button for a role that can open
+ * this page but lacks that permission. `backHref` is now computed here from
+ * the viewer's own role, using the same predicate the sidebar uses. Finance
+ * is the live case: `course.read` was removed from it 2026-08-25.
+ */
+describe('CourseDetailsPage — back link target', () => {
+  it('sends a viewer WITHOUT course.read (finance) to /dashboard, not the redirecting route', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'u-1', role: 'finance' } });
+    mockLoadCourseDetail.mockResolvedValue({ id: 'course-1' });
+
+    render(await CourseDetailsPage({ params }));
+
+    expect(screen.getByTestId('training-details')).toHaveAttribute('data-back-href', '/dashboard');
+  });
+
+  it('sends a viewer WITH course.read (owner) to /dashboard/courses', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'u-1', role: 'owner' } });
+    mockLoadCourseDetail.mockResolvedValue({ id: 'course-1' });
+
+    render(await CourseDetailsPage({ params }));
+
+    expect(screen.getByTestId('training-details')).toHaveAttribute(
+      'data-back-href',
+      '/dashboard/courses',
+    );
+  });
+
+  it('sends admin (course.read holder) to /dashboard/courses too — not an owner-only fix', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'u-1', role: 'admin' } });
+    mockLoadCourseDetail.mockResolvedValue({ id: 'course-1' });
+
+    render(await CourseDetailsPage({ params }));
+
+    expect(screen.getByTestId('training-details')).toHaveAttribute(
+      'data-back-href',
+      '/dashboard/courses',
+    );
+  });
+
+  it('falls back to /dashboard with no session at all', async () => {
+    mockAuth.mockResolvedValue(null);
+    mockLoadCourseDetail.mockResolvedValue({ id: 'course-1' });
+
+    render(await CourseDetailsPage({ params }));
+
+    expect(screen.getByTestId('training-details')).toHaveAttribute('data-back-href', '/dashboard');
+  });
+
+  it('falls back to /dashboard for an unrecognized/stale role value', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'u-1', role: 'retired_role' } });
+    mockLoadCourseDetail.mockResolvedValue({ id: 'course-1' });
+
+    render(await CourseDetailsPage({ params }));
+
+    expect(screen.getByTestId('training-details')).toHaveAttribute('data-back-href', '/dashboard');
   });
 });

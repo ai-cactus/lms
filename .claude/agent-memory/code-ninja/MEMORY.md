@@ -69,3 +69,4 @@
 - [Server Action refusals must return](gotcha_server_action_refusals_must_return.md) — prod redacts thrown messages to React #441; return `refusedReason` on the existing result type, keep the gate fail-closed.
 - [Dashboard banner slot bleeds](gotcha_dashboard_banner_slot_bleeds.md) — site-wide banners sit INSIDE the padded scroll container; negative-margin heroes paint over them (gate on `first:`).
 - [Document identity is org-wide](gotcha_document_identity_is_org_wide.md) — never re-find an upload by filename via getDocuments(); uploadDocument returns the stored Document record.
+- [Certificate export render pipeline](gotcha_certificate_export_render_pipeline.md) — PDFs rasterise a live CertificateDocument; off-screen not hidden, jsPDF page-1 trap, card list has no student name.
