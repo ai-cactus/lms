@@ -8,7 +8,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi } from 'vitest';
 
-import Step5Quiz from './Step5Quiz';
+import Step4Quiz from './Step4Quiz';
 import { CourseWizardData } from '@/types/course';
 import { WIZARD_FORM_DATA } from './wizardTestData';
 
@@ -26,11 +26,11 @@ Element.prototype.scrollIntoView = vi.fn();
 
 function renderStep(overrides: Partial<CourseWizardData> = {}) {
   const onChange = vi.fn();
-  render(<Step5Quiz data={{ ...WIZARD_FORM_DATA, ...overrides }} onChange={onChange} />);
+  render(<Step4Quiz data={{ ...WIZARD_FORM_DATA, ...overrides }} onChange={onChange} />);
   return { onChange };
 }
 
-describe('Step5Quiz', () => {
+describe('Step4Quiz', () => {
   it('shows the stored question type as its display label', () => {
     renderStep();
 

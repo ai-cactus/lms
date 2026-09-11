@@ -1,18 +1,57 @@
 ---
 name: course-wizard-9-step
-description: Course-creation wizard renumbered 7 → 9 steps in phases; all 9 steps now built (multi-module generation Phase 6, module-grouped quiz review Phase 8, multi-role assign+publish Phase 9)
+description: Course wizard history 7→9→7 steps, and the 2026-09-11 single-document (D1) reshape — current step keys/filenames, plus the decisions that look like oversights but are not
 metadata:
   type: project
 ---
 
-The course-creation wizard (`src/components/dashboard/courses/CourseWizard.tsx`) was renumbered from 7 to 9 steps in "Phase 2" of the course-wizard design alignment (2026-08-14, branch `multi-facility`, uncommitted). Phase 3 (same day) replaced the step-2 pass-through with the real module builder. Phases 4+5 built the audience step and renamed the two form steps (`Step3Details` → `Step4Details`, `Step4Quiz` → `Step5Quiz`). **Phase 6 (same day) made generation multi-module**: `Step5Review.tsx` → `GenerationController.tsx`, one v4.6 job per module (`startModuleGenerationJobs`), results aggregated client-side, and the temporary first-module → `documents[].selected` bridge plus `PhiErrorModal.tsx` were deleted. The still-unused `CourseWizardData` fields are now only `assign*`, `dueDeadlineEnabled`, `reminders`, `recurringEnabled` and `renewalCycle` — the assignment screen (Phase 9) consumes them.
+**Current ladder (after PR-3a, 2026-09-11):** seven steps, keyed
+`category | upload | details | quiz | generate | quizReview | assign`
+(`src/components/dashboard/courses/wizardSteps.ts`). Files:
+`Step1Category`, `Step2Upload`, `Step3Details`, `Step4Quiz`,
+`GenerationController`, `Step6QuizReview`, `Step7Assign`. Earlier names
+(`Step2Modules`, `Step4Details`, `Step5Quiz`, `Step8QuizReview`,
+`Step9AssignPublish`, `Step5Review`, `Step7Publish`) are all gone — the wizard
+had been renumbered 7 → 9 for a Figma set that was later cut back to 7, so the
+filenames spent a while disagreeing with the step numbers.
 
-**Phase 8** (same day) turned the quiz-review step into module-grouped accordions (`Step6QuizReview.tsx` → `Step8QuizReview.tsx`), grouping on the `moduleIndex`/`moduleTitle` Phase 6 stamps on every question. Two design gaps stayed unbuilt and are **known, not oversights**: the mock's header "Regenerate Quiz" button (no regenerate action exists — `src/app/actions/quiz-ai.ts` exports only `generateSingleQuestion`, so a course-level regenerate needs a new server action or a route back into `GenerationController`), and the "Quiz updated successfully!" modal in mock lms161, which belongs to the post-publish quiz-edit flow rather than the wizard.
+**D1 (2026-09-11):** step 2 accepts exactly ONE document, so every new course is
+one module. `formData.modules` stays an array of length 0-1, and
+`CourseWizardModule` narrowed to just the document reference — title, objective
+and `completionDeadlineDays` now come from the course-level fields.
+`GenerationController` reads `data.title` / `data.objectives` where it used to
+read the wizard module. The fan-out (`startModuleGenerationJobs`,
+`useMultiJobStatus`, `distributeQuestionCount`, `mergeModuleArtifacts`,
+`isWholeCourse`) is deliberately KEPT: D1 restricts creation, not history, and
+existing multi-module courses must keep rendering.
 
-**Phase 9** (same day) built the final "Assigning & Publish" step (`Step7Publish.tsx` → `Step9AssignPublish.tsx`) and multi-role assignment, so every `CourseWizardData` field is now consumed. Decisions that are deliberate, not oversights: (a) `CourseAssignment.targetRole` is still written (= first role) alongside `targetRoles` because the nightly reminder sweep's role-target reconcile pre-pass (`src/lib/reminders/sweep.ts`) and the standalone assign page both still read the single column — **the sweep therefore backstops only the FIRST targeted role; the live hook `enrollUserForRoleTargets` covers all of them.** Migrating the sweep to `targetRoles` is the open follow-up. (b) The wizard's free-form "N days before" reminder rows are capped at 3 because they map onto the three worker-audience ladder stages (FRIENDLY_REMINDER / URGENT_REMINDER / DAY_OF_DEADLINE); the escalation stages stay at their defaults. (c) In **email** mode the reminder rows and recurring interval are collected but NOT persisted — that path still goes through `createFullCourse` → `enrollUsers` with only a `dueAt`.
+Deliberate, not oversights:
 
-**Why:** the Figma design (LMS V3 "COURSE CREATION" frames) has 9 steps; the shell was renumbered first so the phases that build the new screens don't also have to move step numbers.
+- `CourseAssignment.targetRole` is still written (= first role) alongside
+  `targetRoles`, because the nightly reminder sweep's role-target reconcile
+  pre-pass (`src/lib/reminders/sweep.ts`) reads the single column — **the sweep
+  therefore backstops only the FIRST targeted role; the live hook
+  `enrollUserForRoleTargets` covers all of them.** Migrating the sweep is open.
+- The wizard's "N days before" reminder rows are capped at 3 because they map
+  onto the three worker-audience ladder stages (FRIENDLY_REMINDER /
+  URGENT_REMINDER / DAY_OF_DEADLINE).
+- In **email** mode the reminder rows and recurring interval are collected but
+  NOT persisted — that path goes through `createFullCourse` → `enrollUsers` with
+  only a `dueAt`.
+- The `generate` step renders two sub-phases from one component (interstitial,
+  then the aggregated review) and reports "Step 4 of 7" for the first —
+  see `displayStepNumber` and [[gotcha_wizard_draft_key_bump_orphans_generation]].
+- Course-level raw v4.6 artifacts on `Course` are a MERGE of every module's
+  artifacts, each section/slide/question tagged `moduleIndex`; ids are unique
+  only within a module, so key on `(moduleIndex, sectionId)`.
 
-**Phase 10** (same day) was the final polish pass: all 9 steps plus the confirm/success modals were walked live at 1440 and 390 against the Figma frames. Open follow-up it surfaced: **`docs/phi-redactor.md` is stale** — its section 5 and its file table document `steps/Step2Documents.tsx`, `PhiErrorModal.tsx` and an `isScanningPhi` prop that **no longer exist anywhere in `src/`** (upload moved into `Step2Modules.tsx` in Phase 3, the modal was deleted in Phase 6). It needs a real rewrite against the current PHI flow, not a path swap, so it was flagged rather than guessed at.
+Closed since: "Regenerate Quiz" now exists (`regenerateQuiz` in
+`src/app/actions/quiz-ai.ts`, own rate-limit budget `quiz-regenerate:`).
 
-**How to apply:** don't "clean up" the remaining unused wizard fields as dead code; don't treat steps 6 + 7 both rendering `GenerationController` as a bug (6 = the staged "Your course is being created…" checklist, 7 = the aggregated review, and the controller auto-advances 6 → 7 on completion); the course-level raw v4.6 artifacts on `Course` are now a MERGE of every module's artifacts with each section/slide/question tagged `moduleIndex` (ids are only unique within a module — key on `(moduleIndex, sectionId)`). Step 6's subtitle promises an email notification that **does not exist** (no generation-complete notification type in `src/lib/notifications/catalog.ts`; only the courses-list in-app banner) — flagged, not fixed. See [[course-wizard-phi-attestation]] and [[local-ui-verification]].
+Still open: **`docs/phi-redactor.md` is stale** — it documents
+`steps/Step2Documents.tsx`, `PhiErrorModal.tsx` and an `isScanningPhi` prop that
+no longer exist. It needs a rewrite against the current PHI flow, not a path
+swap. The generation step's subtitle also promises an email notification that
+does not exist (no generation-complete type in `src/lib/notifications/catalog.ts`).
+
+See [[course-wizard-phi-attestation]] and [[local-ui-verification]].

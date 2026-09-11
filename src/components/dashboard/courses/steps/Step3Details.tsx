@@ -36,12 +36,12 @@ const DEADLINE_MAX_DAYS = 365;
 // step in a state the gate silently rejects.
 const MIN_OBJECTIVES = 3;
 
-interface Step4DetailsProps {
+interface Step3DetailsProps {
   data: CourseWizardData;
   onChange: <K extends keyof CourseWizardData>(field: K, value: CourseWizardData[K]) => void;
 }
 
-export default function Step4Details({ data, onChange }: Step4DetailsProps) {
+export default function Step3Details({ data, onChange }: Step3DetailsProps) {
   const { categoryId } = data;
   const [categoryName, setCategoryName] = useState('');
 

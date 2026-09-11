@@ -2,13 +2,24 @@
 
 import React, { useMemo, useState } from 'react';
 import { Plus, Sparkles } from 'lucide-react';
-import { generateSingleQuestion } from '@/app/actions/quiz-ai';
+import { generateSingleQuestion, regenerateQuiz } from '@/app/actions/quiz-ai';
 import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { QuizQuestion } from '@/types/quiz';
@@ -16,7 +27,7 @@ import { CourseWizardData } from '@/types/course';
 import { wizardSubtitleClass, wizardTitleClass } from './wizardFormClasses';
 import { logger } from '@/lib/logger';
 
-interface Step8QuizReviewProps {
+interface Step6QuizReviewProps {
   data: CourseWizardData;
   quiz?: QuizQuestion[];
   courseId?: string;
@@ -98,16 +109,18 @@ function groupQuestionsByModule(questions: QuizQuestion[], courseTitle: string):
   }));
 }
 
-export default function Step8QuizReview({
+export default function Step6QuizReview({
   data,
   quiz,
   courseId,
   rawContext,
   onQuizUpdate,
-}: Step8QuizReviewProps) {
+}: Step6QuizReviewProps) {
   const questions = useMemo(() => quiz || [], [quiz]);
   const [addingSectionKey, setAddingSectionKey] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isRegenerating, setIsRegenerating] = useState(false);
+  const [confirmRegenerateOpen, setConfirmRegenerateOpen] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editingQuestion, setEditingQuestion] = useState<QuizQuestion | null>(null);
   const [newQuestion, setNewQuestion] = useState<QuizQuestion>(emptyQuestion);
@@ -146,25 +159,28 @@ export default function Step8QuizReview({
     setNewQuestion({ ...newQuestion, options: newOptions });
   };
 
-  const handleGenerateQuestion = async (section: QuizSection) => {
-    const targetCourseId = courseId;
-    // Fall back to title + description if rawContext isn't fully available yet
+  /**
+   * Prompt context for both AI paths. A course is generated from one document
+   * (D1), so it is described by its own title and objectives — there is no
+   * per-module title left to name in the prompt.
+   */
+  const buildAiContext = () => {
     const baseContext =
-      rawContext?.trim() || `${data?.title || ''}\n${data?.description || ''}`.trim() || '';
+      rawContext?.trim() || `${data.title || ''}\n${data.description || ''}`.trim();
+    const objectives = data.objectives?.filter(Boolean) ?? [];
 
-    // The wizard only carries the merged article markdown, not each module's own
-    // source text, so the module is named in the prompt rather than isolated.
-    const wizardModule =
-      section.moduleIndex !== undefined ? data.modules?.[section.moduleIndex] : undefined;
-    const context = wizardModule
-      ? [
-          `Module: ${wizardModule.title}`,
-          wizardModule.objective ? `Objective: ${wizardModule.objective}` : '',
-          baseContext,
-        ]
-          .filter(Boolean)
-          .join('\n\n')
-      : baseContext;
+    return [
+      data.title ? `Course: ${data.title}` : '',
+      objectives.length > 0 ? `Objectives: ${objectives.join('; ')}` : '',
+      baseContext,
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+  };
+
+  const handleGenerateQuestion = async () => {
+    const targetCourseId = courseId;
+    const context = buildAiContext();
 
     if (!targetCourseId && !context) {
       alert('Cannot generate a question right now. The course may not be fully saved yet.');
@@ -200,6 +216,48 @@ export default function Step8QuizReview({
   const showEmptyBanner = questions.length === 0;
   const showPartialBanner =
     questions.length > 0 && requestedCount > 0 && questions.length < requestedCount;
+
+  const handleRegenerateQuiz = async () => {
+    setConfirmRegenerateOpen(false);
+
+    const targetCourseId = courseId;
+    const context = buildAiContext();
+
+    if (!targetCourseId && !context) {
+      alert('Cannot regenerate the quiz right now. The course may not be fully saved yet.');
+      return;
+    }
+
+    try {
+      setIsRegenerating(true);
+      const res = await regenerateQuiz({
+        courseId: targetCourseId,
+        context,
+        questionCount: requestedCount || questions.length,
+      });
+
+      if (res.success && res.questions) {
+        onQuizUpdate(
+          res.questions.map((question) => ({
+            question: question.question,
+            options: question.options,
+            answer: question.answer,
+            type: question.type,
+          })),
+        );
+        setEditingIndex(null);
+        setEditingQuestion(null);
+        setAddingSectionKey(null);
+      } else {
+        alert(res.error || 'Failed to regenerate the quiz.');
+      }
+    } catch (error) {
+      logger.error({ msg: '[course] Quiz regeneration failed', err: error });
+      alert('An unexpected error occurred.');
+    } finally {
+      setIsRegenerating(false);
+    }
+  };
 
   const renderAddForm = (section: QuizSection) => (
     <div className="w-full rounded-[12px] border border-[#e5e7ea] p-5">
@@ -249,7 +307,7 @@ export default function Step8QuizReview({
           variant="outline"
           onClick={(e) => {
             e.preventDefault();
-            handleGenerateQuestion(section);
+            handleGenerateQuestion();
           }}
           disabled={isGenerating}
         >
@@ -452,6 +510,31 @@ export default function Step8QuizReview({
             </div>
             <div className="text-sm text-[#666d80]">{questions.length} Questions Generated</div>
           </div>
+
+          <AlertDialog open={confirmRegenerateOpen} onOpenChange={setConfirmRegenerateOpen}>
+            <AlertDialogTrigger asChild>
+              <Button variant="outline" size="sm" className="shrink-0" loading={isRegenerating}>
+                <Sparkles className="mr-2 size-3.5" aria-hidden="true" />
+                Regenerate Quiz
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Regenerate the whole quiz?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  AI will write a fresh set of questions from the course content. Every question
+                  below is replaced, so any edits you have made here — and any questions you added
+                  yourself — will be lost.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={handleRegenerateQuiz}>
+                  Regenerate Quiz
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
 
         <Accordion

@@ -318,7 +318,7 @@ export default function AddFacilityModal({
                     onValueChange={(value) => value && field.onChange(value)}
                   >
                     {/* Field renders a plain <label>, which does not attach to a
-                        Radix trigger — name it explicitly, as Step5Quiz does. */}
+                        Radix trigger — name it explicitly, as Step4Quiz does. */}
                     <SelectTrigger className={CONTROL_CLASS} aria-label="Number of Staff">
                       <SelectValue placeholder="Select number of staff" />
                     </SelectTrigger>

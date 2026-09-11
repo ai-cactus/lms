@@ -47,10 +47,15 @@ export interface CourseWizardModuleDocument {
   mimeType: string;
 }
 
+/**
+ * The wizard's source material. A course is created from exactly one document
+ * (D1), so `formData.modules` holds 0 or 1 of these — it stays an array because
+ * the generation fan-out, and every course generated before D1, is per-module.
+ *
+ * Title, objective and deadline used to live here, back when the admin authored
+ * a module around each upload. They now come from the course itself.
+ */
 export interface CourseWizardModule {
-  title: string;
-  objective: string;
-  completionDeadlineDays: number | null;
   documentId: string | null;
   fileName?: string;
   fileSize?: number;

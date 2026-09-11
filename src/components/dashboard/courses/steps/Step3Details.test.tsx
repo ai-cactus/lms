@@ -16,7 +16,7 @@ vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-import Step4Details from './Step4Details';
+import Step3Details from './Step3Details';
 import { CourseWizardData } from '@/types/course';
 import { WIZARD_FORM_DATA } from './wizardTestData';
 
@@ -34,7 +34,7 @@ Element.prototype.scrollIntoView = vi.fn();
 
 function renderStep(overrides: Partial<CourseWizardData> = {}) {
   const onChange = vi.fn();
-  render(<Step4Details data={{ ...WIZARD_FORM_DATA, ...overrides }} onChange={onChange} />);
+  render(<Step3Details data={{ ...WIZARD_FORM_DATA, ...overrides }} onChange={onChange} />);
   return { onChange };
 }
 
@@ -46,7 +46,7 @@ beforeEach(() => {
   ]);
 });
 
-describe('Step4Details', () => {
+describe('Step3Details', () => {
   it('echoes the step-1 category as a read-only value', async () => {
     renderStep();
 

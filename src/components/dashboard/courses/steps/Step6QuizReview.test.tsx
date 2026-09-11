@@ -9,13 +9,16 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-import Step8QuizReview from './Step8QuizReview';
+import Step6QuizReview from './Step6QuizReview';
 import { CourseWizardData } from '@/types/course';
 import { QuizQuestion } from '@/types/quiz';
 import { WIZARD_FORM_DATA } from './wizardTestData';
 
-const generateSingleQuestion = vi.hoisted(() => vi.fn());
-vi.mock('@/app/actions/quiz-ai', () => ({ generateSingleQuestion }));
+const { generateSingleQuestion, regenerateQuiz } = vi.hoisted(() => ({
+  generateSingleQuestion: vi.fn(),
+  regenerateQuiz: vi.fn(),
+}));
+vi.mock('@/app/actions/quiz-ai', () => ({ generateSingleQuestion, regenerateQuiz }));
 
 const question = (overrides: Partial<QuizQuestion> & { question: string }): QuizQuestion => ({
   options: ['Option 1', 'Option 2', 'Option 3', 'Option 4'],
@@ -33,7 +36,7 @@ const TAGGED_QUIZ: QuizQuestion[] = [
 function renderStep(quiz: QuizQuestion[], overrides: Partial<CourseWizardData> = {}) {
   const onQuizUpdate = vi.fn();
   render(
-    <Step8QuizReview
+    <Step6QuizReview
       data={{ ...WIZARD_FORM_DATA, ...overrides }}
       quiz={quiz}
       rawContext="Merged article markdown"
@@ -71,7 +74,7 @@ async function fillNewQuestion(user: ReturnType<typeof userEvent.setup>, scope: 
   }
 }
 
-describe('Step8QuizReview', () => {
+describe('Step6QuizReview', () => {
   beforeEach(() => {
     generateSingleQuestion.mockReset();
   });
@@ -138,33 +141,22 @@ describe('Step8QuizReview', () => {
     expect(updated[1].moduleTitle).toBeUndefined();
   });
 
-  it('names the section’s module when generating a question with AI', async () => {
+  it('describes the course itself when generating a question with AI', async () => {
     const user = userEvent.setup();
     generateSingleQuestion.mockResolvedValue({ success: false, error: 'nope' });
     vi.spyOn(window, 'alert').mockImplementation(() => {});
-    renderStep(TAGGED_QUIZ, {
-      modules: [
-        {
-          title: 'Privacy Rule',
-          objective: 'Explain PHI handling',
-          completionDeadlineDays: null,
-          documentId: null,
-        },
-        {
-          title: 'Security Rule',
-          objective: '',
-          completionDeadlineDays: null,
-          documentId: null,
-        },
-      ],
-    });
+    renderStep(TAGGED_QUIZ, { modules: [{ documentId: 'doc-1' }] });
 
     await user.click(screen.getByRole('button', { name: 'Add question to Privacy Rule' }));
     await user.click(screen.getByRole('button', { name: /Generate with AI/i }));
 
     expect(generateSingleQuestion).toHaveBeenCalledWith({
       courseId: undefined,
-      context: 'Module: Privacy Rule\n\nObjective: Explain PHI handling\n\nMerged article markdown',
+      context: [
+        `Course: ${WIZARD_FORM_DATA.title}`,
+        `Objectives: ${WIZARD_FORM_DATA.objectives.join('; ')}`,
+        'Merged article markdown',
+      ].join('\n\n'),
     });
   });
 
@@ -192,5 +184,96 @@ describe('Step8QuizReview', () => {
     renderStep([]);
 
     expect(screen.getByText('No quiz questions were generated')).toBeInTheDocument();
+  });
+
+  describe('Regenerate Quiz', () => {
+    beforeEach(() => {
+      regenerateQuiz.mockReset();
+    });
+
+    it('renders a Regenerate Quiz control', () => {
+      renderStep(TAGGED_QUIZ);
+
+      expect(screen.getByRole('button', { name: /Regenerate Quiz/i })).toBeInTheDocument();
+    });
+
+    it('opens a confirmation warning that manual edits will be lost', async () => {
+      const user = userEvent.setup();
+      renderStep(TAGGED_QUIZ);
+
+      await user.click(screen.getByRole('button', { name: /Regenerate Quiz/i }));
+
+      const dialog = screen.getByRole('alertdialog');
+      expect(within(dialog).getByText(/Regenerate the whole quiz\?/i)).toBeInTheDocument();
+      expect(within(dialog).getByText(/will be lost/i)).toBeInTheDocument();
+      expect(regenerateQuiz).not.toHaveBeenCalled();
+    });
+
+    it('confirming replaces the whole quiz array with the regenerated set', async () => {
+      const user = userEvent.setup();
+      regenerateQuiz.mockResolvedValue({
+        success: true,
+        questions: [
+          {
+            question: 'Fresh Q1',
+            options: ['A', 'B', 'C', 'D'],
+            answer: 1,
+            type: 'multiple_choice',
+          },
+          {
+            question: 'Fresh Q2',
+            options: ['A', 'B', 'C', 'D'],
+            answer: 3,
+            type: 'multiple_choice',
+          },
+        ],
+      });
+      const { onQuizUpdate } = renderStep(TAGGED_QUIZ);
+
+      await user.click(screen.getByRole('button', { name: /Regenerate Quiz/i }));
+      const dialog = screen.getByRole('alertdialog');
+      await user.click(within(dialog).getByRole('button', { name: 'Regenerate Quiz' }));
+
+      expect(regenerateQuiz).toHaveBeenCalledTimes(1);
+      await vi.waitFor(() => expect(onQuizUpdate).toHaveBeenCalledTimes(1));
+      const updated = onQuizUpdate.mock.calls[0][0] as QuizQuestion[];
+      expect(updated).toHaveLength(2);
+      expect(updated.map((q) => q.question)).toEqual(['Fresh Q1', 'Fresh Q2']);
+    });
+
+    it('cancelling leaves the quiz untouched', async () => {
+      const user = userEvent.setup();
+      const { onQuizUpdate } = renderStep(TAGGED_QUIZ);
+
+      await user.click(screen.getByRole('button', { name: /Regenerate Quiz/i }));
+      const dialog = screen.getByRole('alertdialog');
+      await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+
+      expect(regenerateQuiz).not.toHaveBeenCalled();
+      expect(onQuizUpdate).not.toHaveBeenCalled();
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    });
+
+    it('a failed regeneration surfaces the sanitised error without clearing existing questions', async () => {
+      const user = userEvent.setup();
+      regenerateQuiz.mockResolvedValue({
+        success: false,
+        error: 'AI generated an invalid quiz format.',
+      });
+      vi.spyOn(window, 'alert').mockImplementation(() => {});
+      const { onQuizUpdate } = renderStep(TAGGED_QUIZ);
+
+      await user.click(screen.getByRole('button', { name: /Regenerate Quiz/i }));
+      const dialog = screen.getByRole('alertdialog');
+      await user.click(within(dialog).getByRole('button', { name: 'Regenerate Quiz' }));
+
+      await vi.waitFor(() =>
+        expect(window.alert).toHaveBeenCalledWith('AI generated an invalid quiz format.'),
+      );
+      expect(onQuizUpdate).not.toHaveBeenCalled();
+      // The original questions are still rendered — nothing was cleared.
+      expect(screen.getByText('Privacy Q1')).toBeInTheDocument();
+      expect(screen.getByText('Security Q1')).toBeInTheDocument();
+    });
   });
 });
