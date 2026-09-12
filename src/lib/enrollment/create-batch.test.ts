@@ -493,7 +493,7 @@ describe('createEnrollmentsForUsers — equivalence with the sequential referenc
     });
   });
 
-  describe('assignCourseToRole-style batch (no seat rejection, holders only)', () => {
+  describe('role-target batch (no seat rejection, holders only)', () => {
     it('enrolls 50+ role holders identically on both paths, with correct outcome counts', async () => {
       const holderCount = 60;
       const members = Array.from({ length: holderCount }, (_, i) =>

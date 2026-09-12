@@ -64,7 +64,7 @@ vi.mock('bcryptjs', () => ({
 }));
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock, default: prismaMock }));
 
-import { assignCourseToRole, enrollUsers } from './enrollment';
+import { assignCourseToRoles, enrollUsers } from './enrollment';
 
 const ADMIN_ID = 'admin-001';
 const ADMIN_ORG_USER_ID = 'ou-admin-001';
@@ -167,8 +167,10 @@ describe('F-051 review gate — the direct assign paths refuse a held draft', ()
     expectNoAssignmentSideEffects();
   });
 
-  it('assignCourseToRole returns the refusal reason and writes no assignment', async () => {
-    const result = await assignCourseToRole(COURSE_ID, 'nurse');
+  it('assignCourseToRoles returns the refusal reason and writes no assignment', async () => {
+    // No assignmentSettings: the deadline is left to the fallback window, so the
+    // gate below is the FIRST thing that can refuse this call.
+    const result = await assignCourseToRoles(COURSE_ID, ['nurse']);
 
     expect(result.refusedReason).toBe(REFUSAL_MESSAGE);
     expect(result).toMatchObject({
@@ -177,7 +179,7 @@ describe('F-051 review gate — the direct assign paths refuse a held draft', ()
       enrolled: 0,
       alreadyEnrolled: 0,
       failed: 0,
-      targetRole: 'nurse',
+      targetRoles: ['nurse'],
     });
     // Refused before the holder lookup, so no role holder was ever considered.
     expect(prismaMock.organizationUser.findMany).not.toHaveBeenCalled();

@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- fake-Prisma/mock arg shapes in test doubles; matches the repo's test-mock convention */
 /**
  * Tier 3 §5.3 PR-7 — end-to-end equivalence tests for `enrollUsers` and
- * `assignCourseToRole` (src/app/actions/enrollment.ts) across both states of
+ * `assignCourseToRoles` (src/app/actions/enrollment.ts) across both states of
  * the `ENROLLMENT_BATCH_ENABLED` kill-switch.
  *
  * The core algorithmic equivalence between the batched (`createEnrollmentsForUsers`)
@@ -10,7 +10,7 @@
  * skip, no-duplicate-email guarantee, mixed-batch ordering, 50+ holder scale,
  * bounded concurrency, partial-failure semantics, and a confirmed divergence in
  * post-failure commit behavior). This file instead proves the WIRING: that
- * `enrollUsers`/`assignCourseToRole` genuinely read `process.env.ENROLLMENT_BATCH_ENABLED`
+ * `enrollUsers`/`assignCourseToRoles` genuinely read `process.env.ENROLLMENT_BATCH_ENABLED`
  * at call time and route to the matching function, and that the result-bucketing
  * (`success`/`alreadyEnrolled`/`newInvited`/`failed`) is identical end-to-end for
  * flag unset, `'false'`, and `'true'`.
@@ -120,7 +120,7 @@ vi.mock('@/lib/email', () => ({
   sendCoursesAssignedEmail: mockSendCoursesAssignedEmail,
 }));
 
-import { enrollUsers, assignCourseToRole } from './enrollment';
+import { enrollUsers, assignCourseToRoles } from './enrollment';
 import { collectDeferredNotices, notifyCoursesAssigned } from '@/lib/enrollment/notify';
 import type { StaffEntry } from '@/types/enrollment';
 import type { UserRole } from '@/generated/prisma/enums';
@@ -351,7 +351,7 @@ function setFlag(flag: FlagState) {
 const FLAG_STATES: FlagState[] = ['unset', 'false', 'true'];
 
 /**
- * The `assignCourseToRole` 50+-holder equivalence spec below (and its 3-holder
+ * The `assignCourseToRoles` 50+-holder equivalence spec below (and its 3-holder
  * neighbor) drive many sequential in-memory-mock DB calls per `it.each` case;
  * under a busy machine that intermittently exceeds vitest's 5s default and times
  * out — deterministic-but-marginal, not flaky logic. Pre-existing on `main`
@@ -529,7 +529,11 @@ describe('enrollUsers — deferWorkerNotification equivalence across ENROLLMENT_
   });
 });
 
-describe('assignCourseToRole — ENROLLMENT_BATCH_ENABLED equivalence', () => {
+// A single-element role list keeps these on the SAME branch through
+// assignCourseToRoleTargets that the retired single-role wrapper took: no
+// assignmentSettings at all, so dueAt stays null, the window stays null and the
+// canonical reminder ladder is seeded. What varies is only the kill-switch.
+describe('assignCourseToRoles — ENROLLMENT_BATCH_ENABLED equivalence', () => {
   it.each(FLAG_STATES)('flag=%s: enrolls every current role holder exactly once', async (flag) => {
     setFlag(flag);
     const holders = [
@@ -539,7 +543,7 @@ describe('assignCourseToRole — ENROLLMENT_BATCH_ENABLED equivalence', () => {
     ];
     seedDb(membersSeed(holders));
 
-    const result = await assignCourseToRole(COURSE_ID, 'nurse' as UserRole);
+    const result = await assignCourseToRoles(COURSE_ID, ['nurse' as UserRole]);
 
     expect(result.holderCount).toBe(3);
     expect(result.enrolled).toBe(3);
@@ -558,7 +562,7 @@ describe('assignCourseToRole — ENROLLMENT_BATCH_ENABLED equivalence', () => {
       );
       seedDb(membersSeed(holders));
 
-      const result = await assignCourseToRole(COURSE_ID, 'front_desk_admin' as UserRole);
+      const result = await assignCourseToRoles(COURSE_ID, ['front_desk_admin' as UserRole]);
 
       expect(result.holderCount).toBe(holderCount);
       expect(result.enrolled).toBe(holderCount);

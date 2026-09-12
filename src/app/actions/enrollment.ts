@@ -639,12 +639,12 @@ interface RoleTargetAssignmentResult {
 }
 
 /**
- * Shared role-target assignment core behind {@link assignCourseToRole} (one role)
- * and {@link assignCourseToRoles} (the course wizard's multi-role step): gate the
- * caller, upsert the org's single {@link CourseAssignment} for the course with
- * the targeted roles, and enroll every CURRENT holder of any of them. Future
- * holders are auto-enrolled live by {@link enrollUserForRoleTargets} at each
- * role-write site, with the nightly sweep as a backstop.
+ * Shared role-target assignment core behind {@link assignCourseToRoles} — used
+ * by both the standalone assign page and the course wizard's multi-role step:
+ * gate the caller, upsert the org's single {@link CourseAssignment} for the
+ * course with the targeted roles, and enroll every CURRENT holder of any of
+ * them. Future holders are auto-enrolled live by {@link enrollUserForRoleTargets}
+ * at each role-write site, with the nightly sweep as a backstop.
  *
  * Requires `assignment.create`, scoped to the caller's own organization and to
  * the facilities their role admits. That scope is RECORDED on the assignment
@@ -877,39 +877,6 @@ async function assignCourseToRoleTargets(
   return { assignmentId, holderCount: holders.length, ...results };
 }
 
-/**
- * Assign a course to a single whole ROLE (the standalone assign page). Delegates
- * to {@link assignCourseToRoleTargets}. Role-target assignments made here never
- * carry an absolute `dueAt` — the per-user deadline is always `start + window` —
- * so an explicit `dueAt` is rejected by the parameter type and forced to null.
- */
-export async function assignCourseToRole(
-  courseId: string,
-  targetRole: UserRole,
-  assignmentSettings?: Omit<AssignmentSettingsInput, 'dueAt'>,
-) {
-  const stageRows = assignmentSettings?.stages?.length
-    ? assignmentSettings.stages.map((s) => ({
-        stage: s.stage,
-        offsetDays: s.offsetDays,
-        enabled: s.enabled,
-        channels: s.channels ?? ['email', 'in_app'],
-      }))
-    : defaultStageRows();
-
-  const result = await assignCourseToRoleTargets(courseId, [targetRole], {
-    scheduleAt:
-      assignmentSettings?.scheduleAt != null ? new Date(assignmentSettings.scheduleAt) : null,
-    dueAt: null,
-    dueWindowDays: assignmentSettings?.dueWindowDays ?? null,
-    remindersEnabled: assignmentSettings?.remindersEnabled ?? true,
-    renewalCycle: assignmentSettings?.renewalCycle ?? 'none',
-    stageRows,
-  });
-
-  return { ...result, targetRole };
-}
-
 /** The course wizard's assign & publish settings, in the wizard's own vocabulary. */
 export interface RoleAssignmentSettingsInput {
   /** Deadline date from the wizard's "Set Completion Deadline" toggle, when set. */
@@ -936,10 +903,11 @@ export interface RoleAssignmentSettingsInput {
 }
 
 /**
- * Assign a course to one or more ROLES — the course wizard's "Select by Roles"
- * publish path. Writes the org's single {@link CourseAssignment} for the course
- * with every targeted role and enrolls the union of their current holders;
- * future holders are auto-enrolled by {@link enrollUserForRoleTargets}.
+ * Assign a course to one or more ROLES — the standalone assign page and the
+ * course wizard's "Select by Roles" publish path both land here. Writes the
+ * org's single {@link CourseAssignment} for the course with every targeted role
+ * and enrolls the union of their current holders; future holders are
+ * auto-enrolled by {@link enrollUserForRoleTargets}.
  *
  * Deadline precedence: the wizard's explicit due date (+ time) becomes the
  * assignment's absolute `dueAt` and applies to every holder; without one, each

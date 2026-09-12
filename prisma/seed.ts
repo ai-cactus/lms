@@ -563,7 +563,7 @@ async function main(): Promise<void> {
   });
 
   // The Assign-page e2e specs (reminders.spec.ts) exercise enrollUsers/
-  // assignCourseToRole against this SAME seeded course, and both upsert a
+  // assignCourseToRoles against this SAME seeded course, and both upsert a
   // single (organizationId, courseId) CourseAssignment row. Without resetting
   // it, a role-target run (targetRole set) or a due-date run from a PRIOR
   // suite execution persists into the next run and changes which mode
