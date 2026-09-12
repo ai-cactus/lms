@@ -26,6 +26,10 @@ const QUESTION_COUNT_MIN = 1;
 const QUESTION_COUNT_MAX = 25;
 const ATTEMPTS_MIN = 1;
 const ATTEMPTS_MAX = 10;
+const PASS_MARK_MIN = 0;
+const PASS_MARK_MAX = 100;
+const PASS_MARK_STEP = 5;
+const PASS_MARK_DEFAULT = 80;
 
 interface Step4QuizProps {
   data: CourseWizardData;
@@ -79,6 +83,17 @@ export default function Step4Quiz({ data, onChange }: Step4QuizProps) {
     const current = parseInt(data.quizAttempts, 10);
     const next = Number.isNaN(current) ? ATTEMPTS_MIN : current + delta;
     onChange('quizAttempts', String(clamp(next, ATTEMPTS_MIN, ATTEMPTS_MAX)));
+  };
+
+  // Steps in fives: a pass mark is a policy threshold people set to 70/75/80,
+  // not a figure they nudge one point at a time like a question count.
+  const stepPassMark = (delta: number) => {
+    const current = parseInt(data.quizPassMark?.replace('%', '') ?? '', 10);
+    // From empty, either chevron seeds the conventional pass mark rather than
+    // stepping from a bound — 80 is the placeholder beside it and the figure the
+    // design shows, so the first click lands somewhere a person meant to go.
+    const next = Number.isNaN(current) ? PASS_MARK_DEFAULT : current + delta * PASS_MARK_STEP;
+    onChange('quizPassMark', String(clamp(next, PASS_MARK_MIN, PASS_MARK_MAX)));
   };
 
   return (
@@ -205,25 +220,29 @@ export default function Step4Quiz({ data, onChange }: Step4QuizProps) {
           <label className={wizardLabelClass} htmlFor="quiz-pass-mark">
             Pass Mark
           </label>
-          <div className="relative flex w-full items-center">
+          <div className={`${wizardControlClass} flex items-center gap-2`}>
             <input
               id="quiz-pass-mark"
               type="number"
-              min="0"
-              max="100"
-              className={`${wizardInputClass} pr-10`}
+              min={PASS_MARK_MIN}
+              max={PASS_MARK_MAX}
+              className="min-w-0 flex-1 bg-transparent outline-none [appearance:textfield] placeholder:text-muted-foreground [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
               value={data.quizPassMark?.replace('%', '') || ''}
               onChange={(e) => {
                 const val = e.target.value;
-                if (val === '' || (Number(val) >= 0 && Number(val) <= 100)) {
+                if (val === '' || (Number(val) >= PASS_MARK_MIN && Number(val) <= PASS_MARK_MAX)) {
                   onChange('quizPassMark', val);
                 }
               }}
               placeholder="80"
             />
-            <span className="pointer-events-none absolute right-[18px] font-medium text-text-secondary">
-              %
-            </span>
+            <span className="pointer-events-none shrink-0 font-medium text-text-secondary">%</span>
+            <Stepper
+              onIncrease={() => stepPassMark(1)}
+              onDecrease={() => stepPassMark(-1)}
+              increaseLabel="Increase pass mark"
+              decreaseLabel="Decrease pass mark"
+            />
           </div>
         </div>
 
