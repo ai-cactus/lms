@@ -8,15 +8,30 @@
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockLoadCourseDetail, mockNotFound, mockAuth } = vi.hoisted(() => ({
+const {
+  mockLoadCourseDetail,
+  mockNotFound,
+  mockAuth,
+  mockGetCourseAssignmentSettings,
+  mockGetRoleHolderCounts,
+} = vi.hoisted(() => ({
   mockLoadCourseDetail: vi.fn(),
   mockAuth: vi.fn(),
   mockNotFound: vi.fn(() => {
     throw new Error('NEXT_NOT_FOUND');
   }),
+  mockGetCourseAssignmentSettings: vi.fn(async () => null),
+  mockGetRoleHolderCounts: vi.fn(async () => ({})),
 }));
 
 vi.mock('@/lib/course/load-course-detail', () => ({ loadCourseDetail: mockLoadCourseDetail }));
+// The page now preloads the role-target picker's data. Both reads are real
+// Server Actions that hit the DB, so they are stubbed here — their own gate is
+// covered in the enrollment action suite.
+vi.mock('@/app/actions/enrollment', () => ({
+  getCourseAssignmentSettings: mockGetCourseAssignmentSettings,
+  getRoleHolderCounts: mockGetRoleHolderCounts,
+}));
 vi.mock('next/navigation', () => ({ notFound: mockNotFound }));
 vi.mock('@/auth', () => ({ auth: mockAuth }));
 vi.mock('@/components/dashboard/training/TrainingDetails', () => ({
@@ -160,5 +175,54 @@ describe('CourseDetailsPage — back link target', () => {
     render(await CourseDetailsPage({ params }));
 
     expect(screen.getByTestId('training-details')).toHaveAttribute('data-back-href', '/dashboard');
+  });
+});
+
+/**
+ * `getCourseAssignmentSettings`/`getRoleHolderCounts` both THROW `Forbidden`
+ * without `assignment.read` (see enrollment.ts). This page is reachable by
+ * every enrolled learner, so the page must skip the calls entirely for a role
+ * that lacks the permission — an un-caught rejection here would take the
+ * whole page down for them, not just hide the role-target picker.
+ */
+describe('CourseDetailsPage — assignment.read gate (role-target picker preload)', () => {
+  it('does not call getCourseAssignmentSettings/getRoleHolderCounts for a worker/enrolled-learner role', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'u-1', role: 'nurse' } });
+    mockLoadCourseDetail.mockResolvedValue({ id: 'course-1' });
+
+    render(await CourseDetailsPage({ params }));
+
+    expect(mockGetCourseAssignmentSettings).not.toHaveBeenCalled();
+    expect(mockGetRoleHolderCounts).not.toHaveBeenCalled();
+  });
+
+  it('does not call them for finance either (holds course.read via no path here, but never assignment.read)', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'u-1', role: 'finance' } });
+    mockLoadCourseDetail.mockResolvedValue({ id: 'course-1' });
+
+    render(await CourseDetailsPage({ params }));
+
+    expect(mockGetCourseAssignmentSettings).not.toHaveBeenCalled();
+    expect(mockGetRoleHolderCounts).not.toHaveBeenCalled();
+  });
+
+  it('calls both for a role that holds assignment.read (owner)', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'u-1', role: 'owner' } });
+    mockLoadCourseDetail.mockResolvedValue({ id: 'course-1' });
+
+    render(await CourseDetailsPage({ params }));
+
+    expect(mockGetCourseAssignmentSettings).toHaveBeenCalledWith('course-1');
+    expect(mockGetRoleHolderCounts).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not call them when there is no session at all', async () => {
+    mockAuth.mockResolvedValue(null);
+    mockLoadCourseDetail.mockResolvedValue({ id: 'course-1' });
+
+    render(await CourseDetailsPage({ params }));
+
+    expect(mockGetCourseAssignmentSettings).not.toHaveBeenCalled();
+    expect(mockGetRoleHolderCounts).not.toHaveBeenCalled();
   });
 });

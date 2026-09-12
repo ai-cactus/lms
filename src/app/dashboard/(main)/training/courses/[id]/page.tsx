@@ -5,6 +5,7 @@ import { loadCourseDetail } from '@/lib/course/load-course-detail';
 import { auth } from '@/auth';
 import { can } from '@/lib/rbac/permissions';
 import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
+import { getCourseAssignmentSettings, getRoleHolderCounts } from '@/app/actions/enrollment';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,11 +39,26 @@ export default async function CourseDetailsPage(props: PageProps) {
   const roleKey = session?.user?.role ? dbRoleToRoleKey(session.user.role) : null;
   const backHref = roleKey && can(roleKey, 'course.read') ? '/dashboard/courses' : '/dashboard';
 
+  // Both reads THROW `Forbidden` without `assignment.read`, so they must be
+  // skipped rather than caught: this page is reachable by every enrolled
+  // learner, and a rejected promise here would take the whole page down for
+  // them. No settings means no role picker, which is the correct outcome anyway.
+  const canReadAssignments = Boolean(roleKey && can(roleKey, 'assignment.read'));
+  const [assignmentSettings, roleHolderCounts] = canReadAssignments
+    ? await Promise.all([getCourseAssignmentSettings(params.id), getRoleHolderCounts()])
+    : [null, {}];
+
   return (
     <TrainingDetails
       course={course}
       canWithdrawAssignments={canWithdrawAssignments}
       backHref={backHref}
+      assignmentSettings={assignmentSettings}
+      roleHolderCounts={roleHolderCounts}
+      canCreateRoleTargets={Boolean(roleKey && can(roleKey, 'assignment.create'))}
+      // Supervisor holds `assignment.create` but not `assignment.delete`, so the
+      // picker must render add-only for them (D6).
+      canRevokeRoleTargets={Boolean(roleKey && can(roleKey, 'assignment.delete'))}
     />
   );
 }

@@ -1,11 +1,16 @@
 /**
  * Regression tests for Issue #13: TrainingDetails used to hardcode a permanent
  * "Active" status badge and an "Approved by: Admin" badge regardless of the
- * course's real state. Both are now derived — the status badge from
- * `courseStatusBadge(status, reviewRequired)`, and the "Approved by" badge was
- * removed entirely (CoursePreview now shows "Created by" instead — see
- * CoursePreview.tsx). This suite pins the label mapping as rendered by the
- * real component and asserts "Approved by: Admin" can never reappear.
+ * course's real state. The status badge is now derived from
+ * `courseStatusBadge(status, reviewRequired)`; this suite pins that label
+ * mapping and asserts the old hardcoded "Approved by: Admin" can never
+ * reappear.
+ *
+ * Since D10, a REAL "Approved by"/"Created by" attribution line was added
+ * back (derived from `course.approvedBy`/`course.creator`, never hardcoded) —
+ * see TrainingDetails.attribution.test.tsx for that suite. Every fixture here
+ * sets `approvedBy: null`, so the assertion below only proves the hardcoded
+ * badge is gone, not that "Approved by" can never render.
  */
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
@@ -33,6 +38,15 @@ function baseCourse(overrides: Partial<CourseWithRelations> = {}): CourseWithRel
     reviewRequired: false,
     lessons: [],
     enrollments: [],
+    // The hero reads both attribution relations (D10): `approvedBy` when the
+    // publish reviewer was recorded, the creator otherwise.
+    creator: {
+      userId: 'u-author',
+      organizationId: 'org-1',
+      role: 'admin',
+      user: { email: 'author@example.com', fullName: 'Ada Author' },
+    },
+    approvedBy: null,
     ...overrides,
   } as unknown as CourseWithRelations;
 }
@@ -59,7 +73,13 @@ describe('TrainingDetails — status badge (Issue #13)', () => {
     expect(screen.getByText('Inactive')).toBeInTheDocument();
   });
 
-  it('never renders the old hardcoded "Approved by: Admin" badge, in any state', () => {
+  // NOTE: this only proves the OLD hardcoded "Approved by: Admin" is gone for
+  // a fixture with `approvedBy: null` (every course, in this suite, is such a
+  // fixture). It is NOT proof that "Approved by" can never render at all —
+  // since D10, a real "Approved by: {name} ({role})" line renders whenever
+  // `course.approvedBy` is populated. See TrainingDetails.attribution.test.tsx
+  // for that (real, permanent) branch.
+  it('never renders the old hardcoded "Approved by: Admin" badge, across every status (fixture has no recorded reviewer)', () => {
     for (const [status, reviewRequired] of [
       ['published', false],
       ['draft', true],
