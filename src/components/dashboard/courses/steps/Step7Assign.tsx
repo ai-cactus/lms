@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { CalendarDays, CirclePlus, Mail, User, X } from 'lucide-react';
+import { CalendarDays, ChevronDown, ChevronUp, CirclePlus, Mail, User, X } from 'lucide-react';
 import DatePicker from '@/components/ui/DatePicker';
 import TimePicker from '@/components/ui/TimePicker';
 import { Button } from '@/components/ui/button';
@@ -14,7 +14,12 @@ import {
 } from '@/components/ui/select';
 import RoleTargetPicker from '@/components/dashboard/enrollment/RoleTargetPicker';
 import type { UserRole } from '@/generated/prisma/enums';
-import { wizardSubtitleClass, wizardTitleClass } from './wizardFormClasses';
+import {
+  wizardDividerClass,
+  wizardStepperButtonClass,
+  wizardSubtitleClass,
+  wizardTitleClass,
+} from './wizardFormClasses';
 
 import { CourseWizardData, CourseWizardReminder } from '@/types/course';
 import { searchStaffUsers } from '@/app/actions/user';
@@ -60,8 +65,8 @@ export function isAssignSelectionValid(
     : (data.assignments?.length ?? 0) > 0;
 }
 
-const sectionHeadingClass = 'text-base font-semibold text-[#0d0d12] md:text-[17px]';
-const sectionSubClass = 'text-sm text-[#666d80] md:text-[15px]';
+const sectionHeadingClass = 'text-base font-semibold text-foreground md:text-[17px]';
+const sectionSubClass = 'text-sm text-text-secondary md:text-[15px]';
 
 function ToggleSwitch({
   checked,
@@ -80,11 +85,11 @@ function ToggleSwitch({
       aria-label={label}
       onClick={() => onCheckedChange(!checked)}
       className={`relative inline-flex h-7 w-[52px] shrink-0 cursor-pointer items-center rounded-full transition-colors ${
-        checked ? 'bg-primary' : 'bg-[#d2d5db]'
+        checked ? 'bg-primary' : 'bg-input'
       }`}
     >
       <span
-        className={`inline-block size-6 transform rounded-full bg-white shadow transition-transform ${
+        className={`inline-block size-6 transform rounded-full bg-background shadow transition-transform ${
           checked ? 'translate-x-[23px]' : 'translate-x-0.5'
         }`}
       />
@@ -226,10 +231,10 @@ export default function Step7Assign({ data, onChange }: Step7AssignProps) {
   };
 
   const tabClass = (active: boolean) =>
-    `flex h-[48px] flex-1 items-center justify-center gap-2 rounded-[12px] border-[1.5px] text-sm font-semibold transition-colors md:h-[52px] md:text-base ${
+    `flex h-[48px] flex-1 items-center justify-center gap-2 rounded-[10px] border-[1.5px] text-sm font-semibold transition-colors md:h-[52px] md:text-base ${
       active
         ? 'border-primary bg-primary/5 text-primary'
-        : 'border-[#e5e7ea] bg-white text-[#454353] hover:border-[#d2d5db]'
+        : 'border-border bg-background text-text-secondary hover:border-input'
     }`;
 
   return (
@@ -243,19 +248,11 @@ export default function Step7Assign({ data, onChange }: Step7AssignProps) {
 
       <div className="flex w-full flex-col gap-8">
         <div className="flex flex-col gap-3">
-          <span className="text-base font-medium tracking-[0.36px] text-black md:text-[18px]">
+          <span className="text-base font-medium tracking-[0.36px] text-foreground md:text-[18px]">
             Assign to
           </span>
 
           <div className="flex w-full gap-2">
-            <button
-              type="button"
-              onClick={() => setMode('roles')}
-              className={tabClass(assignMode === 'roles')}
-            >
-              <User className="size-[18px]" aria-hidden="true" />
-              Select by Roles
-            </button>
             <button
               type="button"
               onClick={() => setMode('email')}
@@ -263,6 +260,14 @@ export default function Step7Assign({ data, onChange }: Step7AssignProps) {
             >
               <Mail className="size-[18px]" aria-hidden="true" />
               Individual Email Invite
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode('roles')}
+              className={tabClass(assignMode === 'roles')}
+            >
+              <User className="size-[18px]" aria-hidden="true" />
+              Select by Roles
             </button>
           </div>
 
@@ -275,7 +280,7 @@ export default function Step7Assign({ data, onChange }: Step7AssignProps) {
           ) : (
             <div>
               <div
-                className="relative flex min-h-[52px] w-full cursor-text flex-wrap items-center gap-1.5 rounded-[12px] border-[1.5px] border-[#e5e7ea] bg-background px-[18px] py-2.5 transition-colors focus-within:border-primary md:min-h-[56px]"
+                className="relative flex min-h-[52px] w-full cursor-text flex-wrap items-center gap-1.5 rounded-md border-[1.5px] border-border bg-background px-[18px] py-2.5 transition-colors focus-within:border-primary md:min-h-[56px]"
                 ref={wrapperRef}
                 onClick={() => document.getElementById('assign-input')?.focus()}
               >
@@ -286,13 +291,13 @@ export default function Step7Assign({ data, onChange }: Step7AssignProps) {
                       key={index}
                       className={`flex items-center rounded-2xl px-2.5 py-1 text-[13px] font-medium ${
                         isNewInvite
-                          ? 'border-[#764ba2] bg-gradient-to-br from-[#667eea] to-[#764ba2] text-white'
-                          : 'bg-[#edf2f7] text-foreground'
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-accent text-foreground'
                       }`}
                     >
                       {item}
                       {isNewInvite && (
-                        <span className="ml-1.5 rounded bg-white/25 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.5px] text-white">
+                        <span className="ml-1.5 rounded-sm bg-background/25 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.5px]">
                           New
                         </span>
                       )}
@@ -314,7 +319,7 @@ export default function Step7Assign({ data, onChange }: Step7AssignProps) {
                 <input
                   id="assign-input"
                   aria-label="Add people, emails or names"
-                  className="min-w-[120px] flex-1 border-none py-1 text-base text-[#0a0a0a] outline-none placeholder:text-[#979797] md:text-[18px]"
+                  className="min-w-[120px] flex-1 border-none bg-transparent py-1 text-base text-foreground outline-none placeholder:text-muted-foreground md:text-[18px]"
                   placeholder={data.assignments?.length === 0 ? 'Add people, emails or names' : ''}
                   value={inputValue}
                   onChange={(e) => {
@@ -326,17 +331,17 @@ export default function Step7Assign({ data, onChange }: Step7AssignProps) {
                 />
 
                 {showSuggestions && (inputValue.length >= 2 || suggestions.length > 0) && (
-                  <div className="absolute left-0 top-full z-[50] mt-1 max-h-[200px] w-full overflow-y-auto rounded-lg border border-border bg-background shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1)]">
+                  <div className="absolute left-0 top-full z-50 mt-1 max-h-[200px] w-full overflow-y-auto rounded-md border border-border bg-background shadow-md">
                     {isLoading ? (
                       <div className="p-2.5 text-sm text-text-secondary">Searching...</div>
                     ) : suggestions.length > 0 ? (
                       suggestions.map((worker) => (
                         <div
                           key={worker.id}
-                          className="flex cursor-pointer items-center gap-3 px-4 py-2.5 transition-colors hover:bg-[#f7fafc]"
+                          className="flex cursor-pointer items-center gap-3 px-4 py-2.5 transition-colors hover:bg-background-secondary"
                           onClick={() => addAssignment(worker.email)}
                         >
-                          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#cbd5e0] text-[10px] font-bold text-white">
+                          <div className="flex size-6 items-center justify-center rounded-full bg-accent text-[10px] font-bold text-text-secondary">
                             {worker.initials}
                           </div>
                           <div className="flex flex-col">
@@ -355,7 +360,7 @@ export default function Step7Assign({ data, onChange }: Step7AssignProps) {
                   </div>
                 )}
               </div>
-              <p className="mt-2.5 text-sm font-medium text-[#666d80]">
+              <p className="mt-2.5 text-sm font-medium text-text-secondary">
                 Type an email and press Enter. New emails will receive an invite with login
                 credentials.
               </p>
@@ -364,7 +369,7 @@ export default function Step7Assign({ data, onChange }: Step7AssignProps) {
           )}
         </div>
 
-        <hr className="w-full border-0 border-t border-t-[#e5e7ea]" />
+        <hr className={wizardDividerClass} />
 
         <div className="flex flex-col gap-4">
           <div className="flex items-start justify-between gap-4">
@@ -410,21 +415,41 @@ export default function Step7Assign({ data, onChange }: Step7AssignProps) {
           <div className="flex shrink-0 flex-col items-start gap-3 md:items-end">
             {data.reminders.map((reminder, index) => (
               <div key={index} className="flex w-full items-center gap-3 md:w-auto">
-                <input
-                  type="number"
-                  min={0}
-                  aria-label={`Reminder ${index + 1} days before deadline`}
-                  value={reminder.value}
-                  onChange={(e) => updateReminder(index, Number(e.target.value))}
-                  className="h-11 w-[110px] rounded-[10px] border-[1.5px] border-[#e5e7ea] bg-white px-3.5 text-base text-[#0a0a0a] outline-none transition-colors focus:border-primary md:w-[140px]"
-                />
+                <div className="flex h-12 w-24 items-center gap-2 rounded-[10px] border border-border bg-background px-3 transition-colors focus-within:border-primary md:w-[200px] md:px-3.5">
+                  <input
+                    type="number"
+                    min={0}
+                    aria-label={`Reminder ${index + 1} days before deadline`}
+                    value={reminder.value}
+                    onChange={(e) => updateReminder(index, Number(e.target.value))}
+                    className="min-w-0 flex-1 bg-transparent text-base text-foreground outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                  />
+                  <div className="flex shrink-0 flex-col">
+                    <button
+                      type="button"
+                      aria-label={`Increase reminder ${index + 1}`}
+                      onClick={() => updateReminder(index, reminder.value + 1)}
+                      className={wizardStepperButtonClass}
+                    >
+                      <ChevronUp className="size-4" aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`Decrease reminder ${index + 1}`}
+                      onClick={() => updateReminder(index, Math.max(0, reminder.value - 1))}
+                      className={wizardStepperButtonClass}
+                    >
+                      <ChevronDown className="size-4" aria-hidden="true" />
+                    </button>
+                  </div>
+                </div>
                 <Select
                   value={reminder.unit}
                   onValueChange={(value) => updateReminderUnit(index, value as 'days')}
                 >
                   <SelectTrigger
                     aria-label={`Reminder ${index + 1} unit`}
-                    className="h-11 w-[110px] rounded-[10px] border-[1.5px] border-[#e5e7ea] bg-white px-3.5 text-base text-[#0a0a0a] md:w-[140px]"
+                    className="h-12 w-24 rounded-[10px] border border-border bg-background px-3 text-base text-foreground data-[size=default]:h-12 md:w-[200px] md:px-3.5"
                   >
                     <SelectValue />
                   </SelectTrigger>
@@ -432,12 +457,12 @@ export default function Step7Assign({ data, onChange }: Step7AssignProps) {
                     <SelectItem value="days">days</SelectItem>
                   </SelectContent>
                 </Select>
-                <span className="text-sm text-[#666d80] md:text-base">before</span>
+                <span className="text-sm text-text-secondary md:text-base">before</span>
                 <Button
                   variant="ghost"
                   size="icon-sm"
                   aria-label={`Remove reminder ${index + 1}`}
-                  className="text-[#666d80] hover:text-error"
+                  className="text-text-secondary hover:text-error"
                   onClick={() => removeReminder(index)}
                 >
                   <X className="size-5" strokeWidth={2} />
@@ -449,7 +474,7 @@ export default function Step7Assign({ data, onChange }: Step7AssignProps) {
               type="button"
               onClick={addReminder}
               disabled={data.reminders.length >= MAX_REMINDER_ROWS}
-              className="flex items-center gap-1.5 self-start text-sm font-semibold text-primary transition-colors hover:underline disabled:cursor-not-allowed disabled:text-[#98a2b3] disabled:no-underline md:self-auto"
+              className="flex items-center gap-1.5 self-start text-sm font-semibold text-primary transition-colors hover:underline disabled:cursor-not-allowed disabled:text-text-tertiary disabled:no-underline"
             >
               <CirclePlus className="size-4" aria-hidden="true" />
               Add reminder
@@ -484,10 +509,10 @@ export default function Step7Assign({ data, onChange }: Step7AssignProps) {
               >
                 <SelectTrigger
                   aria-label="Select interval"
-                  className="h-[52px] w-full rounded-[12px] border-[1.5px] border-[#e5e7ea] bg-white px-[18px] text-base text-[#0a0a0a] data-[placeholder]:text-[#979797] md:w-[330px]"
+                  className="h-[52px] w-full rounded-[10px] border border-border bg-background px-[18px] text-base text-foreground data-[size=default]:h-[52px] data-[placeholder]:text-muted-foreground md:w-[460px]"
                 >
                   <span className="flex items-center gap-2">
-                    <CalendarDays className="size-[18px] text-[#666d80]" aria-hidden="true" />
+                    <CalendarDays className="size-[18px] text-text-secondary" aria-hidden="true" />
                     <SelectValue placeholder="Select interval" />
                   </span>
                 </SelectTrigger>

@@ -220,6 +220,33 @@ describe('Step7Assign — deadline, reminders and recurrence', () => {
     expect(onChange).toHaveBeenCalledWith('reminders', [{ value: 70, unit: 'days' }]);
   });
 
+  it('increases a reminder via its stepper button', async () => {
+    const user = userEvent.setup();
+    const { onChange } = renderStep({ reminders: [{ value: 7, unit: 'days' }] });
+
+    await user.click(screen.getByRole('button', { name: 'Increase reminder 1' }));
+
+    expect(onChange).toHaveBeenCalledWith('reminders', [{ value: 8, unit: 'days' }]);
+  });
+
+  it('decreases a reminder via its stepper button', async () => {
+    const user = userEvent.setup();
+    const { onChange } = renderStep({ reminders: [{ value: 7, unit: 'days' }] });
+
+    await user.click(screen.getByRole('button', { name: 'Decrease reminder 1' }));
+
+    expect(onChange).toHaveBeenCalledWith('reminders', [{ value: 6, unit: 'days' }]);
+  });
+
+  it('never steps a reminder below zero', async () => {
+    const user = userEvent.setup();
+    const { onChange } = renderStep({ reminders: [{ value: 0, unit: 'days' }] });
+
+    await user.click(screen.getByRole('button', { name: 'Decrease reminder 1' }));
+
+    expect(onChange).toHaveBeenCalledWith('reminders', [{ value: 0, unit: 'days' }]);
+  });
+
   it('removes a reminder row', async () => {
     const user = userEvent.setup();
     const { onChange } = renderStep({

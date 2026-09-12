@@ -76,4 +76,75 @@ describe('Step4Quiz', () => {
 
     expect(screen.getByText(/~15 mins/)).toBeInTheDocument();
   });
+
+  describe('question count stepper', () => {
+    it('increments and decrements the count, writing it as the same string field the input used', async () => {
+      const user = userEvent.setup();
+      const { onChange } = renderStep({ quizQuestionCount: '10' });
+
+      await user.click(screen.getByRole('button', { name: 'Increase number of questions' }));
+      expect(onChange).toHaveBeenLastCalledWith('quizQuestionCount', '11');
+
+      await user.click(screen.getByRole('button', { name: 'Decrease number of questions' }));
+      expect(onChange).toHaveBeenLastCalledWith('quizQuestionCount', '9');
+    });
+
+    it('does not step past the maximum of 25', async () => {
+      const user = userEvent.setup();
+      const { onChange } = renderStep({ quizQuestionCount: '25' });
+
+      await user.click(screen.getByRole('button', { name: 'Increase number of questions' }));
+
+      expect(onChange).toHaveBeenCalledWith('quizQuestionCount', '25');
+    });
+
+    it('does not step below the minimum of 1', async () => {
+      const user = userEvent.setup();
+      const { onChange } = renderStep({ quizQuestionCount: '1' });
+
+      await user.click(screen.getByRole('button', { name: 'Decrease number of questions' }));
+
+      expect(onChange).toHaveBeenCalledWith('quizQuestionCount', '1');
+    });
+
+    it('starts from the minimum when the field is empty or not a number', async () => {
+      const user = userEvent.setup();
+      const { onChange } = renderStep({ quizQuestionCount: '' });
+
+      await user.click(screen.getByRole('button', { name: 'Increase number of questions' }));
+
+      expect(onChange).toHaveBeenCalledWith('quizQuestionCount', '1');
+    });
+  });
+
+  describe('attempts stepper', () => {
+    it('increments and decrements the attempts field', async () => {
+      const user = userEvent.setup();
+      const { onChange } = renderStep({ quizAttempts: '2' });
+
+      await user.click(screen.getByRole('button', { name: 'Increase attempts' }));
+      expect(onChange).toHaveBeenLastCalledWith('quizAttempts', '3');
+
+      await user.click(screen.getByRole('button', { name: 'Decrease attempts' }));
+      expect(onChange).toHaveBeenLastCalledWith('quizAttempts', '1');
+    });
+
+    it('does not step past the maximum of 10', async () => {
+      const user = userEvent.setup();
+      const { onChange } = renderStep({ quizAttempts: '10' });
+
+      await user.click(screen.getByRole('button', { name: 'Increase attempts' }));
+
+      expect(onChange).toHaveBeenCalledWith('quizAttempts', '10');
+    });
+
+    it('does not step below the minimum of 1', async () => {
+      const user = userEvent.setup();
+      const { onChange } = renderStep({ quizAttempts: '1' });
+
+      await user.click(screen.getByRole('button', { name: 'Decrease attempts' }));
+
+      expect(onChange).toHaveBeenCalledWith('quizAttempts', '1');
+    });
+  });
 });

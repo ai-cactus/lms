@@ -15,6 +15,8 @@ interface FileUploadProps {
   label?: React.ReactNode;
   /** Drops the upload glyph, for surfaces that call for a slimmer dropzone. */
   hideIcon?: boolean;
+  /** Replaces the default glyph and its circular chip, icon and all. */
+  icon?: React.ReactNode;
   /** Extra classes on the drop target, e.g. to override its default height. */
   className?: string;
 }
@@ -28,6 +30,7 @@ export default function FileUpload({
   description,
   label,
   hideIcon,
+  icon,
   className,
 }: FileUploadProps) {
   const [isDragging, setIsDragging] = useState(false);
@@ -104,11 +107,12 @@ export default function FileUpload({
         />
 
         <div className="flex flex-col items-center gap-3 text-center">
-          {!hideIcon && (
-            <div className="mb-2 flex size-12 items-center justify-center rounded-full bg-accent text-text-secondary">
-              <Upload className="size-6" aria-hidden="true" />
-            </div>
-          )}
+          {!hideIcon &&
+            (icon ?? (
+              <div className="mb-2 flex size-12 items-center justify-center rounded-full bg-accent text-text-secondary">
+                <Upload className="size-6" aria-hidden="true" />
+              </div>
+            ))}
           <p className="text-sm font-medium text-text-secondary">
             {label ?? (
               <>

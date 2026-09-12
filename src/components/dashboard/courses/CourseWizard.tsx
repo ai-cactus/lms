@@ -680,7 +680,7 @@ export default function CourseWizard() {
         variant="outline"
         onClick={handleBack}
         disabled={isPublishing}
-        className="h-[52px] rounded-[12px] border-[1.5px] border-[#d2d5db] px-8 text-base font-semibold tracking-[0.36px] text-[#454353] md:h-[56px] md:px-10 md:text-[18px]"
+        className="h-[52px] rounded-md border-[1.5px] border-input px-8 text-base font-semibold tracking-[0.36px] text-text-secondary md:h-[56px] md:px-10 md:text-[18px]"
       >
         Back
       </Button>
@@ -691,7 +691,7 @@ export default function CourseWizard() {
           isNextDisabled() || isGenerating || isPublishing || isAnalyzing || isCreatingCategory
         }
         loading={isGenerating || isPublishing || isAnalyzing || isCreatingCategory}
-        className="h-[52px] rounded-[12px] px-8 text-base font-semibold tracking-[0.36px] md:h-[56px] md:px-10 md:text-[18px]"
+        className="h-[52px] rounded-md px-8 text-base font-semibold tracking-[0.36px] md:h-[56px] md:px-10 md:text-[18px]"
       >
         {currentStepIndex === TOTAL_STEPS - 1 ? 'Publish Course' : 'Next Step'}
       </Button>
@@ -705,7 +705,7 @@ export default function CourseWizard() {
           <Logo variant="blue" size="md" />
         </div>
         <div className="flex flex-1 items-center justify-between gap-4 pl-4 pr-5 md:pl-[30px] md:pr-[60px]">
-          <span className="truncate text-sm font-medium tracking-[0.38px] text-[#3e3e3e] md:text-[19px]">
+          <span className="truncate text-sm font-medium tracking-[0.38px] text-foreground md:text-[19px]">
             Step {shownStepNumber} of {TOTAL_STEPS}
           </span>
           <Button
@@ -717,26 +717,28 @@ export default function CourseWizard() {
                 router.push('/dashboard/courses');
               }
             }}
-            className="h-auto px-2 py-1 text-base font-bold tracking-[0.4px] text-[#0d0d12] md:text-[20px]"
+            className="h-auto px-2 py-1 text-base font-bold tracking-[0.4px] text-foreground md:text-[20px]"
           >
             Exit
           </Button>
         </div>
       </header>
 
-      <div className="h-1.5 w-full shrink-0 bg-[#dbdbdb] md:h-2">
+      <div className="h-1.5 w-full shrink-0 bg-input md:h-2">
         <div
-          className="h-full rounded-r-[210px] bg-primary transition-[width] duration-300 ease-[ease]"
+          className="h-full rounded-r-full bg-primary transition-[width] duration-300 ease-[ease]"
           style={{ width: `${(shownStepNumber / TOTAL_STEPS) * 100}%` }}
         />
       </div>
 
       <main className="relative flex min-h-0 flex-1 flex-col items-center overflow-y-auto">
         {showResumeBanner && (
-          <div className="mx-auto mt-6 flex w-full max-w-[1080px] items-center justify-between gap-4 rounded-lg border border-[#BEE3F8] bg-[#EBF4FF] p-4">
+          <div className="mx-auto mt-6 flex w-full max-w-[1080px] items-center justify-between gap-4 rounded-md border border-primary/20 bg-primary/5 p-4">
             <div>
-              <h3 className="m-0 mb-1 text-base text-[#2B6CB0]">Resume your draft?</h3>
-              <p className="m-0 text-sm text-[#2C5282]">
+              <h3 className="m-0 mb-1 text-base font-semibold text-foreground">
+                Resume your draft?
+              </h3>
+              <p className="m-0 text-sm text-text-secondary">
                 We found an unsaved course creation draft from your current session.
               </p>
             </div>
@@ -783,11 +785,11 @@ export default function CourseWizard() {
               // failure card is narrow and centred like every other step.
               <div
                 className={`mx-auto flex w-full shrink-0 flex-col gap-3 px-5 py-6 ${
-                  generatedContent ? 'max-w-[1400px]' : 'max-w-[1120px]'
+                  generatedContent ? 'max-w-[1240px]' : 'max-w-[1120px]'
                 }`}
               >
                 {wizardError && (
-                  <div className="rounded-md bg-[#fed7d7] px-4 py-2.5 text-center text-sm text-[#e53e3e]">
+                  <div className="rounded-md bg-error/10 px-4 py-2.5 text-center text-sm text-error">
                     {wizardError}
                   </div>
                 )}
@@ -800,7 +802,7 @@ export default function CourseWizard() {
             {renderStep()}
 
             {wizardError && (
-              <div className="rounded-md bg-[#fed7d7] px-4 py-2.5 text-center text-sm text-[#e53e3e]">
+              <div className="rounded-md bg-error/10 px-4 py-2.5 text-center text-sm text-error">
                 {wizardError}
               </div>
             )}
@@ -840,19 +842,19 @@ export default function CourseWizard() {
 
         {showExitConfirm && (
           <Dialog open onOpenChange={(open) => !open && setShowExitConfirm(false)}>
-            <DialogContent className="rounded-[16px] p-6 sm:max-w-[420px]">
+            <DialogContent className="rounded-lg p-6 sm:max-w-[420px]">
               <DialogHeader>
-                <DialogTitle className="text-lg font-semibold text-[#0d0d12]">
+                <DialogTitle className="text-lg font-semibold text-foreground">
                   Exit course creation?
                 </DialogTitle>
-                <DialogDescription className="text-[15px] leading-relaxed text-[#4A5568]">
+                <DialogDescription className="text-[15px] leading-relaxed text-text-secondary">
                   You have unsaved progress. If you exit now, your work will be lost.
                 </DialogDescription>
               </DialogHeader>
               <DialogFooter className="mt-3 gap-3 sm:justify-end">
                 <Button
                   variant="outline"
-                  className="h-[44px] rounded-[10px] border-[1.5px] border-[#e5e7ea] px-6 font-semibold text-[#454353]"
+                  className="h-[44px] rounded-[10px] border-[1.5px] border-border px-6 font-semibold text-text-secondary"
                   onClick={() => setShowExitConfirm(false)}
                 >
                   Cancel

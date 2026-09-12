@@ -102,7 +102,7 @@ export default function ConfirmPublishModal({
         if (!open && !isPublishing) onClose();
       }}
     >
-      <DialogContent className="max-h-[90vh] gap-0 overflow-hidden rounded-[16px] p-0 sm:max-w-[1040px]">
+      <DialogContent className="max-h-[90vh] gap-0 overflow-hidden rounded-lg p-0 sm:max-w-[1040px]">
         <DialogHeader className="sr-only">
           <DialogTitle>Confirm Course Review</DialogTitle>
         </DialogHeader>
@@ -183,9 +183,9 @@ export default function ConfirmPublishModal({
 
           {/* ── Right Content Panel ───────────────────────────── */}
           <div className="flex flex-1 flex-col p-7 pb-6 md:p-10">
-            <h2 className="m-0 mb-5 text-xl font-bold text-[#0d0d12]">Confirm Course Review</h2>
+            <h2 className="m-0 mb-5 text-xl font-bold text-foreground">Confirm Course Review</h2>
 
-            <div className="mb-6 flex flex-1 flex-col gap-3 text-[15px] leading-[1.6] text-[#4a5568]">
+            <div className="mb-6 flex flex-1 flex-col gap-3 text-[15px] leading-[1.6] text-text-secondary">
               <p className="m-0">
                 Please confirm that the course content for{' '}
                 <strong>&quot;{courseTitle || 'this course'}&quot;</strong> has been reviewed and
@@ -202,7 +202,7 @@ export default function ConfirmPublishModal({
               <div className="flex items-center gap-4">
                 <label
                   htmlFor="confirm-reviewer"
-                  className="shrink-0 whitespace-nowrap text-[15px] font-semibold text-[#374151]"
+                  className="shrink-0 whitespace-nowrap text-[15px] font-semibold text-foreground"
                 >
                   Reviewed by
                 </label>
@@ -224,7 +224,7 @@ export default function ConfirmPublishModal({
                   onCheckedChange={(c) => setIsConfirmed(c === true)}
                   disabled={isPublishing}
                 />
-                <span className="text-[15px] leading-snug text-[#374151]">
+                <span className="text-[15px] leading-snug text-text-secondary">
                   I confirm that this course has been <strong>reviewed and approved</strong> before
                   publishing.
                 </span>
@@ -236,7 +236,7 @@ export default function ConfirmPublishModal({
                 variant="outline"
                 onClick={onClose}
                 disabled={isPublishing}
-                className="h-[48px] rounded-[10px] border-[1.5px] border-[#e5e7ea] px-8 text-[15px] font-semibold text-[#454353]"
+                className="h-[48px] rounded-[10px] border border-border px-8 text-[15px] font-semibold text-text-secondary"
               >
                 Cancel
               </Button>

@@ -1,9 +1,11 @@
 /**
- * Tests for the "Review Quiz Questions" wizard step, covering the design
- * alignment's module-grouped accordions: one section per generating module, the
- * legacy single-section fallback for untagged courses, and the per-section
- * add-question flow that has to tag what it creates so persistence keeps the
- * grouping.
+ * Tests for the "Review Quiz Questions" wizard step. The design draws the
+ * whole quiz as one collapsible, continuously-numbered list rather than one
+ * accordion per generating module — `groupQuestionsByModule` still tags each
+ * question with the module it came from (so persistence and the single
+ * "Add new question" footer keep grouping legacy multi-module courses
+ * correctly), but that grouping is no longer reflected in the section title or
+ * per-section numbering, only in which module a newly added question inherits.
  */
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -57,21 +59,23 @@ function sectionTrigger(title: string) {
   return trigger;
 }
 
-/** The section accordion whose header carries `title`. */
-function section(title: string) {
-  return sectionTrigger(title).closest('[data-slot="accordion-item"]') as HTMLElement;
-}
-
 function sectionCount() {
   return document.querySelectorAll('[data-slot="accordion-item"]').length;
 }
 
-async function fillNewQuestion(user: ReturnType<typeof userEvent.setup>, scope: HTMLElement) {
-  await user.type(within(scope).getByLabelText('Question Text'), 'Manually added question');
-  const optionInputs = within(scope).getAllByPlaceholderText(/^Option \d$/);
+// There is exactly one add-question form on screen at a time (the design
+// dropped the per-section forms), so it needs no scoping.
+async function fillNewQuestion(user: ReturnType<typeof userEvent.setup>) {
+  await user.type(screen.getByLabelText('Question Text'), 'Manually added question');
+  const optionInputs = screen.getAllByPlaceholderText(/^Option \d$/);
   for (const [index, input] of optionInputs.entries()) {
     await user.type(input, `Answer ${index + 1}`);
   }
+}
+
+/** The rendered question card (text + Edit button) for a given question's text. */
+function questionCard(questionText: string) {
+  return screen.getByText(questionText).closest('.bg-background-secondary') as HTMLElement;
 }
 
 describe('Step6QuizReview', () => {
@@ -79,61 +83,67 @@ describe('Step6QuizReview', () => {
     generateSingleQuestion.mockReset();
   });
 
-  it('renders one section per generating module, with its question count', () => {
+  it('renders a single collapsible section for the whole quiz, titled by the quiz title, with the total count shown alongside it', () => {
     renderStep(TAGGED_QUIZ);
 
-    expect(sectionCount()).toBe(2);
-    expect(sectionTrigger('Privacy Rule')).toHaveTextContent('2 questions');
-    expect(sectionTrigger('Security Rule')).toHaveTextContent('1 question');
+    // The design flattened the per-module accordions into one section — the
+    // module grouping still exists in `sections`, it just isn't drawn.
+    expect(sectionCount()).toBe(1);
+    expect(sectionTrigger(WIZARD_FORM_DATA.quizTitle)).toBeInTheDocument();
+    expect(screen.getByText('3 questions')).toBeInTheDocument();
   });
 
-  it('lists each module’s questions under its own section, numbered from 1', () => {
+  it('numbers every question continuously across modules, instead of restarting per module', () => {
     renderStep(TAGGED_QUIZ);
 
-    const privacy = section('Privacy Rule');
-    expect(within(privacy).getByText('Privacy Q1')).toBeInTheDocument();
-    expect(within(privacy).getByText('Privacy Q2')).toBeInTheDocument();
-    expect(within(privacy).queryByText('Security Q1')).not.toBeInTheDocument();
-
-    const security = section('Security Rule');
-    expect(within(security).getByText('Security Q1')).toBeInTheDocument();
-    expect(within(security).getByText('1.')).toBeInTheDocument();
+    expect(screen.getByText('1.')).toBeInTheDocument();
+    expect(screen.getByText('Privacy Q1')).toBeInTheDocument();
+    expect(screen.getByText('2.')).toBeInTheDocument();
+    expect(screen.getByText('Privacy Q2')).toBeInTheDocument();
+    // Security Q1 is the 3rd question overall — under the old per-module
+    // accordions this would have restarted at "1."; it must not any more.
+    expect(screen.getByText('3.')).toBeInTheDocument();
+    expect(screen.getByText('Security Q1')).toBeInTheDocument();
   });
 
-  it('keeps an untagged legacy quiz in a single section named after the course', () => {
-    renderStep([question({ question: 'Legacy Q1' }), question({ question: 'Legacy Q2' })]);
+  it('renders a single section for an untagged legacy quiz, falling back to the course title when no quiz title is set', () => {
+    renderStep([question({ question: 'Legacy Q1' }), question({ question: 'Legacy Q2' })], {
+      quizTitle: '',
+    });
 
     expect(sectionCount()).toBe(1);
-    expect(sectionTrigger(WIZARD_FORM_DATA.title)).toHaveTextContent('2 questions');
+    expect(sectionTrigger(WIZARD_FORM_DATA.title)).toBeInTheDocument();
+    expect(screen.getByText('Legacy Q1')).toBeInTheDocument();
+    expect(screen.getByText('Legacy Q2')).toBeInTheDocument();
   });
 
-  it('tags a question added from a section with that module and keeps it grouped', async () => {
+  it('the single Add-new-question control appends to the end of the quiz, tagged with the last module', async () => {
+    // Legacy multi-module courses depend on this: the footer button always
+    // targets `sections[sections.length - 1]`, so a manually added question
+    // must still land in — and inherit the tag of — the last module.
     const user = userEvent.setup();
     const { onQuizUpdate } = renderStep(TAGGED_QUIZ);
 
-    await user.click(screen.getByRole('button', { name: 'Add question to Privacy Rule' }));
-    await fillNewQuestion(user, section('Privacy Rule'));
+    await user.click(screen.getByRole('button', { name: 'Add new question' }));
+    await fillNewQuestion(user);
     await user.click(screen.getByRole('button', { name: 'Save Question' }));
 
     expect(onQuizUpdate).toHaveBeenCalledTimes(1);
     const updated = onQuizUpdate.mock.calls[0][0] as QuizQuestion[];
     expect(updated).toHaveLength(4);
-    expect(updated[2]).toMatchObject({
+    expect(updated[3]).toMatchObject({
       question: 'Manually added question',
-      moduleIndex: 0,
-      moduleTitle: 'Privacy Rule',
+      moduleIndex: 1,
+      moduleTitle: 'Security Rule',
     });
-    expect(updated[3].question).toBe('Security Q1');
   });
 
-  it('leaves a question added to an untagged section untagged', async () => {
+  it('leaves a question added to an untagged quiz untagged', async () => {
     const user = userEvent.setup();
     const { onQuizUpdate } = renderStep([question({ question: 'Legacy Q1' })]);
 
-    await user.click(
-      screen.getByRole('button', { name: `Add question to ${WIZARD_FORM_DATA.title}` }),
-    );
-    await fillNewQuestion(user, section(WIZARD_FORM_DATA.title));
+    await user.click(screen.getByRole('button', { name: 'Add new question' }));
+    await fillNewQuestion(user);
     await user.click(screen.getByRole('button', { name: 'Save Question' }));
 
     const updated = onQuizUpdate.mock.calls[0][0] as QuizQuestion[];
@@ -147,7 +157,7 @@ describe('Step6QuizReview', () => {
     vi.spyOn(window, 'alert').mockImplementation(() => {});
     renderStep(TAGGED_QUIZ, { modules: [{ documentId: 'doc-1' }] });
 
-    await user.click(screen.getByRole('button', { name: 'Add question to Privacy Rule' }));
+    await user.click(screen.getByRole('button', { name: 'Add new question' }));
     await user.click(screen.getByRole('button', { name: /Generate with AI/i }));
 
     expect(generateSingleQuestion).toHaveBeenCalledWith({
@@ -164,10 +174,10 @@ describe('Step6QuizReview', () => {
     const user = userEvent.setup();
     const { onQuizUpdate } = renderStep(TAGGED_QUIZ);
 
-    const security = section('Security Rule');
-    await user.click(within(security).getByRole('button', { name: 'Edit' }));
-    await user.type(within(security).getByLabelText('Question Text'), ' (revised)');
-    await user.click(within(security).getByRole('button', { name: 'Save Changes' }));
+    const securityCard = questionCard('Security Q1');
+    await user.click(within(securityCard).getByRole('button', { name: 'Edit' }));
+    await user.type(screen.getByLabelText('Question Text'), ' (revised)');
+    await user.click(screen.getByRole('button', { name: 'Save Changes' }));
 
     const updated = onQuizUpdate.mock.calls[0][0] as QuizQuestion[];
     expect(updated[2].question).toBe('Security Q1 (revised)');

@@ -6,6 +6,7 @@
 - [Local UI verification](project_local_ui_verification.md) — Playwright recipe for the dev app; port 3005 may be a decoy build, newPage() ignores viewport
 - [Course wizard ladder + D1](project_course-wizard-9-step.md) — current 7 step keys/filenames after the single-document reshape; what looks like an oversight but is not
 - [Draft-key bumps orphan generations](gotcha_wizard_draft_key_bump_orphans_generation.md) — the sessionStorage draft is half the resume handoff; migrate it whenever pending jobs exist
+- [Course wizard restyle (PR-3b)](project_course-wizard-restyle-pr3b.md) — 3 deliberate divergences from Figma (PHI checkbox, Quality Notice, Sources tab) + the cmdk dep
 - [Wizard PHI attestation](project_course-wizard-phi-attestation.md) — step 2's attestation checkbox isn't in the mock but is required: uploadDocument rejects FormData without phiAttested
 - [Document Hub scope](project_document-hub-scope.md) — rename dropped from the UI (action kept); list hover card cut, but the viewer's thumbnail rail was ruled back IN
 - [Step-7 review honest gaps](project_wizard-step7-review-honest-gaps.md) — no citation chips, "Key Points" not "Tip!", Edit button inert: deliberate, don't invent the missing data

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { ChevronDown, ChevronUp, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, Plus, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -15,10 +15,12 @@ import { getCategories } from '@/app/actions/categories';
 import { logger } from '@/lib/logger';
 import {
   wizardControlClass,
+  wizardDividerClass,
   wizardInputClass,
   wizardLabelClass,
   wizardReadonlyControlClass,
   wizardRowClass,
+  wizardStepperButtonClass,
   wizardSubtitleClass,
   wizardTitleClass,
 } from './wizardFormClasses';
@@ -100,14 +102,14 @@ export default function Step3Details({ data, onChange }: Step3DetailsProps) {
           />
         </div>
 
-        <div className={`${wizardRowClass} md:items-start`}>
-          <label className={`${wizardLabelClass} md:pt-4`} htmlFor="course-description">
+        <div className={wizardRowClass}>
+          <label className={wizardLabelClass} htmlFor="course-description">
             Short Description
           </label>
           <textarea
             id="course-description"
             name="description"
-            className={`${wizardInputClass} min-h-[136px] resize-y py-4 leading-6`}
+            className={`${wizardInputClass} min-h-[160px] resize-y py-4 leading-[1.6]`}
             value={data.description}
             onChange={(e) => onChange('description', e.target.value)}
             placeholder="Enter short description"
@@ -119,7 +121,7 @@ export default function Step3Details({ data, onChange }: Step3DetailsProps) {
           <span className={wizardLabelClass}>Category</span>
           <div
             className={`${wizardReadonlyControlClass} flex items-center ${
-              categoryName ? 'text-[#0a0a0a]' : 'text-[#979797]'
+              categoryName ? 'text-foreground' : 'text-muted-foreground'
             }`}
           >
             {categoryName || 'Selected on the category step'}
@@ -176,13 +178,13 @@ export default function Step3Details({ data, onChange }: Step3DetailsProps) {
                 )
               }
             />
-            <span className="text-[#666d80]">days</span>
-            <div className="ml-auto flex flex-col text-[#666d80]">
+            <span>days</span>
+            <div className="ml-auto flex flex-col">
               <button
                 type="button"
                 aria-label="Increase deadline"
                 onClick={() => stepDeadline(1)}
-                className="transition-colors hover:text-primary"
+                className={wizardStepperButtonClass}
               >
                 <ChevronUp className="size-4" aria-hidden="true" />
               </button>
@@ -190,7 +192,7 @@ export default function Step3Details({ data, onChange }: Step3DetailsProps) {
                 type="button"
                 aria-label="Decrease deadline"
                 onClick={() => stepDeadline(-1)}
-                className="transition-colors hover:text-primary"
+                className={wizardStepperButtonClass}
               >
                 <ChevronDown className="size-4" aria-hidden="true" />
               </button>
@@ -199,7 +201,7 @@ export default function Step3Details({ data, onChange }: Step3DetailsProps) {
         </div>
       </div>
 
-      <hr className="w-full border-0 border-t border-t-[#e5e7ea]" />
+      <hr className={wizardDividerClass} />
 
       <div className="flex w-full flex-col gap-6">
         <h3 className="text-xl font-bold text-foreground md:text-[24px]">Learning Objectives</h3>
@@ -207,16 +209,23 @@ export default function Step3Details({ data, onChange }: Step3DetailsProps) {
         <div className={`${wizardRowClass} md:items-start`}>
           <span className={`${wizardLabelClass} md:pt-4`}>
             Objectives
-            <span className="ml-2 text-sm font-normal text-[#979797]">(Minimum 3 required)</span>
+            <span className="ml-2 text-sm font-normal text-muted-foreground">
+              (Minimum 3 required)
+            </span>
           </span>
           <div className="flex w-full flex-col gap-3">
             {data.objectives.map((obj: string, index: number) => (
-              <div key={index} className="flex items-center gap-2">
-                <div className="flex w-6 shrink-0 justify-center text-base font-semibold text-[#666d80]">
+              // The frames number the objective inside its own field, so the
+              // control column stays a single unbroken measure.
+              <div key={index} className="relative w-full">
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-base font-medium text-foreground md:left-[18px] md:text-[18px]"
+                >
                   {index + 1}.
-                </div>
+                </span>
                 <input
-                  className={wizardInputClass}
+                  className={`${wizardInputClass} pl-10 pr-12 md:pl-11`}
                   value={obj}
                   onChange={(e) => {
                     const newObjectives = [...data.objectives];
@@ -227,7 +236,7 @@ export default function Step3Details({ data, onChange }: Step3DetailsProps) {
                 />
                 <Button
                   variant="ghost"
-                  size="icon"
+                  size="icon-sm"
                   disabled={data.objectives.length <= MIN_OBJECTIVES}
                   onClick={() => {
                     const newObjectives = data.objectives.filter(
@@ -235,10 +244,10 @@ export default function Step3Details({ data, onChange }: Step3DetailsProps) {
                     );
                     onChange('objectives', newObjectives);
                   }}
-                  className="shrink-0 text-error disabled:opacity-30"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-error disabled:opacity-30"
                   aria-label={`Remove objective ${index + 1}`}
                 >
-                  <X className="size-5" aria-hidden="true" />
+                  <X className="size-4" aria-hidden="true" />
                 </Button>
               </div>
             ))}
@@ -247,9 +256,10 @@ export default function Step3Details({ data, onChange }: Step3DetailsProps) {
               onClick={() => {
                 onChange('objectives', [...data.objectives, '']);
               }}
-              className="mt-2 h-[52px] w-full rounded-[12px] border-[1.5px] border-dashed border-[#d2d5db] text-base font-semibold text-[#454353] md:h-[56px]"
+              className="h-[52px] w-full rounded-md border-[1.5px] border-dashed border-input text-base font-semibold text-text-secondary md:h-[56px]"
             >
-              + Add Objective
+              <Plus className="size-4" aria-hidden="true" />
+              Add objective
             </Button>
           </div>
         </div>

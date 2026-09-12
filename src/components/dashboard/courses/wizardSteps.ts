@@ -41,7 +41,7 @@ export const WIZARD_STEPS: readonly WizardStep[] = [
   {
     key: 'upload',
     title: 'Upload Training Documents',
-    columnClass: 'max-w-[760px] pt-10 pb-[60px] md:pt-[90px]',
+    columnClass: 'max-w-[920px] pt-10 pb-[60px] md:pt-[90px]',
   },
   { key: 'details', title: 'Course Details', columnClass: STANDARD_COLUMN },
   { key: 'quiz', title: 'Course Quiz', columnClass: STANDARD_COLUMN },
