@@ -96,7 +96,7 @@ services:
   # ── MinIO (GCS fallback / local object storage) ───────────────────────────────
   minio:
     container_name: lms-dev-minio
-    image: minio/minio:latest
+    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
     restart: unless-stopped
     logging: *default-logging
     command: server /data --console-address ":9001"
