@@ -3,6 +3,9 @@ import { notFound } from 'next/navigation';
 import TrainingDetails from '@/components/dashboard/training/TrainingDetails';
 import { loadCourseDetail } from '@/lib/course/load-course-detail';
 import { auth } from '@/auth';
+import { can } from '@/lib/rbac/permissions';
+import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
+import { getCourseAssignmentSettings, getRoleHolderCounts } from '@/app/actions/enrollment';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,5 +32,33 @@ export default async function CourseDetailsPage(props: PageProps) {
     !!session?.user?.organizationUserId &&
     course.createdByOrgUserId === session.user.organizationUserId;
 
-  return <TrainingDetails course={course} canWithdrawAssignments={canWithdrawAssignments} />;
+  // This page has no `course.read` gate, but /dashboard/courses does and
+  // redirects on deny — so sending every viewer there made "Go Back" a dead
+  // button for roles that lack it (finance, since 2026-08-25). Same predicate
+  // the sidebar uses to decide whether to offer Courses at all.
+  const roleKey = session?.user?.role ? dbRoleToRoleKey(session.user.role) : null;
+  const backHref = roleKey && can(roleKey, 'course.read') ? '/dashboard/courses' : '/dashboard';
+
+  // Both reads THROW `Forbidden` without `assignment.read`, so they must be
+  // skipped rather than caught: this page is reachable by every enrolled
+  // learner, and a rejected promise here would take the whole page down for
+  // them. No settings means no role picker, which is the correct outcome anyway.
+  const canReadAssignments = Boolean(roleKey && can(roleKey, 'assignment.read'));
+  const [assignmentSettings, roleHolderCounts] = canReadAssignments
+    ? await Promise.all([getCourseAssignmentSettings(params.id), getRoleHolderCounts()])
+    : [null, {}];
+
+  return (
+    <TrainingDetails
+      course={course}
+      canWithdrawAssignments={canWithdrawAssignments}
+      backHref={backHref}
+      assignmentSettings={assignmentSettings}
+      roleHolderCounts={roleHolderCounts}
+      canCreateRoleTargets={Boolean(roleKey && can(roleKey, 'assignment.create'))}
+      // Supervisor holds `assignment.create` but not `assignment.delete`, so the
+      // picker must render add-only for them (D6).
+      canRevokeRoleTargets={Boolean(roleKey && can(roleKey, 'assignment.delete'))}
+    />
+  );
 }

@@ -30,7 +30,7 @@
     "prisma:generate": "prisma generate"
   },
   "overrides": {
-    "sharp": "^0.35.0",
+    "sharp": "^0.35.4",
     "find-my-way": "^9.7.0",
     "postcss": "^8.5.12",
     "minimatch": "^10.2.5",
@@ -39,7 +39,9 @@
     "valibot": "^1.4.2",
     "deepmerge-ts": "^8.0.1",
     "quill": "2.0.2",
-    "mysql2": "^3.24.3"
+    "mysql2": "^3.24.3",
+    "js-yaml": "^4.3.2",
+    "@xmldom/xmldom": "^0.8.15"
   },
   "lint-staged": {
     "{src,scripts,tests}/**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}": [
@@ -71,6 +73,7 @@
     "bullmq": "^5.71.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "cmdk": "^1.1.1",
     "docx": "^9.7.1",
     "dompurify": "^3.4.14",
     "dotenv": "^17.4.2",
@@ -84,7 +87,7 @@
     "mammoth": "^1.12.2",
     "minio": "^8.0.7",
     "next": "16.3.3",
-    "nodemailer": "^9.0.6",
+    "nodemailer": "^9.1.1",
     "otpauth": "^9.5.1",
     "pdf-parse": "^1.1.1",
     "pdfkit": "^0.20.1",

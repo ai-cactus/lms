@@ -1,0 +1,4 @@
+# Agent memory indexes are append-only lists of one-line pointers, so every
+# branch that adds an entry conflicts with every other branch that did. Union
+# keeps both sides' lines instead.
+.claude/agent-memory/**/MEMORY.md merge=union

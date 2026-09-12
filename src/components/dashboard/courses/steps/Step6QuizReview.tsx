@@ -1,14 +1,25 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { Plus, Sparkles } from 'lucide-react';
-import { generateSingleQuestion } from '@/app/actions/quiz-ai';
+import { CirclePlus, Sparkles } from 'lucide-react';
+import { generateSingleQuestion, regenerateQuiz } from '@/app/actions/quiz-ai';
 import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { QuizQuestion } from '@/types/quiz';
@@ -16,7 +27,7 @@ import { CourseWizardData } from '@/types/course';
 import { wizardSubtitleClass, wizardTitleClass } from './wizardFormClasses';
 import { logger } from '@/lib/logger';
 
-interface Step8QuizReviewProps {
+interface Step6QuizReviewProps {
   data: CourseWizardData;
   quiz?: QuizQuestion[];
   courseId?: string;
@@ -40,9 +51,12 @@ interface QuizSection {
 
 const UNTAGGED_SECTION_KEY = 'untagged';
 
+/** The single accordion group the frames draw around the whole question list. */
+const QUIZ_GROUP_KEY = 'quiz';
+
 const formInputClass =
-  'w-full rounded-[12px] border-[1.5px] border-[#e5e7ea] px-4 py-3 text-base text-[#0a0a0a] outline-none transition-colors placeholder:text-[#979797] focus:border-primary';
-const formLabelClass = 'mb-2 block text-sm font-semibold text-[#666d80]';
+  'w-full rounded-md border-[1.5px] border-border px-4 py-3 text-base text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary';
+const formLabelClass = 'mb-2 block text-sm font-semibold text-text-secondary';
 
 const emptyQuestion = (): QuizQuestion => ({
   question: '',
@@ -98,16 +112,18 @@ function groupQuestionsByModule(questions: QuizQuestion[], courseTitle: string):
   }));
 }
 
-export default function Step8QuizReview({
+export default function Step6QuizReview({
   data,
   quiz,
   courseId,
   rawContext,
   onQuizUpdate,
-}: Step8QuizReviewProps) {
+}: Step6QuizReviewProps) {
   const questions = useMemo(() => quiz || [], [quiz]);
   const [addingSectionKey, setAddingSectionKey] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isRegenerating, setIsRegenerating] = useState(false);
+  const [confirmRegenerateOpen, setConfirmRegenerateOpen] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editingQuestion, setEditingQuestion] = useState<QuizQuestion | null>(null);
   const [newQuestion, setNewQuestion] = useState<QuizQuestion>(emptyQuestion);
@@ -116,6 +132,11 @@ export default function Step8QuizReview({
     () => groupQuestionsByModule(questions, data.title || ''),
     [questions, data.title],
   );
+
+  // The list is drawn flat, so a manually added question appends to the end —
+  // which is the last module's share, and therefore the tag it inherits.
+  const addTargetSection = sections[sections.length - 1];
+  const quizGroupTitle = data.quizTitle?.trim() || data.title?.trim() || 'Quiz Title';
 
   const startAdding = (sectionKey: string) => {
     setAddingSectionKey(sectionKey);
@@ -146,25 +167,28 @@ export default function Step8QuizReview({
     setNewQuestion({ ...newQuestion, options: newOptions });
   };
 
-  const handleGenerateQuestion = async (section: QuizSection) => {
-    const targetCourseId = courseId;
-    // Fall back to title + description if rawContext isn't fully available yet
+  /**
+   * Prompt context for both AI paths. A course is generated from one document
+   * (D1), so it is described by its own title and objectives — there is no
+   * per-module title left to name in the prompt.
+   */
+  const buildAiContext = () => {
     const baseContext =
-      rawContext?.trim() || `${data?.title || ''}\n${data?.description || ''}`.trim() || '';
+      rawContext?.trim() || `${data.title || ''}\n${data.description || ''}`.trim();
+    const objectives = data.objectives?.filter(Boolean) ?? [];
 
-    // The wizard only carries the merged article markdown, not each module's own
-    // source text, so the module is named in the prompt rather than isolated.
-    const wizardModule =
-      section.moduleIndex !== undefined ? data.modules?.[section.moduleIndex] : undefined;
-    const context = wizardModule
-      ? [
-          `Module: ${wizardModule.title}`,
-          wizardModule.objective ? `Objective: ${wizardModule.objective}` : '',
-          baseContext,
-        ]
-          .filter(Boolean)
-          .join('\n\n')
-      : baseContext;
+    return [
+      data.title ? `Course: ${data.title}` : '',
+      objectives.length > 0 ? `Objectives: ${objectives.join('; ')}` : '',
+      baseContext,
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+  };
+
+  const handleGenerateQuestion = async () => {
+    const targetCourseId = courseId;
+    const context = buildAiContext();
 
     if (!targetCourseId && !context) {
       alert('Cannot generate a question right now. The course may not be fully saved yet.');
@@ -201,8 +225,50 @@ export default function Step8QuizReview({
   const showPartialBanner =
     questions.length > 0 && requestedCount > 0 && questions.length < requestedCount;
 
+  const handleRegenerateQuiz = async () => {
+    setConfirmRegenerateOpen(false);
+
+    const targetCourseId = courseId;
+    const context = buildAiContext();
+
+    if (!targetCourseId && !context) {
+      alert('Cannot regenerate the quiz right now. The course may not be fully saved yet.');
+      return;
+    }
+
+    try {
+      setIsRegenerating(true);
+      const res = await regenerateQuiz({
+        courseId: targetCourseId,
+        context,
+        questionCount: requestedCount || questions.length,
+      });
+
+      if (res.success && res.questions) {
+        onQuizUpdate(
+          res.questions.map((question) => ({
+            question: question.question,
+            options: question.options,
+            answer: question.answer,
+            type: question.type,
+          })),
+        );
+        setEditingIndex(null);
+        setEditingQuestion(null);
+        setAddingSectionKey(null);
+      } else {
+        alert(res.error || 'Failed to regenerate the quiz.');
+      }
+    } catch (error) {
+      logger.error({ msg: '[course] Quiz regeneration failed', err: error });
+      alert('An unexpected error occurred.');
+    } finally {
+      setIsRegenerating(false);
+    }
+  };
+
   const renderAddForm = (section: QuizSection) => (
-    <div className="w-full rounded-[12px] border border-[#e5e7ea] p-5">
+    <div className="w-full rounded-md border border-border p-5">
       <h3 className="mb-5 text-lg font-bold text-foreground">Add New Question</h3>
 
       <div className="mb-5">
@@ -249,7 +315,7 @@ export default function Step8QuizReview({
           variant="outline"
           onClick={(e) => {
             e.preventDefault();
-            handleGenerateQuestion(section);
+            handleGenerateQuestion();
           }}
           disabled={isGenerating}
         >
@@ -274,11 +340,11 @@ export default function Step8QuizReview({
     </div>
   );
 
-  const renderQuestion = (question: QuizQuestion, index: number, positionInSection: number) => {
+  const renderQuestion = (question: QuizQuestion, index: number, position: number) => {
     if (editingIndex === index && editingQuestion) {
       return (
-        <div key={index} className="w-full rounded-[12px] border border-[#e5e7ea] p-5">
-          <h4 className="m-0 mb-4 text-base font-semibold">Edit Question {positionInSection}</h4>
+        <div key={index} className="w-full rounded-md border border-border p-5">
+          <h4 className="m-0 mb-4 text-base font-semibold">Edit Question {position}</h4>
 
           <div className="mb-5">
             <label className={formLabelClass} htmlFor={`editQuestionText-${index}`}>
@@ -358,16 +424,16 @@ export default function Step8QuizReview({
     }
 
     return (
-      <div key={index} className="w-full rounded-[12px] bg-[#f8f9fb] p-5">
+      <div key={index} className="w-full rounded-md bg-background-secondary p-5">
         <div className="mb-4 flex items-start justify-between gap-4">
           <div className="flex-1 text-base font-semibold leading-relaxed text-foreground">
-            <span className="mr-2 font-bold">{positionInSection}.</span>
+            <span className="mr-2 font-bold">{position}.</span>
             {question.question}
           </div>
           <Button
             variant="outline"
             size="sm"
-            className="shrink-0 rounded-[8px] border-[#e5e7ea] bg-white"
+            className="shrink-0 rounded-sm border-border bg-background"
             onClick={() => {
               setEditingIndex(index);
               setEditingQuestion(question);
@@ -386,7 +452,7 @@ export default function Step8QuizReview({
                 className={`mr-3 h-[18px] w-[18px] shrink-0 rounded-full border-2 ${
                   question.answer === optIndex
                     ? 'border-success bg-success shadow-[inset_0_0_0_3px_white]'
-                    : 'border-[#cbd5e0]'
+                    : 'border-input'
                 }`}
               />
               {opt}
@@ -398,14 +464,14 @@ export default function Step8QuizReview({
         </div>
 
         {question.explanation && (
-          <div className="mt-3 rounded-lg border border-[#E2E8F0] bg-[#F7FAFC] px-4 py-3 text-[13px] leading-relaxed">
-            <div className="mb-1.5 flex items-start gap-1.5 font-semibold text-[#38A169]">
+          <div className="mt-3 rounded-md border border-border bg-background-secondary px-4 py-3 text-[13px] leading-relaxed">
+            <div className="mb-1.5 flex items-start gap-1.5 font-semibold text-success">
               <span>✓</span>
               <span>Correct: {question.explanation.correctExplanation}</span>
             </div>
             {question.explanation.incorrectOptions &&
               Object.entries(question.explanation.incorrectOptions).map(([key, text]) => (
-                <div key={key} className="mt-2 flex items-start gap-1.5 text-red-600">
+                <div key={key} className="mt-2 flex items-start gap-1.5 text-error">
                   <span>✕</span>
                   <span>
                     Option {String.fromCharCode(65 + parseInt(key))}: {text}
@@ -413,7 +479,7 @@ export default function Step8QuizReview({
                 </div>
               ))}
             {question.evidence?.moduleSectionHeading && (
-              <div className="mt-2 text-[11px] text-slate-400">
+              <div className="mt-2 text-[11px] text-text-tertiary">
                 Source: {question.evidence.moduleSectionHeading}
               </div>
             )}
@@ -432,7 +498,7 @@ export default function Step8QuizReview({
         </p>
       </div>
 
-      <div className="flex w-full flex-col rounded-[12px] border-[1.5px] border-[#e5e7ea] bg-white p-5 md:p-6">
+      <div className="flex w-full flex-col rounded-md border border-border bg-background p-5 md:p-6">
         {showEmptyBanner && (
           <Alert variant="error" title="No quiz questions were generated" className="mb-6 shrink-0">
             AI didn&apos;t generate the requested number of quiz questions. Add questions manually
@@ -445,68 +511,82 @@ export default function Step8QuizReview({
             can add more manually below, or go back a step to retry generation.
           </Alert>
         )}
-        <div className="mb-6 flex shrink-0 items-center justify-between gap-4">
-          <div className="flex flex-col">
-            <div className="mb-1 text-lg font-bold text-foreground md:text-[20px]">
+        <div className="mb-5 flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <div className="flex flex-col gap-1">
+            <div className="text-base font-bold text-foreground md:text-[17px]">
               Editable quiz questions
             </div>
-            <div className="text-sm text-[#666d80]">{questions.length} Questions Generated</div>
+            <div className="text-[13px] text-text-secondary">{questions.length} questions</div>
           </div>
+
+          <AlertDialog open={confirmRegenerateOpen} onOpenChange={setConfirmRegenerateOpen}>
+            <AlertDialogTrigger asChild>
+              <Button
+                variant="default"
+                className="h-11 shrink-0 self-start px-6 text-sm font-semibold sm:self-auto"
+                loading={isRegenerating}
+              >
+                Regenerate Quiz
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Regenerate the whole quiz?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  AI will write a fresh set of questions from the course content. Every question
+                  below is replaced, so any edits you have made here — and any questions you added
+                  yourself — will be lost.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={handleRegenerateQuiz}>
+                  Regenerate Quiz
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
 
-        <Accordion
-          type="multiple"
-          defaultValue={sections.map((section) => section.key)}
-          className="flex flex-col gap-4"
-        >
-          {sections.map((section) => (
-            <AccordionItem
-              key={section.key}
-              value={section.key}
-              className="border-[1.5px] border-[#e5e7ea] px-0"
-            >
-              <AccordionTrigger className="px-5 py-4 text-base">
-                <span className="flex flex-1 items-center justify-between gap-3 pr-3">
-                  <span className="font-semibold text-foreground">{section.title}</span>
-                  <span className="text-sm font-normal text-[#666d80]">
-                    {section.questionIndexes.length}{' '}
-                    {section.questionIndexes.length === 1 ? 'question' : 'questions'}
-                  </span>
-                </span>
-              </AccordionTrigger>
-              <AccordionContent className="flex flex-col gap-5 px-5 pb-5">
-                {section.questionIndexes.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-border bg-background-secondary p-10 text-center italic text-text-tertiary">
-                    No questions available. Add one below.
-                  </div>
-                ) : (
-                  section.questionIndexes.map((questionIndex, positionInSection) =>
-                    renderQuestion(questions[questionIndex], questionIndex, positionInSection + 1),
-                  )
-                )}
-
-                {addingSectionKey === section.key ? (
-                  renderAddForm(section)
-                ) : (
-                  <div className="flex items-center justify-between gap-4 rounded-[12px] border border-[#e5e7ea] px-5 py-4">
-                    <span className="text-base font-semibold text-foreground">
-                      Add new question
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={`Add question to ${section.title}`}
-                      className="shrink-0 rounded-full text-primary hover:bg-primary/10"
-                      onClick={() => startAdding(section.key)}
-                    >
-                      <Plus className="size-5" aria-hidden="true" />
-                    </Button>
-                  </div>
-                )}
-              </AccordionContent>
-            </AccordionItem>
-          ))}
+        {/* One collapsible headed by the quiz title, holding one ungrouped,
+            continuously numbered list — the module grouping survives in the
+            data (see `sections`), it is simply no longer drawn. */}
+        <Accordion type="multiple" defaultValue={[QUIZ_GROUP_KEY]} className="flex flex-col">
+          <AccordionItem
+            value={QUIZ_GROUP_KEY}
+            className="rounded-none border-none bg-transparent px-0"
+          >
+            <AccordionTrigger className="rounded-sm border border-border px-4 py-3.5 text-base font-semibold text-foreground hover:no-underline">
+              {quizGroupTitle}
+            </AccordionTrigger>
+            <AccordionContent className="flex flex-col gap-3 px-0 pt-3 pb-0">
+              {questions.length === 0 ? (
+                <div className="rounded-md border border-dashed border-border bg-background-secondary p-10 text-center italic text-text-tertiary">
+                  No questions available. Add one below.
+                </div>
+              ) : (
+                questions.map((question, index) => renderQuestion(question, index, index + 1))
+              )}
+            </AccordionContent>
+          </AccordionItem>
         </Accordion>
+
+        {addingSectionKey !== null ? (
+          <div className="mt-3">{renderAddForm(addTargetSection)}</div>
+        ) : (
+          <div className="mt-3 flex items-center justify-between gap-4 rounded-sm border border-border px-4 py-3.5">
+            <span className="text-base font-semibold text-foreground">Add new question</span>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Add new question"
+              className="shrink-0 rounded-full text-primary hover:bg-primary/10"
+              onClick={() => startAdding(addTargetSection.key)}
+            >
+              <CirclePlus className="size-6" aria-hidden="true" />
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );

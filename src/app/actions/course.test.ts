@@ -9,7 +9,6 @@ const {
   mockEnrollmentGroupBy,
   mockEnrollmentFindMany,
   mockOrgUserCount,
-  mockForkCourse,
   mockListAccessibleFacilities,
   mockOrgUserFindMany,
 } = vi.hoisted(() => ({
@@ -21,7 +20,6 @@ const {
   mockEnrollmentGroupBy: vi.fn(),
   mockEnrollmentFindMany: vi.fn(),
   mockOrgUserCount: vi.fn(),
-  mockForkCourse: vi.fn(),
   mockListAccessibleFacilities: vi.fn(),
   mockOrgUserFindMany: vi.fn(),
 }));
@@ -43,7 +41,6 @@ vi.mock('@/lib/prisma', () => {
 vi.mock('@/auth', () => ({ auth: mockAdminAuth }));
 vi.mock('@/auth.worker', () => ({ auth: mockWorkerAuth }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
-vi.mock('@/lib/course/fork-course', () => ({ forkCourse: mockForkCourse }));
 // getDashboardData re-validates its requested ids against `listAccessibleFacilities`;
 // mocked here so facility-scope tests control the accessible set directly rather
 // than exercising scope.ts's own DB query (covered by its own unit suite).
@@ -58,7 +55,7 @@ vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-import { getDashboardData, getCourseById, getCourseForOrgView, duplicateCourse } from './course';
+import { getDashboardData, getCourseById, getCourseForOrgView } from './course';
 import { ADMIN_ROLES, WORKER_ROLES, dbRoleToRoleKey } from '@/lib/rbac/role-utils';
 import { can } from '@/lib/rbac/permissions';
 import type { Role } from '@/types/next-auth';
@@ -420,101 +417,6 @@ describe('getDashboardData', () => {
           where: expect.not.objectContaining({ facilities: expect.anything() }),
         }),
       );
-    });
-  });
-});
-
-// ── duplicateCourse ──────────────────────────────────────────────────────────
-
-describe('duplicateCourse', () => {
-  function makeSession(role: string, overrides: Record<string, unknown> = {}) {
-    return {
-      user: {
-        id: 'user-1',
-        organizationId: ORG_ID,
-        organizationUserId: ORG_USER_ID,
-        role,
-        ...overrides,
-      },
-    };
-  }
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockAdminAuth.mockResolvedValue(makeSession('owner'));
-    mockWorkerAuth.mockResolvedValue(null);
-    mockCourseFindFirst.mockResolvedValue({ id: 'course-1' });
-    mockForkCourse.mockResolvedValue({ id: 'course-fork', title: 'Course (copy)' });
-  });
-
-  // Refusals are RETURNED, not thrown. A thrown Server Action message is
-  // redacted in production and reaches the browser as React error #441 — which
-  // is precisely what staging QA saw when Duplicate hit an adopted course.
-  // Note these used to assert `.rejects` and passed the whole time, because the
-  // promise really did reject; only the return value exposes the defect.
-  it('refuses readably when there is no session', async () => {
-    mockAdminAuth.mockResolvedValue(null);
-    mockWorkerAuth.mockResolvedValue(null);
-
-    const result = await duplicateCourse('course-1');
-
-    expect(result.success).toBe(false);
-    expect(result).not.toHaveProperty('course');
-  });
-
-  it.each(['supervisor', 'finance'])('denies role=%s — lacks course.create', async (role) => {
-    mockAdminAuth.mockResolvedValue(makeSession(role));
-
-    const result = await duplicateCourse('course-1');
-
-    expect(result.success).toBe(false);
-    expect(mockForkCourse).not.toHaveBeenCalled();
-  });
-
-  it.each(['owner', 'admin', 'hr', 'clinical_director'])(
-    'allows role=%s (holds course.create)',
-    async (role) => {
-      mockAdminAuth.mockResolvedValue(makeSession(role));
-
-      const result = await duplicateCourse('course-1');
-
-      expect(result).toEqual({
-        success: true,
-        course: { id: 'course-fork', title: 'Course (copy)' },
-      });
-    },
-  );
-
-  it('refuses a course this organization did not author, without forking', async () => {
-    // Includes ADOPTED courses: they are visible in the same list but authored
-    // by another tenant. Offering Duplicate on one is what 500'd on staging.
-    mockCourseFindFirst.mockResolvedValue(null);
-
-    const result = await duplicateCourse('foreign-course');
-
-    expect(result).toEqual({
-      success: false,
-      error: 'Only a course your organization created can be duplicated.',
-    });
-    expect(mockForkCourse).not.toHaveBeenCalled();
-  });
-
-  it("scopes the existence check to the caller's organization via the course creator", async () => {
-    await duplicateCourse('course-1');
-
-    expect(mockCourseFindFirst).toHaveBeenCalledWith({
-      where: { id: 'course-1', creator: { organizationId: ORG_ID } },
-      select: { id: true },
-    });
-  });
-
-  it('forks with titleStrategy "duplicate" targeting the caller\'s own membership', async () => {
-    await duplicateCourse('course-1');
-
-    expect(mockForkCourse).toHaveBeenCalledWith({
-      sourceCourseId: 'course-1',
-      targetOrganizationUserId: ORG_USER_ID,
-      titleStrategy: 'duplicate',
     });
   });
 });

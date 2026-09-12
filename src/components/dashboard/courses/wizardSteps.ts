@@ -9,7 +9,7 @@
  */
 
 export type WizardStepKey =
-  'category' | 'modules' | 'details' | 'quiz' | 'generate' | 'quizReview' | 'assign';
+  'category' | 'upload' | 'details' | 'quiz' | 'generate' | 'quizReview' | 'assign';
 
 export interface WizardStep {
   key: WizardStepKey;
@@ -39,9 +39,9 @@ export const WIZARD_STEPS: readonly WizardStep[] = [
     columnClass: 'max-w-[920px] flex-1 justify-between pt-14 pb-[60px] md:pt-[170px] md:pb-[70px]',
   },
   {
-    key: 'modules',
-    title: 'Course Modules',
-    columnClass: 'max-w-[760px] pt-10 pb-[60px] md:pt-[90px]',
+    key: 'upload',
+    title: 'Upload Training Documents',
+    columnClass: 'max-w-[920px] pt-10 pb-[60px] md:pt-[90px]',
   },
   { key: 'details', title: 'Course Details', columnClass: STANDARD_COLUMN },
   { key: 'quiz', title: 'Course Quiz', columnClass: STANDARD_COLUMN },
@@ -73,4 +73,24 @@ export function stepIndexForKey(key: unknown): number {
 
 export function stepTitle(key: WizardStepKey): string {
   return getWizardStep(stepIndexForKey(key)).title;
+}
+
+/**
+ * The step number the shell shows — its counter AND its progress bar — which is
+ * not always the step's own position.
+ *
+ * Generation is its own ladder entry because the wizard needs somewhere to park
+ * while the jobs run, but to the admin it is still the quiz step finishing what
+ * it started: the designed interstitial is labelled "Step 4 of 7" and its
+ * progress bar is filled to step 4's width, not step 5's.
+ *
+ * `borrowsQuizNumber` covers the whole of that borrowed phase, not just the
+ * spinner. The failure card replaces the interstitial in place — same step, same
+ * `Try Again` button — so renumbering it to 5 would advance the counter on a step
+ * that produced nothing. The caller therefore passes "the generate step has not
+ * produced content yet", never a bare `isGenerating`.
+ */
+export function displayStepNumber(key: WizardStepKey, borrowsQuizNumber: boolean): number {
+  if (key === 'generate' && borrowsQuizNumber) return stepIndexForKey('quiz') + 1;
+  return stepIndexForKey(key) + 1;
 }

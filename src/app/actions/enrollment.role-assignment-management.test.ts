@@ -6,17 +6,29 @@
  * the nightly reconcile pre-pass — a brand-new staff account could arrive
  * already enrolled with no way for an admin to see why or stop it.
  *
- * These cover the two actions that close that gap.
+ * These cover `setRoleAssignmentTargets`, which superseded `revokeRoleAssignment`
+ * when the shared role picker landed and is now the only way to change which
+ * roles a course auto-enrols.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { prismaMock, mockAdminAuth, mockResolveDataFacilityIds } = vi.hoisted(() => ({
+const {
+  prismaMock,
+  mockAdminAuth,
+  mockResolveDataFacilityIds,
+  mockCreateEnrollmentForUser,
+  mockCreateEnrollmentsForUsers,
+} = vi.hoisted(() => ({
   prismaMock: {
     courseAssignment: { findMany: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
     enrollment: { groupBy: vi.fn() },
+    organization: { findUnique: vi.fn() },
+    organizationUser: { findMany: vi.fn() },
   },
   mockAdminAuth: vi.fn(),
   mockResolveDataFacilityIds: vi.fn(),
+  mockCreateEnrollmentForUser: vi.fn(),
+  mockCreateEnrollmentsForUsers: vi.fn(),
 }));
 
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock, default: prismaMock }));
@@ -31,8 +43,17 @@ vi.mock('@/lib/facility/staff-where', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/facility/staff-where')>()),
   resolveDataFacilityIds: mockResolveDataFacilityIds,
 }));
+// setRoleAssignmentTargets' widen delegates to enrollHoldersOfAddedRoles →
+// enrollSequentially → createEnrollmentForUser. Mocked so a widen test never
+// falls through to the real per-user membership/invite machinery, which this
+// file's prisma mock does not model.
+vi.mock('@/lib/enrollment/create', () => ({
+  createEnrollmentForUser: mockCreateEnrollmentForUser,
+  createEnrollmentsForUsers: mockCreateEnrollmentsForUsers,
+}));
 
-import { listRoleAssignments, revokeRoleAssignment } from './enrollment';
+import { setRoleAssignmentTargets } from './enrollment';
+import { BILLING_GATE_ASSIGN_MESSAGE } from '@/lib/billing';
 
 const ORG = 'org-1';
 
@@ -62,129 +83,306 @@ beforeEach(() => {
   prismaMock.courseAssignment.update.mockResolvedValue({});
 });
 
-describe('listRoleAssignments', () => {
-  it('returns only rows that still carry role targets, with their enrolled count', async () => {
-    const rows = await listRoleAssignments();
-
-    // A revoked row keeps its settings but empties targetRoles, so this
-    // predicate is exactly "still auto-enrolling".
-    expect(prismaMock.courseAssignment.findMany.mock.calls[0][0].where).toEqual({
-      organizationId: ORG,
-      targetRoles: { isEmpty: false },
-    });
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({
-      courseTitle: 'HIPAA Basics',
+describe('setRoleAssignmentTargets', () => {
+  /**
+   * An already role-targeted, org-wide row. `current.length > 0` is required
+   * for a widen to be honoured at all (see the "never role-targeted" test
+   * below), so this is the default shape most tests build on.
+   */
+  function assignmentRowFor(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'ca-1',
+      courseId: 'course-1',
       targetRoles: ['nurse'],
-      enrolledCount: 12,
+      scheduleAt: null,
+      dueAt: null,
+      dueWindowDays: 30,
+      facilityScoped: false,
+      facilityIds: [],
+      course: { title: 'HIPAA Basics', reviewRequired: false },
+      ...overrides,
+    };
+  }
+
+  beforeEach(() => {
+    prismaMock.courseAssignment.findFirst.mockResolvedValue(assignmentRowFor());
+    prismaMock.organization.findUnique.mockResolvedValue({
+      name: 'Acme Corp',
+      subscription: { status: 'active', pausedAt: null },
+    });
+    prismaMock.organizationUser.findMany.mockResolvedValue([]);
+    mockCreateEnrollmentForUser.mockResolvedValue({
+      status: 'enrolled',
+      email: 'holder@example.com',
+      userId: 'ou-holder',
+      enrollmentId: 'enr-1',
     });
   });
 
-  it('counts enrolments in ONE grouped query, not one per assignment', async () => {
-    prismaMock.courseAssignment.findMany.mockResolvedValue([
-      assignmentRow,
-      { ...assignmentRow, id: 'ca-2', course: { title: 'Fire Safety' } },
-      { ...assignmentRow, id: 'ca-3', course: { title: 'Bloodborne' } },
-    ]);
+  // Item 1 — the single highest-value test in this PR. sweep.ts:276-290 still
+  // queries `targetRole: { not: null }`, so a desync here silently breaks the
+  // nightly reconciliation backstop.
+  it('keeps targetRole and targetRoles in sync after a WIDEN', async () => {
+    prismaMock.courseAssignment.findFirst.mockResolvedValue(
+      assignmentRowFor({ targetRoles: ['nurse'] }),
+    );
 
-    await listRoleAssignments();
+    const result = await setRoleAssignmentTargets('ca-1', ['nurse', 'hr']);
 
-    expect(prismaMock.enrollment.groupBy).toHaveBeenCalledTimes(1);
-    expect(prismaMock.enrollment.groupBy.mock.calls[0][0].where.assignmentId).toEqual({
-      in: ['ca-1', 'ca-2', 'ca-3'],
-    });
+    expect(result.success).toBe(true);
+    expect(prismaMock.courseAssignment.update).toHaveBeenCalledTimes(1);
+    const data = prismaMock.courseAssignment.update.mock.calls[0][0].data;
+    // The superseded singular column carries the FIRST role of the new list —
+    // never the pre-widen value and never left stale.
+    expect(data).toEqual({ targetRole: 'nurse', targetRoles: ['nurse', 'hr'] });
   });
 
-  it('reports zero rather than undefined for an assignment that has enrolled nobody', async () => {
-    prismaMock.enrollment.groupBy.mockResolvedValue([]);
+  it('keeps targetRole and targetRoles in sync after a NARROW', async () => {
+    prismaMock.courseAssignment.findFirst.mockResolvedValue(
+      assignmentRowFor({ targetRoles: ['nurse', 'hr'] }),
+    );
 
-    const rows = await listRoleAssignments();
+    const result = await setRoleAssignmentTargets('ca-1', ['nurse']);
 
-    expect(rows[0].enrolledCount).toBe(0);
+    expect(result.success).toBe(true);
+    const data = prismaMock.courseAssignment.update.mock.calls[0][0].data;
+    expect(data).toEqual({ targetRole: 'nurse', targetRoles: ['nurse'] });
   });
 
-  it('narrows the counts to a facility-bound caller’s own facilities', async () => {
-    mockAdminAuth.mockResolvedValue(session('supervisor'));
-    mockResolveDataFacilityIds.mockResolvedValue(['fac-a']);
+  it('clearing to an empty list sets targetRole to null, not to a stale role', async () => {
+    prismaMock.courseAssignment.findFirst.mockResolvedValue(
+      assignmentRowFor({ targetRoles: ['nurse', 'hr'] }),
+    );
 
-    await listRoleAssignments();
+    const result = await setRoleAssignmentTargets('ca-1', []);
 
-    // The rows are org-level configuration; "how many people did this enrol" is
-    // subject data and follows the caller's scope.
-    expect(
-      prismaMock.enrollment.groupBy.mock.calls[0][0].where.organizationUser.facilities,
-    ).toEqual({ some: { facilityId: { in: ['fac-a'] }, active: true } });
-  });
-
-  it('skips the count query entirely when there are no role assignments', async () => {
-    prismaMock.courseAssignment.findMany.mockResolvedValue([]);
-
-    await expect(listRoleAssignments()).resolves.toEqual([]);
-    expect(prismaMock.enrollment.groupBy).not.toHaveBeenCalled();
-  });
-
-  it.each(['finance', 'nurse', 'front_desk_admin'])(
-    'denies role=%s — no assignment.read',
-    async (role) => {
-      mockAdminAuth.mockResolvedValue(session(role));
-
-      await expect(listRoleAssignments()).rejects.toThrow('Unauthorized');
-      expect(prismaMock.courseAssignment.findMany).not.toHaveBeenCalled();
-    },
-  );
-});
-
-describe('revokeRoleAssignment', () => {
-  it('clears both role-target columns so neither the live hook nor the sweep matches', async () => {
-    const result = await revokeRoleAssignment('ca-1');
-
-    expect(result).toEqual({ success: true });
-    // targetRoles: [] stops `enrollUserForRoleTargets` ({ has: role });
-    // targetRole: null stops the nightly reconcile ({ not: null }).
+    expect(result).toEqual({ success: true, enrolled: 0 });
     expect(prismaMock.courseAssignment.update.mock.calls[0][0].data).toEqual({
       targetRole: null,
       targetRoles: [],
     });
   });
 
-  it('does not delete the row — its schedule settings are still resolved per course', async () => {
-    await revokeRoleAssignment('ca-1');
+  // Item 2 — permission split. Confirmed against the real registry: supervisor
+  // holds assignment.create but NOT assignment.delete
+  // (src/lib/rbac/permissions.ts).
+  describe('permission split — create gates the widen, delete gates the narrow', () => {
+    it('a supervisor (create, no delete) may widen', async () => {
+      mockAdminAuth.mockResolvedValue(session('supervisor'));
+      prismaMock.courseAssignment.findFirst.mockResolvedValue(
+        assignmentRowFor({ targetRoles: ['nurse'] }),
+      );
+      prismaMock.organizationUser.findMany.mockResolvedValue([
+        { id: 'ou-holder', user: { email: 'holder@example.com' } },
+      ]);
 
-    expect(prismaMock.courseAssignment).not.toHaveProperty('delete');
-    expect(prismaMock.courseAssignment.update).toHaveBeenCalledTimes(1);
+      const result = await setRoleAssignmentTargets('ca-1', ['nurse', 'hr']);
+
+      expect(result).toEqual({ success: true, enrolled: 1 });
+      expect(prismaMock.courseAssignment.update).toHaveBeenCalledTimes(1);
+    });
+
+    it('a supervisor is REFUSED a narrow, by return — never a throw', async () => {
+      mockAdminAuth.mockResolvedValue(session('supervisor'));
+      prismaMock.courseAssignment.findFirst.mockResolvedValue(
+        assignmentRowFor({ targetRoles: ['nurse', 'hr'] }),
+      );
+
+      const result = await setRoleAssignmentTargets('ca-1', ['nurse']);
+
+      expect(result.success).toBe(false);
+      expect(result.refusedReason).toBeTruthy();
+      expect(prismaMock.courseAssignment.update).not.toHaveBeenCalled();
+    });
+
+    it.each(['owner', 'admin', 'hr', 'clinical_director'])(
+      'role=%s holds both verbs — may widen AND narrow',
+      async (role) => {
+        mockAdminAuth.mockResolvedValue(session(role));
+        prismaMock.courseAssignment.findFirst.mockResolvedValue(
+          assignmentRowFor({ targetRoles: ['nurse'] }),
+        );
+
+        await expect(setRoleAssignmentTargets('ca-1', ['nurse', 'hr'])).resolves.toMatchObject({
+          success: true,
+        });
+        expect(prismaMock.courseAssignment.update).toHaveBeenCalledTimes(1);
+      },
+    );
   });
 
-  it('refuses an assignment belonging to another organisation', async () => {
-    prismaMock.courseAssignment.findFirst.mockResolvedValue(null);
+  // Item 3 — facility scope is inherited from the row, never re-derived from
+  // the calling session.
+  it("a widen enrols only holders within the ROW's recorded facility scope, without consulting resolveDataFacilityIds", async () => {
+    prismaMock.courseAssignment.findFirst.mockResolvedValue(
+      assignmentRowFor({
+        targetRoles: ['nurse'],
+        facilityScoped: true,
+        facilityIds: ['fac-a'],
+      }),
+    );
 
-    const result = await revokeRoleAssignment('ca-other-org');
+    await setRoleAssignmentTargets('ca-1', ['nurse', 'hr']);
+
+    expect(prismaMock.organizationUser.findMany.mock.calls[0][0].where).toEqual({
+      organizationId: ORG,
+      role: { in: ['hr'] },
+      active: true,
+      facilities: { some: { facilityId: { in: ['fac-a'] }, active: true } },
+    });
+    // The row's own recorded scope is the only input — the caller's session
+    // scope must never be re-resolved and substituted in its place.
+    expect(mockResolveDataFacilityIds).not.toHaveBeenCalled();
+  });
+
+  it('an org-wide row (facilityScoped: false) enrols with no facility predicate at all', async () => {
+    prismaMock.courseAssignment.findFirst.mockResolvedValue(
+      assignmentRowFor({ targetRoles: ['nurse'], facilityScoped: false, facilityIds: [] }),
+    );
+
+    await setRoleAssignmentTargets('ca-1', ['nurse', 'hr']);
+
+    expect(prismaMock.organizationUser.findMany.mock.calls[0][0].where).toEqual({
+      organizationId: ORG,
+      role: { in: ['hr'] },
+      active: true,
+    });
+  });
+
+  // Item 4 — a row with no recorded role-target scope must refuse a widen
+  // rather than inherit its org-wide default.
+  it('refuses a widen when the row has never been role-targeted', async () => {
+    prismaMock.courseAssignment.findFirst.mockResolvedValue(assignmentRowFor({ targetRoles: [] }));
+
+    const result = await setRoleAssignmentTargets('ca-1', ['nurse']);
 
     expect(result.success).toBe(false);
+    expect(result.refusedReason).toMatch(/assign this course to roles first/i);
     expect(prismaMock.courseAssignment.update).not.toHaveBeenCalled();
-    // Scoped lookup, so a foreign id is "not found" rather than "forbidden".
-    expect(prismaMock.courseAssignment.findFirst.mock.calls[0][0].where.organizationId).toBe(ORG);
+    expect(prismaMock.organizationUser.findMany).not.toHaveBeenCalled();
   });
 
-  // A supervisor may create role targets within their own scope but must not
-  // revoke one the organisation relies on — `assignment.delete`, not `.create`.
-  it.each(['supervisor', 'finance', 'nurse'])(
-    'denies role=%s — no assignment.delete',
-    async (role) => {
-      mockAdminAuth.mockResolvedValue(session(role));
+  // Item 5 — D6 soft revoke: removal clears the target only; every existing
+  // Enrollment is untouched. Mirrors the deleted revokeRoleAssignment tests
+  // (recovered via `git show HEAD`).
+  describe('D6 soft revoke', () => {
+    it('clears the removed role from targets and leaves enrollments untouched — no delete, no status change', async () => {
+      prismaMock.courseAssignment.findFirst.mockResolvedValue(
+        assignmentRowFor({ targetRoles: ['nurse', 'hr'] }),
+      );
 
-      const result = await revokeRoleAssignment('ca-1');
+      const result = await setRoleAssignmentTargets('ca-1', ['nurse']);
 
-      expect(result).toEqual({ success: false, error: 'Unauthorized' });
+      expect(result).toEqual({ success: true, enrolled: 0 });
+      // targetRoles no longer includes 'hr' stops enrollUserForRoleTargets
+      // ({ has: role }); targetRole staying non-null (or clearing to null when
+      // empty) stops the nightly reconcile ({ not: null }).
+      expect(prismaMock.courseAssignment.update.mock.calls[0][0].data).toEqual({
+        targetRole: 'nurse',
+        targetRoles: ['nurse'],
+      });
+    });
+
+    it('does not delete the row — only `update` is ever called', async () => {
+      prismaMock.courseAssignment.findFirst.mockResolvedValue(
+        assignmentRowFor({ targetRoles: ['nurse', 'hr'] }),
+      );
+
+      await setRoleAssignmentTargets('ca-1', ['nurse']);
+
+      expect(prismaMock.courseAssignment).not.toHaveProperty('delete');
+      expect(prismaMock.courseAssignment.update).toHaveBeenCalledTimes(1);
+      expect(prismaMock.organizationUser.findMany).not.toHaveBeenCalled();
+    });
+  });
+
+  // Item 6 — tenancy and no-op behaviour.
+  it('a cross-org assignmentId is "not found", never "forbidden"', async () => {
+    prismaMock.courseAssignment.findFirst.mockResolvedValue(null);
+
+    const result = await setRoleAssignmentTargets('ca-other-org', ['nurse']);
+
+    expect(result.success).toBe(false);
+    expect(result.refusedReason).toMatch(/not found/i);
+    expect(prismaMock.courseAssignment.findFirst.mock.calls[0][0].where).toEqual({
+      id: 'ca-other-org',
+      organizationId: ORG,
+    });
+    expect(prismaMock.courseAssignment.update).not.toHaveBeenCalled();
+  });
+
+  it('a no-op call (nothing added or removed) succeeds without writing anything', async () => {
+    prismaMock.courseAssignment.findFirst.mockResolvedValue(
+      assignmentRowFor({ targetRoles: ['nurse', 'hr'] }),
+    );
+
+    const result = await setRoleAssignmentTargets('ca-1', ['hr', 'nurse']);
+
+    expect(result).toEqual({ success: true, enrolled: 0 });
+    expect(prismaMock.courseAssignment.update).not.toHaveBeenCalled();
+  });
+
+  // Item 7 — the review and billing gates apply to the widen only.
+  describe('review and billing gates apply to the widen only', () => {
+    it('refuses a widen when the course is held for quality review', async () => {
+      prismaMock.courseAssignment.findFirst.mockResolvedValue(
+        assignmentRowFor({
+          targetRoles: ['nurse'],
+          course: { title: 'HIPAA Basics', reviewRequired: true },
+        }),
+      );
+
+      const result = await setRoleAssignmentTargets('ca-1', ['nurse', 'hr']);
+
+      expect(result.success).toBe(false);
+      expect(result.refusedReason).toMatch(/quality warnings/i);
       expect(prismaMock.courseAssignment.update).not.toHaveBeenCalled();
-    },
-  );
+    });
 
-  it.each(['owner', 'admin', 'hr', 'clinical_director'])(
-    'allows role=%s — holds assignment.delete',
-    async (role) => {
-      mockAdminAuth.mockResolvedValue(session(role));
+    it('refuses a widen when the organization lacks active billing', async () => {
+      prismaMock.courseAssignment.findFirst.mockResolvedValue(
+        assignmentRowFor({ targetRoles: ['nurse'] }),
+      );
+      prismaMock.organization.findUnique.mockResolvedValue({
+        name: 'Acme Corp',
+        subscription: { status: 'past_due', pausedAt: null },
+      });
 
-      await expect(revokeRoleAssignment('ca-1')).resolves.toEqual({ success: true });
-    },
-  );
+      const result = await setRoleAssignmentTargets('ca-1', ['nurse', 'hr']);
+
+      expect(result).toEqual({ success: false, refusedReason: BILLING_GATE_ASSIGN_MESSAGE });
+      expect(prismaMock.courseAssignment.update).not.toHaveBeenCalled();
+    });
+
+    it('a narrow still succeeds for a held-for-review course — switching auto-enrolment off must never be blocked', async () => {
+      prismaMock.courseAssignment.findFirst.mockResolvedValue(
+        assignmentRowFor({
+          targetRoles: ['nurse', 'hr'],
+          course: { title: 'HIPAA Basics', reviewRequired: true },
+        }),
+      );
+
+      const result = await setRoleAssignmentTargets('ca-1', ['nurse']);
+
+      expect(result).toEqual({ success: true, enrolled: 0 });
+      expect(prismaMock.courseAssignment.update).toHaveBeenCalledTimes(1);
+      // Neither gate's lookup should even run for a narrow-only call.
+      expect(prismaMock.organization.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('a narrow still succeeds for an org with lapsed billing', async () => {
+      prismaMock.courseAssignment.findFirst.mockResolvedValue(
+        assignmentRowFor({ targetRoles: ['nurse', 'hr'] }),
+      );
+      prismaMock.organization.findUnique.mockResolvedValue({
+        name: 'Acme Corp',
+        subscription: { status: 'canceled', pausedAt: null },
+      });
+
+      const result = await setRoleAssignmentTargets('ca-1', ['nurse']);
+
+      expect(result).toEqual({ success: true, enrolled: 0 });
+      expect(prismaMock.courseAssignment.update).toHaveBeenCalledTimes(1);
+    });
+  });
 });

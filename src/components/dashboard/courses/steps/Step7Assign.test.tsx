@@ -18,7 +18,7 @@ vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-import Step9AssignPublish, { isAssignSelectionValid } from './Step9AssignPublish';
+import Step7Assign, { isAssignSelectionValid } from './Step7Assign';
 import { getRoleDisplayName, groupRolesForSelect } from '@/lib/rbac/role-utils';
 import { CourseWizardData } from '@/types/course';
 import { WIZARD_FORM_DATA } from './wizardTestData';
@@ -43,7 +43,7 @@ const WORKER_ROLES = ROLE_GROUPS.find((g) => g.label === 'Workers / Learners')!.
 
 function renderStep(overrides: Partial<CourseWizardData> = {}) {
   const onChange = vi.fn();
-  render(<Step9AssignPublish data={{ ...WIZARD_FORM_DATA, ...overrides }} onChange={onChange} />);
+  render(<Step7Assign data={{ ...WIZARD_FORM_DATA, ...overrides }} onChange={onChange} />);
   return { onChange };
 }
 
@@ -77,7 +77,7 @@ describe('isAssignSelectionValid', () => {
   });
 });
 
-describe('Step9AssignPublish — assignment modes', () => {
+describe('Step7Assign — assignment modes', () => {
   it('renders the step heading and its two assignment tabs', () => {
     renderStep();
 
@@ -87,9 +87,7 @@ describe('Step9AssignPublish — assignment modes', () => {
   });
 
   it('shows the role picker in role mode and the email chip input in email mode', () => {
-    const { unmount } = render(
-      <Step9AssignPublish data={{ ...WIZARD_FORM_DATA }} onChange={vi.fn()} />,
-    );
+    const { unmount } = render(<Step7Assign data={{ ...WIZARD_FORM_DATA }} onChange={vi.fn()} />);
     expect(screen.getByRole('button', { name: 'Choose roles' })).toBeInTheDocument();
     expect(screen.queryByPlaceholderText('Add people, emails or names')).not.toBeInTheDocument();
     unmount();
@@ -109,7 +107,7 @@ describe('Step9AssignPublish — assignment modes', () => {
   });
 });
 
-describe('Step9AssignPublish — role selection', () => {
+describe('Step7Assign — role selection', () => {
   it('lists every assignable role under its group once the picker is opened', async () => {
     const user = userEvent.setup();
     renderStep();
@@ -187,7 +185,7 @@ describe('Step9AssignPublish — role selection', () => {
   });
 });
 
-describe('Step9AssignPublish — deadline, reminders and recurrence', () => {
+describe('Step7Assign — deadline, reminders and recurrence', () => {
   it('reveals the due date and time only while the deadline toggle is on', async () => {
     const user = userEvent.setup();
     const { onChange } = renderStep();
@@ -220,6 +218,33 @@ describe('Step9AssignPublish — deadline, reminders and recurrence', () => {
     await user.type(screen.getByLabelText('Reminder 1 days before deadline'), '0');
 
     expect(onChange).toHaveBeenCalledWith('reminders', [{ value: 70, unit: 'days' }]);
+  });
+
+  it('increases a reminder via its stepper button', async () => {
+    const user = userEvent.setup();
+    const { onChange } = renderStep({ reminders: [{ value: 7, unit: 'days' }] });
+
+    await user.click(screen.getByRole('button', { name: 'Increase reminder 1' }));
+
+    expect(onChange).toHaveBeenCalledWith('reminders', [{ value: 8, unit: 'days' }]);
+  });
+
+  it('decreases a reminder via its stepper button', async () => {
+    const user = userEvent.setup();
+    const { onChange } = renderStep({ reminders: [{ value: 7, unit: 'days' }] });
+
+    await user.click(screen.getByRole('button', { name: 'Decrease reminder 1' }));
+
+    expect(onChange).toHaveBeenCalledWith('reminders', [{ value: 6, unit: 'days' }]);
+  });
+
+  it('never steps a reminder below zero', async () => {
+    const user = userEvent.setup();
+    const { onChange } = renderStep({ reminders: [{ value: 0, unit: 'days' }] });
+
+    await user.click(screen.getByRole('button', { name: 'Decrease reminder 1' }));
+
+    expect(onChange).toHaveBeenCalledWith('reminders', [{ value: 0, unit: 'days' }]);
   });
 
   it('removes a reminder row', async () => {
@@ -285,7 +310,7 @@ describe('Step9AssignPublish — deadline, reminders and recurrence', () => {
   });
 });
 
-describe('Step9AssignPublish — individual email invites', () => {
+describe('Step7Assign — individual email invites', () => {
   it('adds a typed email as a chip', async () => {
     const user = userEvent.setup();
     const { onChange } = renderStep({ assignMode: 'email' });

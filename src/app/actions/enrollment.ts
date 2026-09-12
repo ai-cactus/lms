@@ -2,7 +2,7 @@
 
 import prisma from '@/lib/prisma';
 import { dbRoleToRoleKey, ALL_ROLES } from '@/lib/rbac/role-utils';
-import { can } from '@/lib/rbac/permissions';
+import { can, type RoleKey } from '@/lib/rbac/permissions';
 import { hasActiveBilling, BILLING_GATE_ASSIGN_MESSAGE } from '@/lib/billing';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
@@ -30,9 +30,11 @@ import { getSeatUsage } from '@/lib/seat-limits';
 import {
   defaultStageRows,
   reminderDaysToStageRows,
+  roleTargetColumns,
   upsertCourseAssignment,
   type StageRowInput,
 } from '@/lib/enrollment/assignment';
+import { assignmentFacilityScope } from '@/lib/enrollment/assignment-facility-scope';
 import { combineDateAndTime } from '@/lib/reminders/deadline';
 import { captureServer } from '@/lib/analytics/server';
 import { analyticsContextFrom } from '@/lib/analytics/identity';
@@ -67,13 +69,25 @@ export interface AssignmentSettingsInput {
  * page so re-opening it shows the live configuration (not factory defaults).
  */
 export interface CourseAssignmentSettings {
+  /** The row itself, so the role picker can write through to it (D5). */
+  assignmentId: string;
   scheduleAt: Date | null;
   dueAt: Date | null;
   dueWindowDays: number | null;
   renewalCycle: RenewalCycle;
   remindersEnabled: boolean;
-  /** Non-null when this assignment targets a whole role rather than individuals. */
+  /**
+   * Non-null when this assignment targets a whole role rather than individuals.
+   * Superseded by {@link targetRoles} — kept because the two columns are written
+   * together and readers still exist; prefer the list.
+   */
   targetRole: UserRole | null;
+  /** Every role this assignment targets — the authoritative list. */
+  targetRoles: UserRole[];
+  /** The assignment reaches only its recorded facilities when true. */
+  facilityScoped: boolean;
+  /** Enrollments this assignment has produced — named in the revoke confirm (D6). */
+  enrolledCount: number;
   stages: { stage: ReminderStage; offsetDays: number; enabled: boolean; channels: string[] }[];
 }
 
@@ -334,7 +348,7 @@ export async function enrollUsers(
     }
 
     // Every gate above has passed, so this course is going into service.
-    await publishCourseOnAssignment(course, session.user.id);
+    await publishCourseOnAssignment(course, session.user.id, session.user.organizationUserId);
 
     const stageRows = assignmentSettings?.stages?.length
       ? assignmentSettings.stages.map((s) => ({
@@ -567,13 +581,28 @@ export async function getCourseAssignmentSettings(
     return null;
   }
 
+  // Narrowed to the caller's facilities for the same reason listRoleAssignments
+  // narrows it: the row is org-level configuration, but "how many people did this
+  // enrol" is subject data.
+  const dataFacilityIds = await resolveDataFacilityIds(session);
+  const enrolledCount = await prisma.enrollment.count({
+    where: {
+      assignmentId: assignment.id,
+      organizationUser: { organizationId, ...staffFacilityWhere(dataFacilityIds) },
+    },
+  });
+
   return {
+    assignmentId: assignment.id,
     scheduleAt: assignment.scheduleAt,
     dueAt: assignment.dueAt,
     dueWindowDays: assignment.dueWindowDays,
     renewalCycle: assignment.renewalCycle,
     remindersEnabled: assignment.remindersEnabled,
     targetRole: assignment.targetRole,
+    targetRoles: assignment.targetRoles,
+    facilityScoped: assignment.facilityScoped,
+    enrolledCount,
     stages: assignment.reminderStages.map((s) => ({
       stage: s.stage,
       offsetDays: s.offsetDays,
@@ -734,7 +763,7 @@ async function assignCourseToRoleTargets(
 
   // Same rule as enrollUsers: a role assignment puts the course into service for
   // everyone who holds that role, now and later, so it is no longer a draft.
-  await publishCourseOnAssignment(course, session.user.id);
+  await publishCourseOnAssignment(course, session.user.id, session.user.organizationUserId);
 
   const { scheduleAt, dueAt, dueWindowDays } = options;
 
@@ -896,6 +925,14 @@ export interface RoleAssignmentSettingsInput {
   /** "Remind N days before the deadline" rows, in whole days. */
   reminderDaysBefore?: number[];
   renewalCycle?: RenewalCycle;
+  /** Date the course becomes available. The wizard has no such control; the assign page does. */
+  scheduleAt?: string | Date | null;
+  /**
+   * Explicit per-stage cadence, as the assign page's advanced reminder schedule
+   * produces it. Wins over {@link reminderDaysBefore}, which is the wizard's
+   * coarser vocabulary for the same ladder.
+   */
+  stages?: { stage: ReminderStage; offsetDays: number; enabled: boolean; channels?: string[] }[];
 }
 
 /**
@@ -933,15 +970,25 @@ export async function assignCourseToRoles(
     };
   }
 
+  const stageRows = assignmentSettings?.stages?.length
+    ? assignmentSettings.stages.map((s) => ({
+        stage: s.stage,
+        offsetDays: s.offsetDays,
+        enabled: s.enabled,
+        channels: s.channels ?? ['email', 'in_app'],
+      }))
+    : assignmentSettings?.reminderDaysBefore
+      ? reminderDaysToStageRows(assignmentSettings.reminderDaysBefore)
+      : defaultStageRows();
+
   const result = await assignCourseToRoleTargets(courseId, roles, {
-    scheduleAt: null,
+    scheduleAt:
+      assignmentSettings?.scheduleAt != null ? new Date(assignmentSettings.scheduleAt) : null,
     dueAt: combineDateAndTime(dueDate, assignmentSettings?.dueTime),
     dueWindowDays: assignmentSettings?.dueWindowDays ?? null,
     remindersEnabled: assignmentSettings?.remindersEnabled ?? true,
     renewalCycle: assignmentSettings?.renewalCycle ?? 'none',
-    stageRows: assignmentSettings?.reminderDaysBefore
-      ? reminderDaysToStageRows(assignmentSettings.reminderDaysBefore)
-      : defaultStageRows(),
+    stageRows,
   });
 
   return { ...result, targetRoles: [...new Set(roles)] };
@@ -1368,138 +1415,251 @@ export async function removeWorkerAssignment(
 
 // ── Role-target assignment management ────────────────────────────────────────
 
-export interface RoleAssignmentRow {
-  id: string;
-  courseId: string;
-  courseTitle: string;
-  targetRoles: UserRole[];
-  dueWindowDays: number | null;
-  /** The assignment reaches only its recorded facilities when true. */
-  facilityScoped: boolean;
-  /** Enrollments this assignment has produced, within the caller's own scope. */
-  enrolledCount: number;
-  createdAt: Date;
+/**
+ * Enrol the current holders of roles a {@link setRoleAssignmentTargets} widen has
+ * just added, mirroring the immediate enrolment `assignCourseToRoleTargets`
+ * performs — with one difference that is the whole point of the helper.
+ *
+ * The reach comes from the ASSIGNMENT ROW, never from the calling session. The
+ * row records the facility scope its author had; re-deriving it here would let
+ * an org-wide caller re-widen an assignment a facility-bound one had narrowed,
+ * simply by adding a role to it. {@link assignmentFacilityScope} is the only
+ * decoder of that pair, and the deadline settings likewise come from the row so a
+ * late-added role's holders join the cohort on the cohort's terms.
+ */
+async function enrollHoldersOfAddedRoles(
+  assignment: {
+    id: string;
+    courseId: string;
+    scheduleAt: Date | null;
+    dueAt: Date | null;
+    dueWindowDays: number | null;
+    facilityScoped: boolean;
+    facilityIds: string[];
+    course: { title: string };
+  },
+  addedRoles: UserRole[],
+  context: {
+    organizationId: string;
+    organizationName: string;
+    actorUserId: string;
+    actorRoleKey: RoleKey;
+  },
+): Promise<number> {
+  const holders = await prisma.organizationUser.findMany({
+    where: {
+      organizationId: context.organizationId,
+      role: { in: addedRoles },
+      active: true,
+      ...staffFacilityWhere(assignmentFacilityScope(assignment)),
+    },
+    select: { user: { select: { email: true } } },
+  });
+
+  if (holders.length === 0) return 0;
+
+  const enrollmentContext: CreateEnrollmentContext = {
+    courseId: assignment.courseId,
+    courseTitle: assignment.course.title,
+    organizationId: context.organizationId,
+    organizationName: context.organizationName,
+    facilityId: null,
+    assignmentId: assignment.id,
+    scheduleAt: assignment.scheduleAt,
+    assignmentDueAt: assignment.dueAt,
+    assignmentWindowDays: assignment.dueWindowDays,
+    enrolledByUserId: context.actorUserId,
+    // C8, as in assignCourseToRoleTargets: derived from the registry so any
+    // future role without invite.create inherits the existing-staff-only limit.
+    callerCanInvite: can(context.actorRoleKey, 'invite.create'),
+  };
+
+  const entries: StaffEntry[] = holders.map((holder) => ({ email: holder.user.email }));
+  // Same kill-switch as enrollUsers; role holders carry no seat rejection.
+  const outcomes =
+    process.env.ENROLLMENT_BATCH_ENABLED === 'true'
+      ? await createEnrollmentsForUsers(entries, enrollmentContext)
+      : await enrollSequentially(entries, enrollmentContext, new Set());
+
+  return outcomes.filter((outcome) => outcome.status === 'enrolled' || outcome.status === 'invited')
+    .length;
 }
 
 /**
- * The org's live role-target assignments — the rows that auto-enroll anyone who
- * GAINS a targeted role later (see `enrollUserForRoleTargets`, plus the nightly
- * reconcile pre-pass that backstops it).
+ * Set the roles an existing {@link CourseAssignment} targets — the single write
+ * behind the shared role picker (D5), replacing the all-or-nothing
+ * `revokeRoleAssignment` it supersedes.
  *
- * These were previously write-only: the course wizard created them and nothing
- * listed, edited or removed them, so a new staff account could pick up courses
- * with no way for an admin to see why or stop it. That is what this answers.
+ * Widening and narrowing are separately authorised, because they are separately
+ * consequential: adding a role enrols people and needs `assignment.create`,
+ * while removing one retracts a rule the org relies on and needs
+ * `assignment.delete`. A supervisor therefore holds exactly half of this — they
+ * may extend an assignment within their own scope and may not take one back.
  *
- * The counts are narrowed to the caller's facilities — the rows themselves are
- * org-level configuration, but "how many people did this enroll" is subject data.
+ * Removal is a SOFT revoke (D6), exactly as `revokeRoleAssignment` was: the role
+ * leaves the target list so no NEW staff auto-enrol, and existing enrollments are
+ * left completely untouched. Retracting the rule must not retract training people
+ * have already started.
  */
-export async function listRoleAssignments(): Promise<RoleAssignmentRow[]> {
+export async function setRoleAssignmentTargets(
+  assignmentId: string,
+  roles: UserRole[],
+): Promise<{ success: boolean; refusedReason?: string; enrolled?: number }> {
   const session = await adminAuth();
   const organizationId = session?.user?.organizationId;
   const roleKey = session?.user?.role ? dbRoleToRoleKey(session.user.role) : null;
 
   if (!session?.user?.id || !organizationId || !roleKey || !can(roleKey, 'assignment.read')) {
     logger.warn({
-      msg: '[assignment] Role-assignment list denied',
+      msg: '[assignment] Role-target update denied',
       userId: session?.user?.id,
       role: session?.user?.role,
     });
-    throw new Error('Unauthorized');
+    return { success: false, refusedReason: 'Unauthorized' };
   }
 
-  const assignments = await prisma.courseAssignment.findMany({
-    // `targetRoles` is the authoritative list; a revoked row keeps its settings
-    // but empties this, so `isEmpty: false` is exactly "still auto-enrolling".
-    where: { organizationId, targetRoles: { isEmpty: false } },
-    orderBy: { createdAt: 'desc' },
-    select: {
-      id: true,
-      courseId: true,
-      targetRoles: true,
-      dueWindowDays: true,
-      facilityScoped: true,
-      createdAt: true,
-      course: { select: { title: true } },
-    },
-  });
-
-  if (assignments.length === 0) return [];
-
-  const dataFacilityIds = await resolveDataFacilityIds(session);
-
-  // One grouped query rather than a count per row.
-  const counts = await prisma.enrollment.groupBy({
-    by: ['assignmentId'],
-    where: {
-      assignmentId: { in: assignments.map((assignment) => assignment.id) },
-      organizationUser: { organizationId, ...staffFacilityWhere(dataFacilityIds) },
-    },
-    _count: { _all: true },
-  });
-  const countByAssignment = new Map(counts.map((row) => [row.assignmentId, row._count._all]));
-
-  return assignments.map((assignment) => ({
-    id: assignment.id,
-    courseId: assignment.courseId,
-    courseTitle: assignment.course.title,
-    targetRoles: assignment.targetRoles,
-    dueWindowDays: assignment.dueWindowDays,
-    facilityScoped: assignment.facilityScoped,
-    enrolledCount: countByAssignment.get(assignment.id) ?? 0,
-    createdAt: assignment.createdAt,
-  }));
-}
-
-/**
- * Stop a role-target assignment from reaching FUTURE role holders.
- *
- * Clears the role-target columns rather than deleting the row: both the live
- * hook (`targetRoles: { has: role }`) and the nightly reconcile pre-pass
- * (`targetRole: { not: null }`) stop matching, while the row survives to keep
- * carrying the schedule/deadline settings that `enrollInviteCourses` resolves
- * per course. Existing enrollments are deliberately left alone — revoking the
- * rule must not retract training people have already started.
- */
-export async function revokeRoleAssignment(
-  assignmentId: string,
-): Promise<{ success: boolean; error?: string }> {
-  const session = await adminAuth();
-  const organizationId = session?.user?.organizationId;
-  const roleKey = session?.user?.role ? dbRoleToRoleKey(session.user.role) : null;
-
-  // `assignment.delete`, not `.create`: a supervisor may target roles within
-  // their own scope but may not revoke an assignment the org relies on.
-  if (!session?.user?.id || !organizationId || !roleKey || !can(roleKey, 'assignment.delete')) {
-    logger.warn({
-      msg: '[assignment] Role-assignment revoke denied',
-      userId: session?.user?.id,
-      role: session?.user?.role,
-    });
-    return { success: false, error: 'Unauthorized' };
+  const targetRoles = [...new Set(roles)];
+  if (targetRoles.some((role) => !(ALL_ROLES as readonly string[]).includes(role))) {
+    return { success: false, refusedReason: 'That role is not assignable.' };
   }
 
   // Tenancy: scoping the lookup means another org's id is simply not found.
   const assignment = await prisma.courseAssignment.findFirst({
     where: { id: assignmentId, organizationId },
-    select: { id: true, courseId: true },
+    select: {
+      id: true,
+      courseId: true,
+      targetRoles: true,
+      scheduleAt: true,
+      dueAt: true,
+      dueWindowDays: true,
+      facilityScoped: true,
+      facilityIds: true,
+      course: { select: { title: true, reviewRequired: true } },
+    },
   });
   if (!assignment) {
-    return { success: false, error: 'Assignment not found.' };
+    return { success: false, refusedReason: 'Assignment not found.' };
   }
 
+  const current = assignment.targetRoles;
+  const added = targetRoles.filter((role) => !current.includes(role));
+  const removed = current.filter((role) => !targetRoles.includes(role));
+
+  // A row that has never been role-targeted has no recorded role-target reach —
+  // an individual assignment leaves `facilityScoped` at its org-wide default. It
+  // therefore has no scope to inherit, and widening it here would hand a
+  // facility-bound caller the whole organisation. Establishing the targets goes
+  // through assignCourseToRoles, which records the CALLER's own scope.
+  if (added.length > 0 && current.length === 0) {
+    logger.warn({
+      msg: '[assignment] Role-target widen refused — assignment carries no role-target scope',
+      assignmentId: assignment.id,
+      courseId: assignment.courseId,
+      organizationId,
+      userId: session.user.id,
+    });
+    return {
+      success: false,
+      refusedReason: 'Assign this course to roles first, then edit which roles it targets.',
+    };
+  }
+
+  if (added.length === 0 && removed.length === 0) {
+    return { success: true, enrolled: 0 };
+  }
+
+  if (added.length > 0 && !can(roleKey, 'assignment.create')) {
+    logger.warn({
+      msg: '[assignment] Role-target widen denied — missing assignment.create',
+      assignmentId: assignment.id,
+      userId: session.user.id,
+      role: session.user.role,
+    });
+    return {
+      success: false,
+      refusedReason: 'You do not have permission to add roles to this assignment.',
+    };
+  }
+
+  if (removed.length > 0 && !can(roleKey, 'assignment.delete')) {
+    logger.warn({
+      msg: '[assignment] Role-target narrow denied — missing assignment.delete',
+      assignmentId: assignment.id,
+      userId: session.user.id,
+      role: session.user.role,
+    });
+    return {
+      success: false,
+      refusedReason: 'You do not have permission to remove roles from this assignment.',
+    };
+  }
+
+  // The review and billing gates apply to the WIDEN only. Adding a role enrols
+  // staff, so it is an assignment and carries the same gates as every other one;
+  // removing a role enrols nobody, and an org whose subscription has lapsed must
+  // still be able to switch auto-enrolment off.
+  let organizationName = 'Your Organization';
+  if (added.length > 0) {
+    if (assignment.course.reviewRequired) {
+      logger.warn({
+        msg: '[assignment] Role-target widen blocked — course held for quality review',
+        assignmentId: assignment.id,
+        courseId: assignment.courseId,
+        organizationId,
+        userId: session.user.id,
+      });
+      return { success: false, refusedReason: REVIEW_GATE_ASSIGN_MESSAGE };
+    }
+
+    const organization = await prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { name: true, subscription: { select: { status: true, pausedAt: true } } },
+    });
+    if (!hasActiveBilling(organization?.subscription)) {
+      logger.warn({
+        msg: '[assignment] Role-target widen blocked — organization lacks active billing',
+        assignmentId: assignment.id,
+        organizationId,
+        userId: session.user.id,
+      });
+      return { success: false, refusedReason: BILLING_GATE_ASSIGN_MESSAGE };
+    }
+    organizationName = organization?.name || organizationName;
+  }
+
+  // `roleTargetColumns` writes the authoritative `targetRoles` AND the superseded
+  // singular `targetRole` in one statement. They must never diverge: the nightly
+  // reconcile pre-pass still selects on `targetRole: { not: null }`, so a row
+  // left with a stale singular value keeps enrolling for a role that is no longer
+  // targeted, and one left null drops out of the backstop entirely.
   await prisma.courseAssignment.update({
     where: { id: assignment.id },
-    data: { targetRole: null, targetRoles: [] },
+    data: roleTargetColumns(targetRoles),
   });
 
+  const enrolled =
+    added.length > 0
+      ? await enrollHoldersOfAddedRoles(assignment, added, {
+          organizationId,
+          organizationName,
+          actorUserId: session.user.id,
+          actorRoleKey: roleKey,
+        })
+      : 0;
+
   logger.info({
-    msg: '[assignment] Role targets revoked — future role holders will not be auto-enrolled',
+    msg: '[assignment] Role targets updated',
     assignmentId: assignment.id,
     courseId: assignment.courseId,
     organizationId,
     userId: session.user.id,
+    added,
+    removed,
+    enrolled,
   });
 
+  revalidatePath(`/dashboard/training/courses/${assignment.courseId}`);
   revalidatePath('/dashboard/courses');
-  return { success: true };
+  return { success: true, enrolled };
 }

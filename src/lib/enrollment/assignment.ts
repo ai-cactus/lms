@@ -122,8 +122,13 @@ export interface UpsertCourseAssignmentParams {
  * single-value `targetRole` keeps carrying the FIRST role for the readers that
  * still use it (the nightly reminder sweep's role-target reconcile pre-pass and
  * the assign page's mode detection).
+ *
+ * Exported because {@link setRoleAssignmentTargets} writes the same pair outside
+ * this upsert: a desync would leave the sweep's `targetRole: { not: null }`
+ * pre-pass matching rows whose authoritative list is empty (or missing rows whose
+ * list is not), so the two columns must only ever be produced from one place.
  */
-function roleTargetColumns(targetRoles: UserRole[] | null | undefined) {
+export function roleTargetColumns(targetRoles: UserRole[] | null | undefined) {
   if (targetRoles === undefined) return {};
   if (targetRoles === null || targetRoles.length === 0) {
     return { targetRole: null, targetRoles: [] };

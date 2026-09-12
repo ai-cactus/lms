@@ -1,7 +1,28 @@
-import { isAdminRole } from '@/lib/rbac/role-utils';
+import { dbRoleToRoleKey, isAdminRole } from '@/lib/rbac/role-utils';
+import { can } from '@/lib/rbac/permissions';
 import prisma from '@/lib/prisma';
 import { getPortalSessions } from '@/lib/auth/portal-sessions';
 import { logger } from '@/lib/logger';
+import type { Role } from '@/types/next-auth';
+
+/**
+ * May this role open a course it holds no enrollment in — the manager-side
+ * read-only review of an org (or global-catalog) course?
+ *
+ * Keyed on the permission registry rather than the role CATEGORY alone.
+ * `isAdminRole` still counts `finance`, which lost `course.read` on 2026-08-25
+ * (team QA #9): finance can no longer reach a course through any UI surface,
+ * yet could still open `/learn/{id}` by typing the URL. The category check
+ * STAYS in the conjunction because `course.read` is not admin-only — every
+ * worker role holds it too (it is what lets a learner open their OWN course),
+ * so dropping it would let any worker open any course with no enrollment.
+ * Together the two admit exactly owner, admin, supervisor, hr and
+ * clinicalDirector.
+ */
+function mayReviewWithoutEnrollment(role: Role | null | undefined): boolean {
+  if (!role || !isAdminRole(role)) return false;
+  return can(dbRoleToRoleKey(role), 'course.read');
+}
 
 const QUIZ_SELECT = {
   id: true,
@@ -282,7 +303,10 @@ export async function getLearnPayload(courseId: string): Promise<LearnPayload | 
       // (read-only review before assigning).
       const isGlobalCatalog = course.isGlobal && course.status === 'published';
 
-      if (adminEnroll || (isAdminRole(adminSession.user.role) && (isSameOrg || isGlobalCatalog))) {
+      if (
+        adminEnroll ||
+        (mayReviewWithoutEnrollment(adminSession.user.role) && (isSameOrg || isGlobalCatalog))
+      ) {
         activeOrganizationUserId = adminOrganizationUserId ?? activeOrganizationUserId;
         activeRole = adminSession.user.role;
         enrollment = adminEnroll;
@@ -306,8 +330,11 @@ export async function getLearnPayload(courseId: string): Promise<LearnPayload | 
     //   editor).
     //
     // ACCESS still keys on the role: an admin may open a same-org or global
-    // course with no enrollment, which is what the fallback above grants.
-    const mayOpenWithoutEnrollment = isAdminRole(activeRole);
+    // course with no enrollment, which is what the fallback above grants. The
+    // same permission-aware predicate is used here, or a finance member who
+    // entered Learn mode (whose worker session carries their real role) would
+    // walk past the fallback's new check.
+    const mayOpenWithoutEnrollment = mayReviewWithoutEnrollment(activeRole);
 
     if (!enrollment && !mayOpenWithoutEnrollment) {
       return { error: 'Not enrolled in this course', status: 403 };

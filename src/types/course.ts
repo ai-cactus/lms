@@ -13,8 +13,8 @@ export type CourseWithStats = {
   completionRate: number;
   /**
    * Document the course was generated from, when the caller loaded that lineage.
-   * Null for forked courses (duplicates and adopted prebuilts carry no
-   * `CourseVersion` of their own), and absent from views that do not query it.
+   * Null for a course that carries no `CourseVersion` of its own, and absent
+   * from views that do not query it.
    */
   sourceDocumentId?: string | null;
   /**
@@ -30,9 +30,8 @@ export type CourseWithStats = {
    * `isGlobalCatalog` is not the inverse: it only marks catalogue rows the org
    * has NOT adopted. An ADOPTED global course arrives through the org's own
    * list without that flag, yet is still authored by another tenant — so any
-   * action that requires org authorship (duplicate, delete) must key on this,
-   * not on `isGlobalCatalog`. Offering Duplicate on an adopted course is what
-   * made it 500 on staging.
+   * action that requires org authorship (delete) must key on this, not on
+   * `isGlobalCatalog`.
    */
   isOrgAuthored?: boolean;
 };
@@ -48,10 +47,15 @@ export interface CourseWizardModuleDocument {
   mimeType: string;
 }
 
+/**
+ * The wizard's source material. A course is created from exactly one document
+ * (D1), so `formData.modules` holds 0 or 1 of these — it stays an array because
+ * the generation fan-out, and every course generated before D1, is per-module.
+ *
+ * Title, objective and deadline used to live here, back when the admin authored
+ * a module around each upload. They now come from the course itself.
+ */
 export interface CourseWizardModule {
-  title: string;
-  objective: string;
-  completionDeadlineDays: number | null;
   documentId: string | null;
   fileName?: string;
   fileSize?: number;
@@ -244,10 +248,27 @@ export const courseDetailSelect = {
       certificate: { select: { id: true, issuedAt: true } },
     },
   },
+  /**
+   * The authoring membership. `organizationId` is the tenancy check every
+   * course-detail read runs; `role` is there for the hero's D10 fallback, which
+   * names the creator (with their role) whenever no reviewer was recorded.
+   */
   creator: {
     select: {
       userId: true,
       organizationId: true,
+      role: true,
+      user: { select: { email: true, fullName: true } },
+    },
+  },
+  /**
+   * Who signed off the publish (D8). Null for a course published before the
+   * reviewer was recorded, and for a draft still held by the quality gate — so
+   * the detail hero's "Approved by" line must tolerate its absence.
+   */
+  approvedBy: {
+    select: {
+      role: true,
       user: { select: { email: true, fullName: true } },
     },
   },

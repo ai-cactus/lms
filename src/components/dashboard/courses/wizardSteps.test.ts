@@ -10,6 +10,7 @@ import { describe, it, expect } from 'vitest';
 import {
   TOTAL_STEPS,
   WIZARD_STEPS,
+  displayStepNumber,
   getWizardStep,
   stepIndexForKey,
   stepTitle,
@@ -20,7 +21,7 @@ describe('WIZARD_STEPS', () => {
   it('runs the seven steps in creation order', () => {
     expect(WIZARD_STEPS.map((step) => step.key)).toEqual([
       'category',
-      'modules',
+      'upload',
       'details',
       'quiz',
       'generate',
@@ -110,5 +111,31 @@ describe('stepIndexForKey — draft restore', () => {
 describe('stepTitle', () => {
   it('names the step a validation message points the admin back at', () => {
     expect(stepTitle('generate')).toBe('Course Generation');
+  });
+});
+
+describe('displayStepNumber', () => {
+  it('shows the generation step as the quiz step number while it borrows it', () => {
+    expect(displayStepNumber('generate', true)).toBe(4);
+  });
+
+  it('shows the generation step at its own ladder position once it stops borrowing', () => {
+    expect(displayStepNumber('generate', false)).toBe(5);
+  });
+
+  it('never lets the borrow flag affect any other step', () => {
+    const nonGenerateKeys = WIZARD_STEPS.map((step) => step.key).filter(
+      (key) => key !== 'generate',
+    );
+
+    nonGenerateKeys.forEach((key) => {
+      const ladderPosition = stepIndexForKey(key) + 1;
+      expect(displayStepNumber(key, true)).toBe(ladderPosition);
+      expect(displayStepNumber(key, false)).toBe(ladderPosition);
+    });
+  });
+
+  it('places the single-document upload step at 2', () => {
+    expect(displayStepNumber('upload', false)).toBe(2);
   });
 });

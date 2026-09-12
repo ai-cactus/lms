@@ -16,12 +16,18 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const mockToPng = vi.fn();
 const mockSave = vi.fn();
 const mockAddImage = vi.fn();
+const mockAddPage = vi.fn();
 const mockJsPDFCtor = vi.fn();
 
 vi.mock('html-to-image', () => ({ toPng: mockToPng }));
 vi.mock('jspdf', () => ({ jsPDF: mockJsPDFCtor }));
 
-import { exportCertificatePdf, generateQrDataUrl } from './certificate-export';
+import {
+  exportCertificatePdf,
+  exportCertificatesPdf,
+  formatCertificateIssueDate,
+  generateQrDataUrl,
+} from './certificate-export';
 
 const DATA_URL = 'data:image/png;base64,xyz';
 
@@ -31,10 +37,12 @@ beforeEach(() => {
   mockJsPDFCtor.mockImplementation(function (this: {
     internal: unknown;
     addImage: typeof mockAddImage;
+    addPage: typeof mockAddPage;
     save: typeof mockSave;
   }) {
     this.internal = { pageSize: { getWidth: () => 297, getHeight: () => 210 } };
     this.addImage = mockAddImage;
+    this.addPage = mockAddPage;
     this.save = mockSave;
   });
 });
@@ -129,5 +137,83 @@ describe('generateQrDataUrl', () => {
     const dataUrl = await generateQrDataUrl('https://example.com/verify-certificate/abc123');
 
     expect(dataUrl).toMatch(/^data:image\/png;base64,/);
+  });
+});
+
+/**
+ * "Export All" on the learner's certificates page used to download a CSV table
+ * of certificate ids. It now produces one multi-page PDF carrying the designed
+ * certificate, so these pin the contract the CSV never had: every certificate
+ * gets a page, page 1 is not the blank page jsPDF opens with, and a failure
+ * mid-way never saves a short file.
+ */
+describe('exportCertificatesPdf — multi-page bulk export', () => {
+  it('draws one page per certificate without leaving jsPDF’s opening page blank', async () => {
+    const nodes = [makeCertNode(), makeCertNode(), makeCertNode()];
+
+    await exportCertificatesPdf(nodes, 'certificates');
+
+    expect(mockToPng).toHaveBeenCalledTimes(3);
+    expect(mockAddImage).toHaveBeenCalledTimes(3);
+    // Three certificates, but only two added pages — the first fills the page
+    // the document already opened with.
+    expect(mockAddPage).toHaveBeenCalledTimes(2);
+    expect(mockAddPage).toHaveBeenCalledWith('a4', 'landscape');
+    expect(mockJsPDFCtor).toHaveBeenCalledTimes(1);
+    expect(mockSave).toHaveBeenCalledWith('certificates.pdf');
+  });
+
+  it('rasterises the nodes one at a time, in the order given', async () => {
+    const nodes = [makeCertNode(), makeCertNode(), makeCertNode()];
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const captured: HTMLElement[] = [];
+    mockToPng.mockImplementation(async (node: HTMLElement) => {
+      captured.push(node);
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await Promise.resolve();
+      inFlight -= 1;
+      return DATA_URL;
+    });
+
+    await exportCertificatesPdf(nodes, 'certificates');
+
+    expect(maxInFlight).toBe(1);
+    expect(captured).toEqual(nodes);
+  });
+
+  it('refuses an empty selection rather than downloading a blank PDF', async () => {
+    await expect(exportCertificatesPdf([], 'certificates')).rejects.toThrow(
+      'No certificates to export',
+    );
+
+    expect(mockJsPDFCtor).not.toHaveBeenCalled();
+    expect(mockSave).not.toHaveBeenCalled();
+  });
+
+  it('propagates a mid-list capture failure instead of saving a short PDF', async () => {
+    mockToPng.mockResolvedValueOnce(DATA_URL).mockRejectedValueOnce(new Error('capture failed'));
+
+    await expect(
+      exportCertificatesPdf([makeCertNode(), makeCertNode(), makeCertNode()], 'certificates'),
+    ).rejects.toThrow('capture failed');
+
+    expect(mockSave).not.toHaveBeenCalled();
+  });
+
+  it('sanitizes the filename the same way the single export does', async () => {
+    await exportCertificatesPdf([makeCertNode()], 'My Certificates: 2026!');
+
+    expect(mockSave).toHaveBeenCalledWith('My-Certificates-2026.pdf');
+  });
+});
+
+describe('formatCertificateIssueDate', () => {
+  // Shared by the preview modal and every exported page so the same
+  // certificate cannot show two different dates.
+  it('formats the issue date exactly as the certificate artwork shows it', () => {
+    expect(formatCertificateIssueDate('2026-01-15T12:00:00Z')).toBe('15 Jan 2026');
+    expect(formatCertificateIssueDate(new Date('2026-10-02T00:00:00Z'))).toBe('02 Oct 2026');
   });
 });

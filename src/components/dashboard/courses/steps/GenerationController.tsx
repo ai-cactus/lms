@@ -24,7 +24,10 @@ import { formatReviewDate } from '@/components/dashboard/courses/review/reviewCo
 import { Button } from '@/components/ui/button';
 import { getCategories } from '@/app/actions/categories';
 import { logger } from '@/lib/logger';
-import { Check, Circle, Loader2, TriangleAlert } from 'lucide-react';
+import { Check, Circle, Loader2 } from 'lucide-react';
+
+import WizardToast from './WizardToast';
+import { wizardSubtitleClass, wizardTitleClass } from './wizardFormClasses';
 
 import {
   CourseWizardData,
@@ -333,7 +336,7 @@ function shuffleArray<T>(arr: T[]): T[] {
 }
 
 /**
- * Adapts v4.6 quiz questions into the format expected by Step8QuizReview
+ * Adapts v4.6 quiz questions into the format expected by Step6QuizReview
  * and createFullCourse: { question, options: string[], answer: number, ... }
  *
  * Options are SHUFFLED so the correct answer is randomly distributed across
@@ -372,7 +375,7 @@ const adaptQuizForRenderingV46 = (
     });
 
     return {
-      // Legacy-compatible fields expected by Step8QuizReview
+      // Legacy-compatible fields expected by Step6QuizReview
       question: q.question,
       options: shuffled.map((o) => o.text),
       answer: newCorrectIdx >= 0 ? newCorrectIdx : 0,
@@ -398,6 +401,22 @@ const adaptQuizForRenderingV46 = (
   });
 };
 
+/**
+ * The judge's coverage note, but only when it reports a shortfall — the pipeline
+ * writes the field on every run, including the runs that produced everything asked for.
+ */
+function readCoverageShortfall(content: GeneratedCourse | null): string | null {
+  const coverageNote = (content?.rawQuizJson as { meta?: { coverageNote?: string } })?.meta
+    ?.coverageNote;
+  if (!coverageNote) return null;
+
+  const noteLower = coverageNote.toLowerCase();
+  const hasShortfall =
+    !noteLower.includes('no gaps') && !noteLower.includes('all requested questions');
+
+  return hasShortfall ? coverageNote : null;
+}
+
 export default function GenerationController({
   data,
   initialContent,
@@ -420,6 +439,7 @@ export default function GenerationController({
   const [categoryName, setCategoryName] = useState('');
   // Nothing is persisted yet, so "Last update" is the moment the review opened.
   const [lastUpdatedLabel] = useState(() => formatReviewDate(new Date()));
+  const [areQualityNotesDismissed, setAreQualityNotesDismissed] = useState(false);
 
   const hasInitialContent = !!initialContent;
   const wizardModules = data.modules;
@@ -465,7 +485,11 @@ export default function GenerationController({
 
       for (const { moduleIndex, result } of results) {
         const wizardModule = data.modules[moduleIndex];
-        const moduleTitle = wizardModule?.title || `Module ${moduleIndex + 1}`;
+        // One document, one module (D1): the module is the course, so it is
+        // named and described by the course-level fields the admin filled in on
+        // the details step. The index fallback only fires for a course with no
+        // title yet, which the details step will not let through.
+        const moduleTitle = data.title || `Module ${moduleIndex + 1}`;
 
         const moduleLessons = adaptModulesForRenderingV46(
           result.articleMeta,
@@ -492,8 +516,10 @@ export default function GenerationController({
         courseModules.push({
           moduleIndex,
           title: moduleTitle,
-          objective: wizardModule?.objective || null,
-          completionDeadlineDays: wizardModule?.completionDeadlineDays ?? null,
+          objective: data.objectives?.filter(Boolean).join('; ') || null,
+          // A single-module course has no per-module deadline of its own; the
+          // whole-course deadline lives on the course.
+          completionDeadlineDays: null,
           documentId: wizardModule?.documentId ?? null,
           lessons: moduleLessons,
           quiz: moduleQuiz,
@@ -583,15 +609,15 @@ export default function GenerationController({
           if (!wizardModule?.documentId) {
             missingDocument.push({
               moduleIndex,
-              error: `“${wizardModule?.title || `Module ${moduleIndex + 1}`}” has no training document.`,
+              error: `“${data.title || `Module ${moduleIndex + 1}`}” has no training document.`,
             });
             continue;
           }
           requests.push({
             moduleIndex,
             documentId: wizardModule.documentId,
-            title: wizardModule.title,
-            objective: wizardModule.objective,
+            title: data.title,
+            objective: data.objectives?.filter(Boolean).join('; ') || undefined,
             quizQuestionCount: shares[moduleIndex],
           });
         }
@@ -657,10 +683,10 @@ export default function GenerationController({
     return (
       <div className="flex w-full flex-1 flex-col items-center justify-center gap-6 px-5 py-24 text-center">
         <div className="flex flex-col gap-3">
-          <h2 className="text-[26px] font-bold leading-[1.33] tracking-[-0.02em] text-[#383838] md:text-[36px]">
+          <h2 className={wizardTitleClass}>
             {allFailed ? 'Generation Failed' : 'Some modules could not be generated'}
           </h2>
-          <p className="text-[15px] font-medium leading-[1.44] text-[#424242] md:text-base">
+          <p className={wizardSubtitleClass}>
             {error || failedModules[0]?.error || GENERATION_ERROR_MESSAGE}
           </p>
         </div>
@@ -670,10 +696,10 @@ export default function GenerationController({
             {failedModules.map((job) => (
               <li
                 key={job.moduleIndex}
-                className="flex items-center justify-between gap-4 rounded-[10px] border-[1.5px] border-[#e5e7ea] px-4 py-3"
+                className="flex items-center justify-between gap-4 rounded-[10px] border-[1.5px] border-border px-4 py-3"
               >
-                <span className="text-[15px] font-medium text-[#383838]">
-                  {wizardModules[job.moduleIndex]?.title || `Module ${job.moduleIndex + 1}`}
+                <span className="text-[15px] font-medium text-foreground">
+                  {data.title || `Module ${job.moduleIndex + 1}`}
                 </span>
                 <Button variant="outline" size="sm" onClick={() => retryModule(job.moduleIndex)}>
                   Retry module
@@ -686,7 +712,7 @@ export default function GenerationController({
         <Button
           variant="default"
           onClick={retryAll}
-          className="h-[52px] rounded-[12px] px-10 text-base font-semibold md:h-[56px] md:text-[18px]"
+          className="h-[52px] rounded-md px-10 text-base font-semibold md:h-[56px] md:text-[18px]"
         >
           Try Again
         </Button>
@@ -698,10 +724,8 @@ export default function GenerationController({
     return (
       <div className="mx-auto flex w-full max-w-[1120px] flex-1 flex-col items-center gap-10 px-5 pt-24 pb-[60px] text-center md:pt-[170px]">
         <div className="flex flex-col items-center gap-3">
-          <h2 className="text-[26px] font-bold leading-[1.33] tracking-[-0.02em] text-[#383838] md:text-[36px]">
-            Your course is being created…
-          </h2>
-          <p className="max-w-[640px] text-[15px] font-medium leading-[1.44] text-[#424242] md:text-base">
+          <h2 className={wizardTitleClass}>Your course is being created…</h2>
+          <p className={`${wizardSubtitleClass} max-w-[640px]`}>
             We&apos;re reviewing your document to create the course. You&apos;ll receive an email
             notification once the course is complete and ready for review.
           </p>
@@ -709,7 +733,7 @@ export default function GenerationController({
 
         <ul
           aria-live="polite"
-          className="flex w-full max-w-[460px] flex-col gap-[18px] rounded-[12px] border-[1.5px] border-[#e5e7ea] px-8 py-8 text-left"
+          className="flex w-full max-w-[460px] flex-col gap-[18px] rounded-lg border border-border px-8 py-8 text-left"
         >
           {GENERATION_STAGES.map((stage, index) => {
             const isDone = index < completedStages;
@@ -718,18 +742,18 @@ export default function GenerationController({
             return (
               <li key={stage} className="flex items-center gap-3">
                 {isDone ? (
-                  <Check className="size-[18px] shrink-0 text-[#666d80]" aria-hidden="true" />
+                  <Check className="size-[18px] shrink-0 text-text-secondary" aria-hidden="true" />
                 ) : isCurrent ? (
                   <Loader2
-                    className="size-[18px] shrink-0 animate-spin text-[#666d80]"
+                    className="size-[18px] shrink-0 animate-spin text-text-secondary"
                     aria-hidden="true"
                   />
                 ) : (
-                  <Circle className="size-[18px] shrink-0 text-[#d2d5db]" aria-hidden="true" />
+                  <Circle className="size-[18px] shrink-0 text-text-tertiary" aria-hidden="true" />
                 )}
                 <span
                   className={`text-[15px] font-medium leading-[1.44] md:text-base ${
-                    isDone || isCurrent ? 'text-[#424242]' : 'text-[#9ca3af]'
+                    isDone || isCurrent ? 'text-text-secondary' : 'text-text-tertiary'
                   }`}
                 >
                   {stage}
@@ -742,9 +766,9 @@ export default function GenerationController({
         <Button
           variant="default"
           onClick={handleGotoDashboard}
-          className="h-[52px] w-full max-w-[300px] rounded-[12px] px-10 text-base font-semibold md:h-[56px] md:text-[18px]"
+          className="h-[52px] w-full max-w-[300px] rounded-md px-10 text-base font-semibold md:h-[56px] md:text-[18px]"
         >
-          Goto Dashboard
+          Go to Dashboard
         </Button>
       </div>
     );
@@ -754,8 +778,10 @@ export default function GenerationController({
   const currentWizardModule =
     currentModule?.moduleIndex === undefined ? undefined : wizardModules[currentModule.moduleIndex];
 
+  const shortfallNote = readCoverageShortfall(generatedContent);
+
   return (
-    <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6 px-5 pt-10">
+    <div className="mx-auto flex w-full max-w-[1240px] flex-col gap-6 px-5 pt-10 md:pt-[90px]">
       {viewMode === 'slides' ? (
         <WizardReviewSlides
           lessons={editedModules}
@@ -782,42 +808,24 @@ export default function GenerationController({
         />
       )}
 
-      {(() => {
-        const coverageNote = (generatedContent?.rawQuizJson as { meta?: { coverageNote?: string } })
-          ?.meta?.coverageNote;
-        if (!coverageNote) return null;
-
-        const noteLower = coverageNote.toLowerCase();
-        const hasShortfall =
-          !noteLower.includes('no gaps') && !noteLower.includes('all requested questions');
-
-        if (!hasShortfall) return null;
-
-        return (
-          <div className="flex flex-col overflow-hidden rounded-md border border-[#fcd34d]">
-            <div className="bg-[#fcd34d] text-black font-semibold px-3.5 py-[0.4rem] text-xs tracking-[0.04em] uppercase">
-              CONTENT SHORTFALL
-            </div>
-            <div className="flex items-start gap-2.5 bg-[#fef2f2] px-3.5 py-3 text-black text-[0.8125rem] leading-[1.5]">
-              <TriangleAlert
-                className="shrink-0 mt-[0.1rem] text-[#dc2626]"
-                width="16"
-                height="16"
-                strokeWidth={2.5}
-              />
-              <div className="m-0 [&_strong]:text-[#dc2626] [&_strong]:font-semibold">
-                <strong>Less content generated due to the uploaded document content:</strong>{' '}
-                {coverageNote}
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-
-      {generatedContent?.warning && (
-        <div className="rounded-md border border-[#F59E0B] bg-[#FEF3C7] px-4 py-3 text-[13px] text-[#92400E]">
-          ⚠ {generatedContent.warning}
-        </div>
+      {/* The frames float a generation result over the top bar rather than
+          pushing the review column down, and let the admin dismiss it. */}
+      {!areQualityNotesDismissed && (shortfallNote || generatedContent?.warning) && (
+        <WizardToast
+          variant="warning"
+          onDismiss={() => setAreQualityNotesDismissed(true)}
+          dismissLabel="Dismiss the generation quality warning"
+        >
+          {shortfallNote && (
+            <p>
+              <span className="font-semibold text-error">
+                Less content generated due to the uploaded document content:
+              </span>{' '}
+              {shortfallNote}
+            </p>
+          )}
+          {generatedContent?.warning && <p>{generatedContent.warning}</p>}
+        </WizardToast>
       )}
     </div>
   );

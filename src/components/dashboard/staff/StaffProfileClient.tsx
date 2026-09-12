@@ -678,7 +678,7 @@ export default function StaffProfileClient({
                   <TableCell className={cn(cellCls, 'hidden sm:table-cell')}>
                     <span className={cn(statusPillCls, 'bg-[#eaf2fc] text-[#0e69f3]')}>
                       <BadgeCheck className="size-4 shrink-0" aria-hidden="true" />
-                      Approved
+                      Issued
                     </span>
                   </TableCell>
                 </TableRow>

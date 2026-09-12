@@ -3,15 +3,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Step1Category from './steps/Step1Category';
-import Step2Modules, {
-  type ModuleDraftStatus,
-  type Step2ModulesHandle,
-} from './steps/Step2Modules';
-import Step4Details from './steps/Step4Details';
-import Step5Quiz from './steps/Step5Quiz';
+import Step2Upload from './steps/Step2Upload';
+import Step3Details from './steps/Step3Details';
+import Step4Quiz from './steps/Step4Quiz';
 import GenerationController from './steps/GenerationController';
-import Step8QuizReview from './steps/Step8QuizReview';
-import Step9AssignPublish, { isAssignSelectionValid } from './steps/Step9AssignPublish';
+import Step6QuizReview from './steps/Step6QuizReview';
+import Step7Assign, { isAssignSelectionValid } from './steps/Step7Assign';
 import CourseSuccessModal from './CourseSuccessModal';
 import ConfirmPublishModal from './ConfirmPublishModal';
 import ReviewWarningsModal from './ReviewWarningsModal';
@@ -38,9 +35,11 @@ import {
   readPendingGeneration,
   type PendingGenerationJob,
 } from '@/lib/course/pending-generation';
+import { runWizardDraftMigration } from '@/lib/course/wizard-draft-migration';
 import { logger } from '@/lib/logger';
 import {
   TOTAL_STEPS,
+  displayStepNumber,
   getWizardStep,
   stepIndexForKey,
   stepTitle,
@@ -79,13 +78,19 @@ const INITIAL_FORM_DATA: CourseWizardData = {
   renewalCycle: 'none',
 };
 
-// Final bump. Earlier versions stored the step as an integer, so every change to
-// the ladder silently resumed a draft on the wrong screen — a v2 `step: 7` meant
-// "review generated content", but index 7 is now past the end. This version
-// stores the step's key, which survives reordering (an unrecognised key restarts
-// at the first step), so the ladder can change again without another bump.
-const DRAFT_KEY = 'lms_course_wizard_draft_v3';
-const SUPERSEDED_DRAFT_KEYS = ['lms_course_wizard_draft', 'lms_course_wizard_draft_v2'];
+// v3 made the ladder safe to change: it stores the step's KEY rather than an
+// integer, so reordering no longer resumes a draft on the wrong screen. v4 is
+// not another ladder bump — it is a payload bump, because `formData.modules[]`
+// narrowed to a document reference (D1) and a restored v3 module would be
+// malformed. A v3 draft belonging to a generation that is still running is
+// carried over rather than dropped; see wizard-draft-migration.
+const DRAFT_KEY = 'lms_course_wizard_draft_v4';
+const LEGACY_DRAFT_KEY_V3 = 'lms_course_wizard_draft_v3';
+const SUPERSEDED_DRAFT_KEYS = [
+  'lms_course_wizard_draft',
+  'lms_course_wizard_draft_v2',
+  LEGACY_DRAFT_KEY_V3,
+];
 
 export default function CourseWizard() {
   const router = useRouter();
@@ -104,8 +109,7 @@ export default function CourseWizard() {
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
-  const modulesStepRef = useRef<Step2ModulesHandle>(null);
-  const [moduleDraftStatus, setModuleDraftStatus] = useState<ModuleDraftStatus>('empty');
+  const [isUploadingDocument, setIsUploadingDocument] = useState(false);
   const [initialModuleDocument, setInitialModuleDocument] =
     useState<CourseWizardModuleDocument | null>(null);
 
@@ -172,6 +176,16 @@ export default function CourseWizard() {
       if (pending) {
         setPendingJobs(pending.jobs);
       }
+
+      // Runs BEFORE the wipe below, which would otherwise take the v3 draft with
+      // it — and with it the only copy of the form data a running generation
+      // needs to resume.
+      runWizardDraftMigration({
+        v3Key: LEGACY_DRAFT_KEY_V3,
+        v4Key: DRAFT_KEY,
+        hasPendingGeneration: !!pending,
+      });
+
       SUPERSEDED_DRAFT_KEYS.forEach((key) => sessionStorage.removeItem(key));
 
       const raw = sessionStorage.getItem(DRAFT_KEY);
@@ -266,15 +280,10 @@ export default function CourseWizard() {
       }
     }
 
-    if (step.key === 'modules') {
-      // A module that is fully filled in but not yet added is committed here, so
-      // advancing never silently discards it.
-      const committed =
-        moduleDraftStatus === 'complete' ? (modulesStepRef.current?.commitDraft() ?? null) : null;
-
-      // The first module is the single document the later steps generate from,
-      // and `commitDraft`'s state update has not landed in `formData` yet.
-      const sourceDocId = formData.modules[0]?.documentId ?? committed?.documentId ?? null;
+    if (step.key === 'upload') {
+      // The uploaded document is the single source the later steps generate
+      // from, and the step writes it straight into `formData`.
+      const sourceDocId = formData.modules[0]?.documentId ?? null;
 
       if (!sourceDocId || analyzedDocId.current === sourceDocId) {
         setCurrentStepIndex(currentStepIndex + 1);
@@ -337,10 +346,9 @@ export default function CourseWizard() {
     }
   };
 
-  const handlePublish = async (reviewerName: string) => {
+  const handlePublish = async () => {
     setIsPublishing(true);
     setShowConfirmModal(false);
-    logger.info({ msg: `Course reviewed and published by ${reviewerName}` });
 
     // Step 9 targets either whole roles or named individuals, never both: the
     // email list only reaches createFullCourse in email mode, and the role
@@ -449,7 +457,7 @@ export default function CourseWizard() {
         setWizardError(null);
         setIsGenerating(false);
         setIsAnalyzing(false);
-        setModuleDraftStatus('empty');
+        setIsUploadingDocument(false);
         setInitialModuleDocument(null);
         analyzedDocId.current = null;
         setPendingJobs(null);
@@ -538,29 +546,44 @@ export default function CourseWizard() {
             onCustomCategoryNameChange={setCustomCategoryName}
           />
         );
-      case 'modules':
+      case 'upload': {
+        // `formData.modules` stays wide enough to hold a restored draft, where a
+        // slot may carry an id without its file metadata; the step renders a
+        // complete attachment or nothing.
+        const uploaded = formData.modules[0];
+        const attachedDocument: CourseWizardModuleDocument | null = uploaded?.documentId
+          ? {
+              documentId: uploaded.documentId,
+              fileName: uploaded.fileName ?? '',
+              fileSize: uploaded.fileSize ?? 0,
+              mimeType: uploaded.mimeType ?? '',
+            }
+          : null;
+
         return (
-          <Step2Modules
+          <Step2Upload
             // Re-keyed so the deep-linked document, which resolves after mount,
-            // seeds the first upload slot.
+            // seeds the upload slot.
             key={initialModuleDocument?.documentId ?? 'no-linked-document'}
-            ref={modulesStepRef}
-            modules={formData.modules}
-            onModulesChange={(modules) => setFormData((prev) => ({ ...prev, modules }))}
-            onDraftStatusChange={setModuleDraftStatus}
+            document={attachedDocument}
+            onDocumentChange={(document) =>
+              setFormData((prev) => ({ ...prev, modules: document ? [document] : [] }))
+            }
+            onUploadingChange={setIsUploadingDocument}
             initialDocument={initialModuleDocument}
           />
         );
+      }
       case 'details':
         return (
-          <Step4Details
+          <Step3Details
             data={formData}
             onChange={(field, val) => setFormData({ ...formData, [field]: val })}
           />
         );
       case 'quiz':
         return (
-          <Step5Quiz
+          <Step4Quiz
             data={formData}
             onChange={(field, val) => setFormData({ ...formData, [field]: val })}
           />
@@ -581,7 +604,7 @@ export default function CourseWizard() {
         );
       case 'quizReview':
         return (
-          <Step8QuizReview
+          <Step6QuizReview
             data={formData}
             quiz={generatedContent?.quiz}
             rawContext={generatedContent?.rawArticleMarkdown}
@@ -592,7 +615,7 @@ export default function CourseWizard() {
         );
       case 'assign':
         return (
-          <Step9AssignPublish
+          <Step7Assign
             data={formData}
             onChange={(field, val) => setFormData((prev) => ({ ...prev, [field]: val }))}
           />
@@ -607,13 +630,12 @@ export default function CourseWizard() {
         if (isCreatingCategory) return true;
         return false;
       }
-      case 'modules': {
+      case 'upload': {
         if (isAnalyzing) return true;
-        // A half-filled module would be lost on Next, so it blocks; a complete one
-        // is committed by `handleNext` before advancing.
-        if (moduleDraftStatus === 'partial') return true;
-        if (moduleDraftStatus === 'complete') return false;
-        return formData.modules.length === 0;
+        // A PHI-flagged upload clears the slot (D2), so this also keeps Next
+        // disabled after a rejection.
+        if (isUploadingDocument) return true;
+        return !formData.modules[0]?.documentId;
       }
       case 'details': {
         if (!formData.title?.trim()) return true;
@@ -647,13 +669,18 @@ export default function CourseWizard() {
     }
   };
 
+  // The generation step keeps the quiz step's number — and its progress-bar
+  // width — for as long as it has produced nothing, which covers the
+  // interstitial AND the failure card that replaces it in place.
+  const shownStepNumber = displayStepNumber(step.key, !generatedContent);
+
   const navRow = (
     <div className="flex w-full shrink-0 items-center justify-between gap-4">
       <Button
         variant="outline"
         onClick={handleBack}
         disabled={isPublishing}
-        className="h-[52px] rounded-[12px] border-[1.5px] border-[#d2d5db] px-8 text-base font-semibold tracking-[0.36px] text-[#454353] md:h-[56px] md:px-10 md:text-[18px]"
+        className="h-[52px] rounded-md border-[1.5px] border-input px-8 text-base font-semibold tracking-[0.36px] text-text-secondary md:h-[56px] md:px-10 md:text-[18px]"
       >
         Back
       </Button>
@@ -664,7 +691,7 @@ export default function CourseWizard() {
           isNextDisabled() || isGenerating || isPublishing || isAnalyzing || isCreatingCategory
         }
         loading={isGenerating || isPublishing || isAnalyzing || isCreatingCategory}
-        className="h-[52px] rounded-[12px] px-8 text-base font-semibold tracking-[0.36px] md:h-[56px] md:px-10 md:text-[18px]"
+        className="h-[52px] rounded-md px-8 text-base font-semibold tracking-[0.36px] md:h-[56px] md:px-10 md:text-[18px]"
       >
         {currentStepIndex === TOTAL_STEPS - 1 ? 'Publish Course' : 'Next Step'}
       </Button>
@@ -678,8 +705,8 @@ export default function CourseWizard() {
           <Logo variant="blue" size="md" />
         </div>
         <div className="flex flex-1 items-center justify-between gap-4 pl-4 pr-5 md:pl-[30px] md:pr-[60px]">
-          <span className="truncate text-sm font-medium tracking-[0.38px] text-[#3e3e3e] md:text-[19px]">
-            Step {currentStepIndex + 1} of {TOTAL_STEPS}
+          <span className="truncate text-sm font-medium tracking-[0.38px] text-foreground md:text-[19px]">
+            Step {shownStepNumber} of {TOTAL_STEPS}
           </span>
           <Button
             variant="ghost"
@@ -690,26 +717,28 @@ export default function CourseWizard() {
                 router.push('/dashboard/courses');
               }
             }}
-            className="h-auto px-2 py-1 text-base font-bold tracking-[0.4px] text-[#0d0d12] md:text-[20px]"
+            className="h-auto px-2 py-1 text-base font-bold tracking-[0.4px] text-foreground md:text-[20px]"
           >
             Exit
           </Button>
         </div>
       </header>
 
-      <div className="h-1.5 w-full shrink-0 bg-[#dbdbdb] md:h-2">
+      <div className="h-1.5 w-full shrink-0 bg-input md:h-2">
         <div
-          className="h-full rounded-r-[210px] bg-primary transition-[width] duration-300 ease-[ease]"
-          style={{ width: `${((currentStepIndex + 1) / TOTAL_STEPS) * 100}%` }}
+          className="h-full rounded-r-full bg-primary transition-[width] duration-300 ease-[ease]"
+          style={{ width: `${(shownStepNumber / TOTAL_STEPS) * 100}%` }}
         />
       </div>
 
       <main className="relative flex min-h-0 flex-1 flex-col items-center overflow-y-auto">
         {showResumeBanner && (
-          <div className="mx-auto mt-6 flex w-full max-w-[1080px] items-center justify-between gap-4 rounded-lg border border-[#BEE3F8] bg-[#EBF4FF] p-4">
+          <div className="mx-auto mt-6 flex w-full max-w-[1080px] items-center justify-between gap-4 rounded-md border border-primary/20 bg-primary/5 p-4">
             <div>
-              <h3 className="m-0 mb-1 text-base text-[#2B6CB0]">Resume your draft?</h3>
-              <p className="m-0 text-sm text-[#2C5282]">
+              <h3 className="m-0 mb-1 text-base font-semibold text-foreground">
+                Resume your draft?
+              </h3>
+              <p className="m-0 text-sm text-text-secondary">
                 We found an unsaved course creation draft from your current session.
               </p>
             </div>
@@ -756,11 +785,11 @@ export default function CourseWizard() {
               // failure card is narrow and centred like every other step.
               <div
                 className={`mx-auto flex w-full shrink-0 flex-col gap-3 px-5 py-6 ${
-                  generatedContent ? 'max-w-[1400px]' : 'max-w-[1120px]'
+                  generatedContent ? 'max-w-[1240px]' : 'max-w-[1120px]'
                 }`}
               >
                 {wizardError && (
-                  <div className="rounded-md bg-[#fed7d7] px-4 py-2.5 text-center text-sm text-[#e53e3e]">
+                  <div className="rounded-md bg-error/10 px-4 py-2.5 text-center text-sm text-error">
                     {wizardError}
                   </div>
                 )}
@@ -773,7 +802,7 @@ export default function CourseWizard() {
             {renderStep()}
 
             {wizardError && (
-              <div className="rounded-md bg-[#fed7d7] px-4 py-2.5 text-center text-sm text-[#e53e3e]">
+              <div className="rounded-md bg-error/10 px-4 py-2.5 text-center text-sm text-error">
                 {wizardError}
               </div>
             )}
@@ -813,19 +842,19 @@ export default function CourseWizard() {
 
         {showExitConfirm && (
           <Dialog open onOpenChange={(open) => !open && setShowExitConfirm(false)}>
-            <DialogContent className="rounded-[16px] p-6 sm:max-w-[420px]">
+            <DialogContent className="rounded-lg p-6 sm:max-w-[420px]">
               <DialogHeader>
-                <DialogTitle className="text-lg font-semibold text-[#0d0d12]">
+                <DialogTitle className="text-lg font-semibold text-foreground">
                   Exit course creation?
                 </DialogTitle>
-                <DialogDescription className="text-[15px] leading-relaxed text-[#4A5568]">
+                <DialogDescription className="text-[15px] leading-relaxed text-text-secondary">
                   You have unsaved progress. If you exit now, your work will be lost.
                 </DialogDescription>
               </DialogHeader>
               <DialogFooter className="mt-3 gap-3 sm:justify-end">
                 <Button
                   variant="outline"
-                  className="h-[44px] rounded-[10px] border-[1.5px] border-[#e5e7ea] px-6 font-semibold text-[#454353]"
+                  className="h-[44px] rounded-[10px] border-[1.5px] border-border px-6 font-semibold text-text-secondary"
                   onClick={() => setShowExitConfirm(false)}
                 >
                   Cancel

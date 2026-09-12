@@ -4,7 +4,9 @@
 - [Supervisor own-facility edit](supervisor_own_facility_edit.md) — PROF-002 deliberately lets supervisors edit their own facility despite the read-only RBAC ruling; don't "fix" it back
 - [Figma STAFF section](reference_figma_staff_section.md) — frame→page map; roster's 5 columns don't fit at lg, % widths from xl (measure 1280 AND 1440)
 - [Local UI verification](project_local_ui_verification.md) — Playwright recipe for the dev app; port 3005 may be a decoy build, newPage() ignores viewport
-- [Course wizard 7→9 steps](project_course-wizard-9-step.md) — steps 1-7 built (Phase 6 = per-module generation); steps 6+7 share GenerationController by design
+- [Course wizard ladder + D1](project_course-wizard-9-step.md) — current 7 step keys/filenames after the single-document reshape; what looks like an oversight but is not
+- [Draft-key bumps orphan generations](gotcha_wizard_draft_key_bump_orphans_generation.md) — the sessionStorage draft is half the resume handoff; migrate it whenever pending jobs exist
+- [Course wizard restyle (PR-3b)](project_course-wizard-restyle-pr3b.md) — 3 deliberate divergences from Figma (PHI checkbox, Quality Notice, Sources tab) + the cmdk dep
 - [Wizard PHI attestation](project_course-wizard-phi-attestation.md) — step 2's attestation checkbox isn't in the mock but is required: uploadDocument rejects FormData without phiAttested
 - [Document Hub scope](project_document-hub-scope.md) — rename dropped from the UI (action kept); list hover card cut, but the viewer's thumbnail rail was ruled back IN
 - [Step-7 review honest gaps](project_wizard-step7-review-honest-gaps.md) — no citation chips, "Key Points" not "Tip!", Edit button inert: deliberate, don't invent the missing data
@@ -68,3 +70,8 @@
 - [Role-assign count vs reach](gotcha_role_assign_count_vs_reach.md) — count + mutation are now BOTH facility-scoped and must stay coupled; CourseAssignment has no facility column, so future role holders still enroll org-wide.
 - [Server Action refusals must return](gotcha_server_action_refusals_must_return.md) — prod redacts thrown messages to React #441; return `refusedReason` on the existing result type, keep the gate fail-closed.
 - [Dashboard banner slot bleeds](gotcha_dashboard_banner_slot_bleeds.md) — site-wide banners sit INSIDE the padded scroll container; negative-margin heroes paint over them (gate on `first:`).
+- [Document identity is org-wide](gotcha_document_identity_is_org_wide.md) — never re-find an upload by filename via getDocuments(); uploadDocument returns the stored Document record.
+- [Certificate export render pipeline](gotcha_certificate_export_render_pipeline.md) — PDFs rasterise a live CertificateDocument; off-screen not hidden, jsPDF page-1 trap, card list has no student name.
+- [Assignment rows carry no role-target scope](gotcha_assignment_row_has_no_role_target_scope.md) — an individual assignment leaves facilityScoped=false, so a later in-place widen must be refused, not inherited.
+- [Course publish has three paths](gotcha_course_publish_has_three_paths.md) — assignment silently publishes drafts; only 2 of 3 paths record the D8 reviewer, and D8 needed no migration.
+- [`course.read` is not admin-only](gotcha_course_read_is_not_admin_only.md) — 13 of 14 roles hold it; swapping isAdminRole for it admits every worker. Keep the conjunction.

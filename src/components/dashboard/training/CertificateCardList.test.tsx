@@ -232,6 +232,16 @@ describe('CertificateCardList — populated state', () => {
       screen.getByRole('button', { name: 'View certificate for Bloodborne Pathogens' }),
     ).toBeInTheDocument();
   });
+
+  // A Certificate row only exists once it has been issued — nothing "approves"
+  // it. The badge was a hardcoded "Approved" literal never derived from any
+  // status; regression-pin the corrected label so it cannot silently regress.
+  it('badges the certificate "Issued", never the old "Approved" literal', () => {
+    render(<CertificateCardList certificates={[certificate()]} />);
+
+    expect(screen.getByText('Issued')).toBeInTheDocument();
+    expect(screen.queryByText('Approved')).not.toBeInTheDocument();
+  });
 });
 
 describe('CertificateCardList — export controls gating', () => {

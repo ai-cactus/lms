@@ -62,7 +62,7 @@ services:
 
   minio:
     container_name: lms-e2e-minio
-    image: minio/minio:latest
+    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
     logging: *default-logging
     command: server /data --console-address ":9001"
     ports:
@@ -111,7 +111,7 @@ services:
   # Behind a profile so `up --wait` never sees a completed container — compose
   # treats an exited service as a failure under --wait.
   mc-init:
-    image: minio/mc:latest
+    image: quay.io/minio/mc:latest
     profiles: ['init']
     depends_on:
       minio:

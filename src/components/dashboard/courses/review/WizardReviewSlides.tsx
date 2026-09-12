@@ -1,12 +1,13 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowLeft, ArrowRight } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { sanitizeHtml } from '@/lib/sanitize';
 import { splitSlideContent } from '@/lib/slide-splitter';
 import { RenderableModule } from '@/types/course';
+import { wizardSubtitleClass } from '@/components/dashboard/courses/steps/wizardFormClasses';
 
 import ReviewEditButton from './ReviewEditButton';
 import { REVIEW_STEP_SUBTITLE, REVIEW_STEP_TITLE, htmlToPlainText } from './reviewContent';
@@ -30,13 +31,13 @@ interface DeckSlide {
 const THUMBNAIL_EXCERPT_LENGTH = 220;
 
 const slideBodyClass = [
-  'text-sm leading-[1.7] text-[#424242]',
+  'text-sm leading-[1.7] text-text-secondary',
   '[&_p]:my-3',
-  '[&_h3]:mt-4 [&_h3]:mb-2 [&_h3]:text-base [&_h3]:font-bold [&_h3]:text-[#0d0d12]',
-  '[&_h4]:mt-3 [&_h4]:mb-1.5 [&_h4]:text-sm [&_h4]:font-bold [&_h4]:text-[#0d0d12]',
+  '[&_h3]:mt-4 [&_h3]:mb-2 [&_h3]:text-base [&_h3]:font-bold [&_h3]:text-foreground',
+  '[&_h4]:mt-3 [&_h4]:mb-1.5 [&_h4]:text-sm [&_h4]:font-bold [&_h4]:text-foreground',
   '[&_ul]:my-3 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-3 [&_ol]:list-decimal [&_ol]:pl-5',
   '[&_li]:mb-1.5',
-  '[&_strong]:font-semibold [&_strong]:text-[#0d0d12]',
+  '[&_strong]:font-semibold [&_strong]:text-foreground',
 ].join(' ');
 
 export default function WizardReviewSlides({
@@ -84,18 +85,18 @@ export default function WizardReviewSlides({
   const current = deck[activeSlide];
 
   return (
-    <div className="flex w-full flex-col gap-8 md:gap-10">
-      <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
+    <div className="flex w-full flex-col gap-8 md:gap-12">
+      {/* The deck view puts its heading left and the view switcher top-right,
+          unlike the centred heading the notes view uses. */}
+      <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between lg:gap-11">
         <div className="flex flex-col gap-3">
-          <h2 className="text-[26px] font-bold leading-[1.33] tracking-[-0.02em] text-[#383838] md:text-[32px]">
+          <h2 className="text-[26px] font-bold leading-[1.33] tracking-[-0.02em] text-foreground md:text-[32px]">
             {REVIEW_STEP_TITLE}
           </h2>
-          <p className="max-w-[600px] text-[15px] font-medium leading-[1.44] text-[#424242] md:text-base">
-            {REVIEW_STEP_SUBTITLE}
-          </p>
+          <p className={`${wizardSubtitleClass} max-w-[740px] text-left`}>{REVIEW_STEP_SUBTITLE}</p>
         </div>
 
-        <div className="flex w-full shrink-0 flex-col gap-3 md:w-[300px]">
+        <div className="flex w-full shrink-0 flex-col gap-3 lg:w-[356px]">
           <ReviewEditButton />
           <Button
             variant="default"
@@ -108,46 +109,19 @@ export default function WizardReviewSlides({
       </div>
 
       <div className="flex w-full flex-col gap-5 lg:flex-row lg:gap-6">
-        <nav
-          aria-label="Slides"
-          className="flex max-h-[220px] w-full shrink-0 gap-3 overflow-x-auto lg:max-h-[520px] lg:w-[120px] lg:flex-col lg:overflow-x-visible lg:overflow-y-auto"
-        >
-          {deck.map((slide, index) => (
-            <button
-              key={slide.key}
-              type="button"
-              onClick={() => goToSlide(index)}
-              aria-label={`Slide ${index + 1}: ${slide.heading}`}
-              aria-current={index === activeSlide ? 'true' : undefined}
-              className={`flex aspect-[4/3] w-[110px] shrink-0 flex-col overflow-hidden rounded-[4px] border bg-white text-left transition-colors ${
-                index === activeSlide
-                  ? 'border-primary ring-1 ring-primary'
-                  : 'border-[#e5e7ea] hover:border-[#c8ccd4]'
-              }`}
-            >
-              <span className="truncate bg-primary px-1.5 py-1 text-[6px] font-bold text-primary-foreground">
-                {slide.heading}
-              </span>
-              <span className="line-clamp-6 px-1.5 py-1 text-[5px] leading-[1.6] text-[#666d80]">
-                {slide.excerpt}
-              </span>
-            </button>
-          ))}
-        </nav>
-
-        <div className="flex min-w-0 flex-1 items-center gap-2 md:gap-4">
+        <div className="flex min-w-0 flex-1 items-center gap-1 md:gap-3">
           <Button
             variant="ghost"
             size="icon"
             aria-label="Previous slide"
             disabled={activeSlide <= 0}
             onClick={() => goToSlide(activeSlide - 1)}
-            className="shrink-0 text-[#9ca3af]"
+            className="shrink-0 text-text-tertiary hover:text-foreground"
           >
-            <ChevronLeft className="size-6" aria-hidden="true" />
+            <ArrowLeft className="size-6" aria-hidden="true" />
           </Button>
 
-          <div className="flex min-h-[420px] min-w-0 flex-1 flex-col overflow-hidden rounded-[10px] border border-[#e5e7ea] bg-white">
+          <div className="flex aspect-[16/10] min-h-[320px] min-w-0 flex-1 flex-col overflow-hidden rounded-[10px] border border-border bg-background">
             <div className="bg-primary px-6 py-5 text-lg font-bold text-primary-foreground md:text-2xl">
               {current?.heading || 'Untitled Slide'}
             </div>
@@ -167,11 +141,50 @@ export default function WizardReviewSlides({
             aria-label="Next slide"
             disabled={activeSlide >= deck.length - 1}
             onClick={() => goToSlide(activeSlide + 1)}
-            className="shrink-0 text-[#9ca3af]"
+            className="shrink-0 text-text-tertiary hover:text-foreground"
           >
-            <ChevronRight className="size-6" aria-hidden="true" />
+            <ArrowRight className="size-6" aria-hidden="true" />
           </Button>
         </div>
+
+        <nav
+          aria-label="Slides"
+          className="flex w-full shrink-0 gap-3 overflow-x-auto rounded-[10px] border border-border p-3 lg:max-h-[560px] lg:w-[197px] lg:flex-col lg:overflow-x-visible lg:overflow-y-auto"
+        >
+          {deck.map((slide, index) => (
+            <button
+              key={slide.key}
+              type="button"
+              onClick={() => goToSlide(index)}
+              aria-label={`Slide ${index + 1}: ${slide.heading}`}
+              aria-current={index === activeSlide ? 'true' : undefined}
+              className="flex shrink-0 items-start gap-2 text-left"
+            >
+              <span
+                aria-hidden="true"
+                className={`w-4 shrink-0 pt-1 text-right text-[11px] ${
+                  index === activeSlide ? 'font-semibold text-primary' : 'text-text-secondary'
+                }`}
+              >
+                {index + 1}
+              </span>
+              <span
+                className={`flex aspect-[16/10] w-[110px] flex-col overflow-hidden rounded-[4px] border bg-background transition-colors ${
+                  index === activeSlide
+                    ? 'border-primary ring-1 ring-primary'
+                    : 'border-border hover:border-input'
+                }`}
+              >
+                <span className="truncate bg-primary px-1.5 py-1 text-[6px] font-bold text-primary-foreground">
+                  {slide.heading}
+                </span>
+                <span className="line-clamp-6 px-1.5 py-1 text-[5px] leading-[1.6] text-text-secondary">
+                  {slide.excerpt}
+                </span>
+              </span>
+            </button>
+          ))}
+        </nav>
       </div>
     </div>
   );
