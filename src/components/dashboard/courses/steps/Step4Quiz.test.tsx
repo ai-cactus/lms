@@ -4,7 +4,7 @@
  * `multiple_choice` / `true_false` vocabulary) and the "Moderate" display label
  * that must keep writing the stored `medium` difficulty.
  */
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi } from 'vitest';
 
@@ -145,6 +145,80 @@ describe('Step4Quiz', () => {
       await user.click(screen.getByRole('button', { name: 'Decrease attempts' }));
 
       expect(onChange).toHaveBeenCalledWith('quizAttempts', '1');
+    });
+  });
+
+  describe('pass mark stepper', () => {
+    it('increments and decrements the pass mark in fives', async () => {
+      const user = userEvent.setup();
+      const { onChange } = renderStep({ quizPassMark: '75' });
+
+      await user.click(screen.getByRole('button', { name: 'Increase pass mark' }));
+      expect(onChange).toHaveBeenLastCalledWith('quizPassMark', '80');
+
+      await user.click(screen.getByRole('button', { name: 'Decrease pass mark' }));
+      expect(onChange).toHaveBeenLastCalledWith('quizPassMark', '70');
+    });
+
+    it('does not step past the maximum of 100', async () => {
+      const user = userEvent.setup();
+      const { onChange } = renderStep({ quizPassMark: '100' });
+
+      await user.click(screen.getByRole('button', { name: 'Increase pass mark' }));
+
+      expect(onChange).toHaveBeenCalledWith('quizPassMark', '100');
+    });
+
+    it('does not step below the minimum of 0', async () => {
+      const user = userEvent.setup();
+      const { onChange } = renderStep({ quizPassMark: '0' });
+
+      await user.click(screen.getByRole('button', { name: 'Decrease pass mark' }));
+
+      expect(onChange).toHaveBeenCalledWith('quizPassMark', '0');
+    });
+
+    it('seeds the conventional default of 80 rather than NaN when increased from empty', async () => {
+      const user = userEvent.setup();
+      const { onChange } = renderStep({ quizPassMark: '' });
+
+      await user.click(screen.getByRole('button', { name: 'Increase pass mark' }));
+
+      expect(onChange).toHaveBeenCalledWith('quizPassMark', '80');
+    });
+
+    it('seeds the conventional default of 80 rather than NaN when decreased from empty', async () => {
+      const user = userEvent.setup();
+      const { onChange } = renderStep({ quizPassMark: '' });
+
+      await user.click(screen.getByRole('button', { name: 'Decrease pass mark' }));
+
+      expect(onChange).toHaveBeenCalledWith('quizPassMark', '80');
+    });
+
+    it('parses a stored percentage value before stepping', async () => {
+      const user = userEvent.setup();
+      const { onChange } = renderStep({ quizPassMark: '80%' });
+
+      await user.click(screen.getByRole('button', { name: 'Increase pass mark' }));
+
+      expect(onChange).toHaveBeenCalledWith('quizPassMark', '85');
+    });
+
+    it('still accepts a value typed directly into the field', () => {
+      const { onChange } = renderStep({ quizPassMark: '80' });
+
+      fireEvent.change(screen.getByLabelText('Pass Mark'), { target: { value: '65' } });
+
+      expect(onChange).toHaveBeenCalledWith('quizPassMark', '65');
+    });
+
+    it('still rejects an out-of-range value typed directly into the field', () => {
+      const { onChange } = renderStep({ quizPassMark: '80' });
+
+      fireEvent.change(screen.getByLabelText('Pass Mark'), { target: { value: '150' } });
+
+      expect(onChange).not.toHaveBeenCalled();
     });
   });
 });
