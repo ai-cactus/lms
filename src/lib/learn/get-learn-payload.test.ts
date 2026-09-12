@@ -646,3 +646,113 @@ describe('getLearnPayload — attestEligible', () => {
     expect(payload.attestEligible).toBe(false);
   });
 });
+
+/**
+ * The per-role admission table for `mayReviewWithoutEnrollment` (team QA #9 —
+ * finance can no longer open `/learn/{id}` with no enrollment by typing the
+ * URL). This is the single most important suite in this file: `course.read`
+ * is NOT admin-only — it sits in `workerPermissions`, so 13 of the 14
+ * `UserRole` values hold it. A gate written as a bare
+ * `can(role, 'course.read')` would therefore ADMIT EVERY WORKER to any
+ * course they hold no enrollment in — the opposite of the intended fix. Only
+ * the conjunction with `isAdminRole` closes that hole while still excluding
+ * finance, which is the one admin-category role course.read was deliberately
+ * removed from.
+ *
+ * Enumerates all 14 roles against BOTH call sites `mayReviewWithoutEnrollment`
+ * feeds:
+ *   - the admin-session fallback (a manager reviewing a same-org course they
+ *     hold no enrollment in, e.g. before assigning it)
+ *   - the `enterLearnMode` fallback (`mayOpenWithoutEnrollment`), where a
+ *     manager's WORKER session carries their real role (session-bridge.ts) —
+ *     a fix applied only to the admin branch would leave this path exposed.
+ */
+describe('getLearnPayload — mayReviewWithoutEnrollment per-role admission table', () => {
+  const ADMITTED_ROLES = ['owner', 'admin', 'supervisor', 'hr', 'clinical_director'] as const;
+  const DENIED_ROLES = [
+    'finance',
+    'psychiatrist_prescriber',
+    'nurse',
+    'therapist_clinician',
+    'case_manager',
+    'behavioral_health_technician',
+    'peer_support_specialist',
+    'front_desk_admin',
+    'facilities_support',
+  ] as const;
+  const ALL_ROLES = [...ADMITTED_ROLES, ...DENIED_ROLES];
+
+  // Sanity check on the table itself: every UserRole value must be classified
+  // exactly once, so a role added to the enum later fails loudly here instead
+  // of silently falling out of the matrix.
+  it('covers all 14 UserRole values with no overlap', () => {
+    expect(ALL_ROLES).toHaveLength(14);
+    expect(new Set(ALL_ROLES).size).toBe(14);
+  });
+
+  describe('admin-session fallback (manager review with no enrollment)', () => {
+    beforeEach(() => {
+      mockWorkerAuth.mockResolvedValue(null);
+      mockCourseFindUnique.mockResolvedValue(makeCourse({ creatorOrgId: 'org-1' }));
+      mockEnrollmentFindFirst.mockResolvedValue(null);
+    });
+
+    it.each(ADMITTED_ROLES)('admits %s without an enrollment', async (role) => {
+      mockAdminAuth.mockResolvedValue({
+        user: { id: 'a1', organizationUserId: 'ou-admin', organizationId: 'org-1', role },
+      });
+
+      const result = await getLearnPayload('course-1');
+
+      expect(isLearnPayloadError(result)).toBe(false);
+      expect(asPayload(result).enrollment.id).toBe('preview-mode');
+    });
+
+    it.each(DENIED_ROLES)('denies %s with no enrollment (403)', async (role) => {
+      mockAdminAuth.mockResolvedValue({
+        user: { id: 'a1', organizationUserId: 'ou-admin', organizationId: 'org-1', role },
+      });
+
+      const result = await getLearnPayload('course-1');
+
+      expect(result).toEqual({ error: 'Not enrolled in this course', status: 403 });
+    });
+  });
+
+  describe('enterLearnMode fallback (worker session carrying the real role)', () => {
+    // No admin session at all — this is the case a fix scoped only to the
+    // admin-fallback branch would miss: `activeRole` never leaves the value
+    // seeded from the WORKER session.
+    beforeEach(() => {
+      mockAdminAuth.mockResolvedValue(null);
+      mockCourseFindUnique.mockResolvedValue(makeCourse({ creatorOrgId: 'org-1' }));
+      mockEnrollmentFindFirst.mockResolvedValue(null);
+    });
+
+    it.each(ADMITTED_ROLES)(
+      '%s who entered Learn mode is admitted with no enrollment of their own',
+      async (role) => {
+        mockWorkerAuth.mockResolvedValue({
+          user: { id: 'w1', organizationUserId: 'ou-w', organizationId: 'org-1', role },
+        });
+
+        const result = await getLearnPayload('course-1');
+
+        expect(isLearnPayloadError(result)).toBe(false);
+      },
+    );
+
+    it.each(DENIED_ROLES)(
+      '%s with no enrollment is denied (403) even inside a worker session',
+      async (role) => {
+        mockWorkerAuth.mockResolvedValue({
+          user: { id: 'w1', organizationUserId: 'ou-w', organizationId: 'org-1', role },
+        });
+
+        const result = await getLearnPayload('course-1');
+
+        expect(result).toEqual({ error: 'Not enrolled in this course', status: 403 });
+      },
+    );
+  });
+});

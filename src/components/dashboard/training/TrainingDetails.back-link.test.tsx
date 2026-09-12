@@ -29,6 +29,16 @@ function baseCourse(overrides: Partial<CourseWithRelations> = {}): CourseWithRel
     reviewRequired: false,
     lessons: [],
     enrollments: [],
+    // The hero reads both attribution relations (D10): `approvedBy` when the
+    // publish reviewer was recorded, the creator otherwise. Both must be present
+    // — as null, for approvedBy — or the hero throws before the link renders.
+    creator: {
+      userId: 'u-author',
+      organizationId: 'org-1',
+      role: 'admin',
+      user: { email: 'author@example.com', fullName: 'Ada Author' },
+    },
+    approvedBy: null,
     ...overrides,
   } as unknown as CourseWithRelations;
 }

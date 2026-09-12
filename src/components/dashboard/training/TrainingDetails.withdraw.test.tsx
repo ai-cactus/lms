@@ -46,6 +46,15 @@ function courseWithEnrollment(): CourseWithRelations {
     status: 'published',
     reviewRequired: false,
     lessons: [],
+    // The hero reads both attribution relations (D10): `approvedBy` when the
+    // publish reviewer was recorded, the creator otherwise.
+    creator: {
+      userId: 'u-author',
+      organizationId: 'org-1',
+      role: 'admin',
+      user: { email: 'author@example.com', fullName: 'Ada Author' },
+    },
+    approvedBy: null,
     enrollments: [
       {
         id: 'enr-1',

@@ -248,10 +248,16 @@ export const courseDetailSelect = {
       certificate: { select: { id: true, issuedAt: true } },
     },
   },
+  /**
+   * The authoring membership. `organizationId` is the tenancy check every
+   * course-detail read runs; `role` is there for the hero's D10 fallback, which
+   * names the creator (with their role) whenever no reviewer was recorded.
+   */
   creator: {
     select: {
       userId: true,
       organizationId: true,
+      role: true,
       user: { select: { email: true, fullName: true } },
     },
   },
@@ -263,7 +269,7 @@ export const courseDetailSelect = {
   approvedBy: {
     select: {
       role: true,
-      user: { select: { fullName: true } },
+      user: { select: { email: true, fullName: true } },
     },
   },
 } satisfies Prisma.CourseSelect;
