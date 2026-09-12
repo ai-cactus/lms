@@ -363,17 +363,25 @@ test.describe('Reminders & Escalations', () => {
     await page.waitForURL('**/assign');
 
     await page.getByRole('button', { name: 'A whole role' }).click();
-    await page.getByRole('combobox').first().click();
+    await page.getByRole('button', { name: 'Choose roles' }).click();
     // Display name per src/lib/rbac/permissions.ts — "Front Desk / Administrative
     // Support", the seeded workers' role (worker, sarah, overdueWorker, walt, etc).
-    await page.getByRole('option', { name: /front desk/i }).click();
+    await page.getByRole('checkbox', { name: /front desk/i }).click();
+
+    // Close the roles dropdown (it overlays the rest of the form) before
+    // asserting on / clicking anything below it — a mousedown outside the
+    // picker's container is what the component listens for to collapse it.
+    await page.getByRole('heading', { name: 'Assign', exact: true, level: 1 }).click();
+    await expect(page.getByRole('group', { name: 'Assignable roles' })).toBeHidden();
 
     // Role-target assignments never carry an absolute due date — the "Due
     // Date" field belongs to "Specific people" mode only.
     await expect(page.getByRole('heading', { name: 'Due Date' })).not.toBeVisible();
 
-    // Current-holder preview copy is present (roleHolderCounts wiring).
-    await expect(page.getByText(/will be enrolled now/i)).toBeVisible();
+    // Current-holder preview copy is present (roleHolderCounts wiring) — the
+    // RoleTargetPicker consolidation (PR #595) replaced the old "will be
+    // enrolled now" phrasing with a running headcount of current role holders.
+    await expect(page.getByText(/currently (holds?|hold) the selected roles/i)).toBeVisible();
 
     await page.getByRole('button', { name: 'Assign Course' }).click();
     await expect(page.getByText('Course Assigned Successfully')).toBeVisible();
