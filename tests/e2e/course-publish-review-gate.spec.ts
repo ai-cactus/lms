@@ -28,7 +28,7 @@
  *      regardless of `reviewRequired`, and used to call `enrollUsers`
  *      directly with no gate at all — enrolling AND emailing learners about a
  *      course that had not been reviewed, precisely what Issue #14 exists to
- *      prevent. `enrollUsers`/`assignCourseToRole` (src/app/actions/
+ *      prevent. `enrollUsers`/`assignCourseToRoles` (src/app/actions/
  *      enrollment.ts) now refuse with an explicit error when
  *      `course.reviewRequired` is true. This is the live regression guard for
  *      that fix.
