@@ -84,6 +84,8 @@ export default function AssigneesInput({
   const [isSearching, setIsSearching] = useState(false);
   const [knownEmails, setKnownEmails] = useState<Set<string>>(new Set());
 
+  const acceptsDrop = enableBulkImport && !disabled && !isParsing;
+
   const wrapperRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -259,7 +261,10 @@ export default function AssigneesInput({
   };
 
   const handleDrop = (e: React.DragEvent) => {
-    if (!enableBulkImport) return;
+    // A drop is the one input path with no native disabled semantics of its own,
+    // so it has to be refused here too — otherwise a form mid-submit still takes
+    // on recipients.
+    if (!acceptsDrop) return;
     e.preventDefault();
     setIsDragging(false);
     const file = e.dataTransfer.files?.[0];
@@ -272,15 +277,15 @@ export default function AssigneesInput({
         ref={wrapperRef}
         onClick={() => inputRef.current?.focus()}
         onDragOver={
-          enableBulkImport
+          acceptsDrop
             ? (e) => {
                 e.preventDefault();
                 setIsDragging(true);
               }
             : undefined
         }
-        onDragLeave={enableBulkImport ? () => setIsDragging(false) : undefined}
-        onDrop={enableBulkImport ? handleDrop : undefined}
+        onDragLeave={acceptsDrop ? () => setIsDragging(false) : undefined}
+        onDrop={acceptsDrop ? handleDrop : undefined}
         className={cn(
           'relative flex min-h-[52px] w-full cursor-text flex-wrap items-center gap-1.5 rounded-md border-[1.5px] bg-background px-[18px] py-2.5 transition-colors focus-within:border-primary md:min-h-[56px]',
           isDragging ? 'border-primary bg-primary/5' : 'border-border',
