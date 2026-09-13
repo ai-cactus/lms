@@ -104,6 +104,30 @@ function parseTimeOfDay(value: string): { hours: number; minutes: number } | nul
 }
 
 /**
+ * Render a stored deadline's time-of-day as the canonical `"H:MM AM/PM"` string
+ * the UI's TimePicker displays and {@link parseTimeOfDay} reads back — the
+ * inverse of that parse, so `formatTimeOfDay` → {@link combineDateAndTime}
+ * round-trips any stored deadline unchanged.
+ *
+ * Read in **UTC**, because `combineDateAndTime` writes in UTC. The two must
+ * agree on the zone or they are not inverses: reading local hours would shift a
+ * stored 5pm deadline by the viewer's own offset every time a surface re-saved
+ * it, drifting the same deadline further on every save.
+ *
+ * An unusable date yields `''` rather than `"NaN:NaN AM"`, so a caller passing
+ * it straight back to `combineDateAndTime` leaves the deadline alone instead of
+ * corrupting it.
+ */
+export function formatTimeOfDay(date: Date): string {
+  const hours = date.getUTCHours();
+  if (Number.isNaN(hours)) return '';
+
+  const meridiem = hours < 12 ? 'AM' : 'PM';
+  const hours12 = hours % 12 === 0 ? 12 : hours % 12;
+  return `${hours12}:${String(date.getUTCMinutes()).padStart(2, '0')} ${meridiem}`;
+}
+
+/**
  * Combine the course wizard's separate date and time-of-day inputs into a single
  * absolute deadline. Returns `null` when no date is given (the caller then falls
  * back to a computed window). The date is interpreted in UTC — `dueDate` arrives

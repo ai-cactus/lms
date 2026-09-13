@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -8,6 +9,16 @@ interface TimePickerProps {
   value: string;
   onChange: (time: string) => void;
   placeholder?: string;
+  /**
+   * Where the clock opens relative to the trigger. 'top-end' anchors the
+   * popover's bottom-right corner above the trigger's top-right — for triggers
+   * near the bottom of a dialog/viewport where 'bottom-start' would clip.
+   * Mirrors the matching prop on DatePicker so a date/time pair placed side by
+   * side opens the same way.
+   */
+  placement?: 'bottom-start' | 'top-end';
+  /** Extra classes for the trigger box (height/typography overrides). */
+  className?: string;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -227,6 +238,8 @@ export default function TimePicker({
   value,
   onChange,
   placeholder = 'e.g. 1:00 PM',
+  placement = 'bottom-start',
+  className,
 }: TimePickerProps) {
   const parsed = parseValue(value);
   const [h12, setH12] = useState(parsed.h12);
@@ -238,6 +251,7 @@ export default function TimePicker({
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<'hours' | 'minutes'>('hours');
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState({ top: 0, left: 0 });
 
   useEffect(() => {
     const p = parseValue(value);
@@ -251,16 +265,45 @@ export default function TimePicker({
     if (value) setTextInput(format(p.h12, p.minutes, p.ampm));
   }, [value]);
 
+  // The clock portals to <body> so a dialog's `overflow` cannot clip it, which
+  // means it is no longer a descendant of the wrapper: an outside-click check
+  // against the wrapper alone would treat every click on the clock as "outside".
   useEffect(() => {
+    if (!open) return;
+
     const handler = (e: MouseEvent) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+      const popoverEl = document.getElementById('time-picker-popover');
+      if (
+        wrapperRef.current &&
+        !wrapperRef.current.contains(e.target as Node) &&
+        popoverEl &&
+        !popoverEl.contains(e.target as Node)
+      ) {
         setOpen(false);
         setMode('hours');
       }
     };
+
+    const updatePosition = () => {
+      if (!wrapperRef.current) return;
+      const rect = wrapperRef.current.getBoundingClientRect();
+      setPosition(
+        placement === 'top-end'
+          ? { top: rect.top + window.scrollY, left: rect.right + window.scrollX }
+          : { top: rect.bottom + window.scrollY, left: rect.left + window.scrollX },
+      );
+    };
+
+    updatePosition();
     document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
+    window.addEventListener('scroll', updatePosition, true);
+    window.addEventListener('resize', updatePosition);
+    return () => {
+      document.removeEventListener('mousedown', handler);
+      window.removeEventListener('scroll', updatePosition, true);
+      window.removeEventListener('resize', updatePosition);
+    };
+  }, [open, placement]);
 
   const emit = useCallback(
     (newH: number, newM: number, newAmpm: 'AM' | 'PM') => {
@@ -314,6 +357,7 @@ export default function TimePicker({
           open
             ? 'border-ring ring-[3px] ring-ring/50'
             : 'border-input hover:border-ring/60 hover:bg-background-secondary',
+          className,
         )}
       >
         <input
@@ -342,80 +386,100 @@ export default function TimePicker({
         </button>
       </div>
 
-      {open && (
-        <div
-          className="absolute left-0 top-[calc(100%+8px)] z-50 rounded-xl border border-border bg-background shadow-lg"
-          onMouseDown={(e) => e.preventDefault()} // prevent blur on clock click
-        >
-          <div className="flex items-center justify-center gap-2 px-4 pb-2 pt-4">
-            <button
-              onClick={() => setMode('hours')}
-              className={cn(
-                'cursor-pointer rounded-lg border-none px-2.5 py-1 text-[28px] font-bold',
-                mode === 'hours'
-                  ? 'bg-primary/10 text-primary'
-                  : 'bg-background-secondary text-foreground',
-              )}
-            >
-              {pad(h12)}
-            </button>
-            <span className="text-[28px] font-bold text-foreground">:</span>
-            <button
-              onClick={() => setMode('minutes')}
-              className={cn(
-                'cursor-pointer rounded-lg border-none px-2.5 py-1 text-[28px] font-bold',
-                mode === 'minutes'
-                  ? 'bg-primary/10 text-primary'
-                  : 'bg-background-secondary text-foreground',
-              )}
-            >
-              {pad(minutes)}
-            </button>
-            <div className="ml-1 flex flex-col gap-1">
-              {(['AM', 'PM'] as const).map((a) => (
-                <button
-                  key={a}
-                  onClick={() => handleAmpm(a)}
-                  className={cn(
-                    'cursor-pointer rounded-md border-2 px-2 py-[3px] text-xs font-bold',
-                    ampm === a
-                      ? 'border-primary bg-primary text-primary-foreground'
-                      : 'border-input bg-background text-text-secondary',
-                  )}
-                >
-                  {a}
-                </button>
-              ))}
+      {open &&
+        createPortal(
+          <div
+            id="time-picker-popover"
+            role="dialog"
+            aria-label="Clock"
+            className="absolute z-[9999] max-w-[calc(100vw-32px)] rounded-xl border border-border bg-background shadow-lg"
+            style={{
+              // 'top-end' anchors via transform so the popover's own height
+              // never needs measuring before first paint.
+              ...(placement === 'top-end'
+                ? {
+                    top: position.top - 8,
+                    left: position.left,
+                    transform: 'translate(-100%, -100%)',
+                  }
+                : { top: position.top + 8, left: position.left }),
+              // Re-enable interaction when the trigger sits inside a Radix
+              // Dialog: the dialog sets `pointer-events: none` inline on <body>
+              // and this popover portals outside its content subtree.
+              pointerEvents: 'auto',
+            }}
+            onMouseDown={(e) => e.preventDefault()} // prevent blur on clock click
+          >
+            <div className="flex items-center justify-center gap-2 px-4 pb-2 pt-4">
+              <button
+                onClick={() => setMode('hours')}
+                className={cn(
+                  'cursor-pointer rounded-lg border-none px-2.5 py-1 text-[28px] font-bold',
+                  mode === 'hours'
+                    ? 'bg-primary/10 text-primary'
+                    : 'bg-background-secondary text-foreground',
+                )}
+              >
+                {pad(h12)}
+              </button>
+              <span className="text-[28px] font-bold text-foreground">:</span>
+              <button
+                onClick={() => setMode('minutes')}
+                className={cn(
+                  'cursor-pointer rounded-lg border-none px-2.5 py-1 text-[28px] font-bold',
+                  mode === 'minutes'
+                    ? 'bg-primary/10 text-primary'
+                    : 'bg-background-secondary text-foreground',
+                )}
+              >
+                {pad(minutes)}
+              </button>
+              <div className="ml-1 flex flex-col gap-1">
+                {(['AM', 'PM'] as const).map((a) => (
+                  <button
+                    key={a}
+                    onClick={() => handleAmpm(a)}
+                    className={cn(
+                      'cursor-pointer rounded-md border-2 px-2 py-[3px] text-xs font-bold',
+                      ampm === a
+                        ? 'border-primary bg-primary text-primary-foreground'
+                        : 'border-input bg-background text-text-secondary',
+                    )}
+                  >
+                    {a}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
 
-          <div className="mb-1 text-center text-[11px] text-text-tertiary">
-            {mode === 'hours' ? 'Select hour' : 'Select minute'}
-          </div>
+            <div className="mb-1 text-center text-[11px] text-text-tertiary">
+              {mode === 'hours' ? 'Select hour' : 'Select minute'}
+            </div>
 
-          <div className="flex justify-center px-4 pb-2">
-            <ClockFace
-              mode={mode}
-              h12={h12}
-              minutes={minutes}
-              onSelectHour={handleSelectHour}
-              onSelectMinute={handleSelectMinute}
-            />
-          </div>
+            <div className="flex justify-center px-4 pb-2">
+              <ClockFace
+                mode={mode}
+                h12={h12}
+                minutes={minutes}
+                onSelectHour={handleSelectHour}
+                onSelectMinute={handleSelectMinute}
+              />
+            </div>
 
-          <div className="flex justify-end px-4 py-2 pb-3">
-            <button
-              onClick={() => {
-                setOpen(false);
-                setMode('hours');
-              }}
-              className="cursor-pointer rounded-lg border-none bg-primary px-5 py-[7px] text-[13px] font-semibold text-primary-foreground"
-            >
-              OK — {displayTime}
-            </button>
-          </div>
-        </div>
-      )}
+            <div className="flex justify-end px-4 py-2 pb-3">
+              <button
+                onClick={() => {
+                  setOpen(false);
+                  setMode('hours');
+                }}
+                className="cursor-pointer rounded-lg border-none bg-primary px-5 py-[7px] text-[13px] font-semibold text-primary-foreground"
+              >
+                OK — {displayTime}
+              </button>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

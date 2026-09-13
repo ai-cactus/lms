@@ -19,8 +19,10 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import DatePicker from '@/components/ui/DatePicker';
+import TimePicker from '@/components/ui/TimePicker';
 import { cn } from '@/lib/utils';
 import { REMINDER_STAGE_DEFAULTS, SWEEP_STAGES } from '@/lib/reminders/stages';
+import { combineDateAndTime, formatTimeOfDay } from '@/lib/reminders/deadline';
 import AssigneesInput, {
   type AssigneesInputHandle,
 } from '@/components/dashboard/enrollment/AssigneesInput';
@@ -79,9 +81,20 @@ interface AssignPublishClientProps {
   pendingInvitedEmails?: string[];
 }
 
-/** Format a stored deadline/schedule Date as the `YYYY-MM-DD` DatePicker expects. */
+/**
+ * Split a stored deadline/schedule Date into the two halves this page edits:
+ * the `YYYY-MM-DD` DatePicker value and the `"H:MM AM/PM"` TimePicker value.
+ *
+ * Both halves read the UTC clock, matching `combineDateAndTime`, which is what
+ * re-joins them on submit. Reading the calendar day in UTC and the hour locally
+ * (or the reverse) would not round-trip.
+ */
 function toDateInput(value: Date | null | undefined): string {
   return value ? new Date(value).toISOString().slice(0, 10) : '';
+}
+
+function toTimeInput(value: Date | null | undefined): string {
+  return value ? formatTimeOfDay(new Date(value)) : '';
 }
 
 export default function AssignPublishClient({
@@ -114,7 +127,9 @@ export default function AssignPublishClient({
 
   const [entries, setEntries] = useState<StaffEntry[]>([]);
   const [scheduleDate, setScheduleDate] = useState(() => toDateInput(existingSettings?.scheduleAt));
+  const [scheduleTime, setScheduleTime] = useState(() => toTimeInput(existingSettings?.scheduleAt));
   const [dueDate, setDueDate] = useState(() => toDateInput(existingSettings?.dueAt));
+  const [dueTime, setDueTime] = useState(() => toTimeInput(existingSettings?.dueAt));
   const [renewalCycle, setRenewalCycle] = useState<RenewalCycle>(
     existingSettings?.renewalCycle ?? 'annual',
   );
@@ -139,6 +154,20 @@ export default function AssignPublishClient({
 
   // Commits whatever is typed when the host's own "Invite" button is pressed.
   const assigneesRef = useRef<AssigneesInputHandle>(null);
+
+  // ── Schedule & deadline ────────────────────────────────────────────────────
+  // A time with no date beside it is inert (the pair only becomes a timestamp
+  // when both are set), so clearing the date clears the time rather than leaving
+  // an hour showing for a deadline that no longer exists.
+  const handleScheduleDateChange = (next: string) => {
+    setScheduleDate(next);
+    if (!next) setScheduleTime('');
+  };
+  const handleDueDateChange = (next: string) => {
+    setDueDate(next);
+    if (!next) setDueTime('');
+  };
+
   // ── Reminder cadence ───────────────────────────────────────────────────────
   const setStageOffset = (stage: ReminderStage, offsetDays: number) =>
     setStages((prev) => prev.map((s) => (s.stage === stage ? { ...s, offsetDays } : s)));
@@ -189,16 +218,26 @@ export default function AssignPublishClient({
     // window the course wizard set. Round-trip the saved value instead.
     const dueWindowDays = existingSettings?.dueWindowDays ?? null;
 
+    // Both stored values are edited here as a date + a time-of-day, so both are
+    // re-joined the way every other surface joins them. Without the time half a
+    // re-save from this page truncated a wizard-set 5pm deadline to 00:00 UTC.
+    const scheduleAt = combineDateAndTime(
+      scheduleDate ? new Date(scheduleDate) : null,
+      scheduleTime,
+    );
+
     try {
       if (mode === 'role') {
         // An absolute date wins for every holder; without one each holder falls
         // back to the window, counted from their own role-join date (the
         // precedence computeDueAt implements). `assignCourseToRoles` takes the
-        // date under `dueDate`, not `dueAt` — it pairs it with an optional time
-        // server-side.
+        // date under `dueDate`, not `dueAt` — it pairs it with the time
+        // server-side, so this branch hands over the halves rather than joining
+        // them, matching what the wizard sends.
         const res = await assignCourseToRoles(courseId, targetRoles, {
-          scheduleAt: scheduleDate ? new Date(scheduleDate) : null,
+          scheduleAt,
           dueDate: dueDate ? new Date(dueDate) : null,
+          dueTime: dueTime || null,
           dueWindowDays,
           renewalCycle,
           remindersEnabled,
@@ -212,9 +251,12 @@ export default function AssignPublishClient({
           return;
         }
       } else {
+        // `enrollUsers` takes a single absolute `dueAt`, so the halves are joined
+        // here. Combining client-side needs no action-signature change:
+        // `combineDateAndTime` lives in a plain module, not a `'use server'` one.
         const res = await enrollUsers(courseId, entries, {
-          scheduleAt: scheduleDate ? new Date(scheduleDate) : null,
-          dueAt: dueDate ? new Date(dueDate) : null,
+          scheduleAt,
+          dueAt: combineDateAndTime(dueDate ? new Date(dueDate) : null, dueTime),
           dueWindowDays,
           renewalCycle,
           remindersEnabled,
@@ -395,8 +437,18 @@ export default function AssignPublishClient({
         <SettingRow
           title="Training Schedule"
           description="Workers will receive access on this date"
+          contentClassName="md:w-[440px]"
         >
-          <DatePicker value={scheduleDate} onChange={setScheduleDate} placeholder="Select date" />
+          {/* No `label` on either picker: reminders.spec.ts resolves them by
+              accessible name, which for these controls is their placeholder. */}
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <DatePicker
+              value={scheduleDate}
+              onChange={handleScheduleDateChange}
+              placeholder="Select date"
+            />
+            <TimePicker value={scheduleTime} onChange={setScheduleTime} placeholder="Select time" />
+          </div>
         </SettingRow>
 
         <div className="my-6 h-px bg-border" />
@@ -404,8 +456,16 @@ export default function AssignPublishClient({
         <SettingRow
           title="Due Date"
           description="A hard deadline everyone shares. Leave it empty and each person gets their own, counted from when they start the course or join the role."
+          contentClassName="md:w-[440px]"
         >
-          <DatePicker value={dueDate} onChange={setDueDate} placeholder="Select due date" />
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <DatePicker
+              value={dueDate}
+              onChange={handleDueDateChange}
+              placeholder="Select due date"
+            />
+            <TimePicker value={dueTime} onChange={setDueTime} placeholder="Select due time" />
+          </div>
         </SettingRow>
 
         <div className="my-6 h-px bg-border" />
@@ -551,10 +611,13 @@ function SettingRow({
   title,
   description,
   children,
+  contentClassName,
 }: {
   title: string;
   description: string;
   children: React.ReactNode;
+  /** Widens the control column for rows that host a pair of controls. */
+  contentClassName?: string;
 }) {
   return (
     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -562,7 +625,7 @@ function SettingRow({
         <h3 className="text-lg font-bold text-foreground">{title}</h3>
         <p className="mt-0.5 text-sm text-text-secondary">{description}</p>
       </div>
-      <div className="w-full sm:w-[320px] sm:shrink-0">{children}</div>
+      <div className={cn('w-full sm:w-[320px] sm:shrink-0', contentClassName)}>{children}</div>
     </div>
   );
 }

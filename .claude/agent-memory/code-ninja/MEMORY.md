@@ -77,3 +77,4 @@
 - [`course.read` is not admin-only](gotcha_course_read_is_not_admin_only.md) — 13 of 14 roles hold it; swapping isAdminRole for it admits every worker. Keep the conjunction.
 - [sweep.test.ts mock-queue coupling](gotcha_sweep_test_mock_queue_coupling.md) — one early-aborting pre-pass shifts every later `mockResolvedValueOnce` and reddens 13 unrelated tests.
 - [targetRoles backfill is provable](gotcha_targetroles_backfill_is_provable.md) — backfilled in the same migration that added it; but keep the sweep's OR anyway.
+- [DatePicker name = its placeholder](gotcha_datepicker_accessible_name_is_placeholder.md) — adding `label`/aria-label breaks reminders.spec.ts locators, and feature-PR CI skips e2e.

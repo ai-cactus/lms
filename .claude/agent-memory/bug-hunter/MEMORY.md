@@ -79,3 +79,4 @@
 - [RoleTargetPicker stale-locator sweep](role-target-picker-stale-locator-sweep.md) — TC-016 option→checkbox fix, second stale-copy bug, full-suite ECONNREFUSED collapse trap
 - [Assign role-label + Due Date fix tests](assign-role-label-due-date-tests.md) — AssignPublishClient's first unit test file; sweep.ts dueAt/multi-role coverage; RTL getByRole has no `exact` option (Playwright-only)
 - [Assign-consolidation Phase 1 tests](assign-consolidation-phase1-tests.md) — sink tri-state, D-F fixture-date rot, un-mocked update() destructure trap, CourseWizard's first UI test (mock-everything recipe, onChange staleness trap)
+- [Assign-deadline-time Phase 4 tests](assign-deadline-time-phase4-tests.md) — jsdom can't reproduce Radix's portal-dismiss judgment (test the guard's own logic directly instead); vi.useFakeTimers() hangs waitFor unless {toFake:['Date']}; TimePicker mocked like DatePicker
