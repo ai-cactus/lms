@@ -8,15 +8,8 @@ import { RenewalCycle, UserRole } from '@/generated/prisma/enums';
 import Logo from '@/components/ui/Logo';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/alert';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import DatePicker from '@/components/ui/DatePicker';
 import TimePicker from '@/components/ui/TimePicker';
 import { cn } from '@/lib/utils';
@@ -34,6 +27,7 @@ import RoleTargetPicker, {
 import ReminderLadderInput, {
   type ReminderLadderRow,
 } from '@/components/dashboard/enrollment/ReminderLadderInput';
+import RenewalScheduleInput from '@/components/dashboard/enrollment/RenewalScheduleInput';
 import {
   enrollUsers,
   assignCourseToRoles,
@@ -42,14 +36,6 @@ import {
 import { publishCourse } from '@/app/actions/course';
 import { logger } from '@/lib/logger';
 import type { StaffEntry } from '@/types/enrollment';
-
-const RENEWAL_OPTIONS: { value: RenewalCycle; label: string }[] = [
-  { value: 'none', label: 'No renewal' },
-  { value: 'monthly', label: 'Monthly Renewal (1 Month)' },
-  { value: 'quarterly', label: 'Quarterly Renewal (3 Months)' },
-  { value: 'semiannual', label: 'Semi-Annual Renewal (6 Months)' },
-  { value: 'annual', label: 'Annual Renewal (12 Months)' },
-];
 
 /** How the course is being targeted: named individuals, or one or more roles. */
 type AssignMode = 'people' | 'role';
@@ -117,8 +103,16 @@ export default function AssignPublishClient({
   const [scheduleTime, setScheduleTime] = useState(() => toTimeInput(existingSettings?.scheduleAt));
   const [dueDate, setDueDate] = useState(() => toDateInput(existingSettings?.dueAt));
   const [dueTime, setDueTime] = useState(() => toTimeInput(existingSettings?.dueAt));
+  // `'none'` is how a non-recurring course is stored, and it is now expressed by
+  // the toggle rather than by an interval — so a stored `'none'` re-opens with
+  // the toggle off, and the interval beneath it falls back to the same default a
+  // never-assigned course gets, ready for the moment the toggle is turned on.
+  // A course with no assignment yet therefore starts ON at `'annual'`: that is
+  // what this page has always persisted for an untouched new assignment.
+  const storedRenewalCycle = existingSettings?.renewalCycle ?? 'annual';
+  const [recurringEnabled, setRecurringEnabled] = useState(storedRenewalCycle !== 'none');
   const [renewalCycle, setRenewalCycle] = useState<RenewalCycle>(
-    existingSettings?.renewalCycle ?? 'annual',
+    storedRenewalCycle === 'none' ? 'annual' : storedRenewalCycle,
   );
   const [remindersEnabled, setRemindersEnabled] = useState(
     existingSettings?.remindersEnabled ?? true,
@@ -214,6 +208,11 @@ export default function AssignPublishClient({
     // outside it and keep whatever offsets the org has.
     const reminderDaysBefore = reminderRows.map((row) => row.value);
 
+    // The toggle is the only way to say "this course does not recur" now that
+    // the interval list no longer carries a "No renewal" row — so it, not the
+    // Select, decides when the stored `'none'` is written.
+    const submittedRenewalCycle: RenewalCycle = recurringEnabled ? renewalCycle : 'none';
+
     try {
       if (mode === 'role') {
         // An absolute date wins for every holder; without one each holder falls
@@ -227,7 +226,7 @@ export default function AssignPublishClient({
           dueDate: dueDate ? new Date(dueDate) : null,
           dueTime: dueTime || null,
           dueWindowDays,
-          renewalCycle,
+          renewalCycle: submittedRenewalCycle,
           remindersEnabled,
           reminderDaysBefore,
         });
@@ -246,7 +245,7 @@ export default function AssignPublishClient({
           scheduleAt,
           dueAt: combineDateAndTime(dueDate ? new Date(dueDate) : null, dueTime),
           dueWindowDays,
-          renewalCycle,
+          renewalCycle: submittedRenewalCycle,
           remindersEnabled,
           reminderDaysBefore,
         });
@@ -458,23 +457,22 @@ export default function AssignPublishClient({
 
         <div className="my-6 h-px bg-border" />
 
-        <SettingRow
-          title="Renewal Settings"
-          description="Choose a date for staffs to renew this course"
-        >
-          <Select value={renewalCycle} onValueChange={(v) => setRenewalCycle(v as RenewalCycle)}>
-            <SelectTrigger className="h-11 w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {RENEWAL_OPTIONS.map((o) => (
-                <SelectItem key={o.value} value={o.value}>
-                  {o.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </SettingRow>
+        <RenewalScheduleInput
+          toggleLabel="Renewal Settings"
+          header={
+            <div>
+              <h3 className="text-lg font-bold text-foreground">Renewal Settings</h3>
+              <p className="mt-0.5 text-sm text-text-secondary">
+                Choose a date for staffs to renew this course
+              </p>
+            </div>
+          }
+          enabled={recurringEnabled}
+          onEnabledChange={setRecurringEnabled}
+          cycle={renewalCycle}
+          onCycleChange={setRenewalCycle}
+          disabled={submitting}
+        />
 
         <div className="my-6 h-px bg-border" />
 
@@ -483,9 +481,9 @@ export default function AssignPublishClient({
           description="Send workers automated reminders as the deadline approaches and escalate when overdue."
         >
           <label className="flex items-center gap-2.5">
-            <Checkbox
+            <Switch
               checked={remindersEnabled}
-              onCheckedChange={(checked) => setRemindersEnabled(checked === true)}
+              onCheckedChange={setRemindersEnabled}
               disabled={submitting}
             />
             <span className="text-sm font-medium text-foreground">Send deadline reminders</span>

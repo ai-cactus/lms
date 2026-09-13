@@ -1,20 +1,15 @@
 'use client';
 
 import React from 'react';
-import { CalendarDays, Mail, User } from 'lucide-react';
+import { Mail, User } from 'lucide-react';
 import DatePicker from '@/components/ui/DatePicker';
 import TimePicker from '@/components/ui/TimePicker';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import RoleTargetPicker from '@/components/dashboard/enrollment/RoleTargetPicker';
 import AssigneesInput from '@/components/dashboard/enrollment/AssigneesInput';
 import ReminderLadderInput from '@/components/dashboard/enrollment/ReminderLadderInput';
-import type { UserRole } from '@/generated/prisma/enums';
+import RenewalScheduleInput from '@/components/dashboard/enrollment/RenewalScheduleInput';
+import type { RenewalCycle, UserRole } from '@/generated/prisma/enums';
 import { wizardDividerClass, wizardSubtitleClass, wizardTitleClass } from './wizardFormClasses';
 
 import { CourseWizardData } from '@/types/course';
@@ -26,13 +21,6 @@ interface Step7AssignProps {
 }
 
 type AssignMode = CourseWizardData['assignMode'];
-
-const RENEWAL_OPTIONS: { value: string; label: string }[] = [
-  { value: 'monthly', label: 'Monthly (1 month)' },
-  { value: 'quarterly', label: 'Quarterly (3 months)' },
-  { value: 'semiannual', label: 'Semi-annual (6 months)' },
-  { value: 'annual', label: 'Annual (12 months)' },
-];
 
 /**
  * The wizard's Publish gate for this step: a course must reach somebody. Role
@@ -48,35 +36,6 @@ export function isAssignSelectionValid(
 
 const sectionHeadingClass = 'text-base font-semibold text-foreground md:text-[17px]';
 const sectionSubClass = 'text-sm text-text-secondary md:text-[15px]';
-
-function ToggleSwitch({
-  checked,
-  onCheckedChange,
-  label,
-}: {
-  checked: boolean;
-  onCheckedChange: (next: boolean) => void;
-  label: string;
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
-      onClick={() => onCheckedChange(!checked)}
-      className={`relative inline-flex h-7 w-[52px] shrink-0 cursor-pointer items-center rounded-full transition-colors ${
-        checked ? 'bg-primary' : 'bg-input'
-      }`}
-    >
-      <span
-        className={`inline-block size-6 transform rounded-full bg-background shadow transition-transform ${
-          checked ? 'translate-x-[23px]' : 'translate-x-0.5'
-        }`}
-      />
-    </button>
-  );
-}
 
 export default function Step7Assign({ data, onChange }: Step7AssignProps) {
   const assignMode = data.assignMode;
@@ -160,8 +119,8 @@ export default function Step7Assign({ data, onChange }: Step7AssignProps) {
                 Set a deadline for team member to complete this course
               </p>
             </div>
-            <ToggleSwitch
-              label="Set Completion Deadline"
+            <Switch
+              aria-label="Set Completion Deadline"
               checked={data.dueDeadlineEnabled}
               onCheckedChange={(next) => onChange('dueDeadlineEnabled', next)}
             />
@@ -200,8 +159,9 @@ export default function Step7Assign({ data, onChange }: Step7AssignProps) {
           />
         </div>
 
-        <div className="flex flex-col gap-4">
-          <div className="flex items-start justify-between gap-4">
+        <RenewalScheduleInput
+          toggleLabel="Recurring Course Requirement"
+          header={
             <div className="flex flex-col gap-1">
               <h3 className={sectionHeadingClass}>Recurring Course Requirement</h3>
               <p className={sectionSubClass}>
@@ -209,42 +169,15 @@ export default function Step7Assign({ data, onChange }: Step7AssignProps) {
                 reminders will be set automatically according to the chosen schedule.
               </p>
             </div>
-            <ToggleSwitch
-              label="Recurring Course Requirement"
-              checked={data.recurringEnabled}
-              onCheckedChange={(next) => {
-                onChange('recurringEnabled', next);
-                if (!next) onChange('renewalCycle', 'none');
-              }}
-            />
-          </div>
-
-          {data.recurringEnabled && (
-            <div className="flex md:justify-end">
-              <Select
-                value={data.renewalCycle === 'none' ? undefined : data.renewalCycle}
-                onValueChange={(value) => onChange('renewalCycle', value)}
-              >
-                <SelectTrigger
-                  aria-label="Select interval"
-                  className="h-[52px] w-full rounded-[10px] border border-border bg-background px-[18px] text-base text-foreground data-[size=default]:h-[52px] data-[placeholder]:text-muted-foreground md:w-[460px]"
-                >
-                  <span className="flex items-center gap-2">
-                    <CalendarDays className="size-[18px] text-text-secondary" aria-hidden="true" />
-                    <SelectValue placeholder="Select interval" />
-                  </span>
-                </SelectTrigger>
-                <SelectContent>
-                  {RENEWAL_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-        </div>
+          }
+          enabled={data.recurringEnabled}
+          onEnabledChange={(next) => {
+            onChange('recurringEnabled', next);
+            if (!next) onChange('renewalCycle', 'none');
+          }}
+          cycle={data.renewalCycle as RenewalCycle}
+          onCycleChange={(next) => onChange('renewalCycle', next)}
+        />
       </div>
     </div>
   );
