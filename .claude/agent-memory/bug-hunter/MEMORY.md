@@ -71,7 +71,7 @@
 - [Courses video/reading consolidation tests](courses-video-reading-consolidation-tests.md) — Input role is textbox not searchbox; e2e count-sensitivity claim disproven
 - [Facility-scope-and-switching test suite](facility-scope-and-switching-tests.md) — D-01 "verbs gated, reads not" fix; 19 files closing the getCourseForOrgView PII leak
 - [Duplicate removal + doc-identity fix validation](duplicate-removal-and-doc-identity-fix-validation.md) — confirmed PHI-scan-fails-closed blocks live-upload e2e (superseded — see PR-3a notes for the local-regex bypass that DOES work)
-- [RoleTargetPicker PR-2 tests](role-target-picker-pr2-test-patterns.md) — pg doesn't parse custom enum[] columns (cast ::text[]); containers up ≠ DB migrated/seeded
+- [RoleTargetPicker PR-2 tests](role-target-picker-pr2-test-patterns.md) — pg doesn't parse custom enum[] columns (cast ::text[]); containers up ≠ DB migrated/seeded; ⚠️ why my import-graph sweep called #595 green while it shipped a broken e2e spec
 - [Course publish reviewer (D8) tests](course-publish-reviewer-d8-tests.md) — @ts-expect-error must sit above the property line or the pin silently fails tsc
 - [Course wizard single-document PR-3a tests](course-wizard-single-doc-pr3a-test-patterns.md) — local-regex PHI bypass for live SSN uploads (Vertex-free), pdfkit/pdf-parse incompatibility (use docx+mammoth), a pre-existing false-positive in quiz-ai.test.ts
 - [Course wizard PR-3b restyle tests](course-wizard-pr3b-restyle-test-patterns.md) — Playwright role="alert" collides with Next's route announcer (use hasText, not name); flattened-accordion rewrite pattern; migrate reset is AI-blocked, delete the stray row instead
