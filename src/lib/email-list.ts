@@ -20,14 +20,24 @@ export interface ParsedEmailList {
 }
 
 /**
+ * Split free text on commas, whitespace, semicolons or new lines into trimmed,
+ * non-empty tokens. Exported so a caller that needs the *rejected* tokens (to
+ * hand them back to the user for correction rather than dropping them) splits
+ * exactly the way {@link parseEmailList} does.
+ */
+export function splitEmailTokens(text: string): string[] {
+  return text
+    .split(/[\s,;]+/)
+    .map((token) => token.trim())
+    .filter(Boolean);
+}
+
+/**
  * Split free text on commas, whitespace, semicolons or new lines and partition
  * the tokens into valid (deduplicated, lowercased) and invalid.
  */
 export function parseEmailList(text: string): ParsedEmailList {
-  const tokens = text
-    .split(/[\s,;]+/)
-    .map((token) => token.trim())
-    .filter(Boolean);
+  const tokens = splitEmailTokens(text);
 
   const valid: string[] = [];
   const seen = new Set<string>();

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React from 'react';
 import { CalendarDays, ChevronDown, ChevronUp, CirclePlus, Mail, User, X } from 'lucide-react';
 import DatePicker from '@/components/ui/DatePicker';
 import TimePicker from '@/components/ui/TimePicker';
@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import RoleTargetPicker from '@/components/dashboard/enrollment/RoleTargetPicker';
+import AssigneesInput from '@/components/dashboard/enrollment/AssigneesInput';
 import type { UserRole } from '@/generated/prisma/enums';
 import {
   wizardDividerClass,
@@ -23,18 +24,10 @@ import {
 
 import { CourseWizardData, CourseWizardReminder } from '@/types/course';
 import { searchStaffUsers } from '@/app/actions/user';
-import { logger } from '@/lib/logger';
 
 interface Step7AssignProps {
   data: CourseWizardData;
   onChange: <K extends keyof CourseWizardData>(field: K, value: CourseWizardData[K]) => void;
-}
-
-interface Worker {
-  id: string;
-  name: string;
-  email: string;
-  initials: string;
 }
 
 type AssignMode = CourseWizardData['assignMode'];
@@ -98,103 +91,8 @@ function ToggleSwitch({
 }
 
 export default function Step7Assign({ data, onChange }: Step7AssignProps) {
-  const [inputValue, setInputValue] = useState('');
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [suggestions, setSuggestions] = useState<Worker[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [knownEmails, setKnownEmails] = useState<Set<string>>(new Set()); // Track existing org members
-  const [validationError, setValidationError] = useState('');
-  const wrapperRef = useRef<HTMLDivElement>(null);
-
   const assignMode = data.assignMode;
   const selectedRoles = data.assignRoles as UserRole[];
-
-  useEffect(() => {
-    const timer = setTimeout(async () => {
-      if (inputValue.length >= 2) {
-        setIsLoading(true);
-        try {
-          const results = await searchStaffUsers(inputValue);
-          setKnownEmails((prev) => {
-            const updated = new Set(prev);
-            results.forEach((w: Worker) => updated.add(w.email));
-            return updated;
-          });
-          // Filter out already assigned
-          const available = results.filter((w: Worker) => !data.assignments?.includes(w.email));
-          setSuggestions(available);
-        } catch (err) {
-          logger.error({ msg: 'Failed to search staff', err: err });
-        } finally {
-          setIsLoading(false);
-        }
-      } else {
-        setSuggestions([]);
-      }
-    }, 300);
-
-    return () => clearTimeout(timer);
-  }, [inputValue, data.assignments]);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
-        setShowSuggestions(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    const val = inputValue.trim();
-    const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
-
-    if (e.key === ' ' || e.key === 'Spacebar') {
-      e.preventDefault();
-      if (isValidEmail) {
-        addAssignment(val);
-        setValidationError('');
-      } else if (val) {
-        setValidationError('Please enter a valid email address');
-      }
-      return;
-    }
-
-    if (['Enter', 'Tab', ','].includes(e.key)) {
-      e.preventDefault();
-      if (val) {
-        if (isValidEmail) {
-          addAssignment(val);
-          setValidationError('');
-        } else {
-          setValidationError('Please enter a valid email address');
-        }
-      }
-    } else if (e.key === 'Backspace' && !inputValue && data.assignments?.length > 0) {
-      const newAssignments = [...(data.assignments || [])];
-      newAssignments.pop();
-      onChange('assignments', newAssignments);
-      setValidationError('');
-    }
-  };
-
-  const addAssignment = (value: string) => {
-    if (!value) return;
-    const current = data.assignments || [];
-    if (!current.includes(value)) {
-      onChange('assignments', [...current, value]);
-    }
-    setInputValue('');
-    setShowSuggestions(false);
-    setSuggestions([]);
-  };
-
-  const removeAssignment = (index: number) => {
-    const current = data.assignments || [];
-    const newAssignments = current.filter((_: string, i: number) => i !== index);
-    onChange('assignments', newAssignments);
-  };
 
   const updateReminder = (index: number, value: number) => {
     const next = data.reminders.map((reminder, i) =>
@@ -226,8 +124,6 @@ export default function Step7Assign({ data, onChange }: Step7AssignProps) {
   const setMode = (mode: AssignMode) => {
     if (mode === assignMode) return;
     onChange('assignMode', mode);
-    setValidationError('');
-    setShowSuggestions(false);
   };
 
   const tabClass = (active: boolean) =>
@@ -279,92 +175,16 @@ export default function Step7Assign({ data, onChange }: Step7AssignProps) {
             />
           ) : (
             <div>
-              <div
-                className="relative flex min-h-[52px] w-full cursor-text flex-wrap items-center gap-1.5 rounded-md border-[1.5px] border-border bg-background px-[18px] py-2.5 transition-colors focus-within:border-primary md:min-h-[56px]"
-                ref={wrapperRef}
-                onClick={() => document.getElementById('assign-input')?.focus()}
-              >
-                {(data.assignments || []).map((item: string, index: number) => {
-                  const isNewInvite = !knownEmails.has(item);
-                  return (
-                    <div
-                      key={index}
-                      className={`flex items-center rounded-2xl px-2.5 py-1 text-[13px] font-medium ${
-                        isNewInvite
-                          ? 'bg-primary text-primary-foreground'
-                          : 'bg-accent text-foreground'
-                      }`}
-                    >
-                      {item}
-                      {isNewInvite && (
-                        <span className="ml-1.5 rounded-sm bg-background/25 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.5px]">
-                          New
-                        </span>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label={`Remove ${item}`}
-                        className="ml-1.5 flex h-auto items-center justify-center border-none bg-transparent p-0 text-[14px] leading-none text-text-secondary hover:text-error"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          removeAssignment(index);
-                        }}
-                      >
-                        <X className="h-3.5 w-3.5" strokeWidth={2} />
-                      </Button>
-                    </div>
-                  );
-                })}
-                <input
-                  id="assign-input"
-                  aria-label="Add people, emails or names"
-                  className="min-w-[120px] flex-1 border-none bg-transparent py-1 text-base text-foreground outline-none placeholder:text-muted-foreground md:text-[18px]"
-                  placeholder={data.assignments?.length === 0 ? 'Add people, emails or names' : ''}
-                  value={inputValue}
-                  onChange={(e) => {
-                    setInputValue(e.target.value);
-                    setShowSuggestions(true);
-                  }}
-                  onKeyDown={handleKeyDown}
-                  onFocus={() => setShowSuggestions(true)}
-                />
-
-                {showSuggestions && (inputValue.length >= 2 || suggestions.length > 0) && (
-                  <div className="absolute left-0 top-full z-50 mt-1 max-h-[200px] w-full overflow-y-auto rounded-md border border-border bg-background shadow-md">
-                    {isLoading ? (
-                      <div className="p-2.5 text-sm text-text-secondary">Searching...</div>
-                    ) : suggestions.length > 0 ? (
-                      suggestions.map((worker) => (
-                        <div
-                          key={worker.id}
-                          className="flex cursor-pointer items-center gap-3 px-4 py-2.5 transition-colors hover:bg-background-secondary"
-                          onClick={() => addAssignment(worker.email)}
-                        >
-                          <div className="flex size-6 items-center justify-center rounded-full bg-accent text-[10px] font-bold text-text-secondary">
-                            {worker.initials}
-                          </div>
-                          <div className="flex flex-col">
-                            <span className="text-sm font-medium text-foreground">
-                              {worker.name}
-                            </span>
-                            <span className="text-xs text-text-secondary">{worker.email}</span>
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      inputValue.length >= 2 && (
-                        <div className="p-2.5 text-sm text-text-secondary">No staff found</div>
-                      )
-                    )}
-                  </div>
-                )}
-              </div>
+              <AssigneesInput
+                value={data.assignments || []}
+                onChange={(next) => onChange('assignments', next)}
+                onSearch={searchStaffUsers}
+                className="min-h-[52px] px-[18px] py-2.5 md:min-h-[56px]"
+              />
               <p className="mt-2.5 text-sm font-medium text-text-secondary">
                 Type an email and press Enter. New emails will receive an invite with login
                 credentials.
               </p>
-              {validationError && <p className="mt-1.5 text-sm text-error">{validationError}</p>}
             </div>
           )}
         </div>

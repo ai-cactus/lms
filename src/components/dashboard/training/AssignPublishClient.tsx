@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Check, ChevronDown, Clock, X } from 'lucide-react';
+import { Check, ChevronDown, Clock } from 'lucide-react';
 import { RenewalCycle, ReminderStage, UserRole } from '@/generated/prisma/enums';
 import Logo from '@/components/ui/Logo';
 import { Button } from '@/components/ui/button';
@@ -21,6 +21,9 @@ import {
 import DatePicker from '@/components/ui/DatePicker';
 import { cn } from '@/lib/utils';
 import { REMINDER_STAGE_DEFAULTS, SWEEP_STAGES } from '@/lib/reminders/stages';
+import AssigneesInput, {
+  type AssigneesInputHandle,
+} from '@/components/dashboard/enrollment/AssigneesInput';
 import RoleTargetPicker, {
   type RoleTargetPickerMode,
 } from '@/components/dashboard/enrollment/RoleTargetPicker';
@@ -32,8 +35,6 @@ import {
 import { publishCourse } from '@/app/actions/course';
 import { logger } from '@/lib/logger';
 import type { StaffEntry } from '@/types/enrollment';
-
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const RENEWAL_OPTIONS: { value: RenewalCycle; label: string }[] = [
   { value: 'none', label: 'No renewal' },
@@ -112,7 +113,6 @@ export default function AssignPublishClient({
   );
 
   const [entries, setEntries] = useState<StaffEntry[]>([]);
-  const [inputValue, setInputValue] = useState('');
   const [scheduleDate, setScheduleDate] = useState(() => toDateInput(existingSettings?.scheduleAt));
   const [dueDate, setDueDate] = useState(() => toDateInput(existingSettings?.dueAt));
   const [renewalCycle, setRenewalCycle] = useState<RenewalCycle>(
@@ -137,38 +137,8 @@ export default function AssignPublishClient({
   const [error, setError] = useState<string | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
 
-  // ── Assignees ────────────────────────────────────────────────────────────
-  const addEmails = (raw: string) => {
-    const candidates = raw
-      .split(/[\s,;]+/)
-      .map((c) => c.trim().toLowerCase())
-      .filter(Boolean);
-    if (candidates.length === 0) return;
-    setEntries((prev) => {
-      const seen = new Set(prev.map((e) => e.email));
-      const next = [...prev];
-      for (const email of candidates) {
-        if (EMAIL_REGEX.test(email) && !seen.has(email)) {
-          seen.add(email);
-          next.push({ email });
-        }
-      }
-      return next;
-    });
-    setInputValue('');
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (['Enter', 'Tab', ',', ' '].includes(e.key)) {
-      e.preventDefault();
-      addEmails(inputValue);
-    } else if (e.key === 'Backspace' && !inputValue && entries.length > 0) {
-      setEntries((prev) => prev.slice(0, -1));
-    }
-  };
-
-  const removeEntry = (index: number) => setEntries((prev) => prev.filter((_, i) => i !== index));
-
+  // Commits whatever is typed when the host's own "Invite" button is pressed.
+  const assigneesRef = useRef<AssigneesInputHandle>(null);
   // ── Reminder cadence ───────────────────────────────────────────────────────
   const setStageOffset = (stage: ReminderStage, offsetDays: number) =>
     setStages((prev) => prev.map((s) => (s.stage === stage ? { ...s, offsetDays } : s)));
@@ -365,43 +335,18 @@ export default function AssignPublishClient({
 
             {mode === 'people' ? (
               <div className="flex items-start gap-3">
-                <div
-                  className="flex min-h-12 flex-1 flex-wrap items-center gap-1.5 rounded-lg border border-primary bg-background px-3 py-2 focus-within:ring-1 focus-within:ring-primary"
-                  onClick={() => document.getElementById('assign-input')?.focus()}
-                >
-                  {entries.map((entry, index) => (
-                    <span
-                      key={entry.email}
-                      className="flex items-center rounded bg-secondary px-2 py-1 text-[13px] font-medium text-foreground"
-                    >
-                      {entry.email}
-                      <button
-                        type="button"
-                        className="ml-1.5 text-text-secondary hover:text-error"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          removeEntry(index);
-                        }}
-                        aria-label={`Remove ${entry.email}`}
-                      >
-                        <X className="size-3.5" aria-hidden="true" />
-                      </button>
-                    </span>
-                  ))}
-                  <input
-                    id="assign-input"
-                    className="min-w-[160px] flex-1 border-none bg-transparent text-sm text-foreground outline-none"
-                    placeholder={entries.length === 0 ? 'Add people, emails or names' : ''}
-                    value={inputValue}
-                    onChange={(e) => setInputValue(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    disabled={submitting}
-                  />
-                </div>
+                <AssigneesInput
+                  ref={assigneesRef}
+                  value={entries.map((entry) => entry.email)}
+                  onChange={(next) => setEntries(next.map((email) => ({ email })))}
+                  enableBulkImport
+                  disabled={submitting}
+                  className="min-h-12 flex-1 border-primary"
+                />
                 <Button
                   type="button"
                   size="lg"
-                  onClick={() => addEmails(inputValue)}
+                  onClick={() => assigneesRef.current?.commitDraft()}
                   disabled={submitting}
                 >
                   Invite
