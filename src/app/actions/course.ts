@@ -24,14 +24,18 @@ import {
 import { partitionEmailsByFacility } from '@/lib/facility/target-scope';
 import { CourseAccessError } from '@/lib/course/access-error';
 import { resolveOnCompletion } from '@/lib/reminders/sweep';
-import { combineDateAndTime } from '@/lib/reminders/deadline';
+import { combineDateAndTime, isPastDeadlineChange } from '@/lib/reminders/deadline';
 import { assignCourseToRoles, enrollUsers } from './enrollment';
 import {
   buildPendingAssignment,
   parsePendingAssignment,
   type RoleAssignmentIntent,
 } from '@/lib/course/pending-assignment';
-import { defaultStageRows, upsertCourseAssignment } from '@/lib/enrollment/assignment';
+import {
+  defaultStageRows,
+  findAssignmentDueAt,
+  upsertCourseAssignment,
+} from '@/lib/enrollment/assignment';
 import {
   createEnrollmentForUser,
   createEnrollmentsForUsers,
@@ -514,6 +518,16 @@ export async function updateCourse(
   return course;
 }
 
+/**
+ * Publish a course, replaying any assignment the F-051 quality gate deferred.
+ *
+ * The published course is returned with two advisory flags, neither of which
+ * fails the publish: `assignmentFailed` when the deferred assignment could not
+ * be replayed at all, and `assignmentDeadlineExpired` when it WAS replayed but
+ * its parked deadline had already elapsed and was dropped in favour of each
+ * recipient's completion window. Both are for the admin to see — the course is
+ * published either way.
+ */
 export async function publishCourse(courseId: string, opts?: { acknowledgeWarnings?: boolean }) {
   const session = await resolveSession();
   if (!session?.user?.id) {
@@ -586,22 +600,58 @@ export async function publishCourse(courseId: string, opts?: { acknowledgeWarnin
   // The course is already published, so a failure here must not fail the call —
   // it is reported back and the admin re-assigns from the training dashboard.
   let assignmentFailed = false;
+  let assignmentDeadlineExpired = false;
   if (existing.reviewRequired && opts?.acknowledgeWarnings && existing.pendingAssignment !== null) {
     const pending = parsePendingAssignment(existing.pendingAssignment, { courseId });
     assignmentFailed = pending === null;
 
     if (pending) {
       try {
+        // The intent was parked when the course was created; the admin may only
+        // now be acknowledging the warnings, so its deadline can have elapsed in
+        // the meantime. Replaying it would either be refused outright (D-F) or
+        // enroll everyone already overdue, so the stale date is dropped and each
+        // recipient falls back to their own completion window. Measured with the
+        // same rule the assign actions refuse on: a parked date that matches the
+        // deadline already in force is not stale, it IS the deadline.
+        const parkedDueAt =
+          pending.mode === 'email'
+            ? pending.dueAt
+              ? new Date(pending.dueAt)
+              : null
+            : combineDateAndTime(
+                pending.dueDate ? new Date(pending.dueDate) : null,
+                pending.dueTime,
+              );
+        const storedDueAt =
+          parkedDueAt && session.user.organizationId
+            ? await findAssignmentDueAt(session.user.organizationId, courseId)
+            : null;
+        assignmentDeadlineExpired =
+          parkedDueAt !== null && isPastDeadlineChange(parkedDueAt, storedDueAt);
+
+        if (assignmentDeadlineExpired) {
+          logger.info({
+            msg: '[course] Parked assignment deadline had elapsed — replaying without it',
+            courseId,
+            userId: session.user.id,
+            mode: pending.mode,
+            parkedDueAt: parkedDueAt?.toISOString(),
+            effectiveDeadline: 'per-enrollee completion window',
+          });
+        }
+
         const replay =
           pending.mode === 'email'
             ? await enrollUsers(
                 courseId,
                 pending.emails.map((email) => ({ email })),
-                { dueAt: pending.dueAt ? new Date(pending.dueAt) : null },
+                // `undefined` leaves the assignment's own deadline column alone.
+                { dueAt: assignmentDeadlineExpired ? undefined : parkedDueAt },
               )
             : await assignCourseToRoles(courseId, pending.roles, {
-                dueDate: pending.dueDate,
-                dueTime: pending.dueTime,
+                dueDate: assignmentDeadlineExpired ? null : pending.dueDate,
+                dueTime: assignmentDeadlineExpired ? null : pending.dueTime,
                 dueWindowDays: pending.dueWindowDays,
                 remindersEnabled: pending.remindersEnabled,
                 reminderDaysBefore: pending.reminderDaysBefore,
@@ -669,7 +719,7 @@ export async function publishCourse(courseId: string, opts?: { acknowledgeWarnin
   }
 
   revalidatePath('/dashboard/training');
-  return { ...course, assignmentFailed };
+  return { ...course, assignmentFailed, assignmentDeadlineExpired };
 }
 
 /**
@@ -1265,17 +1315,19 @@ export async function assignCourseToUsers(
   // assignment path writes. `targetRole` stays untouched (undefined): assigning
   // named individuals must never clear a course's role targeting.
   const assignmentId = deadline
-    ? await upsertCourseAssignment({
-        organizationId,
-        courseId,
-        assignedByAdminId: session.user.id,
-        scheduleAt: null,
-        dueAt: deadline,
-        dueWindowDays: null,
-        remindersEnabled: true,
-        renewalCycle: 'none',
-        stageRows: defaultStageRows(),
-      })
+    ? (
+        await upsertCourseAssignment({
+          organizationId,
+          courseId,
+          assignedByAdminId: session.user.id,
+          scheduleAt: null,
+          dueAt: deadline,
+          dueWindowDays: null,
+          remindersEnabled: true,
+          renewalCycle: 'none',
+          stageRows: defaultStageRows(),
+        })
+      ).id
     : null;
 
   // The enrollment rows are written through the shared enrollment machinery

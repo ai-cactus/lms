@@ -78,3 +78,4 @@
 - [Course details PR-4 attribution tests](course-details-pr4-attribution-tests.md) — mayReviewWithoutEnrollment 14-role table; getRoleDisplayName returns FULL names ("Owner (Organisation Admin)"); e2e email-LIKE cleanup races concurrent tests; lessons-empty course renders straight into AdminQuizEditor
 - [RoleTargetPicker stale-locator sweep](role-target-picker-stale-locator-sweep.md) — TC-016 option→checkbox fix, second stale-copy bug, full-suite ECONNREFUSED collapse trap
 - [Assign role-label + Due Date fix tests](assign-role-label-due-date-tests.md) — AssignPublishClient's first unit test file; sweep.ts dueAt/multi-role coverage; RTL getByRole has no `exact` option (Playwright-only)
+- [Assign-consolidation Phase 1 tests](assign-consolidation-phase1-tests.md) — sink tri-state, D-F fixture-date rot, un-mocked update() destructure trap, CourseWizard's first UI test (mock-everything recipe, onChange staleness trap)

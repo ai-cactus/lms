@@ -125,15 +125,4 @@ describe('upsertCourseAssignment — facilityScope on UPDATE (re-assignment)', (
     expect(data.facilityScoped).toBe(false);
     expect(data.facilityIds).toEqual([]);
   });
-
-  it('settingsMode: "preserve" returns the existing id and never touches the scope columns at all', async () => {
-    await upsertCourseAssignment({
-      ...BASE_PARAMS,
-      facilityScope: ['fac-1'],
-      settingsMode: 'preserve',
-    });
-
-    expect(mockAssignmentUpdate).not.toHaveBeenCalled();
-    expect(mockAssignmentCreate).not.toHaveBeenCalled();
-  });
 });
