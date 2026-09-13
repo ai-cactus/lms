@@ -1,10 +1,9 @@
 'use client';
 
 import React from 'react';
-import { CalendarDays, ChevronDown, ChevronUp, CirclePlus, Mail, User, X } from 'lucide-react';
+import { CalendarDays, Mail, User } from 'lucide-react';
 import DatePicker from '@/components/ui/DatePicker';
 import TimePicker from '@/components/ui/TimePicker';
-import { Button } from '@/components/ui/button';
 import {
   Select,
   SelectContent,
@@ -14,15 +13,11 @@ import {
 } from '@/components/ui/select';
 import RoleTargetPicker from '@/components/dashboard/enrollment/RoleTargetPicker';
 import AssigneesInput from '@/components/dashboard/enrollment/AssigneesInput';
+import ReminderLadderInput from '@/components/dashboard/enrollment/ReminderLadderInput';
 import type { UserRole } from '@/generated/prisma/enums';
-import {
-  wizardDividerClass,
-  wizardStepperButtonClass,
-  wizardSubtitleClass,
-  wizardTitleClass,
-} from './wizardFormClasses';
+import { wizardDividerClass, wizardSubtitleClass, wizardTitleClass } from './wizardFormClasses';
 
-import { CourseWizardData, CourseWizardReminder } from '@/types/course';
+import { CourseWizardData } from '@/types/course';
 import { searchStaffUsers } from '@/app/actions/user';
 
 interface Step7AssignProps {
@@ -31,13 +26,6 @@ interface Step7AssignProps {
 }
 
 type AssignMode = CourseWizardData['assignMode'];
-
-/**
- * How many "N days before" rows the schedule can carry. The server maps each row
- * onto one worker-audience ladder stage, and there are exactly three of those —
- * see `WIZARD_REMINDER_STAGES` in `src/lib/enrollment/assignment.ts`.
- */
-const MAX_REMINDER_ROWS = 3;
 
 const RENEWAL_OPTIONS: { value: string; label: string }[] = [
   { value: 'monthly', label: 'Monthly (1 month)' },
@@ -93,33 +81,6 @@ function ToggleSwitch({
 export default function Step7Assign({ data, onChange }: Step7AssignProps) {
   const assignMode = data.assignMode;
   const selectedRoles = data.assignRoles as UserRole[];
-
-  const updateReminder = (index: number, value: number) => {
-    const next = data.reminders.map((reminder, i) =>
-      i === index ? { ...reminder, value } : reminder,
-    );
-    onChange('reminders', next);
-  };
-
-  const updateReminderUnit = (index: number, unit: CourseWizardReminder['unit']) => {
-    const next = data.reminders.map((reminder, i) =>
-      i === index ? { ...reminder, unit } : reminder,
-    );
-    onChange('reminders', next);
-  };
-
-  const removeReminder = (index: number) => {
-    onChange(
-      'reminders',
-      data.reminders.filter((_, i) => i !== index),
-    );
-  };
-
-  const addReminder = () => {
-    if (data.reminders.length >= MAX_REMINDER_ROWS) return;
-    const next: CourseWizardReminder = { value: 1, unit: 'days' };
-    onChange('reminders', [...data.reminders, next]);
-  };
 
   const setMode = (mode: AssignMode) => {
     if (mode === assignMode) return;
@@ -232,74 +193,11 @@ export default function Step7Assign({ data, onChange }: Step7AssignProps) {
             </p>
           </div>
 
-          <div className="flex shrink-0 flex-col items-start gap-3 md:items-end">
-            {data.reminders.map((reminder, index) => (
-              <div key={index} className="flex w-full items-center gap-3 md:w-auto">
-                <div className="flex h-12 w-24 items-center gap-2 rounded-[10px] border border-border bg-background px-3 transition-colors focus-within:border-primary md:w-[200px] md:px-3.5">
-                  <input
-                    type="number"
-                    min={0}
-                    aria-label={`Reminder ${index + 1} days before deadline`}
-                    value={reminder.value}
-                    onChange={(e) => updateReminder(index, Number(e.target.value))}
-                    className="min-w-0 flex-1 bg-transparent text-base text-foreground outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                  />
-                  <div className="flex shrink-0 flex-col">
-                    <button
-                      type="button"
-                      aria-label={`Increase reminder ${index + 1}`}
-                      onClick={() => updateReminder(index, reminder.value + 1)}
-                      className={wizardStepperButtonClass}
-                    >
-                      <ChevronUp className="size-4" aria-hidden="true" />
-                    </button>
-                    <button
-                      type="button"
-                      aria-label={`Decrease reminder ${index + 1}`}
-                      onClick={() => updateReminder(index, Math.max(0, reminder.value - 1))}
-                      className={wizardStepperButtonClass}
-                    >
-                      <ChevronDown className="size-4" aria-hidden="true" />
-                    </button>
-                  </div>
-                </div>
-                <Select
-                  value={reminder.unit}
-                  onValueChange={(value) => updateReminderUnit(index, value as 'days')}
-                >
-                  <SelectTrigger
-                    aria-label={`Reminder ${index + 1} unit`}
-                    className="h-12 w-24 rounded-[10px] border border-border bg-background px-3 text-base text-foreground data-[size=default]:h-12 md:w-[200px] md:px-3.5"
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="days">days</SelectItem>
-                  </SelectContent>
-                </Select>
-                <span className="text-sm text-text-secondary md:text-base">before</span>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={`Remove reminder ${index + 1}`}
-                  className="text-text-secondary hover:text-error"
-                  onClick={() => removeReminder(index)}
-                >
-                  <X className="size-5" strokeWidth={2} />
-                </Button>
-              </div>
-            ))}
-
-            <button
-              type="button"
-              onClick={addReminder}
-              disabled={data.reminders.length >= MAX_REMINDER_ROWS}
-              className="flex items-center gap-1.5 self-start text-sm font-semibold text-primary transition-colors hover:underline disabled:cursor-not-allowed disabled:text-text-tertiary disabled:no-underline"
-            >
-              <CirclePlus className="size-4" aria-hidden="true" />
-              Add reminder
-            </button>
-          </div>
+          <ReminderLadderInput
+            value={data.reminders}
+            onChange={(next) => onChange('reminders', next)}
+            className="shrink-0 items-start md:items-end"
+          />
         </div>
 
         <div className="flex flex-col gap-4">

@@ -511,3 +511,114 @@ describe('AssignPublishClient — Priority 2: existingSettings.dueAt / scheduleA
     expect(settings.scheduleAt).toEqual(STORED_SCHEDULE_AT);
   });
 });
+
+/**
+ * Phase 5 (D-B): the page lost its per-stage "Advanced reminder schedule"
+ * editor and now speaks the wizard's "N days before" vocabulary via the shared
+ * `ReminderLadderInput`. These tests cover the page's OWN wiring of that
+ * control — hydration from a stored ladder (including an org's custom
+ * escalation offsets, which must never surface as an editable row here) and
+ * the submit payload shape. `stageRowsToReminderDays`/`reminderDaysToStageRows`
+ * themselves are real here (not mocked) — see reminder-ladder.test.ts and
+ * assignment.reminder-stages.test.ts for their own dedicated coverage, and
+ * assignment.reminder-ladder-sink-safety.test.ts for the sink-level proof that
+ * an org's custom escalation offsets survive a save from this page.
+ */
+describe('AssignPublishClient — Priority 4: reminder-ladder hydration and submit shape', () => {
+  it('a fresh course with no existingSettings prefills the DEFAULT_WIZARD_REMINDER_DAYS cadence (14, 3, 0), not an empty ladder', () => {
+    renderClient();
+
+    expect(screen.getByLabelText('Reminder 1 days before deadline')).toHaveValue(14);
+    expect(screen.getByLabelText('Reminder 2 days before deadline')).toHaveValue(3);
+    expect(screen.getByLabelText('Reminder 3 days before deadline')).toHaveValue(0);
+  });
+
+  it('hydrates from a stored ladder that also carries custom escalation offsets — only the three worker rows ever render, never the escalation ones', () => {
+    renderClient({
+      existingSettings: existingSettings({
+        stages: [
+          { stage: 'FRIENDLY_REMINDER', offsetDays: -21, enabled: true, channels: ['email'] },
+          { stage: 'URGENT_REMINDER', offsetDays: -5, enabled: true, channels: ['email'] },
+          { stage: 'DAY_OF_DEADLINE', offsetDays: 0, enabled: true, channels: ['email'] },
+          // Custom offsets outside the wizard's vocabulary — must not surface
+          // as a 4th/5th row, and must not shift/replace the three above.
+          { stage: 'GRACE_SOFT_ESCALATION', offsetDays: 10, enabled: true, channels: ['email'] },
+          { stage: 'HARD_ESCALATION', offsetDays: 12, enabled: true, channels: ['email'] },
+        ],
+      }),
+    });
+
+    expect(screen.getByLabelText('Reminder 1 days before deadline')).toHaveValue(21);
+    expect(screen.getByLabelText('Reminder 2 days before deadline')).toHaveValue(5);
+    expect(screen.getByLabelText('Reminder 3 days before deadline')).toHaveValue(0);
+    expect(screen.queryByLabelText('Reminder 4 days before deadline')).not.toBeInTheDocument();
+  });
+
+  it('people mode submits reminderDaysBefore and no stages key at all', async () => {
+    const user = userEvent.setup();
+    renderClient();
+
+    await user.type(screen.getByPlaceholderText('Add people, emails or names'), 'worker@test.com,');
+    await user.click(screen.getByRole('button', { name: 'Assign Course' }));
+
+    await waitFor(() => expect(mockEnrollUsers).toHaveBeenCalledTimes(1));
+    const [, , settings] = mockEnrollUsers.mock.calls[0];
+    expect(settings).toEqual(expect.objectContaining({ reminderDaysBefore: [14, 3, 0] }));
+    expect(settings).not.toHaveProperty('stages');
+  });
+
+  it('role mode submits reminderDaysBefore and no stages key at all', async () => {
+    const user = userEvent.setup();
+    renderClient();
+
+    await user.click(screen.getByRole('button', { name: 'Roles' }));
+    await user.click(screen.getByTestId('role-target-picker'));
+    await user.click(screen.getByRole('button', { name: 'Assign Course' }));
+
+    await waitFor(() => expect(mockAssignCourseToRoles).toHaveBeenCalledTimes(1));
+    const [, , settings] = mockAssignCourseToRoles.mock.calls[0];
+    expect(settings).toEqual(expect.objectContaining({ reminderDaysBefore: [14, 3, 0] }));
+    expect(settings).not.toHaveProperty('stages');
+  });
+
+  it('a stored assignment whose ladder already has no wizard-stage rows hydrates to an EMPTY control (not the fresh-course default) and submits reminderDaysBefore: []', async () => {
+    const user = userEvent.setup();
+    // existingSettings is non-null (an assignment DOES exist), but its stored
+    // stages carry no enabled wizard-vocabulary row — e.g. every worker
+    // reminder was previously disabled. This must render 0 rows, not silently
+    // fall back to the fresh-course [14, 3, 0] default (that fallback is only
+    // for `existingSettings === null`, per stageRowsToReminderDays vs.
+    // DEFAULT_WIZARD_REMINDER_DAYS in the component's own ternary).
+    renderClient({ existingSettings: existingSettings({ stages: [] }) });
+
+    expect(screen.queryByLabelText(/Reminder \d+ days before deadline/)).not.toBeInTheDocument();
+
+    await user.type(screen.getByPlaceholderText('Add people, emails or names'), 'worker@test.com,');
+    await user.click(screen.getByRole('button', { name: 'Assign Course' }));
+
+    await waitFor(() => expect(mockEnrollUsers).toHaveBeenCalledTimes(1));
+    const [, , settings] = mockEnrollUsers.mock.calls[0];
+    // Deliberate meaning per D-B: [] disables exactly the three worker stages
+    // and says nothing about grace/overdue — see
+    // assignment.reminder-ladder-sink-safety.test.ts for the sink-level proof
+    // that the escalation stages are left untouched by this exact payload.
+    expect(settings.reminderDaysBefore).toEqual([]);
+  });
+
+  it('removing every row by hand on an otherwise-prefilled ladder also submits reminderDaysBefore: []', async () => {
+    const user = userEvent.setup();
+    renderClient();
+
+    await user.click(screen.getByRole('button', { name: 'Remove reminder 3' }));
+    await user.click(screen.getByRole('button', { name: 'Remove reminder 2' }));
+    await user.click(screen.getByRole('button', { name: 'Remove reminder 1' }));
+    expect(screen.queryByLabelText(/Reminder \d+ days before deadline/)).not.toBeInTheDocument();
+
+    await user.type(screen.getByPlaceholderText('Add people, emails or names'), 'worker@test.com,');
+    await user.click(screen.getByRole('button', { name: 'Assign Course' }));
+
+    await waitFor(() => expect(mockEnrollUsers).toHaveBeenCalledTimes(1));
+    const [, , settings] = mockEnrollUsers.mock.calls[0];
+    expect(settings.reminderDaysBefore).toEqual([]);
+  });
+});

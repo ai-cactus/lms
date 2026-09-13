@@ -412,4 +412,57 @@ test.describe('Reminders & Escalations', () => {
 
     await expect(page.getByRole('row', { name: /nadia nearing/i })).toBeVisible();
   });
+
+  // ---------------------------------------------------------------------------
+  // Flow 11 (Phase 5 / D-B reminder-ladder consolidation): no e2e drove the
+  // reminder ladder on the assign page before this — not even the removed
+  // per-stage "Advanced reminder schedule" editor it replaced. Confirms an
+  // edited "N days before" cadence (via ReminderLadderInput's remove/stepper
+  // controls) round-trips through a real save and survives a reopen of the
+  // assign page, against the real database rather than a mock.
+  // ---------------------------------------------------------------------------
+  test('REM-011: admin edits the reminder ladder on the assign page and the edited cadence persists on reopen', async ({
+    page,
+  }) => {
+    await loginAsAdmin(page);
+
+    await page.goto('/dashboard/courses');
+    await page.getByText(SEEDED_COURSE_TITLE).first().click();
+    await page.waitForURL('**/training/courses/**');
+    await page.getByRole('button', { name: 'Assign', exact: true }).click();
+    await page.waitForURL('**/assign');
+
+    const reminder1 = page.getByLabel('Reminder 1 days before deadline');
+    const reminder2 = page.getByLabel('Reminder 2 days before deadline');
+    await expect(reminder1).toBeVisible();
+    const initialReminder1 = Number(await reminder1.inputValue());
+    const initialReminder2 = await reminder2.inputValue();
+
+    // Remove the third row and bump the first row via its stepper — exercises
+    // both mutating controls the shared ReminderLadderInput exposes.
+    await page.getByRole('button', { name: 'Remove reminder 3' }).click();
+    await page.getByRole('button', { name: 'Increase reminder 1' }).click();
+
+    await expect(reminder1).toHaveValue(String(initialReminder1 + 1));
+    await expect(reminder2).toHaveValue(initialReminder2);
+    await expect(page.getByLabel(/Reminder 3 days before deadline/)).toHaveCount(0);
+
+    await page.getByRole('button', { name: 'Assign Course' }).click();
+    await expect(page.getByText('Course Assigned Successfully')).toBeVisible();
+
+    // Reopen the assign page — the edited cadence must be exactly what was
+    // saved (the two remaining rows, bumped value), not the factory default
+    // and not the pre-edit stored ladder.
+    await page.goto('/dashboard/courses');
+    await page.getByText(SEEDED_COURSE_TITLE).first().click();
+    await page.waitForURL('**/training/courses/**');
+    await page.getByRole('button', { name: 'Assign', exact: true }).click();
+    await page.waitForURL('**/assign');
+
+    await expect(page.getByLabel('Reminder 1 days before deadline')).toHaveValue(
+      String(initialReminder1 + 1),
+    );
+    await expect(page.getByLabel('Reminder 2 days before deadline')).toHaveValue(initialReminder2);
+    await expect(page.getByLabel(/Reminder 3 days before deadline/)).toHaveCount(0);
+  });
 });

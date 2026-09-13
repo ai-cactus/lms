@@ -3,13 +3,12 @@
 import React, { useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Check, ChevronDown, Clock } from 'lucide-react';
-import { RenewalCycle, ReminderStage, UserRole } from '@/generated/prisma/enums';
+import { Check, Clock } from 'lucide-react';
+import { RenewalCycle, UserRole } from '@/generated/prisma/enums';
 import Logo from '@/components/ui/Logo';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/alert';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import {
   Select,
@@ -21,7 +20,10 @@ import {
 import DatePicker from '@/components/ui/DatePicker';
 import TimePicker from '@/components/ui/TimePicker';
 import { cn } from '@/lib/utils';
-import { REMINDER_STAGE_DEFAULTS, SWEEP_STAGES } from '@/lib/reminders/stages';
+import {
+  DEFAULT_WIZARD_REMINDER_DAYS,
+  stageRowsToReminderDays,
+} from '@/lib/enrollment/reminder-ladder';
 import { combineDateAndTime, formatTimeOfDay } from '@/lib/reminders/deadline';
 import AssigneesInput, {
   type AssigneesInputHandle,
@@ -29,6 +31,9 @@ import AssigneesInput, {
 import RoleTargetPicker, {
   type RoleTargetPickerMode,
 } from '@/components/dashboard/enrollment/RoleTargetPicker';
+import ReminderLadderInput, {
+  type ReminderLadderRow,
+} from '@/components/dashboard/enrollment/ReminderLadderInput';
 import {
   enrollUsers,
   assignCourseToRoles,
@@ -45,24 +50,6 @@ const RENEWAL_OPTIONS: { value: RenewalCycle; label: string }[] = [
   { value: 'semiannual', label: 'Semi-Annual Renewal (6 Months)' },
   { value: 'annual', label: 'Annual Renewal (12 Months)' },
 ];
-
-/** Human-readable labels for the editable reminder ladder (sweep stages only). */
-const STAGE_LABELS: Record<ReminderStage, string> = {
-  INITIAL_LAUNCH: 'Launch',
-  FRIENDLY_REMINDER: 'Friendly reminder',
-  URGENT_REMINDER: 'Urgent reminder',
-  DAY_OF_DEADLINE: 'Day of deadline',
-  GRACE_SOFT_ESCALATION: 'Grace period (soft escalation)',
-  HARD_ESCALATION: 'Overdue (hard escalation)',
-  // Fixed system stage — excluded from the editable form (SWEEP_STAGES); entry satisfies the Record type.
-  ADMIN_PRE_DEADLINE_REMINDER: 'Admin pre-deadline reminder',
-};
-
-interface StageRow {
-  stage: ReminderStage;
-  offsetDays: number;
-  enabled: boolean;
-}
 
 /** How the course is being targeted: named individuals, or one or more roles. */
 type AssignMode = 'people' | 'role';
@@ -136,16 +123,16 @@ export default function AssignPublishClient({
   const [remindersEnabled, setRemindersEnabled] = useState(
     existingSettings?.remindersEnabled ?? true,
   );
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [stages, setStages] = useState<StageRow[]>(() =>
-    SWEEP_STAGES.map((stage) => {
-      const saved = existingSettings?.stages.find((s) => s.stage === stage);
-      return {
-        stage,
-        offsetDays: saved?.offsetDays ?? REMINDER_STAGE_DEFAULTS[stage].offsetDays,
-        enabled: saved?.enabled ?? true,
-      };
-    }),
+  // The stored ladder read back into the "N days before" vocabulary this page now
+  // speaks. A course with no assignment yet starts from the canonical defaults:
+  // submitting an untouched empty ladder would read as "the admin cleared every
+  // reminder" and disable the worker stages the new row would otherwise be seeded
+  // with.
+  const [reminderRows, setReminderRows] = useState<ReminderLadderRow[]>(() =>
+    (existingSettings
+      ? stageRowsToReminderDays(existingSettings.stages)
+      : DEFAULT_WIZARD_REMINDER_DAYS
+    ).map((value) => ({ value, unit: 'days' as const })),
   );
 
   const [submitting, setSubmitting] = useState(false);
@@ -167,12 +154,6 @@ export default function AssignPublishClient({
     setDueDate(next);
     if (!next) setDueTime('');
   };
-
-  // ── Reminder cadence ───────────────────────────────────────────────────────
-  const setStageOffset = (stage: ReminderStage, offsetDays: number) =>
-    setStages((prev) => prev.map((s) => (s.stage === stage ? { ...s, offsetDays } : s)));
-  const setStageEnabled = (stage: ReminderStage, enabled: boolean) =>
-    setStages((prev) => prev.map((s) => (s.stage === stage ? { ...s, enabled } : s)));
 
   // ── Publish ──────────────────────────────────────────────────────────────
   /**
@@ -226,6 +207,13 @@ export default function AssignPublishClient({
       scheduleTime,
     );
 
+    // The ladder is always submitted, never omitted: the control is prefilled
+    // from what is stored, so an empty list can only mean the admin removed
+    // every row — "no pre-deadline reminders" — and the server disables exactly
+    // the three worker stages this vocabulary owns. The grace/overdue stages are
+    // outside it and keep whatever offsets the org has.
+    const reminderDaysBefore = reminderRows.map((row) => row.value);
+
     try {
       if (mode === 'role') {
         // An absolute date wins for every holder; without one each holder falls
@@ -241,7 +229,7 @@ export default function AssignPublishClient({
           dueWindowDays,
           renewalCycle,
           remindersEnabled,
-          stages,
+          reminderDaysBefore,
         });
 
         // A refusal is returned rather than thrown, so it must be surfaced here
@@ -260,7 +248,7 @@ export default function AssignPublishClient({
           dueWindowDays,
           renewalCycle,
           remindersEnabled,
-          stages,
+          reminderDaysBefore,
         });
 
         if (res.refusedReason) {
@@ -504,63 +492,16 @@ export default function AssignPublishClient({
           </label>
         </SettingRow>
 
-        <div className="mt-4">
-          <button
-            type="button"
-            onClick={() => setShowAdvanced((prev) => !prev)}
-            aria-expanded={showAdvanced}
-            className="flex items-center gap-1.5 text-sm font-semibold text-primary hover:underline disabled:opacity-50"
+        <div className="mt-6">
+          <p className="text-sm text-text-secondary">
+            Staff are reminded automatically before the deadline. Add more if you need them.
+          </p>
+          <ReminderLadderInput
+            value={reminderRows}
+            onChange={setReminderRows}
             disabled={!remindersEnabled || submitting}
-          >
-            <ChevronDown
-              className={cn('size-4 transition-transform', showAdvanced && 'rotate-180')}
-              aria-hidden="true"
-            />
-            Advanced reminder schedule
-          </button>
-
-          {showAdvanced && (
-            <div className="mt-4 flex flex-col gap-3 rounded-lg border border-border bg-background-secondary p-4">
-              <p className="text-xs text-text-secondary">
-                Offset is in days relative to the deadline: negative = days before, 0 = day of,
-                positive = days after.
-              </p>
-              {stages.map((row) => (
-                <div
-                  key={row.stage}
-                  className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <span className="text-sm font-medium text-foreground">
-                    {STAGE_LABELS[row.stage]}
-                  </span>
-                  <div className="flex items-center gap-3">
-                    <Input
-                      type="number"
-                      step={1}
-                      value={row.offsetDays}
-                      onChange={(e) =>
-                        setStageOffset(
-                          row.stage,
-                          e.target.value === '' ? 0 : Number(e.target.value),
-                        )
-                      }
-                      disabled={!remindersEnabled || !row.enabled || submitting}
-                      aria-label={`${STAGE_LABELS[row.stage]} offset in days`}
-                      className="h-10 w-24"
-                    />
-                    <label className="flex items-center gap-2">
-                      <Checkbox
-                        checked={row.enabled}
-                        onCheckedChange={(checked) => setStageEnabled(row.stage, checked === true)}
-                        disabled={!remindersEnabled || submitting}
-                      />
-                      <span className="text-sm text-text-secondary">Enabled</span>
-                    </label>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+            className="mt-3 items-start"
+          />
         </div>
 
         <div className="mt-12 flex items-center justify-between">

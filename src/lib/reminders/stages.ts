@@ -51,8 +51,11 @@ export const REMINDER_STAGE_DEFAULTS: Record<ReminderStage, ReminderStageDefault
 
 /**
  * The worker-editable ladder stages, in chronological order. Drives the
- * assignment reminder-schedule form and the per-assignment `defaultStageRows()`
- * seed. Excludes `INITIAL_LAUNCH` (fired at assignment time, never by the sweep)
+ * per-assignment `defaultStageRows()` seed. No UI edits these stages directly
+ * any more — every assign surface speaks the "N days before" vocabulary of
+ * `WIZARD_REMINDER_STAGES`, which covers the pre-deadline stages only, so the
+ * escalation stages keep whatever offsets the organisation has.
+ * Excludes `INITIAL_LAUNCH` (fired at assignment time, never by the sweep)
  * and `ADMIN_PRE_DEADLINE_REMINDER` (a fixed, non-configurable admin stage — it
  * must never surface in the schedule form or be seeded as an overridable row).
  */

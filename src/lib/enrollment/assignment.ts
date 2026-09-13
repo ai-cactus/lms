@@ -1,8 +1,12 @@
 import prisma from '@/lib/prisma';
 import { logger } from '@/lib/logger';
 import { REMINDER_STAGE_DEFAULTS, SWEEP_STAGES } from '@/lib/reminders/stages';
+import { MAX_WIZARD_REMINDER_ROWS, WIZARD_REMINDER_STAGES } from './reminder-ladder';
 import { assignmentFacilityScopeColumns } from './assignment-facility-scope';
 import type { RenewalCycle, ReminderStage, UserRole } from '@/generated/prisma/enums';
+
+// Re-exported so the ladder vocabulary stays importable from this module.
+export { MAX_WIZARD_REMINDER_ROWS, WIZARD_REMINDER_STAGES } from './reminder-ladder';
 
 /**
  * Shared {@link CourseAssignment} persistence, extracted from the enrollment
@@ -30,22 +34,6 @@ export function defaultStageRows(): StageRowInput[] {
     return { stage, offsetDays: def.offsetDays, enabled: true, channels: def.channels };
   });
 }
-
-/**
- * Ladder stages the course wizard's "N days before" reminder rows map onto, in
- * the order a row list is consumed (furthest-out row first). Only the
- * worker-audience pre-deadline stages are listed: the grace/overdue stages
- * notify the escalation manager AFTER the deadline, so they are never driven by
- * the wizard rows and always keep their canonical defaults.
- */
-export const WIZARD_REMINDER_STAGES: ReminderStage[] = [
-  'FRIENDLY_REMINDER',
-  'URGENT_REMINDER',
-  'DAY_OF_DEADLINE',
-];
-
-/** How many wizard reminder rows the ladder can represent. */
-export const MAX_WIZARD_REMINDER_ROWS = WIZARD_REMINDER_STAGES.length;
 
 /**
  * Translate the wizard's whole-day "remind N days before the deadline" rows into
