@@ -61,7 +61,7 @@ interface StageRow {
   enabled: boolean;
 }
 
-/** How the course is being targeted: named individuals, or a whole role. */
+/** How the course is being targeted: named individuals, or one or more roles. */
 type AssignMode = 'people' | 'role';
 
 interface AssignPublishClientProps {
@@ -213,12 +213,23 @@ export default function AssignPublishClient({
     }
     setSubmitting(true);
     setError(null);
+
+    // This page has no deadline-window control, but both assign paths write the
+    // column unconditionally — so omitting it would silently clear, org-wide, a
+    // window the course wizard set. Round-trip the saved value instead.
+    const dueWindowDays = existingSettings?.dueWindowDays ?? null;
+
     try {
       if (mode === 'role') {
-        // Role targets never carry an absolute due date — the deadline is computed
-        // per user from their role-join date and the window — so no dueDate is sent.
+        // An absolute date wins for every holder; without one each holder falls
+        // back to the window, counted from their own role-join date (the
+        // precedence computeDueAt implements). `assignCourseToRoles` takes the
+        // date under `dueDate`, not `dueAt` — it pairs it with an optional time
+        // server-side.
         const res = await assignCourseToRoles(courseId, targetRoles, {
           scheduleAt: scheduleDate ? new Date(scheduleDate) : null,
+          dueDate: dueDate ? new Date(dueDate) : null,
+          dueWindowDays,
           renewalCycle,
           remindersEnabled,
           stages,
@@ -234,6 +245,7 @@ export default function AssignPublishClient({
         const res = await enrollUsers(courseId, entries, {
           scheduleAt: scheduleDate ? new Date(scheduleDate) : null,
           dueAt: dueDate ? new Date(dueDate) : null,
+          dueWindowDays,
           renewalCycle,
           remindersEnabled,
           stages,
@@ -346,7 +358,7 @@ export default function AssignPublishClient({
                       : 'text-text-secondary hover:text-foreground',
                   )}
                 >
-                  {m === 'people' ? 'Specific people' : 'A whole role'}
+                  {m === 'people' ? 'Specific people' : 'Roles'}
                 </button>
               ))}
             </div>
@@ -444,18 +456,14 @@ export default function AssignPublishClient({
 
         <div className="my-6 h-px bg-border" />
 
-        {mode === 'people' && (
-          <>
-            <SettingRow
-              title="Due Date"
-              description="Deadline for completing the course. Leave empty to compute it automatically."
-            >
-              <DatePicker value={dueDate} onChange={setDueDate} placeholder="Select due date" />
-            </SettingRow>
+        <SettingRow
+          title="Due Date"
+          description="A hard deadline everyone shares. Leave it empty and each person gets their own, counted from when they start the course or join the role."
+        >
+          <DatePicker value={dueDate} onChange={setDueDate} placeholder="Select due date" />
+        </SettingRow>
 
-            <div className="my-6 h-px bg-border" />
-          </>
-        )}
+        <div className="my-6 h-px bg-border" />
 
         <SettingRow
           title="Renewal Settings"
