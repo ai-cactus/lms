@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const {
   mockAuth,
@@ -244,61 +244,72 @@ describe('enrollUsers — upsert path (Issue #5 / TC-018): re-submitting setting
   });
 });
 
-describe('enrollUsers — assignmentSettingsMode: "preserve" (multi-course staff assignment)', () => {
-  it('links the existing CourseAssignment without touching its settings or stage rows, while the deadline still reaches the worker Enrollment.dueAt', async () => {
+describe('enrollUsers — settings tri-state (Phase 1 sink hardening): an individual re-assignment must not clobber the org-wide row', () => {
+  beforeEach(() => {
     mockAssignmentFindFirst.mockResolvedValue({
       id: 'existing-assignment-1',
       renewalCycle: 'annual',
       remindersEnabled: false,
     });
+    mockAssignmentUpdate.mockResolvedValue({
+      id: 'existing-assignment-1',
+      dueAt: new Date('2027-01-01T00:00:00.000Z'),
+      dueWindowDays: null,
+    });
+  });
 
+  it('with only { dueAt } given, the update payload carries dueAt and NONE of renewalCycle/remindersEnabled/stage rows — the staff-profile modal case', async () => {
     const chosenDeadline = '2027-01-01T00:00:00.000Z';
-    await enrollUsers(
-      'course-1',
-      [{ email: 'w@x.com' }],
-      { dueAt: chosenDeadline },
-      { assignmentSettingsMode: 'preserve' },
-    );
+    await enrollUsers('course-1', [{ email: 'w@x.com' }], { dueAt: chosenDeadline });
 
-    // The shared org-wide row is neither updated nor upserted...
-    expect(mockAssignmentUpdate).not.toHaveBeenCalled();
-    expect(mockStageUpsert).not.toHaveBeenCalled();
-    expect(mockAssignmentCreate).not.toHaveBeenCalled();
-    // ...it is simply linked...
-    expect(mockEnrollmentCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ assignmentId: 'existing-assignment-1' }),
-      }),
-    );
-    // ...while the worker's own enrollment still gets the admin's chosen deadline.
-    expect(mockEnrollmentCreate).toHaveBeenCalledWith(
+    expect(mockAssignmentUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ dueAt: new Date(chosenDeadline) }),
       }),
     );
+    const data = mockAssignmentUpdate.mock.calls[0][0].data;
+    expect(data).not.toHaveProperty('renewalCycle');
+    expect(data).not.toHaveProperty('remindersEnabled');
+    expect(data).not.toHaveProperty('scheduleAt');
+    expect(data).not.toHaveProperty('dueWindowDays');
+    // No cadence controls at all on this surface — the org's ladder stands untouched.
+    expect(mockStageUpsert).not.toHaveBeenCalled();
+    // The row is still linked (not skipped) and the worker's own enrollment
+    // still gets the admin's chosen deadline.
+    expect(mockEnrollmentCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          assignmentId: 'existing-assignment-1',
+          dueAt: new Date(chosenDeadline),
+        }),
+      }),
+    );
   });
 
-  it('creates a fresh CourseAssignment from the supplied settings when none exists yet — nothing to preserve', async () => {
+  it('creates a fresh CourseAssignment from the supplied settings when none exists yet', async () => {
     mockAssignmentFindFirst.mockResolvedValue(null);
+    mockAssignmentCreate.mockResolvedValue({
+      id: 'assignment-fresh',
+      dueAt: new Date('2027-01-01T00:00:00.000Z'),
+      dueWindowDays: null,
+    });
 
-    await enrollUsers(
-      'course-1',
-      [{ email: 'w@x.com' }],
-      { dueAt: '2027-01-01T00:00:00.000Z', renewalCycle: 'annual' },
-      { assignmentSettingsMode: 'preserve' },
-    );
+    await enrollUsers('course-1', [{ email: 'w@x.com' }], {
+      dueAt: '2027-01-01T00:00:00.000Z',
+      renewalCycle: 'annual',
+    });
 
     expect(mockAssignmentCreate).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ renewalCycle: 'annual' }) }),
     );
   });
 
-  it('defaults to "write" (today\'s overwrite behaviour) when assignmentSettingsMode is omitted', async () => {
-    mockAssignmentFindFirst.mockResolvedValue({ id: 'existing-assignment-1' });
-
+  it('a settings field explicitly given still overwrites the existing row (omission, not every write, is what is preserved)', async () => {
     await enrollUsers('course-1', [{ email: 'w@x.com' }], { renewalCycle: 'annual' });
 
-    expect(mockAssignmentUpdate).toHaveBeenCalled();
+    expect(mockAssignmentUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ renewalCycle: 'annual' }) }),
+    );
   });
 });
 
@@ -318,5 +329,85 @@ describe('enrollUsers — defaultStageRows() seeding (Issue #8 / TC-024)', () =>
     ]);
     expect(seededStages).not.toContain('ADMIN_PRE_DEADLINE_REMINDER');
     expect(seededStages).not.toContain('INITIAL_LAUNCH');
+  });
+});
+
+describe('enrollUsers — D-F: a past deadline is refused only when it CHANGES the one already stored', () => {
+  const NOW = new Date('2026-09-13T12:00:00.000Z');
+  const STORED_PAST_DUE_AT = new Date('2026-08-01T00:00:00.000Z');
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('re-submitting the SAME past deadline is allowed — a late joiner can still be added to an already-overdue course', async () => {
+    mockAssignmentFindFirst.mockResolvedValue({
+      id: 'existing-assignment-1',
+      dueAt: STORED_PAST_DUE_AT,
+    });
+    mockAssignmentUpdate.mockResolvedValue({
+      id: 'existing-assignment-1',
+      dueAt: STORED_PAST_DUE_AT,
+      dueWindowDays: null,
+    });
+
+    const result = await enrollUsers('course-1', [{ email: 'w@x.com' }], {
+      dueAt: STORED_PAST_DUE_AT.toISOString(),
+    });
+
+    expect(result.refusedReason).toBeUndefined();
+    expect(mockAssignmentUpdate).toHaveBeenCalled();
+    expect(mockEnrollmentCreate).toHaveBeenCalled();
+  });
+
+  it('submitting a DIFFERENT past deadline is refused, by return, before any write', async () => {
+    mockAssignmentFindFirst.mockResolvedValue({
+      id: 'existing-assignment-1',
+      dueAt: STORED_PAST_DUE_AT,
+    });
+
+    const result = await enrollUsers('course-1', [{ email: 'w@x.com' }], {
+      dueAt: '2026-08-15T00:00:00.000Z', // still in the past, but not the stored value
+    });
+
+    expect(result.refusedReason).toBe('The deadline must be in the future.');
+    expect(mockAssignmentUpdate).not.toHaveBeenCalled();
+    expect(mockAssignmentCreate).not.toHaveBeenCalled();
+    expect(mockEnrollmentCreate).not.toHaveBeenCalled();
+  });
+
+  it('a future deadline is allowed regardless of what is currently stored', async () => {
+    mockAssignmentFindFirst.mockResolvedValue({
+      id: 'existing-assignment-1',
+      dueAt: STORED_PAST_DUE_AT,
+    });
+    mockAssignmentUpdate.mockResolvedValue({
+      id: 'existing-assignment-1',
+      dueAt: new Date('2027-01-01T00:00:00.000Z'),
+      dueWindowDays: null,
+    });
+
+    const result = await enrollUsers('course-1', [{ email: 'w@x.com' }], {
+      dueAt: '2027-01-01T00:00:00.000Z',
+    });
+
+    expect(result.refusedReason).toBeUndefined();
+    expect(mockAssignmentUpdate).toHaveBeenCalled();
+  });
+
+  it('a submitted deadline with no stored assignment yet (fresh course) is refused when in the past', async () => {
+    mockAssignmentFindFirst.mockResolvedValue(null);
+
+    const result = await enrollUsers('course-1', [{ email: 'w@x.com' }], {
+      dueAt: '2026-01-01T00:00:00.000Z',
+    });
+
+    expect(result.refusedReason).toBe('The deadline must be in the future.');
+    expect(mockAssignmentCreate).not.toHaveBeenCalled();
   });
 });

@@ -272,6 +272,13 @@ describe('assignCourseToUsers — completion deadline', () => {
 
   it('reuses the org’s existing CourseAssignment row rather than creating a second one', async () => {
     prismaMock.courseAssignment.findFirst.mockResolvedValue({ id: 'assignment-existing' });
+    // upsertCourseAssignment now reads the resolved row back off the update
+    // call (Phase 1) instead of trusting the caller's input.
+    prismaMock.courseAssignment.update.mockResolvedValue({
+      id: 'assignment-existing',
+      dueAt: new Date('2027-01-15'),
+      dueWindowDays: null,
+    });
 
     await assignCourseToUsers(COURSE_ID, ['staff@acme.com'], new Date('2027-01-15'));
 

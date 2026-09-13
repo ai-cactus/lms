@@ -358,16 +358,19 @@ describe('assignCoursesToStaffMember — per-course outcomes and the batched not
     ]);
   });
 
-  it('calls enrollUsers with a future dueAt and preserve settings mode', async () => {
+  it('calls enrollUsers with a future dueAt, deferring the worker notification', async () => {
     mockEnrollUsers.mockResolvedValue(enrollResult({ success: ['target@acme.com'] }));
 
     await assignCoursesToStaffMember('staff-1', ['course-1'], { dueAt: FUTURE_DUE });
 
+    // No `assignmentSettingsMode` any more — the sink itself now leaves every
+    // settings field this surface didn't supply untouched (Phase 1), so there is
+    // nothing left for this action to opt into preserving.
     expect(mockEnrollUsers).toHaveBeenCalledWith(
       'course-1',
       [{ email: 'target@acme.com' }],
       { dueAt: new Date(FUTURE_DUE) },
-      { deferWorkerNotification: true, assignmentSettingsMode: 'preserve' },
+      { deferWorkerNotification: true },
     );
   });
 });

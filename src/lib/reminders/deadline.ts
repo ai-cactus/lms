@@ -51,6 +51,26 @@ export function computeDueAt(args: {
 }
 
 /**
+ * D-F: a submitted deadline in the past is a problem only when it CHANGES the
+ * one already stored on the organisation's assignment. Re-submitting the
+ * deadline already in force is how a late joiner is added to an already-overdue
+ * course, so treating that as an error would force the admin to move the
+ * deadline for everyone instead.
+ *
+ * The single place this comparison is made: the assign actions refuse on it,
+ * and `publishCourse` uses it to decide that a parked deadline went stale while
+ * the course sat held for review.
+ *
+ * An unparseable date is not this rule's business — it is left to the caller's
+ * own validation rather than being reported as a past deadline.
+ */
+export function isPastDeadlineChange(submitted: Date, stored: Date | null): boolean {
+  const submittedTime = submitted.getTime();
+  if (Number.isNaN(submittedTime) || submittedTime > Date.now()) return false;
+  return submittedTime !== stored?.getTime();
+}
+
+/**
  * Parse a wizard time-of-day string into 24-hour components. Accepts the
  * canonical `"H:MM AM/PM"` value produced by the UI's TimePicker (and tolerates
  * loose input the same way): the digits form the hour/minute and an `a`/`p`

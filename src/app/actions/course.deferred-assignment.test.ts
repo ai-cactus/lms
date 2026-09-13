@@ -18,7 +18,7 @@
  * enrollUsers/assignCourseToRoles called" is the correct proxy for "was
  * anyone enrolled or emailed" at this layer.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Prisma } from '@/generated/prisma/client';
 
 const {
@@ -27,6 +27,7 @@ const {
   mockCourseCreate,
   mockCourseFindUnique,
   mockCourseUpdate,
+  mockAssignmentFindFirst,
   mockEnrollUsers,
   mockAssignCourseToRoles,
 } = vi.hoisted(() => ({
@@ -35,6 +36,11 @@ const {
   mockCourseCreate: vi.fn(),
   mockCourseFindUnique: vi.fn(),
   mockCourseUpdate: vi.fn(),
+  // findAssignmentDueAt's own lookup (Phase 1 D-F / stale-parked-deadline
+  // checks) — a separate model from the `course` one this file otherwise
+  // mocks, so it needs its own entry or the lookup throws into publishCourse's
+  // catch-all and every replay reports assignmentFailed: true.
+  mockAssignmentFindFirst: vi.fn(),
   mockEnrollUsers: vi.fn(),
   mockAssignCourseToRoles: vi.fn(),
 }));
@@ -46,6 +52,7 @@ vi.mock('@/lib/prisma', () => {
       findUnique: mockCourseFindUnique,
       update: mockCourseUpdate,
     },
+    courseAssignment: { findFirst: mockAssignmentFindFirst },
   };
   return { prisma, default: prisma };
 });
@@ -92,6 +99,10 @@ beforeEach(() => {
   mockWorkerAuth.mockResolvedValue(null);
   mockEnrollUsers.mockResolvedValue(emptyEnrollResult);
   mockAssignCourseToRoles.mockResolvedValue({ success: [], failed: [], targetRoles: [] });
+  // No prior CourseAssignment row by default — most tests here don't exercise
+  // the stale-parked-deadline path at all (their parked dates predate the
+  // Phase 1 fix and are handled by freezing the clock instead, see below).
+  mockAssignmentFindFirst.mockResolvedValue(null);
 });
 
 /** Deliberately degraded v4.6 artifacts: no slides ⇒ reviewRequired = true. */
@@ -257,6 +268,13 @@ describe('publishCourse — replaying the deferred assignment on acknowledgement
   });
 
   it('replays a roles-mode pendingAssignment through assignCourseToRoles', async () => {
+    // The fixture's parked deadline (2026-09-01) predates the suite's "now" —
+    // freeze the clock to just before it so this test exercises the ordinary
+    // (not-yet-stale) replay path; the stale-parked-deadline behaviour itself
+    // is covered by its own describe block below.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-01T00:00:00.000Z'));
+
     mockCourseFindUnique.mockResolvedValue(heldCourse(rolesPending));
     mockCourseUpdate.mockResolvedValue({ id: COURSE_ID, status: 'published' });
 
@@ -276,6 +294,9 @@ describe('publishCourse — replaying the deferred assignment on acknowledgement
       renewalCycle: 'annual',
     });
     expect(published(result).assignmentFailed).toBe(false);
+    expect(published(result).assignmentDeadlineExpired).toBe(false);
+
+    vi.useRealTimers();
   });
 
   it('never replays when reviewRequired is true but acknowledgeWarnings is not set (blocked before any write)', async () => {
@@ -371,5 +392,140 @@ describe('publishCourse — replaying the deferred assignment on acknowledgement
     expect(mockEnrollUsers).not.toHaveBeenCalled();
     expect(mockAssignCourseToRoles).not.toHaveBeenCalled();
     expect(result).toMatchObject({ status: 'published', assignmentFailed: true });
+  });
+});
+
+describe('publishCourse — stale parked deadline replay (elapsed while the course sat held for review)', () => {
+  const NOW = new Date('2026-09-13T12:00:00.000Z');
+  const PAST_PARKED_DUE_AT = '2026-08-01T00:00:00.000Z';
+  const FUTURE_PARKED_DUE_AT = '2027-01-01T00:00:00.000Z';
+
+  function heldCourse(pendingAssignment: unknown) {
+    return {
+      id: COURSE_ID,
+      createdByOrgUserId: ORG_USER_ID,
+      reviewRequired: true,
+      qualityWarnings: ['No slides were generated for this course.'],
+      pendingAssignment,
+    };
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('EMAIL mode: an elapsed parked deadline is dropped — replay succeeds, assignmentDeadlineExpired: true, enrollUsers gets no date at all', async () => {
+    mockCourseFindUnique.mockResolvedValue(
+      heldCourse({ mode: 'email', emails: ['alice@example.com'], dueAt: PAST_PARKED_DUE_AT }),
+    );
+    mockCourseUpdate.mockResolvedValue({ id: COURSE_ID, status: 'published' });
+    mockAssignmentFindFirst.mockResolvedValue(null); // no stored deadline matches the stale parked one
+
+    const result = await publishCourse(COURSE_ID, { acknowledgeWarnings: true });
+
+    expect(mockEnrollUsers).toHaveBeenCalledTimes(1);
+    const [, , assignmentSettings] = mockEnrollUsers.mock.calls[0];
+    // `undefined`, not `null` — the sink must leave the assignment's own
+    // deadline column alone so each enrollee falls back to their own window,
+    // rather than the stale date's absence being written as an explicit clear.
+    expect(assignmentSettings).toMatchObject({ dueAt: undefined });
+    expect(published(result).assignmentFailed).toBe(false);
+    expect(published(result).assignmentDeadlineExpired).toBe(true);
+  });
+
+  it('ROLES mode: an elapsed parked deadline is dropped — assignCourseToRoles gets null dueDate/dueTime, the window and ladder survive', async () => {
+    mockCourseFindUnique.mockResolvedValue(
+      heldCourse({
+        mode: 'roles',
+        roles: ['nurse'],
+        dueDate: PAST_PARKED_DUE_AT,
+        dueTime: '9:00 AM',
+        dueWindowDays: 14,
+        remindersEnabled: true,
+        reminderDaysBefore: [7],
+        renewalCycle: 'annual',
+      }),
+    );
+    mockCourseUpdate.mockResolvedValue({ id: COURSE_ID, status: 'published' });
+    mockAssignmentFindFirst.mockResolvedValue(null);
+
+    const result = await publishCourse(COURSE_ID, { acknowledgeWarnings: true });
+
+    expect(mockAssignCourseToRoles).toHaveBeenCalledTimes(1);
+    const [, , settings] = mockAssignCourseToRoles.mock.calls[0];
+    expect(settings).toMatchObject({
+      dueDate: null,
+      dueTime: null,
+      dueWindowDays: 14,
+      remindersEnabled: true,
+      reminderDaysBefore: [7],
+      renewalCycle: 'annual',
+    });
+    expect(published(result).assignmentFailed).toBe(false);
+    expect(published(result).assignmentDeadlineExpired).toBe(true);
+  });
+
+  it('EMAIL mode: a still-FUTURE parked deadline is replayed unchanged, flag stays false', async () => {
+    mockCourseFindUnique.mockResolvedValue(
+      heldCourse({ mode: 'email', emails: ['alice@example.com'], dueAt: FUTURE_PARKED_DUE_AT }),
+    );
+    mockCourseUpdate.mockResolvedValue({ id: COURSE_ID, status: 'published' });
+    mockAssignmentFindFirst.mockResolvedValue(null);
+
+    const result = await publishCourse(COURSE_ID, { acknowledgeWarnings: true });
+
+    const [, , assignmentSettings] = mockEnrollUsers.mock.calls[0];
+    expect(assignmentSettings).toMatchObject({ dueAt: new Date(FUTURE_PARKED_DUE_AT) });
+    expect(published(result).assignmentDeadlineExpired).toBe(false);
+  });
+
+  it('EMAIL mode: a past parked deadline that EQUALS the value already stored is NOT stale — it IS the deadline, replayed unchanged', async () => {
+    mockCourseFindUnique.mockResolvedValue(
+      heldCourse({ mode: 'email', emails: ['alice@example.com'], dueAt: PAST_PARKED_DUE_AT }),
+    );
+    mockCourseUpdate.mockResolvedValue({ id: COURSE_ID, status: 'published' });
+    // The org's assignment already carries this exact past deadline — it was
+    // never moved, so replaying it is not "going stale", it's the status quo.
+    mockAssignmentFindFirst.mockResolvedValue({
+      id: 'assignment-1',
+      dueAt: new Date(PAST_PARKED_DUE_AT),
+    });
+
+    const result = await publishCourse(COURSE_ID, { acknowledgeWarnings: true });
+
+    const [, , assignmentSettings] = mockEnrollUsers.mock.calls[0];
+    expect(assignmentSettings).toMatchObject({ dueAt: new Date(PAST_PARKED_DUE_AT) });
+    expect(published(result).assignmentDeadlineExpired).toBe(false);
+  });
+
+  it('ROLES mode: a past parked deadline that EQUALS the value already stored is replayed unchanged', async () => {
+    mockCourseFindUnique.mockResolvedValue(
+      heldCourse({
+        mode: 'roles',
+        roles: ['nurse'],
+        dueDate: PAST_PARKED_DUE_AT,
+        dueTime: '12:00 AM',
+        dueWindowDays: 14,
+        remindersEnabled: true,
+        reminderDaysBefore: [7],
+        renewalCycle: 'annual',
+      }),
+    );
+    mockCourseUpdate.mockResolvedValue({ id: COURSE_ID, status: 'published' });
+    mockAssignmentFindFirst.mockResolvedValue({
+      id: 'assignment-1',
+      dueAt: new Date(PAST_PARKED_DUE_AT),
+    });
+
+    const result = await publishCourse(COURSE_ID, { acknowledgeWarnings: true });
+
+    const [, , settings] = mockAssignCourseToRoles.mock.calls[0];
+    expect(settings).toMatchObject({ dueDate: PAST_PARKED_DUE_AT, dueTime: '12:00 AM' });
+    expect(published(result).assignmentDeadlineExpired).toBe(false);
   });
 });

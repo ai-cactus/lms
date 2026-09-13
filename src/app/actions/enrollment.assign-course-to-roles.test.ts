@@ -9,7 +9,7 @@
  * `targetRole`) columns it writes, the deadline precedence, the reminder ladder
  * it derives from the wizard's day-offsets, and the renewal cycle.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const {
   mockAdminAuth,
@@ -105,7 +105,19 @@ beforeEach(() => {
     subscription: { status: 'active', pausedAt: null },
   });
   mockAssignmentFindFirst.mockResolvedValue(null);
-  mockAssignmentCreate.mockResolvedValue({ id: 'assignment-roles-1' });
+  mockAssignmentCreate.mockResolvedValue({
+    id: 'assignment-roles-1',
+    dueAt: null,
+    dueWindowDays: null,
+  });
+  // upsertCourseAssignment now reads the resolved row back off the update call
+  // (Phase 1) instead of trusting the caller's input — echo the id the test's
+  // own mockAssignmentFindFirst supplied for that call.
+  mockAssignmentUpdate.mockImplementation(async ({ where }: { where: { id: string } }) => ({
+    id: where.id,
+    dueAt: null,
+    dueWindowDays: null,
+  }));
   mockOrgUserFindMany.mockResolvedValue([]);
   mockCreateEnrollmentForUser.mockImplementation(async (entry: { email: string }) => ({
     status: 'enrolled',
@@ -314,6 +326,19 @@ describe('assignCourseToRoles — enrolls the union of the targeted roles curren
 });
 
 describe('assignCourseToRoles — deadline precedence', () => {
+  // This fixture's 2026-03-01 deadline predates the suite's other tests, which
+  // assume "today" — freeze the clock so it stays in the future relative to
+  // "now" instead of tripping D-F's past-deadline refusal (see the dedicated
+  // D-F describe block below for that rule's own coverage).
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('uses the explicit due date + time as the assignment deadline for every holder', async () => {
     mockOrgUserFindMany.mockResolvedValue([
       { id: 'ou-nurse-1', user: { email: 'nurse1@test.com' } },
@@ -392,5 +417,72 @@ describe('assignCourseToRoles — reminder ladder and renewal', () => {
     mockAssignmentCreate.mockClear();
     await assignCourseToRoles('course-1', ['nurse']);
     expect(createdAssignmentData().renewalCycle).toBe('none');
+  });
+});
+
+describe('assignCourseToRoles — D-F: a past deadline is refused only when it CHANGES the one already stored', () => {
+  const NOW = new Date('2026-09-13T12:00:00.000Z');
+  const STORED_PAST_DUE_AT = new Date('2026-08-01T00:00:00.000Z');
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    mockOrgUserFindMany.mockResolvedValue([
+      { id: 'ou-nurse-1', user: { email: 'nurse1@test.com' } },
+    ]);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('re-submitting the SAME past deadline (as date+time) is allowed', async () => {
+    mockAssignmentFindFirst.mockResolvedValue({ id: 'existing-1', dueAt: STORED_PAST_DUE_AT });
+    mockAssignmentUpdate.mockResolvedValue({
+      id: 'existing-1',
+      dueAt: STORED_PAST_DUE_AT,
+      dueWindowDays: null,
+    });
+
+    const result = await assignCourseToRoles('course-1', ['nurse'], {
+      dueDate: '2026-08-01',
+      dueTime: '12:00 AM',
+    });
+
+    expect(result.refusedReason).toBeUndefined();
+    expect(mockAssignmentUpdate).toHaveBeenCalled();
+    expect(mockCreateEnrollmentForUser).toHaveBeenCalled();
+  });
+
+  it('a DIFFERENT past deadline is refused by return, before any write', async () => {
+    mockAssignmentFindFirst.mockResolvedValue({ id: 'existing-1', dueAt: STORED_PAST_DUE_AT });
+
+    const result = await assignCourseToRoles('course-1', ['nurse'], {
+      dueDate: '2026-08-15',
+      dueTime: '12:00 AM',
+    });
+
+    expect(result.refusedReason).toBe('The deadline must be in the future.');
+    expect(result.assignmentId).toBeNull();
+    expect(mockAssignmentUpdate).not.toHaveBeenCalled();
+    expect(mockAssignmentCreate).not.toHaveBeenCalled();
+    expect(mockCreateEnrollmentForUser).not.toHaveBeenCalled();
+  });
+
+  it('a future deadline is allowed regardless of what is currently stored', async () => {
+    mockAssignmentFindFirst.mockResolvedValue({ id: 'existing-1', dueAt: STORED_PAST_DUE_AT });
+    mockAssignmentUpdate.mockResolvedValue({
+      id: 'existing-1',
+      dueAt: new Date('2027-01-01T00:00:00.000Z'),
+      dueWindowDays: null,
+    });
+
+    const result = await assignCourseToRoles('course-1', ['nurse'], {
+      dueDate: '2027-01-01',
+      dueTime: '12:00 AM',
+    });
+
+    expect(result.refusedReason).toBeUndefined();
+    expect(mockAssignmentUpdate).toHaveBeenCalled();
   });
 });
