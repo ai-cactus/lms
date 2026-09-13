@@ -310,6 +310,25 @@ describe('Step7Assign — deadline, reminders and recurrence', () => {
   });
 });
 
+describe('Step7Assign — AssigneesInput host wiring', () => {
+  it('wires the typeahead via onSearch and never offers bulk import', async () => {
+    mockSearchStaffUsers.mockResolvedValue([
+      { id: 'u1', name: 'Jordan Smith', email: 'jordan@x.com', initials: 'JS' },
+    ]);
+    const user = userEvent.setup();
+    renderStep({ assignMode: 'email' });
+
+    await user.type(screen.getByPlaceholderText('Add people, emails or names'), 'jo');
+
+    await screen.findByText('Jordan Smith');
+    expect(mockSearchStaffUsers).toHaveBeenCalledWith('jo');
+
+    // No CSV/XLSX bulk-import affordance on this surface (capability off).
+    expect(screen.queryByText(/upload .csv file/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Upload a spreadsheet of recipients')).not.toBeInTheDocument();
+  });
+});
+
 describe('Step7Assign — individual email invites', () => {
   it('adds a typed email as a chip', async () => {
     const user = userEvent.setup();
