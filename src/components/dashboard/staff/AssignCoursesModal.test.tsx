@@ -15,16 +15,19 @@
  * announcement outcome entirely, nothing surfaced it. Hence the coverage of the
  * `emailSent: false` warning below.
  */
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type React from 'react';
 import AssignCoursesModal from './AssignCoursesModal';
 
-const { mockGetCourses, mockAssignCoursesToStaffMember, mockRefresh } = vi.hoisted(() => ({
-  mockGetCourses: vi.fn(),
-  mockAssignCoursesToStaffMember: vi.fn(),
-  mockRefresh: vi.fn(),
-}));
+const { mockGetCourses, mockAssignCoursesToStaffMember, mockRefresh, mockDialogContentProps } =
+  vi.hoisted(() => ({
+    mockGetCourses: vi.fn(),
+    mockAssignCoursesToStaffMember: vi.fn(),
+    mockRefresh: vi.fn(),
+    mockDialogContentProps: vi.fn(),
+  }));
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: mockRefresh }) }));
 // The modal now asks for everything it may ASSIGN — authored, adopted and the
@@ -38,6 +41,24 @@ vi.mock('@/app/actions/staff', () => ({
 vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
+
+// Records every `DialogContent` prop set (in particular `onInteractOutside`)
+// while still rendering the real Dialog underneath — Radix's own decision
+// about whether a portalled clock/calendar click counts as "outside" is
+// timing-sensitive and not reliably reproducible via jsdom's synthetic event
+// dispatch, so the guard's own conditional logic (`target.closest(...)`) is
+// tested directly here instead, by capturing and invoking the real handler.
+vi.mock('@/components/ui/dialog', async () => {
+  const actual =
+    await vi.importActual<typeof import('@/components/ui/dialog')>('@/components/ui/dialog');
+  return {
+    ...actual,
+    DialogContent: (props: React.ComponentProps<typeof actual.DialogContent>) => {
+      mockDialogContentProps(props);
+      return <actual.DialogContent {...props} />;
+    },
+  };
+});
 
 function makeCourse(overrides: Record<string, unknown>) {
   return {
@@ -206,7 +227,7 @@ describe('AssignCoursesModal — deadline step', () => {
     expect(screen.getByText('“Frank Doe”')).toBeInTheDocument();
   });
 
-  it('passes the chosen deadline to the server', async () => {
+  it('passes the chosen deadline to the server as a Date implying 11:59 PM UTC, not the bare YYYY-MM-DD string the wire used to carry', async () => {
     const user = userEvent.setup();
     await advanceToDeadline(user);
 
@@ -216,8 +237,33 @@ describe('AssignCoursesModal — deadline step', () => {
     await screen.findByText('Courses Assigned Successfully');
     const expected = new Date();
     expected.setDate(expected.getDate() + 30);
+    expected.setUTCHours(23, 59, 0, 0);
+    // `assignCoursesToStaffMember` already accepts `string | Date | null` — no
+    // action-signature change here. A preset chip now means the same deadline
+    // (end of that day, UTC) however the date got picked: from the calendar or
+    // a chip, joined through the one shared handleDueDateChange handler.
     expect(mockAssignCoursesToStaffMember).toHaveBeenCalledWith('ou-1', ['vid-1'], {
-      dueAt: expect.stringContaining(String(expected.getFullYear())),
+      dueAt: expected,
+    });
+  });
+
+  it('preserves an explicitly typed due time instead of overwriting it with the 11:59 PM chip default', async () => {
+    const user = userEvent.setup();
+    await advanceToDeadline(user);
+
+    const timeInput = screen.getByPlaceholderText('Select due time');
+    fireEvent.change(timeInput, { target: { value: '8:00 AM' } });
+    fireEvent.blur(timeInput);
+
+    await user.click(screen.getByRole('button', { name: '30 days' }));
+    await user.click(screen.getByRole('button', { name: 'Assign Course' }));
+
+    await screen.findByText('Courses Assigned Successfully');
+    const expected = new Date();
+    expected.setDate(expected.getDate() + 30);
+    expected.setUTCHours(8, 0, 0, 0);
+    expect(mockAssignCoursesToStaffMember).toHaveBeenCalledWith('ou-1', ['vid-1'], {
+      dueAt: expected,
     });
   });
 
@@ -260,6 +306,40 @@ describe('AssignCoursesModal — deadline step', () => {
     // Nothing was assigned, so the un-sent email is not a warning — it is simply
     // the absence of an announcement, and must not muddy the refusal.
     expect(screen.queryByText(/couldn’t email them/)).not.toBeInTheDocument();
+  });
+
+  it("the DialogContent onInteractOutside guard covers the TimePicker's portalled clock, not just the DatePicker's calendar", async () => {
+    // Radix's real "was this outside?" decision is timing-sensitive under
+    // jsdom's synthetic event dispatch (a portalled-but-React-descendant node
+    // can register as "inside" via React's own event delegation before Radix's
+    // document-level listener ever runs, independent of this app-level guard)
+    // — so rather than relying on jsdom to reproduce that judgment faithfully,
+    // this drives the ACTUAL onInteractOutside handler AssignCoursesModal hands
+    // to DialogContent, captured via the module mock above, with a real
+    // #time-picker-popover element as the event target.
+    const user = userEvent.setup();
+    await advanceToDeadline(user);
+
+    fireEvent.focus(screen.getByPlaceholderText('Select due time'));
+    const popover = document.getElementById('time-picker-popover');
+    expect(popover).not.toBeNull();
+
+    const { onInteractOutside } = mockDialogContentProps.mock.calls.at(-1)?.[0] ?? {};
+    expect(onInteractOutside).toBeInstanceOf(Function);
+
+    const preventDefault = vi.fn();
+    onInteractOutside?.({ target: popover, preventDefault } as unknown as Event);
+    expect(preventDefault).toHaveBeenCalled();
+
+    // Negative control: a target that is genuinely outside both popovers must
+    // NOT be swallowed — otherwise the guard would trivially keep the dialog
+    // open for every outside click, not just the pickers' own popovers.
+    const preventDefaultForRealOutsideClick = vi.fn();
+    onInteractOutside?.({
+      target: document.body,
+      preventDefault: preventDefaultForRealOutsideClick,
+    } as unknown as Event);
+    expect(preventDefaultForRealOutsideClick).not.toHaveBeenCalled();
   });
 });
 
