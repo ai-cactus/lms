@@ -4,7 +4,7 @@
  * validation, so the rules are pinned here rather than in either consumer.
  */
 import { describe, it, expect } from 'vitest';
-import { parseEmailList, isValidEmail } from './email-list';
+import { parseEmailList, isValidEmail, splitEmailTokens } from './email-list';
 
 describe('isValidEmail', () => {
   it.each(['a@b.co', 'first.last+tag@sub.example.org'])('accepts %s', (email) => {
@@ -43,5 +43,35 @@ describe('parseEmailList', () => {
 
   it('returns an empty result for blank / whitespace-only input', () => {
     expect(parseEmailList('   \n  ')).toEqual({ valid: [], invalidCount: 0 });
+  });
+});
+
+describe('splitEmailTokens', () => {
+  it('splits on the same delimiters as parseEmailList, trimmed and non-empty', () => {
+    expect(splitEmailTokens('a@x.com, b@x.com c@x.com;d@x.com\ne@x.com')).toEqual([
+      'a@x.com',
+      'b@x.com',
+      'c@x.com',
+      'd@x.com',
+      'e@x.com',
+    ]);
+  });
+
+  it("does not lowercase, dedupe or validate — that is parseEmailList's job", () => {
+    expect(splitEmailTokens('B@x.com, nope, B@x.com')).toEqual(['B@x.com', 'nope', 'B@x.com']);
+  });
+
+  it('returns an empty array for blank / whitespace-only input', () => {
+    expect(splitEmailTokens('   \n  ')).toEqual([]);
+  });
+
+  it('is exactly the token list parseEmailList partitions, so a caller can recover the rejected ones', () => {
+    const text = 'good@x.com, nope, also-bad';
+    const tokens = splitEmailTokens(text);
+    const { valid, invalidCount } = parseEmailList(text);
+
+    const rejected = tokens.filter((token) => !valid.includes(token.toLowerCase()));
+    expect(rejected).toEqual(['nope', 'also-bad']);
+    expect(rejected).toHaveLength(invalidCount);
   });
 });

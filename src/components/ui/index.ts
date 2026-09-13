@@ -2,7 +2,6 @@ export { useModalContext } from './legacy/ModalContext';
 
 export { default as Logo } from './Logo';
 export { default as FileUpload } from './FileUpload';
-export { default as TagInput } from './TagInput';
 export { PhoneInput } from './PhoneInput';
 export { default as EmptyTableState } from './EmptyTableState';
 export { default as CircularProgress } from './CircularProgress';

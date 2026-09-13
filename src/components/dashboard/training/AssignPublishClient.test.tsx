@@ -187,6 +187,28 @@ describe('AssignPublishClient — Due Date renders in both modes', () => {
   });
 });
 
+describe('AssignPublishClient — AssigneesInput host wiring', () => {
+  it('the Invite button commits an uncommitted draft via commitDraft()', async () => {
+    const user = userEvent.setup();
+    renderClient();
+
+    // Typed but never confirmed with Enter/Tab/comma/space.
+    await user.type(screen.getByPlaceholderText('Add people, emails or names'), 'worker@test.com');
+    expect(screen.queryByText('worker@test.com')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Invite' }));
+
+    expect(screen.getByText('worker@test.com')).toBeInTheDocument();
+  });
+
+  it('exposes the bulk-import CSV control in people mode', () => {
+    renderClient();
+
+    expect(screen.getByText('Click to upload .csv file instead')).toBeInTheDocument();
+    expect(screen.getByText('Download sample .csv template')).toBeInTheDocument();
+  });
+});
+
 describe('AssignPublishClient — submit payloads', () => {
   it('people mode sends dueAt (not dueDate) and dueWindowDays:null with no existing settings', async () => {
     const user = userEvent.setup();
