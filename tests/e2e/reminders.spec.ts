@@ -362,7 +362,7 @@ test.describe('Reminders & Escalations', () => {
     await page.getByRole('button', { name: 'Assign', exact: true }).click();
     await page.waitForURL('**/assign');
 
-    await page.getByRole('button', { name: 'A whole role' }).click();
+    await page.getByRole('button', { name: 'Roles', exact: true }).click();
     await page.getByRole('button', { name: 'Choose roles' }).click();
     // Display name per src/lib/rbac/permissions.ts — "Front Desk / Administrative
     // Support", the seeded workers' role (worker, sarah, overdueWorker, walt, etc).
@@ -374,9 +374,12 @@ test.describe('Reminders & Escalations', () => {
     await page.getByRole('heading', { name: 'Assign', exact: true, level: 1 }).click();
     await expect(page.getByRole('group', { name: 'Assignable roles' })).toBeHidden();
 
-    // Role-target assignments never carry an absolute due date — the "Due
-    // Date" field belongs to "Specific people" mode only.
-    await expect(page.getByRole('heading', { name: 'Due Date' })).not.toBeVisible();
+    // Role targets DO carry an absolute due date — it is the deadline every
+    // holder shares, with each holder's own window as the fallback when it is
+    // left empty — so the "Due Date" field belongs to both modes. Scope to the
+    // section heading: the surface also has a "Select due date" button, so a
+    // plain getByText('Due Date') match is ambiguous (strict-mode violation).
+    await expect(page.getByRole('heading', { name: 'Due Date' })).toBeVisible();
 
     // Current-holder preview copy is present (roleHolderCounts wiring) — the
     // RoleTargetPicker consolidation (PR #595) replaced the old "will be

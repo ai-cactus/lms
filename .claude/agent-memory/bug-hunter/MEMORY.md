@@ -77,3 +77,4 @@
 - [Course wizard PR-3b restyle tests](course-wizard-pr3b-restyle-test-patterns.md) — Playwright role="alert" collides with Next's route announcer (use hasText, not name); flattened-accordion rewrite pattern; migrate reset is AI-blocked, delete the stray row instead
 - [Course details PR-4 attribution tests](course-details-pr4-attribution-tests.md) — mayReviewWithoutEnrollment 14-role table; getRoleDisplayName returns FULL names ("Owner (Organisation Admin)"); e2e email-LIKE cleanup races concurrent tests; lessons-empty course renders straight into AdminQuizEditor
 - [RoleTargetPicker stale-locator sweep](role-target-picker-stale-locator-sweep.md) — TC-016 option→checkbox fix, second stale-copy bug, full-suite ECONNREFUSED collapse trap
+- [Assign role-label + Due Date fix tests](assign-role-label-due-date-tests.md) — AssignPublishClient's first unit test file; sweep.ts dueAt/multi-role coverage; RTL getByRole has no `exact` option (Playwright-only)
