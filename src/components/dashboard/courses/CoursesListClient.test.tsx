@@ -46,7 +46,7 @@ vi.mock('@/lib/logger', () => ({
   maskEmail: (email: string) => email,
 }));
 vi.mock('@/components/dashboard/billing/BillingGateModal', () => ({
-  default: () => null,
+  default: () => <div data-testid="billing-gate-modal" />,
 }));
 vi.mock('@/components/ui', () => ({
   RowActionsMenu: ({ actions }: { actions: RowAction[] }) => (
@@ -429,6 +429,20 @@ describe('CoursesListClient — "Assign to staff" navigates to the assign page',
     await user.click(screen.getByRole('button', { name: 'Assign to staff' }));
 
     expect(mockPush).toHaveBeenCalledWith('/dashboard/training/courses/course-1/assign');
+    expect(screen.queryByTestId('billing-gate-modal')).not.toBeInTheDocument();
+  });
+
+  // The assign page itself enforces billing by redirecting straight back to
+  // this list, which from a menu item reads as the click doing nothing.
+  // The row action intercepts it here instead, the way startCreateCourse does.
+  it('opens the billing gate and does not navigate when the org lacks active billing', async () => {
+    const user = userEvent.setup();
+    render(<CoursesListClient courses={[makeCourse()]} hasBilling={false} viewerRole="owner" />);
+
+    await user.click(screen.getByRole('button', { name: 'Assign to staff' }));
+
+    expect(screen.getByTestId('billing-gate-modal')).toBeInTheDocument();
+    expect(mockPush).not.toHaveBeenCalled();
   });
 });
 
