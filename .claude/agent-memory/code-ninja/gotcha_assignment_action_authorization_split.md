@@ -1,6 +1,6 @@
 ---
 name: gotcha-assignment-action-authorization-split
-description: RESOLVED 2026-08-31 — enrollUsers now authorizes courses by ORG ownership like assignCourseToUsers. History of the split, and the mock shape every enrollUsers test now needs.
+description: RESOLVED 2026-08-31 — enrollUsers authorizes courses by ORG ownership; assignCourseToUsers was deleted 2026-09-13. History of the split, and the mock shape every enrollUsers test needs.
 metadata:
   type: project
 ---
@@ -21,6 +21,6 @@ already assign the same course through the other action.
 
 **How to apply now:**
 
-- Either action is safe to build a new assign entry point on; choose by SHAPE, not authorization. `enrollUsers` adds invite-parking for non-members, the seat gate, and the batched-notice `deferWorkerNotification` option; `assignCourseToUsers` is the one-course/many-emails path and never invites.
+- `assignCourseToUsers` was **deleted** on 2026-09-13 (assign-surface consolidation Phase 3) — it bypassed the F-051 review gate and applied creator-org-only tenancy. `enrollUsers` is now the only user-target assign action; build new entry points on it. Note its own page-level gates differ: [[gotcha-assign-page-tenancy-narrower-than-action]].
 - `enrollUsers` selects `creator: { organizationId }`. **Any prisma mock returning a course from `course.findUnique` must include that relation** or the action throws `Cannot read properties of undefined`. A fixture meant to exercise only the global-catalog/offering branch needs a creator org that is NOT the caller's (`'org-platform'`), or it passes for the wrong reason.
 - **Still open:** `assignCourseToRoleTargets` (enrollment.ts, ~line 670) carries the same creator-identity gate and was deliberately left alone — role-target assignment of a colleague's non-global course still fails. Fix it the same way if it surfaces.

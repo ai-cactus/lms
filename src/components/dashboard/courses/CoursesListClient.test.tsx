@@ -46,27 +46,7 @@ vi.mock('@/lib/logger', () => ({
   maskEmail: (email: string) => email,
 }));
 vi.mock('@/components/dashboard/billing/BillingGateModal', () => ({
-  default: () => null,
-}));
-// Stubbed to keep these tests on this component's own wiring — the modal's own
-// behaviour is covered in AssignCourseModal.test.tsx.
-vi.mock('./AssignCourseModal', () => ({
-  default: ({
-    courseId,
-    courseTitle,
-    onClose,
-  }: {
-    courseId: string;
-    courseTitle: string;
-    onClose: () => void;
-  }) => (
-    <div data-testid="assign-course-modal">
-      {courseId} {courseTitle}
-      <button type="button" onClick={onClose}>
-        close-assign-modal
-      </button>
-    </div>
-  ),
+  default: () => <div data-testid="billing-gate-modal" />,
 }));
 vi.mock('@/components/ui', () => ({
   RowActionsMenu: ({ actions }: { actions: RowAction[] }) => (
@@ -271,7 +251,9 @@ describe('CoursesListClient — row click navigates to the training detail route
       />,
     );
 
-    await user.click(screen.getByRole('button', { name: 'Assign to staff' }));
+    // Rename, not Assign: the assign action navigates by design, so it cannot
+    // distinguish its own push from one the row handler bubbled into.
+    await user.click(screen.getByRole('button', { name: 'Rename' }));
 
     expect(mockPush).not.toHaveBeenCalled();
   });
@@ -435,29 +417,32 @@ describe('CoursesListClient — row action gating per role', () => {
   });
 });
 
-describe('CoursesListClient — "Assign to staff" opens the modal', () => {
-  it('mounts AssignCourseModal for the chosen course instead of navigating to the wizard page', async () => {
+// The row action used to mount its own AssignCourseModal, backed by a server
+// action that skipped the F-051 review gate and applied creator-org-only
+// tenancy. Both defects are closed structurally by sending the admin to the
+// canonical assign page instead, so what this component owes is the route.
+describe('CoursesListClient — "Assign to staff" navigates to the assign page', () => {
+  it('pushes the assign route for the chosen course', async () => {
     const user = userEvent.setup();
     render(<CoursesListClient courses={[makeCourse()]} hasBilling viewerRole="owner" />);
 
-    expect(screen.queryByTestId('assign-course-modal')).not.toBeInTheDocument();
-
     await user.click(screen.getByRole('button', { name: 'Assign to staff' }));
 
-    const modal = screen.getByTestId('assign-course-modal');
-    expect(modal).toHaveTextContent('course-1');
-    expect(modal).toHaveTextContent('Infection Control');
-    expect(mockPush).not.toHaveBeenCalled();
+    expect(mockPush).toHaveBeenCalledWith('/dashboard/training/courses/course-1/assign');
+    expect(screen.queryByTestId('billing-gate-modal')).not.toBeInTheDocument();
   });
 
-  it('closes the modal without navigating', async () => {
+  // The assign page itself enforces billing by redirecting straight back to
+  // this list, which from a menu item reads as the click doing nothing.
+  // The row action intercepts it here instead, the way startCreateCourse does.
+  it('opens the billing gate and does not navigate when the org lacks active billing', async () => {
     const user = userEvent.setup();
-    render(<CoursesListClient courses={[makeCourse()]} hasBilling viewerRole="owner" />);
+    render(<CoursesListClient courses={[makeCourse()]} hasBilling={false} viewerRole="owner" />);
 
     await user.click(screen.getByRole('button', { name: 'Assign to staff' }));
-    await user.click(screen.getByRole('button', { name: 'close-assign-modal' }));
 
-    expect(screen.queryByTestId('assign-course-modal')).not.toBeInTheDocument();
+    expect(screen.getByTestId('billing-gate-modal')).toBeInTheDocument();
+    expect(mockPush).not.toHaveBeenCalled();
   });
 });
 

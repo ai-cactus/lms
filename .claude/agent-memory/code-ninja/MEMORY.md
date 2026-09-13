@@ -78,3 +78,4 @@
 - [sweep.test.ts mock-queue coupling](gotcha_sweep_test_mock_queue_coupling.md) — one early-aborting pre-pass shifts every later `mockResolvedValueOnce` and reddens 13 unrelated tests.
 - [targetRoles backfill is provable](gotcha_targetroles_backfill_is_provable.md) — backfilled in the same migration that added it; but keep the sweep's OR anyway.
 - [DatePicker name = its placeholder](gotcha_datepicker_accessible_name_is_placeholder.md) — adding `label`/aria-label breaks reminders.spec.ts locators, and feature-PR CI skips e2e.
+- [Assign page tenancy is narrower than its action](gotcha_assign_page_tenancy_narrower_than_action.md) — the page's own course lookup has no same-org clause, so a colleague-authored course silently redirects away.
