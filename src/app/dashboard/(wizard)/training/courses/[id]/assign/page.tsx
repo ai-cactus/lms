@@ -40,13 +40,21 @@ export default async function AssignCoursePage(props: PageProps) {
   const { id } = await props.params;
 
   // Assignable when it's a global published course (catalog), the admin's own
-  // course, or one their org has already offered.
+  // course, one a colleague in their organization authored, or one their org
+  // has already offered.
+  //
+  // The same-org clause must stay in step with `enrollUsers`' `isSameOrgCourse`
+  // — this page submits to that action, so a course the action would accept but
+  // the page refuses is a silent redirect with nothing to explain it. Authorship
+  // alone is far too narrow: a Supervisor authors no courses at all, so every
+  // course the list shows them belongs to a colleague.
   const course = await prisma.course.findFirst({
     where: {
       id,
       OR: [
         { isGlobal: true, status: 'published' },
         ...(organizationUserId ? [{ createdByOrgUserId: organizationUserId }] : []),
+        ...(organizationId ? [{ creator: { organizationId } }] : []),
         ...(organizationId ? [{ offerings: { some: { organizationId } } }] : []),
       ],
     },

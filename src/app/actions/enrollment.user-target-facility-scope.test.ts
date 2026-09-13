@@ -14,6 +14,10 @@
  *
  * `assignCourseToRoles` already narrowed the ROLE path
  * (enrollment.role-target-facility-scope.test.ts). This is its sibling.
+ *
+ * It also inherits the guarantees that course.assign-course-to-users-facility-scope.test.ts
+ * pinned to the retired courses-list modal action: that path was deleted, but the
+ * rules it enforced are the same ones this one must keep.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -161,6 +165,14 @@ describe('enrollUsers — facility scope (sequential path)', () => {
     expect(enrolled).toContain(IN_FACILITY);
   });
 
+  it('reports the refusal instead of throwing, so the assign page can name the address', async () => {
+    membersAcrossBothFacilities();
+
+    await expect(enrollUsers('course-1', ENTRIES)).resolves.toMatchObject({
+      failed: [OTHER_FACILITY],
+    });
+  });
+
   it('an ORG-WIDE role is not narrowed at all — no facility query, both targets enrolled', async () => {
     setSession('owner');
     membersAcrossBothFacilities();
@@ -169,6 +181,17 @@ describe('enrollUsers — facility scope (sequential path)', () => {
 
     expect(result.success).toEqual(expect.arrayContaining([IN_FACILITY, OTHER_FACILITY]));
     expect(result.failed).toHaveLength(0);
+    expect(mockListAccessibleFacilities).not.toHaveBeenCalled();
+  });
+
+  it('enrolls nobody when EVERY named target is out of scope', async () => {
+    membersAcrossBothFacilities();
+
+    const result = await enrollUsers('course-1', [{ email: OTHER_FACILITY }]);
+
+    expect(result.success).toHaveLength(0);
+    expect(result.failed).toEqual([OTHER_FACILITY]);
+    expect(mockCreateEnrollmentForUser).not.toHaveBeenCalled();
   });
 
   it('a facility-bound caller with NO accessible facilities enrolls nobody — fail closed', async () => {
