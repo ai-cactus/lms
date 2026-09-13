@@ -47,7 +47,6 @@ import { checkCourseGenerationJobV46 } from '@/app/actions/course-ai-v4.6';
 import { clearPendingGeneration, readPendingGeneration } from '@/lib/course/pending-generation';
 import { deleteCourse, updateCourse } from '@/app/actions/course';
 import BillingGateModal from '@/components/dashboard/billing/BillingGateModal';
-import AssignCourseModal from './AssignCourseModal';
 import {
   Plus,
   Search,
@@ -366,7 +365,6 @@ export default function CoursesListClient({
   const [actionError, setActionError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<CourseWithStats | null>(null);
   const [courseToRename, setCourseToRename] = useState<{ id: string; title: string } | null>(null);
-  const [courseToAssign, setCourseToAssign] = useState<{ id: string; title: string } | null>(null);
   const [, startTransition] = useTransition();
 
   // Every row affordance is derived from the registry, never from a role list —
@@ -463,10 +461,9 @@ export default function CoursesListClient({
 
   const buildRowActions = (course: CourseWithStats): RowAction[] => {
     // A platform catalog course this org has not adopted is authored by another
-    // tenant: rename and delete would mutate it for every organization, its
-    // source document belongs to the publishing tenant, and assignCourseToUsers
-    // rejects it on its creator-organization check. The row stays view-only —
-    // exactly what the catalog card it replaces offered.
+    // tenant: rename and delete would mutate it for every organization, and its
+    // source document belongs to the publishing tenant. The row stays view-only
+    // — exactly what the catalog card it replaces offered.
     if (course.isGlobalCatalog) return [];
 
     const actions: RowAction[] = [];
@@ -475,7 +472,16 @@ export default function CoursesListClient({
       actions.push({
         label: 'Assign to staff',
         icon: <UserPlus className="size-4" />,
-        onSelect: () => setCourseToAssign({ id: course.id, title: course.title }),
+        // The assign page enforces the billing gate by redirecting straight back
+        // here, which would read as the action doing nothing. Intercept it the
+        // way startCreateCourse does so the gate explains itself.
+        onSelect: () => {
+          if (!hasBilling) {
+            setShowBillingGate(true);
+            return;
+          }
+          router.push(`/dashboard/training/courses/${course.id}/assign`);
+        },
       });
     }
 
@@ -532,14 +538,6 @@ export default function CoursesListClient({
             handleRenamed(courseToRename.id, newTitle);
             setCourseToRename(null);
           }}
-        />
-      )}
-
-      {courseToAssign && (
-        <AssignCourseModal
-          courseId={courseToAssign.id}
-          courseTitle={courseToAssign.title}
-          onClose={() => setCourseToAssign(null)}
         />
       )}
 

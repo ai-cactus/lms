@@ -247,8 +247,8 @@ export async function enrollUsers(
 
   // COU-004: a course belongs to the ORGANIZATION, not to the member who
   // authored it, so a caller holding the assign verbs may assign any course
-  // their own org owns — the ruling `assignCourseToUsers` and `getCourseById`
-  // already apply. Without it this action rejects a colleague's course as
+  // their own org owns — the ruling `getCourseById` already applies. Without it
+  // this action rejects a colleague's course as
   // "Course not found", which is what left the staff-profile assign flow
   // unusable for any org whose courses were authored by someone else.
   const isSameOrgCourse =
