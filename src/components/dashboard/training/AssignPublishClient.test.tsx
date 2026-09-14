@@ -10,7 +10,7 @@
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { UserRole } from '@/generated/prisma/enums';
+import type { RenewalCycle, UserRole } from '@/generated/prisma/enums';
 import type { RoleTargetPickerMode } from '@/components/dashboard/enrollment/RoleTargetPicker';
 import type { CourseAssignmentSettings } from '@/app/actions/enrollment';
 import { isPastDeadlineChange, combineDateAndTime } from '@/lib/reminders/deadline';
@@ -509,6 +509,117 @@ describe('AssignPublishClient — Priority 2: existingSettings.dueAt / scheduleA
     // scheduleAt IS combined client-side for both modes (assignCourseToRoles
     // takes one absolute scheduleAt, unlike its two-part dueDate/dueTime).
     expect(settings.scheduleAt).toEqual(STORED_SCHEDULE_AT);
+  });
+});
+
+/**
+ * Phase 6: the assign page's interval `Select` used to carry a 5th
+ * `{ value: 'none', label: 'No renewal' }` row alongside the wizard's 4-option
+ * vocabulary — now shared via `RenewalScheduleInput` and `RENEWAL_CYCLE_OPTIONS`,
+ * which never offers `'none'`. The "Recurring Course Requirement"/"Renewal
+ * Settings" toggle (see RenewalScheduleInput.test.tsx for its own coverage)
+ * is therefore the ONLY way left to express "this course does not recur" — if
+ * it stops doing that job, an admin silently loses the ability to turn
+ * renewal off. `renewalCycle`/`recurringEnabled` themselves are real here
+ * (not mocked): `submittedRenewalCycle` is computed inline in the component
+ * from both.
+ */
+describe('AssignPublishClient — Priority 1: the renewal toggle is the only way to send "none"', () => {
+  it('a fresh course (no existingSettings) renders the toggle ON, and an untouched submit sends renewalCycle: "annual" — today-parity default', async () => {
+    const user = userEvent.setup();
+    renderClient();
+
+    expect(screen.getByRole('switch', { name: 'Renewal Settings' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+
+    await user.type(screen.getByPlaceholderText('Add people, emails or names'), 'worker@test.com,');
+    await user.click(screen.getByRole('button', { name: 'Assign Course' }));
+
+    await waitFor(() => expect(mockEnrollUsers).toHaveBeenCalledTimes(1));
+    const [, , settings] = mockEnrollUsers.mock.calls[0];
+    expect(settings.renewalCycle).toBe('annual');
+  });
+
+  it('a stored renewalCycle of "none" hydrates the toggle OFF, hides the interval Select, and an untouched submit re-sends "none"', async () => {
+    const user = userEvent.setup();
+    renderClient({ existingSettings: existingSettings({ renewalCycle: 'none' as RenewalCycle }) });
+
+    expect(screen.getByRole('switch', { name: 'Renewal Settings' })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
+    expect(screen.queryByRole('combobox', { name: 'Select interval' })).not.toBeInTheDocument();
+
+    await user.type(screen.getByPlaceholderText('Add people, emails or names'), 'worker@test.com,');
+    await user.click(screen.getByRole('button', { name: 'Assign Course' }));
+
+    await waitFor(() => expect(mockEnrollUsers).toHaveBeenCalledTimes(1));
+    const [, , settings] = mockEnrollUsers.mock.calls[0];
+    expect(settings.renewalCycle).toBe('none');
+  });
+
+  it('a stored renewalCycle of "monthly" hydrates the toggle ON with "monthly" selected', () => {
+    renderClient({
+      existingSettings: existingSettings({ renewalCycle: 'monthly' as RenewalCycle }),
+    });
+
+    expect(screen.getByRole('switch', { name: 'Renewal Settings' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    expect(screen.getByRole('combobox', { name: 'Select interval' })).toHaveTextContent(
+      'Monthly (1 month)',
+    );
+  });
+
+  it('toggling OFF then submitting sends renewalCycle: "none" via enrollUsers (people branch)', async () => {
+    const user = userEvent.setup();
+    renderClient({
+      existingSettings: existingSettings({ renewalCycle: 'monthly' as RenewalCycle }),
+    });
+
+    await user.click(screen.getByRole('switch', { name: 'Renewal Settings' }));
+    await user.type(screen.getByPlaceholderText('Add people, emails or names'), 'worker@test.com,');
+    await user.click(screen.getByRole('button', { name: 'Assign Course' }));
+
+    await waitFor(() => expect(mockEnrollUsers).toHaveBeenCalledTimes(1));
+    const [, , settings] = mockEnrollUsers.mock.calls[0];
+    expect(settings.renewalCycle).toBe('none');
+  });
+
+  it('toggling OFF then submitting sends renewalCycle: "none" via assignCourseToRoles (role branch)', async () => {
+    const user = userEvent.setup();
+    renderClient({
+      existingSettings: existingSettings({
+        renewalCycle: 'monthly' as RenewalCycle,
+        targetRoles: ['nurse'] as UserRole[],
+      }),
+    });
+
+    await user.click(screen.getByRole('switch', { name: 'Renewal Settings' }));
+    await user.click(screen.getByRole('button', { name: 'Assign Course' }));
+
+    await waitFor(() => expect(mockAssignCourseToRoles).toHaveBeenCalledTimes(1));
+    const [, , settings] = mockAssignCourseToRoles.mock.calls[0];
+    expect(settings.renewalCycle).toBe('none');
+  });
+
+  it('toggling OFF then back ON with the interval untouched sends "annual", not "none"', async () => {
+    const user = userEvent.setup();
+    renderClient();
+
+    const toggle = screen.getByRole('switch', { name: 'Renewal Settings' });
+    await user.click(toggle);
+    await user.click(toggle);
+
+    await user.type(screen.getByPlaceholderText('Add people, emails or names'), 'worker@test.com,');
+    await user.click(screen.getByRole('button', { name: 'Assign Course' }));
+
+    await waitFor(() => expect(mockEnrollUsers).toHaveBeenCalledTimes(1));
+    const [, , settings] = mockEnrollUsers.mock.calls[0];
+    expect(settings.renewalCycle).toBe('annual');
   });
 });
 
