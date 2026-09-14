@@ -14,13 +14,19 @@ import { QuizQuestion } from '@/types/quiz';
 import type { StaffEntry } from '@/types/enrollment';
 import { logger } from '@/lib/logger';
 import { resolveMemberFacilityId } from '@/lib/facility/member-facility';
-import { isOrgWideFacilityRole, listAccessibleFacilities } from '@/lib/facility/scope';
 import {
   resolveDataFacilityIds,
   staffFacilityWhere,
   type FacilityScopeSession,
 } from '@/lib/facility/staff-where';
 import { CourseAccessError } from '@/lib/course/access-error';
+import { resolveDashboardScope } from '@/lib/dashboard/scope';
+import {
+  coveragePercentages,
+  passingScoreFor,
+  resolvePassingScores,
+} from '@/lib/dashboard/metrics';
+import { COMPLETED_ENROLLMENT_STATUSES } from '@/lib/facility/metrics';
 import { resolveOnCompletion } from '@/lib/reminders/sweep';
 import { combineDateAndTime, isPastDeadlineChange } from '@/lib/reminders/deadline';
 import { assignCourseToRoles, enrollUsers } from './enrollment';
@@ -785,42 +791,13 @@ export async function deleteCourse(
   return { success: true };
 }
 
-/**
- * The facilities this dashboard's figures may span, on the `string[] | null`
- * contract used everywhere else (`null` = no predicate, `[]` = see nothing).
- *
- * The previous single-optional-id signature could not express "see nothing": a
- * facility-bound caller with no assignments produced no id, and no id meant no
- * predicate — the org-wide query shape. That is the fail-OPEN this replaces.
- *
- * The argument reaches a server action straight from the client, so it is a
- * request and never a grant: ids the caller cannot view are dropped, and if
- * that leaves nothing the answer is nothing rather than everything.
- */
-async function resolveDashboardFacilityIds(
-  session: FacilityScopeSession,
-  requestedFacilityIds?: string[] | null,
-): Promise<string[] | null> {
-  if (requestedFacilityIds == null) {
-    if (isOrgWideFacilityRole(session.user.role)) return null;
-    return (await listAccessibleFacilities(session)).map((facility) => facility.id);
-  }
-
-  if (requestedFacilityIds.length === 0) return [];
-
-  const accessible = new Set(
-    (await listAccessibleFacilities(session)).map((facility) => facility.id),
-  );
-  return requestedFacilityIds.filter((id) => accessible.has(id));
-}
-
 // Get dashboard data (combines courses list and stats to prevent duplicate queries)
 /**
  * @param requestedFacilityIds Narrows every enrollment-derived figure (staff
  *   assigned, average grade, per-course pass/fail, training coverage) to these
  *   facilities. Omit (or pass null) for "the caller's own scope", which is the
  *   whole organisation only for an org-wide role. See
- *   {@link resolveDashboardFacilityIds} — the value is re-validated, never trusted.
+ *   {@link resolveDashboardScope} — the value is re-validated, never trusted.
  */
 export async function getDashboardData(requestedFacilityIds?: string[] | null) {
   const session = await resolveSession();
@@ -828,11 +805,11 @@ export async function getDashboardData(requestedFacilityIds?: string[] | null) {
     throw new Error('Unauthorized');
   }
 
-  const dataFacilityIds = await resolveDashboardFacilityIds(session, requestedFacilityIds);
-  // Spread into a `where` to leave the org-wide query shape byte-identical.
-  // An empty array narrows to nothing, which is the point.
-  const facilityFilter: Prisma.EnrollmentWhereInput =
-    dataFacilityIds === null ? {} : { facilityId: { in: dataFacilityIds } };
+  // Every figure below counts over the ORGANISATION's courses and members, not
+  // the viewer's own. Reading the population from the shared seam is what stops
+  // this action and `getGlobalDashboardData` describing the same organisation
+  // differently — see `@/lib/dashboard/scope`.
+  const scope = await resolveDashboardScope(session, requestedFacilityIds);
 
   // F-028: avoid the unbounded `enrollments: true` materialization that pulled
   // every enrollment row (all columns) for every course on each dashboard load.
@@ -841,16 +818,15 @@ export async function getDashboardData(requestedFacilityIds?: string[] | null) {
   // { courseId, score, completedAt } projection — for the average / monthly /
   // pass-fail stats that genuinely need row-level scores.
   //
-  // `organizationUserId` is null only for a prospective founder mid-onboarding
-  // (no organization yet) — tolerate it with an empty dashboard rather than
-  // throwing; the client-side OrganizationActivationModal handles that state.
-  const createdByOrgUserId = session.user.organizationUserId;
-  const organizationId = session.user.organizationId;
+  // `organizationId` is null only for a prospective founder mid-onboarding (no
+  // organization yet) — tolerate it with an empty dashboard rather than throwing;
+  // the client-side OrganizationActivationModal handles that state.
+  const { organizationId } = scope;
 
   const [coursesRaw, courseStatusCounts, userStatusCounts, scoredEnrollments] = await Promise.all([
-    createdByOrgUserId
+    organizationId
       ? prisma.course.findMany({
-          where: { createdByOrgUserId },
+          where: scope.courseWhere,
           select: {
             id: true,
             title: true,
@@ -861,49 +837,56 @@ export async function getDashboardData(requestedFacilityIds?: string[] | null) {
             duration: true,
             createdAt: true,
             updatedAt: true,
+            // Both attachment points, because a course passes at its STRICTEST
+            // bar — taking the first lesson quiz made the same course pass here
+            // and fail on the global dashboard.
+            quiz: { select: { passingScore: true } },
             lessons: { select: { quiz: { select: { passingScore: true } } } },
           },
           orderBy: { createdAt: 'desc' },
         })
       : Promise.resolve([]),
     // Per-course enrollment totals + completed/attested tallies.
-    createdByOrgUserId
+    organizationId
       ? prisma.enrollment.groupBy({
           by: ['courseId', 'status'],
-          where: { course: { createdByOrgUserId }, ...facilityFilter },
+          where: { ...scope.enrollmentWhere, course: scope.courseWhere },
           _count: { _all: true },
         })
       : Promise.resolve([]),
     // Per-membership status tallies for training coverage + distinct staff assigned.
-    createdByOrgUserId
+    organizationId
       ? prisma.enrollment.groupBy({
           by: ['organizationUserId', 'status'],
-          where: { course: { createdByOrgUserId }, ...facilityFilter },
+          where: {
+            ...scope.enrollmentWhere,
+            course: scope.courseWhere,
+            // Numerator and denominator must be the same population: the coverage
+            // base below is the active worker roster, so without this an admin's
+            // own enrollment — or a deactivated worker's — landed in the split but
+            // not in the base it is divided by.
+            organizationUser: scope.staffWhere({ roles: WORKER_ROLES }),
+          },
           _count: { _all: true },
         })
       : Promise.resolve([]),
     // Only scored enrollments, narrow projection — used for average grade,
     // monthly performance and per-course pass/fail distribution.
-    createdByOrgUserId
+    organizationId
       ? prisma.enrollment.findMany({
-          where: { course: { createdByOrgUserId }, score: { not: null }, ...facilityFilter },
+          where: { ...scope.enrollmentWhere, course: scope.courseWhere, score: { not: null } },
           select: { courseId: true, score: true, completedAt: true },
         })
       : Promise.resolve([]),
   ]);
 
-  // Get total staff (workers) in organization to ensure accurate coverage base
+  // Get total staff (workers) in organization to ensure accurate coverage base.
+  // Under facility scope this is those sites' roster, so a worker at another
+  // facility never dilutes their completion percentages.
   let totalOrgStaff = 0;
   if (organizationId) {
     totalOrgStaff = await prisma.organizationUser.count({
-      where: {
-        organizationId,
-        active: true,
-        role: { in: [...WORKER_ROLES] },
-        // Under facility scope the coverage base is those sites' roster, so a
-        // worker at another facility never dilutes their completion percentages.
-        ...staffFacilityWhere(dataFacilityIds),
-      },
+      where: scope.staffWhere({ roles: WORKER_ROLES }),
     });
   }
 
@@ -912,7 +895,7 @@ export async function getDashboardData(requestedFacilityIds?: string[] | null) {
   for (const row of courseStatusCounts) {
     const entry = perCourseCounts.get(row.courseId) ?? { total: 0, completed: 0 };
     entry.total += row._count._all;
-    if (row.status === 'completed' || row.status === 'attested') {
+    if (COMPLETED_ENROLLMENT_STATUSES.includes(row.status)) {
       entry.completed += row._count._all;
     }
     perCourseCounts.set(row.courseId, entry);
@@ -976,10 +959,18 @@ export async function getDashboardData(requestedFacilityIds?: string[] | null) {
     return { month, value: avg };
   });
 
+  const passingScores = resolvePassingScores(
+    coursesRaw.flatMap((course) => [
+      ...(course.quiz ? [{ courseId: course.id, passingScore: course.quiz.passingScore }] : []),
+      ...course.lessons.flatMap((lesson) =>
+        lesson.quiz ? [{ courseId: course.id, passingScore: lesson.quiz.passingScore }] : [],
+      ),
+    ]),
+  );
+
   // Calculate Course Performance (Scores vs Courses)
   const coursePerformance = coursesRaw.map((course) => {
-    const quiz = course.lessons.find((l) => l.quiz)?.quiz;
-    const passingScore = quiz?.passingScore || 70;
+    const passingScore = passingScoreFor(passingScores, course.id);
 
     // Scores of enrollments that have been graded for this course.
     const validScores = scoresByCourse.get(course.id) ?? [];
@@ -1016,7 +1007,7 @@ export async function getDashboardData(requestedFacilityIds?: string[] | null) {
       hasInProgress: false,
       hasNotStarted: false,
     };
-    if (row.status === 'completed' || row.status === 'attested') {
+    if (COMPLETED_ENROLLMENT_STATUSES.includes(row.status)) {
       entry.hasCompleted = true;
     } else if (row.status === 'in_progress') {
       entry.hasInProgress = true;
@@ -1055,33 +1046,10 @@ export async function getDashboardData(requestedFacilityIds?: string[] | null) {
 
   const coverageBase = totalOrgStaff > 0 ? totalOrgStaff : enrollmentsByUser.size;
 
-  // Use largest-remainder (Hamilton) rounding so the three percentages always sum to exactly 100.
-  let pctCompleted = 0;
-  let pctInProgress = 0;
-  let pctNotStarted = 0;
-  if (coverageBase > 0) {
-    const rawCompleted = (staffCompleted / coverageBase) * 100;
-    const rawInProgress = (staffInProgress / coverageBase) * 100;
-    const rawNotStarted = (staffNotStarted / coverageBase) * 100;
-
-    pctCompleted = Math.floor(rawCompleted);
-    pctInProgress = Math.floor(rawInProgress);
-    pctNotStarted = Math.floor(rawNotStarted);
-
-    // Distribute remaining integer points to whichever values have the largest fractional parts.
-    const remainder = 100 - pctCompleted - pctInProgress - pctNotStarted;
-    const fractions = [
-      { key: 'completed' as const, frac: rawCompleted - pctCompleted },
-      { key: 'inProgress' as const, frac: rawInProgress - pctInProgress },
-      { key: 'notStarted' as const, frac: rawNotStarted - pctNotStarted },
-    ].sort((a, b) => b.frac - a.frac);
-
-    for (let i = 0; i < remainder; i++) {
-      if (fractions[i].key === 'completed') pctCompleted++;
-      else if (fractions[i].key === 'inProgress') pctInProgress++;
-      else pctNotStarted++;
-    }
-  }
+  const coverage = coveragePercentages(
+    { completed: staffCompleted, inProgress: staffInProgress, notStarted: staffNotStarted },
+    coverageBase,
+  );
 
   return {
     courses,
@@ -1092,9 +1060,9 @@ export async function getDashboardData(requestedFacilityIds?: string[] | null) {
       monthlyPerformance,
       coursePerformance,
       trainingCoverage: {
-        completed: pctCompleted,
-        inProgress: pctInProgress,
-        notStarted: pctNotStarted,
+        completed: coverage.completed,
+        inProgress: coverage.inProgress,
+        notStarted: coverage.notStarted,
         totalStaff: totalStaffAssigned,
       },
     },

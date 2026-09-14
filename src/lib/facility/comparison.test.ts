@@ -69,6 +69,7 @@ const DATA: GlobalDashboardData = {
     overviewRow({ facilityId: 'fac-b', name: 'Beta Site', staffCount: 20 }),
     overviewRow({ facilityId: 'fac-c', name: 'Gamma Site', staffCount: 30 }),
   ],
+  organisationTotals: { totalCourses: 8, staffAssigned: 45, averageGrade: 82 },
 };
 
 describe('buildFacilityComparison', () => {

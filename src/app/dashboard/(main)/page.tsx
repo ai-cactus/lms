@@ -20,6 +20,7 @@ import {
   listAccessibleFacilities,
   resolveFacilityScopeSelection,
 } from '@/lib/facility/scope';
+import { dataFacilityIdsFor } from '@/lib/facility/staff-where';
 import { getGlobalDashboardData } from '@/app/actions/dashboard-facility';
 import GlobalDashboardView from '@/components/dashboard/global/GlobalDashboardView';
 import FacilityScopeSwitcher from '@/components/dashboard/FacilityScopeSwitcher';
@@ -62,41 +63,44 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   // boundary finance must stay outside of, so this keeps the narrower verb.
   const canSeeRosterMetrics = can(roleKey, 'assignment.read');
 
+  const accessibleFacilities = await listAccessibleFacilities(session);
+
   // A comparison is the Global View narrowed to the selected facilities, so it
   // takes the same branch as the unscoped request.
-  if (canSeeGlobalDashboard && scope.mode !== 'single') {
+  //
+  // `accessibleFacilities` is what THIS viewer can see — and is exactly what
+  // `getGlobalDashboardData` returns as `data.facilities` on every path — so one
+  // condition covers every case: a single-facility organisation, and a role
+  // bound to one facility, both get that facility's dashboard rather than a
+  // consolidated view of a single site. Two or more is the only shape a global
+  // view can describe. Deciding the branch from the list rather than from the
+  // action's result is what stops ~17 aggregates being computed and discarded on
+  // every single-facility load.
+  if (canSeeGlobalDashboard && scope.mode !== 'single' && accessibleFacilities.length > 1) {
     const globalData = await getGlobalDashboardData();
-    // `facilities` is what THIS viewer can see, so one condition covers every
-    // case: a single-facility organisation, and a role bound to one facility,
-    // both get that facility's dashboard rather than a consolidated view of a
-    // single site. Two or more is the only shape a global view can describe.
-    if (globalData.facilities.length > 1) {
-      return (
-        <GlobalDashboardView
-          data={globalData}
-          userName={session.user.name}
-          comparedFacilityIds={
-            scope.mode === 'compare' ? scope.facilities.map((facility) => facility.id) : []
-          }
-        />
-      );
-    }
+    return (
+      <GlobalDashboardView
+        data={globalData}
+        userName={session.user.name}
+        comparedFacilityIds={
+          scope.mode === 'compare' ? scope.facilities.map((facility) => facility.id) : []
+        }
+      />
+    );
   }
 
   const scopedFacility = scope.mode === 'single' ? scope.facility : null;
-
-  const accessibleFacilities = await listAccessibleFacilities(session);
 
   // The security boundary for every read below, mirroring
   // `requirePermissionWithFacilityScope`: null (no predicate) ONLY for an
   // org-wide role viewing everything. A facility-bound role always gets an
   // array — reaching this branch without a `?facility=` selection must narrow
   // to their own facilities, never widen to the organisation.
-  const dataFacilityIds = scopedFacility
-    ? [scopedFacility.id]
-    : isOrgWideFacilityRole(role as Role)
-      ? null
-      : accessibleFacilities.map((facility) => facility.id);
+  const dataFacilityIds = dataFacilityIdsFor({
+    role: role as Role,
+    selection: scopedFacility ? { kind: 'explicit', ids: [scopedFacility.id] } : { kind: 'none' },
+    accessibleFacilityIds: accessibleFacilities.map((facility) => facility.id),
+  });
 
   // Fetch billing status alongside dashboard data so the Create Course button
   // can apply the same billing gate as the Courses list page.

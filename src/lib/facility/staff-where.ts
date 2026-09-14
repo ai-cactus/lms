@@ -3,7 +3,7 @@
  *
  * D-01 happened because facility scoping was expressed ad hoc at each call site
  * — or not at all. This module exists so that no read path ever writes its own
- * role list again. Every narrowing goes through {@link resolveDataFacilityIds},
+ * role list again. Every narrowing goes through {@link dataFacilityIdsFor},
  * which returns `null` for org-wide roles, so HR, Finance, Clinical Director,
  * Owner and Admin are protected from over-scoping structurally rather than by
  * each author remembering to exempt them.
@@ -22,12 +22,69 @@
  */
 import type { Prisma } from '@/generated/prisma/client';
 import { isOrgWideFacilityRole, listAccessibleFacilities } from '@/lib/facility/scope';
-import type { AuthSession } from '@/types/next-auth';
+import type { AuthSession, Role } from '@/types/next-auth';
 
 /** The session fields this module reads — satisfied by a full NextAuth session. */
 export type FacilityScopeSession = {
   user: Pick<AuthSession['user'], 'id' | 'role' | 'organizationId' | 'organizationUserId'>;
 };
+
+/**
+ * What the caller asked to see, as a shape that cannot be confused.
+ *
+ * `[]` is the value this whole module exists to disambiguate: at a page it means
+ * "the viewer picked no facility" (fall back to their own scope) and at a query
+ * it means "narrow to nothing". Four call sites spelled both with the same empty
+ * array and each re-derived the branch by hand. Making the two states different
+ * constructors moves the distinction into the type system, where a fifth copy
+ * cannot quietly pick the wrong one.
+ */
+export type FacilitySelection = { kind: 'none' } | { kind: 'explicit'; ids: string[] };
+
+/**
+ * The one rule behind every `dataFacilityIds` in the codebase.
+ *
+ * An explicit selection is a REQUEST, never a grant: ids the caller cannot view
+ * are dropped, and if that leaves nothing the answer is nothing. With no
+ * selection the caller's own role decides — org-wide gets `null` (no predicate),
+ * everyone else is narrowed to their assignments.
+ */
+export function dataFacilityIdsFor(input: {
+  role: Role;
+  selection: FacilitySelection;
+  accessibleFacilityIds: string[];
+}): string[] | null {
+  const { role, selection, accessibleFacilityIds } = input;
+
+  if (selection.kind === 'explicit') {
+    const accessible = new Set(accessibleFacilityIds);
+    return selection.ids.filter((id) => accessible.has(id));
+  }
+
+  if (isOrgWideFacilityRole(role)) return null;
+  return accessibleFacilityIds;
+}
+
+/**
+ * {@link dataFacilityIdsFor} for callers that hold a session rather than an
+ * already-resolved accessible set.
+ */
+export async function resolveDataFacilityIdsFor(
+  session: FacilityScopeSession,
+  selection: FacilitySelection,
+): Promise<string[] | null> {
+  // Both short-circuits only avoid a roster query whose result the rule below
+  // would discard; neither may change the verdict.
+  if (selection.kind === 'none' && isOrgWideFacilityRole(session.user.role)) return null;
+  if (selection.kind === 'explicit' && selection.ids.length === 0) return [];
+
+  const facilities = await listAccessibleFacilities(session);
+  return dataFacilityIdsFor({
+    role: session.user.role,
+    selection,
+    accessibleFacilityIds: facilities.map((facility) => facility.id),
+  });
+}
 
 /**
  * The facilities a caller's DATA may span, or `null` when it may span the whole
@@ -37,12 +94,8 @@ export type FacilityScopeSession = {
  * Derived from the session alone, so server actions — which have no `?facility=`
  * parameter — reach the same verdict as a page.
  */
-export async function resolveDataFacilityIds(
-  session: FacilityScopeSession,
-): Promise<string[] | null> {
-  if (isOrgWideFacilityRole(session.user.role)) return null;
-  const facilities = await listAccessibleFacilities(session);
-  return facilities.map((facility) => facility.id);
+export function resolveDataFacilityIds(session: FacilityScopeSession): Promise<string[] | null> {
+  return resolveDataFacilityIdsFor(session, { kind: 'none' });
 }
 
 /**

@@ -80,3 +80,5 @@
 - [DatePicker name = its placeholder](gotcha_datepicker_accessible_name_is_placeholder.md) — adding `label`/aria-label breaks reminders.spec.ts locators, and feature-PR CI skips e2e.
 - [Assign page tenancy is narrower than its action](gotcha_assign_page_tenancy_narrower_than_action.md) — the page's own course lookup has no same-org clause, so a colleague-authored course silently redirects away.
 - [Client import of a prisma-bearing lib](gotcha_client_import_of_prisma_bearing_lib.md) — no server-only marker stops it and tsc is happy; split the pure half out and re-export (facility/scope precedent).
+- [Dashboard: two actions, one population](gotcha_dashboard_two_actions_one_population.md) — lib/dashboard/scope.ts shares the POPULATION not the queries; the member org pin is mandatory or you get cross-tenant inflation.
+- [Partial prisma mocks break on a new query](gotcha_partial_prisma_mocks_break_on_new_query.md) — "undefined (reading 'findMany')" blames the lib, but it's a missing key in the test's hand-written vi.mock.

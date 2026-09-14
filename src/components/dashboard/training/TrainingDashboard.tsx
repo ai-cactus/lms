@@ -592,7 +592,7 @@ export default function TrainingDashboard({
 
       <div className="rounded-xl border border-[#e2e8f0] bg-white p-6 shadow-sm">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-          <h3 className="text-lg font-bold text-[#1a202c]">My Courses</h3>
+          <h3 className="text-lg font-bold text-[#1a202c]">Courses</h3>
           <div className="w-full sm:w-80">
             <Input
               placeholder="Search for courses..."
