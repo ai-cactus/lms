@@ -10,7 +10,6 @@ import { describe, it, expect } from 'vitest';
 import {
   MAX_WIZARD_REMINDER_ROWS,
   WIZARD_REMINDER_STAGES,
-  defaultStageRows,
   reminderDaysToStageRows,
 } from './assignment';
 
@@ -39,18 +38,24 @@ describe('reminderDaysToStageRows', () => {
     expect(rows.DAY_OF_DEADLINE.enabled).toBe(false);
   });
 
-  it('leaves the post-deadline escalation stages at their canonical defaults', () => {
-    const rows = byStage(reminderDaysToStageRows([7, 3, 1]));
-    const defaults = byStage(defaultStageRows());
+  it("never emits rows for the post-deadline escalation stages — a wizard save must not reset an org's customised grace/overdue offsets", () => {
+    // Regression guard: this mapper used to fall back to defaultStageRows() for
+    // stages outside its own vocabulary, returning the row UNCHANGED — but the
+    // sink upserts every row it is handed, so any wizard-vocabulary save reset
+    // an org's custom GRACE_SOFT_ESCALATION/HARD_ESCALATION offsets back to
+    // their canonical defaults. Omitting the rows entirely (rather than
+    // emitting the default) is what lets a custom offset survive: the sink's
+    // stage-row loop only touches stages it was handed.
+    const stages = reminderDaysToStageRows([7, 3, 1]).map((row) => row.stage);
 
-    expect(rows.GRACE_SOFT_ESCALATION).toEqual(defaults.GRACE_SOFT_ESCALATION);
-    expect(rows.HARD_ESCALATION).toEqual(defaults.HARD_ESCALATION);
+    expect(stages).not.toContain('GRACE_SOFT_ESCALATION');
+    expect(stages).not.toContain('HARD_ESCALATION');
   });
 
-  it('seeds every sweep stage — never the fixed admin stage', () => {
+  it('emits only the wizard vocabulary — the three pre-deadline stages, never the fixed admin stage or the post-deadline escalation stages', () => {
     const stages = reminderDaysToStageRows([7]).map((row) => row.stage);
 
-    expect(stages).toEqual(defaultStageRows().map((row) => row.stage));
+    expect(stages).toEqual(WIZARD_REMINDER_STAGES);
     expect(stages).not.toContain('ADMIN_PRE_DEADLINE_REMINDER');
   });
 

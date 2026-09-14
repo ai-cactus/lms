@@ -1,29 +1,33 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Check, ChevronDown, Clock, X } from 'lucide-react';
-import { RenewalCycle, ReminderStage, UserRole } from '@/generated/prisma/enums';
+import { Check, Clock } from 'lucide-react';
+import { RenewalCycle, UserRole } from '@/generated/prisma/enums';
 import Logo from '@/components/ui/Logo';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/alert';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import DatePicker from '@/components/ui/DatePicker';
+import TimePicker from '@/components/ui/TimePicker';
 import { cn } from '@/lib/utils';
-import { REMINDER_STAGE_DEFAULTS, SWEEP_STAGES } from '@/lib/reminders/stages';
+import {
+  DEFAULT_WIZARD_REMINDER_DAYS,
+  stageRowsToReminderDays,
+} from '@/lib/enrollment/reminder-ladder';
+import { combineDateAndTime, formatTimeOfDay } from '@/lib/reminders/deadline';
+import AssigneesInput, {
+  type AssigneesInputHandle,
+} from '@/components/dashboard/enrollment/AssigneesInput';
 import RoleTargetPicker, {
   type RoleTargetPickerMode,
 } from '@/components/dashboard/enrollment/RoleTargetPicker';
+import ReminderLadderInput, {
+  type ReminderLadderRow,
+} from '@/components/dashboard/enrollment/ReminderLadderInput';
+import RenewalScheduleInput from '@/components/dashboard/enrollment/RenewalScheduleInput';
 import {
   enrollUsers,
   assignCourseToRoles,
@@ -33,35 +37,7 @@ import { publishCourse } from '@/app/actions/course';
 import { logger } from '@/lib/logger';
 import type { StaffEntry } from '@/types/enrollment';
 
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-const RENEWAL_OPTIONS: { value: RenewalCycle; label: string }[] = [
-  { value: 'none', label: 'No renewal' },
-  { value: 'monthly', label: 'Monthly Renewal (1 Month)' },
-  { value: 'quarterly', label: 'Quarterly Renewal (3 Months)' },
-  { value: 'semiannual', label: 'Semi-Annual Renewal (6 Months)' },
-  { value: 'annual', label: 'Annual Renewal (12 Months)' },
-];
-
-/** Human-readable labels for the editable reminder ladder (sweep stages only). */
-const STAGE_LABELS: Record<ReminderStage, string> = {
-  INITIAL_LAUNCH: 'Launch',
-  FRIENDLY_REMINDER: 'Friendly reminder',
-  URGENT_REMINDER: 'Urgent reminder',
-  DAY_OF_DEADLINE: 'Day of deadline',
-  GRACE_SOFT_ESCALATION: 'Grace period (soft escalation)',
-  HARD_ESCALATION: 'Overdue (hard escalation)',
-  // Fixed system stage — excluded from the editable form (SWEEP_STAGES); entry satisfies the Record type.
-  ADMIN_PRE_DEADLINE_REMINDER: 'Admin pre-deadline reminder',
-};
-
-interface StageRow {
-  stage: ReminderStage;
-  offsetDays: number;
-  enabled: boolean;
-}
-
-/** How the course is being targeted: named individuals, or a whole role. */
+/** How the course is being targeted: named individuals, or one or more roles. */
 type AssignMode = 'people' | 'role';
 
 interface AssignPublishClientProps {
@@ -78,9 +54,20 @@ interface AssignPublishClientProps {
   pendingInvitedEmails?: string[];
 }
 
-/** Format a stored deadline/schedule Date as the `YYYY-MM-DD` DatePicker expects. */
+/**
+ * Split a stored deadline/schedule Date into the two halves this page edits:
+ * the `YYYY-MM-DD` DatePicker value and the `"H:MM AM/PM"` TimePicker value.
+ *
+ * Both halves read the UTC clock, matching `combineDateAndTime`, which is what
+ * re-joins them on submit. Reading the calendar day in UTC and the hour locally
+ * (or the reverse) would not round-trip.
+ */
 function toDateInput(value: Date | null | undefined): string {
   return value ? new Date(value).toISOString().slice(0, 10) : '';
+}
+
+function toTimeInput(value: Date | null | undefined): string {
+  return value ? formatTimeOfDay(new Date(value)) : '';
 }
 
 export default function AssignPublishClient({
@@ -112,68 +99,55 @@ export default function AssignPublishClient({
   );
 
   const [entries, setEntries] = useState<StaffEntry[]>([]);
-  const [inputValue, setInputValue] = useState('');
   const [scheduleDate, setScheduleDate] = useState(() => toDateInput(existingSettings?.scheduleAt));
+  const [scheduleTime, setScheduleTime] = useState(() => toTimeInput(existingSettings?.scheduleAt));
   const [dueDate, setDueDate] = useState(() => toDateInput(existingSettings?.dueAt));
+  const [dueTime, setDueTime] = useState(() => toTimeInput(existingSettings?.dueAt));
+  // `'none'` is how a non-recurring course is stored, and it is now expressed by
+  // the toggle rather than by an interval — so a stored `'none'` re-opens with
+  // the toggle off, and the interval beneath it falls back to the same default a
+  // never-assigned course gets, ready for the moment the toggle is turned on.
+  // A course with no assignment yet therefore starts ON at `'annual'`: that is
+  // what this page has always persisted for an untouched new assignment.
+  const storedRenewalCycle = existingSettings?.renewalCycle ?? 'annual';
+  const [recurringEnabled, setRecurringEnabled] = useState(storedRenewalCycle !== 'none');
   const [renewalCycle, setRenewalCycle] = useState<RenewalCycle>(
-    existingSettings?.renewalCycle ?? 'annual',
+    storedRenewalCycle === 'none' ? 'annual' : storedRenewalCycle,
   );
   const [remindersEnabled, setRemindersEnabled] = useState(
     existingSettings?.remindersEnabled ?? true,
   );
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [stages, setStages] = useState<StageRow[]>(() =>
-    SWEEP_STAGES.map((stage) => {
-      const saved = existingSettings?.stages.find((s) => s.stage === stage);
-      return {
-        stage,
-        offsetDays: saved?.offsetDays ?? REMINDER_STAGE_DEFAULTS[stage].offsetDays,
-        enabled: saved?.enabled ?? true,
-      };
-    }),
+  // The stored ladder read back into the "N days before" vocabulary this page now
+  // speaks. A course with no assignment yet starts from the canonical defaults:
+  // submitting an untouched empty ladder would read as "the admin cleared every
+  // reminder" and disable the worker stages the new row would otherwise be seeded
+  // with.
+  const [reminderRows, setReminderRows] = useState<ReminderLadderRow[]>(() =>
+    (existingSettings
+      ? stageRowsToReminderDays(existingSettings.stages)
+      : DEFAULT_WIZARD_REMINDER_DAYS
+    ).map((value) => ({ value, unit: 'days' as const })),
   );
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
 
-  // ── Assignees ────────────────────────────────────────────────────────────
-  const addEmails = (raw: string) => {
-    const candidates = raw
-      .split(/[\s,;]+/)
-      .map((c) => c.trim().toLowerCase())
-      .filter(Boolean);
-    if (candidates.length === 0) return;
-    setEntries((prev) => {
-      const seen = new Set(prev.map((e) => e.email));
-      const next = [...prev];
-      for (const email of candidates) {
-        if (EMAIL_REGEX.test(email) && !seen.has(email)) {
-          seen.add(email);
-          next.push({ email });
-        }
-      }
-      return next;
-    });
-    setInputValue('');
+  // Commits whatever is typed when the host's own "Invite" button is pressed.
+  const assigneesRef = useRef<AssigneesInputHandle>(null);
+
+  // ── Schedule & deadline ────────────────────────────────────────────────────
+  // A time with no date beside it is inert (the pair only becomes a timestamp
+  // when both are set), so clearing the date clears the time rather than leaving
+  // an hour showing for a deadline that no longer exists.
+  const handleScheduleDateChange = (next: string) => {
+    setScheduleDate(next);
+    if (!next) setScheduleTime('');
   };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (['Enter', 'Tab', ',', ' '].includes(e.key)) {
-      e.preventDefault();
-      addEmails(inputValue);
-    } else if (e.key === 'Backspace' && !inputValue && entries.length > 0) {
-      setEntries((prev) => prev.slice(0, -1));
-    }
+  const handleDueDateChange = (next: string) => {
+    setDueDate(next);
+    if (!next) setDueTime('');
   };
-
-  const removeEntry = (index: number) => setEntries((prev) => prev.filter((_, i) => i !== index));
-
-  // ── Reminder cadence ───────────────────────────────────────────────────────
-  const setStageOffset = (stage: ReminderStage, offsetDays: number) =>
-    setStages((prev) => prev.map((s) => (s.stage === stage ? { ...s, offsetDays } : s)));
-  const setStageEnabled = (stage: ReminderStage, enabled: boolean) =>
-    setStages((prev) => prev.map((s) => (s.stage === stage ? { ...s, enabled } : s)));
 
   // ── Publish ──────────────────────────────────────────────────────────────
   /**
@@ -213,15 +187,48 @@ export default function AssignPublishClient({
     }
     setSubmitting(true);
     setError(null);
+
+    // This page has no deadline-window control, but both assign paths write the
+    // column unconditionally — so omitting it would silently clear, org-wide, a
+    // window the course wizard set. Round-trip the saved value instead.
+    const dueWindowDays = existingSettings?.dueWindowDays ?? null;
+
+    // Both stored values are edited here as a date + a time-of-day, so both are
+    // re-joined the way every other surface joins them. Without the time half a
+    // re-save from this page truncated a wizard-set 5pm deadline to 00:00 UTC.
+    const scheduleAt = combineDateAndTime(
+      scheduleDate ? new Date(scheduleDate) : null,
+      scheduleTime,
+    );
+
+    // The ladder is always submitted, never omitted: the control is prefilled
+    // from what is stored, so an empty list can only mean the admin removed
+    // every row — "no pre-deadline reminders" — and the server disables exactly
+    // the three worker stages this vocabulary owns. The grace/overdue stages are
+    // outside it and keep whatever offsets the org has.
+    const reminderDaysBefore = reminderRows.map((row) => row.value);
+
+    // The toggle is the only way to say "this course does not recur" now that
+    // the interval list no longer carries a "No renewal" row — so it, not the
+    // Select, decides when the stored `'none'` is written.
+    const submittedRenewalCycle: RenewalCycle = recurringEnabled ? renewalCycle : 'none';
+
     try {
       if (mode === 'role') {
-        // Role targets never carry an absolute due date — the deadline is computed
-        // per user from their role-join date and the window — so no dueDate is sent.
+        // An absolute date wins for every holder; without one each holder falls
+        // back to the window, counted from their own role-join date (the
+        // precedence computeDueAt implements). `assignCourseToRoles` takes the
+        // date under `dueDate`, not `dueAt` — it pairs it with the time
+        // server-side, so this branch hands over the halves rather than joining
+        // them, matching what the wizard sends.
         const res = await assignCourseToRoles(courseId, targetRoles, {
-          scheduleAt: scheduleDate ? new Date(scheduleDate) : null,
-          renewalCycle,
+          scheduleAt,
+          dueDate: dueDate ? new Date(dueDate) : null,
+          dueTime: dueTime || null,
+          dueWindowDays,
+          renewalCycle: submittedRenewalCycle,
           remindersEnabled,
-          stages,
+          reminderDaysBefore,
         });
 
         // A refusal is returned rather than thrown, so it must be surfaced here
@@ -231,12 +238,16 @@ export default function AssignPublishClient({
           return;
         }
       } else {
+        // `enrollUsers` takes a single absolute `dueAt`, so the halves are joined
+        // here. Combining client-side needs no action-signature change:
+        // `combineDateAndTime` lives in a plain module, not a `'use server'` one.
         const res = await enrollUsers(courseId, entries, {
-          scheduleAt: scheduleDate ? new Date(scheduleDate) : null,
-          dueAt: dueDate ? new Date(dueDate) : null,
-          renewalCycle,
+          scheduleAt,
+          dueAt: combineDateAndTime(dueDate ? new Date(dueDate) : null, dueTime),
+          dueWindowDays,
+          renewalCycle: submittedRenewalCycle,
           remindersEnabled,
-          stages,
+          reminderDaysBefore,
         });
 
         if (res.refusedReason) {
@@ -346,50 +357,25 @@ export default function AssignPublishClient({
                       : 'text-text-secondary hover:text-foreground',
                   )}
                 >
-                  {m === 'people' ? 'Specific people' : 'A whole role'}
+                  {m === 'people' ? 'Specific people' : 'Roles'}
                 </button>
               ))}
             </div>
 
             {mode === 'people' ? (
               <div className="flex items-start gap-3">
-                <div
-                  className="flex min-h-12 flex-1 flex-wrap items-center gap-1.5 rounded-lg border border-primary bg-background px-3 py-2 focus-within:ring-1 focus-within:ring-primary"
-                  onClick={() => document.getElementById('assign-input')?.focus()}
-                >
-                  {entries.map((entry, index) => (
-                    <span
-                      key={entry.email}
-                      className="flex items-center rounded bg-secondary px-2 py-1 text-[13px] font-medium text-foreground"
-                    >
-                      {entry.email}
-                      <button
-                        type="button"
-                        className="ml-1.5 text-text-secondary hover:text-error"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          removeEntry(index);
-                        }}
-                        aria-label={`Remove ${entry.email}`}
-                      >
-                        <X className="size-3.5" aria-hidden="true" />
-                      </button>
-                    </span>
-                  ))}
-                  <input
-                    id="assign-input"
-                    className="min-w-[160px] flex-1 border-none bg-transparent text-sm text-foreground outline-none"
-                    placeholder={entries.length === 0 ? 'Add people, emails or names' : ''}
-                    value={inputValue}
-                    onChange={(e) => setInputValue(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    disabled={submitting}
-                  />
-                </div>
+                <AssigneesInput
+                  ref={assigneesRef}
+                  value={entries.map((entry) => entry.email)}
+                  onChange={(next) => setEntries(next.map((email) => ({ email })))}
+                  enableBulkImport
+                  disabled={submitting}
+                  className="min-h-12 flex-1 border-primary"
+                />
                 <Button
                   type="button"
                   size="lg"
-                  onClick={() => addEmails(inputValue)}
+                  onClick={() => assigneesRef.current?.commitDraft()}
                   disabled={submitting}
                 >
                   Invite
@@ -438,42 +424,55 @@ export default function AssignPublishClient({
         <SettingRow
           title="Training Schedule"
           description="Workers will receive access on this date"
+          contentClassName="md:w-[440px]"
         >
-          <DatePicker value={scheduleDate} onChange={setScheduleDate} placeholder="Select date" />
+          {/* No `label` on either picker: reminders.spec.ts resolves them by
+              accessible name, which for these controls is their placeholder. */}
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <DatePicker
+              value={scheduleDate}
+              onChange={handleScheduleDateChange}
+              placeholder="Select date"
+            />
+            <TimePicker value={scheduleTime} onChange={setScheduleTime} placeholder="Select time" />
+          </div>
         </SettingRow>
 
         <div className="my-6 h-px bg-border" />
 
-        {mode === 'people' && (
-          <>
-            <SettingRow
-              title="Due Date"
-              description="Deadline for completing the course. Leave empty to compute it automatically."
-            >
-              <DatePicker value={dueDate} onChange={setDueDate} placeholder="Select due date" />
-            </SettingRow>
-
-            <div className="my-6 h-px bg-border" />
-          </>
-        )}
-
         <SettingRow
-          title="Renewal Settings"
-          description="Choose a date for staffs to renew this course"
+          title="Due Date"
+          description="A hard deadline everyone shares. Leave it empty and each person gets their own, counted from when they start the course or join the role."
+          contentClassName="md:w-[440px]"
         >
-          <Select value={renewalCycle} onValueChange={(v) => setRenewalCycle(v as RenewalCycle)}>
-            <SelectTrigger className="h-11 w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {RENEWAL_OPTIONS.map((o) => (
-                <SelectItem key={o.value} value={o.value}>
-                  {o.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <DatePicker
+              value={dueDate}
+              onChange={handleDueDateChange}
+              placeholder="Select due date"
+            />
+            <TimePicker value={dueTime} onChange={setDueTime} placeholder="Select due time" />
+          </div>
         </SettingRow>
+
+        <div className="my-6 h-px bg-border" />
+
+        <RenewalScheduleInput
+          toggleLabel="Renewal Settings"
+          header={
+            <div>
+              <h3 className="text-lg font-bold text-foreground">Renewal Settings</h3>
+              <p className="mt-0.5 text-sm text-text-secondary">
+                Choose a date for staffs to renew this course
+              </p>
+            </div>
+          }
+          enabled={recurringEnabled}
+          onEnabledChange={setRecurringEnabled}
+          cycle={renewalCycle}
+          onCycleChange={setRenewalCycle}
+          disabled={submitting}
+        />
 
         <div className="my-6 h-px bg-border" />
 
@@ -482,72 +481,25 @@ export default function AssignPublishClient({
           description="Send workers automated reminders as the deadline approaches and escalate when overdue."
         >
           <label className="flex items-center gap-2.5">
-            <Checkbox
+            <Switch
               checked={remindersEnabled}
-              onCheckedChange={(checked) => setRemindersEnabled(checked === true)}
+              onCheckedChange={setRemindersEnabled}
               disabled={submitting}
             />
             <span className="text-sm font-medium text-foreground">Send deadline reminders</span>
           </label>
         </SettingRow>
 
-        <div className="mt-4">
-          <button
-            type="button"
-            onClick={() => setShowAdvanced((prev) => !prev)}
-            aria-expanded={showAdvanced}
-            className="flex items-center gap-1.5 text-sm font-semibold text-primary hover:underline disabled:opacity-50"
+        <div className="mt-6">
+          <p className="text-sm text-text-secondary">
+            Staff are reminded automatically before the deadline. Add more if you need them.
+          </p>
+          <ReminderLadderInput
+            value={reminderRows}
+            onChange={setReminderRows}
             disabled={!remindersEnabled || submitting}
-          >
-            <ChevronDown
-              className={cn('size-4 transition-transform', showAdvanced && 'rotate-180')}
-              aria-hidden="true"
-            />
-            Advanced reminder schedule
-          </button>
-
-          {showAdvanced && (
-            <div className="mt-4 flex flex-col gap-3 rounded-lg border border-border bg-background-secondary p-4">
-              <p className="text-xs text-text-secondary">
-                Offset is in days relative to the deadline: negative = days before, 0 = day of,
-                positive = days after.
-              </p>
-              {stages.map((row) => (
-                <div
-                  key={row.stage}
-                  className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <span className="text-sm font-medium text-foreground">
-                    {STAGE_LABELS[row.stage]}
-                  </span>
-                  <div className="flex items-center gap-3">
-                    <Input
-                      type="number"
-                      step={1}
-                      value={row.offsetDays}
-                      onChange={(e) =>
-                        setStageOffset(
-                          row.stage,
-                          e.target.value === '' ? 0 : Number(e.target.value),
-                        )
-                      }
-                      disabled={!remindersEnabled || !row.enabled || submitting}
-                      aria-label={`${STAGE_LABELS[row.stage]} offset in days`}
-                      className="h-10 w-24"
-                    />
-                    <label className="flex items-center gap-2">
-                      <Checkbox
-                        checked={row.enabled}
-                        onCheckedChange={(checked) => setStageEnabled(row.stage, checked === true)}
-                        disabled={!remindersEnabled || submitting}
-                      />
-                      <span className="text-sm text-text-secondary">Enabled</span>
-                    </label>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+            className="mt-3 items-start"
+          />
         </div>
 
         <div className="mt-12 flex items-center justify-between">
@@ -598,10 +550,13 @@ function SettingRow({
   title,
   description,
   children,
+  contentClassName,
 }: {
   title: string;
   description: string;
   children: React.ReactNode;
+  /** Widens the control column for rows that host a pair of controls. */
+  contentClassName?: string;
 }) {
   return (
     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -609,7 +564,7 @@ function SettingRow({
         <h3 className="text-lg font-bold text-foreground">{title}</h3>
         <p className="mt-0.5 text-sm text-text-secondary">{description}</p>
       </div>
-      <div className="w-full sm:w-[320px] sm:shrink-0">{children}</div>
+      <div className={cn('w-full sm:w-[320px] sm:shrink-0', contentClassName)}>{children}</div>
     </div>
   );
 }

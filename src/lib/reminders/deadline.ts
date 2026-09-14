@@ -51,6 +51,26 @@ export function computeDueAt(args: {
 }
 
 /**
+ * D-F: a submitted deadline in the past is a problem only when it CHANGES the
+ * one already stored on the organisation's assignment. Re-submitting the
+ * deadline already in force is how a late joiner is added to an already-overdue
+ * course, so treating that as an error would force the admin to move the
+ * deadline for everyone instead.
+ *
+ * The single place this comparison is made: the assign actions refuse on it,
+ * and `publishCourse` uses it to decide that a parked deadline went stale while
+ * the course sat held for review.
+ *
+ * An unparseable date is not this rule's business — it is left to the caller's
+ * own validation rather than being reported as a past deadline.
+ */
+export function isPastDeadlineChange(submitted: Date, stored: Date | null): boolean {
+  const submittedTime = submitted.getTime();
+  if (Number.isNaN(submittedTime) || submittedTime > Date.now()) return false;
+  return submittedTime !== stored?.getTime();
+}
+
+/**
  * Parse a wizard time-of-day string into 24-hour components. Accepts the
  * canonical `"H:MM AM/PM"` value produced by the UI's TimePicker (and tolerates
  * loose input the same way): the digits form the hour/minute and an `a`/`p`
@@ -81,6 +101,30 @@ function parseTimeOfDay(value: string): { hours: number; minutes: number } | nul
   else if (str.includes('a') && hours === 12) hours = 0;
 
   return { hours, minutes };
+}
+
+/**
+ * Render a stored deadline's time-of-day as the canonical `"H:MM AM/PM"` string
+ * the UI's TimePicker displays and {@link parseTimeOfDay} reads back — the
+ * inverse of that parse, so `formatTimeOfDay` → {@link combineDateAndTime}
+ * round-trips any stored deadline unchanged.
+ *
+ * Read in **UTC**, because `combineDateAndTime` writes in UTC. The two must
+ * agree on the zone or they are not inverses: reading local hours would shift a
+ * stored 5pm deadline by the viewer's own offset every time a surface re-saved
+ * it, drifting the same deadline further on every save.
+ *
+ * An unusable date yields `''` rather than `"NaN:NaN AM"`, so a caller passing
+ * it straight back to `combineDateAndTime` leaves the deadline alone instead of
+ * corrupting it.
+ */
+export function formatTimeOfDay(date: Date): string {
+  const hours = date.getUTCHours();
+  if (Number.isNaN(hours)) return '';
+
+  const meridiem = hours < 12 ? 'AM' : 'PM';
+  const hours12 = hours % 12 === 0 ? 12 : hours % 12;
+  return `${hours12}:${String(date.getUTCMinutes()).padStart(2, '0')} ${meridiem}`;
 }
 
 /**

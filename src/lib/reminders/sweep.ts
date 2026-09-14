@@ -248,15 +248,19 @@ async function runRetentionPrePass(
  * Reconcile role-target course assignments before the reminder tracks.
  *
  * A backstop for the live {@link enrollUserForRoleTargets} hook: for every active
- * role-target assignment, find org users who hold the targeted role but have no
- * enrollment for that course and enroll them, with a deadline counted from each
- * user's `roleAssignedAt` (role-target assignments never carry an absolute
- * `dueAt`). This catches any role-write site the live hook missed and any user
- * who gained the role while the app was down.
+ * role-target assignment, find org users who hold ANY of its targeted roles but
+ * have no enrollment for that course and enroll them. This catches any role-write
+ * site the live hook missed and any user who gained the role while the app was
+ * down.
  *
- * Being a backstop, it reconciles toward the SAME reach the live hook applies:
- * an assignment's recorded facility scope gates the holders it may enrol here
- * too, or the nightly run would re-widen every narrowed assignment.
+ * Being a backstop, it must land on the SAME deadline and the SAME reach the live
+ * hook applies, or the same user gets a different result depending on which path
+ * enrolled them:
+ *   * deadline — the assignment's absolute `dueAt` when it has one (the wizard
+ *     and the assign page both set it), otherwise the window counted from the
+ *     holder's own `roleAssignedAt`;
+ *   * reach — the assignment's recorded facility scope gates the holders it may
+ *     enrol here too, or the nightly run would re-widen every narrowed assignment.
  *
  * Bulk queries only (no N+1): one query for the assignments, one for all
  * candidate holders across every targeted (org, role), and one for their existing
@@ -274,13 +278,19 @@ async function runRoleTargetReconcilePrePass(
   if (opts.dryRun) return;
 
   try {
+    // Union rather than a swap to `targetRoles: { isEmpty: false }`: the two
+    // columns are only ever written together by `roleTargetColumns`, but a
+    // backstop that silently stops seeing rows is the one failure mode nothing
+    // downstream would report, so tolerate a desync in either direction.
     const assignments = await prisma.courseAssignment.findMany({
-      where: { targetRole: { not: null } },
+      where: { OR: [{ targetRole: { not: null } }, { targetRoles: { isEmpty: false } }] },
       select: {
         id: true,
         organizationId: true,
         courseId: true,
         targetRole: true,
+        targetRoles: true,
+        dueAt: true,
         dueWindowDays: true,
         facilityScoped: true,
         facilityIds: true,
@@ -290,10 +300,15 @@ async function runRoleTargetReconcilePrePass(
     });
     if (assignments.length === 0) return;
 
+    const rolesByAssignment = new Map<string, UserRole[]>(
+      assignments.map((a) => [
+        a.id,
+        [...new Set([...a.targetRoles, ...(a.targetRole ? [a.targetRole] : [])])],
+      ]),
+    );
+
     const orgIds = [...new Set(assignments.map((a) => a.organizationId))];
-    const roles = [
-      ...new Set(assignments.map((a) => a.targetRole).filter((r): r is UserRole => r !== null)),
-    ];
+    const roles = [...new Set([...rolesByAssignment.values()].flat())];
     const courseIds = [...new Set(assignments.map((a) => a.courseId))];
 
     // One query for every candidate holder across all targeted orgs/roles.
@@ -331,9 +346,11 @@ async function runRoleTargetReconcilePrePass(
     }
 
     for (const assignment of assignments) {
-      if (!assignment.targetRole) continue;
-      const matches =
-        holdersByOrgRole.get(`${assignment.organizationId}|${assignment.targetRole}`) ?? [];
+      // Every targeted role, not just the first: a holder carries exactly one
+      // role, so the union across roles can never repeat a holder.
+      const matches = (rolesByAssignment.get(assignment.id) ?? []).flatMap(
+        (role) => holdersByOrgRole.get(`${assignment.organizationId}|${role}`) ?? [],
+      );
 
       for (const holder of matches) {
         const enrollmentKey = `${holder.id}|${assignment.courseId}`;
@@ -350,9 +367,11 @@ async function runRoleTargetReconcilePrePass(
             organizationName: assignment.organization?.name || 'Your Organization',
             facilityId: null,
             assignmentId: assignment.id,
-            // Count the deadline window from the holder's role-join date.
+            // Count the deadline window from the holder's role-join date; an
+            // absolute dueAt, when the assignment carries one, wins over it
+            // inside createEnrollmentForUser.
             scheduleAt: holder.roleAssignedAt,
-            assignmentDueAt: null,
+            assignmentDueAt: assignment.dueAt,
             assignmentWindowDays: assignment.dueWindowDays,
             enrolledByUserId: 'system-sweep',
           };

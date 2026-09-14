@@ -1,6 +1,6 @@
 ---
 name: role-target-picker-stale-locator-sweep
-description: PR #595's RoleTargetPicker broke reminders.spec.ts TC-016 (option→checkbox) undetected for 5 merges; full local suite runs on this box collapse to Postgres ECONNREFUSED past ~100 tests — trust targeted CI-parity slices instead
+description: PR #595's RoleTargetPicker broke reminders.spec.ts TC-016 (option→checkbox) undetected for 5 merges; full local suite runs on this box collapse to Postgres ECONNREFUSED past ~100 tests — trust targeted CI-parity slices instead. STALE RECIPE NOTE (2026-09-12): the toggle button text below is outdated — see [[assign-role-label-due-date-tests]]
 metadata:
   type: project
 ---
@@ -24,6 +24,14 @@ await page.getByRole('checkbox', { name: 'Nurse' }).click();
 await page.getByRole('heading', { name: 'Assign', exact: true, level: 1 }).click(); // closes the overlay
 await expect(page.getByRole('group', { name: 'Assignable roles' })).toBeHidden();
 ```
+
+**⚠️ STALE as of 2026-09-12**: the toggle button text `'A whole role'` above was
+renamed to `'Roles'` (`AssignPublishClient.tsx`) as part of the fix that also
+made the Due Date field render in role mode (it had been wrongly hidden there —
+see [[assign-role-label-due-date-tests]]). Both e2e specs quoted above were
+updated to `page.getByRole('button', { name: 'Roles', exact: true })`. Do not
+reintroduce `'A whole role'` from this snippet — it will 60s-timeout exactly
+like the original TC-016 break this file documents.
 **A second, independent staleness in the same test wasn't in the original bug
 report**: the pre-submission "current holder" preview assertion
 (`getByText(/will be enrolled now/i)`) no longer matches anything — that phrase

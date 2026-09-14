@@ -11,6 +11,7 @@ import {
   resolveStartDate,
   computeDueAt,
   combineDateAndTime,
+  formatTimeOfDay,
 } from './deadline';
 
 // Snap-shot the original value so we can restore it.
@@ -196,5 +197,59 @@ describe('combineDateAndTime', () => {
     const date = new Date('2026-08-01T00:00:00Z');
     combineDateAndTime(date, '9:30 AM');
     expect(date.toISOString()).toBe('2026-08-01T00:00:00.000Z');
+  });
+});
+
+describe('formatTimeOfDay', () => {
+  // formatTimeOfDay is the inverse of the private parseTimeOfDay: this is the
+  // exact round trip AssignPublishClient relies on to hydrate the TimePicker
+  // from a stored deadline without truncating it back to midnight on re-save.
+  it.each([
+    ['2026-08-01T00:00:00.000Z', '12:00 AM'],
+    ['2026-08-01T00:01:00.000Z', '12:01 AM'],
+    ['2026-08-01T12:00:00.000Z', '12:00 PM'],
+    ['2026-08-01T12:30:00.000Z', '12:30 PM'],
+    ['2026-08-01T13:45:00.000Z', '1:45 PM'],
+    ['2026-08-01T17:00:00.000Z', '5:00 PM'],
+    ['2026-08-01T23:59:00.000Z', '11:59 PM'],
+  ])('formats %s (UTC) as %s', (iso, expected) => {
+    expect(formatTimeOfDay(new Date(iso))).toBe(expected);
+  });
+
+  it('treats midnight (00:00 UTC) as the 12 AM boundary, not 0:00', () => {
+    expect(formatTimeOfDay(new Date('2026-08-01T00:00:00.000Z'))).toBe('12:00 AM');
+  });
+
+  it('treats noon (12:00 UTC) as the 12 PM boundary, not 12:00 AM', () => {
+    expect(formatTimeOfDay(new Date('2026-08-01T12:00:00.000Z'))).toBe('12:00 PM');
+  });
+
+  it('returns an empty string for an unusable Date, not "NaN:NaN AM"', () => {
+    expect(formatTimeOfDay(new Date('not-a-date'))).toBe('');
+  });
+
+  it('round-trips through combineDateAndTime for every hour/minute case, unchanged', () => {
+    const cases = [
+      '2026-08-01T00:00:00.000Z',
+      '2026-08-01T00:01:00.000Z',
+      '2026-08-01T12:00:00.000Z',
+      '2026-08-01T12:30:00.000Z',
+      '2026-08-01T13:45:00.000Z',
+      '2026-08-01T17:00:00.000Z',
+      '2026-08-01T23:59:00.000Z',
+    ];
+    for (const iso of cases) {
+      const original = new Date(iso);
+      const timeOfDay = formatTimeOfDay(original);
+      const roundTripped = combineDateAndTime(original, timeOfDay);
+      expect(roundTripped?.toISOString()).toBe(original.toISOString());
+    }
+  });
+
+  it('feeding the "" from an unusable Date back into combineDateAndTime leaves the deadline\'s date and 00:00 UTC alone, rather than corrupting it', () => {
+    const unusable = formatTimeOfDay(new Date('not-a-date'));
+    expect(unusable).toBe('');
+    const day = new Date('2026-08-01T00:00:00.000Z');
+    expect(combineDateAndTime(day, unusable)?.toISOString()).toBe('2026-08-01T00:00:00.000Z');
   });
 });

@@ -232,7 +232,7 @@ test.describe('Assign page — role targeting, D6 soft revoke, and post-untarget
       await page.goto(`/dashboard/training/courses/${seeded.courseId}/assign`);
       await page.waitForLoadState('networkidle');
 
-      await page.getByRole('button', { name: 'A whole role' }).click();
+      await page.getByRole('button', { name: 'Roles', exact: true }).click();
       await page.getByRole('button', { name: 'Choose roles' }).click();
       await page.getByRole('checkbox', { name: 'Nurse' }).click();
       await expect(page.getByText('Nurse', { exact: true }).first()).toBeVisible();

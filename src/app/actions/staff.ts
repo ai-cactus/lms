@@ -808,10 +808,7 @@ export async function assignCoursesToStaffMember(
         courseId,
         [{ email: target.user.email }],
         assignmentSettings,
-        {
-          deferWorkerNotification: true,
-          assignmentSettingsMode: 'preserve',
-        },
+        { deferWorkerNotification: true },
       );
 
       if (outcome.refusedReason) {

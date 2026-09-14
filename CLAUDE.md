@@ -14,6 +14,7 @@ You (the main agent) are the **orchestrator**. You own the conversation, hold th
 4. **Acceptance-criteria QA validation → `qa-mafia` (self-contained).** `qa-mafia` is a **standalone validator** that drives the live app through the **`playwright-cli` skill** and reports against explicit acceptance criteria. The flow is simply **orchestrator → qa-mafia → result** — it is **decoupled** from the other agents and is **not** part of the fix loop below. It runs in two modes: (a) **story provided** — when the user hands you a user story, pass it to `qa-mafia`, which generates the acceptance criteria, runs the journey, and reports each result against those criteria; (b) **generate stories** — when the user asks for stories to be created, `qa-mafia` derives the user stories from the codebase context, generates acceptance criteria for each, runs each journey, and reports per story. It produces a **detailed Markdown (`.md`) report — with per-criterion result tables — stored in the gitignored `qa-reports/` folder** (no PDF conversion). It validates and reports only; it never modifies product code and never hands work to another agent. When a journey needs a real input it must not invent — the email to use, an emailed verification link/code, an OTP, real credentials — `qa-mafia` pauses and asks you, and you relay the request to the user. After the run, `qa-mafia` offers a **gated cleanup**: it surfaces the resources the test created (e.g. the signup's user account) and asks whether to delete them so the same email can be reused — relay this to the user, and only on their go-ahead does cleanup proceed (it deletes only those specific resources, never clears the DB, and requests DB credentials solely if the user opted into deletion). Relay `qa-mafia`'s verdict, criteria results, and any issues it found back to the user.
 
 **The fix loop** (applies to the build phases; `qa-mafia` is **not** part of it).
+
 - **Automated-test failures (from `bug-hunter`):** route the failure to `code-ninja` to fix → re-launch `bug-hunter` to re-run. Repeat until unit + e2e are green. A change is not "done" while any of its automated tests fail.
 - **`qa-mafia` findings:** `qa-mafia` reports and stops — it does not route findings anywhere. After it reports, present its verdict and criteria results to the user and let **the user** decide what to do next; if they want failures addressed, you (the orchestrator) start a fresh `code-ninja` → `bug-hunter` cycle, and re-launch `qa-mafia` afterward only to re-validate. `qa-mafia` itself never triggers or waits on a fix.
 
@@ -63,6 +64,19 @@ Orchestration guidance:
   - `npm run e2e:local`: full Playwright suite in CI parity (~5 min). Accepts a
     spec filter: `npm run e2e:local -- auth.spec.ts`.
   - `npm run e2e:up` / `npm run e2e:down`: manage the e2e service containers.
+  - **⛔ CI does NOT run Playwright on feature PRs.** `ci.yml` runs the suite only on
+    PRs promoting into a deploying branch (`staging`, `main`), because it takes ~14
+    minutes. A feature PR shows `E2E: SKIPPED` and merges green **even when it has
+    broken an existing spec** — the breakage stays invisible until someone opens a
+    promotion PR, by which point several more PRs may sit on top of it.
+    **So: whenever you replace or remove a UI control, grep `tests/e2e/` for the
+    specs that drive it and update them in the same PR.** That is a ten-second grep
+    and it is the only thing standing between a component swap and a promotion that
+    fails days later. Writing _new_ coverage for the new control is not a substitute
+    — the stale spec drives the control you deleted.
+    Precedent: PR #595 swapped the assign page's role `Select` for `RoleTargetPicker`
+    and left `reminders.spec.ts` TC-016 clicking `getByRole('option')`, which the new
+    component has none of. It survived five merges and only surfaced on #600.
   - `npm run test:e2e -- <spec>`: fast single-spec iteration against a dev server.
 - **Git hooks**: `pre-push` is tiered by the branch being pushed — light for feature
   branches, full suite + build for `dev`/`staging`/`main`. Use `SKIP_HEAVY=1 git push`

@@ -13,6 +13,7 @@ import CourseSuccessModal from './CourseSuccessModal';
 import ConfirmPublishModal from './ConfirmPublishModal';
 import ReviewWarningsModal from './ReviewWarningsModal';
 import Logo from '@/components/ui/Logo';
+import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -116,6 +117,10 @@ export default function CourseWizard() {
   const [generatedContent, setGeneratedContent] = useState<GeneratedCourse | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
   const [wizardError, setWizardError] = useState<string | null>(null);
+  // Non-failure advisory: something the admin should know about a step that
+  // nonetheless succeeded. Separate from wizardError so a success is never
+  // painted in the error style.
+  const [wizardNotice, setWizardNotice] = useState<string | null>(null);
 
   const [createdCourseId, setCreatedCourseId] = useState<string | null>(null);
 
@@ -269,6 +274,7 @@ export default function CourseWizard() {
           setFormData((prev) => ({ ...prev, categoryId: newCategory.id }));
           setCustomCategoryName('');
           setWizardError(null);
+          setWizardNotice(null);
           setCurrentStepIndex(currentStepIndex + 1);
         } catch (err) {
           logger.error({ msg: '[course] Failed to create custom category', err });
@@ -328,6 +334,7 @@ export default function CourseWizard() {
         setIsGenerating(true);
       }
       setWizardError(null);
+      setWizardNotice(null);
       setCurrentStepIndex(currentStepIndex + 1);
     } else {
       if (!formData.title?.trim()) {
@@ -342,6 +349,7 @@ export default function CourseWizard() {
       }
 
       setWizardError(null);
+      setWizardNotice(null);
       setShowConfirmModal(true);
     }
   };
@@ -455,6 +463,7 @@ export default function CourseWizard() {
         setCustomCategoryName('');
         setGeneratedContent(null);
         setWizardError(null);
+        setWizardNotice(null);
         setIsGenerating(false);
         setIsAnalyzing(false);
         setIsUploadingDocument(false);
@@ -511,6 +520,13 @@ export default function CourseWizard() {
       if (result.assignmentFailed) {
         setWizardError(
           'Course published, but assigning it to the selected recipients failed. You can assign it from the training dashboard.',
+        );
+      } else if (result.assignmentDeadlineExpired) {
+        // Not an error: the publish and the assignment both succeeded. The admin
+        // is told only because the deadline they set before the review hold was
+        // silently substituted.
+        setWizardNotice(
+          'Course published and assigned. The completion deadline you set had already passed, so each recipient gets the standard completion window instead.',
         );
       }
     } catch (error) {
@@ -793,6 +809,7 @@ export default function CourseWizard() {
                     {wizardError}
                   </div>
                 )}
+                {wizardNotice && <Alert variant="warning">{wizardNotice}</Alert>}
                 {navRow}
               </div>
             )}
@@ -806,6 +823,8 @@ export default function CourseWizard() {
                 {wizardError}
               </div>
             )}
+
+            {wizardNotice && <Alert variant="warning">{wizardNotice}</Alert>}
 
             {navRow}
           </div>

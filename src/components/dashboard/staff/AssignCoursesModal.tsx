@@ -15,10 +15,12 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Alert } from '@/components/ui/alert';
 import DatePicker from '@/components/ui/DatePicker';
+import TimePicker from '@/components/ui/TimePicker';
 import { getAssignableCourses } from '@/app/actions/offering';
 import { assignCoursesToStaffMember } from '@/app/actions/staff';
 import type { CourseWithStats } from '@/types/course';
 import { logger } from '@/lib/logger';
+import { combineDateAndTime } from '@/lib/reminders/deadline';
 import { cn } from '@/lib/utils';
 
 interface AssignCoursesModalProps {
@@ -54,6 +56,20 @@ const DEADLINE_PRESETS = [
   { label: '1 year', months: 12, days: 0 },
 ];
 
+/**
+ * Time of day a date picked here means when the assigner hasn't said otherwise.
+ *
+ * The presets are day-granular ("30 days"), and end-of-day is the only reading
+ * under which "30 days" is a full thirty: the start of that day would be one day
+ * short, and would also make picking *today* impossible, since the action
+ * refuses a deadline that is not in the future. Deadlines only ever move later
+ * than they used to, so nobody becomes overdue who wasn't already.
+ *
+ * Like every other deadline on the platform this is a UTC wall clock — the same
+ * clock `combineDateAndTime` writes and the reminder sweep reads.
+ */
+const DEFAULT_DEADLINE_TIME = '11:59 PM';
+
 /** Local calendar date as `YYYY-MM-DD`, the format DatePicker reads and writes. */
 function toDateInputValue(date: Date): string {
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -88,6 +104,7 @@ export default function AssignCoursesModal({
   const [courses, setCourses] = useState<CourseWithStats[]>([]);
   const [isLoadingCourses, setIsLoadingCourses] = useState(false);
   const [dueDate, setDueDate] = useState('');
+  const [dueTime, setDueTime] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [assignedCount, setAssignedCount] = useState(0);
   const [notificationFailed, setNotificationFailed] = useState(false);
@@ -101,6 +118,7 @@ export default function AssignCoursesModal({
     setSearch('');
     setSelectedIds([]);
     setDueDate('');
+    setDueTime('');
     setAssignedCount(0);
     setNotificationFailed(false);
     setError(null);
@@ -140,6 +158,14 @@ export default function AssignCoursesModal({
     });
   }, [courses, tab, search]);
 
+  // Picking a date — from the calendar or a preset chip — fills the time with
+  // the end-of-day default rather than leaving it blank, so a preset always
+  // means the same deadline however it was set. An explicit time is kept.
+  const handleDueDateChange = useCallback((next: string) => {
+    setDueDate(next);
+    setDueTime((current) => (next ? current || DEFAULT_DEADLINE_TIME : ''));
+  }, []);
+
   const toggleCourse = useCallback((courseId: string) => {
     setSelectedIds((prev) =>
       prev.includes(courseId) ? prev.filter((id) => id !== courseId) : [...prev, courseId],
@@ -155,8 +181,10 @@ export default function AssignCoursesModal({
     setError(null);
     setNotificationFailed(false);
     try {
+      // The action takes one absolute `dueAt`, so the two halves are joined
+      // here — `combineDateAndTime` is a plain module, importable client-side.
       const result = await assignCoursesToStaffMember(staffOrgUserId, selectedIds, {
-        dueAt: dueDate || null,
+        dueAt: combineDateAndTime(dueDate ? new Date(dueDate) : null, dueTime),
       });
 
       if (result.assigned.length === 0) {
@@ -204,10 +232,11 @@ export default function AssignCoursesModal({
           step === 'success' ? 'sm:max-w-[428px]' : 'sm:max-w-[614px]',
         )}
         onInteractOutside={(e) => {
-          // The deadline DatePicker portals its calendar to <body>, so picking a
-          // day reads as an "outside" interaction — keep the modal open.
+          // The deadline pickers portal their calendar/clock to <body> (so this
+          // dialog's own overflow cannot clip them), which makes picking a day
+          // or an hour read as an "outside" interaction — keep the modal open.
           const target = e.target as HTMLElement | null;
-          if (target?.closest('#date-picker-popover')) e.preventDefault();
+          if (target?.closest('#date-picker-popover, #time-picker-popover')) e.preventDefault();
         }}
       >
         {step === 'select' && (
@@ -347,23 +376,32 @@ export default function AssignCoursesModal({
               <span className="text-sm font-medium text-foreground">
                 Completion deadline (optional)
               </span>
-              <DatePicker
-                value={dueDate}
-                onChange={setDueDate}
-                placeholder="Select due date"
-                label="Completion deadline"
-                iconPosition="start"
-                showYearSelect
-                placement="top-end"
-                className="h-11"
-              />
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <DatePicker
+                  value={dueDate}
+                  onChange={handleDueDateChange}
+                  placeholder="Select due date"
+                  label="Completion deadline"
+                  iconPosition="start"
+                  showYearSelect
+                  placement="top-end"
+                  className="h-11"
+                />
+                <TimePicker
+                  value={dueTime}
+                  onChange={setDueTime}
+                  placeholder="Select due time"
+                  placement="top-end"
+                  className="h-11"
+                />
+              </div>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs text-text-secondary">Suggested:</span>
                 {DEADLINE_PRESETS.map((preset) => (
                   <button
                     key={preset.label}
                     type="button"
-                    onClick={() => setDueDate(offsetFromToday(preset))}
+                    onClick={() => handleDueDateChange(offsetFromToday(preset))}
                     className="cursor-pointer rounded-full border border-border px-3 py-1 text-xs font-medium text-foreground transition-colors hover:border-primary hover:text-primary"
                   >
                     {preset.label}

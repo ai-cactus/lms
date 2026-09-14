@@ -711,15 +711,16 @@ describe('runReminderSweep — retention purge pre-pass', () => {
 
 // ─── Role-target reconcile pre-pass (Issue #4 / TC-016 backstop) ─────────────
 //
-// courseAssignment.findMany is shared by this pre-pass (where.targetRole) and
-// the renewal pre-pass (where.renewalCycle) — route by which key is present so
-// each test only has to supply the fixture it cares about.
+// courseAssignment.findMany is shared by this pre-pass (which unions the
+// deprecated singular `targetRole` with the authoritative `targetRoles` list, so
+// its where is an `OR`) and the renewal pre-pass (where.renewalCycle) — route by
+// which key is present so each test only has to supply the fixture it cares about.
 
 function wireCourseAssignmentFindMany(opts: { roleTarget?: unknown[]; renewal?: unknown[] } = {}) {
   const { roleTarget = [], renewal = [] } = opts;
   prismaMock.courseAssignment.findMany.mockImplementation(
     (args: { where: Record<string, unknown> }) => {
-      if ('targetRole' in args.where) return Promise.resolve(roleTarget);
+      if ('OR' in args.where || 'targetRole' in args.where) return Promise.resolve(roleTarget);
       if ('renewalCycle' in args.where) return Promise.resolve(renewal);
       throw new Error(`Unexpected courseAssignment.findMany args: ${JSON.stringify(args)}`);
     },
@@ -732,6 +733,8 @@ function makeRoleTargetAssignment(overrides: Record<string, unknown> = {}) {
     organizationId: 'org-1',
     courseId: 'course-role-1',
     targetRole: 'nurse',
+    targetRoles: ['nurse'],
+    dueAt: null,
     dueWindowDays: 14,
     // Org-wide by default, as every row written before the scope columns existed.
     facilityScoped: false,
@@ -772,11 +775,69 @@ describe('runReminderSweep — role-target reconcile pre-pass', () => {
         organizationId: 'org-1',
         assignmentId: 'assignment-role-1',
         scheduleAt: new Date('2024-06-01T00:00:00Z'), // roleAssignedAt
-        assignmentDueAt: null, // role-target assignments never carry an absolute dueAt
+        assignmentDueAt: null, // none set on this assignment, so the window applies
         assignmentWindowDays: 14,
       }),
     );
     expect(summary.roleTargetEnrolled).toBe(1);
+  });
+
+  it("honours the assignment's absolute dueAt over the window — an absolute deadline must win here exactly as it does in the live enrollUserForRoleTargets hook, or the same holder gets a different deadline depending on which path enrolled them", async () => {
+    wireCourseAssignmentFindMany({
+      roleTarget: [makeRoleTargetAssignment({ dueAt: new Date('2024-08-01T00:00:00Z') })],
+    });
+    prismaMock.organizationUser.findMany.mockResolvedValue([makeRoleHolder()]);
+    prismaMock.enrollment.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    const summary = await runReminderSweep(BASE_OPTS);
+
+    expect(mockCreateEnrollmentForUser).toHaveBeenCalledExactlyOnceWith(
+      { email: 'holder@test.com' },
+      expect.objectContaining({
+        assignmentDueAt: new Date('2024-08-01T00:00:00Z'),
+        assignmentWindowDays: 14,
+      }),
+    );
+    expect(summary.roleTargetEnrolled).toBe(1);
+  });
+
+  it('enrolls a holder of a SECOND targeted role in a multi-role assignment (targetRoles: [nurse, therapist_clinician]) — not just the first (deprecated singular targetRole)', async () => {
+    wireCourseAssignmentFindMany({
+      roleTarget: [
+        makeRoleTargetAssignment({
+          targetRole: 'nurse',
+          targetRoles: ['nurse', 'therapist_clinician'],
+        }),
+      ],
+    });
+    prismaMock.organizationUser.findMany.mockResolvedValue([
+      makeRoleHolder({ id: 'holder-nurse', role: 'nurse', user: { email: 'nurse@test.com' } }),
+      makeRoleHolder({
+        id: 'holder-therapist',
+        role: 'therapist_clinician',
+        user: { email: 'therapist@test.com' },
+      }),
+    ]);
+    prismaMock.enrollment.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    const summary = await runReminderSweep(BASE_OPTS);
+
+    expect(mockCreateEnrollmentForUser).toHaveBeenCalledWith(
+      { email: 'nurse@test.com' },
+      expect.anything(),
+    );
+    expect(mockCreateEnrollmentForUser).toHaveBeenCalledWith(
+      { email: 'therapist@test.com' },
+      expect.anything(),
+    );
+    expect(mockCreateEnrollmentForUser).toHaveBeenCalledTimes(2);
+    expect(summary.roleTargetEnrolled).toBe(2);
   });
 
   it('skips a holder who already has an enrollment for the targeted course (idempotent second run)', async () => {
