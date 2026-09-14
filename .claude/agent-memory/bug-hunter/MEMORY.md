@@ -83,3 +83,4 @@
 - [Reminder-ladder consolidation Phase 5 tests](reminder-ladder-consolidation-phase5-tests.md) — stateful fake-Prisma sink-safety proof, it.each array-spread trap, property round-trip sweep, first e2e for the ladder (REM-011)
 - [Assign-renewal-toggle Phase 6 tests](assign-renewal-toggle-phase6-tests.md) — final phase; shared Switch + RenewalScheduleInput; toggle-is-sole-'none'-path sabotage proof; both selector-contract claims held; no product defect
 - [Dashboard single-facility scope tests](dashboard-single-facility-scope-tests.md) — cross-branch parity sabotage-proof pattern, HR-authored-course e2e fixture, AVG-vs-round unresolved-by-design finding, getCourses org-pin gap still open
+- [Course roster cross-tenant PII fix tests](course-roster-cross-tenant-pii-tests.md) — mock-ignores-where trap solved via call-arg assertions + red/green proof; getCourseForOrgView's missing OR clause is correct, not a bug; TrainingDetails deliberately not tested
