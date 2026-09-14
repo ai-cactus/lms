@@ -103,9 +103,13 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockAuth.mockResolvedValue(ADMIN_SESSION);
   prismaMock.organization.findUnique.mockResolvedValue({ subscription: null });
+  // Deliberately non-zero: a zeroed stub cannot distinguish "scoped correctly"
+  // from "scoped to nothing" — that blind spot is why the single-facility
+  // scoping bug this suite guards against shipped three times undetected. See
+  // the 'renders the non-zero summary figures getDashboardData returned' test.
   mockGetDashboardData.mockResolvedValue({
     courses: [],
-    stats: { totalCourses: 0, totalStaffAssigned: 0, averageGrade: 0 },
+    stats: { totalCourses: 12, totalStaffAssigned: 34, averageGrade: 82 },
   });
   mockHasActiveBilling.mockReturnValue(false);
   mockResolveFacilityScopeSelection.mockResolvedValue({ mode: 'all' });
@@ -241,7 +245,29 @@ describe('DashboardPage — facility scope wiring', () => {
     expect(mockResolveFacilityScopeSelection).toHaveBeenCalledWith(ADMIN_SESSION, 'fac-a,fac-b');
   });
 
+  // The bug this branch guards against: a zeroed `getDashboardData` stub can't
+  // tell "scoped correctly" apart from "scoped to nothing", which is exactly
+  // how a single-facility org silently seeing its own courses count as zero
+  // shipped undetected three times. Asserting the literal figure closes that
+  // blind spot for this suite.
+  it('renders the non-zero summary figures getDashboardData returned, not a masked zero', async () => {
+    mockGetDashboardData.mockResolvedValue({
+      courses: [],
+      stats: { totalCourses: 12, totalStaffAssigned: 34, averageGrade: 82 },
+    });
+
+    render(await DashboardPage(noSearchParams()));
+
+    expect(screen.getByText('12')).toBeInTheDocument();
+    expect(screen.getByText('34')).toBeInTheDocument();
+    expect(screen.getByText('82%')).toBeInTheDocument();
+  });
+
   it('renders the Global View with no comparison for an unscoped request', async () => {
+    // The branch now decides from `listAccessibleFacilities`, not from what
+    // `getGlobalDashboardData` reports — the two are the same call in
+    // production (see page.tsx:66-79), so a realistic fixture stubs both alike.
+    mockListAccessibleFacilities.mockResolvedValue([FACILITY_A, FACILITY_B]);
     mockGetGlobalDashboardData.mockResolvedValue({ facilities: [FACILITY_A, FACILITY_B] });
 
     render(await DashboardPage(noSearchParams()));
@@ -257,6 +283,11 @@ describe('DashboardPage — facility scope wiring', () => {
       mode: 'compare',
       facilities: [FACILITY_A, FACILITY_B],
     });
+    // `resolveFacilityScopeSelection` only ever returns `compare` when at least
+    // two facilities survived the SAME accessibility filter `listAccessibleFacilities`
+    // applies (`@/lib/facility/scope.ts`'s `accessibleSubset`), so a compare
+    // selection of [A,B] implies an accessible set of at least [A,B] too.
+    mockListAccessibleFacilities.mockResolvedValue([FACILITY_A, FACILITY_B]);
     mockGetGlobalDashboardData.mockResolvedValue({ facilities: [FACILITY_A, FACILITY_B] });
 
     render(await DashboardPage({ searchParams: Promise.resolve({ facility: 'fac-a,fac-b' }) }));
@@ -280,17 +311,32 @@ describe('DashboardPage — facility scope wiring', () => {
     expect(mockGetGlobalDashboardData).not.toHaveBeenCalled();
   });
 
-  it('falls back to the organisation dashboard when a comparison has no facilities to show', async () => {
+  // Rewritten 2026-09-14: the original pinned `resolveFacilityScopeSelection`
+  // returning `{ mode: 'compare', facilities: [A,B] }` while
+  // `listAccessibleFacilities` returned `[]` and `getGlobalDashboardData`
+  // returned `{ facilities: [] }`. That combination cannot occur in production —
+  // `resolveFacilityScopeSelection` only returns `compare` once at least two
+  // facilities have survived the SAME accessibility filter
+  // `listAccessibleFacilities` applies (`@/lib/facility/scope.ts`), so a
+  // `compare` result always implies `accessibleFacilities.length >= 2`, and the
+  // branch would always render the Global View. This version instead pins the
+  // real mechanism: the branch decides from `listAccessibleFacilities` alone
+  // (page.tsx:79), never from `scope.facilities` or `getGlobalDashboardData`'s
+  // own result — so even a stale/inconsistent `compare` selection cannot force
+  // the Global View once the accessible set has shrunk to one facility.
+  it('falls back to the organisation dashboard once the accessible facility set is down to one, regardless of what the scope selection reports', async () => {
     mockResolveFacilityScopeSelection.mockResolvedValue({
       mode: 'compare',
       facilities: [FACILITY_A, FACILITY_B],
     });
-    mockGetGlobalDashboardData.mockResolvedValue({ facilities: [] });
+    mockListAccessibleFacilities.mockResolvedValue([FACILITY_A]);
+    mockGetGlobalDashboardData.mockResolvedValue({ facilities: [FACILITY_A, FACILITY_B] });
 
     render(await DashboardPage({ searchParams: Promise.resolve({ facility: 'fac-a,fac-b' }) }));
 
     expect(screen.queryByTestId('global-dashboard')).not.toBeInTheDocument();
     expect(screen.getByTestId('my-courses')).toBeInTheDocument();
+    expect(mockGetGlobalDashboardData).not.toHaveBeenCalled();
   });
 
   // The `> 1` branch (was `> 0`): `globalData.facilities` is THIS viewer's
@@ -299,15 +345,20 @@ describe('DashboardPage — facility scope wiring', () => {
   // facility's dashboard, never a "global" view of one site.
   describe('the >1 facility-count branch (single-facility org AND single-facility role both get the single dashboard)', () => {
     it('an ORG-WIDE role (owner) with exactly ONE facility gets the single-facility dashboard, not Global', async () => {
+      mockListAccessibleFacilities.mockResolvedValue([FACILITY_A]);
       mockGetGlobalDashboardData.mockResolvedValue({ facilities: [FACILITY_A] });
 
       render(await DashboardPage(noSearchParams()));
 
       expect(screen.queryByTestId('global-dashboard')).not.toBeInTheDocument();
       expect(screen.getByTestId('my-courses')).toBeInTheDocument();
+      // Pins the wasted-work fix: ~17 aggregates used to be computed and
+      // discarded on every single-facility load (page.tsx:76-78).
+      expect(mockGetGlobalDashboardData).not.toHaveBeenCalled();
     });
 
     it('an ORG-WIDE role with TWO facilities gets the Global dashboard', async () => {
+      mockListAccessibleFacilities.mockResolvedValue([FACILITY_A, FACILITY_B]);
       mockGetGlobalDashboardData.mockResolvedValue({ facilities: [FACILITY_A, FACILITY_B] });
 
       render(await DashboardPage(noSearchParams()));

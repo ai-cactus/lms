@@ -11,6 +11,7 @@ const {
   mockOrgUserCount,
   mockListAccessibleFacilities,
   mockOrgUserFindMany,
+  mockOrgCourseOfferingFindMany,
 } = vi.hoisted(() => ({
   mockAdminAuth: vi.fn(),
   mockWorkerAuth: vi.fn(),
@@ -22,6 +23,7 @@ const {
   mockOrgUserCount: vi.fn(),
   mockListAccessibleFacilities: vi.fn(),
   mockOrgUserFindMany: vi.fn(),
+  mockOrgCourseOfferingFindMany: vi.fn(),
 }));
 
 vi.mock('@/lib/prisma', () => {
@@ -35,6 +37,9 @@ vi.mock('@/lib/prisma', () => {
     // Post refactor: total org staff is counted on OrganizationUser (scoped to
     // WORKER_ROLES), not a raw `prisma.user.count`.
     organizationUser: { count: mockOrgUserCount, findMany: mockOrgUserFindMany },
+    // resolveDashboardScope -> listAdoptedCourseIds; empty means "nothing
+    // adopted", exercised on its own in dashboard/scope.test.ts.
+    orgCourseOffering: { findMany: mockOrgCourseOfferingFindMany },
   };
   return { prisma, default: prisma };
 });
@@ -93,6 +98,7 @@ describe('getDashboardData', () => {
     });
     mockWorkerAuth.mockResolvedValue(null);
     mockListAccessibleFacilities.mockResolvedValue([]);
+    mockOrgCourseOfferingFindMany.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -319,8 +325,16 @@ describe('getDashboardData', () => {
     expect(courseCallArgs.select?.enrollments).toBeUndefined();
 
     // The only row-level enrollment read must be the narrow scored projection.
+    // Post dashboard-scope fix: the population is the ORGANISATION's courses
+    // (an admin is an org manager per `authoredCourseWhere`), pinned to the
+    // organisation's members — not the viewer's own `createdByOrgUserId`. That
+    // literal was the single-facility dashboard bug (see dashboard-parity.test.ts).
     expect(mockEnrollmentFindMany).toHaveBeenCalledWith({
-      where: { course: { createdByOrgUserId: ORG_USER_ID }, score: { not: null } },
+      where: {
+        course: { creator: { organizationId: ORG_ID } },
+        organizationUser: { organizationId: ORG_ID },
+        score: { not: null },
+      },
       select: { courseId: true, score: true, completedAt: true },
     });
   });
@@ -416,6 +430,113 @@ describe('getDashboardData', () => {
         expect.objectContaining({
           where: expect.not.objectContaining({ facilities: expect.anything() }),
         }),
+      );
+    });
+  });
+
+  // Population scoping — the reported bug and the guard against reintroducing
+  // it. See `src/lib/dashboard/scope.ts` and `authoredCourseWhere`
+  // (`src/lib/course/org-scope.ts`), which these predicates are read from.
+  describe('population scoping (manager vs non-manager, cross-tenant guard)', () => {
+    beforeEach(() => {
+      wireGroupBy([], []);
+      mockEnrollmentFindMany.mockResolvedValue([]);
+      mockOrgUserCount.mockResolvedValue(0);
+    });
+
+    it('a manager sees a colleague-authored course — the reported bug', async () => {
+      // Admin (session user) did not author this course; HR did. Pre-fix this
+      // course.findMany where(createdByOrgUserId: ORG_USER_ID) would have hidden
+      // it from the admin's own dashboard entirely.
+      mockCourseFindMany.mockResolvedValue([
+        {
+          id: 'hr-authored-course',
+          title: "HR's course",
+          description: null,
+          thumbnail: null,
+          status: 'published',
+          type: 'document',
+          duration: 10,
+          createdAt: new Date(2026, 0, 1),
+          updatedAt: new Date(2026, 0, 1),
+          quiz: null,
+          lessons: [],
+        },
+      ]);
+
+      const result = await getDashboardData();
+
+      expect(result.courses.map((c) => c.id)).toContain('hr-authored-course');
+      expect(mockCourseFindMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { creator: { organizationId: ORG_ID } } }),
+      );
+    });
+
+    it('a non-manager (finance — no course.read) stays creator-scoped, never widened to the organisation', async () => {
+      mockAdminAuth.mockResolvedValue({
+        user: {
+          id: 'finance-1',
+          role: 'finance',
+          organizationUserId: ORG_USER_ID,
+          organizationId: ORG_ID,
+        },
+      });
+
+      await getDashboardData();
+
+      expect(mockCourseFindMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { createdByOrgUserId: ORG_USER_ID } }),
+      );
+    });
+
+    // CROSS-TENANT GUARD: this course is authored in OUR org (so it correctly
+    // belongs in `courseWhere`) but is ALSO adopted by a DIFFERENT organisation
+    // via `OrgCourseOffering` — meaning that other org's own members could be
+    // enrolled in the very same course row. A course-only enrollment predicate
+    // (`course: { creator: { organizationId } } }` with no member pin) would
+    // therefore also match THEIR enrollments. This test fails if
+    // `organizationUser: { organizationId }` is ever dropped from
+    // `enrollmentWhere` — see `dashboard-parity.test.ts` for the same property
+    // asserted generically over every captured query.
+    it('never queries enrollments without the organisation-member pin, even for a course another org has adopted', async () => {
+      mockCourseFindMany.mockResolvedValue([
+        {
+          id: 'shared-course',
+          title: 'Shared Course',
+          description: null,
+          thumbnail: null,
+          status: 'published',
+          type: 'document',
+          duration: 10,
+          createdAt: new Date(2026, 0, 1),
+          updatedAt: new Date(2026, 0, 1),
+          quiz: null,
+          lessons: [],
+        },
+      ]);
+
+      await getDashboardData();
+
+      const enrollmentWheres = [
+        ...mockEnrollmentGroupBy.mock.calls.map((call) => call[0].where),
+        ...mockEnrollmentFindMany.mock.calls.map((call) => call[0].where),
+      ];
+      expect(enrollmentWheres.length).toBeGreaterThan(0);
+      for (const where of enrollmentWheres) {
+        expect(where.organizationUser?.organizationId).toBe(ORG_ID);
+      }
+    });
+
+    it('the coverage numerator (per-member groupBy) and denominator (org staff count) apply the IDENTICAL member predicate — an admin’s own or a deactivated worker’s enrollment cannot land in one and not the other', async () => {
+      await getDashboardData();
+
+      const userStatusGroupByCall = mockEnrollmentGroupBy.mock.calls.find((call) =>
+        call[0].by.includes('organizationUserId'),
+      );
+      const orgUserCountCall = mockOrgUserCount.mock.calls[0];
+
+      expect(userStatusGroupByCall?.[0].where.organizationUser).toEqual(
+        orgUserCountCall?.[0].where,
       );
     });
   });
