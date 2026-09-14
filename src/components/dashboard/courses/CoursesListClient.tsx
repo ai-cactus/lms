@@ -70,6 +70,26 @@ import type { Role } from '@/types/next-auth';
 
 type BannerState = 'generating' | 'done' | 'failed' | 'unknown' | 'hidden';
 
+/**
+ * Two row actions reach the billing gate, and the modal must say which one was
+ * blocked — assigning an existing course is not creating one, and telling an
+ * admin otherwise sends them looking for a problem they do not have.
+ */
+type BillingGateTrigger = 'create' | 'assign';
+
+const BILLING_GATE_COPY: Record<BillingGateTrigger, { title: string; description: string }> = {
+  create: {
+    title: 'A plan is required to create courses',
+    description:
+      'Subscribe to a plan to start creating and managing training courses for your organization.',
+  },
+  assign: {
+    title: 'A plan is required to assign courses',
+    description:
+      'Subscribe to a plan to assign training to your staff. Your existing courses stay exactly as they are.',
+  },
+};
+
 const bannerClasses: Record<Exclude<BannerState, 'hidden'>, string> = {
   generating: 'border-primary/30 bg-primary/5 text-foreground',
   done: 'border-success/30 bg-success/10 text-foreground',
@@ -360,7 +380,7 @@ export default function CoursesListClient({
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
-  const [showBillingGate, setShowBillingGate] = useState(false);
+  const [showBillingGate, setShowBillingGate] = useState<BillingGateTrigger | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<CourseWithStats | null>(null);
@@ -421,7 +441,7 @@ export default function CoursesListClient({
 
   const startCreateCourse = useCallback(() => {
     if (!hasBilling) {
-      setShowBillingGate(true);
+      setShowBillingGate('create');
       return;
     }
     router.push('/dashboard/courses/create');
@@ -477,7 +497,7 @@ export default function CoursesListClient({
         // way startCreateCourse does so the gate explains itself.
         onSelect: () => {
           if (!hasBilling) {
-            setShowBillingGate(true);
+            setShowBillingGate('assign');
             return;
           }
           router.push(`/dashboard/training/courses/${course.id}/assign`);
@@ -594,9 +614,9 @@ export default function CoursesListClient({
 
       {showBillingGate && (
         <BillingGateModal
-          title="A plan is required to create courses"
-          description="Subscribe to a plan to start creating and managing training courses for your organization."
-          onClose={() => setShowBillingGate(false)}
+          title={BILLING_GATE_COPY[showBillingGate].title}
+          description={BILLING_GATE_COPY[showBillingGate].description}
+          onClose={() => setShowBillingGate(null)}
         />
       )}
 

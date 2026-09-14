@@ -28,6 +28,15 @@ export const RENEWAL_CYCLE_OPTIONS: { value: Exclude<RenewalCycle, 'none'>; labe
   { value: 'annual', label: 'Annual (12 months)' },
 ];
 
+/**
+ * What a course with no saved renewal starts as: recurring, yearly. Both assign
+ * surfaces read this rather than seeding their own, which is exactly how they
+ * came to disagree — the wizard opened with renewal off, the assign page with
+ * annual, from identical controls.
+ */
+export const DEFAULT_RENEWAL_ENABLED = true;
+export const DEFAULT_RENEWAL_CYCLE: Exclude<RenewalCycle, 'none'> = 'annual';
+
 interface RenewalScheduleInputProps {
   /** Heading and blurb rendered beside the toggle; each host owns its own copy. */
   header: React.ReactNode;

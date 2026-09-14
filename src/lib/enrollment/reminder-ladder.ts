@@ -1,4 +1,3 @@
-import { REMINDER_STAGE_DEFAULTS } from '@/lib/reminders/stages';
 import type { ReminderStage } from '@/generated/prisma/enums';
 
 /**
@@ -38,14 +37,19 @@ function daysBeforeFromOffset(offsetDays: number): number {
 }
 
 /**
- * The cadence a brand-new assignment starts from, in the row vocabulary: the
- * canonical defaults of the stages these rows own. A surface that renders the
- * ladder for a course with no assignment yet must prefill this, or submitting
- * an untouched form would read as "the admin cleared every reminder".
+ * The cadence a brand-new assignment starts from, in the row vocabulary. A
+ * surface that renders the ladder for a course with no assignment yet must
+ * prefill this, or submitting an untouched form would read as "the admin
+ * cleared every reminder".
+ *
+ * A product choice, not a restatement of `REMINDER_STAGE_DEFAULTS` — the two
+ * answer different questions. This is where an admin's editing starts; those
+ * are what the sweep falls back to for a stage carrying no config row at all.
+ * Both assign surfaces read this one constant, because the whole reason they
+ * disagreed (7/3/1 in the wizard, 14/3/0 on the assign page) was each owning
+ * its own copy.
  */
-export const DEFAULT_WIZARD_REMINDER_DAYS: number[] = WIZARD_REMINDER_STAGES.map((stage) =>
-  daysBeforeFromOffset(REMINDER_STAGE_DEFAULTS[stage].offsetDays),
-);
+export const DEFAULT_WIZARD_REMINDER_DAYS: number[] = [7, 3, 1];
 
 /**
  * Read a stored ladder back into "N days before" rows — the inverse of

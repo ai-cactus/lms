@@ -110,8 +110,11 @@ describe('stageRowsToReminderDays', () => {
 });
 
 describe('DEFAULT_WIZARD_REMINDER_DAYS', () => {
-  it('is the canonical [14, 3, 0] cadence a fresh course starts from', () => {
-    expect(DEFAULT_WIZARD_REMINDER_DAYS).toEqual([14, 3, 0]);
+  // A product choice, deliberately NOT `REMINDER_STAGE_DEFAULTS`' offsets —
+  // those stay 14/3/0 and remain the sweep's fallback for a stage with no
+  // config row (pinned above). Both assign surfaces read this one constant.
+  it('is the [7, 3, 1] cadence a fresh course starts from', () => {
+    expect(DEFAULT_WIZARD_REMINDER_DAYS).toEqual([7, 3, 1]);
   });
 });
 

@@ -27,7 +27,9 @@ import RoleTargetPicker, {
 import ReminderLadderInput, {
   type ReminderLadderRow,
 } from '@/components/dashboard/enrollment/ReminderLadderInput';
-import RenewalScheduleInput from '@/components/dashboard/enrollment/RenewalScheduleInput';
+import RenewalScheduleInput, {
+  DEFAULT_RENEWAL_CYCLE,
+} from '@/components/dashboard/enrollment/RenewalScheduleInput';
 import {
   enrollUsers,
   assignCourseToRoles,
@@ -109,10 +111,10 @@ export default function AssignPublishClient({
   // never-assigned course gets, ready for the moment the toggle is turned on.
   // A course with no assignment yet therefore starts ON at `'annual'`: that is
   // what this page has always persisted for an untouched new assignment.
-  const storedRenewalCycle = existingSettings?.renewalCycle ?? 'annual';
+  const storedRenewalCycle = existingSettings?.renewalCycle ?? DEFAULT_RENEWAL_CYCLE;
   const [recurringEnabled, setRecurringEnabled] = useState(storedRenewalCycle !== 'none');
   const [renewalCycle, setRenewalCycle] = useState<RenewalCycle>(
-    storedRenewalCycle === 'none' ? 'annual' : storedRenewalCycle,
+    storedRenewalCycle === 'none' ? DEFAULT_RENEWAL_CYCLE : storedRenewalCycle,
   );
   const [remindersEnabled, setRemindersEnabled] = useState(
     existingSettings?.remindersEnabled ?? true,
