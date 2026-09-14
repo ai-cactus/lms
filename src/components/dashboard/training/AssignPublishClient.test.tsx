@@ -636,12 +636,12 @@ describe('AssignPublishClient — Priority 1: the renewal toggle is the only way
  * an org's custom escalation offsets survive a save from this page.
  */
 describe('AssignPublishClient — Priority 4: reminder-ladder hydration and submit shape', () => {
-  it('a fresh course with no existingSettings prefills the DEFAULT_WIZARD_REMINDER_DAYS cadence (14, 3, 0), not an empty ladder', () => {
+  it('a fresh course with no existingSettings prefills the DEFAULT_WIZARD_REMINDER_DAYS cadence (7, 3, 1), not an empty ladder', () => {
     renderClient();
 
-    expect(screen.getByLabelText('Reminder 1 days before deadline')).toHaveValue(14);
+    expect(screen.getByLabelText('Reminder 1 days before deadline')).toHaveValue(7);
     expect(screen.getByLabelText('Reminder 2 days before deadline')).toHaveValue(3);
-    expect(screen.getByLabelText('Reminder 3 days before deadline')).toHaveValue(0);
+    expect(screen.getByLabelText('Reminder 3 days before deadline')).toHaveValue(1);
   });
 
   it('hydrates from a stored ladder that also carries custom escalation offsets — only the three worker rows ever render, never the escalation ones', () => {
@@ -674,7 +674,7 @@ describe('AssignPublishClient — Priority 4: reminder-ladder hydration and subm
 
     await waitFor(() => expect(mockEnrollUsers).toHaveBeenCalledTimes(1));
     const [, , settings] = mockEnrollUsers.mock.calls[0];
-    expect(settings).toEqual(expect.objectContaining({ reminderDaysBefore: [14, 3, 0] }));
+    expect(settings).toEqual(expect.objectContaining({ reminderDaysBefore: [7, 3, 1] }));
     expect(settings).not.toHaveProperty('stages');
   });
 
@@ -688,7 +688,7 @@ describe('AssignPublishClient — Priority 4: reminder-ladder hydration and subm
 
     await waitFor(() => expect(mockAssignCourseToRoles).toHaveBeenCalledTimes(1));
     const [, , settings] = mockAssignCourseToRoles.mock.calls[0];
-    expect(settings).toEqual(expect.objectContaining({ reminderDaysBefore: [14, 3, 0] }));
+    expect(settings).toEqual(expect.objectContaining({ reminderDaysBefore: [7, 3, 1] }));
     expect(settings).not.toHaveProperty('stages');
   });
 
@@ -697,7 +697,7 @@ describe('AssignPublishClient — Priority 4: reminder-ladder hydration and subm
     // existingSettings is non-null (an assignment DOES exist), but its stored
     // stages carry no enabled wizard-vocabulary row — e.g. every worker
     // reminder was previously disabled. This must render 0 rows, not silently
-    // fall back to the fresh-course [14, 3, 0] default (that fallback is only
+    // fall back to the fresh-course [7, 3, 1] default (that fallback is only
     // for `existingSettings === null`, per stageRowsToReminderDays vs.
     // DEFAULT_WIZARD_REMINDER_DAYS in the component's own ternary).
     renderClient({ existingSettings: existingSettings({ stages: [] }) });

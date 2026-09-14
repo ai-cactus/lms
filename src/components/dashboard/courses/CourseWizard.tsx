@@ -9,6 +9,11 @@ import Step4Quiz from './steps/Step4Quiz';
 import GenerationController from './steps/GenerationController';
 import Step6QuizReview from './steps/Step6QuizReview';
 import Step7Assign, { isAssignSelectionValid } from './steps/Step7Assign';
+import {
+  DEFAULT_RENEWAL_CYCLE,
+  DEFAULT_RENEWAL_ENABLED,
+} from '@/components/dashboard/enrollment/RenewalScheduleInput';
+import { DEFAULT_WIZARD_REMINDER_DAYS } from '@/lib/enrollment/reminder-ladder';
 import CourseSuccessModal from './CourseSuccessModal';
 import ConfirmPublishModal from './ConfirmPublishModal';
 import ReviewWarningsModal from './ReviewWarningsModal';
@@ -70,13 +75,11 @@ const INITIAL_FORM_DATA: CourseWizardData = {
   assignMode: 'roles',
   assignRoles: [],
   dueDeadlineEnabled: false,
-  reminders: [
-    { value: 7, unit: 'days' },
-    { value: 3, unit: 'days' },
-    { value: 1, unit: 'days' },
-  ],
-  recurringEnabled: false,
-  renewalCycle: 'none',
+  // Seeded from the one shared constant both assign surfaces use, so the
+  // wizard and the assign page cannot drift apart again.
+  reminders: DEFAULT_WIZARD_REMINDER_DAYS.map((value) => ({ value, unit: 'days' as const })),
+  recurringEnabled: DEFAULT_RENEWAL_ENABLED,
+  renewalCycle: DEFAULT_RENEWAL_CYCLE,
 };
 
 // v3 made the ladder safe to change: it stores the step's KEY rather than an
