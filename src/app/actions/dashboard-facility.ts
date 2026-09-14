@@ -25,6 +25,9 @@ import {
   type FacilityComplianceSignals,
   type RiskLevel,
 } from '@/lib/facility/metrics';
+import { passingScoreFor, resolvePassingScores } from '@/lib/dashboard/metrics';
+import { resolveDashboardScope } from '@/lib/dashboard/scope';
+import { WORKER_ROLES } from '@/lib/rbac/role-utils';
 import type { Prisma } from '@/generated/prisma/client';
 
 /**
@@ -40,13 +43,6 @@ import type { Prisma } from '@/generated/prisma/client';
  * the organisation, so they count towards org-wide totals but belong to no
  * facility row — the per-facility groupings simply skip the null bucket.
  */
-
-/**
- * Passing bar applied when a course's quiz does not define one. Mirrors
- * `getDashboardData`'s fallback so the two dashboards can't disagree on whether
- * a given score passed.
- */
-const DEFAULT_PASSING_SCORE = 70;
 
 /** A headline figure plus its month-over-month movement (null = no basis). */
 export interface DashboardMetric {
@@ -102,6 +98,22 @@ export interface GlobalDashboardData {
   priorityRisks: PriorityRiskRow[];
   /** Every accessible facility, alphabetical. */
   facilitiesOverview: FacilityOverviewRow[];
+  /**
+   * The organisation-level figures the single-facility dashboard reports, over
+   * the same population.
+   *
+   * Deliberately not rendered here. The two views show different metric FAMILIES,
+   * so before this there was no number visible on both and nothing a parity test
+   * could compare — which is how the same organisation came to show different
+   * totals depending on its facility count, three times. Surfacing these on the
+   * Global View is a follow-up; the point of them now is that the divergence
+   * becomes a failing test rather than a support ticket.
+   */
+  organisationTotals: {
+    totalCourses: number;
+    staffAssigned: number;
+    averageGrade: number;
+  };
 }
 
 function daysAgo(from: Date, days: number): Date {
@@ -161,6 +173,7 @@ function emptyGlobalDashboardData(facilities: AccessibleFacility[]): GlobalDashb
     },
     priorityRisks: [],
     facilitiesOverview: [],
+    organisationTotals: { totalCourses: 0, staffAssigned: 0, averageGrade: 0 },
   };
 }
 
@@ -215,21 +228,16 @@ export async function getGlobalDashboardData(): Promise<GlobalDashboardData> {
 
   // Tenancy is structural: every `where` below extends one of these three bases,
   // each of which pins the organisation (and, for a facility-bound caller, the
-  // permitted facility set) unconditionally.
+  // permitted facility set) unconditionally. They come from the shared seam so
+  // that this action and `getDashboardData` cannot describe different
+  // populations — see `@/lib/dashboard/scope`.
+  const scope = await resolveDashboardScope(session);
+  const staffWhere = scope.staffWhere();
+  const enrollmentWhere = scope.enrollmentWhere;
+
   const facilityWhere: Prisma.FacilityWhereInput = {
     organizationId,
-    ...(orgWide ? {} : { id: { in: facilityIds } }),
-  };
-
-  const staffWhere: Prisma.OrganizationUserWhereInput = {
-    organizationId,
-    active: true,
-    ...(orgWide ? {} : { facilities: { some: { facilityId: { in: facilityIds }, active: true } } }),
-  };
-
-  const enrollmentWhere: Prisma.EnrollmentWhereInput = {
-    organizationUser: { organizationId },
-    ...(orgWide ? {} : { facilityId: { in: facilityIds } }),
+    ...(scope.dataFacilityIds === null ? {} : { id: { in: scope.dataFacilityIds } }),
   };
 
   const [
@@ -250,6 +258,9 @@ export async function getGlobalDashboardData(): Promise<GlobalDashboardData> {
     ongoingCourseGroups,
     firstAttemptScores,
     previousExpiringCredentials,
+    organisationCourseCount,
+    organisationStaffAssignedGroups,
+    organisationScoreAverage,
   ] = await Promise.all([
     prisma.facility.count({ where: { ...facilityWhere, createdAt: { lt: windowStart } } }),
 
@@ -396,6 +407,27 @@ export async function getGlobalDashboardData(): Promise<GlobalDashboardData> {
         dueAt: { gte: previousExpiringStart, lt: now },
       },
     }),
+
+    // `organisationTotals`. Each mirrors the corresponding figure in
+    // `getDashboardData`'s `stats` EXACTLY — same course predicate, same member
+    // predicate, same facility narrowing — so a divergence is a test failure
+    // rather than two plausible-looking numbers on two screens.
+    prisma.course.count({ where: scope.courseWhere }),
+
+    prisma.enrollment.groupBy({
+      by: ['organizationUserId'],
+      where: {
+        ...enrollmentWhere,
+        course: scope.courseWhere,
+        organizationUser: scope.staffWhere({ roles: WORKER_ROLES }),
+      },
+      _count: { _all: true },
+    }),
+
+    prisma.enrollment.aggregate({
+      _avg: { score: true },
+      where: { ...enrollmentWhere, course: scope.courseWhere, score: { not: null } },
+    }),
   ]);
 
   const gradedCourseIds = [...new Set(firstAttemptScores.map((row) => row.courseId))];
@@ -418,24 +450,16 @@ export async function getGlobalDashboardData(): Promise<GlobalDashboardData> {
         })
       : [];
 
-  const passingScoreByCourse = new Map<string, number>();
-  for (const quiz of quizzes) {
-    const courseId = quiz.courseId ?? quiz.lesson?.courseId;
-    if (!courseId) continue;
-    // A course with several quizzes passes at its strictest bar.
-    const current = passingScoreByCourse.get(courseId);
-    if (current === undefined || quiz.passingScore > current) {
-      passingScoreByCourse.set(courseId, quiz.passingScore);
-    }
-  }
+  const passingScoreByCourse = resolvePassingScores(quizzes);
 
   let firstAttemptTotal = 0;
   let firstAttemptPassed = 0;
   for (const row of firstAttemptScores) {
     const count = row._count._all;
     firstAttemptTotal += count;
-    const passingScore = passingScoreByCourse.get(row.courseId) ?? DEFAULT_PASSING_SCORE;
-    if ((row.score ?? 0) >= passingScore) firstAttemptPassed += count;
+    if ((row.score ?? 0) >= passingScoreFor(passingScoreByCourse, row.courseId)) {
+      firstAttemptPassed += count;
+    }
   }
 
   const staffCountByFacility = new Map<string, number>();
@@ -565,5 +589,10 @@ export async function getGlobalDashboardData(): Promise<GlobalDashboardData> {
     },
     priorityRisks,
     facilitiesOverview,
+    organisationTotals: {
+      totalCourses: organisationCourseCount,
+      staffAssigned: organisationStaffAssignedGroups.length,
+      averageGrade: Math.round(organisationScoreAverage._avg.score ?? 0),
+    },
   };
 }

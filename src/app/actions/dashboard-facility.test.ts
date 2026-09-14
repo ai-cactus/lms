@@ -16,7 +16,10 @@ const {
   mockOrgUserFacilityGroupBy,
   mockEnrollmentGroupBy,
   mockEnrollmentCount,
+  mockEnrollmentAggregate,
   mockQuizFindMany,
+  mockCourseCount,
+  mockOrgCourseOfferingFindMany,
 } = vi.hoisted(() => ({
   mockAuth: vi.fn(),
   mockListAccessibleFacilities: vi.fn(),
@@ -25,7 +28,10 @@ const {
   mockOrgUserFacilityGroupBy: vi.fn(),
   mockEnrollmentGroupBy: vi.fn(),
   mockEnrollmentCount: vi.fn(),
+  mockEnrollmentAggregate: vi.fn(),
   mockQuizFindMany: vi.fn(),
+  mockCourseCount: vi.fn(),
+  mockOrgCourseOfferingFindMany: vi.fn(),
 }));
 
 vi.mock('@/auth', () => ({ auth: mockAuth }));
@@ -49,9 +55,14 @@ vi.mock('@/lib/prisma', () => {
     enrollment: {
       groupBy: mockEnrollmentGroupBy,
       count: mockEnrollmentCount,
+      aggregate: mockEnrollmentAggregate,
       fields: { dueAt: 'dueAt' },
     },
     quiz: { findMany: mockQuizFindMany },
+    course: { count: mockCourseCount },
+    // resolveDashboardScope -> listAdoptedCourseIds; empty means "nothing
+    // adopted", exercised on its own in dashboard/scope.test.ts.
+    orgCourseOffering: { findMany: mockOrgCourseOfferingFindMany },
   };
   return { prisma, default: prisma };
 });
@@ -132,6 +143,9 @@ beforeEach(() => {
   mockOrgUserCount.mockResolvedValue(0);
   mockOrgUserFacilityGroupBy.mockResolvedValue([]);
   mockQuizFindMany.mockResolvedValue([]);
+  mockCourseCount.mockResolvedValue(0);
+  mockOrgCourseOfferingFindMany.mockResolvedValue([]);
+  mockEnrollmentAggregate.mockResolvedValue({ _avg: { score: null } });
   wireEmptyEnrollmentQueries();
 });
 

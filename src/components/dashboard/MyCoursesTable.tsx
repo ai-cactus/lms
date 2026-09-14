@@ -52,7 +52,7 @@ export default function MyCoursesTable({ courses, maxItems = 5 }: MyCoursesTable
     <div className="flex min-w-0 max-w-full flex-1 flex-col gap-6 rounded-[17px] border border-[#dfe1e6] bg-white px-4 pb-4 pt-4 md:px-[21px] md:pt-[21px] shadow-[0px_1px_2px_0px_rgba(228,229,231,0.24)]">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h3 className="text-base font-semibold leading-[1.5] tracking-[0.4px] text-[#0d0d12] md:text-xl">
-          My Courses
+          Courses
         </h3>
         <div className="w-full sm:w-1/2 sm:max-w-[506px]">
           <Input

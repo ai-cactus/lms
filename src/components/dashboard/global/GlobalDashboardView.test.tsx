@@ -62,6 +62,7 @@ const DATA: GlobalDashboardData = {
     auditReadiness: 'audit_ready' as const,
     riskLevel: 'low' as const,
   })),
+  organisationTotals: { totalCourses: 8, staffAssigned: 45, averageGrade: 82 },
 };
 
 function section(title: string): HTMLElement {

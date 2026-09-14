@@ -31,6 +31,7 @@ import {
   type AccessibleFacility,
   type FacilityScopeSelection,
 } from '@/lib/facility/scope';
+import { dataFacilityIdsFor } from '@/lib/facility/staff-where';
 import type { Role } from '@/types/next-auth';
 
 export interface PageAuthContext {
@@ -163,12 +164,14 @@ export async function requirePermissionWithFacilityScope(
   // The invariant. An org-wide role viewing "all" is the ONLY case that yields
   // null; a facility-bound role always gets an array, and an explicit selection
   // narrows further. Never widen an empty selection to null.
-  const dataFacilityIds =
-    selectedFacilityIds.length > 0
-      ? selectedFacilityIds
-      : orgWide
-        ? null
-        : accessibleFacilities.map((facility) => facility.id);
+  const dataFacilityIds = dataFacilityIdsFor({
+    role: ctx.role,
+    selection:
+      selectedFacilityIds.length > 0
+        ? { kind: 'explicit', ids: selectedFacilityIds }
+        : { kind: 'none' },
+    accessibleFacilityIds: accessibleFacilities.map((facility) => facility.id),
+  });
 
   return {
     ...ctx,
