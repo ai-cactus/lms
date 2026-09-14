@@ -124,3 +124,39 @@ describe('RenewalScheduleInput — value/onChange contract', () => {
     expect(screen.getByRole('combobox', { name: 'Select interval' })).toBeDisabled();
   });
 });
+
+/**
+ * The two assign surfaces render identical controls but seeded their own
+ * starting values, which is how they came to disagree — the wizard opened with
+ * renewal off and a 7/3/1 ladder, the assign page with annual and 14/3/0.
+ * Sharing a control did not fix that, because defaults live in the hosts.
+ *
+ * These pin the agreed values AND that each host actually reads them, since a
+ * host can always re-introduce a literal and drift again without breaking any
+ * behavioural test.
+ */
+describe('assign-surface defaults are shared, not restated', () => {
+  it('a course with no saved renewal starts recurring, annually', async () => {
+    const { DEFAULT_RENEWAL_ENABLED, DEFAULT_RENEWAL_CYCLE } =
+      await import('./RenewalScheduleInput');
+    expect(DEFAULT_RENEWAL_ENABLED).toBe(true);
+    expect(DEFAULT_RENEWAL_CYCLE).toBe('annual');
+  });
+
+  it('a fresh ladder starts at 7/3/1', async () => {
+    const { DEFAULT_WIZARD_REMINDER_DAYS } = await import('@/lib/enrollment/reminder-ladder');
+    expect(DEFAULT_WIZARD_REMINDER_DAYS).toEqual([7, 3, 1]);
+  });
+
+  it.each([
+    ['src/components/dashboard/courses/CourseWizard.tsx'],
+    ['src/components/dashboard/training/AssignPublishClient.tsx'],
+  ])('%s seeds from the shared constants rather than its own literals', async (file) => {
+    const fs = await import('node:fs/promises');
+    const path = await import('node:path');
+    const source = await fs.readFile(path.resolve(process.cwd(), file), 'utf-8');
+
+    expect(source).toContain('DEFAULT_WIZARD_REMINDER_DAYS');
+    expect(source).toMatch(/DEFAULT_RENEWAL_(ENABLED|CYCLE)/);
+  });
+});
