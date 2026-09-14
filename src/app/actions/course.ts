@@ -156,7 +156,17 @@ export async function getCourses(): Promise<CourseWithStats[]> {
       by: ['courseId', 'status'],
       // Must track `authoredWhere` — otherwise a manager sees their colleagues'
       // courses listed with a permanent 0 enrolled / 0 completed.
-      where: { course: authoredWhere, ...facilityFilter },
+      //
+      // `authoredWhere` pins the COURSE to this organization, never the LEARNER:
+      // an OrgCourseOffering can put the same course in front of another
+      // tenant's staff, whose enrollments would then inflate this card's
+      // enrolled/completed figures. Pin the learner the same way the adopted
+      // sibling below does.
+      where: {
+        course: authoredWhere,
+        ...(organizationId ? { organizationUser: { organizationId } } : {}),
+        ...facilityFilter,
+      },
       _count: { _all: true },
     }),
     organizationId && adoptedCourseIds.length

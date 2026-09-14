@@ -385,6 +385,7 @@ export default function AssignCoursesModal({
                   iconPosition="start"
                   showYearSelect
                   placement="top-end"
+                  clearLabel="Clear completion deadline"
                   className="h-11"
                 />
                 <TimePicker

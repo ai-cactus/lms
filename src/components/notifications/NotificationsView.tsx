@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Check, ListFilter, Settings2, Trash2 } from 'lucide-react';
 import EmptyTableState from '@/components/ui/EmptyTableState';
+import { Switch } from '@/components/ui/switch';
 import { getNotificationPreferences, setNotificationPreference } from '@/app/actions/notifications';
 import NotificationItem from '@/components/notifications/NotificationItem';
 import { useNotifications } from '@/components/notifications/useNotifications';
@@ -125,23 +126,7 @@ export default function NotificationsView({ backHref, audience }: NotificationsV
                   className="flex cursor-pointer items-center justify-between gap-4 py-2.5"
                 >
                   <span className="text-sm text-text-secondary">{t.description}</span>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={enabled}
-                    onClick={() => togglePref(t.key)}
-                    className={[
-                      'relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full transition-colors',
-                      enabled ? 'bg-primary' : 'bg-input',
-                    ].join(' ')}
-                  >
-                    <span
-                      className={[
-                        'inline-block size-5 transform rounded-full bg-white shadow transition-transform',
-                        enabled ? 'translate-x-5' : 'translate-x-0.5',
-                      ].join(' ')}
-                    />
-                  </button>
+                  <Switch checked={enabled} onCheckedChange={() => togglePref(t.key)} />
                 </label>
               );
             })}
