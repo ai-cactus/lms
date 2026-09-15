@@ -164,6 +164,9 @@ describe('AssignCoursePage — course lookup tenancy', () => {
       title: 'Platform Safety 101',
       status: 'published',
       isGlobal: true,
+      // Only Theraptly's video uploads are ever global — the assign page's OR
+      // arm now spells that discriminator out, so the fixture must too.
+      type: 'video',
       createdByOrgUserId: 'ou-platform-1',
       creator: { organizationId: 'org-platform' },
     });
