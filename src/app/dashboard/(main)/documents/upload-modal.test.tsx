@@ -283,7 +283,10 @@ describe('UploadModal — step 2: files', () => {
     await user.click(screen.getByRole('button', { name: 'Upload 2 files' }));
 
     expect(await screen.findByText('Upload blocked — PHI detected')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Retry 1 file' })).toBeInTheDocument();
+    // Awaited, not a sync get: the retry control and the blocked message settle
+    // in separate commits, so a synchronous query races the second one and fails
+    // with the button still reading "Scanning for PHI…" whenever the box is busy.
+    expect(await screen.findByRole('button', { name: 'Retry 1 file' })).toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
   });
 });
