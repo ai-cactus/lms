@@ -181,8 +181,12 @@ describe('getCourses — org-manager visibility (#15)', () => {
 
     await getCourses();
 
+    // The learner is pinned as well as the course. A video course is adopted by
+    // many organisations, so a course-only predicate counts other tenants'
+    // enrollments — the sibling `adoptedCounts` query has always carried this.
     expect(mockEnrollmentGroupBy.mock.calls[0][0].where).toEqual({
       course: { creator: { organizationId: 'org-1' } },
+      organizationUser: { organizationId: 'org-1' },
     });
   });
 });
