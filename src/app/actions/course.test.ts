@@ -685,21 +685,27 @@ describe('getCourseById', () => {
     },
   );
 
-  it('the course creator (a worker-category role) receives the full roster — creator wins over role', async () => {
+  it('a worker-category course creator (nurse) with no accessible facilities now fails closed to a SELF-ONLY roster — authorship alone no longer grants it', async () => {
+    // `isCreator` still makes them "privileged" (routes into
+    // narrowRosterToFacilityScope rather than the plain worker filter), but the
+    // `isCreator ? course : narrow(...)` exemption removed in this fix means
+    // that privilege no longer skips the facility narrowing. `nurse` is not
+    // org-wide, and `mockListAccessibleFacilities` defaults to `[]` in
+    // `beforeEach`, so the fail-closed branch (`dataFacilityIds.length === 0`)
+    // is what now decides this case — same rule an ordinary supervisor gets.
     const otherA = makeEnrollment('staff-a', 1);
     const otherB = makeEnrollment('staff-b', 2);
     const creatorEnrollment = makeEnrollment(CREATOR_USER_ID, 3);
     mockCourseFindUnique.mockResolvedValue(makeCourse([otherA, creatorEnrollment, otherB]));
-    // Creator authenticates via the worker auth instance with a non-privileged
-    // role — proves isCreator, not the permission, is what grants the roster here.
     setWorkerSession(CREATOR_USER_ID, 'nurse');
 
     const result = await getCourseById('course-1');
 
-    expect(result.enrollments).toHaveLength(3);
-    expect(result.enrollments.map((e) => e.organizationUser.userId).sort()).toEqual(
-      ['staff-a', 'staff-b', CREATOR_USER_ID].sort(),
-    );
+    expect(result.enrollments).toHaveLength(1);
+    expect(result.enrollments[0].organizationUser.userId).toBe(CREATOR_USER_ID);
+    const emails = result.enrollments.map((e) => e.organizationUser.user.email);
+    expect(emails).not.toContain('staff-a@example.com');
+    expect(emails).not.toContain('staff-b@example.com');
   });
 
   it.each(ROSTER_PRIVILEGED_ORG_WIDE_ROLES)(
@@ -748,7 +754,14 @@ describe('getCourseById', () => {
     },
   );
 
-  it('the course creator who is also an org admin receives the full roster (both privilege paths agree)', async () => {
+  // Still correct post-fix, unlike the nurse-creator case above: `owner` is
+  // org-wide, so `resolveDataFacilityIds` short-circuits to `null` before
+  // `listAccessibleFacilities` is even consulted, and `narrowRosterToFacilityScope`
+  // returns the roster unchanged for a `null` scope. Nothing here depended on
+  // the removed `isCreator` exemption — the org-wide role alone was always
+  // going to get the full roster, so removing that exemption changes nothing
+  // for this case.
+  it('the course creator who is also an org admin receives the full roster (org-wide role, not the removed creator exemption)', async () => {
     const otherA = makeEnrollment('staff-a', 1);
     mockCourseFindUnique.mockResolvedValue(makeCourse([otherA]));
     setAdminSession(CREATOR_USER_ID, 'owner');
@@ -821,6 +834,94 @@ describe('getCourseById', () => {
     setWorkerSession('worker-1', 'nurse');
 
     await expect(getCourseById('course-1')).rejects.toThrow('Course not found');
+  });
+
+  // CROSS-TENANT PII FIX: `mockCourseFindUnique` ignores `where`/`select` — every
+  // test above proves in-memory roster narrowing, but not that the CROSS-TENANT
+  // half of the fix (scoping the query itself, before another org's rows are
+  // ever fetched) is actually wired up. These assert on the ARGUMENTS passed to
+  // `prisma.course.findUnique`, which is the only way to prove that half exists.
+  describe('cross-tenant roster query filter — argument assertions', () => {
+    it("scopes enrollments.where to the caller's organizationId OR their own userId when the session has an organizationId", async () => {
+      const selfId = 'worker-self-query';
+      mockCourseFindUnique.mockResolvedValue(makeCourse([makeEnrollment(selfId, 1)]));
+      setWorkerSession(selfId, 'nurse', ORG_ID);
+
+      await getCourseById('course-1');
+
+      expect(mockCourseFindUnique).toHaveBeenCalledTimes(1);
+      const callArgs = mockCourseFindUnique.mock.calls[0][0];
+      expect(callArgs.where).toEqual({ id: 'course-1' });
+      expect(callArgs.select.enrollments.where).toEqual({
+        organizationUser: { OR: [{ organizationId: ORG_ID }, { userId: selfId }] },
+      });
+    });
+
+    it('fails closed to a self-only enrollments.where — never `organizationId: undefined`, which Prisma reads as no filter — when the session has no organizationId', async () => {
+      const selfId = 'worker-no-org';
+      mockCourseFindUnique.mockResolvedValue(makeCourse([makeEnrollment(selfId, 1)]));
+      mockAdminAuth.mockResolvedValue(null);
+      mockWorkerAuth.mockResolvedValue({
+        user: {
+          id: selfId,
+          role: 'nurse',
+          organizationId: undefined,
+          organizationUserId: undefined,
+        },
+      });
+
+      await getCourseById('course-1');
+
+      const callArgs = mockCourseFindUnique.mock.calls[0][0];
+      expect(callArgs.select.enrollments.where).toEqual({ organizationUser: { userId: selfId } });
+      // The trap this guards against: `organizationId: undefined` is not "no
+      // match", it is a key Prisma drops — silently reopening the leak.
+      expect(callArgs.select.enrollments.where.organizationUser).not.toHaveProperty(
+        'organizationId',
+      );
+    });
+
+    it("the OR clause always carries the caller's own userId, which is what keeps `isEnrolled` true for a membership under a different org than the active session", async () => {
+      const selfId = 'multi-org-worker';
+      mockCourseFindUnique.mockResolvedValue(makeCourse([makeEnrollment(selfId, 1)]));
+      // Active session org differs from wherever this user's enrollment record
+      // actually hangs off — the own-userId clause (asserted above) is what a
+      // real Prisma query would use to keep this row reachable regardless.
+      setWorkerSession(selfId, 'nurse', 'org-active-different');
+
+      const result = await getCourseById('course-1');
+
+      const callArgs = mockCourseFindUnique.mock.calls[0][0];
+      expect(callArgs.select.enrollments.where.organizationUser.OR).toContainEqual({
+        userId: selfId,
+      });
+      // The mock ignores `where`, so this also proves the access-decision code
+      // (`isEnrolled`) itself is unaffected: the caller still reaches their own
+      // course and keeps their own row.
+      expect(result.id).toBe('course-1');
+      expect(result.enrollments).toHaveLength(1);
+      expect(result.enrollments[0].organizationUser.userId).toBe(selfId);
+    });
+
+    it('a caller with no organizationId still reaches their own enrolled course — no `forbidden` throw was added by this fix', async () => {
+      const selfId = 'no-org-worker';
+      mockCourseFindUnique.mockResolvedValue(makeCourse([makeEnrollment(selfId, 1)]));
+      mockAdminAuth.mockResolvedValue(null);
+      mockWorkerAuth.mockResolvedValue({
+        user: {
+          id: selfId,
+          role: 'nurse',
+          organizationId: undefined,
+          organizationUserId: undefined,
+        },
+      });
+
+      const result = await getCourseById('course-1');
+
+      expect(result.id).toBe('course-1');
+      expect(result.enrollments).toHaveLength(1);
+      expect(result.enrollments[0].organizationUser.userId).toBe(selfId);
+    });
   });
 });
 
@@ -980,5 +1081,28 @@ describe('getCourseForOrgView', () => {
     setAdminSessionFor('admin-1', 'owner');
 
     await expect(getCourseForOrgView('course-1')).rejects.toThrow('Course not found');
+  });
+
+  // `mockCourseFindFirst` ignores `where`/`select` just like `mockCourseFindUnique`
+  // does for getCourseById — this function's org scope was already correct
+  // (`organizationUser: { organizationId }`), but nothing proved it at the
+  // argument level. Filling the same blind spot flagged for getCourseById.
+  it("scopes enrollments.where to the caller's organizationId in the query itself", async () => {
+    mockCourseFindFirst.mockResolvedValue(makeGlobalCourse([]));
+    setAdminSessionFor('manager-1', 'owner', ORG_ID);
+
+    await getCourseForOrgView('course-1');
+
+    expect(mockCourseFindFirst).toHaveBeenCalledTimes(1);
+    const callArgs = mockCourseFindFirst.mock.calls[0][0];
+    expect(callArgs.where).toEqual({
+      id: 'course-1',
+      type: 'video',
+      isGlobal: true,
+      status: 'published',
+    });
+    expect(callArgs.select.enrollments.where).toEqual({
+      organizationUser: { organizationId: ORG_ID },
+    });
   });
 });

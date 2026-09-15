@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -23,6 +23,13 @@ interface DatePickerProps {
    * near the bottom of a dialog/viewport where 'bottom-start' would clip.
    */
   placement?: 'bottom-start' | 'top-end';
+  /**
+   * Accessible name for a clear button shown while a date is set, e.g.
+   * "Clear due date". Opt-in: without it the control has no clear affordance,
+   * which is right for pickers whose visibility is already gated by a toggle.
+   * Clearing emits `''`, the value every consumer reads as "no date".
+   */
+  clearLabel?: string;
   /** Extra classes for the trigger button (height/typography overrides). */
   className?: string;
 }
@@ -39,6 +46,7 @@ export default function DatePicker({
   iconPosition = 'end',
   showYearSelect = false,
   placement = 'bottom-start',
+  clearLabel,
   className,
 }: DatePickerProps) {
   // Default minDate to start of today if not provided
@@ -174,6 +182,10 @@ export default function DatePicker({
     yearOptions.sort((a, b) => a - b);
   }
 
+  // Only offered once there is something to clear, so the button can never fire
+  // on an already-empty field.
+  const canClear = Boolean(clearLabel) && Boolean(value);
+
   return (
     <div className="relative w-full" ref={containerRef}>
       <button
@@ -185,6 +197,9 @@ export default function DatePicker({
           isOpen
             ? 'border-ring ring-[3px] ring-ring/50'
             : 'border-input hover:border-ring/60 hover:bg-background-secondary',
+          // Reserve the overlaid clear button's lane so the label — and the
+          // end-positioned calendar icon — never run underneath it.
+          canClear && 'pr-12',
           className,
         )}
         onClick={() => setIsOpen(!isOpen)}
@@ -203,6 +218,22 @@ export default function DatePicker({
           </>
         )}
       </button>
+
+      {canClear && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label={clearLabel}
+          onClick={() => {
+            onChange('');
+            setIsOpen(false);
+          }}
+          className="absolute top-1/2 right-2 -translate-y-1/2 text-text-tertiary hover:text-foreground"
+        >
+          <X className="size-4" aria-hidden="true" />
+        </Button>
+      )}
 
       {isOpen &&
         createPortal(

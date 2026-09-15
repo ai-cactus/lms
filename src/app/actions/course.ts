@@ -156,7 +156,17 @@ export async function getCourses(): Promise<CourseWithStats[]> {
       by: ['courseId', 'status'],
       // Must track `authoredWhere` — otherwise a manager sees their colleagues'
       // courses listed with a permanent 0 enrolled / 0 completed.
-      where: { course: authoredWhere, ...facilityFilter },
+      //
+      // `authoredWhere` pins the COURSE to this organization, never the LEARNER:
+      // an OrgCourseOffering can put the same course in front of another
+      // tenant's staff, whose enrollments would then inflate this card's
+      // enrolled/completed figures. Pin the learner the same way the adopted
+      // sibling below does.
+      where: {
+        course: authoredWhere,
+        ...(organizationId ? { organizationUser: { organizationId } } : {}),
+        ...facilityFilter,
+      },
       _count: { _all: true },
     }),
     organizationId && adoptedCourseIds.length
@@ -250,11 +260,15 @@ export async function getCourses(): Promise<CourseWithStats[]> {
  * Narrow a course roster to the enrollments the viewer's facility scope admits.
  *
  * `courseDetailSelect.enrollments` carries staff PII (email, full name, role,
- * score) for EVERY enrollment on the course, while the detail gates below are
- * role-shaped only — and `isAdminRole` admits `supervisor`, who is bound to the
- * facilities on their own assignments. Without this narrowing a supervisor reads
- * every enrolled worker in the organisation, and on a course shared through an
- * `orgCourseOffering` the roster is not even org-filtered.
+ * score) for every enrollment the query returned, while the detail gates below
+ * are role-shaped only — and `isAdminRole` admits `supervisor`, who is bound to
+ * the facilities on their own assignments. Without this narrowing a supervisor
+ * reads every enrolled worker in the organisation.
+ *
+ * This is the SECOND of two filters and narrows within one tenant only. The
+ * cross-tenant half belongs in the query, because an adopted video course's
+ * roster spans every organisation that adopted it — see the `enrollments.where`
+ * in {@link getCourseById} and {@link getCourseForOrgView}.
  *
  * Applied AFTER the access decision, never before: those gates read this same
  * roster to establish `isEnrolled`, so filtering first would deny a learner
@@ -299,9 +313,28 @@ export async function getCourseById(courseId: string): Promise<CourseWithRelatio
     throw new CourseAccessError('unauthenticated');
   }
 
+  // Video courses are published by Theraptly and adopted by every organisation,
+  // so a single course's enrollments legitimately span tenants. Scoping the
+  // roster to the caller's org in the QUERY means another tenant's staff PII is
+  // never fetched at all — the leak this closes was a manager on an adopted
+  // course receiving every other tenant's enrollees' name, email, role and score.
+  //
+  // The caller's own enrollment is kept whatever org it belongs to: the access
+  // gate below reads this roster to establish `isEnrolled`, and a row that is
+  // theirs is never a disclosure. Without an active organisation there is no
+  // tenant to scope to, so the roster collapses to exactly that — fail closed,
+  // never `organizationId: undefined`, which Prisma would read as "no filter".
+  const organizationId = session.user.organizationId;
+  const rosterWhere: Prisma.EnrollmentWhereInput = organizationId
+    ? { organizationUser: { OR: [{ organizationId }, { userId: session.user.id }] } }
+    : { organizationUser: { userId: session.user.id } };
+
   const course = await prisma.course.findUnique({
     where: { id: courseId },
-    select: courseDetailSelect,
+    select: {
+      ...courseDetailSelect,
+      enrollments: { ...courseDetailSelect.enrollments, where: rosterWhere },
+    },
   });
 
   if (!course) {
@@ -325,21 +358,22 @@ export async function getCourseById(courseId: string): Promise<CourseWithRelatio
     throw new CourseAccessError('forbidden');
   }
 
-  // Only the creator or an org admin may receive the full enrolled-staff roster.
+  // Only the creator or an org admin may receive the enrolled-staff roster.
   // A non-privileged enrolled worker must never get other staff's enrollment PII
   // (email/role/name/certificate) back from this action — the worker page discards
   // it client-side, but a direct server-action call would otherwise leak it (IDOR).
   // `user.read` is the staff-roster permission (the Staff Management gate), so it
   // is what separates a manager who may legitimately see other people's records
   // from a learner who may only ever see their own.
+  //
+  // Authorship buys no exemption from either filter. A video course's creator is
+  // the `system` user rather than any customer, so "creator" is not a tenant with
+  // a claim on every adopter's staff; a reading course is single-tenant by
+  // construction, so filtering an author's own roster removes nothing. Theraptly's
+  // cross-org view of a course belongs in `/system`, not in a customer action.
   const isPrivileged = isCreator || can(dbRoleToRoleKey(session.user.role), 'user.read');
   if (isPrivileged) {
-    // The creator keeps the full roster of the course they authored: `isCreator`
-    // is an ownership gate that predates facility scope, and no facility-bound
-    // role holds `course.create`, so exempting it cannot widen what a supervisor
-    // sees. Everyone else reaching here does so through the role gate, which is
-    // exactly where `isAdminRole` lets a facility-bound supervisor through.
-    return isCreator ? course : narrowRosterToFacilityScope(session, course);
+    return narrowRosterToFacilityScope(session, course);
   }
 
   return {

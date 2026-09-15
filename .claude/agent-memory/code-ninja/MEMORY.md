@@ -82,3 +82,4 @@
 - [Client import of a prisma-bearing lib](gotcha_client_import_of_prisma_bearing_lib.md) — no server-only marker stops it and tsc is happy; split the pure half out and re-export (facility/scope precedent).
 - [Dashboard: two actions, one population](gotcha_dashboard_two_actions_one_population.md) — lib/dashboard/scope.ts shares the POPULATION not the queries; the member org pin is mandatory or you get cross-tenant inflation.
 - [Partial prisma mocks break on a new query](gotcha_partial_prisma_mocks_break_on_new_query.md) — "undefined (reading 'findMany')" blames the lib, but it's a missing key in the test's hand-written vi.mock.
+- [Course roster spans tenants](gotcha_course_roster_spans_tenants.md) — video-course enrollments are cross-tenant; org filter lives in the query with an own-row exemption, and there is deliberately NO creator exemption.

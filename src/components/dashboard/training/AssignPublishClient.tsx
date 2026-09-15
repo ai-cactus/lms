@@ -435,6 +435,7 @@ export default function AssignPublishClient({
               value={scheduleDate}
               onChange={handleScheduleDateChange}
               placeholder="Select date"
+              clearLabel="Clear schedule date"
             />
             <TimePicker value={scheduleTime} onChange={setScheduleTime} placeholder="Select time" />
           </div>
@@ -452,6 +453,7 @@ export default function AssignPublishClient({
               value={dueDate}
               onChange={handleDueDateChange}
               placeholder="Select due date"
+              clearLabel="Clear due date"
             />
             <TimePicker value={dueTime} onChange={setDueTime} placeholder="Select due time" />
           </div>

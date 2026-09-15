@@ -178,7 +178,11 @@ describe('enrollUsers assignment batch', () => {
       title: 'Catalog Course',
       createdByOrgUserId: 'ou-system-user',
       creator: { organizationId: 'org-platform' },
+      // Global implies video: `video-course.ts` is the only writer of
+      // `isGlobal` and sets both together, so a global course with any other
+      // type is a state production cannot produce.
       isGlobal: true,
+      type: 'video',
       status: 'published',
     });
     mockOfferingFindUnique.mockResolvedValue(null);
