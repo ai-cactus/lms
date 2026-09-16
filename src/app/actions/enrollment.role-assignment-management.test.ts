@@ -163,9 +163,12 @@ describe('setRoleAssignmentTargets', () => {
     });
   });
 
-  // Item 2 — permission split. Confirmed against the real registry: supervisor
-  // holds assignment.create but NOT assignment.delete
-  // (src/lib/rbac/permissions.ts).
+  // Item 2 — permission split. `assignment.create` gates the widen and
+  // `assignment.delete` the narrow. Since 2026-09-16 supervisor holds BOTH: the
+  // delete verb was granted for founder Rule C (per-staff withdrawal on the
+  // course roster), and the registry has no finer grain than the resource, so
+  // the role-target narrow comes with it. Finance is the remaining
+  // create-without-delete case that keeps the split itself under test.
   describe('permission split — create gates the widen, delete gates the narrow', () => {
     it('a supervisor (create, no delete) may widen', async () => {
       mockAdminAuth.mockResolvedValue(session('supervisor'));
@@ -182,8 +185,10 @@ describe('setRoleAssignmentTargets', () => {
       expect(prismaMock.courseAssignment.update).toHaveBeenCalledTimes(1);
     });
 
-    it('a supervisor is REFUSED a narrow, by return — never a throw', async () => {
-      mockAdminAuth.mockResolvedValue(session('supervisor'));
+    // A role without `assignment.delete` is refused BY RETURN — never a throw,
+    // which production would redact to React error #441.
+    it('a role holding create but not delete is REFUSED a narrow, by return', async () => {
+      mockAdminAuth.mockResolvedValue(session('nurse'));
       prismaMock.courseAssignment.findFirst.mockResolvedValue(
         assignmentRowFor({ targetRoles: ['nurse', 'hr'] }),
       );
@@ -193,6 +198,18 @@ describe('setRoleAssignmentTargets', () => {
       expect(result.success).toBe(false);
       expect(result.refusedReason).toBeTruthy();
       expect(prismaMock.courseAssignment.update).not.toHaveBeenCalled();
+    });
+
+    it('a supervisor may now narrow too, having gained assignment.delete (Rule C)', async () => {
+      mockAdminAuth.mockResolvedValue(session('supervisor'));
+      prismaMock.courseAssignment.findFirst.mockResolvedValue(
+        assignmentRowFor({ targetRoles: ['nurse', 'hr'] }),
+      );
+
+      const result = await setRoleAssignmentTargets('ca-1', ['nurse']);
+
+      expect(result.success).toBe(true);
+      expect(prismaMock.courseAssignment.update).toHaveBeenCalledTimes(1);
     });
 
     it.each(['owner', 'admin', 'hr', 'clinical_director'])(

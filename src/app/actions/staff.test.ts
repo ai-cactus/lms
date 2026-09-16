@@ -58,6 +58,8 @@ const {
   mockOrgUserFacilityUpdateMany,
   mockOrgUserFacilityUpsert,
   mockInvalidateRevalidationCache,
+  mockOrgUserFindMany,
+  mockListAccessibleFacilities,
   prismaMock,
 } = vi.hoisted(() => {
   const mockOrgUserFindUnique = vi.fn();
@@ -72,6 +74,7 @@ const {
   const mockFacilityFindMany = vi.fn();
   const mockOrgUserFacilityUpdateMany = vi.fn();
   const mockOrgUserFacilityUpsert = vi.fn();
+  const mockOrgUserFindMany = vi.fn();
   const txClient = {
     organizationUserFacility: {
       updateMany: mockOrgUserFacilityUpdateMany,
@@ -91,7 +94,7 @@ const {
     organizationUser: {
       findUnique: mockOrgUserFindUnique,
       findFirst: mockOrgUserFindUnique,
-      findMany: vi.fn().mockResolvedValue([]),
+      findMany: mockOrgUserFindMany,
       update: mockOrgUserUpdate,
     },
     user: { update: mockUserUpdate },
@@ -132,6 +135,8 @@ const {
     mockEnrollUsers: vi.fn(),
     mockEnrollUserForRoleTargets: vi.fn(),
     mockInvalidateRevalidationCache: vi.fn(),
+    mockOrgUserFindMany,
+    mockListAccessibleFacilities: vi.fn(),
     prismaMock,
   };
 });
@@ -165,6 +170,13 @@ vi.mock('@/lib/enrollment/role-targets', () => ({
 // called — a stub that silently swallows the call would hide a real regression.
 vi.mock('@/lib/auth/session-revalidation-cache', () => ({
   invalidateRevalidationCache: mockInvalidateRevalidationCache,
+}));
+// The facility narrowing itself is exercised for real (target-scope and
+// staff-where are NOT mocked); only the roster lookup behind the caller's
+// accessible set is stubbed, so a supervisor session resolves to a real scope.
+vi.mock('@/lib/facility/scope', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/facility/scope')>()),
+  listAccessibleFacilities: mockListAccessibleFacilities,
 }));
 
 import {
@@ -232,6 +244,8 @@ beforeEach(() => {
     failed: [],
   });
   mockInvalidateRevalidationCache.mockResolvedValue(undefined);
+  mockOrgUserFindMany.mockResolvedValue([]);
+  mockListAccessibleFacilities.mockResolvedValue([]);
 });
 
 // ── updateStaffDetails() ────────────────────────────────────────────────────────
@@ -386,16 +400,16 @@ describe('updateStaffDetails() — happy path', () => {
 // ── updateStaffDetails() — RBAC matrix realignment ──────────────────────────────
 
 /**
- * Permission-gate matrix for updateStaffDetails: gated on `can(..., 'user.edit')`.
- * Finance and Clinical Director hold `user.read` only (view-only on staff) and
- * must be denied. RBAC ruling: Supervisor was demoted to read-only and no
- * longer holds `user.edit` either (previously it did) — moved into the deny
- * list. HR, Owner, and the new Owner-equivalent `admin` role retain full edit
- * rights.
+ * Actor-role gate for updateStaffDetails: STAFF_PROFILE_ACTOR_ROLES, NOT
+ * `can(..., 'user.edit')`. Founder Q2 grants the supervisor basic profile
+ * editing (name, job title, contact) over their own facility, while `user.edit`
+ * also gates the facility move and the role change — both reserved for
+ * Owner/Admin/HR. Finance and Clinical Director hold `user.read` only and stay
+ * denied.
  */
-describe('updateStaffDetails() — permission matrix (user.edit gate)', () => {
-  it.each(['finance', 'clinical_director', 'supervisor'] as const)(
-    'denies %s (view-only on staff — no longer holds user.edit)',
+describe('updateStaffDetails() — permission matrix (STAFF_PROFILE_ACTOR_ROLES gate)', () => {
+  it.each(['finance', 'clinical_director', 'nurse'] as const)(
+    'denies %s (view-only on staff) before touching the database',
     async (role) => {
       mockAuth.mockResolvedValue({
         user: { id: 'admin-1', email: 'a@acme.com', role, organizationId: 'org-1' },
@@ -408,6 +422,53 @@ describe('updateStaffDetails() — permission matrix (user.edit gate)', () => {
       expect(mockOrgUserUpdate).not.toHaveBeenCalled();
     },
   );
+
+  // Q2: the supervisor's "U" on Staff Management, delivered as this actor list
+  // rather than as a `user.edit` grant.
+  it('allows a supervisor to edit a profile for staff inside their own facility', async () => {
+    mockAuth.mockResolvedValue({
+      user: { id: 'sup-1', email: 'sup@acme.com', role: 'supervisor', organizationId: 'org-1' },
+    });
+    mockListAccessibleFacilities.mockResolvedValue([{ id: 'fac-1' }]);
+    mockOrgUserFindMany.mockResolvedValue([
+      { id: 'target-1', facilities: [{ facilityId: 'fac-1' }] },
+    ]);
+    mockOrgUserFindUnique.mockResolvedValue({
+      userId: 'target-user-1',
+      organizationId: 'org-1',
+      role: 'nurse',
+    });
+
+    const result = await updateStaffDetails('target-1', { ...baseData, role: 'nurse' });
+
+    expect(result.success).toBe(true);
+    expect(mockUserUpdate).toHaveBeenCalledWith({
+      where: { id: 'target-user-1' },
+      data: { firstName: 'Jane', lastName: 'Doe', fullName: 'Jane Doe' },
+    });
+  });
+
+  // "own facility only" is the other half of Q2 — tenancy alone does not give it.
+  it('denies a supervisor editing staff outside their facilities', async () => {
+    mockAuth.mockResolvedValue({
+      user: { id: 'sup-1', email: 'sup@acme.com', role: 'supervisor', organizationId: 'org-1' },
+    });
+    mockListAccessibleFacilities.mockResolvedValue([{ id: 'fac-1' }]);
+    mockOrgUserFindMany.mockResolvedValue([
+      { id: 'target-1', facilities: [{ facilityId: 'fac-2' }] },
+    ]);
+    mockOrgUserFindUnique.mockResolvedValue({
+      userId: 'target-user-1',
+      organizationId: 'org-1',
+      role: 'nurse',
+    });
+
+    const result = await updateStaffDetails('target-1', { ...baseData, role: 'nurse' });
+
+    expect(result).toEqual({ success: false, error: 'Forbidden' });
+    expect(mockOrgUserUpdate).not.toHaveBeenCalled();
+    expect(mockUserUpdate).not.toHaveBeenCalled();
+  });
 
   it.each(['hr', 'owner', 'admin'] as const)(
     'allows %s to edit name/job-title without changing the role',
@@ -603,20 +664,32 @@ describe('updateStaffDetails() — in-place role change (canChangeRole integrati
     });
   });
 
-  // RBAC ruling: supervisor was demoted to read-only — it no longer holds
-  // user.edit at all, so it can't reach updateStaffDetails for ANY edit, role
-  // change or not. This is the representative "supervisor write denied" check
-  // for the role-change path specifically.
-  it("denies supervisor attempting to change a staff member's role — no longer holds user.edit", async () => {
+  // A supervisor now REACHES this action for profile edits (Q2), so the
+  // role-change refusal has to come from `canChangeRole` — supervisor is not in
+  // ROLE_CHANGE_ACTOR_ROLES — rather than from the outer gate. The target here
+  // is inside their facility precisely so nothing else can be doing the work.
+  it("denies a supervisor changing a staff member's role, even inside their own facility", async () => {
     mockAuth.mockResolvedValue({
       user: { id: 'sup-1', email: 'sup@acme.com', role: 'supervisor', organizationId: 'org-1' },
+    });
+    mockListAccessibleFacilities.mockResolvedValue([{ id: 'fac-1' }]);
+    mockOrgUserFindMany.mockResolvedValue([
+      { id: 'target-1', facilities: [{ facilityId: 'fac-1' }] },
+    ]);
+    mockOrgUserFindUnique.mockResolvedValue({
+      userId: 'target-user-1',
+      organizationId: 'org-1',
+      role: 'nurse',
     });
 
     const result = await updateStaffDetails('target-1', { ...baseData, role: 'hr' });
 
-    expect(result).toEqual({ success: false, error: 'Unauthorized' });
-    expect(mockOrgUserFindUnique).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      success: false,
+      error: "Only an Owner, Admin or HR can change a staff member's role.",
+    });
     expect(mockOrgUserUpdate).not.toHaveBeenCalled();
+    expect(mockUserUpdate).not.toHaveBeenCalled();
   });
 });
 
@@ -1563,8 +1636,11 @@ describe('setStaffFacilities', () => {
     expect(mockOrgUserFacilityUpdateMany).not.toHaveBeenCalled();
   });
 
+  // Rule A: only Owner/Admin/HR may move staff between facilities. Supervisor is
+  // the load-bearing case — it now holds a staff-EDITING power (Q2 profile
+  // edits), and this asserts that power stops short of the facility move.
   it.each(['supervisor', 'finance', 'clinical_director'])(
-    'denies role=%s — lacks user.edit',
+    'denies role=%s — not in FACILITY_CHANGE_ACTOR_ROLES (Rule A)',
     async (role) => {
       mockAuth.mockResolvedValue(makeSession(role));
 
@@ -1575,7 +1651,7 @@ describe('setStaffFacilities', () => {
     },
   );
 
-  it.each(['owner', 'admin', 'hr'])('allows role=%s (holds user.edit)', async (role) => {
+  it.each(['owner', 'admin', 'hr'])('allows role=%s (Rule A actor)', async (role) => {
     mockAuth.mockResolvedValue(makeSession(role));
 
     const result = await setStaffFacilities('target-1', ['fac-1']);

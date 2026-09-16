@@ -103,7 +103,7 @@ export default async function AssignCoursePage(props: PageProps) {
       existingSettings={existingSettings}
       roleHolderCounts={roleHolderCounts}
       // The picker is now the only revoke surface (D5), and revoking is
-      // `assignment.delete` — which a supervisor deliberately does not hold.
+      // `assignment.delete`.
       canRevokeRoleTargets={can(dbRoleToRoleKey(role), 'assignment.delete')}
       pendingInvitedEmails={pendingInvitedEmails}
     />

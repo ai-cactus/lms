@@ -1,10 +1,13 @@
 /**
  * Gating tests for the staff-profile "Change Facility" button (design: Staff
  * Profile header, next to Assign Course). The button must render only for
- * viewers holding user.edit, only when the viewer has MULTI-facility access
- * (a viewer who can see one site has nowhere to reassign anyone to), and never
- * for the organization owner's own profile (the owner's facilities are
- * immutable).
+ * FACILITY_CHANGE_ACTOR_ROLES (Rule A — Owner/Admin/HR), only when the viewer
+ * has MULTI-facility access (a viewer who can see one site has nowhere to
+ * reassign anyone to), and never for the organization owner's own profile (the
+ * owner's facilities are immutable).
+ *
+ * Note it is NOT the same gate as Assign Course: a supervisor edits profiles and
+ * assigns courses, yet must never move anyone between facilities.
  */
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -44,7 +47,7 @@ function makeStaff(role = 'nurse') {
 }
 
 describe('StaffProfileClient — Change Facility button', () => {
-  it('renders for a viewer with user.edit and opens the change-facility modal', async () => {
+  it('renders for a Rule A actor and opens the change-facility modal', async () => {
     const user = userEvent.setup();
     render(
       <StaffProfileClient
@@ -61,17 +64,23 @@ describe('StaffProfileClient — Change Facility button', () => {
     expect(screen.getByText(/Current · Akobo branch/)).toBeInTheDocument();
   });
 
-  it('is hidden for a viewer without user.edit (clinical_director)', () => {
-    render(
-      <StaffProfileClient
-        staff={makeStaff()}
-        viewerRole={'clinical_director' as Role}
-        facilities={FACILITIES}
-      />,
-    );
+  // Supervisor is the case Rule A exists for: it now edits staff profiles and
+  // assigns courses, so "can touch this profile" must not imply "can move this
+  // person". Dropping FACILITY_CHANGE_ACTOR_ROLES here would hand them the move.
+  it.each(['clinical_director', 'finance', 'supervisor'])(
+    'is hidden for %s — not a Rule A actor',
+    (role) => {
+      render(
+        <StaffProfileClient
+          staff={makeStaff()}
+          viewerRole={role as Role}
+          facilities={FACILITIES}
+        />,
+      );
 
-    expect(screen.queryByRole('button', { name: /Change Facility/ })).not.toBeInTheDocument();
-  });
+      expect(screen.queryByRole('button', { name: /Change Facility/ })).not.toBeInTheDocument();
+    },
+  );
 
   // An org-wide role is not assigned to a facility at all, so there is nothing
   // to change. Shown DISABLED rather than hidden: on a standalone control that

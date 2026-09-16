@@ -246,6 +246,13 @@ export const roles = {
       // enrolment target are narrowed to the caller's facilities in the same
       // commit. Never grant these without that narrowing.
       'assignment.create',
+      // Founder Rule C (docs/local/RBAC-founder-answers-2026-09-15.md):
+      // "Supervisors should be able to withdraw course from staff in their
+      // facility". Closes the assign-but-never-withdraw asymmetry this role was
+      // left with. Scope, not reach: `removeWorkerAssignment` narrows the target
+      // to the caller's facilities, so the verb only ever reaches staff a
+      // supervisor already manages.
+      'assignment.delete',
       'enrollment.create',
     ],
   },

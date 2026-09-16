@@ -119,13 +119,18 @@ const MATRIX: Record<MatrixModule, Record<MatrixRole, Cell>> = {
     supervisor: diverges(
       'RU',
       'R',
-      'Q2 narrows the "U" to assigning courses and basic profile editing, ' +
-        'neither of which is `user.edit`: that same permission also gates ' +
-        "changing a staff member's facility and role, which the directive's own " +
-        'action rules reserve for Owner/Admin/HR. Granting it outright would ' +
-        'hand supervisors powers the directive withholds, so the narrow ' +
-        'capability ships as a scoped change, not as this grant. See ' +
-        'docs/local/RBAC-conformance-2026-09-15.md §A.3.',
+      'The "U" IS delivered — it is simply not this grant. Q2 narrows it to ' +
+        'assigning courses and basic profile editing (name, job title, contact, ' +
+        'own facility only), while `user.edit` also gates changing a staff ' +
+        "member's facility and role, which the directive's own action rules " +
+        'reserve for Owner/Admin/HR. So profile editing ships as ' +
+        '`STAFF_PROFILE_ACTOR_ROLES` in role-utils.ts — an actor list that ' +
+        "`updateStaffDetails` checks and then narrows to the caller's own " +
+        'facilities — and the facility move stays on ' +
+        '`FACILITY_CHANGE_ACTOR_ROLES` (Rule A). Course assignment is already ' +
+        'covered by `assignment.create`/`enrollment.create`, and withdrawal by ' +
+        '`assignment.delete` (Rule C). The registry therefore grants `R` here on ' +
+        'purpose. See docs/local/RBAC-conformance-2026-09-15.md §A.3.',
     ),
   },
   Billing: {

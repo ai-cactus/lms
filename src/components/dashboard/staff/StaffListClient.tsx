@@ -35,7 +35,11 @@ import {
 import EmptyTableState from '@/components/ui/EmptyTableState';
 import { cn, formatRelativeTime } from '@/lib/utils';
 import { can } from '@/lib/rbac/permissions';
-import { dbRoleToRoleKey, getRoleDisplayName } from '@/lib/rbac/role-utils';
+import {
+  dbRoleToRoleKey,
+  getRoleDisplayName,
+  FACILITY_CHANGE_ACTOR_ROLES,
+} from '@/lib/rbac/role-utils';
 import { isOrgWideFacilityRole } from '@/lib/facility/org-wide-roles';
 import type { AccessibleFacility } from '@/lib/facility/scope';
 import type { Role } from '@/types/next-auth';
@@ -104,10 +108,12 @@ export default function StaffListClient({
   const canRemoveStaff = can(inviterRoleKey, 'user.delete');
   const canEditInvite = can(inviterRoleKey, 'invite.edit');
   const canDeleteInvite = can(inviterRoleKey, 'invite.delete');
-  // Reassigning a facility is a membership edit, and `facilities` is the
-  // VIEWER's accessible set — so "more than one" is exactly "has multi-facility
-  // access". A viewer scoped to a single facility has nowhere to move anyone to.
-  const canChangeFacility = can(inviterRoleKey, 'user.edit') && facilities.length > 1;
+  // Rule A actors only (Owner/Admin/HR), matching `setStaffFacilities` and the
+  // staff profile. `facilities` is the VIEWER's accessible set, so "more than
+  // one" is exactly "has multi-facility access" — a viewer scoped to a single
+  // facility has nowhere to move anyone to.
+  const canChangeFacility =
+    FACILITY_CHANGE_ACTOR_ROLES.includes(inviterRole) && facilities.length > 1;
 
   // Total seats consumed = active workers + pending invites
   const totalUsed = currentWorkerCount + pendingInviteCount;

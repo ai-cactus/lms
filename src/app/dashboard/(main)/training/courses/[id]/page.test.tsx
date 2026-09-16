@@ -69,7 +69,10 @@ describe('CourseDetailsPage', () => {
   });
 
   it('renders TrainingDetails when a course is returned', async () => {
-    mockLoadCourseDetail.mockResolvedValue({ id: 'course-1' });
+    mockLoadCourseDetail.mockResolvedValue({
+      id: 'course-1',
+      creator: { organizationId: 'org-1' },
+    });
 
     const element = await CourseDetailsPage({ params });
     render(element);
@@ -88,20 +91,74 @@ describe('CourseDetailsPage', () => {
 
 /**
  * The withdraw control's gate is computed HERE, mirroring
- * removeWorkerAssignment's own course-creator rule, so the action is never
- * offered where it would be refused.
+ * removeWorkerAssignment's own gate — the `assignment.delete` verb plus COU-004
+ * org ownership — so the action is never offered where it would be refused.
+ * Authorship is deliberately NOT part of it any more.
  */
 describe('CourseDetailsPage — withdraw gate', () => {
-  it('allows withdrawing when the viewer created the course', async () => {
-    mockLoadCourseDetail.mockResolvedValue({ id: 'course-1', createdByOrgUserId: 'ou-1' });
+  it('allows withdrawing a course the viewer created', async () => {
+    mockLoadCourseDetail.mockResolvedValue({
+      id: 'course-1',
+      createdByOrgUserId: 'ou-1',
+      creator: { organizationId: 'org-1' },
+    });
 
     render(await CourseDetailsPage({ params }));
 
     expect(screen.getByTestId('training-details')).toHaveAttribute('data-can-withdraw', 'true');
   });
 
-  it('withholds it when someone else created the course — reading a roster is not withdrawing from it', async () => {
-    mockLoadCourseDetail.mockResolvedValue({ id: 'course-1', createdByOrgUserId: 'ou-other' });
+  // COU-004: a course belongs to the organization, not to its author.
+  it('allows withdrawing a colleague-authored course in the same organization', async () => {
+    mockLoadCourseDetail.mockResolvedValue({
+      id: 'course-1',
+      createdByOrgUserId: 'ou-other',
+      creator: { organizationId: 'org-1' },
+    });
+
+    render(await CourseDetailsPage({ params }));
+
+    expect(screen.getByTestId('training-details')).toHaveAttribute('data-can-withdraw', 'true');
+  });
+
+  // Rule C: a supervisor authors nothing, so the old creator rule made the
+  // control permanently absent for them.
+  it('offers it to a supervisor, who holds assignment.delete but authors nothing', async () => {
+    mockAuth.mockResolvedValue({
+      user: { id: 'u-2', organizationUserId: 'ou-2', organizationId: 'org-1', role: 'supervisor' },
+    });
+    mockLoadCourseDetail.mockResolvedValue({
+      id: 'course-1',
+      createdByOrgUserId: 'ou-other',
+      creator: { organizationId: 'org-1' },
+    });
+
+    render(await CourseDetailsPage({ params }));
+
+    expect(screen.getByTestId('training-details')).toHaveAttribute('data-can-withdraw', 'true');
+  });
+
+  it('withholds it from a role without assignment.delete', async () => {
+    mockAuth.mockResolvedValue({
+      user: { id: 'u-3', organizationUserId: 'ou-3', organizationId: 'org-1', role: 'nurse' },
+    });
+    mockLoadCourseDetail.mockResolvedValue({
+      id: 'course-1',
+      createdByOrgUserId: 'ou-3',
+      creator: { organizationId: 'org-1' },
+    });
+
+    render(await CourseDetailsPage({ params }));
+
+    expect(screen.getByTestId('training-details')).toHaveAttribute('data-can-withdraw', 'false');
+  });
+
+  it("withholds it for another tenant's course, even from an owner", async () => {
+    mockLoadCourseDetail.mockResolvedValue({
+      id: 'course-1',
+      createdByOrgUserId: 'ou-other',
+      creator: { organizationId: 'org-other' },
+    });
 
     render(await CourseDetailsPage({ params }));
 
@@ -110,7 +167,11 @@ describe('CourseDetailsPage — withdraw gate', () => {
 
   it('withholds it when there is no session membership', async () => {
     mockAuth.mockResolvedValue(null);
-    mockLoadCourseDetail.mockResolvedValue({ id: 'course-1', createdByOrgUserId: 'ou-1' });
+    mockLoadCourseDetail.mockResolvedValue({
+      id: 'course-1',
+      createdByOrgUserId: 'ou-1',
+      creator: { organizationId: 'org-1' },
+    });
 
     render(await CourseDetailsPage({ params }));
 

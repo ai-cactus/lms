@@ -1,9 +1,15 @@
 /**
- * Gating tests for the staff-profile "Assign Course" button. It follows the
- * `assignment.create` gate `assignCoursesToStaffMember` enforces — NOT the
- * `user.edit` roster gate next to it — so a Clinical Director may assign
- * training without holding any roster-edit rights, while a Finance viewer sees
- * nothing.
+ * Gating tests for the staff-profile "Assign Course" button.
+ *
+ * The gate is a CONJUNCTION: STAFF_PROFILE_ACTOR_ROLES (who may touch a staff
+ * profile at all) AND `assignment.create`. Both halves are load-bearing and
+ * neither may be dropped:
+ *
+ *  - without the actor list, Clinical Director — which holds all four
+ *    `assignment.*` verbs — would get a mutating affordance on a profile the
+ *    RBAC matrix makes it view-only on (rbac-staff-view-only.spec.ts).
+ *  - without `assignment.create`, a role with roster rights but no assign verb
+ *    would be offered a button the server action refuses.
  */
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -56,13 +62,23 @@ describe('StaffProfileClient — Assign Course button', () => {
     ).toBeInTheDocument();
   });
 
-  it('is hidden for a clinical director — view-only on staff despite assignment.create', () => {
+  // ⛔ The regression this whole file exists to catch: simplifying the gate to a
+  // bare `assignment.create` check surfaces this button for Clinical Director.
+  it('is hidden for a clinical director — view-only on staff despite holding every assignment verb', () => {
     renderFor('clinical_director');
 
     expect(screen.queryByRole('button', { name: /Assign Course/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Change Facility/ })).not.toBeInTheDocument();
   });
 
-  it('renders for HR, who holds both user.edit and assignment.create', () => {
+  // Q2: the supervisor's "U" — assigning courses — now reaches the profile.
+  it('renders for a supervisor, who holds the profile actor list and assignment.create', () => {
+    renderFor('supervisor');
+
+    expect(screen.getByRole('button', { name: /Assign Course/ })).toBeInTheDocument();
+  });
+
+  it('renders for HR, who holds both the profile actor list and assignment.create', () => {
     renderFor('hr');
 
     expect(screen.getByRole('button', { name: /Assign Course/ })).toBeInTheDocument();
