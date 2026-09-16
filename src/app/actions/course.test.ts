@@ -329,10 +329,13 @@ describe('getDashboardData', () => {
     // (an admin is an org manager per `authoredCourseWhere`), pinned to the
     // organisation's members — not the viewer's own `createdByOrgUserId`. That
     // literal was the single-facility dashboard bug (see dashboard-parity.test.ts).
+    // `active: true` arrived with founder Q23: removeStaff now retains a departed
+    // member's enrollments, so a dashboard must exclude them or report on people
+    // who have left.
     expect(mockEnrollmentFindMany).toHaveBeenCalledWith({
       where: {
         course: { creator: { organizationId: ORG_ID } },
-        organizationUser: { organizationId: ORG_ID },
+        organizationUser: { organizationId: ORG_ID, active: true },
         score: { not: null },
       },
       select: { courseId: true, score: true, completedAt: true },
