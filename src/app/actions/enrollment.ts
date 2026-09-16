@@ -157,6 +157,27 @@ export async function getAvailableUsers() {
     throw new Error('Unauthorized');
   }
 
+  // The rows below carry staff EMAIL addresses, and this had no permission gate
+  // at all — a session check only. It resolves a WORKER session too, so any
+  // learner could POST to it and read their facility's roster. No page links it
+  // today, which changes nothing: a `'use server'` export is an HTTP endpoint
+  // whether or not the UI calls it.
+  //
+  // Same pair `searchStaffUsers` (user.ts) uses, and for the same reason:
+  // `user.read` is the Staff Management verb, while clinical director reaches
+  // the assignee picker through `assignment.create` instead. Neither verb is in
+  // `workerPermissions`, so this admits exactly the five manager roles that may
+  // assign training.
+  const roleKey = dbRoleToRoleKey(session.user.role);
+  if (!can(roleKey, 'user.read') && !can(roleKey, 'assignment.create')) {
+    logger.warn({
+      msg: '[enrollment] getAvailableUsers denied — no roster or assignment visibility',
+      userId: session.user.id,
+      role: session.user.role,
+    });
+    throw new Error('Forbidden');
+  }
+
   // Restrict to the caller's ACTIVE organization — never return members of
   // other tenants. `id` is the organizationUserId, the membership every
   // org-scoped artifact is owned by. Org is authoritative on the DB-revalidated
