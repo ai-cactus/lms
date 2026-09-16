@@ -113,8 +113,12 @@ export const GRANTABLE_ROLES: Record<Role, readonly Role[]> = {
   admin: ['supervisor', 'hr', 'clinical_director', 'finance', ...WORKER_ROLES],
   // Read-only per the RBAC matrix — a supervisor grants nothing.
   supervisor: [],
-  // D1 — HR may grant any role EXCEPT supervisor, admin and owner.
-  hr: ['hr', 'clinical_director', 'finance', ...WORKER_ROLES],
+  // HR may grant any role EXCEPT `admin` and `owner` — founder answer to Q10
+  // ("HR should be able to invite anyone except an owner; including facility
+  // supervisors"), narrowed in round 2 to "Make it 'Owner and Admin'"
+  // (docs/local/RBAC-founder-answers-2026-09-15.md). Withholding `admin` is
+  // what shuts the escalation path: HR cannot mint an Owner-equivalent seat.
+  hr: ['supervisor', 'hr', 'clinical_director', 'finance', ...WORKER_ROLES],
   clinical_director: [],
   finance: [],
   psychiatrist_prescriber: [],
@@ -128,14 +132,17 @@ export const GRANTABLE_ROLES: Record<Role, readonly Role[]> = {
 };
 
 /**
- * Roles permitted to change another staff member's role in place. Deliberately
- * narrower than the invite-grant matrix: only an organisation Owner or Admin may
- * re-role an existing account (HR can invite/edit staff but not re-role them;
- * Supervisor is read-only per the RBAC matrix). Owner is intentionally excluded
- * from every {@link GRANTABLE_ROLES} list, so promoting to — or changing — an
- * owner is rejected by {@link canChangeRole} without any special-case here.
+ * Roles permitted to change another staff member's role in place: Owner, Admin
+ * and HR (founder answer to Q11 — "HR should be able to change all roles except
+ * Owner", narrowed in round 2 to "Make it except 'Owner and Admin'"). Supervisor
+ * is read-only per the RBAC matrix and stays out.
+ *
+ * This list only decides WHO may re-role; the ceiling on WHOM they may reach and
+ * WHAT they may grant comes from {@link GRANTABLE_ROLES}, which {@link canChangeRole}
+ * applies to the target's current role AND the requested new role. So HR's
+ * owner/admin carve-out is enforced by that one list — no special-case here.
  */
-export const ROLE_CHANGE_ACTOR_ROLES: readonly Role[] = ['owner', 'admin'];
+export const ROLE_CHANGE_ACTOR_ROLES: readonly Role[] = ['owner', 'admin', 'hr'];
 
 /** Why {@link canChangeRole} denied a role change (maps to caller-facing copy). */
 export type RoleChangeDenyReason =
@@ -148,12 +155,12 @@ export interface RoleChangeDecision {
 
 /**
  * Pure guard for an in-place staff role change. Evaluated in order:
- *   1. actor not an Owner/Admin             → `actor_not_permitted`
+ *   1. actor not an Owner/Admin/HR          → `actor_not_permitted`
  *   2. actor is the target (self re-role)   → `self_change`
  *   3. target's CURRENT role not grantable  → `target_not_reachable`
  *      (e.g. an owner — owner is in no grant list)
  *   4. requested NEW role not grantable     → `role_not_grantable`
- *      (e.g. owner, or admin for an Admin actor)
+ *      (e.g. owner, or admin for an Admin or HR actor)
  * No I/O — the caller owns the DB writes, session-kill and audit.
  */
 export function canChangeRole(

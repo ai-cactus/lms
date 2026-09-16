@@ -6,8 +6,9 @@
  *       supervisor, hr, clinical_director, finance, + all 8 job-specific worker
  *       roles (e.g. Nurse, Case Manager, ...)
  *     but NOT 'owner' (non-grantable).
- *   - An 'hr' inviter sees: hr, clinical_director, finance, + all 8 worker roles
- *     but NOT 'supervisor' or 'owner'.
+ *   - An 'hr' inviter sees: supervisor, hr, clinical_director, finance, + all 8
+ *     worker roles but NOT 'admin' or 'owner' (founder Q10 — HR may invite
+ *     anyone except the two Owner-equivalent seats).
  *   - 'owner' never appears as an option in any inviter's role selector.
  *
  * Note: the single 'worker' role was replaced by 8 job-specific worker-category
@@ -219,7 +220,7 @@ test.describe('Invite modal — role selector per inviter role', () => {
     }
   });
 
-  test('hr sees hr, clinical_director, finance, + all 8 worker roles — but NOT supervisor or owner', async ({
+  test('hr sees supervisor, hr, clinical_director, finance, + all 8 worker roles — but NOT admin or owner', async ({
     page,
   }) => {
     test.setTimeout(90_000);
@@ -231,7 +232,8 @@ test.describe('Invite modal — role selector per inviter role', () => {
       const select = page.getByRole('combobox').first();
       await select.click();
 
-      // HR's grantable admin roles
+      // HR's grantable admin roles — supervisor added per founder Q10.
+      await expect(page.getByRole('option', { name: /supervisor/i })).toBeVisible();
       await expect(page.getByRole('option', { name: /^hr$/i })).toBeVisible();
       await expect(page.getByRole('option', { name: /clinical director/i })).toBeVisible();
       await expect(page.getByRole('option', { name: /finance/i })).toBeVisible();
@@ -243,8 +245,10 @@ test.describe('Invite modal — role selector per inviter role', () => {
         page.getByRole('option', { name: /front desk.*administrative support/i }),
       ).toBeVisible();
 
-      // Supervisor and owner must NOT be options (D1)
-      await expect(page.getByRole('option', { name: /supervisor/i })).not.toBeVisible();
+      // The escalation fence: HR may grant everything EXCEPT the two
+      // Owner-equivalent seats (founder Q10, round 2 — "Make it 'Owner and
+      // Admin'"). Losing either assertion is a privilege-escalation regression.
+      await expect(page.getByRole('option', { name: /^admin$/i })).not.toBeVisible();
       await expect(page.getByRole('option', { name: /^owner/i })).not.toBeVisible();
     } finally {
       await cleanup(seeded);

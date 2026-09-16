@@ -128,21 +128,23 @@ describe('deleteCourse — scoped to the organisation, not the author', () => {
     expect(prismaMock.course.delete).toHaveBeenCalledWith({ where: { id: 'course-1' } });
   });
 
-  it.each(['owner', 'admin', 'hr', 'clinical_director'])(
-    'lets %s delete their organisation’s course',
+  it.each(['owner', 'admin', 'hr'])('lets %s delete their organisation’s course', async (role) => {
+    mockAdminAuth.mockResolvedValue(session(role));
+
+    await expect(deleteCourse('course-1')).resolves.toEqual({ success: true });
+  });
+
+  // clinical_director lost course.delete per founder Q3 ("Confirmed") — it
+  // authors courses (CRU) but deletion is reserved for Owner/Admin/HR.
+  it.each(['clinical_director', 'supervisor', 'finance', 'nurse'])(
+    'refuses %s — no course.delete',
     async (role) => {
       mockAdminAuth.mockResolvedValue(session(role));
 
-      await expect(deleteCourse('course-1')).resolves.toEqual({ success: true });
+      const result = await deleteCourse('course-1');
+
+      expect(result.success).toBe(false);
+      expect(prismaMock.course.delete).not.toHaveBeenCalled();
     },
   );
-
-  it.each(['supervisor', 'finance', 'nurse'])('refuses %s — no course.delete', async (role) => {
-    mockAdminAuth.mockResolvedValue(session(role));
-
-    const result = await deleteCourse('course-1');
-
-    expect(result.success).toBe(false);
-    expect(prismaMock.course.delete).not.toHaveBeenCalled();
-  });
 });

@@ -294,8 +294,8 @@ describe('updateOrganization', () => {
     expect(prisma.organization.update).not.toHaveBeenCalled();
   });
 
-  it.each(['owner', 'admin'])(
-    'allows an Owner-equivalent role (%s) to update the organization — organization.edit holder',
+  it.each(['owner', 'admin', 'hr'])(
+    'allows an organization.edit holder (%s) to update the organization',
     async (role) => {
       mockAuth.mockResolvedValue(makeSession(role));
 
@@ -305,13 +305,11 @@ describe('updateOrganization', () => {
     },
   );
 
-  // RBAC ruling: `organization.edit` resolves to Owner/Admin ONLY. Supervisor was
+  // `organization.edit` resolves to Owner/Admin/HR (founder Q9). Supervisor was
   // demoted to read-only everywhere (no writes anywhere, incl. org settings), and
-  // HR/Clinical Director/Finance never held organization write access — they only
-  // ever had `organization.read`. Previously this suite asserted all five of these
-  // admin-tier roles could write, which predates the ruling; now asserting denial.
-  it.each(['supervisor', 'hr', 'clinical_director', 'finance'])(
-    'denies a non-Owner-equivalent admin-tier role (%s) — lacks organization.edit',
+  // Clinical Director/Finance hold only `organization.read`.
+  it.each(['supervisor', 'clinical_director', 'finance'])(
+    'denies an admin-tier role without organization.edit (%s)',
     async (role) => {
       mockAuth.mockResolvedValue(makeSession(role));
 
@@ -521,8 +519,8 @@ describe('createFacility', () => {
     expect(prisma.facility.create).not.toHaveBeenCalled();
   });
 
-  it.each(['supervisor', 'hr', 'clinical_director', 'finance'])(
-    'denies role=%s — facility.create is Owner/Admin only',
+  it.each(['supervisor', 'clinical_director', 'finance'])(
+    'denies role=%s — facility.create is Owner/Admin/HR',
     async (role) => {
       mockAuth.mockResolvedValue(makeSession(role));
 
@@ -534,7 +532,7 @@ describe('createFacility', () => {
     },
   );
 
-  it.each(['owner', 'admin'])('allows role=%s (holds facility.create)', async (role) => {
+  it.each(['owner', 'admin', 'hr'])('allows role=%s (holds facility.create)', async (role) => {
     mockAuth.mockResolvedValue(makeSession(role));
 
     const result = await createFacility(input);
@@ -779,7 +777,7 @@ describe('getSupervisorOptions', () => {
     expect(prisma.organizationUser.findMany).not.toHaveBeenCalled();
   });
 
-  it.each(['supervisor', 'hr', 'clinical_director', 'finance', 'nurse'])(
+  it.each(['supervisor', 'clinical_director', 'finance', 'nurse'])(
     'denies role=%s — the roster is gated on facility.create, like the form it feeds',
     async (role) => {
       mockAuth.mockResolvedValue(makeSession(role));
@@ -792,22 +790,25 @@ describe('getSupervisorOptions', () => {
     },
   );
 
-  it.each(['owner', 'admin'])("returns the org's active supervisors for role=%s", async (role) => {
-    mockAuth.mockResolvedValue(makeSession(role));
+  it.each(['owner', 'admin', 'hr'])(
+    "returns the org's active supervisors for role=%s",
+    async (role) => {
+      mockAuth.mockResolvedValue(makeSession(role));
 
-    const result = await getSupervisorOptions();
+      const result = await getSupervisorOptions();
 
-    expect(prisma.organizationUser.findMany).toHaveBeenCalledWith({
-      where: { organizationId: 'org-1', active: true, role: 'supervisor' },
-      select: { id: true, user: { select: { fullName: true, email: true } } },
-      orderBy: { joinedAt: 'asc' },
-    });
-    expect(result).toEqual({
-      success: true,
-      options: [
-        { organizationUserId: 'orguser-1', fullName: 'Ada Lovelace', email: 'ada@acme.com' },
-        { organizationUserId: 'orguser-2', fullName: null, email: 'grace@acme.com' },
-      ],
-    });
-  });
+      expect(prisma.organizationUser.findMany).toHaveBeenCalledWith({
+        where: { organizationId: 'org-1', active: true, role: 'supervisor' },
+        select: { id: true, user: { select: { fullName: true, email: true } } },
+        orderBy: { joinedAt: 'asc' },
+      });
+      expect(result).toEqual({
+        success: true,
+        options: [
+          { organizationUserId: 'orguser-1', fullName: 'Ada Lovelace', email: 'ada@acme.com' },
+          { organizationUserId: 'orguser-2', fullName: null, email: 'grace@acme.com' },
+        ],
+      });
+    },
+  );
 });

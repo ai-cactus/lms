@@ -303,17 +303,19 @@ describe('createInvites() — invalid role is rejected per-row', () => {
 // ── Privilege escalation (GRANTABLE_ROLES fence) ─────────────────────────────
 
 describe('createInvites() — privilege escalation is blocked per-row', () => {
-  it('hr cannot grant supervisor (D1) — forbidden row + warn log', async () => {
+  // Founder Q10, round 2 — HR may invite everything except the two
+  // Owner-equivalent seats, so `admin` is where its fence now sits.
+  it('hr cannot grant admin — forbidden row + warn log', async () => {
     mockAuth.mockResolvedValue(makeSession('hr'));
 
-    const result = await createInvites([item('new@acme.com', 'supervisor')]);
+    const result = await createInvites([item('new@acme.com', 'admin')]);
 
     expect(result.success).toBe(true);
     const row = result.results.find((r) => r.email === 'new@acme.com');
     expect(row?.status).toBe('forbidden');
     expect(row?.message).toBe('You cannot grant the requested role.');
     expect(mockLoggerWarn).toHaveBeenCalledWith(
-      expect.objectContaining({ inviterRole: 'hr', requestedRole: 'supervisor' }),
+      expect.objectContaining({ inviterRole: 'hr', requestedRole: 'admin' }),
     );
   });
 

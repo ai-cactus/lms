@@ -1,10 +1,10 @@
 /**
  * Regression tests for the /dashboard/settings server gate.
  *
- * Settings is gated on the granular `organization.edit` permission — owner
- * and admin (Owner-equivalent) hold it, every other admin role (supervisor,
- * hr, clinical_director, finance) must see the styled access-denied card
- * instead of the real Settings UI — mirroring the Billing route's gate
+ * Settings is gated on the granular `organization.edit` permission — owner,
+ * admin (Owner-equivalent) and hr (founder Q9) hold it, every other admin role
+ * (supervisor, clinical_director, finance) must see the styled access-denied
+ * card instead of the real Settings UI — mirroring the Billing route's gate
  * pattern (see ./../billing/page.test.tsx).
  */
 import { render, screen } from '@testing-library/react';
@@ -97,7 +97,7 @@ describe('SettingsPageRoute — organization.edit gate', () => {
     expect(prismaMock.organizationUser.findMany).not.toHaveBeenCalled();
   });
 
-  it.each(['owner', 'admin'])('renders the real Settings UI for %s', async (role) => {
+  it.each(['owner', 'admin', 'hr'])('renders the real Settings UI for %s', async (role) => {
     mockAuth.mockResolvedValueOnce(makeSession(role));
 
     const element = await SettingsPageRoute();
@@ -110,7 +110,7 @@ describe('SettingsPageRoute — organization.edit gate', () => {
     expect(screen.queryByText(/don.t have access to settings/i)).not.toBeInTheDocument();
   });
 
-  it.each(['supervisor', 'hr', 'clinical_director', 'finance'])(
+  it.each(['supervisor', 'clinical_director', 'finance'])(
     'renders the access-denied card instead of Settings for %s',
     async (role) => {
       mockAuth.mockResolvedValueOnce(makeSession(role));

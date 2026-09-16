@@ -110,7 +110,9 @@ describe('updateFacility() — permission denied (403)', () => {
   // longer holds `facility.edit`. It is absent from this list because PROF-002
   // re-admits it for its OWN assigned facilities only — see the dedicated
   // describe block below for both branches of that exception.
-  it.each(['hr', 'clinical_director', 'finance', 'nurse'] as const)(
+  // `hr` is absent for a different reason: founder Q8 put facility
+  // create/edit/delete with Owner/Admin/HR, so HR holds `facility.edit` outright.
+  it.each(['clinical_director', 'finance', 'nurse'] as const)(
     '%s is forbidden from updating the facility',
     async (role) => {
       mockAuth.mockResolvedValue(makeSession(role));
@@ -230,6 +232,19 @@ describe('updateFacility() — owner is allowed', () => {
 describe('updateFacility() — admin (Owner-equivalent) is allowed', () => {
   it('succeeds and calls facility.update with the correct facilityId', async () => {
     mockAuth.mockResolvedValue(makeSession('admin'));
+    mockOrgUserFacilityFindFirst.mockResolvedValue({ facilityId: 'fac-7' });
+
+    const result = await updateFacility({ city: 'Denver', state: 'CO' });
+
+    expect(result.success).toBe(true);
+    expect(mockFacilityUpdate).toHaveBeenCalledOnce();
+    expect(mockFacilityUpdate.mock.calls[0][0].where).toEqual({ id: 'fac-7' });
+  });
+});
+
+describe('updateFacility() — hr is allowed (founder Q8: Owner/Admin/HR)', () => {
+  it('succeeds and calls facility.update with the correct facilityId', async () => {
+    mockAuth.mockResolvedValue(makeSession('hr'));
     mockOrgUserFacilityFindFirst.mockResolvedValue({ facilityId: 'fac-7' });
 
     const result = await updateFacility({ city: 'Denver', state: 'CO' });
