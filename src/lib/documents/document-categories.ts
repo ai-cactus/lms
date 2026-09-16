@@ -1,5 +1,3 @@
-import type { Prisma } from '@/generated/prisma/client';
-
 /**
  * The classification vocabulary every organization starts with.
  *
@@ -31,6 +29,22 @@ export const OTHER_CATEGORY_OPTION = 'Other';
 export const MAX_DOCUMENT_CATEGORY_LENGTH = 60;
 
 /**
+ * Minimal client surface for the seeder below, so the app's client, a
+ * transaction client and the seed script's own bare `PrismaClient` all satisfy
+ * it. Neither concrete type can stand in for the other: `Prisma.TransactionClient`
+ * describes the UN-extended client, while the app's client carries the Q24
+ * archive extension (see `db/index.ts`), and their delegates differ structurally.
+ */
+interface DocumentCategoryWriter {
+  documentCategory: {
+    createMany(args: {
+      data: { organizationId: string; name: string }[];
+      skipDuplicates?: boolean;
+    }): Promise<{ count: number }>;
+  };
+}
+
+/**
  * Give a freshly created organization the default vocabulary.
  *
  * Runs inside the caller's transaction so a failed onboarding never leaves an
@@ -39,7 +53,7 @@ export const MAX_DOCUMENT_CATEGORY_LENGTH = 60;
  */
 export async function seedDefaultDocumentCategories(
   organizationId: string,
-  tx: Prisma.TransactionClient,
+  tx: DocumentCategoryWriter,
 ): Promise<void> {
   await tx.documentCategory.createMany({
     data: DEFAULT_DOCUMENT_CATEGORIES.map((name) => ({ organizationId, name })),

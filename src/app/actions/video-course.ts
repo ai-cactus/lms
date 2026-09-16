@@ -92,6 +92,9 @@ export async function createVideoCourse(
         type: 'video',
         isGlobal: true,
         status: 'published',
+        // A global video course is owned by the internal System organization —
+        // the same membership that authors it (Q25).
+        organizationId: system.organizationId,
         createdByOrgUserId: system.id,
       },
     });

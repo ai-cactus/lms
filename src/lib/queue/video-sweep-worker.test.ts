@@ -44,6 +44,7 @@ const {
   mockDeleteFile,
   mockLessonFindMany,
   mockCourseFindMany,
+  mockFilteredCourseFindMany,
   mockCourseArtifactFindMany,
   mockLoggerInfo,
   mockLoggerWarn,
@@ -54,6 +55,7 @@ const {
   const mockDeleteFile = vi.fn();
   const mockLessonFindMany = vi.fn();
   const mockCourseFindMany = vi.fn();
+  const mockFilteredCourseFindMany = vi.fn();
   const mockCourseArtifactFindMany = vi.fn();
   const mockLoggerInfo = vi.fn();
   const mockLoggerWarn = vi.fn();
@@ -78,6 +80,7 @@ const {
     mockDeleteFile,
     mockLessonFindMany,
     mockCourseFindMany,
+    mockFilteredCourseFindMany,
     mockCourseArtifactFindMany,
     mockLoggerInfo,
     mockLoggerWarn,
@@ -96,14 +99,22 @@ vi.mock('@/lib/storage', () => ({
   listFilesForActiveBackend: mockListFilesForActiveBackend,
   deleteFile: mockDeleteFile,
 }));
+// The Course half of the reference set MUST come off the un-extended client:
+// through the archive-filtered one an archived course's preview video drops out
+// of the "do not delete" set and the sweeper destroys a file Q24 retains. The
+// two clients therefore get DIFFERENT spies, so a regression that swaps them is
+// visible rather than merely equivalent.
 vi.mock('@/lib/prisma', () => {
   const prisma = {
     lesson: { findMany: mockLessonFindMany },
-    course: { findMany: mockCourseFindMany },
+    course: { findMany: mockFilteredCourseFindMany },
     courseArtifact: { findMany: mockCourseArtifactFindMany },
   };
   return { default: prisma, prisma };
 });
+vi.mock('@/db/index', () => ({
+  rawPrisma: { course: { findMany: mockCourseFindMany } },
+}));
 vi.mock('@/lib/logger', () => ({
   logger: {
     info: mockLoggerInfo,
@@ -129,6 +140,7 @@ const YOUNG = new Date(NOW_MS - GRACE_MS + 60_000); // 59 min ago
 function setupEmptyRefs() {
   mockLessonFindMany.mockResolvedValue([]);
   mockCourseFindMany.mockResolvedValue([]);
+  mockFilteredCourseFindMany.mockResolvedValue([]);
   mockCourseArtifactFindMany.mockResolvedValue([]);
 }
 
@@ -143,6 +155,7 @@ function setupUnrelatedRef() {
     { videoStorageUri: 'gcs://b/system/videos/unrelated-keepalive.mp4' },
   ]);
   mockCourseFindMany.mockResolvedValue([]);
+  mockFilteredCourseFindMany.mockResolvedValue([]);
   mockCourseArtifactFindMany.mockResolvedValue([]);
 }
 
@@ -303,6 +316,34 @@ describe('runVideoSweep', () => {
       expect(mockDeleteFile).not.toHaveBeenCalledWith('gcs://b/system/videos/lesson.mp4');
       expect(mockDeleteFile).not.toHaveBeenCalledWith('gcs://b/system/videos/preview.mp4');
       expect(mockDeleteFile).not.toHaveBeenCalledWith('gcs://b/system/videos/artifact.mp4');
+    });
+
+    it("protects an ARCHIVED course's preview video — the reference set is read off the un-extended client", async () => {
+      mockListFilesForActiveBackend.mockResolvedValue([
+        { storageUri: 'gcs://b/system/videos/archived-course-preview.mp4', createdAt: OLD },
+        { storageUri: 'gcs://b/system/videos/orphan.mp4', createdAt: OLD },
+      ]);
+      mockLessonFindMany.mockResolvedValue([]);
+      mockCourseArtifactFindMany.mockResolvedValue([]);
+      // `rawPrisma` sees the archived course; the archive-filtered client would
+      // not. Q24 says the file must be RETAINED, so it has to stay referenced.
+      mockCourseFindMany.mockResolvedValue([
+        { previewVideoStorageUri: 'gcs://b/system/videos/archived-course-preview.mp4' },
+      ]);
+      // If the sweeper is ever switched back to the filtered client it reads
+      // this instead — an empty set — and deletes the archived course's video.
+      mockFilteredCourseFindMany.mockResolvedValue([]);
+
+      const summary = await runVideoSweep({ gracePeriodMs: GRACE_MS, dryRun: false });
+
+      expect(mockCourseFindMany).toHaveBeenCalledTimes(1);
+      expect(mockFilteredCourseFindMany).not.toHaveBeenCalled();
+      expect(summary.referenced).toBe(1);
+      expect(summary.deleted).toBe(1);
+      expect(mockDeleteFile).not.toHaveBeenCalledWith(
+        'gcs://b/system/videos/archived-course-preview.mp4',
+      );
+      expect(mockDeleteFile).toHaveBeenCalledWith('gcs://b/system/videos/orphan.mp4');
     });
   });
 

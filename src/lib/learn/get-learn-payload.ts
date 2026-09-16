@@ -1,6 +1,7 @@
 import { dbRoleToRoleKey, isAdminRole } from '@/lib/rbac/role-utils';
 import { can } from '@/lib/rbac/permissions';
 import prisma from '@/lib/prisma';
+import { rawPrisma } from '@/db/index';
 import { getPortalSessions } from '@/lib/auth/portal-sessions';
 import { logger } from '@/lib/logger';
 import type { Role } from '@/types/next-auth';
@@ -222,7 +223,14 @@ export async function getLearnPayload(courseId: string): Promise<LearnPayload | 
     // Explicitly selected: an `include` would pull every Course scalar,
     // including the AI-pipeline artifacts (rawCourseJson, rawQuizJson,
     // rawSlidesJson, …) that this handler never reads.
-    const course = await prisma.course.findUnique({
+    //
+    // ⛔ `rawPrisma`, deliberately: archiving a course RETIRES it for new
+    // assignment, it does not erase what a learner already did. A worker who
+    // was enrolled before the archive must still be able to open it, and their
+    // certificate must still resolve. Access is decided below — an enrollment,
+    // or a manager's review right — so reading the row unfiltered widens
+    // nothing: the gate is downstream of the lookup, not the archive filter.
+    const course = await rawPrisma.course.findUnique({
       where: { id: courseId },
       select: {
         id: true,

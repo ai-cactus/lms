@@ -23,7 +23,8 @@ vi.mock('next/headers', () => ({
 }));
 vi.mock('@/lib/prisma', () => {
   const prisma = {
-    course: { findUnique: (...a: unknown[]) => mockCourseFindUnique(...a) },
+    // The course itself is read off `rawPrisma` (see below) so an archived
+    // course stays openable by the learner who was already enrolled in it.
     enrollment: { findFirst: (...a: unknown[]) => mockEnrollmentFindFirst(...a) },
     organizationUser: { findUnique: (...a: unknown[]) => mockOrganizationUserFindUnique(...a) },
     // Intentionally present but unused by a correct implementation — the
@@ -34,6 +35,9 @@ vi.mock('@/lib/prisma', () => {
   };
   return { prisma, default: prisma };
 });
+vi.mock('@/db/index', () => ({
+  rawPrisma: { course: { findUnique: (...a: unknown[]) => mockCourseFindUnique(...a) } },
+}));
 vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn(), info: vi.fn(), warn: vi.fn() } }));
 
 import { GET } from './route';

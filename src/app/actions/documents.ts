@@ -331,6 +331,11 @@ async function processSingleUpload(
   let uploadedDocument: UploadedDocument;
   try {
     uploadedDocument = await prisma.$transaction(async (tx) => {
+      // The archive filter applies here too — an interactive transaction on the
+      // extended client hands back an extended `tx`. That is the behaviour we
+      // want: re-uploading the name of a document someone archived starts a
+      // fresh document rather than resurrecting the retired one by appending a
+      // version to it.
       const existingDoc = await tx.document.findFirst({
         where: { organizationUserId, filename: file.name },
       });
@@ -348,6 +353,9 @@ async function processSingleUpload(
         existingDoc ??
         (await tx.document.create({
           data: {
+            // The document belongs to the ORGANIZATION (Q25);
+            // `organizationUserId` records the uploader only.
+            organizationId,
             organizationUserId,
             filename: file.name,
             originalName: file.name,
@@ -478,7 +486,7 @@ export async function getDocuments() {
   }
 
   const docs = await prisma.document.findMany({
-    where: { organizationUser: { organizationId: session.user.organizationId } },
+    where: { organizationId: session.user.organizationId },
     include: {
       organizationUser: {
         select: { user: { select: { email: true, firstName: true, lastName: true } } },
@@ -495,8 +503,16 @@ export async function getDocuments() {
 }
 
 /**
- * Delete a document and all its versions, including the stored objects.
- * Cascade in the DB schema handles DocumentVersion and PhiReport deletion.
+ * Archives a document. Q24: "delete" retains — the document row, every version,
+ * every PHI report, the course lineage and the stored objects themselves all
+ * survive; `archivedAt` is what removes it from the hub.
+ *
+ * Nothing here severs `CourseVersion → DocumentVersion` and nothing removes a
+ * stored object. Both used to be necessary only because the row was about to be
+ * destroyed: the first to get past a `Restrict` FK, the second to avoid orphans.
+ * Doing either now would leave an archived record pointing at a file that is
+ * gone, or a course whose "View Source Document" lineage was cut for a document
+ * the ruling says must remain fully present — worse than doing nothing.
  */
 export async function deleteDocument(
   documentId: string,
@@ -514,50 +530,33 @@ export async function deleteDocument(
     return { error: 'Document not found' };
   }
 
-  // Verify the document belongs to the caller's organization before any
-  // destructive operation. Any authorized role may delete any org document; a
-  // cross-org document is reported as not found — never leak its existence.
+  // Verify the document belongs to the caller's organization before writing.
+  // Any authorized role may archive any org document; a cross-org document is
+  // reported as not found — never leak its existence. An already-archived
+  // document comes back null from the filtered client, so the same branch
+  // covers a repeat delete.
   const doc = await prisma.document.findUnique({
     where: { id: documentId },
-    include: {
-      organizationUser: { select: { organizationId: true } },
-      versions: { select: { id: true, storagePath: true } },
+    select: {
+      organizationId: true,
+      versions: { select: { id: true } },
     },
   });
 
-  if (!doc || doc.organizationUser.organizationId !== session.user.organizationId) {
+  if (!doc || doc.organizationId !== session.user.organizationId) {
     return { error: 'Document not found' };
   }
 
-  const versionIds = doc.versions.map((v) => v.id);
-
-  // Delete each stored object from cloud storage before removing DB records.
-  // Failures are logged but do not abort the DB delete — orphaned objects
-  // are preferable to an inconsistent DB state.
-  const storageDeleteJobs = doc.versions.map((v) =>
-    deleteFile(v.storagePath).catch((err: unknown) => {
-      logger.error({
-        msg: 'Failed to delete storage object during document deletion',
-        err,
-        storagePath: v.storagePath,
-        documentId,
-      });
-    }),
-  );
-  await Promise.allSettled(storageDeleteJobs);
-
-  // Sever course lineage first: CourseVersion→DocumentVersion is a Restrict
-  // relation, so course-backed documents would otherwise be undeletable. The
-  // course itself survives — only its source-document link is removed, and the
-  // UI already renders "View Source Document" disabled when lineage is gone.
-  await prisma.$transaction([
-    prisma.courseVersion.deleteMany({ where: { documentVersionId: { in: versionIds } } }),
-    // Remove DB record (cascade deletes versions + PHI reports)
-    prisma.document.delete({ where: { id: documentId } }),
-  ]);
+  await prisma.document.update({
+    where: { id: documentId },
+    data: {
+      archivedAt: new Date(),
+      archivedByOrgUserId: session.user.organizationUserId,
+    },
+  });
 
   logger.info({
-    msg: '[doc] Document deleted',
+    msg: '[doc] Document archived',
     documentId,
     userId: session.user.id,
     versionCount: doc.versions.length,
@@ -612,10 +611,10 @@ export async function renameDocument(
   // document is reported as not found so its existence is never leaked.
   const doc = await prisma.document.findUnique({
     where: { id: documentId },
-    select: { organizationUser: { select: { organizationId: true } } },
+    select: { organizationId: true },
   });
 
-  if (!doc || doc.organizationUser.organizationId !== session.user.organizationId) {
+  if (!doc || doc.organizationId !== session.user.organizationId) {
     return { error: 'Document not found' };
   }
 

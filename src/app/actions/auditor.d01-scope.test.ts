@@ -188,18 +188,16 @@ describe('catalogue scope — adopted courses and every status', () => {
     await getAuditorCourses();
 
     expect(prismaMock.course.findMany.mock.calls[0][0].where).toEqual({
-      OR: [{ creator: { organizationId: ORG } }, { id: { in: ['adopted-1'] } }],
+      OR: [{ organizationId: ORG }, { id: { in: ['adopted-1'] } }],
     });
   });
 
-  it('falls back to the creator predicate when the org has adopted nothing', async () => {
+  it('falls back to the bare organisation predicate when the org has adopted nothing', async () => {
     mockAuth.mockResolvedValue(HR);
 
     await getAuditorCourses();
 
-    expect(prismaMock.course.findMany.mock.calls[0][0].where).toEqual({
-      creator: { organizationId: ORG },
-    });
+    expect(prismaMock.course.findMany.mock.calls[0][0].where).toEqual({ organizationId: ORG });
   });
 
   it('does not filter the catalogue by status', async () => {

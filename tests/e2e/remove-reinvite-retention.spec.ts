@@ -158,14 +158,14 @@ async function seedOrgOwnerWorkerAndEnrollments(): Promise<Seeded> {
     );
 
     await client.query(
-      `INSERT INTO courses (id, title, status, created_by_org_user_id, type, is_global, created_at, updated_at)
-       VALUES ($1, $2, 'published'::"CourseStatus", $3, 'text'::"CourseType", false, NOW(), NOW())`,
-      [inFlightCourseId, inFlightCourseTitle, ownerOrgUserId],
+      `INSERT INTO courses (id, title, status, created_by_org_user_id, organization_id, type, is_global, created_at, updated_at)
+       VALUES ($1, $2, 'published'::"CourseStatus", $3, $4, 'text'::"CourseType", false, NOW(), NOW())`,
+      [inFlightCourseId, inFlightCourseTitle, ownerOrgUserId, orgId],
     );
     await client.query(
-      `INSERT INTO courses (id, title, status, created_by_org_user_id, type, is_global, created_at, updated_at)
-       VALUES ($1, $2, 'published'::"CourseStatus", $3, 'text'::"CourseType", false, NOW(), NOW())`,
-      [completedCourseId, completedCourseTitle, ownerOrgUserId],
+      `INSERT INTO courses (id, title, status, created_by_org_user_id, organization_id, type, is_global, created_at, updated_at)
+       VALUES ($1, $2, 'published'::"CourseStatus", $3, $4, 'text'::"CourseType", false, NOW(), NOW())`,
+      [completedCourseId, completedCourseTitle, ownerOrgUserId, orgId],
     );
 
     // In-flight enrollment: the status set removeStaff() used to drop and must

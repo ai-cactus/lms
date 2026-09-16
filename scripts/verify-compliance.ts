@@ -34,6 +34,7 @@ async function main() {
 
   const doc = await prisma.document.create({
     data: {
+      organizationId: org.id,
       organizationUserId: orgUser.id,
       filename: 'policy.txt',
       originalName: 'policy.txt',

@@ -232,10 +232,10 @@ async function seedOrgWithOneFacilityAndKnownData(): Promise<SeededSingleFacilit
 
     await client.query(
       `INSERT INTO courses (
-         id, title, description, status, created_by_org_user_id,
+         id, title, description, status, created_by_org_user_id, organization_id,
          type, is_global, review_required, created_at, updated_at
-       ) VALUES ($1, $2, $3, 'published'::"CourseStatus", $4, 'text'::"CourseType", false, false, NOW(), NOW())`,
-      [courseId, courseTitle, 'A course authored by HR, not the org owner.', hrOrgUserId],
+       ) VALUES ($1, $2, $3, 'published'::"CourseStatus", $4, $5, 'text'::"CourseType", false, false, NOW(), NOW())`,
+      [courseId, courseTitle, 'A course authored by HR, not the org owner.', hrOrgUserId, orgId],
     );
     await client.query(
       `INSERT INTO enrollments (id, organization_user_id, course_id, facility_id, status, progress, score, started_at, completed_at)

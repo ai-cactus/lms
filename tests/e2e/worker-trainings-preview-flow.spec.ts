@@ -107,13 +107,14 @@ async function seedWorkerWithEnrollment(status: 'assigned' | 'in_progress'): Pro
     );
 
     await client.query(
-      `INSERT INTO courses (id, title, description, status, created_by_org_user_id, type, is_global, created_at, updated_at)
-       VALUES ($1, $2, $3, 'published'::"CourseStatus", $4, 'text'::"CourseType", false, NOW(), NOW())`,
+      `INSERT INTO courses (id, title, description, status, created_by_org_user_id, organization_id, type, is_global, created_at, updated_at)
+       VALUES ($1, $2, $3, 'published'::"CourseStatus", $4, $5, 'text'::"CourseType", false, NOW(), NOW())`,
       [
         courseId,
         `Trainings Preview E2E Course ${slug}`,
         'A short compliance course.',
         workerOrgUserId,
+        orgId,
       ],
     );
 

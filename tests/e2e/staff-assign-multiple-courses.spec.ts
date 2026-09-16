@@ -167,9 +167,9 @@ async function seed(): Promise<Seeded> {
     ];
     for (const [id, title, type] of courses) {
       await client.query(
-        `INSERT INTO courses (id, title, status, created_by, type, is_global, created_at, updated_at)
-         VALUES ($1, $2, 'published'::"CourseStatus", $3, $4::"CourseType", false, NOW(), NOW())`,
-        [id, title, ownerId, type],
+        `INSERT INTO courses (id, title, status, created_by, organization_id, type, is_global, created_at, updated_at)
+         VALUES ($1, $2, 'published'::"CourseStatus", $3, $4, $5::"CourseType", false, NOW(), NOW())`,
+        [id, title, ownerId, orgId, type],
       );
     }
 
