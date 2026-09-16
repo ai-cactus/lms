@@ -1,7 +1,7 @@
 'use server';
 
 import prisma from '@/lib/prisma';
-import { dbRoleToRoleKey, ALL_ROLES } from '@/lib/rbac/role-utils';
+import { dbRoleToRoleKey, isAdminRole, ALL_ROLES } from '@/lib/rbac/role-utils';
 import { can, type RoleKey } from '@/lib/rbac/permissions';
 import { hasActiveBilling, BILLING_GATE_ASSIGN_MESSAGE } from '@/lib/billing';
 import { auth as adminAuth } from '@/auth';
@@ -1152,10 +1152,19 @@ export async function getEnrollmentWithResults(enrollmentId: string) {
   // `enrollment`, whose read verb is held by every worker and by Finance.
   // Authorship alone was the whole gate here, so a course creator saw every
   // participant's answers regardless of facility.
+  //
+  // `isAdminRole` in conjunction because every worker role also holds
+  // `assessment.read` (to read its OWN attempt); the verb alone does not
+  // separate "my answers" from "theirs". Matches `getEnrollmentQuizResult`.
   const roleKey = dbRoleToRoleKey(session.user.role);
   const isCourseCreator = enrollment.course.createdByOrgUserId === session.user.organizationUserId;
 
-  if (!roleKey || !can(roleKey, 'assessment.read') || !isCourseCreator) {
+  if (
+    !roleKey ||
+    !isAdminRole(session.user.role) ||
+    !can(roleKey, 'assessment.read') ||
+    !isCourseCreator
+  ) {
     logger.warn({
       msg: '[enrollment] Quiz result read denied',
       userId: session.user.id,

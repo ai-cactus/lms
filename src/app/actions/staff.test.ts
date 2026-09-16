@@ -1088,6 +1088,58 @@ describe('getEnrollmentQuizResult — org isolation (F-010)', () => {
     await expect(getEnrollmentQuizResult(ENROLLMENT_ID)).rejects.toThrow('Unauthorized');
     expect(mockEnrollmentFindUnique).not.toHaveBeenCalled();
   });
+
+  /**
+   * The gate moved from `assignment.read` to `isAdminRole && assessment.read`.
+   *
+   * `assignment` is the org's auto-enrolment configuration; `assessment` is
+   * "Quizzes, questions & question-by-question attempt logs" — this payload.
+   * They diverge on HR, which holds all four `assignment.*` verbs and no
+   * `assessment.*`, and whose registry description reads "Blocked from billing
+   * and from question-by-question assessment scoring". The old verb admitted
+   * the one manager role the registry withholds this data from.
+   */
+  describe('the verb: isAdminRole && assessment.read', () => {
+    it.each(['owner', 'admin', 'supervisor', 'clinical_director'])(
+      '%s is admitted',
+      async (role) => {
+        mockAuth.mockResolvedValue({ user: { id: 'a-1', role, organizationId: 'org-a' } });
+        mockEnrollmentFindUnique.mockResolvedValue(makeEnrollment('org-a'));
+
+        await expect(getEnrollmentQuizResult(ENROLLMENT_ID)).resolves.not.toBeNull();
+      },
+    );
+
+    it('USER-VISIBLE: HR loses question-level score access', async () => {
+      mockAuth.mockResolvedValue({ user: { id: 'hr-1', role: 'hr', organizationId: 'org-a' } });
+
+      await expect(getEnrollmentQuizResult(ENROLLMENT_ID)).rejects.toThrow('Unauthorized');
+      expect(mockEnrollmentFindUnique).not.toHaveBeenCalled();
+    });
+
+    it('finance stays denied', async () => {
+      mockAuth.mockResolvedValue({ user: { id: 'f-1', role: 'finance', organizationId: 'org-a' } });
+
+      await expect(getEnrollmentQuizResult(ENROLLMENT_ID)).rejects.toThrow('Unauthorized');
+    });
+
+    /**
+     * The `isAdminRole` half is load-bearing, not belt-and-braces: every worker
+     * role holds `assessment.read` so it can read its OWN attempt, so the verb
+     * alone would have opened this id-addressed action to all eight of them.
+     * Swapping the verb without the conjunction would have WIDENED the gap this
+     * phase exists to close.
+     */
+    it.each(['nurse', 'therapist_clinician', 'front_desk_admin'])(
+      '%s holds assessment.read but is still denied someone else’s answers',
+      async (role) => {
+        mockAuth.mockResolvedValue({ user: { id: 'w-1', role, organizationId: 'org-a' } });
+
+        await expect(getEnrollmentQuizResult(ENROLLMENT_ID)).rejects.toThrow('Unauthorized');
+        expect(mockEnrollmentFindUnique).not.toHaveBeenCalled();
+      },
+    );
+  });
 });
 
 /**

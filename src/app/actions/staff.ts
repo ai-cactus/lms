@@ -912,8 +912,21 @@ export async function getEnrollmentQuizResult(enrollmentId: string) {
   }
 
   // D-01: exposes another person's quiz answers and score.
+  //
+  // `assessment.read`, not `assignment.read`. The registry defines `assessment`
+  // as "Quizzes, questions & question-by-question attempt logs" — this payload —
+  // while `assignment` is the org's auto-enrolment configuration. HR holds all
+  // four `assignment.*` verbs and no `assessment.*`, and its own description
+  // says HR is "blocked from question-by-question assessment scoring", so the
+  // old verb admitted the one manager role the registry withholds this from.
+  //
+  // The `isAdminRole` conjunction is load-bearing, NOT redundant: every worker
+  // role holds `assessment.read` so it can read its OWN attempt, so the verb
+  // alone would open this id-addressed action — someone else's answers — to all
+  // eight of them. Together they resolve to owner, admin, supervisor and
+  // clinical_director, which is the intended set.
   const roleKey = dbRoleToRoleKey(session.user.role);
-  if (!roleKey || !can(roleKey, 'assignment.read')) {
+  if (!roleKey || !isAdminRole(session.user.role) || !can(roleKey, 'assessment.read')) {
     logger.warn({
       msg: '[staff] Quiz result read denied',
       userId: session.user.id,

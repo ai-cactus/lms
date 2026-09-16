@@ -152,6 +152,34 @@ describe('getEnrollmentWithResults — permission gate', () => {
 
     await expect(getEnrollmentWithResults('enr-1')).rejects.toThrow('Access denied');
   });
+
+  /**
+   * The `isAdminRole` half of the gate is load-bearing. Every worker role holds
+   * `assessment.read` so it can read its OWN attempt, so the verb alone does not
+   * separate "my answers" from "theirs" — it would have admitted all eight to
+   * this id-addressed action.
+   */
+  it.each(['nurse', 'therapist_clinician', 'front_desk_admin'])(
+    '%s holds assessment.read but is still denied someone else’s answers',
+    async (role) => {
+      setCreatorSession(role);
+
+      await expect(getEnrollmentWithResults('enr-1')).rejects.toThrow('Access denied');
+      expect(mockEnrollmentFindFirst).not.toHaveBeenCalled();
+    },
+  );
+
+  it('HR is denied — the registry blocks it from question-by-question scoring', async () => {
+    setCreatorSession('hr');
+
+    await expect(getEnrollmentWithResults('enr-1')).rejects.toThrow('Access denied');
+  });
+
+  it('clinical_director — the registry’s assessment-oversight role — is admitted', async () => {
+    setCreatorSession('clinical_director');
+
+    await expect(getEnrollmentWithResults('enr-1')).resolves.toMatchObject({ id: 'enr-1' });
+  });
 });
 
 describe('getEnrollmentWithResults — tenancy and facility scope', () => {
