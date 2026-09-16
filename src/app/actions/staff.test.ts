@@ -1215,7 +1215,7 @@ describe('getEnrollmentQuizResult — org isolation (F-010)', () => {
    * HR is one of them, by founder ruling — "HR can build quizzes and view
    * results" (docs/local/RBAC_for_multi-tenancy-updated.md). This gate briefly
    * excluded HR on the strength of the role's own registry description, which
-   * he reversed when asked (docs/local/RBAC-founder-question-quiz-row.md).
+   * he reversed when asked (docs/local/RBAC-founder-answers-2026-09-15.md).
    * Finance is still out: it holds no `assessment.*` at all.
    */
   describe('the verb: isAdminRole && assessment.read', () => {

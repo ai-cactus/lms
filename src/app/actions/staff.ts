@@ -957,7 +957,7 @@ export async function getEnrollmentQuizResult(enrollmentId: string) {
   // when this gate was first written, and the narrowing then rested on this
   // role's own registry description, which said HR was "blocked from
   // question-by-question assessment scoring". That sentence was ours, not his;
-  // asked to settle it (docs/local/RBAC-founder-question-quiz-row.md) he chose
+  // asked to settle it (docs/local/RBAC-founder-answers-2026-09-15.md) he chose
   // the broad reading. Do not re-narrow HR here on the strength of the old
   // wording — the ruling governs, and the description now agrees with it.
   //

@@ -293,7 +293,7 @@ export const roles = {
       // ambiguous: "HR can build quizzes and view results"
       // (docs/local/RBAC_for_multi-tenancy-updated.md). `assessment` bundles
       // authoring a quiz with reading a NAMED learner's answer sheet, so he was
-      // asked which the row's CRUD meant (docs/local/RBAC-founder-question-quiz-row.md)
+      // asked which the row's CRUD meant (docs/local/RBAC-founder-answers-2026-09-15.md)
       // and answered both. `assessment.read` is the half that readmits HR to the
       // two answer-sheet gates (`getEnrollmentQuizResult` in staff.ts,
       // `getEnrollmentWithResults` in enrollment.ts), reversing the narrowing

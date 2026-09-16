@@ -1,21 +1,3 @@
-> ⚠️ **PARTLY SUPERSEDED — do not treat this document's RBAC matrix or its
-> implementation status as current.** Two things in it are now wrong:
->
-> 1. **Its RBAC matrix and the "single source of truth" rulings (§3.3, §4.7) are stale.**
->    They record the 2026-08-03 matrix. The founder has since issued three revisions; the
->    current one is `docs/local/RBAC_for_multi-tenancy-updated.md`, which adds **Quiz** and
->    **Certificates** rows and moves Audits to `CR`. The live contract is enforced by
->    `src/lib/rbac/matrix-conformance.test.ts`, which fails CI if the registry drifts from it —
->    trust that test over any prose, including this file. Decisions and their reasoning are in
->    `docs/local/RBAC-founder-answers-2026-09-15.md`.
-> 2. **§2's claim that the app is "effectively single-facility-per-org" is out of date.** The
->    facility model shipped: `OrganizationUserFacility` supports multi-facility membership,
->    `Enrollment.facilityId` is stamped per enrolment, and facility scoping is enforced centrally
->    in `src/lib/facility/`. Several rows of its gap table marked "Missing" have since been built.
->
-> **Still useful and accurate:** the Figma inventory itself (§1, §4) — what the design contains,
-> which frames exist, and the node IDs. That is why this file is kept rather than deleted.
-
 # Figma v3 (LMS V3, August '26) — Multi-Facility Design Reconciliation
 
 Source: Figma file `THERAPTLY` (`cySAabdYLDKzwbs88owBHn`), page **🧩 LMS V3 (August '26)** (`15038:76076`).
@@ -114,10 +96,12 @@ LMS-2xx flows), Status Tracker, Edit Profile — these largely mirror existing s
 
 ## 2. Design vs current implementation
 
-The current app is **effectively single-facility-per-org**: facilities are auto-created
-during onboarding only, every person-facility link is the single `User.facilityId`, and
-queries scope by `organizationId` (often via `facility.findFirst({ organizationId })` —
-"the org's one facility").
+NOTE (2026-09-16): the paragraph here described the app as "effectively
+single-facility-per-org". That is no longer true — `OrganizationUserFacility` supports
+multi-facility membership, `Enrollment.facilityId` is stamped per enrolment, and facility
+scoping is enforced centrally in `src/lib/facility/`. Several rows of the gap table below
+that read "Missing" have since shipped. Treat the Figma inventory (§1, §4) as current and
+every implementation-status claim as historical.
 
 | #   | Design concept                                                        | Current state                                                                                                                                                                                                                                                                                                                                                  |
 | --- | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -204,65 +188,13 @@ confirms they're coming; the plan's FK repoints should land first since these bu
 8. **Per-facility computed metrics** (facility score, audit readiness, risk level, trend
    compare, export) — aggregation logic, no schema change beyond items 5–7.
 
-### 3.3 The RBAC multi-tenancy matrix (Google Doc, added 2026-08-03)
+### 3.3 The RBAC matrix — REMOVED, see the current contract
 
-Source: "RBAC matrix for Theraptly LMS"
-(<https://docs.google.com/document/d/1tFGKz-UNwVBj66JVHEIC2CRDcfWlDzjokg8WaXKskps>).
-Six admin-tier roles × five modules:
-
-| Module           | Owner | Admin | HR   | Finance | Clinical/Quality | Facility Supervisors |
-| ---------------- | ----- | ----- | ---- | ------- | ---------------- | -------------------- |
-| Documents        | CRUD  | CRUD  | CRUD | —       | CRU              | R                    |
-| Courses          | CRUD  | CRUD  | CRUD | —       | CRUD             | R                    |
-| Staff Management | CRUD  | CRUD  | CRUD | —       | —                | R                    |
-| Billing          | CRUD  | CRUD  | —    | CRUD    | —                | —                    |
-| Audits           | CRUD  | CRUD  | R    | —       | R                | R                    |
-
-The doc explicitly leaves "tenant-level vs facility-level data access" open — that half is
-answered by the schema plan (`OrganizationUser` role = what you can do,
-`OrganizationUserFacility` rows = which facilities it applies to).
-
-**Where it agrees with the Figma v3 design:**
-
-- Clinical/Quality: Documents **CRU without delete** matches the Doc Hub kebab (Verify =
-  _Clinical · HR_; Delete not offered to Clinical).
-- HR: Documents CRUD + Promote to Global (_HR only_) is consistent.
-- Finance: billing-only matches both the Figma matrix and the current registry.
-- Supervisors read-mostly at org level with facility-scoped reality matches the Doc Hub
-  copy ("Supervisors can only pick their assigned facilities").
-
-**RULING (2026-08-03): the RBAC doc is the single source of truth.** Where the Figma v3
-frames or the current code disagree with the matrix above, the matrix wins. Resolutions:
-
-1. **Role taxonomy** = Owner, **Admin**, HR, Finance, Clinical/Quality, Facility
-   Supervisors (admin tier), plus the existing 8 worker/learner roles (the doc is silent
-   on learners; they remain unchanged). The Figma matrix's missing-Supervisor and
-   "Student" column are superseded — the Figma Roles tab must be built from the RBAC
-   matrix, not from the frame's columns.
-2. **`admin` is added to the `UserRole` enum** in the schema plan's (destructive)
-   migration — Owner-equivalent CRUD including billing. The JWT guard in
-   `create-auth-instance.ts` that kills sessions carrying the _retired legacy_ `admin`
-   role is removed in the auth rework, and `admin` joins `ADMIN_ROLES` / `GRANTABLE_ROLES`
-   etc. (Recorded in `multi-org-schema-upgrade-plan.md`, Decisions §8.)
-3. **Supervisor is demoted to read-only** on Documents, Courses, Staff Management, and
-   Audits; no Billing. The current registry (supervisor = everything except billing,
-   incl. `facility.create/edit` and role-change rights) is rewritten accordingly;
-   "Create & switch facilities" becomes Owner + Admin. Facility supervisors' remaining
-   power is _scope_, not verbs: their R access spans their assigned facilities
-   (`OrganizationUserFacility`). ⚠️ Note this contradicts some v3 Doc Hub frames that
-   show supervisors uploading ("Upload · Owner/Supervisor (Global)") — per the ruling,
-   supervisors do NOT create documents; those frames apply to Owner/Admin.
-4. **HR has full Courses CRUD** (build & edit, not just assign) — overrides the Figma
-   matrix's Owner+Clinical-Director-only "Build & edit courses" row.
-5. **Clinical/Quality**: Documents CRU (no delete), Courses CRUD, no Staff module,
-   Audits read.
-6. **Audits** becomes a first-class module/resource in the permission registry
-   (Owner/Admin CRUD; HR, Clinical/Quality, Supervisors read).
-
-Schema impact: only the `admin` enum value. Everything else is permission-registry
-configuration (`src/lib/rbac/permissions.ts`, `role-utils.ts`,
-`roles-matrix-config.ts`), which the plan already keeps per-membership via
-`OrganizationUser.role`.
+This section carried the 2026-08-03 RBAC matrix and a "single source of truth" ruling.
+The founder has revised that matrix three times since; reproducing a stale copy here was
+actively misleading. The contract is `docs/local/RBAC_for_multi-tenancy-updated.md`, the
+reasoning is `docs/local/RBAC-founder-answers-2026-09-15.md`, and the enforcement is
+`src/lib/rbac/matrix-conformance.test.ts`, which fails CI if the registry drifts from it.
 
 ### 3.4 Remaining open questions ⚠️
 
@@ -377,24 +309,10 @@ courses become a course-creation entry path.
 "Upload documents" modal: dropzone (PDF/DOCX, 10MB each), multi-file list with per-file
 remove and per-file category dropdown internals (`15170:174092+`), "Upload N files" CTA.
 
-### 4.7 RBAC conflicts — RESOLVED by ruling (2026-08-06)
+### 4.7 RBAC conflicts — REMOVED, superseded
 
-**User ruling: the RBAC Google Doc remains the single source of truth.** The Settings→
-Roles matrix in the v3 design (Owner/HR/Clinical Director/Finance/Student columns, HR
-without course build/edit, Owner-only Settings) is **overridden wherever it conflicts**
-with the doc. Concretely:
-
-1. The implemented 6-admin-role registry (incl. `admin`, supervisor read-only, HR Courses
-   CRUD) stays exactly as certified on 2026-08-03 — no changes from the design matrix.
-2. The Settings→Roles _screen_ is still to be built, but its content must render the
-   doc's matrix (i.e. the implemented permission registry), not the design's columns.
-3. The restricted course row-menu variant ("Assign to staff" + "View Source Document")
-   is mapped per the doc: supervisor gets NO assign action (read-only); the restricted
-   menu as drawn fits no doc role exactly — render menus from the registry gates instead
-   of copying the mock.
-4. Change-facility single-select modal: UI treatment only — the schema keeps
-   multi-facility membership (`OrganizationUserFacility`); the modal is a convenience
-   "move primary facility" affordance, not a schema constraint.
+Recorded a 2026-08-06 ruling on Figma-vs-matrix RBAC conflicts. Superseded by the current
+matrix and decision record; see §3.3 above for where they live.
 
 ### 4.8 Reconciliation vs current implementation (non-RBAC items, 2026-08-06)
 

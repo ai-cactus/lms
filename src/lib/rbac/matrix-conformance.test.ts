@@ -2,10 +2,10 @@
  * Founder RBAC matrix — registry conformance.
  *
  * SOURCE OF TRUTH: `docs/local/RBAC_for_multi-tenancy-updated.md` — the founder's
- * latest matrix, which supersedes `RBAC_for_multi-tenancy-new.md` and, before it,
- * `RBAC-for-multi-tenancy.md` — read together with
- * `docs/local/RBAC-founder-answers-2026-09-15.md` (28 decisions across three
- * rounds), which resolves the letters the matrix leaves ambiguous.
+ * matrix — read together with `docs/local/RBAC-founder-answers-2026-09-15.md`,
+ * the decision record that resolves the letters the matrix leaves ambiguous.
+ * Earlier revisions of both were deleted once superseded; this test is the
+ * enforcement, so it outranks any prose that disagrees with it.
  *
  * Against the original, the current matrix adds two rows (Quiz, Certificates)
  * and promotes Audits from `R` to `CR`; the latest revision promotes
@@ -126,7 +126,7 @@ const MATRIX: Record<MatrixModule, Record<MatrixRole, Cell>> = {
     owner: cell('CRUD'),
     admin: cell('CRUD'),
     // Resolved by the founder against the ambiguity in
-    // docs/local/RBAC-founder-question-quiz-row.md — `assessment` bundles
+    // docs/local/RBAC-founder-answers-2026-09-15.md — `assessment` bundles
     // authoring a quiz with opening a NAMED learner's answer sheet, and he
     // answered both: "HR can build quizzes and view results". The `read` half is
     // what readmits HR to the two answer-sheet gates.
@@ -186,9 +186,7 @@ const MATRIX: Record<MatrixModule, Record<MatrixRole, Cell>> = {
         '`FACILITY_CHANGE_ACTOR_ROLES` (Rule A). Course assignment is already ' +
         'covered by `assignment.create`/`enrollment.create`, and withdrawal by ' +
         '`assignment.delete` (Rule C). The registry therefore grants `R` here on ' +
-        'purpose. Background: docs/local/RBAC-conformance-2026-09-15.md §A.3, ' +
-        'which predates this and still frames the "U" as an open question — it ' +
-        'was answered and built in Phase 5.',
+        'purpose; the "U" ships as actor lists, not as a grant.',
     ),
   },
   Billing: {
