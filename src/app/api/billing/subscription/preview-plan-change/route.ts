@@ -21,7 +21,14 @@ export async function POST(request: NextRequest) {
     const denied = guardApiSession(session);
     if (denied) return denied;
 
-    const authResult = await authorize('billing.read');
+    // `billing.edit`, not `billing.read`: this POST is the first leg of a plan
+    // change, and every sibling mutation on that flow (portal, pause, resume,
+    // cancel, cancel-scheduled-change) gates on the edit verb. Gating the
+    // preview lower let a read-only billing viewer probe proration amounts for
+    // a change they could not make. Owner, Admin and Finance — the legitimate
+    // callers — all hold `billing.edit`; no read-only role holds `billing.read`
+    // without it.
+    const authResult = await authorize('billing.edit');
     if (!authResult.ok) return authResult.response;
     const { ctx } = authResult;
 

@@ -61,7 +61,7 @@ function storedDocument(id: string) {
 beforeEach(() => {
   vi.clearAllMocks();
   mockAuth.mockResolvedValue({
-    user: { id: 'admin-1', organizationUserId: 'ou-admin-1' },
+    user: { id: 'admin-1', role: 'owner', organizationUserId: 'ou-admin-1' },
   });
   mockCheckRateLimit.mockResolvedValue({ allowed: true });
   prismaMock.document.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) =>
