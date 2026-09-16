@@ -147,7 +147,7 @@ export const ROLE_CHANGE_ACTOR_ROLES: readonly Role[] = ['owner', 'admin', 'hr']
 /**
  * Roles permitted to change which facilities a staff member belongs to.
  *
- * Rule A of the directive (docs/local/RBAC-for-multi-tenancy.md): "Only
+ * Rule A of the directive (docs/local/RBAC_for_multi-tenancy-updated.md): "Only
  * Owners/Admin/HR can take the action of changing the facility of facility
  * supervisors/workers". Spelled as its own list rather than left implied by
  * `user.edit`, because that permission is coarse — it gates profile editing,

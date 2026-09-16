@@ -1,3 +1,21 @@
+> ⚠️ **PARTLY SUPERSEDED — do not treat this document's RBAC matrix or its
+> implementation status as current.** Two things in it are now wrong:
+>
+> 1. **Its RBAC matrix and the "single source of truth" rulings (§3.3, §4.7) are stale.**
+>    They record the 2026-08-03 matrix. The founder has since issued three revisions; the
+>    current one is `docs/local/RBAC_for_multi-tenancy-updated.md`, which adds **Quiz** and
+>    **Certificates** rows and moves Audits to `CR`. The live contract is enforced by
+>    `src/lib/rbac/matrix-conformance.test.ts`, which fails CI if the registry drifts from it —
+>    trust that test over any prose, including this file. Decisions and their reasoning are in
+>    `docs/local/RBAC-founder-answers-2026-09-15.md`.
+> 2. **§2's claim that the app is "effectively single-facility-per-org" is out of date.** The
+>    facility model shipped: `OrganizationUserFacility` supports multi-facility membership,
+>    `Enrollment.facilityId` is stamped per enrolment, and facility scoping is enforced centrally
+>    in `src/lib/facility/`. Several rows of its gap table marked "Missing" have since been built.
+>
+> **Still useful and accurate:** the Figma inventory itself (§1, §4) — what the design contains,
+> which frames exist, and the node IDs. That is why this file is kept rather than deleted.
+
 # Figma v3 (LMS V3, August '26) — Multi-Facility Design Reconciliation
 
 Source: Figma file `THERAPTLY` (`cySAabdYLDKzwbs88owBHn`), page **🧩 LMS V3 (August '26)** (`15038:76076`).
@@ -34,14 +52,14 @@ page header: `All Facilities` ⇄ a single facility ⇄ a multi-facility selecti
 - **Document table**: Facility column — `Global` badge, single facility name, or
   `<Facility> +N` multi-facility chips; Status column reuses the course-generation lifecycle
   (In progress / Completed / Failed → View Course / Retry).
-- **Upload with destination**: modal has an **"Available in"** selector — *Global — all
-  facilities*, one facility, or several. Copy: "Choose where these documents live — one
+- **Upload with destination**: modal has an **"Available in"** selector — _Global — all
+  facilities_, one facility, or several. Copy: "Choose where these documents live — one
   facility, several, or the whole organization. **Supervisors can only pick their assigned
   facilities.**" When page scope is a facility, the selector defaults to (locks to) that
   facility (HR variant: facility-locked).
 - **Verification lifecycle**: per-document **Verified / Unverified** badges. Kebab menu:
-  **Verify document** (annotated *Clinical · HR*), **Sync to facilities…**,
-  **Promote to Global** (annotated *HR only*), Download, Delete.
+  **Verify document** (annotated _Clinical · HR_), **Sync to facilities…**,
+  **Promote to Global** (annotated _HR only_), Download, Delete.
 - **Sync to facilities** modal: checkbox facility list with "Current" tag. Copy: "Synced
   documents **stay one file** — updates and verification apply everywhere at once."
 - **Promote to Global** modal: "visible to all 18 facilities… Verified status carries over —
@@ -101,28 +119,28 @@ during onboarding only, every person-facility link is the single `User.facilityI
 queries scope by `organizationId` (often via `facility.findFirst({ organizationId })` —
 "the org's one facility").
 
-| # | Design concept | Current state |
-|---|---|---|
-| 1 | Facility scope selector / switcher on every surface | **Missing.** Only Manage⇄Learn toggle (`SidebarModeSwitcher`). `FacilityTab.tsx:96` copy references a switcher that was never built |
-| 2 | ⌘K facility palette + multi-select compare | **Missing.** No `cmdk`, no global keyboard handler, no comparison view |
-| 3 | Global dashboard w/ per-facility tables (audit readiness, risk level) | **Missing.** Dashboard metrics are creator-scoped (`createdBy = session.user.id`) + org staff count; no per-facility aggregation, no risk/audit-readiness computation |
-| 4 | Facility dashboard (breadcrumb, facility KPIs) | **Missing.** No facility-scoped route or queries |
-| 5 | Add/create facility UI (Settings + onboarding modal) | **Missing.** `facility.create` permission declared but has zero call sites |
-| 6 | Facility list anywhere | **Missing.** Every read is `findFirst` or `user.facility` |
-| 7 | Doc categories / folders / New Folder | **Missing.** Flat table + filename search; no category/folder field on `Document` |
-| 8 | Doc facility column (Global / facility / +N) | **Missing.** `Document` has no org/facility column at all — org scope derived via uploader (`user.organizationId`) |
-| 9 | Upload "Available in" destination | **Missing.** Upload = file + PHI attestation only |
-| 10 | Verified/Unverified + Verify action (Clinical·HR) | **Missing.** Status is `uploaded \| converted`; "verify" today = PHI scan |
-| 11 | Sync to facilities / Promote to Global | **Missing.** No concept |
-| 12 | Course Facilities column + facility-targeted assignment | **Missing.** `CourseAssignment` is org+role only; `assignCourseToRole` explicitly nulls facility |
-| 13 | Share to all facilities (fork) | **Missing.** Only `OrgCourseOffering` (org-granularity, actions unwired to UI) and `Course.isGlobal` (platform catalog flag — different concept) |
-| 14 | Staff Management + Switch facility modal | **Partial.** Staff list/detail/invite exist (org-scoped); no facility display, no switch-facility, no per-facility mandatory-course replacement |
-| 15 | Bulk Add Staff → per-email role assign | **Exists** (InviteStaffModal, CSV import, per-contact roles). No facility selection — matches design (facility comes from scope) but invite has no facility today |
-| 16 | Staff status Active / deactivate | **Missing.** Only hard `removeStaff` (detaches org, deletes enrollments); no deactivate/reactivate |
-| 17 | Settings Users & Permissions / Roles / Facility tabs | **Exists** (plus a Notifications tab). Matrix is read-only registry-derived — matches design intent |
-| 18 | Roles matrix contents | **Near-match.** Same row set incl. "Create & switch facilities" (currently a no-op capability). ⚠️ Column mismatch: implementation has 6 columns (incl. **Supervisor**); the v3 frame shows 5 (Owner, HR, Clinical Director, Finance, Student) — **Supervisor column absent in the design. Confirm intent** (moved to facility-level concept, or an omission?) |
-| 19 | JWT/session facility context | **Missing.** Token/session carry `id, role, organizationId` — no facility |
-| 20 | Audit readiness / Export from compare view | **Missing** as designed (org `hasAuditorAccess` + Auditor Pack screens exist as separate concept) |
+| #   | Design concept                                                        | Current state                                                                                                                                                                                                                                                                                                                                                  |
+| --- | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Facility scope selector / switcher on every surface                   | **Missing.** Only Manage⇄Learn toggle (`SidebarModeSwitcher`). `FacilityTab.tsx:96` copy references a switcher that was never built                                                                                                                                                                                                                            |
+| 2   | ⌘K facility palette + multi-select compare                            | **Missing.** No `cmdk`, no global keyboard handler, no comparison view                                                                                                                                                                                                                                                                                         |
+| 3   | Global dashboard w/ per-facility tables (audit readiness, risk level) | **Missing.** Dashboard metrics are creator-scoped (`createdBy = session.user.id`) + org staff count; no per-facility aggregation, no risk/audit-readiness computation                                                                                                                                                                                          |
+| 4   | Facility dashboard (breadcrumb, facility KPIs)                        | **Missing.** No facility-scoped route or queries                                                                                                                                                                                                                                                                                                               |
+| 5   | Add/create facility UI (Settings + onboarding modal)                  | **Missing.** `facility.create` permission declared but has zero call sites                                                                                                                                                                                                                                                                                     |
+| 6   | Facility list anywhere                                                | **Missing.** Every read is `findFirst` or `user.facility`                                                                                                                                                                                                                                                                                                      |
+| 7   | Doc categories / folders / New Folder                                 | **Missing.** Flat table + filename search; no category/folder field on `Document`                                                                                                                                                                                                                                                                              |
+| 8   | Doc facility column (Global / facility / +N)                          | **Missing.** `Document` has no org/facility column at all — org scope derived via uploader (`user.organizationId`)                                                                                                                                                                                                                                             |
+| 9   | Upload "Available in" destination                                     | **Missing.** Upload = file + PHI attestation only                                                                                                                                                                                                                                                                                                              |
+| 10  | Verified/Unverified + Verify action (Clinical·HR)                     | **Missing.** Status is `uploaded \| converted`; "verify" today = PHI scan                                                                                                                                                                                                                                                                                      |
+| 11  | Sync to facilities / Promote to Global                                | **Missing.** No concept                                                                                                                                                                                                                                                                                                                                        |
+| 12  | Course Facilities column + facility-targeted assignment               | **Missing.** `CourseAssignment` is org+role only; `assignCourseToRole` explicitly nulls facility                                                                                                                                                                                                                                                               |
+| 13  | Share to all facilities (fork)                                        | **Missing.** Only `OrgCourseOffering` (org-granularity, actions unwired to UI) and `Course.isGlobal` (platform catalog flag — different concept)                                                                                                                                                                                                               |
+| 14  | Staff Management + Switch facility modal                              | **Partial.** Staff list/detail/invite exist (org-scoped); no facility display, no switch-facility, no per-facility mandatory-course replacement                                                                                                                                                                                                                |
+| 15  | Bulk Add Staff → per-email role assign                                | **Exists** (InviteStaffModal, CSV import, per-contact roles). No facility selection — matches design (facility comes from scope) but invite has no facility today                                                                                                                                                                                              |
+| 16  | Staff status Active / deactivate                                      | **Missing.** Only hard `removeStaff` (detaches org, deletes enrollments); no deactivate/reactivate                                                                                                                                                                                                                                                             |
+| 17  | Settings Users & Permissions / Roles / Facility tabs                  | **Exists** (plus a Notifications tab). Matrix is read-only registry-derived — matches design intent                                                                                                                                                                                                                                                            |
+| 18  | Roles matrix contents                                                 | **Near-match.** Same row set incl. "Create & switch facilities" (currently a no-op capability). ⚠️ Column mismatch: implementation has 6 columns (incl. **Supervisor**); the v3 frame shows 5 (Owner, HR, Clinical Director, Finance, Student) — **Supervisor column absent in the design. Confirm intent** (moved to facility-level concept, or an omission?) |
+| 19  | JWT/session facility context                                          | **Missing.** Token/session carry `id, role, organizationId` — no facility                                                                                                                                                                                                                                                                                      |
+| 20  | Audit readiness / Export from compare view                            | **Missing** as designed (org `hasAuditorAccess` + Auditor Pack screens exist as separate concept)                                                                                                                                                                                                                                                              |
 
 **Bottom line:** the v3 design's multi-facility layer is almost entirely greenfield. What
 exists and survives: page shells (dashboard/documents/courses/staff/settings routes),
@@ -192,13 +210,13 @@ Source: "RBAC matrix for Theraptly LMS"
 (<https://docs.google.com/document/d/1tFGKz-UNwVBj66JVHEIC2CRDcfWlDzjokg8WaXKskps>).
 Six admin-tier roles × five modules:
 
-| Module | Owner | Admin | HR | Finance | Clinical/Quality | Facility Supervisors |
-|---|---|---|---|---|---|---|
-| Documents | CRUD | CRUD | CRUD | — | CRU | R |
-| Courses | CRUD | CRUD | CRUD | — | CRUD | R |
-| Staff Management | CRUD | CRUD | CRUD | — | — | R |
-| Billing | CRUD | CRUD | — | CRUD | — | — |
-| Audits | CRUD | CRUD | R | — | R | R |
+| Module           | Owner | Admin | HR   | Finance | Clinical/Quality | Facility Supervisors |
+| ---------------- | ----- | ----- | ---- | ------- | ---------------- | -------------------- |
+| Documents        | CRUD  | CRUD  | CRUD | —       | CRU              | R                    |
+| Courses          | CRUD  | CRUD  | CRUD | —       | CRUD             | R                    |
+| Staff Management | CRUD  | CRUD  | CRUD | —       | —                | R                    |
+| Billing          | CRUD  | CRUD  | —    | CRUD    | —                | —                    |
+| Audits           | CRUD  | CRUD  | R    | —       | R                | R                    |
 
 The doc explicitly leaves "tenant-level vs facility-level data access" open — that half is
 answered by the schema plan (`OrganizationUser` role = what you can do,
@@ -207,8 +225,8 @@ answered by the schema plan (`OrganizationUser` role = what you can do,
 **Where it agrees with the Figma v3 design:**
 
 - Clinical/Quality: Documents **CRU without delete** matches the Doc Hub kebab (Verify =
-  *Clinical · HR*; Delete not offered to Clinical).
-- HR: Documents CRUD + Promote to Global (*HR only*) is consistent.
+  _Clinical · HR_; Delete not offered to Clinical).
+- HR: Documents CRUD + Promote to Global (_HR only_) is consistent.
 - Finance: billing-only matches both the Figma matrix and the current registry.
 - Supervisors read-mostly at org level with facility-scoped reality matches the Doc Hub
   copy ("Supervisors can only pick their assigned facilities").
@@ -223,14 +241,14 @@ frames or the current code disagree with the matrix above, the matrix wins. Reso
    matrix, not from the frame's columns.
 2. **`admin` is added to the `UserRole` enum** in the schema plan's (destructive)
    migration — Owner-equivalent CRUD including billing. The JWT guard in
-   `create-auth-instance.ts` that kills sessions carrying the *retired legacy* `admin`
+   `create-auth-instance.ts` that kills sessions carrying the _retired legacy_ `admin`
    role is removed in the auth rework, and `admin` joins `ADMIN_ROLES` / `GRANTABLE_ROLES`
    etc. (Recorded in `multi-org-schema-upgrade-plan.md`, Decisions §8.)
 3. **Supervisor is demoted to read-only** on Documents, Courses, Staff Management, and
    Audits; no Billing. The current registry (supervisor = everything except billing,
    incl. `facility.create/edit` and role-change rights) is rewritten accordingly;
    "Create & switch facilities" becomes Owner + Admin. Facility supervisors' remaining
-   power is *scope*, not verbs: their R access spans their assigned facilities
+   power is _scope_, not verbs: their R access spans their assigned facilities
    (`OrganizationUserFacility`). ⚠️ Note this contradicts some v3 Doc Hub frames that
    show supervisors uploading ("Upload · Owner/Supervisor (Global)") — per the ruling,
    supervisors do NOT create documents; those frames apply to Owner/Admin.
@@ -368,7 +386,7 @@ with the doc. Concretely:
 
 1. The implemented 6-admin-role registry (incl. `admin`, supervisor read-only, HR Courses
    CRUD) stays exactly as certified on 2026-08-03 — no changes from the design matrix.
-2. The Settings→Roles *screen* is still to be built, but its content must render the
+2. The Settings→Roles _screen_ is still to be built, but its content must render the
    doc's matrix (i.e. the implemented permission registry), not the design's columns.
 3. The restricted course row-menu variant ("Assign to staff" + "View Source Document")
    is mapped per the doc: supervisor gets NO assign action (read-only); the restricted
@@ -380,18 +398,18 @@ with the doc. Concretely:
 
 ### 4.8 Reconciliation vs current implementation (non-RBAC items, 2026-08-06)
 
-| # | Design change (§) | Current implementation | Gap |
-|---|---|---|---|
-| 1 | Global all-facilities dashboard (§4.1) | `dashboard/(main)/page.tsx` is single-scope; no facility scope anywhere in it | **Greenfield.** Needs facility-grouped aggregates (staff count, active learners, overdue, audit readiness, expiring credentials) — all derivable once enrollments/assignments carry `facilityId` (plan §3.2 item 7). "Inactive Staff" maps to `OrganizationUser.active`/`lastLoginAt` (already in schema) |
-| 2 | Facility-scoped dashboard + switcher dropdown (§4.1) | Existing dashboard widgets (Total Courses / Staff Assigned / Avg Grade, Performance, Training Coverage) already implemented org-wide | **Partial.** Reuse widgets; add facility filter + breadcrumb. Facility view-scope is UI/URL state per the facility-out-of-JWT ruling — a `?facility=` param or client store, no session change |
-| 3 | Settings tabs Users & Permissions / Roles / Facility (§4.2) | **Already implemented**: `SettingsClient.tsx` has exactly these tabs (+ Notifications, which the design omits — keep it) | Cosmetic diff only; verify against mock during UI pass |
-| 4 | Add Facility button + modal (§4.2) | `FacilityTab.tsx` shows single facility profile + plan; no create-facility flow anywhere | **Greenfield.** `Facility` model already has `name/type/address`; supervisor-email invite maps to existing facility-aware `Invite` (`Invite.facilityId` exists). Needs a `facility.create` server action gated `owner`-side per RBAC doc |
-| 5 | Subscription plan on facility card (§4.2) | `FacilityTab` already renders org-level `planName` | Matches §3.4-3 assumption (org plan displayed on facility card) — no billing change |
-| 6 | Staff change-facility flow (§4.3) | No `changeFacility`/`switchFacility` action or UI exists | **Greenfield but schema-ready**: move = rewrite `OrganizationUserFacility` rows for the membership; training records naturally survive (enrollments hang off `organizationUserId`, not facility) — the modal's "records preserved" copy is already true by construction |
-| 7 | Courses Video/Slides tabs (§4.4) | `CourseType` enum is `text \| video`; `Course.rawSlidesJson` exists | **Rename/mapping question**: design's "Slides" ≈ existing `text` (slide-based) courses. Tab UI is new; no schema change needed unless a real third type is intended — assume mapping `video→Video`, `text→Slides` until comments say otherwise |
-| 8 | Role-gated course row menus (§4.4) | Menu gating now driven by fine-grained `can()` gates (implemented) | Render menu items from registry gates; do not copy the mock's restricted variant (see §4.7-3) |
-| 9 | Prebuilt course catalog step (§4.5) | No prebuilt/template course support in code or schema | **Greenfield.** Needs a source for platform-level courses — natural fit: courses owned by the internal `system` org (approved sign-off #1) + a copy-into-org action, which is the same fork mechanic as course sharing (§1.3) — build once |
-| 10 | Bulk multi-file upload with per-file category (§4.6) | `ui/FileUpload.tsx` supports `multiple`, but the documents `upload-modal.tsx` takes `files?.[0]` (single) and `Document` has **no category field** | **Partial.** Multi-file: wire existing primitive through the modal + action. Categories: schema addition (`Document.category` or a category table) — belongs in the same next-increment migration as facility scoping for documents (plan §3.2) |
+| #   | Design change (§)                                           | Current implementation                                                                                                                             | Gap                                                                                                                                                                                                                                                                                                       |
+| --- | ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Global all-facilities dashboard (§4.1)                      | `dashboard/(main)/page.tsx` is single-scope; no facility scope anywhere in it                                                                      | **Greenfield.** Needs facility-grouped aggregates (staff count, active learners, overdue, audit readiness, expiring credentials) — all derivable once enrollments/assignments carry `facilityId` (plan §3.2 item 7). "Inactive Staff" maps to `OrganizationUser.active`/`lastLoginAt` (already in schema) |
+| 2   | Facility-scoped dashboard + switcher dropdown (§4.1)        | Existing dashboard widgets (Total Courses / Staff Assigned / Avg Grade, Performance, Training Coverage) already implemented org-wide               | **Partial.** Reuse widgets; add facility filter + breadcrumb. Facility view-scope is UI/URL state per the facility-out-of-JWT ruling — a `?facility=` param or client store, no session change                                                                                                            |
+| 3   | Settings tabs Users & Permissions / Roles / Facility (§4.2) | **Already implemented**: `SettingsClient.tsx` has exactly these tabs (+ Notifications, which the design omits — keep it)                           | Cosmetic diff only; verify against mock during UI pass                                                                                                                                                                                                                                                    |
+| 4   | Add Facility button + modal (§4.2)                          | `FacilityTab.tsx` shows single facility profile + plan; no create-facility flow anywhere                                                           | **Greenfield.** `Facility` model already has `name/type/address`; supervisor-email invite maps to existing facility-aware `Invite` (`Invite.facilityId` exists). Needs a `facility.create` server action gated `owner`-side per RBAC doc                                                                  |
+| 5   | Subscription plan on facility card (§4.2)                   | `FacilityTab` already renders org-level `planName`                                                                                                 | Matches §3.4-3 assumption (org plan displayed on facility card) — no billing change                                                                                                                                                                                                                       |
+| 6   | Staff change-facility flow (§4.3)                           | No `changeFacility`/`switchFacility` action or UI exists                                                                                           | **Greenfield but schema-ready**: move = rewrite `OrganizationUserFacility` rows for the membership; training records naturally survive (enrollments hang off `organizationUserId`, not facility) — the modal's "records preserved" copy is already true by construction                                   |
+| 7   | Courses Video/Slides tabs (§4.4)                            | `CourseType` enum is `text \| video`; `Course.rawSlidesJson` exists                                                                                | **Rename/mapping question**: design's "Slides" ≈ existing `text` (slide-based) courses. Tab UI is new; no schema change needed unless a real third type is intended — assume mapping `video→Video`, `text→Slides` until comments say otherwise                                                            |
+| 8   | Role-gated course row menus (§4.4)                          | Menu gating now driven by fine-grained `can()` gates (implemented)                                                                                 | Render menu items from registry gates; do not copy the mock's restricted variant (see §4.7-3)                                                                                                                                                                                                             |
+| 9   | Prebuilt course catalog step (§4.5)                         | No prebuilt/template course support in code or schema                                                                                              | **Greenfield.** Needs a source for platform-level courses — natural fit: courses owned by the internal `system` org (approved sign-off #1) + a copy-into-org action, which is the same fork mechanic as course sharing (§1.3) — build once                                                                |
+| 10  | Bulk multi-file upload with per-file category (§4.6)        | `ui/FileUpload.tsx` supports `multiple`, but the documents `upload-modal.tsx` takes `files?.[0]` (single) and `Document` has **no category field** | **Partial.** Multi-file: wire existing primitive through the modal + action. Categories: schema addition (`Document.category` or a category table) — belongs in the same next-increment migration as facility scoping for documents (plan §3.2)                                                           |
 
 **Sequencing (unchanged from §3.5):** the applied migration stays correct as increment 1.
 Items 1, 2, 6, and 10's category/facility scoping all land cleanly in the already-planned
