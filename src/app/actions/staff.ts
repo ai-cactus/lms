@@ -920,11 +920,16 @@ export async function getEnrollmentQuizResult(enrollmentId: string) {
   // says HR is "blocked from question-by-question assessment scoring", so the
   // old verb admitted the one manager role the registry withholds this from.
   //
-  // The `isAdminRole` conjunction is load-bearing, NOT redundant: every worker
-  // role holds `assessment.read` so it can read its OWN attempt, so the verb
-  // alone would open this id-addressed action — someone else's answers — to all
-  // eight of them. Together they resolve to owner, admin, supervisor and
-  // clinical_director, which is the intended set.
+  // The verb is what does the work here. `isAdminRole` is defence in depth, not
+  // load-bearing: this module's `auth` is the admin instance (`@/auth`), which
+  // fences worker roles out at decode (`auth.ts:6` +
+  // `create-auth-instance.ts:736`), so no worker session reaches this line. It
+  // matters because every worker role DOES hold `assessment.read` — granted so a
+  // learner can read their OWN attempt — so if this action ever moves to a
+  // resolve-either-instance session, as `getEnrollmentWithResults` uses, the verb
+  // alone would open someone else's answers to all eight. Keep them paired.
+  //
+  // Together they resolve to owner, admin, supervisor and clinical_director.
   const roleKey = dbRoleToRoleKey(session.user.role);
   if (!roleKey || !isAdminRole(session.user.role) || !can(roleKey, 'assessment.read')) {
     logger.warn({

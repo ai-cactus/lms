@@ -161,8 +161,13 @@ export async function getAdminWorkerCertificates(organizationUserId: string) {
   }
 
   // One rule across all three certificate surfaces: this, `getCertificateDetails`
-  // and the download route in `api/certificates/[id]`. See the fuller note there
-  // on why each half of the conjunction is load-bearing.
+  // and the download route in `api/certificates/[id]`.
+  //
+  // Here the verb is the load-bearing half. This function takes `adminAuth()`
+  // directly, not the module's `resolveSession()`, and the admin instance fences
+  // worker roles out at decode (`auth.ts:6` + `create-auth-instance.ts:736`), so
+  // `isAdminRole` is defence in depth. It is load-bearing in
+  // `getCertificateDetails`, which accepts either instance.
   //
   // This gate used to ask for `user.read`, which reads as "the staff-profile
   // verb" but denies Clinical Director — founder Q7: "All Clinical/Quality to
@@ -238,10 +243,13 @@ export async function getCertificateDetails(certificateId: string) {
   //   this is not `user.read`: Clinical Director has no Staff Management access
   //   but does hold the certificate verb (founder Q7).
   //
-  //   isAdminRole — because all eight WORKER roles hold `certificate.read` so
-  //   they can read their own (see `workerPermissions`). The verb alone does not
-  //   separate "my certificate" from "theirs", and this action is id-addressed,
-  //   so it would hand a nurse any colleague's name, course, score and email.
+  //   isAdminRole — genuinely load-bearing HERE, unlike the two admin-fenced
+  //   certificate gates. This action takes `resolveSession()`, which falls back
+  //   to the WORKER instance, so a nurse's session really does reach this line.
+  //   All eight worker roles hold `certificate.read` (granted by
+  //   `workerPermissions` so a learner can read their own), and the verb alone
+  //   does not separate "my certificate" from "theirs" — on an id-addressed
+  //   action it would hand a nurse any colleague's name, course, score and email.
   //
   // Together: owner, admin, supervisor, hr, clinical_director — exactly Q7.
   const roleKey = dbRoleToRoleKey(session.user.role);

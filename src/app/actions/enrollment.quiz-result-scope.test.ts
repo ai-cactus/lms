@@ -154,15 +154,23 @@ describe('getEnrollmentWithResults — permission gate', () => {
   });
 
   /**
-   * The `isAdminRole` half of the gate is load-bearing. Every worker role holds
-   * `assessment.read` so it can read its OWN attempt, so the verb alone does not
-   * separate "my answers" from "theirs" — it would have admitted all eight to
-   * this id-addressed action.
+   * The `isAdminRole` half is genuinely load-bearing HERE, unlike on the
+   * admin-fenced `getEnrollmentQuizResult`: this action takes `resolveSession()`,
+   * which falls back to the WORKER instance, so these are sessions a nurse can
+   * really hold. Every worker role holds `assessment.read` so it can read its
+   * OWN attempt, so the verb alone does not separate "my answers" from "theirs"
+   * and would admit all eight to this id-addressed action.
    */
   it.each(['nurse', 'therapist_clinician', 'front_desk_admin'])(
     '%s holds assessment.read but is still denied someone else’s answers',
     async (role) => {
-      setCreatorSession(role);
+      // The WORKER instance, and authorship satisfied, so the tier check is the
+      // only thing left that can refuse. Staging this on the admin instance
+      // would model a session the decode fence invalidates.
+      mockAuth.mockResolvedValue(null);
+      mockWorkerAuth.mockResolvedValue({
+        user: { id: 'w-1', role, organizationId: ORG_ID, organizationUserId: CREATOR_OU },
+      });
 
       await expect(getEnrollmentWithResults('enr-1')).rejects.toThrow('Access denied');
       expect(mockEnrollmentFindFirst).not.toHaveBeenCalled();

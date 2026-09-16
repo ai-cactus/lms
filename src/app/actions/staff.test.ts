@@ -1124,14 +1124,19 @@ describe('getEnrollmentQuizResult — org isolation (F-010)', () => {
     });
 
     /**
-     * The `isAdminRole` half is load-bearing, not belt-and-braces: every worker
-     * role holds `assessment.read` so it can read its OWN attempt, so the verb
-     * alone would have opened this id-addressed action to all eight of them.
-     * Swapping the verb without the conjunction would have WIDENED the gap this
-     * phase exists to close.
+     * DEFENCE IN DEPTH — this module's `auth` is the admin instance, which
+     * invalidates any session whose freshly-read role is not an admin role
+     * (`auth.ts:6` + `create-auth-instance.ts:736`), so the sessions staged
+     * below cannot exist and this proves less than its shape suggests.
+     *
+     * Kept because every worker role holds `assessment.read` (granted so a
+     * learner can read their OWN attempt), so the tier check is what would save
+     * this action if it ever moved to a resolve-either-instance session — as
+     * `getEnrollmentWithResults` uses, where the same check IS load-bearing
+     * against a session a nurse can really hold.
      */
     it.each(['nurse', 'therapist_clinician', 'front_desk_admin'])(
-      '%s holds assessment.read but is still denied someone else’s answers',
+      '%s would be denied even if the admin instance ever stopped fencing it out',
       async (role) => {
         mockAuth.mockResolvedValue({ user: { id: 'w-1', role, organizationId: 'org-a' } });
 

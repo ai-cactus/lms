@@ -46,14 +46,24 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
 
     let authorized = isSelf;
 
-    // The administrative branch checked org equality and NOTHING else — not even
-    // `isAdminRole` — so every admin-tier session in the organisation could pull
-    // any holder's PDF by id. Same gate as `getCertificateDetails`, and for the
-    // same two reasons: the verb excludes Finance (Phase 1), and `isAdminRole`
-    // excludes the eight worker roles, which all hold `certificate.read` so they
-    // can read their own. A worker-role account signed in on the admin instance
-    // is a real state — the auth instance is a routing selector, not the role —
-    // so the tier check cannot be inferred from the cookie.
+    // The administrative branch checked org equality and NOTHING else, so every
+    // admin-tier session in the organisation could pull any holder's PDF by id.
+    //
+    // What closes that here is `can(roleKey, 'certificate.read')` plus the
+    // facility narrowing below — those two are load-bearing. `isAdminRole` is
+    // NOT: `roleKey` comes from `adminSession`, and the admin instance already
+    // fences worker roles out. `auth.ts:6` builds it with
+    // `allowedRoles: ADMIN_ROLES`, and with no `sessionAllowedRoles` override
+    // that list also governs decode, so `create-auth-instance.ts:736` invalidates
+    // any session whose freshly-read membership role is not an admin role. A
+    // worker therefore cannot hold a valid `'@/auth'` session at all.
+    //
+    // It is kept as defence in depth against that list widening — the worker
+    // instance already sets `sessionAllowedRoles: ALL_ROLES` for learner-mode
+    // bridging, so "the instance implies the tier" is an assumption about THIS
+    // instance, not a property of the pair. Where the caller can arrive on
+    // either instance — `getCertificateDetails`, which resolves admin-then-worker
+    // — the same check IS load-bearing.
     if (!authorized && adminSession?.user?.id && adminSession.user.organizationId) {
       const roleKey = dbRoleToRoleKey(adminSession.user.role);
       if (roleKey && isAdminRole(adminSession.user.role) && can(roleKey, 'certificate.read')) {

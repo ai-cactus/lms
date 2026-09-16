@@ -168,16 +168,22 @@ describe('getCertificateDetails — permission gate', () => {
    * `isAdminRole && certificate.read` — BOTH halves, and this block exists
    * because dropping either one re-opens a different hole.
    *
-   * All eight WORKER roles hold `certificate.read` (`workerPermissions` in the
-   * registry) so a learner can read their OWN. On an id-addressed action the
-   * verb therefore does not separate "my certificate" from "theirs": without
-   * the `isAdminRole` half a nurse gets any colleague's name, course and score
-   * within their facility. The original `isAdminRole`-only gate refused them —
-   * so a verb-only gate would be a REGRESSION, not a partial fix.
+   * The tier half is genuinely load-bearing on THIS action, unlike the two
+   * admin-fenced certificate gates: `getCertificateDetails` takes
+   * `resolveSession()`, which falls back to the worker instance, so these
+   * sessions are real ones a nurse can actually hold. All eight worker roles
+   * hold `certificate.read` (`workerPermissions`, so a learner can read their
+   * OWN), and on an id-addressed action the verb does not separate "my
+   * certificate" from "theirs". The gate this replaced was `isAdminRole`-only
+   * and refused them, so a verb-only gate would be a REGRESSION.
    */
   it.each(['nurse', 'therapist_clinician', 'front_desk_admin'])(
     '%s holds certificate.read but is still denied someone else’s certificate',
     async (role) => {
+      // The WORKER instance deliberately — that is the session a worker role can
+      // actually hold. The admin instance invalidates non-admin roles at decode
+      // (auth.ts:6 + create-auth-instance.ts:736), so staging one there would
+      // model a state that cannot exist and prove nothing.
       mockAdminAuth.mockResolvedValue(null);
       mockWorkerAuth.mockResolvedValue({
         user: { id: 'w-2', role, organizationId: ORG_ID, organizationUserId: 'ou-other' },
@@ -187,13 +193,6 @@ describe('getCertificateDetails — permission gate', () => {
       expect(prismaMock.certificate.findFirst).not.toHaveBeenCalled();
     },
   );
-
-  it('a worker role signed in on the ADMIN instance is denied too — the cookie is not the role', async () => {
-    setAdminSession('nurse', 'ou-other');
-
-    await expect(getCertificateDetails('cert-1')).rejects.toThrow('Unauthorized');
-    expect(prismaMock.certificate.findFirst).not.toHaveBeenCalled();
-  });
 
   it.each(['owner', 'admin', 'supervisor', 'hr', 'clinical_director'])(
     '%s is admitted — founder Q7',

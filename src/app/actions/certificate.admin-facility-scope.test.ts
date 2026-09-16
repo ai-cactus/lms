@@ -100,13 +100,22 @@ describe('getAdminWorkerCertificates — role gate', () => {
   });
 
   /**
-   * Every WORKER role holds `certificate.read` (`workerPermissions`) so it can
-   * read its OWN. This action is id-addressed and returns someone else's, so
-   * the verb alone would admit all eight — the `isAdminRole` half is what
-   * refuses them, exactly as on the other two certificate surfaces.
+   * DEFENCE IN DEPTH, and the assertion is deliberately weaker than it looks.
+   *
+   * This action takes `adminAuth()`, and the admin instance invalidates any
+   * session whose freshly-read role is not an admin role (`auth.ts:6` +
+   * `create-auth-instance.ts:736`). So the session staged below cannot exist in
+   * production, and this does NOT prove a real attack is refused — the test
+   * below, on the worker instance, is the one that covers the reachable case.
+   *
+   * It is kept because the pairing still matters: every worker role holds
+   * `certificate.read` (`workerPermissions`, so a learner can read their own),
+   * so if this action ever moves to a resolve-either-instance session — as its
+   * sibling `getCertificateDetails` uses — the verb alone would admit all eight.
+   * This pins the gate against that refactor, not against today's traffic.
    */
   it.each(['nurse', 'therapist_clinician', 'front_desk_admin'])(
-    '%s holds certificate.read but is denied — the admin-tier half of the gate',
+    '%s would be refused even if the admin instance ever stopped fencing it out',
     async (role) => {
       setSession('worker-1', role);
 
@@ -115,7 +124,7 @@ describe('getAdminWorkerCertificates — role gate', () => {
     },
   );
 
-  it('a worker on the worker instance is denied', async () => {
+  it('THE REACHABLE CASE: a worker on the worker instance is denied', async () => {
     mockAdminAuth.mockResolvedValue(null);
     mockWorkerAuth.mockResolvedValue({
       user: { id: 'worker-1', role: 'nurse', organizationId: ORG_ID, organizationUserId: 'ou-w1' },

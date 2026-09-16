@@ -167,17 +167,21 @@ describe('GET /api/certificates/[id] — administrative downloads', () => {
   });
 
   /**
-   * `isAdminRole && certificate.read` — both halves, same trap as the action.
+   * DEFENCE IN DEPTH, and weaker than it looks — `roleKey` here comes from
+   * `adminSession`, and the admin instance invalidates any session whose
+   * freshly-read role is not an admin role (`auth.ts:6` +
+   * `create-auth-instance.ts:736`). The session staged below cannot exist, so
+   * this does not prove a reachable attack is refused; what closes the real
+   * hole on this route is `certificate.read` plus the facility narrowing,
+   * covered above.
    *
-   * All eight WORKER roles hold `certificate.read` so a learner can read their
-   * OWN, so the verb alone does not separate "my certificate" from "theirs".
-   * Here the served artifact is the PDF itself, and a worker-role account on
-   * the admin instance is a real state (the auth instance is a routing
-   * selector, not the role), so the tier check cannot be skipped on the
-   * assumption that the admin cookie implies an admin role.
+   * Kept because every worker role holds `certificate.read` (so a learner can
+   * read their own), so the pairing is what would save this route if it ever
+   * accepted the worker session too — which its sibling `getCertificateDetails`
+   * does, where the same check IS load-bearing.
    */
   it.each(['nurse', 'therapist_clinician', 'front_desk_admin'])(
-    '%s holds certificate.read but is still refused another holder’s PDF',
+    '%s would be refused even if the admin instance ever stopped fencing it out',
     async (role) => {
       setAdminSession(role);
 

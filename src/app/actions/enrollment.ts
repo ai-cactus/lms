@@ -1153,9 +1153,12 @@ export async function getEnrollmentWithResults(enrollmentId: string) {
   // Authorship alone was the whole gate here, so a course creator saw every
   // participant's answers regardless of facility.
   //
-  // `isAdminRole` in conjunction because every worker role also holds
-  // `assessment.read` (to read its OWN attempt); the verb alone does not
-  // separate "my answers" from "theirs". Matches `getEnrollmentQuizResult`.
+  // `isAdminRole` is load-bearing here: this action takes `resolveSession()`,
+  // which falls back to the WORKER instance, so a learner's session reaches this
+  // line. Every worker role holds `assessment.read` (to read its OWN attempt),
+  // so the verb alone does not separate "my answers" from "theirs".
+  // `getEnrollmentQuizResult` pairs the same two, though there the admin
+  // instance already fences workers out and the tier check is defensive.
   const roleKey = dbRoleToRoleKey(session.user.role);
   const isCourseCreator = enrollment.course.createdByOrgUserId === session.user.organizationUserId;
 
