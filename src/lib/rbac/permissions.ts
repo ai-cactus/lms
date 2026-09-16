@@ -217,7 +217,7 @@ export const roles = {
     category: 'manager',
     displayName: 'Facility Supervisor',
     description:
-      'Facility-level overseer. READ-ONLY on documents, courses, staff and audits — a supervisor’s power is SCOPE, not verbs: their read access spans the facilities assigned to them (OrganizationUserFacility), enforced at the data layer. May generate an auditor pack, but only over that same facility scope. Cannot create or edit facilities, cannot change staff roles, and has no billing access whatsoever.',
+      'Facility-level overseer. READ-ONLY on documents, courses, staff and audits — a supervisor’s power is SCOPE, not verbs: their read access spans the facilities assigned to them (OrganizationUserFacility), enforced at the data layer. May generate an auditor pack and issue a completion certificate, but only over that same facility scope. Cannot create or edit facilities, cannot change staff roles, and has no billing access whatsoever.',
     permissions: [
       ...readEverythingExceptBilling,
       ...selfServicePermissions,
@@ -254,6 +254,12 @@ export const roles = {
       // supervisor already manages.
       'assignment.delete',
       'enrollment.create',
+      // Certificates CR per the updated matrix — see the `hr` block for the Q1
+      // reading. Scope, not reach: `issueCertificate` narrows the target
+      // enrollment to the caller's facilities in the same commit, because
+      // founder Q7 limits a supervisor to their own facility's staff. Never
+      // grant this without that narrowing.
+      'certificate.create',
     ],
   },
 
@@ -283,6 +289,14 @@ export const roles = {
       'course.read',
       'course.edit',
       'course.delete',
+      // `certificate.create` added 2026-09-16 — the updated matrix
+      // (docs/local/RBAC_for_multi-tenancy-updated.md) moves Certificates from
+      // `R` to `CR` for every role holding the row. Read the same way as founder
+      // Q1 on Audits: "Managers with access should be able to Generate reports.
+      // If that is a create action, then we should add create to the rules."
+      // Producing the artifact over records you may already read is the create,
+      // and `issueCertificate` is the path that now checks it.
+      'certificate.create',
       'certificate.read',
       'category.read',
       'document.create',
@@ -329,7 +343,7 @@ export const roles = {
       'assessment.read',
       'assessment.edit',
       // Quiz CRU — delete is deliberately withheld. The updated matrix
-      // (docs/local/RBAC_for_multi-tenancy-new.md) prints Clinical/Quality as
+      // (docs/local/RBAC_for_multi-tenancy-updated.md) prints Clinical/Quality as
       // CRU on the new Quiz row, the same shape it already gives Documents and
       // Courses; deletion stays with Owner/Admin/HR.
       'enrollment.create',
@@ -348,6 +362,9 @@ export const roles = {
       'document.read',
       'document.edit',
       'standardManual.read',
+      // Certificates CR per the updated matrix — see the `hr` block for the Q1
+      // reading that makes generating the artifact a create.
+      'certificate.create',
       'certificate.read',
       'organization.read',
       'facility.read',

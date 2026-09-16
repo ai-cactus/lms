@@ -92,6 +92,12 @@ describe('can() — supervisor (demoted to read-only + self-service)', () => {
     // facilities, and this grant must go if that ever does.
     'assignment.delete',
     'enrollment.create',
+    // Added 2026-09-16 per the latest matrix revision, which promotes
+    // Certificates to `CR` for every role holding the row. Same facility
+    // caveat once more: `issueCertificate` re-reads the target enrollment
+    // through the caller's facility predicate, and this grant must go if that
+    // narrowing ever does.
+    'certificate.create',
   ] as const;
 
   it('supervisor has assignment.delete but still no other write verb on assignment/enrollment', () => {
@@ -201,6 +207,9 @@ describe('can() — hr (regression guard: exact permission set)', () => {
     'course.read',
     'course.edit',
     'course.delete',
+    // Certificates CR per the latest matrix revision — generating the artifact
+    // is the create (founder Q1's reading on Audits).
+    'certificate.create',
     'certificate.read',
     'category.read',
     // HR gained full document CRUD per the updated ruling (previously read-only).
@@ -342,7 +351,7 @@ describe('can() — clinicalDirector (regression guard: exact permission set)', 
     'assessment.read',
     'assessment.edit',
     // assessment.delete deliberately withheld — the updated matrix
-    // (docs/local/RBAC_for_multi-tenancy-new.md) prints Quiz CRU for
+    // (docs/local/RBAC_for_multi-tenancy-updated.md) prints Quiz CRU for
     // clinicalDirector; deletion is reserved for Owner/Admin/HR.
     'enrollment.create',
     'enrollment.read',
@@ -360,6 +369,8 @@ describe('can() — clinicalDirector (regression guard: exact permission set)', 
     'document.edit',
     // document.delete deliberately withheld — clinicalDirector gets CRU only.
     'standardManual.read',
+    // Certificates CR per the latest matrix revision — see the HR set.
+    'certificate.create',
     'certificate.read',
     'organization.read',
     'facility.read',

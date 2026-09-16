@@ -1,13 +1,16 @@
 /**
  * Founder RBAC matrix — registry conformance.
  *
- * SOURCE OF TRUTH: `docs/local/RBAC_for_multi-tenancy-new.md` — the founder's
- * updated matrix, which supersedes `docs/local/RBAC-for-multi-tenancy.md` — read
- * together with `docs/local/RBAC-founder-answers-2026-09-15.md` (28 decisions
- * across three rounds), which resolves the letters the matrix leaves ambiguous.
+ * SOURCE OF TRUTH: `docs/local/RBAC_for_multi-tenancy-updated.md` — the founder's
+ * latest matrix, which supersedes `RBAC_for_multi-tenancy-new.md` and, before it,
+ * `RBAC-for-multi-tenancy.md` — read together with
+ * `docs/local/RBAC-founder-answers-2026-09-15.md` (28 decisions across three
+ * rounds), which resolves the letters the matrix leaves ambiguous.
  *
- * The update adds two rows (Quiz, Certificates) and promotes Audits from `R` to
- * `CR`; its other four rows ratify what is already shipped.
+ * Against the original, the current matrix adds two rows (Quiz, Certificates)
+ * and promotes Audits from `R` to `CR`; the latest revision promotes
+ * Certificates from `R` to `CR` as well. Its other four rows ratify what is
+ * already shipped.
  *
  * ⛔ ANY PR THAT TOUCHES `permissions.ts` OR `role-utils.ts` MUST UPDATE THIS
  * FILE. The matrix below is the founder's directive expressed as data; the
@@ -171,22 +174,26 @@ const MATRIX: Record<MatrixModule, Record<MatrixRole, Cell>> = {
         '(assertCanEditCourseContent in actions/lesson.ts), which they do not hold.',
     ),
   },
+  // `CR`, not `R`: the founder's latest revision promotes every held cell in
+  // this row, on the same reading Q1 gave Audits — generating the artifact is
+  // the create. The `C` has a real call site: `issueCertificate`.
   Certificates: {
     owner: diverges(
-      'R',
+      'CR',
       'CRUD',
       'See the Audits owner cell — Owner and Admin are Owner-equivalent full ' +
         'CRUD on every resource (`everything` in permissions.ts), so the ' +
         'Certificates letters are a floor for them, not a ceiling.',
     ),
-    admin: diverges('R', 'CRUD', 'See the owner cell — Owner-equivalent full CRUD.'),
-    hr: cell('R'),
-    // The updated matrix leaves this cell blank rather than printing `—`, but
-    // founder Q7 is explicit — "Finance should not be able to see certificates"
-    // — which is what removed `certificate.read` from Finance in the first place.
+    admin: diverges('CR', 'CRUD', 'See the owner cell — Owner-equivalent full CRUD.'),
+    hr: cell('CR'),
+    // The matrix leaves this cell blank rather than printing `—`, but founder Q7
+    // is explicit — "Finance should not be able to see certificates" — which is
+    // what removed `certificate.read` from Finance in the first place. The
+    // promotion to `CR` does not reach a role that holds none of the row.
     finance: cell('—'),
-    clinicalDirector: cell('R'),
-    supervisor: cell('R'),
+    clinicalDirector: cell('CR'),
+    supervisor: cell('CR'),
   },
   'Staff Management': {
     owner: cell('CRUD'),

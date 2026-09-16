@@ -49,14 +49,71 @@ export async function issueCertificate(enrollmentId: string): Promise<IssueCerti
     throw new Error('Enrollment not found');
   }
 
-  // Ensure the caller is authorized (either the enrolled learner, or their admin)
-  const isWorker = enrollment.organizationUserId === session.user.organizationUserId;
-  const isAdmin =
-    isAdminRole(session.user.role) &&
-    enrollment.organizationUser.organizationId === session.user.organizationId;
+  // The learner earning their own certificate always passes, and must stay
+  // AHEAD of everything below: a worker holds no `certificate.create` verb, and
+  // one with no active facility assignment narrows to `[]`. Either check would
+  // lock them out of the certificate they just earned. Same self-access-first
+  // shape as the three certificate reads.
+  const isSelf = enrollment.organizationUserId === session.user.organizationUserId;
 
-  if (!isWorker && !isAdmin) {
-    throw new Error('Unauthorized');
+  if (!isSelf) {
+    // Administrative issuance. BOTH halves of the verb gate are load-bearing.
+    //
+    //   can(roleKey, 'certificate.create') — the updated matrix moves
+    //   Certificates to `CR`, and this is that `C`: generating the artifact is
+    //   the create (founder Q1's reading on Audits). It also fences out Finance,
+    //   which `isAdminRole` admits but which founder Q7 removed from
+    //   certificates entirely — the reason this action needed a verb at all.
+    //
+    //   isAdminRole — load-bearing HERE, exactly as in `getCertificateDetails`
+    //   and unlike the admin-fenced `getAdminWorkerCertificates`. This action
+    //   takes the module's `resolveSession()`, which falls back to the WORKER
+    //   instance, so a nurse's session really does reach this line.
+    const roleKey = dbRoleToRoleKey(session.user.role);
+    if (
+      !roleKey ||
+      !isAdminRole(session.user.role) ||
+      !can(roleKey, 'certificate.create') ||
+      !session.user.organizationId
+    ) {
+      logger.warn({
+        msg: '[certificate] Certificate issuance denied',
+        userId: session.user.id,
+        role: session.user.role,
+        enrollmentId,
+      });
+      throw new Error('Unauthorized');
+    }
+
+    // null for org-wide roles; an array (possibly empty) for a facility-bound one.
+    const dataFacilityIds = await resolveDataFacilityIds(session);
+
+    // Re-read the enrollment through the org + facility predicate rather than
+    // comparing in JS, so this reaches the same verdict as the certificate
+    // reads: a holder outside the caller's facilities is refused exactly as an
+    // out-of-tenant one is. Q7's scope answer limits a Facility Supervisor to
+    // their own facility's staff, and issuing for a learner they cannot even
+    // read would contradict it.
+    const inScope = await prisma.enrollment.findFirst({
+      where: {
+        id: enrollmentId,
+        organizationUser: {
+          organizationId: session.user.organizationId,
+          ...staffFacilityWhere(dataFacilityIds),
+        },
+      },
+      select: { id: true },
+    });
+
+    if (!inScope) {
+      logger.warn({
+        msg: '[certificate] Out-of-scope certificate issuance blocked',
+        userId: session.user.id,
+        role: session.user.role,
+        enrollmentId,
+      });
+      throw new Error('Unauthorized');
+    }
   }
 
   // Refused by return: fail-closed, no certificate row, PDF or upload has been
