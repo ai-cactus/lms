@@ -341,7 +341,9 @@ describe('can() — clinicalDirector (regression guard: exact permission set)', 
     'assessment.create',
     'assessment.read',
     'assessment.edit',
-    'assessment.delete',
+    // assessment.delete deliberately withheld — the updated matrix
+    // (docs/local/RBAC_for_multi-tenancy-new.md) prints Quiz CRU for
+    // clinicalDirector; deletion is reserved for Owner/Admin/HR.
     'enrollment.create',
     'enrollment.read',
     'enrollment.edit',
@@ -391,6 +393,9 @@ describe('can() — clinicalDirector (regression guard: exact permission set)', 
   });
   it('clinicalDirector is denied course.delete (courses CRU only per founder Q3)', () => {
     expect(can('clinicalDirector', 'course.delete')).toBe(false);
+  });
+  it('clinicalDirector is denied assessment.delete (quiz CRU only per the updated matrix)', () => {
+    expect(can('clinicalDirector', 'assessment.delete')).toBe(false);
   });
   it('clinicalDirector is denied user.read (lost — no Staff module per the updated ruling)', () => {
     expect(can('clinicalDirector', 'user.read')).toBe(false);

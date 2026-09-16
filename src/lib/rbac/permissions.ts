@@ -319,7 +319,7 @@ export const roles = {
     category: 'manager',
     displayName: 'Clinical Director',
     description:
-      'Clinical quality-assurance & assessment oversight lead. Builds and edits clinical modules/assessments, assigns clinical training paths, and reviews granular, question-by-question assessment logs. Creates and edits courses and documents but cannot DELETE either (deletion of both is reserved for Owner/Admin/HR). Reads the audit trail. Has no Staff Management access at all, and is blocked from billing and subscription tiers.',
+      'Clinical quality-assurance & assessment oversight lead. Builds and edits clinical modules/assessments, assigns clinical training paths, and reviews granular, question-by-question assessment logs. Creates and edits courses, quizzes and documents but cannot DELETE any of the three (deletion of all three is reserved for Owner/Admin/HR). Reads the audit trail. Has no Staff Management access at all, and is blocked from billing and subscription tiers.',
     permissions: [
       'course.create',
       'course.read',
@@ -328,7 +328,10 @@ export const roles = {
       'assessment.create',
       'assessment.read',
       'assessment.edit',
-      'assessment.delete',
+      // Quiz CRU — delete is deliberately withheld. The updated matrix
+      // (docs/local/RBAC_for_multi-tenancy-new.md) prints Clinical/Quality as
+      // CRU on the new Quiz row, the same shape it already gives Documents and
+      // Courses; deletion stays with Owner/Admin/HR.
       'enrollment.create',
       'enrollment.read',
       'enrollment.edit',
