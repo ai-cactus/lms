@@ -160,17 +160,20 @@ export async function getAdminWorkerCertificates(organizationUserId: string) {
     throw new Error('Unauthorized');
   }
 
-  // This is the certificate half of the staff profile, so it must reach the same
-  // verdict as `getStaffDetails` — otherwise a target the profile 404s on still
-  // yields its full training history through this id-addressed action.
+  // One rule across all three certificate surfaces: this, `getCertificateDetails`
+  // and the download route in `api/certificates/[id]`. See the fuller note there
+  // on why each half of the conjunction is load-bearing.
   //
-  // `user.read` alone is sufficient HERE, unlike the `certificate.read` gates
-  // below and in the download route: every `user.read` holder is already
-  // admin-tier (owner, admin, supervisor, hr), so no worker can reach it. If a
-  // worker role is ever granted `user.read`, this needs the same `isAdminRole`
-  // conjunction they carry.
+  // This gate used to ask for `user.read`, which reads as "the staff-profile
+  // verb" but denies Clinical Director — founder Q7: "All Clinical/Quality to
+  // see certificates. For Clinical/Quality directors to see certificates, they
+  // need access to all staff. Finance should not be able to see certificates."
+  // Certificates are a Clinical/Quality concern and Staff Management is not, so
+  // the certificate verb decides certificate reads. Q7's "access to all staff"
+  // needs nothing here: `clinical_director` is already in
+  // ORG_WIDE_FACILITY_ROLES, so `resolveDataFacilityIds` hands it `null`.
   const roleKey = dbRoleToRoleKey(session.user.role);
-  if (!roleKey || !can(roleKey, 'user.read')) {
+  if (!roleKey || !isAdminRole(session.user.role) || !can(roleKey, 'certificate.read')) {
     logger.warn({
       msg: '[certificate] Admin certificate read denied',
       userId: session.user.id,
