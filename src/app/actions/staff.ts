@@ -15,7 +15,7 @@ import { can } from '@/lib/rbac/permissions';
 import { auth } from '@/auth';
 import { revalidatePath } from 'next/cache';
 import crypto from 'crypto';
-import type { EnrollmentStatus, UserRole } from '@/generated/prisma/enums';
+import type { UserRole } from '@/generated/prisma/enums';
 import { enrollUsers, type AssignmentSettingsInput } from '@/app/actions/enrollment';
 import { enrollUserForRoleTargets } from '@/lib/enrollment/role-targets';
 import { resolveDataFacilityIds, staffFacilityWhere } from '@/lib/facility/staff-where';
@@ -1114,27 +1114,20 @@ export async function removeStaff(organizationUserId: string) {
 
     const staffName = staffOrgUser.user.fullName || staffOrgUser.user.email;
 
-    // Drop in-flight training on removal so a re-invite yields a clean slate.
-    // Only the "active" statuses (the F-053 partial-index set) are deleted —
-    // cascading their ReminderLog / ReminderNudge / QuizAttempt rows. Terminal
-    // statuses (completed, attested, locked, failed, retry_requested) and their
-    // certificates are retained for compliance history.
-    const ACTIVE_ENROLLMENT_STATUSES: EnrollmentStatus[] = [
-      'enrolled',
-      'assigned',
-      'in_progress',
-      'lessons_complete',
-    ];
-
+    // Removal revokes ACCESS, never training history. Founder decision Q23
+    // (docs/local/RBAC-founder-answers-2026-09-15.md): a deactivated account's
+    // records are kept for compliance, so nothing here deletes enrollments,
+    // certificates or quiz attempts — including IN-FLIGHT enrollments, which an
+    // auditor needs in order to see that training was started but not finished.
+    // Consequence to preserve: re-inviting the same person restores the SAME
+    // membership row, so their unfinished courses reappear rather than starting
+    // from a clean slate. That is intended; wiping them would destroy evidence.
+    //
     // Single transaction: deactivate the membership, bump the identity's
     // sessionVersion so any live session is invalidated on its next JWT decode
-    // (F-059 kill-switch), drop the in-flight enrollments, and expire any
-    // pending invite for this email in the org so a live `/join` token can't
-    // immediately re-add the person.
-    const [droppedEnrollments] = await prisma.$transaction([
-      prisma.enrollment.deleteMany({
-        where: { organizationUserId, status: { in: ACTIVE_ENROLLMENT_STATUSES } },
-      }),
+    // (F-059 kill-switch), and expire any pending invite for this email in the
+    // org so a live `/join` token can't immediately re-add the person.
+    await prisma.$transaction([
       prisma.organizationUser.update({
         where: { id: organizationUserId },
         data: { active: false, deactivatedAt: new Date() },
@@ -1157,6 +1150,14 @@ export async function removeStaff(organizationUserId: string) {
     // so the removed user's next decode misses the cache and is invalidated.
     await invalidateRevalidationCache(staffOrgUser.userId);
 
+    logger.info({
+      msg: '[staff] Staff member removed — membership deactivated, training records retained',
+      actorId: session.user.id,
+      orgId: admin.organizationId,
+      organizationUserId,
+      targetEmail: maskEmail(staffOrgUser.user.email),
+    });
+
     // F-001: record the sensitive mutation on the authorized, successful path.
     await audit({
       action: 'staff.remove',
@@ -1165,7 +1166,9 @@ export async function removeStaff(organizationUserId: string) {
       organizationId: admin.organizationId,
       targetType: 'user',
       targetId: organizationUserId,
-      metadata: { droppedEnrollmentCount: droppedEnrollments.count },
+      // Q23 retention rule, recorded on the audit trail itself so a compliance
+      // reviewer can see the removal was non-destructive without reading code.
+      metadata: { enrollmentsRetained: true },
       ...getClientContext(await headers()),
     });
 

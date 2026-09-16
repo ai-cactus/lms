@@ -478,11 +478,16 @@ async function runRenewalRetriggerPrePass(
 
     const assignmentById = new Map(assignments.map((a) => [a.id, a]));
 
+    // A renewal does not just remind — it CREATES a fresh enrollment and sends a
+    // course-launch email, which would re-enroll a departed member and feed them
+    // straight back into Track A's ladder. Their completed history stays
+    // retained (founder Q23); only the re-issue stops.
     const candidates = await prisma.enrollment.findMany({
       where: {
         assignmentId: { in: assignments.map((a) => a.id) },
         status: { in: [...TERMINAL_STATUSES] },
         completedAt: { not: null },
+        organizationUser: { is: { active: true } },
       },
       select: {
         id: true,
@@ -648,10 +653,17 @@ async function runTrackA(
   // gap. Such enrollments fall back to
   // REMINDER_STAGE_DEFAULTS for their offsets/channels. We still exclude
   // enrollments whose assignment explicitly opted out (`remindersEnabled: false`).
+  //
+  // `active: true` is what keeps the ladder aligned with that page. removeStaff
+  // RETAINS a departed member's in-flight enrollments for compliance (founder
+  // decision Q23) instead of deleting them, so without this predicate every
+  // removal would start mailing "your training is overdue" to someone whose
+  // access was just revoked. getStatusTrackerSummaryForOrg filters the same way.
   const enrollments = await prisma.enrollment.findMany({
     where: {
       dueAt: { not: null },
       status: { notIn: [...TERMINAL_STATUSES] },
+      organizationUser: { is: { active: true } },
       OR: [{ assignmentId: null }, { assignment: { is: { remindersEnabled: true } } }],
     },
     select: {
@@ -769,8 +781,16 @@ async function runTrackB(
 
   // Track B is keyed off observable enrollment+quiz state (not which notification
   // fired), so it behaves correctly regardless of the quiz-submit path used.
+  //
+  // Deactivated members are excluded for the same reason as Track A: their
+  // in-flight and locked enrollments are retained for compliance (founder Q23),
+  // and nudging a departed employee to resume or retake a quiz they can no
+  // longer open is both wrong and confusing.
   const enrollments = await prisma.enrollment.findMany({
-    where: { status: { in: ['in_progress', 'locked'] } },
+    where: {
+      status: { in: ['in_progress', 'locked'] },
+      organizationUser: { is: { active: true } },
+    },
     select: {
       id: true,
       organizationUserId: true,

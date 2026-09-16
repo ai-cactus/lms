@@ -293,6 +293,20 @@ describe('runReminderSweep — Track A (deadline ladder)', () => {
     expect(call.select.organizationUser.select.organization).toBeUndefined();
   });
 
+  // COMPLIANCE (founder Q23): removeStaff RETAINS a departed member's in-flight
+  // enrollments instead of deleting them, so this predicate is the only thing
+  // standing between a removal and a stream of "your training is overdue"
+  // emails to someone whose access was revoked.
+  it('never escalates an enrollment belonging to a DEACTIVATED membership', async () => {
+    prismaMock.enrollment.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    prismaMock.reminderLog.findMany.mockResolvedValue([]);
+
+    await runReminderSweep(BASE_OPTS);
+
+    const call = prismaMock.enrollment.findMany.mock.calls[0][0];
+    expect(call.where.organizationUser).toEqual({ is: { active: true } });
+  });
+
   it('falls back to DEFAULT_TZ when the worker has no active facility (empty facilities array)', async () => {
     const enrollment = makeTrackAEnrollment('e1');
     // Models a worker who has not been attached to a facility yet.
