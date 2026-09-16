@@ -275,8 +275,11 @@ describe('getDashboardData', () => {
     mockEnrollmentFindMany.mockResolvedValue([]);
     // No org membership in session at all — courses/enrollments queries are
     // skipped (empty via the ternaries) and the staff-count query is skipped.
+    // `role` is load-bearing since the permission gate landed: an org-less
+    // session must still carry a role that gets past it, or this asserts the
+    // denial rather than the empty-org arithmetic it is about.
     mockAdminAuth.mockResolvedValue({
-      user: { id: 'admin-1', organizationUserId: null, organizationId: null },
+      user: { id: 'admin-1', role: 'admin', organizationUserId: null, organizationId: null },
     });
 
     const result = await getDashboardData();
@@ -539,6 +542,58 @@ describe('getDashboardData', () => {
         orgUserCountCall?.[0].where,
       );
     });
+  });
+
+  /**
+   * The trap this pins: `getDashboardData` resolves a WORKER session as well as
+   * an admin one, and the page in front of it gates on `course.read`. Re-gating
+   * the action on the page's verb — or on the `enrollment.read` that names the
+   * data best — would be a no-op, because `workerPermissions` grants every
+   * learner role BOTH. The roles below are denied precisely BECAUSE they hold
+   * those verbs: a "simplification" back to either one must turn this red.
+   */
+  describe('permission gate', () => {
+    const WORKER_ROLES_HOLDING_THE_TEMPTING_VERBS = WORKER_ROLES.filter(
+      (role) =>
+        can(dbRoleToRoleKey(role), 'course.read') && can(dbRoleToRoleKey(role), 'enrollment.read'),
+    );
+
+    beforeEach(() => {
+      wireGroupBy([], []);
+      mockCourseFindMany.mockResolvedValue([]);
+      mockEnrollmentFindMany.mockResolvedValue([]);
+      mockOrgUserCount.mockResolvedValue(0);
+    });
+
+    it('every worker role holds course.read AND enrollment.read — the reason neither can be the gate', () => {
+      expect(WORKER_ROLES_HOLDING_THE_TEMPTING_VERBS).toEqual([...WORKER_ROLES]);
+      expect(WORKER_ROLES_HOLDING_THE_TEMPTING_VERBS.length).toBeGreaterThanOrEqual(3);
+    });
+
+    it.each(WORKER_ROLES_HOLDING_THE_TEMPTING_VERBS)(
+      '%s is refused before any query runs — despite holding course.read and enrollment.read',
+      async (role) => {
+        mockAdminAuth.mockResolvedValue(null);
+        mockWorkerAuth.mockResolvedValue({
+          user: { id: 'w-1', role, organizationUserId: 'ou-worker-1', organizationId: ORG_ID },
+        });
+
+        await expect(getDashboardData()).rejects.toThrow('Forbidden');
+        expect(mockCourseFindMany).not.toHaveBeenCalled();
+        expect(mockEnrollmentGroupBy).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each([...ADMIN_ROLES])(
+      '%s keeps access — the gate must not narrow the admin tier',
+      async (role) => {
+        mockAdminAuth.mockResolvedValue({
+          user: { id: 'a-1', role, organizationUserId: ORG_USER_ID, organizationId: ORG_ID },
+        });
+
+        await expect(getDashboardData()).resolves.toBeDefined();
+      },
+    );
   });
 });
 

@@ -839,6 +839,27 @@ export async function getDashboardData(requestedFacilityIds?: string[] | null) {
     throw new Error('Unauthorized');
   }
 
+  // This action had NO permission gate, only a session check — and it resolves a
+  // WORKER session too, so any learner could POST to it and read their facility's
+  // roster-wide training figures (headcount, colleagues' scores, pass/fail).
+  // The page in front of it gates on `course.read`, which is not a boundary twice
+  // over: every worker role holds that verb, and a `'use server'` export is
+  // reachable without visiting the page at all.
+  //
+  // The gate is `getGlobalDashboardData`'s (dashboard-facility.ts), deliberately
+  // verbatim: the two actions are maintained in parity (dashboard-parity.test.ts)
+  // and must not disagree about who may ask. Aggregates only — no staff name or
+  // email — so finance qualifies via `billing.read`.
+  const roleKey = dbRoleToRoleKey(session.user.role);
+  if (!can(roleKey, 'assignment.read') && !can(roleKey, 'billing.read')) {
+    logger.warn({
+      msg: '[course] getDashboardData denied — no roster or billing visibility',
+      userId: session.user.id,
+      role: session.user.role,
+    });
+    throw new Error('Forbidden');
+  }
+
   // Every figure below counts over the ORGANISATION's courses and members, not
   // the viewer's own. Reading the population from the shared seam is what stops
   // this action and `getGlobalDashboardData` describing the same organisation
