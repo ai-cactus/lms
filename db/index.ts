@@ -122,10 +122,16 @@ export type DbTransactionClient = Parameters<Parameters<DbClient['$transaction']
  *      This repo has already lost production videos twice.
  *   2. `auditor-export-worker.ts` — a compliance export that silently omits
  *      archived courses is incomplete while still looking correct.
- *   3. `system-admin.ts` — the user-deletion impact preview must count what the
+ *   3. `actions/auditor.ts` and `api/auditor/export/start/route.ts` — the
+ *      auditor's on-screen CATALOGUE, kept in step with the export above. An
+ *      auditor seeing one course count on screen and a different one in the
+ *      record they download undermines the artifact. These widen the Course row
+ *      ONLY: the `auditPack.*` gates and the facility narrowing on every
+ *      enrollment/staff query around them are untouched.
+ *   4. `system-admin.ts` — the user-deletion impact preview must count what the
  *      hard delete will actually destroy, and the delete itself must resolve the
  *      same rows it is about to remove.
- *   4. `get-learn-payload.ts` — archiving retires a course for new assignment;
+ *   5. `get-learn-payload.ts` — archiving retires a course for new assignment;
  *      it does not erase what a learner already did, so an enrolled worker must
  *      still be able to open it.
  *

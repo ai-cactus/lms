@@ -3,6 +3,7 @@ import { authorize } from '@/lib/rbac/authorize';
 import { resolveDataFacilityIds, staffFacilityWhere } from '@/lib/facility/staff-where';
 import { orgCourseWhere } from '@/lib/course/org-scope';
 import prisma from '@/lib/prisma';
+import { rawPrisma } from '@/db/index';
 import { auditorExportQueue } from '@/lib/queue/auditor-export-queue';
 import { getExportWorker } from '@/lib/queue/auditor-export-worker';
 import { logger } from '@/lib/logger';
@@ -79,7 +80,15 @@ export async function POST(req: NextRequest) {
       // catalogue is an org-level artifact — a supervisor may report on any of
       // the org's courses; it is the enrollment DATA inside that is limited.
       if (!scopeId) return NextResponse.json({ error: 'scopeId required' }, { status: 400 });
-      const course = await prisma.course.findFirst({
+      // ⛔ `rawPrisma`: this validates that the requested course belongs to the
+      // org, and the worker behind it reports on ARCHIVED courses too (Q24).
+      // Filtered, the catalogue would offer a course the UI lists (it reads raw
+      // as well) and then 404 the export for it.
+      //
+      // Tenancy is unaffected — `orgCourseWhere` is still the predicate, so a
+      // course outside this organisation still 404s. The facility narrowing
+      // below for `scope === 'staff'` is untouched.
+      const course = await rawPrisma.course.findFirst({
         // Adopted (platform-catalogue) courses are authored by another tenant,
         // so a creator-only predicate 404s every video course the org offers.
         where: { id: scopeId, ...(await orgCourseWhere(organizationId)) },

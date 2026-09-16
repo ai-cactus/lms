@@ -6,6 +6,7 @@ import { can, type Permission } from '@/lib/rbac/permissions';
 import { resolveDataFacilityIds, staffFacilityWhere } from '@/lib/facility/staff-where';
 import { orgCourseWhere } from '@/lib/course/org-scope';
 import prisma from '@/lib/prisma';
+import { rawPrisma } from '@/db/index';
 import { logger } from '@/lib/logger';
 import { startedAtWhere, type AuditDateRangeInput } from '@/lib/audit-reports/date-range';
 
@@ -122,8 +123,16 @@ export async function getAuditorOverviewStats(
   const [totalCourses, enrollmentStats, staffCount] = await Promise.all([
     // Course CATALOGUE — org-level, never facility-narrowed (#17), and never
     // status-narrowed: a draft or retired course is still part of what an
-    // auditor is shown the catalogue for.
-    prisma.course.count({ where: courseWhere }),
+    // auditor is shown the catalogue for. ⛔ `rawPrisma` for the same reason an
+    // ARCHIVED course is too (Q24) — and because the export worker counts them,
+    // so filtering here would show the auditor one number on screen and a
+    // different one in the PDF they download.
+    //
+    // This widens the CATALOGUE only. The enrollment and staff queries below
+    // are SUBJECT data and stay on the filtered client with their facility
+    // narrowing intact — archived courses becoming visible must never turn into
+    // another facility's staff becoming visible.
+    rawPrisma.course.count({ where: courseWhere }),
     // Enrollment stats — SUBJECT data, narrowed.
     prisma.enrollment.findMany({
       where: { organizationUser: { organizationId, ...subjectWhere }, ...dateWhere },
@@ -174,8 +183,14 @@ export async function getAuditorCourses(
 
   // Course list itself is NOT narrowed — org-level catalogue (#17) — and spans
   // every status, so the report reflects the whole catalogue rather than
-  // silently dropping drafts and retired courses.
-  const courses = await prisma.course.findMany({
+  // silently dropping drafts and retired courses. ⛔ `rawPrisma` extends that to
+  // ARCHIVED courses (Q24), keeping this list in step with the export worker's.
+  //
+  // Only the COURSE ROW is widened. The nested `enrollments` filter below keeps
+  // both its organisation pin and `subjectWhere` (the caller's facility scope),
+  // so a facility-bound auditor still sees an archived course with ZEROES rather
+  // than another facility's learners.
+  const courses = await rawPrisma.course.findMany({
     where: {
       ...courseWhere,
       ...(search ? { title: { contains: search, mode: 'insensitive' } } : {}),
