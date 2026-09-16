@@ -268,7 +268,7 @@ export const roles = {
     category: 'manager',
     displayName: 'HR',
     description:
-      'Workforce personnel & operational compliance manager. Full CRUD over staff, documents, courses and facilities; invites staff, assigns training paths and views broad pass/fail and completion metrics. Manages organisation settings, including notification, reminder and escalation configuration. Reads the audit trail but cannot alter it. Blocked from billing and from question-by-question assessment scoring.',
+      'Workforce personnel & operational compliance manager. Full CRUD over staff, documents, courses, quizzes and facilities; invites staff, assigns training paths and views broad pass/fail and completion metrics. Builds quizzes and reviews granular, question-by-question assessment results — granted by founder ruling ("HR can build quizzes and view results"), which reversed an earlier, narrower reading of this role. Manages organisation settings, including notification, reminder and escalation configuration. Reads the audit trail but cannot alter it. Blocked from billing.',
     permissions: [
       'user.create',
       'user.read',
@@ -289,6 +289,23 @@ export const roles = {
       'course.read',
       'course.edit',
       'course.delete',
+      // Quiz CRUD — founder ruling closing the one cell the updated matrix left
+      // ambiguous: "HR can build quizzes and view results"
+      // (docs/local/RBAC_for_multi-tenancy-updated.md). `assessment` bundles
+      // authoring a quiz with reading a NAMED learner's answer sheet, so he was
+      // asked which the row's CRUD meant (docs/local/RBAC-founder-question-quiz-row.md)
+      // and answered both. `assessment.read` is the half that readmits HR to the
+      // two answer-sheet gates (`getEnrollmentQuizResult` in staff.ts,
+      // `getEnrollmentWithResults` in enrollment.ts), reversing the narrowing
+      // that had rested on this role's own description rather than on a ruling.
+      //
+      // `assessment.delete` has no call site anywhere — quiz deletion is not a
+      // product capability — so it is granted for matrix conformance and is
+      // inert today, exactly as it is for Owner and Admin.
+      'assessment.create',
+      'assessment.read',
+      'assessment.edit',
+      'assessment.delete',
       // `certificate.create` added 2026-09-16 — the updated matrix
       // (docs/local/RBAC_for_multi-tenancy-updated.md) moves Certificates from
       // `R` to `CR` for every role holding the row. Read the same way as founder

@@ -73,7 +73,7 @@ const MATRIX_ROLES = [
 
 type MatrixRole = (typeof MATRIX_ROLES)[number];
 
-interface AssertedCell {
+interface Cell {
   /** The letters the directive itself prints for this cell. */
   directive: string;
   /** The verbs the registry must grant. Every other verb must be denied. */
@@ -87,21 +87,6 @@ interface AssertedCell {
   deviation?: string;
 }
 
-/**
- * A cell the directive prints but that this table deliberately does not assert,
- * because the letters are ambiguous and the clarifying question is still open
- * with the founder. Asserting either reading would turn our guess into a ruling;
- * dropping the cell would leave the table silently short a column. So it is
- * carried here, unasserted, and surfaces in the run as a `todo`.
- */
-interface OpenCell {
-  directive: string;
-  verbs: null;
-  openQuestion: string;
-}
-
-type Cell = AssertedCell | OpenCell;
-
 const toVerbs = (letters: string): readonly Verb[] =>
   letters === '—' ? [] : ALL_VERBS.filter((verb) => letters.includes(verb));
 
@@ -113,13 +98,6 @@ const diverges = (directive: string, granted: string, deviation: string): Cell =
   directive,
   verbs: toVerbs(granted),
   deviation,
-});
-
-/** A cell held unasserted pending the founder's answer — see {@link OpenCell}. */
-const open = (directive: string, openQuestion: string): Cell => ({
-  directive,
-  verbs: null,
-  openQuestion,
 });
 
 /**
@@ -147,19 +125,12 @@ const MATRIX: Record<MatrixModule, Record<MatrixRole, Cell>> = {
   Quiz: {
     owner: cell('CRUD'),
     admin: cell('CRUD'),
-    // TODO(founder, docs/local/RBAC-founder-question-quiz-row.md): the updated
-    // matrix prints HR CRUD here, but `assessment` bundles two capabilities that
-    // are not equivalent in privacy terms — authoring a quiz, and opening a
-    // NAMED learner's question-by-question answer sheet. The question put to the
-    // founder is which of the two his CRUD means; #626 narrowed
-    // `getEnrollmentQuizResult` away from HR on the strength of the role's own
-    // description, and only his answer settles whether that stands. Until then
-    // HR holds no `assessment.*` verb and this cell asserts nothing.
-    hr: open(
-      'CRUD',
-      'does HR Quiz CRUD mean authoring only, or a named learner’s answer sheet ' +
-        'too? — docs/local/RBAC-founder-question-quiz-row.md',
-    ),
+    // Resolved by the founder against the ambiguity in
+    // docs/local/RBAC-founder-question-quiz-row.md — `assessment` bundles
+    // authoring a quiz with opening a NAMED learner's answer sheet, and he
+    // answered both: "HR can build quizzes and view results". The `read` half is
+    // what readmits HR to the two answer-sheet gates.
+    hr: cell('CRUD'),
     finance: cell('—'),
     clinicalDirector: cell('CRU'),
     supervisor: diverges(
@@ -253,11 +224,6 @@ describe('founder RBAC matrix — registry conformance', () => {
     describe.each(MATRIX_ROLES)('%s', (role) => {
       const { verbs } = MATRIX[module][role];
 
-      if (verbs === null) {
-        it.todo(`${resource}.* — unresolved: ${MATRIX[module][role].directive} pending an answer`);
-        return;
-      }
-
       it.each(ALL_VERBS)(`${resource}.%s matches the matrix`, (verb) => {
         const permission = `${resource}.${VERB_TO_ACTION[verb]}` as Permission;
         expect(can(role, permission), `${role} → ${permission}`).toBe(verbs.includes(verb));
@@ -278,12 +244,9 @@ describe('founder RBAC matrix — registry conformance', () => {
   it('records a justification for exactly the cells that depart from the directive', () => {
     const mismatched = MATRIX_MODULES.flatMap((module) =>
       MATRIX_ROLES.filter((role) => {
-        const spec = MATRIX[module][role];
-        // An open cell asserts nothing, so it has no divergence to justify — its
-        // `openQuestion` is what keeps it honest instead.
-        if (spec.verbs === null) return false;
-        const departs = toVerbs(spec.directive).join('') !== spec.verbs.join('');
-        return departs !== (spec.deviation !== undefined);
+        const { directive, verbs, deviation } = MATRIX[module][role];
+        const departs = toVerbs(directive).join('') !== verbs.join('');
+        return departs !== (deviation !== undefined);
       }).map((role) => `${module}/${role}`),
     );
     expect(mismatched).toEqual([]);

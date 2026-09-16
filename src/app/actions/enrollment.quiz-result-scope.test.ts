@@ -177,10 +177,20 @@ describe('getEnrollmentWithResults — permission gate', () => {
     },
   );
 
-  it('HR is denied — the registry blocks it from question-by-question scoring', async () => {
+  /**
+   * Inverted 2026-09-16: HR was denied here while the registry withheld
+   * `assessment.read` from it. The founder's ruling on the Quiz row — "HR can
+   * build quizzes and view results"
+   * (docs/local/RBAC_for_multi-tenancy-updated.md) — granted the verb, and the
+   * grant alone readmits HR through this unchanged gate.
+   *
+   * Authorship still applies: `setCreatorSession` makes HR the course creator,
+   * which this action requires of every administrative reader.
+   */
+  it('HR is admitted — the founder ruling granted it assessment.read', async () => {
     setCreatorSession('hr');
 
-    await expect(getEnrollmentWithResults('enr-1')).rejects.toThrow('Access denied');
+    await expect(getEnrollmentWithResults('enr-1')).resolves.toMatchObject({ id: 'enr-1' });
   });
 
   it('clinical_director — the registry’s assessment-oversight role — is admitted', async () => {

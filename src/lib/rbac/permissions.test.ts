@@ -7,8 +7,10 @@
  *   - supervisor was demoted to READ-ONLY: read on every resource plus
  *     personal self-service actions only — no create/edit/delete anywhere,
  *     including facility.create/edit (full facility CRUD is Owner/Admin/HR)
- *   - hr has documents CRUD + courses CRUD (gained), audit.read (gained), and
- *     facility CRUD + organization.edit (gained per founder Q8/Q9)
+ *   - hr has documents CRUD + courses CRUD (gained), audit.read (gained),
+ *     facility CRUD + organization.edit (gained per founder Q8/Q9), and
+ *     assessment CRUD (gained — the founder's Quiz ruling, which also readmits
+ *     it to the question-by-question answer sheet)
  *   - clinicalDirector has documents CRU and courses CRU (no delete on either)
  *     and audit.read (gained), but no user.read (no Staff module)
  *   - finance is billing-only: lost user.read, auditPack.read and
@@ -207,6 +209,14 @@ describe('can() — hr (regression guard: exact permission set)', () => {
     'course.read',
     'course.edit',
     'course.delete',
+    // Quiz CRUD per the founder's ruling on the updated matrix — "HR can build
+    // quizzes and view results". `assessment.read` is the half with teeth: it
+    // readmits HR to both answer-sheet gates. `assessment.delete` is inert
+    // (no call site) and held for matrix conformance only.
+    'assessment.create',
+    'assessment.read',
+    'assessment.edit',
+    'assessment.delete',
     // Certificates CR per the latest matrix revision — generating the artifact
     // is the create (founder Q1's reading on Audits).
     'certificate.create',
