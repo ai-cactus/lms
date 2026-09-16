@@ -100,7 +100,12 @@ function twoModuleCourse() {
 beforeEach(() => {
   vi.clearAllMocks();
   mockAuth.mockResolvedValue({
-    user: { id: 'admin-1', organizationUserId: 'ou-admin-1', organizationId: 'org-1' },
+    user: {
+      id: 'admin-1',
+      role: 'owner',
+      organizationUserId: 'ou-admin-1',
+      organizationId: 'org-1',
+    },
   });
   mockWorkerAuth.mockResolvedValue(null);
   mockCourseCreate.mockResolvedValue({ id: 'course-1' });

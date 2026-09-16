@@ -216,12 +216,54 @@ export async function getCertificateDetails(certificateId: string) {
     throw new Error('Certificate not found');
   }
 
-  const isWorker = certificate.organizationUserId === session.user.organizationUserId;
-  const isAdmin =
-    isAdminRole(session.user.role) &&
-    certificate.organizationUser.organizationId === session.user.organizationId;
+  // The owning learner always reads their own certificate. This branch must stay
+  // ahead of the facility narrowing below: a worker with no active facility
+  // assignment resolves to `[]`, which would otherwise hide their own record.
+  if (certificate.organizationUserId === session.user.organizationUserId) {
+    return certificate;
+  }
 
-  if (!isWorker && !isAdmin) {
+  // Administrative read. `certificate.read` rather than `isAdminRole`, which
+  // admits Facility Supervisor with no scope check at all — an id-addressed
+  // action then hands over any certificate in the org (name, email, course,
+  // score). `certificate.read` and NOT `user.read`: Clinical Director has no
+  // Staff Management access but does hold the certificate verb (founder Q7).
+  const roleKey = dbRoleToRoleKey(session.user.role);
+  if (!roleKey || !can(roleKey, 'certificate.read') || !session.user.organizationId) {
+    logger.warn({
+      msg: '[certificate] Certificate detail read denied',
+      userId: session.user.id,
+      role: session.user.role,
+      certificateId,
+    });
+    throw new Error('Unauthorized');
+  }
+
+  // null for org-wide roles; an array (possibly empty) for a facility-bound one.
+  const dataFacilityIds = await resolveDataFacilityIds(session);
+
+  // Re-read through the org + facility predicate rather than comparing in JS, so
+  // this reaches the same verdict as `getAdminWorkerCertificates`: an
+  // out-of-facility or out-of-tenant certificate is refused exactly as an
+  // unknown id is.
+  const inScope = await prisma.certificate.findFirst({
+    where: {
+      id: certificateId,
+      organizationUser: {
+        organizationId: session.user.organizationId,
+        ...staffFacilityWhere(dataFacilityIds),
+      },
+    },
+    select: { id: true },
+  });
+
+  if (!inScope) {
+    logger.warn({
+      msg: '[certificate] Out-of-scope certificate detail read blocked',
+      userId: session.user.id,
+      role: session.user.role,
+      certificateId,
+    });
     throw new Error('Unauthorized');
   }
 

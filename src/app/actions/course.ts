@@ -1373,6 +1373,19 @@ export async function createFullCourse(data: {
     throw new Error('Organization not found');
   }
 
+  // This is a POST-invocable Server Action, and route protection only separates
+  // administrative from worker traffic — so without this, Finance and Facility
+  // Supervisor (neither of whom holds `course.create`) could author a course.
+  // Checked before any write, including the document/quality reads below.
+  if (!can(dbRoleToRoleKey(session.user.role), 'course.create')) {
+    logger.warn({
+      msg: '[course] createFullCourse denied — missing course.create',
+      userId: session.user.id,
+      role: session.user.role,
+    });
+    throw new Error('Insufficient permissions');
+  }
+
   // Detect prompt version
   const promptVersion = data.rawArticleMeta ? 'v4.6' : data.rawCourseJson ? 'v3.1' : undefined;
 
@@ -1734,12 +1747,41 @@ export async function updateQuizQuestions(
     throw new Error('Unauthorized');
   }
 
+  // Same POST-invocable exposure as `createFullCourse`: ownership is not
+  // authorization. `course.edit` matches the lesson mutators in `lesson.ts`,
+  // which govern course content (modules, lessons, quizzes) through the parent
+  // course resource.
+  if (!can(dbRoleToRoleKey(session.user.role), 'course.edit')) {
+    logger.warn({
+      msg: '[course] updateQuizQuestions denied — missing course.edit',
+      courseId,
+      userId: session.user.id,
+      role: session.user.role,
+    });
+    throw new Error('Insufficient permissions');
+  }
+
   const course = await prisma.course.findUnique({
     where: { id: courseId },
-    include: { lessons: { include: { quiz: true } } },
+    include: {
+      lessons: { include: { quiz: true } },
+      creator: { select: { organizationId: true } },
+    },
   });
 
-  if (!course || course.createdByOrgUserId !== session.user.organizationUserId) {
+  // COU-004: a course belongs to the ORGANIZATION, not to the member who
+  // authored it — matching `deleteCourse`. Author-equality refused a colleague
+  // editing a course their own org owns.
+  if (
+    !course ||
+    !session.user.organizationId ||
+    course.creator?.organizationId !== session.user.organizationId
+  ) {
+    logger.warn({
+      msg: '[course] updateQuizQuestions: not found or outside caller organization',
+      courseId,
+      userId: session.user.id,
+    });
     throw new Error('Unauthorized or Course not found');
   }
 
@@ -1801,12 +1843,32 @@ export async function updateLessonContent(lessonId: string, content: string, tit
     throw new Error('Unauthorized');
   }
 
+  if (!can(dbRoleToRoleKey(session.user.role), 'course.edit')) {
+    logger.warn({
+      msg: '[course] updateLessonContent denied — missing course.edit',
+      lessonId,
+      userId: session.user.id,
+      role: session.user.role,
+    });
+    throw new Error('Insufficient permissions');
+  }
+
   const lesson = await prisma.lesson.findUnique({
     where: { id: lessonId },
-    include: { course: true },
+    include: { course: { include: { creator: { select: { organizationId: true } } } } },
   });
 
-  if (!lesson || lesson.course.createdByOrgUserId !== session.user.organizationUserId) {
+  // COU-004 org ownership, as in `deleteCourse` — see `updateQuizQuestions`.
+  if (
+    !lesson ||
+    !session.user.organizationId ||
+    lesson.course.creator?.organizationId !== session.user.organizationId
+  ) {
+    logger.warn({
+      msg: '[course] updateLessonContent: not found or outside caller organization',
+      lessonId,
+      userId: session.user.id,
+    });
     throw new Error('Unauthorized or Lesson not found');
   }
 

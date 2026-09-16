@@ -49,7 +49,12 @@ describe('createFullCourse — assignment delegation to enrollUsers', () => {
     // Post User/OrganizationUser split: the session carries organizationUserId
     // directly (no separate `prisma.user` lookup enriches it).
     mockAdminAuth.mockResolvedValue({
-      user: { id: 'admin-1', organizationUserId: 'ou-admin-1', organizationId: 'org-1' },
+      user: {
+        id: 'admin-1',
+        role: 'owner',
+        organizationUserId: 'ou-admin-1',
+        organizationId: 'org-1',
+      },
     });
     mockWorkerAuth.mockResolvedValue(null);
     mockCourseCreate.mockResolvedValue({ id: 'course-1' });
