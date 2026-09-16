@@ -1130,6 +1130,63 @@ describe('getEnrollmentQuizResult — org isolation (F-010)', () => {
     await expect(getEnrollmentQuizResult(ENROLLMENT_ID)).rejects.toThrow('Unauthorized');
     expect(mockEnrollmentFindUnique).not.toHaveBeenCalled();
   });
+
+  /**
+   * The gate moved from `assignment.read` to `isAdminRole && assessment.read`.
+   *
+   * `assignment` is the org's auto-enrolment configuration; `assessment` is
+   * "Quizzes, questions & question-by-question attempt logs" — this payload.
+   * They diverge on HR, which holds all four `assignment.*` verbs and no
+   * `assessment.*`, and whose registry description reads "Blocked from billing
+   * and from question-by-question assessment scoring". The old verb admitted
+   * the one manager role the registry withholds this data from.
+   */
+  describe('the verb: isAdminRole && assessment.read', () => {
+    it.each(['owner', 'admin', 'supervisor', 'clinical_director'])(
+      '%s is admitted',
+      async (role) => {
+        mockAuth.mockResolvedValue({ user: { id: 'a-1', role, organizationId: 'org-a' } });
+        mockEnrollmentFindUnique.mockResolvedValue(makeEnrollment('org-a'));
+
+        await expect(getEnrollmentQuizResult(ENROLLMENT_ID)).resolves.not.toBeNull();
+      },
+    );
+
+    it('USER-VISIBLE: HR loses question-level score access', async () => {
+      mockAuth.mockResolvedValue({ user: { id: 'hr-1', role: 'hr', organizationId: 'org-a' } });
+
+      await expect(getEnrollmentQuizResult(ENROLLMENT_ID)).rejects.toThrow('Unauthorized');
+      expect(mockEnrollmentFindUnique).not.toHaveBeenCalled();
+    });
+
+    it('finance stays denied', async () => {
+      mockAuth.mockResolvedValue({ user: { id: 'f-1', role: 'finance', organizationId: 'org-a' } });
+
+      await expect(getEnrollmentQuizResult(ENROLLMENT_ID)).rejects.toThrow('Unauthorized');
+    });
+
+    /**
+     * DEFENCE IN DEPTH — this module's `auth` is the admin instance, which
+     * invalidates any session whose freshly-read role is not an admin role
+     * (`auth.ts:6` + `create-auth-instance.ts:736`), so the sessions staged
+     * below cannot exist and this proves less than its shape suggests.
+     *
+     * Kept because every worker role holds `assessment.read` (granted so a
+     * learner can read their OWN attempt), so the tier check is what would save
+     * this action if it ever moved to a resolve-either-instance session — as
+     * `getEnrollmentWithResults` uses, where the same check IS load-bearing
+     * against a session a nurse can really hold.
+     */
+    it.each(['nurse', 'therapist_clinician', 'front_desk_admin'])(
+      '%s would be denied even if the admin instance ever stopped fencing it out',
+      async (role) => {
+        mockAuth.mockResolvedValue({ user: { id: 'w-1', role, organizationId: 'org-a' } });
+
+        await expect(getEnrollmentQuizResult(ENROLLMENT_ID)).rejects.toThrow('Unauthorized');
+        expect(mockEnrollmentFindUnique).not.toHaveBeenCalled();
+      },
+    );
+  });
 });
 
 /**

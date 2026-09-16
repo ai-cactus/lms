@@ -1,7 +1,7 @@
 'use server';
 
 import prisma from '@/lib/prisma';
-import { dbRoleToRoleKey, ALL_ROLES } from '@/lib/rbac/role-utils';
+import { dbRoleToRoleKey, isAdminRole, ALL_ROLES } from '@/lib/rbac/role-utils';
 import { can, type RoleKey } from '@/lib/rbac/permissions';
 import { hasActiveBilling, BILLING_GATE_ASSIGN_MESSAGE } from '@/lib/billing';
 import { auth as adminAuth } from '@/auth';
@@ -1140,10 +1140,79 @@ export async function getEnrollmentWithResults(enrollmentId: string) {
     throw new Error('Enrollment not found');
   }
 
-  const isEnrolledUser = enrollment.organizationUserId === session.user.organizationUserId;
+  // The learner always reads their own attempt. Ahead of the narrowing below for
+  // the same reason as `getCertificateDetails`: a member with no active facility
+  // assignment resolves to `[]` and would otherwise lose their own results.
+  if (enrollment.organizationUserId === session.user.organizationUserId) {
+    return enrollment;
+  }
+
+  // Everything past this point is a read of SOMEONE ELSE's question-by-question
+  // answers alongside the correct ones, which is the `assessment` resource — not
+  // `enrollment`, whose read verb is held by every worker and by Finance.
+  // Authorship alone was the whole gate here, so a course creator saw every
+  // participant's answers regardless of facility.
+  //
+  // `isAdminRole` is load-bearing here: this action takes `resolveSession()`,
+  // which falls back to the WORKER instance, so a learner's session reaches this
+  // line. Every worker role holds `assessment.read` (to read its OWN attempt),
+  // so the verb alone does not separate "my answers" from "theirs".
+  // `getEnrollmentQuizResult` pairs the same two, though there the admin
+  // instance already fences workers out and the tier check is defensive.
+  const roleKey = dbRoleToRoleKey(session.user.role);
   const isCourseCreator = enrollment.course.createdByOrgUserId === session.user.organizationUserId;
 
-  if (!isEnrolledUser && !isCourseCreator) {
+  if (
+    !roleKey ||
+    !isAdminRole(session.user.role) ||
+    !can(roleKey, 'assessment.read') ||
+    !isCourseCreator
+  ) {
+    logger.warn({
+      msg: '[enrollment] Quiz result read denied',
+      userId: session.user.id,
+      role: session.user.role,
+      enrollmentId,
+    });
+    throw new Error('Access denied');
+  }
+
+  // Tenant isolation was previously incidental — both sides of the authorship
+  // test were the caller's own membership id. Stated outright so it survives any
+  // future widening of the gate above.
+  if (
+    !session.user.organizationId ||
+    enrollment.organizationUser.organizationId !== session.user.organizationId
+  ) {
+    logger.warn({
+      msg: '[enrollment] Cross-tenant quiz result access blocked',
+      userId: session.user.id,
+      role: session.user.role,
+      enrollmentId,
+    });
+    throw new Error('Access denied');
+  }
+
+  // null for org-wide roles; an array (possibly empty) for a facility-bound one.
+  const dataFacilityIds = await resolveDataFacilityIds(session);
+
+  // findFirst so the facility predicate composes into the query — an
+  // out-of-facility enrollment must be indistinguishable from a missing one.
+  const inScope = await prisma.enrollment.findFirst({
+    where: {
+      id: enrollmentId,
+      organizationUser: { is: staffFacilityWhere(dataFacilityIds) },
+    },
+    select: { id: true },
+  });
+
+  if (!inScope) {
+    logger.warn({
+      msg: '[enrollment] Out-of-facility quiz result read blocked',
+      userId: session.user.id,
+      role: session.user.role,
+      enrollmentId,
+    });
     throw new Error('Access denied');
   }
 
