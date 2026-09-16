@@ -35,6 +35,7 @@ import {
   type StageRowInput,
 } from '@/lib/enrollment/assignment';
 import { assignmentFacilityScope } from '@/lib/enrollment/assignment-facility-scope';
+import { isOrgWideFacilityRole } from '@/lib/facility/org-wide-roles';
 import { combineDateAndTime, isPastDeadlineChange } from '@/lib/reminders/deadline';
 import { captureServer } from '@/lib/analytics/server';
 import { analyticsContextFrom } from '@/lib/analytics/identity';
@@ -1768,6 +1769,33 @@ export async function setRoleAssignmentTargets(
     return {
       success: false,
       refusedReason: 'You do not have permission to remove roles from this assignment.',
+    };
+  }
+
+  // Holding the verb is not holding it over THIS row. The mirror of the widen
+  // guard above: that one refuses a row with no role-target scope to inherit,
+  // this one refuses a row whose scope is WIDER than the caller's. An org-wide
+  // assignment auto-enrols across the whole organisation, so removing a role
+  // from it reaches staff a facility-bound caller may not act on — which is why
+  // supervisor's `assignment.delete` (founder Rule C, "withdraw course from
+  // staff in their facility") must not extend here. A facility-scoped row stays
+  // narrowable: that IS the Rule C case.
+  if (
+    removed.length > 0 &&
+    !assignment.facilityScoped &&
+    !isOrgWideFacilityRole(session.user.role)
+  ) {
+    logger.warn({
+      msg: '[assignment] Role-target narrow refused — organization-wide assignment, facility-bound caller',
+      assignmentId: assignment.id,
+      courseId: assignment.courseId,
+      organizationId,
+      userId: session.user.id,
+    });
+    return {
+      success: false,
+      refusedReason:
+        'This course is assigned across the whole organization, so only an organization-wide role can remove a role from it.',
     };
   }
 
