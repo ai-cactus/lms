@@ -1296,15 +1296,20 @@ describe('removeStaff() — org disconnect + sessionVersion bump (QA ISSUE 2)', 
 });
 
 /**
- * fix/worker-invite: removeStaff() now drops the removed user's IN-FLIGHT
- * enrollments (so a subsequent re-invite yields a clean slate) while
- * retaining terminal/completed ones for compliance history, and expires any
- * pending Invite for that email in the org (so a live `/join` token can't
- * immediately re-add the person). All four writes — the enrollment cleanup,
- * the membership deactivation, the identity sessionVersion bump, and the
- * invite expiry — run inside a single $transaction.
+ * Founder decision Q23 (docs/local/RBAC-founder-answers-2026-09-15.md):
+ * "Delete deactivated account but records should be kept for compliance
+ * purposes." removeStaff() therefore revokes ACCESS only — it deactivates the
+ * membership, bumps the identity's sessionVersion, and expires any pending
+ * Invite for that email in the org (so a live `/join` token can't immediately
+ * re-add the person) — and deletes NO training record of any status.
+ *
+ * This supersedes the earlier fix/worker-invite behaviour, which deleted the
+ * in-flight ("active"-status) enrollments so a re-invite got a clean slate.
+ * That clean slate destroyed the evidence that training had been started but
+ * not finished, so it was reversed. The three remaining writes still run
+ * inside a single $transaction.
  */
-describe('removeStaff() — drops in-flight enrollments and expires pending invites (fix/worker-invite)', () => {
+describe('removeStaff() — retains training records and expires pending invites (Q23)', () => {
   const ADMIN_SESSION = makeAdminSession('owner');
   const ADMIN_ORG_USER = {
     role: 'owner',
@@ -1326,22 +1331,32 @@ describe('removeStaff() — drops in-flight enrollments and expires pending invi
     mockUserUpdate.mockResolvedValue({});
   });
 
-  it('deletes only the active-status enrollments for the removed membership', async () => {
-    mockEnrollmentDeleteMany.mockResolvedValue({ count: 2 });
-
+  it('COMPLIANCE (Q23): deletes no enrollment of any status — in-flight training history is retained, not wiped', async () => {
     await removeStaff('target-1');
 
-    expect(mockEnrollmentDeleteMany).toHaveBeenCalledWith({
-      where: {
-        organizationUserId: 'target-1',
-        status: { in: ['enrolled', 'assigned', 'in_progress', 'lessons_complete'] },
-      },
+    expect(mockEnrollmentDeleteMany).not.toHaveBeenCalled();
+
+    // Asserted at the transaction level too, so a deletion reintroduced as a
+    // fourth op is caught even if it were routed around the delegate above.
+    expect(mockTransaction.mock.calls[0][0]).toHaveLength(3);
+  });
+
+  it('COMPLIANCE (Q23): deactivates the membership rather than deleting it, so the retained records keep an owner', async () => {
+    await removeStaff('target-1');
+
+    expect(mockOrgUserUpdate).toHaveBeenCalledWith({
+      where: { id: 'target-1' },
+      data: { active: false, deactivatedAt: expect.any(Date) },
     });
-    // Terminal statuses (completed, attested, locked, failed, retry_requested)
-    // are never named in the deleteMany filter — they are retained by omission.
-    const call = mockEnrollmentDeleteMany.mock.calls[0][0];
-    expect(call.where.status.in).not.toContain('completed');
-    expect(call.where.status.in).not.toContain('attested');
+  });
+
+  it('still revokes access: the sessionVersion bump kills live sessions on their next decode', async () => {
+    await removeStaff('target-1');
+
+    expect(mockUserUpdate).toHaveBeenCalledWith({
+      where: { id: 'target-user-1' },
+      data: { sessionVersion: { increment: 1 } },
+    });
   });
 
   it("expires (not deletes) any pending invite for the removed user's email in the org", async () => {
@@ -1353,44 +1368,30 @@ describe('removeStaff() — drops in-flight enrollments and expires pending invi
     });
   });
 
-  it('runs the enrollment cleanup, membership deactivation, sessionVersion bump, and invite expiry inside a single $transaction', async () => {
+  it('runs the membership deactivation, sessionVersion bump, and invite expiry inside a single $transaction', async () => {
     await removeStaff('target-1');
 
     expect(mockTransaction).toHaveBeenCalledOnce();
-    const opsCountAtCallTime = mockTransaction.mock.calls[0][0].length;
-    // 4 ops: enrollment.deleteMany, organizationUser.update (deactivate),
-    // user.update (sessionVersion bump), invite.updateMany. Previously the
-    // membership deactivation and the identity's sessionVersion bump were a
-    // single combined User write; the multi-org split separates "deactivate
-    // the org membership" from "kill the identity's live sessions" into two
-    // distinct writes on two distinct models.
-    expect(opsCountAtCallTime).toBe(4);
-    expect(mockEnrollmentDeleteMany).toHaveBeenCalledOnce();
+    // 3 ops: organizationUser.update (deactivate), user.update (sessionVersion
+    // bump), invite.updateMany. Deactivating the org membership and killing the
+    // identity's live sessions are two writes on two models because of the
+    // multi-org split.
+    expect(mockTransaction.mock.calls[0][0]).toHaveLength(3);
     expect(mockOrgUserUpdate).toHaveBeenCalledOnce();
     expect(mockUserUpdate).toHaveBeenCalledOnce();
     expect(mockInviteUpdateMany).toHaveBeenCalledOnce();
   });
 
-  it('records the dropped-enrollment count on the staff.remove audit entry', async () => {
-    mockEnrollmentDeleteMany.mockResolvedValue({ count: 3 });
-
+  it('records the retention rule on the staff.remove audit entry', async () => {
     await removeStaff('target-1');
 
     expect(mockAudit).toHaveBeenCalledWith(
       expect.objectContaining({
         action: 'staff.remove',
-        metadata: { droppedEnrollmentCount: 3 },
+        targetType: 'user',
+        targetId: 'target-1',
+        metadata: { enrollmentsRetained: true },
       }),
-    );
-  });
-
-  it('records a zero dropped-enrollment count when the removed user had no in-flight training', async () => {
-    mockEnrollmentDeleteMany.mockResolvedValue({ count: 0 });
-
-    await removeStaff('target-1');
-
-    expect(mockAudit).toHaveBeenCalledWith(
-      expect.objectContaining({ metadata: { droppedEnrollmentCount: 0 } }),
     );
   });
 });
