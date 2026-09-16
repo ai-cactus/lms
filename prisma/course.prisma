@@ -34,6 +34,16 @@ model Course {
   category                    String?
   categoryId                  String?                  @map("category_id")
   duration                    Int?
+  /// The owning organization (Q25). A course belongs to the org, not to the
+  /// person who authored it — `createdByOrgUserId` records authorship only.
+  /// Backfilled from the creator's membership; every read scope is expected to
+  /// migrate onto this column rather than joining through OrganizationUser.
+  ///
+  /// Nullable **for the migration window only** — never because a course may
+  /// legitimately lack an organization. PR A backfilled every existing row but
+  /// deliberately added no writer, so the column cannot be NOT NULL yet without
+  /// breaking every insert. PR B adds the writers and then the constraint.
+  organizationId              String?                  @map("organization_id")
   createdByOrgUserId          String                   @map("created_by_org_user_id")
   objectives                  String[]                 @default([])
   overview                    String?
@@ -75,9 +85,21 @@ model Course {
   /// duplicate, or a platform prebuilt course adopted into an org). Nulled rather
   /// than cascading if the source is deleted — a fork is an independent course.
   forkedFromCourseId          String?                  @map("forked_from_course_id")
+  /// Soft-delete marker (Q24): deleting a course archives and retains it. Null
+  /// means live; non-null hides it from every list, with recovery via ops only.
+  archivedAt                  DateTime?                @map("archived_at")
+  archivedByOrgUserId         String?                  @map("archived_by_org_user_id")
   courseCategory              CourseCategory?          @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   approvedBy                  OrganizationUser?        @relation("CourseApprover", fields: [approvedByOrgUserId], references: [id], onDelete: SetNull)
+  /// ⚠️ `onDelete: Restrict` blocks hard-deleting an OrganizationUser that
+  /// authored a course. Inert today — `removeStaff` only deactivates, and
+  /// self-service account deletion is deferred — but whoever implements a real
+  /// membership delete must resolve it. This one fails SAFE (the delete is
+  /// merely refused); the mirror-image field `Document.organizationUser` is a
+  /// Cascade and fails UNSAFE — see the note there.
   creator                     OrganizationUser         @relation("CourseCreator", fields: [createdByOrgUserId], references: [id], onDelete: Restrict)
+  organization                Organization?            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  archivedBy                  OrganizationUser?        @relation("CourseArchiver", fields: [archivedByOrgUserId], references: [id], onDelete: SetNull)
   forkedFrom                  Course?                  @relation("CourseFork", fields: [forkedFromCourseId], references: [id], onDelete: SetNull)
   forks                       Course[]                 @relation("CourseFork")
   versions                    CourseVersion[]
@@ -92,6 +114,9 @@ model Course {
   inviteCourseAssignments     InviteCourseAssignment[]
 
   @@index([createdByOrgUserId])
+  @@index([organizationId])
+  // The shape of the new default access pattern: an org's live courses.
+  @@index([organizationId, archivedAt])
   @@index([status])
   @@index([categoryId])
   @@index([type])
