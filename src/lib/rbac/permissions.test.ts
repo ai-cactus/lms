@@ -7,8 +7,10 @@
  *   - supervisor was demoted to READ-ONLY: read on every resource plus
  *     personal self-service actions only — no create/edit/delete anywhere,
  *     including facility.create/edit (full facility CRUD is Owner/Admin/HR)
- *   - hr has documents CRUD + courses CRUD (gained), audit.read (gained), and
- *     facility CRUD + organization.edit (gained per founder Q8/Q9)
+ *   - hr has documents CRUD + courses CRUD (gained), audit.read (gained),
+ *     facility CRUD + organization.edit (gained per founder Q8/Q9), and
+ *     assessment CRUD (gained — the founder's Quiz ruling, which also readmits
+ *     it to the question-by-question answer sheet)
  *   - clinicalDirector has documents CRU and courses CRU (no delete on either)
  *     and audit.read (gained), but no user.read (no Staff module)
  *   - finance is billing-only: lost user.read, auditPack.read and
@@ -92,6 +94,12 @@ describe('can() — supervisor (demoted to read-only + self-service)', () => {
     // facilities, and this grant must go if that ever does.
     'assignment.delete',
     'enrollment.create',
+    // Added 2026-09-16 per the latest matrix revision, which promotes
+    // Certificates to `CR` for every role holding the row. Same facility
+    // caveat once more: `issueCertificate` re-reads the target enrollment
+    // through the caller's facility predicate, and this grant must go if that
+    // narrowing ever does.
+    'certificate.create',
   ] as const;
 
   it('supervisor has assignment.delete but still no other write verb on assignment/enrollment', () => {
@@ -201,6 +209,17 @@ describe('can() — hr (regression guard: exact permission set)', () => {
     'course.read',
     'course.edit',
     'course.delete',
+    // Quiz CRUD per the founder's ruling on the updated matrix — "HR can build
+    // quizzes and view results". `assessment.read` is the half with teeth: it
+    // readmits HR to both answer-sheet gates. `assessment.delete` is inert
+    // (no call site) and held for matrix conformance only.
+    'assessment.create',
+    'assessment.read',
+    'assessment.edit',
+    'assessment.delete',
+    // Certificates CR per the latest matrix revision — generating the artifact
+    // is the create (founder Q1's reading on Audits).
+    'certificate.create',
     'certificate.read',
     'category.read',
     // HR gained full document CRUD per the updated ruling (previously read-only).
@@ -341,7 +360,9 @@ describe('can() — clinicalDirector (regression guard: exact permission set)', 
     'assessment.create',
     'assessment.read',
     'assessment.edit',
-    'assessment.delete',
+    // assessment.delete deliberately withheld — the updated matrix
+    // (docs/local/RBAC_for_multi-tenancy-updated.md) prints Quiz CRU for
+    // clinicalDirector; deletion is reserved for Owner/Admin/HR.
     'enrollment.create',
     'enrollment.read',
     'enrollment.edit',
@@ -358,6 +379,8 @@ describe('can() — clinicalDirector (regression guard: exact permission set)', 
     'document.edit',
     // document.delete deliberately withheld — clinicalDirector gets CRU only.
     'standardManual.read',
+    // Certificates CR per the latest matrix revision — see the HR set.
+    'certificate.create',
     'certificate.read',
     'organization.read',
     'facility.read',
@@ -391,6 +414,9 @@ describe('can() — clinicalDirector (regression guard: exact permission set)', 
   });
   it('clinicalDirector is denied course.delete (courses CRU only per founder Q3)', () => {
     expect(can('clinicalDirector', 'course.delete')).toBe(false);
+  });
+  it('clinicalDirector is denied assessment.delete (quiz CRU only per the updated matrix)', () => {
+    expect(can('clinicalDirector', 'assessment.delete')).toBe(false);
   });
   it('clinicalDirector is denied user.read (lost — no Staff module per the updated ruling)', () => {
     expect(can('clinicalDirector', 'user.read')).toBe(false);

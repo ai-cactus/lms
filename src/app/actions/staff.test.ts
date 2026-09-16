@@ -1209,13 +1209,17 @@ describe('getEnrollmentQuizResult — org isolation (F-010)', () => {
    *
    * `assignment` is the org's auto-enrolment configuration; `assessment` is
    * "Quizzes, questions & question-by-question attempt logs" — this payload.
-   * They diverge on HR, which holds all four `assignment.*` verbs and no
-   * `assessment.*`, and whose registry description reads "Blocked from billing
-   * and from question-by-question assessment scoring". The old verb admitted
-   * the one manager role the registry withholds this data from.
+   * Two different resources, which is why this gate reads the assessment verb
+   * regardless of which roles hold it at any given moment.
+   *
+   * HR is one of them, by founder ruling — "HR can build quizzes and view
+   * results" (docs/local/RBAC_for_multi-tenancy-updated.md). This gate briefly
+   * excluded HR on the strength of the role's own registry description, which
+   * he reversed when asked (docs/local/RBAC-founder-answers-2026-09-15.md).
+   * Finance is still out: it holds no `assessment.*` at all.
    */
   describe('the verb: isAdminRole && assessment.read', () => {
-    it.each(['owner', 'admin', 'supervisor', 'clinical_director'])(
+    it.each(['owner', 'admin', 'supervisor', 'clinical_director', 'hr'])(
       '%s is admitted',
       async (role) => {
         mockAuth.mockResolvedValue({ user: { id: 'a-1', role, organizationId: 'org-a' } });
@@ -1225,11 +1229,11 @@ describe('getEnrollmentQuizResult — org isolation (F-010)', () => {
       },
     );
 
-    it('USER-VISIBLE: HR loses question-level score access', async () => {
+    it('USER-VISIBLE: HR reads question-level scores, per the founder ruling', async () => {
       mockAuth.mockResolvedValue({ user: { id: 'hr-1', role: 'hr', organizationId: 'org-a' } });
+      mockEnrollmentFindUnique.mockResolvedValue(makeEnrollment('org-a'));
 
-      await expect(getEnrollmentQuizResult(ENROLLMENT_ID)).rejects.toThrow('Unauthorized');
-      expect(mockEnrollmentFindUnique).not.toHaveBeenCalled();
+      await expect(getEnrollmentQuizResult(ENROLLMENT_ID)).resolves.not.toBeNull();
     });
 
     it('finance stays denied', async () => {

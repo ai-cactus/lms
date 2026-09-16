@@ -948,10 +948,18 @@ export async function getEnrollmentQuizResult(enrollmentId: string) {
   //
   // `assessment.read`, not `assignment.read`. The registry defines `assessment`
   // as "Quizzes, questions & question-by-question attempt logs" — this payload —
-  // while `assignment` is the org's auto-enrolment configuration. HR holds all
-  // four `assignment.*` verbs and no `assessment.*`, and its own description
-  // says HR is "blocked from question-by-question assessment scoring", so the
-  // old verb admitted the one manager role the registry withholds this from.
+  // while `assignment` is the org's auto-enrolment configuration. Two different
+  // resources, and that distinction outlives any one role's letters, so this
+  // gate stays on the assessment verb whoever happens to hold it.
+  //
+  // HR holds it, by founder ruling: "HR can build quizzes and view results"
+  // (docs/local/RBAC_for_multi-tenancy-updated.md — Quiz row, CRUD). It did not
+  // when this gate was first written, and the narrowing then rested on this
+  // role's own registry description, which said HR was "blocked from
+  // question-by-question assessment scoring". That sentence was ours, not his;
+  // asked to settle it (docs/local/RBAC-founder-answers-2026-09-15.md) he chose
+  // the broad reading. Do not re-narrow HR here on the strength of the old
+  // wording — the ruling governs, and the description now agrees with it.
   //
   // The verb is what does the work here. `isAdminRole` is defence in depth, not
   // load-bearing: this module's `auth` is the admin instance (`@/auth`), which
@@ -962,7 +970,7 @@ export async function getEnrollmentQuizResult(enrollmentId: string) {
   // resolve-either-instance session, as `getEnrollmentWithResults` uses, the verb
   // alone would open someone else's answers to all eight. Keep them paired.
   //
-  // Together they resolve to owner, admin, supervisor and clinical_director.
+  // Together they resolve to owner, admin, hr, supervisor and clinical_director.
   const roleKey = dbRoleToRoleKey(session.user.role);
   if (!roleKey || !isAdminRole(session.user.role) || !can(roleKey, 'assessment.read')) {
     logger.warn({

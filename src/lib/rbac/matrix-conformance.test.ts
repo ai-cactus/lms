@@ -1,9 +1,16 @@
 /**
  * Founder RBAC matrix — registry conformance.
  *
- * SOURCE OF TRUTH: `docs/local/RBAC-founder-answers-2026-09-15.md` (28 decisions
- * across three rounds), which resolves the matrix published in
- * `docs/local/RBAC-for-multi-tenancy.md`.
+ * SOURCE OF TRUTH: `docs/local/RBAC_for_multi-tenancy-updated.md` — the founder's
+ * matrix — read together with `docs/local/RBAC-founder-answers-2026-09-15.md`,
+ * the decision record that resolves the letters the matrix leaves ambiguous.
+ * Earlier revisions of both were deleted once superseded; this test is the
+ * enforcement, so it outranks any prose that disagrees with it.
+ *
+ * Against the original, the current matrix adds two rows (Quiz, Certificates)
+ * and promotes Audits from `R` to `CR`; the latest revision promotes
+ * Certificates from `R` to `CR` as well. Its other four rows ratify what is
+ * already shipped.
  *
  * ⛔ ANY PR THAT TOUCHES `permissions.ts` OR `role-utils.ts` MUST UPDATE THIS
  * FILE. The matrix below is the founder's directive expressed as data; the
@@ -16,6 +23,8 @@
  *
  *   Documents        → `document`
  *   Courses          → `course`
+ *   Quiz             → `assessment`
+ *   Certificates     → `certificate`
  *   Staff Management → `user`
  *   Billing          → `billing`
  *   Audits           → `auditPack`
@@ -23,6 +32,7 @@
  * Audits is `CR`, not `R`: founder answer to Q1 — "Managers with access should
  * be able to Generate reports. If that is a create action, then we should add
  * create to the rules" — so generating or exporting an auditor pack is a create.
+ * The updated matrix now prints `CR` on that row itself, ratifying it.
  */
 import { describe, expect, it } from 'vitest';
 import { can, type Permission, type RoleKey } from './permissions';
@@ -42,6 +52,8 @@ const ALL_VERBS = Object.keys(VERB_TO_ACTION) as Verb[];
 const MODULE_RESOURCES = {
   Documents: 'document',
   Courses: 'course',
+  Quiz: 'assessment',
+  Certificates: 'certificate',
   'Staff Management': 'user',
   Billing: 'billing',
   Audits: 'auditPack',
@@ -110,6 +122,50 @@ const MATRIX: Record<MatrixModule, Record<MatrixRole, Cell>> = {
     clinicalDirector: cell('CRU'),
     supervisor: cell('R'),
   },
+  Quiz: {
+    owner: cell('CRUD'),
+    admin: cell('CRUD'),
+    // Resolved by the founder against the ambiguity in
+    // docs/local/RBAC-founder-answers-2026-09-15.md — `assessment` bundles
+    // authoring a quiz with opening a NAMED learner's answer sheet, and he
+    // answered both: "HR can build quizzes and view results". The `read` half is
+    // what readmits HR to the two answer-sheet gates.
+    hr: cell('CRUD'),
+    finance: cell('—'),
+    clinicalDirector: cell('CRU'),
+    supervisor: diverges(
+      'R',
+      'CR',
+      'The `C` here is not the authoring verb the Quiz row means. ' +
+        '`assessment.create` doubles as the self-service grant every account ' +
+        'holds so it can SUBMIT ITS OWN quiz attempt (`selfServicePermissions` ' +
+        'in permissions.ts — Learn Mode is unusable without it), which is why a ' +
+        'read-only admin role keeps it. A supervisor authors nothing: quiz ' +
+        'content is course content, gated on `course.edit` ' +
+        '(assertCanEditCourseContent in actions/lesson.ts), which they do not hold.',
+    ),
+  },
+  // `CR`, not `R`: the founder's latest revision promotes every held cell in
+  // this row, on the same reading Q1 gave Audits — generating the artifact is
+  // the create. The `C` has a real call site: `issueCertificate`.
+  Certificates: {
+    owner: diverges(
+      'CR',
+      'CRUD',
+      'See the Audits owner cell — Owner and Admin are Owner-equivalent full ' +
+        'CRUD on every resource (`everything` in permissions.ts), so the ' +
+        'Certificates letters are a floor for them, not a ceiling.',
+    ),
+    admin: diverges('CR', 'CRUD', 'See the owner cell — Owner-equivalent full CRUD.'),
+    hr: cell('CR'),
+    // The matrix leaves this cell blank rather than printing `—`, but founder Q7
+    // is explicit — "Finance should not be able to see certificates" — which is
+    // what removed `certificate.read` from Finance in the first place. The
+    // promotion to `CR` does not reach a role that holds none of the row.
+    finance: cell('—'),
+    clinicalDirector: cell('CR'),
+    supervisor: cell('CR'),
+  },
   'Staff Management': {
     owner: cell('CRUD'),
     admin: cell('CRUD'),
@@ -130,7 +186,7 @@ const MATRIX: Record<MatrixModule, Record<MatrixRole, Cell>> = {
         '`FACILITY_CHANGE_ACTOR_ROLES` (Rule A). Course assignment is already ' +
         'covered by `assignment.create`/`enrollment.create`, and withdrawal by ' +
         '`assignment.delete` (Rule C). The registry therefore grants `R` here on ' +
-        'purpose. See docs/local/RBAC-conformance-2026-09-15.md §A.3.',
+        'purpose; the "U" ships as actor lists, not as a grant.',
     ),
   },
   Billing: {

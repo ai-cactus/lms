@@ -102,7 +102,7 @@ describe('supervisor', () => {
 });
 
 describe('hr', () => {
-  it('manages staff, invites, courses, settings and facilities, but cannot author clinical assessments or reach billing', () => {
+  it('manages staff, invites, courses, quizzes, settings and facilities, but cannot reach billing', () => {
     expect(rowByLabel('Manage staff roster').check('hr')).toBe(true);
     expect(rowByLabel('Invite & change user roles').check('hr')).toBe(true);
     // HR gained full course CRUD per the updated ruling (previously blocked).
@@ -110,7 +110,11 @@ describe('hr', () => {
     // HR gained organization.edit + facility.create per founder Q8/Q9.
     expect(rowByLabel('Settings').check('hr')).toBe(true);
     expect(rowByLabel('Create & switch facilities').check('hr')).toBe(true);
-    expect(rowByLabel('Author clinical assessments').check('hr')).toBe(false);
+    // Both assessment rows flipped to true 2026-09-16 on the founder's Quiz
+    // ruling — "HR can build quizzes and view results" — which is exactly these
+    // two rows: `assessment.edit` authors, `assessment.read` opens the scores.
+    expect(rowByLabel('Author clinical assessments').check('hr')).toBe(true);
+    expect(rowByLabel('View question-level scores').check('hr')).toBe(true);
     expect(rowByLabel('Billing').check('hr')).toBe(false);
   });
 });
