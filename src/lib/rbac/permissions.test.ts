@@ -6,11 +6,13 @@
  *     Owner-equivalent, delegated rather than established at org creation)
  *   - supervisor was demoted to READ-ONLY: read on every resource plus
  *     personal self-service actions only — no create/edit/delete anywhere,
- *     including facility.create/edit (full facility CRUD is now owner/admin-only)
- *   - hr has documents CRUD + courses CRUD (gained) and audit.read (gained)
- *   - clinicalDirector has documents CRU (no delete) and audit.read (gained),
- *     but no user.read (no Staff module)
- *   - finance is billing-only: lost user.read and auditPack.read
+ *     including facility.create/edit (full facility CRUD is Owner/Admin/HR)
+ *   - hr has documents CRUD + courses CRUD (gained), audit.read (gained), and
+ *     facility CRUD + organization.edit (gained per founder Q8/Q9)
+ *   - clinicalDirector has documents CRU and courses CRU (no delete on either)
+ *     and audit.read (gained), but no user.read (no Staff module)
+ *   - finance is billing-only: lost user.read, auditPack.read and
+ *     certificate.read (founder Q7)
  *   - every worker-category role shares one identical permission ceiling:
  *     course.read, enrollment.read/edit, assessment.create/read,
  *     certificate.read, organization.read, facility.read,
@@ -196,7 +198,15 @@ describe('can() — hr (regression guard: exact permission set)', () => {
     'document.edit',
     'document.delete',
     'organization.read',
+    // HR gained organization.edit + facility CRUD per the founder's Q8/Q9
+    // answers, both "Owner/Admin/HR". organization.edit is also the gate the
+    // notification/reminder/escalation settings already use, which is how the
+    // same grant settles Q13.
+    'organization.edit',
+    'facility.create',
     'facility.read',
+    'facility.edit',
+    'facility.delete',
     // HR gained audit.read per the updated ruling (read-only on the trail).
     'audit.read',
     'auditPack.create',
@@ -210,8 +220,13 @@ describe('can() — hr (regression guard: exact permission set)', () => {
   it('hr has facility.read', () => {
     expect(can('hr', 'facility.read')).toBe(true);
   });
-  it('hr is denied facility.edit', () => {
-    expect(can('hr', 'facility.edit')).toBe(false);
+  it('hr has facility.create/edit/delete (gained per Q8)', () => {
+    expect(can('hr', 'facility.create')).toBe(true);
+    expect(can('hr', 'facility.edit')).toBe(true);
+    expect(can('hr', 'facility.delete')).toBe(true);
+  });
+  it('hr has organization.edit (gained per Q9 — also the Q13 notification-config gate)', () => {
+    expect(can('hr', 'organization.edit')).toBe(true);
   });
   it('hr is denied billing.read', () => {
     expect(can('hr', 'billing.read')).toBe(false);
@@ -257,8 +272,10 @@ describe('can() — finance (regression guard: exact permission set)', () => {
     // `course.read` removed 2026-08-25 per team QA finding #9 — Finance must
     // not see courses from the admin side. Deliberate edit of this guard; see
     // permissions.ts for the decision trail.
+    // `certificate.read` removed 2026-09-16 — founder answer to Q7: "Finance
+    // should not be able to see certificates." Deliberate edit of this guard.
+    // `enrollment.read` is untouched: it is Finance's own course progress.
     'enrollment.read',
-    'certificate.read',
     'notification.create',
     'notification.read',
     'notification.edit',
@@ -289,6 +306,12 @@ describe('can() — finance (regression guard: exact permission set)', () => {
   it('finance is denied auditPack.read (lost per the updated ruling)', () => {
     expect(can('finance', 'auditPack.read')).toBe(false);
   });
+  it('finance is denied certificate.read (lost per founder Q7)', () => {
+    expect(can('finance', 'certificate.read')).toBe(false);
+  });
+  it('finance keeps enrollment.read — its own course progress, not a staff metric', () => {
+    expect(can('finance', 'enrollment.read')).toBe(true);
+  });
   it('finance has exactly the expected permission set — nothing more, nothing less', () => {
     for (const permission of permissions) {
       const expected = (FINANCE_PERMISSIONS as readonly string[]).includes(permission);
@@ -302,7 +325,8 @@ describe('can() — clinicalDirector (regression guard: exact permission set)', 
     'course.create',
     'course.read',
     'course.edit',
-    'course.delete',
+    // course.delete deliberately withheld — clinicalDirector gets CRU only
+    // (founder Q3 "Confirmed"); deletion is reserved for Owner/Admin/HR.
     'assessment.create',
     'assessment.read',
     'assessment.edit',
@@ -353,6 +377,9 @@ describe('can() — clinicalDirector (regression guard: exact permission set)', 
   });
   it('clinicalDirector is denied document.delete (documents CRU only)', () => {
     expect(can('clinicalDirector', 'document.delete')).toBe(false);
+  });
+  it('clinicalDirector is denied course.delete (courses CRU only per founder Q3)', () => {
+    expect(can('clinicalDirector', 'course.delete')).toBe(false);
   });
   it('clinicalDirector is denied user.read (lost — no Staff module per the updated ruling)', () => {
     expect(can('clinicalDirector', 'user.read')).toBe(false);
@@ -428,16 +455,15 @@ describe('organization.read + facility.read — granted to every one of the 14 r
   });
 });
 
-describe('facility.* permissions — full CRUD is owner/admin-only; read is universal', () => {
+describe('facility.* permissions — full CRUD is Owner/Admin/HR; read is universal', () => {
   const facilityActions = ['create', 'read', 'edit', 'delete'] as const;
   const facilityWriteActions = ['create', 'edit', 'delete'] as const;
-  // Full facility CRUD is now owner/admin-only — supervisor was demoted to
-  // read-only (no more facility.create/edit) per the updated ruling.
-  const rolesWithFacility = ['owner', 'admin'] as const;
-  // Every non-owner/admin role can read its facility but never mutate it.
+  // Supervisor was demoted to read-only per the earlier ruling; HR joined
+  // Owner/Admin on facility CRUD per the founder's Q8 answer ("Owner/Admin/HR").
+  const rolesWithFacility = ['owner', 'admin', 'hr'] as const;
+  // Every other role can read its facility but never mutate it.
   const rolesWithReadOnlyFacility = [
     'supervisor',
-    'hr',
     'clinicalDirector',
     'finance',
     ...WORKER_ROLE_KEYS,

@@ -55,8 +55,8 @@ export async function updateOrganization(data: OrganizationUpdateData) {
 
     // Granular gate, mirroring updateFacility: the coarse admin-tier check let
     // every admin-tier role through, which since the RBAC ruling demoted
-    // Supervisor (and excluded HR/Clinical/Finance from org settings) would be a
-    // privilege escalation. `organization.edit` resolves to Owner/Admin only.
+    // Supervisor (and excluded Clinical/Finance from org settings) would be a
+    // privilege escalation. `organization.edit` resolves to Owner/Admin/HR.
     if (!can(dbRoleToRoleKey(session.user.role), 'organization.edit')) {
       logger.warn({
         msg: '[org] updateOrganization: insufficient permission',
@@ -317,7 +317,7 @@ interface FacilityUpdateData {
 }
 
 // Update a facility in the caller's organization. Permission-gated on
-// `facility.edit` (Owner/Admin only per the RBAC matrix), with one scoped
+// `facility.edit` (Owner/Admin/HR per the RBAC matrix), with one scoped
 // exception for supervisors — see SUPERVISOR_WRITABLE_FIELDS below.
 export async function updateFacility(data: FacilityUpdateData): Promise<{
   success: boolean;
@@ -687,7 +687,7 @@ export type CreateFacilityInput = z.infer<typeof createFacilitySchema>;
 
 /**
  * Add a facility to the caller's organization, optionally handing it to a
- * supervisor. Gated on `facility.create` (Owner/Admin only per the RBAC matrix).
+ * supervisor. Gated on `facility.create` (Owner/Admin/HR per the RBAC matrix).
  *
  * The supervisor may already be a member — then they are assigned to the new
  * facility outright — or a stranger, who is invited. A member holding a
@@ -933,7 +933,7 @@ export async function uploadComplianceDocument(formData: FormData) {
 
   try {
     // Compliance documents now live on the facility — gate on `facility.edit`
-    // (owner + supervisor only).
+    // (Owner/Admin/HR per the RBAC matrix).
     const roleKey = dbRoleToRoleKey(session.user.role);
     if (!can(roleKey, 'facility.edit')) {
       return { success: false, error: 'Unauthorized to upload facility documents' };

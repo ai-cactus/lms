@@ -31,7 +31,7 @@ export default async function SettingsPageRoute() {
   const { role, organizationId } = session.user;
 
   // Facility + team-access settings are an org-level mutation, so this gate keys
-  // off `organization.edit` — Owner-equivalent seats only. Kept in lockstep with
+  // off `organization.edit` — Owner/Admin/HR. Kept in lockstep with
   // the Settings nav row in roles-matrix-config so the menu never offers a link
   // this route then refuses. Other admins get a proper access-denied state
   // (mirrors the Billing route's gate pattern).

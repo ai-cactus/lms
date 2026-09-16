@@ -66,8 +66,8 @@ export const MATRIX_ROWS: MatrixRow[] = [
   { section: 'NAVIGATION', label: 'Billing', check: perm('billing.read') },
   { section: 'NAVIGATION', label: 'Audits', check: perm('audit.read') },
   // Facility + team-access settings are an org-level mutation, so Settings keys
-  // off `organization.edit` — which the registry grants only to the
-  // Owner-equivalent seats (Owner, Admin).
+  // off `organization.edit` — which the registry grants to Owner, Admin and HR
+  // (founder answer to Q9).
   { section: 'NAVIGATION', label: 'Settings', check: perm('organization.edit') },
   // Help is available to every authenticated user.
   { section: 'NAVIGATION', label: 'Help Center', check: () => true },

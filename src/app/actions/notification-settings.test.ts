@@ -1,13 +1,13 @@
 /**
- * Unit tests for the owner-gated server actions behind Settings → Notification:
+ * Unit tests for the server actions behind Settings → Notification:
  * updateDigestFrequency (summary cadence) and
  * updateNotificationCategoryPreferences (per-category email / in-app switches).
  *
- * Settings is owner-only by product decision; because a server action is a
- * public endpoint regardless of what the page itself gates, both actions
- * re-enforce the admin-role guard (requireActionSession) AND the
- * `organization.edit` permission rather than trusting the caller reached them
- * through the owner-gated page.
+ * Both gate on `organization.edit` (Owner/Admin/HR), which is what makes them
+ * the Q13 surface — notification, reminder and escalation configuration. Because
+ * a server action is a public endpoint regardless of what the page itself gates,
+ * they re-enforce the admin-role guard (requireActionSession) AND the permission
+ * rather than trusting the caller reached them through the gated page.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -66,11 +66,11 @@ describe('updateDigestFrequency — authorization', () => {
     expect(prismaMock.organization.update).not.toHaveBeenCalled();
   });
 
-  // organization.edit resolves to Owner/Admin ONLY per the RBAC ruling — the
-  // error copy was also updated from "organization owner" (singular) to
-  // "organization owner or admin" to reflect the new Owner-equivalent seat.
-  it.each(['supervisor', 'hr', 'clinical_director', 'finance'])(
-    'rejects a non-owner-equivalent admin role (%s) with a distinct owner/admin-only message',
+  // organization.edit resolves to Owner/Admin/HR — HR joined per the founder's
+  // Q9 answer, which is also what settles Q13 (notification, reminder and
+  // escalation configuration → Owner/Admin/HR), since this gate IS that surface.
+  it.each(['supervisor', 'clinical_director', 'finance'])(
+    'rejects a role without organization.edit (%s) with a distinct message',
     async (role) => {
       mockAuth.mockResolvedValue(sessionFor(role));
 
@@ -98,10 +98,10 @@ describe('updateDigestFrequency — authorization', () => {
     expect(result).toEqual({ success: true });
   });
 
-  // RBAC ruling: `admin` is a new Owner-equivalent role (full CRUD incl.
-  // billing) and holds organization.edit alongside owner.
-  it('allows the admin role through (Owner-equivalent, new in this RBAC ruling)', async () => {
-    mockAuth.mockResolvedValue(sessionFor('admin'));
+  // `admin` is Owner-equivalent; `hr` joined per founder Q9, which is what
+  // settles Q13 — this action IS the notification-configuration surface.
+  it.each(['admin', 'hr'])('allows the %s role through', async (role) => {
+    mockAuth.mockResolvedValue(sessionFor(role));
 
     const result = await updateDigestFrequency({ frequency: 'weekly' });
 
@@ -187,8 +187,8 @@ describe('updateDigestFrequency — resilience', () => {
 
 /**
  * Category switches suppress delivery for the WHOLE tenant, so the action
- * re-enforces the same owner-equivalent gate as the cadence rather than
- * trusting the owner-gated page a caller may never have visited.
+ * re-enforces the same `organization.edit` gate as the cadence rather than
+ * trusting the gated page a caller may never have visited.
  */
 describe('updateNotificationCategoryPreferences — authorization', () => {
   const payload = {
@@ -204,8 +204,8 @@ describe('updateNotificationCategoryPreferences — authorization', () => {
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 
-  it.each(['supervisor', 'hr', 'clinical_director', 'finance'])(
-    'rejects a non-owner-equivalent admin role (%s)',
+  it.each(['supervisor', 'clinical_director', 'finance'])(
+    'rejects a role without organization.edit (%s)',
     async (role) => {
       mockAuth.mockResolvedValue(sessionFor(role));
 
@@ -219,7 +219,7 @@ describe('updateNotificationCategoryPreferences — authorization', () => {
     },
   );
 
-  it.each(['owner', 'admin'])('allows %s through', async (role) => {
+  it.each(['owner', 'admin', 'hr'])('allows %s through', async (role) => {
     mockAuth.mockResolvedValue(sessionFor(role));
 
     const result = await updateNotificationCategoryPreferences(payload);

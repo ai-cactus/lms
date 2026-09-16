@@ -434,10 +434,11 @@ describe('updateStaffDetails() — permission matrix (user.edit gate)', () => {
 });
 
 /**
- * In-place role change (Change 2). A role-changing update runs the pure
- * `canChangeRole` guard from role-utils; only Owner/Admin may re-role a
- * reachable target (ROLE_CHANGE_ACTOR_ROLES = ['owner', 'admin']), never
- * themselves, and a successful change bumps sessionVersion in a separate User
+ * In-place role change. A role-changing update runs the pure `canChangeRole`
+ * guard from role-utils; only Owner/Admin/HR may re-role a reachable target
+ * (ROLE_CHANGE_ACTOR_ROLES), never themselves, and HR's reach is capped at
+ * everything below the two Owner-equivalent seats by GRANTABLE_ROLES.hr. A
+ * successful change bumps sessionVersion in a separate User
  * write (killing the target's live sessions) and records a
  * `staff.role.change` audit entry. A same-role resubmit (no actual change)
  * must skip both the bump and the audit entirely.
@@ -507,7 +508,10 @@ describe('updateStaffDetails() — in-place role change (canChangeRole integrati
     expect(mockInvalidateRevalidationCache).not.toHaveBeenCalled();
   });
 
-  it('denies a role change attempted by hr (hr may edit staff but not re-role them)', async () => {
+  // Founder Q11: HR may re-role everything except the two Owner-equivalent
+  // seats. The ceiling is GRANTABLE_ROLES.hr, applied by canChangeRole to both
+  // the target's current role and the requested new role.
+  it('allows hr to promote a worker to supervisor', async () => {
     mockAuth.mockResolvedValue({
       user: { id: 'hr-1', email: 'hr@acme.com', role: 'hr', organizationId: 'org-1' },
     });
@@ -519,8 +523,46 @@ describe('updateStaffDetails() — in-place role change (canChangeRole integrati
 
     const result = await updateStaffDetails('target-1', { ...baseData, role: 'supervisor' });
 
+    expect(result).toEqual({ success: true });
+    expect(mockOrgUserUpdate).toHaveBeenCalledWith({
+      where: { id: 'target-1' },
+      data: expect.objectContaining({ role: 'supervisor', roleAssignedAt: expect.any(Date) }),
+    });
+    expect(mockAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'staff.role.change' }),
+    );
+  });
+
+  it('denies hr promoting a target to admin — the Owner-equivalent escalation fence', async () => {
+    mockAuth.mockResolvedValue({
+      user: { id: 'hr-1', email: 'hr@acme.com', role: 'hr', organizationId: 'org-1' },
+    });
+    mockOrgUserFindUnique.mockResolvedValue({
+      userId: 'target-user-1',
+      organizationId: 'org-1',
+      role: 'nurse',
+    });
+
+    const result = await updateStaffDetails('target-1', { ...baseData, role: 'admin' });
+
     expect(result.success).toBe(false);
-    expect(result.error).toBe("Only an Owner or Supervisor can change a staff member's role.");
+    expect(mockOrgUserUpdate).not.toHaveBeenCalled();
+    expect(mockAudit).not.toHaveBeenCalled();
+  });
+
+  it('denies hr re-roling an admin target — an admin is out of HR reach', async () => {
+    mockAuth.mockResolvedValue({
+      user: { id: 'hr-1', email: 'hr@acme.com', role: 'hr', organizationId: 'org-1' },
+    });
+    mockOrgUserFindUnique.mockResolvedValue({
+      userId: 'target-user-1',
+      organizationId: 'org-1',
+      role: 'admin',
+    });
+
+    const result = await updateStaffDetails('target-1', { ...baseData, role: 'nurse' });
+
+    expect(result.success).toBe(false);
     expect(mockOrgUserUpdate).not.toHaveBeenCalled();
     expect(mockAudit).not.toHaveBeenCalled();
   });
