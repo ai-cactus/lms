@@ -162,8 +162,13 @@ export async function getAdminWorkerCertificates(organizationUserId: string) {
 
   // This is the certificate half of the staff profile, so it must reach the same
   // verdict as `getStaffDetails` — otherwise a target the profile 404s on still
-  // yields its full training history through this id-addressed action. `user.read`
-  // rather than `isAdminRole`, which admits Finance and Clinical Director.
+  // yields its full training history through this id-addressed action.
+  //
+  // `user.read` alone is sufficient HERE, unlike the `certificate.read` gates
+  // below and in the download route: every `user.read` holder is already
+  // admin-tier (owner, admin, supervisor, hr), so no worker can reach it. If a
+  // worker role is ever granted `user.read`, this needs the same `isAdminRole`
+  // conjunction they carry.
   const roleKey = dbRoleToRoleKey(session.user.role);
   if (!roleKey || !can(roleKey, 'user.read')) {
     logger.warn({
@@ -223,13 +228,26 @@ export async function getCertificateDetails(certificateId: string) {
     return certificate;
   }
 
-  // Administrative read. `certificate.read` rather than `isAdminRole`, which
-  // admits Facility Supervisor with no scope check at all — an id-addressed
-  // action then hands over any certificate in the org (name, email, course,
-  // score). `certificate.read` and NOT `user.read`: Clinical Director has no
-  // Staff Management access but does hold the certificate verb (founder Q7).
+  // Administrative read. BOTH halves are load-bearing; neither works alone.
+  //
+  //   can(roleKey, 'certificate.read') — because `isAdminRole` alone admits
+  //   Finance, which Phase 1 removed the certificate verb from. It is also why
+  //   this is not `user.read`: Clinical Director has no Staff Management access
+  //   but does hold the certificate verb (founder Q7).
+  //
+  //   isAdminRole — because all eight WORKER roles hold `certificate.read` so
+  //   they can read their own (see `workerPermissions`). The verb alone does not
+  //   separate "my certificate" from "theirs", and this action is id-addressed,
+  //   so it would hand a nurse any colleague's name, course, score and email.
+  //
+  // Together: owner, admin, supervisor, hr, clinical_director — exactly Q7.
   const roleKey = dbRoleToRoleKey(session.user.role);
-  if (!roleKey || !can(roleKey, 'certificate.read') || !session.user.organizationId) {
+  if (
+    !roleKey ||
+    !isAdminRole(session.user.role) ||
+    !can(roleKey, 'certificate.read') ||
+    !session.user.organizationId
+  ) {
     logger.warn({
       msg: '[certificate] Certificate detail read denied',
       userId: session.user.id,

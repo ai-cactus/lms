@@ -166,6 +166,38 @@ describe('GET /api/certificates/[id] — administrative downloads', () => {
     expect(where.organizationUser.facilities).toBeUndefined();
   });
 
+  /**
+   * `isAdminRole && certificate.read` — both halves, same trap as the action.
+   *
+   * All eight WORKER roles hold `certificate.read` so a learner can read their
+   * OWN, so the verb alone does not separate "my certificate" from "theirs".
+   * Here the served artifact is the PDF itself, and a worker-role account on
+   * the admin instance is a real state (the auth instance is a routing
+   * selector, not the role), so the tier check cannot be skipped on the
+   * assumption that the admin cookie implies an admin role.
+   */
+  it.each(['nurse', 'therapist_clinician', 'front_desk_admin'])(
+    '%s holds certificate.read but is still refused another holder’s PDF',
+    async (role) => {
+      setAdminSession(role);
+
+      const response = await GET(request, { params });
+
+      expect(response.status).toBe(403);
+      expect(mockCertificateFindFirst).not.toHaveBeenCalled();
+      expect(mockDownloadFile).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['owner', 'admin', 'supervisor', 'hr', 'clinical_director'])(
+    '%s is admitted — founder Q7',
+    async (role) => {
+      setAdminSession(role);
+
+      expect((await GET(request, { params })).status).toBe(200);
+    },
+  );
+
   it('an unknown/stale role key is refused without a scope query', async () => {
     setAdminSession('not_a_real_role');
 

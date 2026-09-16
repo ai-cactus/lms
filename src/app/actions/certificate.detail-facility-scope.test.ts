@@ -95,16 +95,16 @@ describe('getCertificateDetails — the owning learner', () => {
     await expect(getCertificateDetails('cert-1')).resolves.toBe(CERTIFICATE);
   });
 
-  it('a worker reading SOMEONE ELSE’s certificate goes through the administrative gate', async () => {
+  it('a worker reading SOMEONE ELSE’s certificate is refused by the role tier, before any query', async () => {
     mockAdminAuth.mockResolvedValue(null);
     mockWorkerAuth.mockResolvedValue({
       user: { id: 'w-2', role: 'nurse', organizationId: ORG_ID, organizationUserId: 'ou-other' },
     });
-    // A worker holds `certificate.read` but is facility-bound; with no
-    // assignment the predicate narrows to nothing.
-    prismaMock.certificate.findFirst.mockResolvedValue(null);
 
     await expect(getCertificateDetails('cert-1')).rejects.toThrow('Unauthorized');
+    // Not by the facility predicate coming back empty — the tier check refuses
+    // first, so this never depends on how the target's facilities happen to sit.
+    expect(prismaMock.certificate.findFirst).not.toHaveBeenCalled();
   });
 });
 
@@ -164,6 +164,46 @@ describe('getCertificateDetails — facility scope', () => {
 });
 
 describe('getCertificateDetails — permission gate', () => {
+  /**
+   * `isAdminRole && certificate.read` — BOTH halves, and this block exists
+   * because dropping either one re-opens a different hole.
+   *
+   * All eight WORKER roles hold `certificate.read` (`workerPermissions` in the
+   * registry) so a learner can read their OWN. On an id-addressed action the
+   * verb therefore does not separate "my certificate" from "theirs": without
+   * the `isAdminRole` half a nurse gets any colleague's name, course and score
+   * within their facility. The original `isAdminRole`-only gate refused them —
+   * so a verb-only gate would be a REGRESSION, not a partial fix.
+   */
+  it.each(['nurse', 'therapist_clinician', 'front_desk_admin'])(
+    '%s holds certificate.read but is still denied someone else’s certificate',
+    async (role) => {
+      mockAdminAuth.mockResolvedValue(null);
+      mockWorkerAuth.mockResolvedValue({
+        user: { id: 'w-2', role, organizationId: ORG_ID, organizationUserId: 'ou-other' },
+      });
+
+      await expect(getCertificateDetails('cert-1')).rejects.toThrow('Unauthorized');
+      expect(prismaMock.certificate.findFirst).not.toHaveBeenCalled();
+    },
+  );
+
+  it('a worker role signed in on the ADMIN instance is denied too — the cookie is not the role', async () => {
+    setAdminSession('nurse', 'ou-other');
+
+    await expect(getCertificateDetails('cert-1')).rejects.toThrow('Unauthorized');
+    expect(prismaMock.certificate.findFirst).not.toHaveBeenCalled();
+  });
+
+  it.each(['owner', 'admin', 'supervisor', 'hr', 'clinical_director'])(
+    '%s is admitted — founder Q7',
+    async (role) => {
+      setAdminSession(role);
+
+      await expect(getCertificateDetails('cert-1')).resolves.toBe(CERTIFICATE);
+    },
+  );
+
   it('an unknown/stale role key is denied before any scope resolution', async () => {
     setAdminSession('not_a_real_role');
 

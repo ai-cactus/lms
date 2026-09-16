@@ -7,7 +7,7 @@ import { logger } from '@/lib/logger';
 import { audit, getClientContext } from '@/lib/audit';
 import { captureServer } from '@/lib/analytics/server';
 import { can } from '@/lib/rbac/permissions';
-import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
+import { dbRoleToRoleKey, isAdminRole } from '@/lib/rbac/role-utils';
 import { resolveDataFacilityIds, staffFacilityWhere } from '@/lib/facility/staff-where';
 
 export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
@@ -48,11 +48,15 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
 
     // The administrative branch checked org equality and NOTHING else — not even
     // `isAdminRole` — so every admin-tier session in the organisation could pull
-    // any holder's PDF by id. Same gate as `getCertificateDetails`: the verb,
-    // then the facility narrowing, both composed into the query.
+    // any holder's PDF by id. Same gate as `getCertificateDetails`, and for the
+    // same two reasons: the verb excludes Finance (Phase 1), and `isAdminRole`
+    // excludes the eight worker roles, which all hold `certificate.read` so they
+    // can read their own. A worker-role account signed in on the admin instance
+    // is a real state — the auth instance is a routing selector, not the role —
+    // so the tier check cannot be inferred from the cookie.
     if (!authorized && adminSession?.user?.id && adminSession.user.organizationId) {
       const roleKey = dbRoleToRoleKey(adminSession.user.role);
-      if (roleKey && can(roleKey, 'certificate.read')) {
+      if (roleKey && isAdminRole(adminSession.user.role) && can(roleKey, 'certificate.read')) {
         const dataFacilityIds = await resolveDataFacilityIds(adminSession);
         const inScope = await prisma.certificate.findFirst({
           where: {
