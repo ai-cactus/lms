@@ -15,8 +15,11 @@
  *     reports success — the assignment persists as an `enrollments` row.
  *   - Switching to the Reading Courses tab shows the reading (text) course
  *     and hides the video one, keyed off `course.type`.
- *   - A read-only role (supervisor, lacks assignment.create) never sees the
- *     "Assign Course" button on the same profile.
+ *   - A facility supervisor DOES see "Assign Course" on a staff profile and can
+ *     complete the flow (founder Q2 — the supervisor's "U" on Staff Management
+ *     covers assigning courses), but only for staff their own facility admits:
+ *     a member of a second facility in the same org is absent from their roster
+ *     and their profile does not render.
  *
  * Pre-conditions:
  *   - App running on http://localhost:3005.
@@ -204,6 +207,48 @@ async function addSupervisor(seeded: Seeded, email: string, password: string): P
   }
 }
 
+/**
+ * A second facility in the SAME org, with one staff member in it. The supervisor
+ * seeded above holds no assignment to it, so this is the "outside my facility"
+ * target every facility-scoping assertion needs.
+ */
+async function addOtherFacilityStaff(
+  seeded: Seeded,
+  email: string,
+): Promise<{ orgUserId: string; facilityId: string; fullName: string }> {
+  const client = await db();
+  try {
+    const hashed = await bcrypt.hash('StaffAsn!Other9', 10);
+    const userId = crypto.randomUUID();
+    const orgUserId = crypto.randomUUID();
+    const facilityId = crypto.randomUUID();
+    const fullName = 'Otto Otherside';
+    await client.query(
+      `INSERT INTO facilities (id, organization_id, name, program_services, created_at, updated_at)
+       VALUES ($1, $2, $3, '{}', NOW(), NOW())`,
+      [facilityId, seeded.orgId, `Other Facility ${crypto.randomBytes(4).toString('hex')}`],
+    );
+    await client.query(
+      `INSERT INTO users (id, email, password, email_verified, auth_provider, first_name, last_name, full_name, created_at, updated_at)
+       VALUES ($1, $2, $3, true, 'credentials', 'Otto', 'Otherside', $4, NOW(), NOW())`,
+      [userId, email, hashed, fullName],
+    );
+    await client.query(
+      `INSERT INTO organization_users (id, user_id, organization_id, role, active, joined_at, role_assigned_at, created_at, updated_at)
+       VALUES ($1, $2, $3, 'nurse'::"UserRole", true, NOW(), NOW(), NOW(), NOW())`,
+      [orgUserId, userId, seeded.orgId],
+    );
+    await client.query(
+      `INSERT INTO organization_user_facilities (id, organization_user_id, facility_id, active, joined_at)
+       VALUES ($1, $2, $3, true, NOW())`,
+      [crypto.randomUUID(), orgUserId, facilityId],
+    );
+    return { orgUserId, facilityId, fullName };
+  } finally {
+    await client.end();
+  }
+}
+
 async function cleanup(seeded: Seeded, extraOrgUserIds: string[] = []): Promise<void> {
   const client = await db();
   try {
@@ -230,7 +275,7 @@ async function cleanup(seeded: Seeded, extraOrgUserIds: string[] = []): Promise<
         [extraOrgUserIds],
       );
     }
-    await client.query(`DELETE FROM facilities WHERE id = $1`, [seeded.facilityId]);
+    await client.query(`DELETE FROM facilities WHERE organization_id = $1`, [seeded.orgId]);
     await client.query(`DELETE FROM organizations WHERE id = $1`, [seeded.orgId]);
   } finally {
     await client.end();
@@ -324,9 +369,13 @@ test.describe('Staff profile — Assign Course flow', () => {
     }
   });
 
-  test('a read-only supervisor never sees the Assign Course button on a staff profile', async ({
-    page,
-  }) => {
+  /**
+   * FLIPPED 2026-09-16. This test previously asserted a supervisor NEVER sees
+   * the Assign Course button. Founder Q2 settles the opposite: the supervisor's
+   * "U" on Staff Management covers "assigning courses and basic profile
+   * editing", for staff in their own facility.
+   */
+  test('a facility supervisor sees Assign Course and the assignment persists', async ({ page }) => {
     const seeded = await seedFixture();
     const supervisorEmail = uid('supervisor');
     const supervisorPassword = 'StaffAsn!Sup9x';
@@ -337,9 +386,60 @@ test.describe('Staff profile — Assign Course flow', () => {
       await page.waitForLoadState('networkidle');
 
       await expect(page.getByRole('heading', { name: seeded.staffFullName })).toBeVisible();
-      await expect(page.getByRole('button', { name: 'Assign Course' })).not.toBeVisible();
+      await page.getByRole('button', { name: 'Assign Course' }).click();
+
+      const dialog = page.getByRole('dialog');
+      await expect(dialog).toBeVisible();
+      // A supervisor authors no courses; the list is org-authored (getCourses),
+      // which is what makes the capability act on anything at all.
+      await dialog.getByRole('checkbox', { name: seeded.videoCourseTitle }).click();
+      await dialog.getByRole('button', { name: 'Assign Course' }).click();
+
+      await expect(dialog.getByText('Set Completion Deadline')).toBeVisible();
+      await dialog.getByRole('button', { name: '30 days' }).click();
+      await dialog.getByRole('button', { name: 'Assign Course' }).click();
+
+      await expect(dialog.getByText('Courses Assigned Successfully')).toBeVisible();
+
+      const client = await db();
+      try {
+        const result = await client.query(
+          `SELECT status FROM enrollments WHERE organization_user_id = $1 AND course_id = $2`,
+          [seeded.staffOrgUserId, seeded.videoCourseId],
+        );
+        expect(result.rows).toHaveLength(1);
+      } finally {
+        await client.end();
+      }
     } finally {
       await cleanup(seeded, [supervisorOrgUserId]);
+    }
+  });
+
+  // The other half of Q2 — "own facility only". Without this, the new
+  // capability would be org-wide, which the directive does not grant.
+  test("a supervisor's assign reach stops at their own facility", async ({ page }) => {
+    const seeded = await seedFixture();
+    const supervisorEmail = uid('supervisor');
+    const supervisorPassword = 'StaffAsn!Sup9y';
+    const supervisorOrgUserId = await addSupervisor(seeded, supervisorEmail, supervisorPassword);
+    const other = await addOtherFacilityStaff(seeded, uid('other-facility-staff'));
+    try {
+      await login(page, supervisorEmail, supervisorPassword);
+
+      await page.goto('/dashboard/staff');
+      await page.waitForLoadState('networkidle');
+      // Asserted on the response BYTES, not a missing button — a hidden
+      // affordance is not authorization (the D-01 lesson).
+      expect(await page.content()).not.toContain(other.fullName);
+
+      await page.goto(`/dashboard/staff/${other.orgUserId}`);
+      await page.waitForLoadState('networkidle');
+
+      expect(await page.content()).not.toContain(other.fullName);
+      await expect(page.getByRole('button', { name: 'Assign Course' })).not.toBeVisible();
+    } finally {
+      await cleanup(seeded, [supervisorOrgUserId, other.orgUserId]);
     }
   });
 });

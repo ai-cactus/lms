@@ -35,6 +35,7 @@ import {
   type StageRowInput,
 } from '@/lib/enrollment/assignment';
 import { assignmentFacilityScope } from '@/lib/enrollment/assignment-facility-scope';
+import { isOrgWideFacilityRole } from '@/lib/facility/org-wide-roles';
 import { combineDateAndTime, isPastDeadlineChange } from '@/lib/reminders/deadline';
 import { captureServer } from '@/lib/analytics/server';
 import { analyticsContextFrom } from '@/lib/analytics/identity';
@@ -1498,10 +1499,29 @@ export async function removeWorkerAssignment(
     return { success: false, error: 'Not authenticated' };
   }
 
+  // Withdrawal is an `assignment.delete` verb, not an authorship right. Founder
+  // (docs/local/RBAC-founder-answers-2026-09-15.md, Rule C): "Supervisors should
+  // be able to withdraw course from staff in their facility" — which authorship
+  // could never express, and which left assign-without-withdraw as the only
+  // asymmetric pair in the registry.
+  const roleKey = dbRoleToRoleKey(session.user.role);
+  if (!roleKey || !can(roleKey, 'assignment.delete')) {
+    logger.warn({
+      msg: '[enrollment] removeWorkerAssignment denied — missing assignment.delete',
+      enrollmentId,
+      userId: session.user.id,
+      role: session.user.role,
+    });
+    return {
+      success: false,
+      error: 'You do not have permission to withdraw course assignments.',
+    };
+  }
+
   const enrollment = await prisma.enrollment.findUnique({
     where: { id: enrollmentId },
     include: {
-      course: true,
+      course: { include: { creator: { select: { organizationId: true } } } },
     },
   });
 
@@ -1509,32 +1529,44 @@ export async function removeWorkerAssignment(
     return { success: false, error: 'That assignment no longer exists.' };
   }
 
-  // Ensure the membership trying to remove the assignment is the course creator
-  if (enrollment.course.createdByOrgUserId !== session.user.organizationUserId) {
+  // COU-004, as elsewhere in this file: a course belongs to the ORGANIZATION,
+  // not to the member who authored it. Gating on authorship refused a colleague
+  // a withdrawal on the very course they could assign. A caller with no
+  // organization matches nothing, so the comparison fails closed.
+  if (
+    !session.user.organizationId ||
+    enrollment.course.creator.organizationId !== session.user.organizationId
+  ) {
+    logger.warn({
+      msg: '[enrollment] removeWorkerAssignment denied — course outside the caller organization',
+      enrollmentId,
+      userId: session.user.id,
+      role: session.user.role,
+    });
     return {
       success: false,
-      error: 'Only the person who created this course can withdraw its assignments.',
+      error: 'That course does not belong to your organization.',
     };
   }
 
-  // Creating a course does not widen who you may act on: a facility-bound
-  // creator must still not strip an enrollment from another site's worker.
-  if (session.user.organizationId) {
-    const { rejected } = await partitionOrgUsersByFacility(session, session.user.organizationId, [
-      enrollment.organizationUserId,
-    ]);
-    if (rejected.length > 0) {
-      logger.warn({
-        msg: "[enrollment] removeWorkerAssignment denied — target outside the caller's facilities",
-        enrollmentId,
-        userId: session.user.id,
-        role: session.user.role,
-      });
-      return {
-        success: false,
-        error: 'That staff member is outside the facilities you manage.',
-      };
-    }
+  // Holding `assignment.delete` does not widen WHO you may act on: a
+  // facility-bound caller must still not strip an enrollment from another
+  // site's worker. This is what confines a supervisor's withdrawal to "staff in
+  // their facility".
+  const { rejected } = await partitionOrgUsersByFacility(session, session.user.organizationId, [
+    enrollment.organizationUserId,
+  ]);
+  if (rejected.length > 0) {
+    logger.warn({
+      msg: "[enrollment] removeWorkerAssignment denied — target outside the caller's facilities",
+      enrollmentId,
+      userId: session.user.id,
+      role: session.user.role,
+    });
+    return {
+      success: false,
+      error: 'That staff member is outside the facilities you manage.',
+    };
   }
 
   await prisma.enrollment.delete({
@@ -1737,6 +1769,33 @@ export async function setRoleAssignmentTargets(
     return {
       success: false,
       refusedReason: 'You do not have permission to remove roles from this assignment.',
+    };
+  }
+
+  // Holding the verb is not holding it over THIS row. The mirror of the widen
+  // guard above: that one refuses a row with no role-target scope to inherit,
+  // this one refuses a row whose scope is WIDER than the caller's. An org-wide
+  // assignment auto-enrols across the whole organisation, so removing a role
+  // from it reaches staff a facility-bound caller may not act on — which is why
+  // supervisor's `assignment.delete` (founder Rule C, "withdraw course from
+  // staff in their facility") must not extend here. A facility-scoped row stays
+  // narrowable: that IS the Rule C case.
+  if (
+    removed.length > 0 &&
+    !assignment.facilityScoped &&
+    !isOrgWideFacilityRole(session.user.role)
+  ) {
+    logger.warn({
+      msg: '[assignment] Role-target narrow refused — organization-wide assignment, facility-bound caller',
+      assignmentId: assignment.id,
+      courseId: assignment.courseId,
+      organizationId,
+      userId: session.user.id,
+    });
+    return {
+      success: false,
+      refusedReason:
+        'This course is assigned across the whole organization, so only an organization-wide role can remove a role from it.',
     };
   }
 

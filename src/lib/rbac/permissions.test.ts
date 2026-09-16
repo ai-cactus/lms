@@ -86,8 +86,19 @@ describe('can() — supervisor (demoted to read-only + self-service)', () => {
     // assignee picker and the enrolment target are facility-narrowed; if that
     // narrowing is removed these grants must go with it.
     'assignment.create',
+    // Added 2026-09-16 per founder Rule C — "Supervisors should be able to
+    // withdraw course from staff in their facility". Same facility-narrowing
+    // caveat: `removeWorkerAssignment` partitions the target by the caller's
+    // facilities, and this grant must go if that ever does.
+    'assignment.delete',
     'enrollment.create',
   ] as const;
+
+  it('supervisor has assignment.delete but still no other write verb on assignment/enrollment', () => {
+    expect(can('supervisor', 'assignment.delete')).toBe(true);
+    expect(can('supervisor', 'assignment.edit')).toBe(false);
+    expect(can('supervisor', 'enrollment.delete')).toBe(false);
+  });
 
   it('supervisor is denied billing.create/edit/delete', () => {
     expect(can('supervisor', 'billing.create')).toBe(false);

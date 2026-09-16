@@ -144,6 +144,40 @@ export const GRANTABLE_ROLES: Record<Role, readonly Role[]> = {
  */
 export const ROLE_CHANGE_ACTOR_ROLES: readonly Role[] = ['owner', 'admin', 'hr'];
 
+/**
+ * Roles permitted to change which facilities a staff member belongs to.
+ *
+ * Rule A of the directive (docs/local/RBAC-for-multi-tenancy.md): "Only
+ * Owners/Admin/HR can take the action of changing the facility of facility
+ * supervisors/workers". Spelled as its own list rather than left implied by
+ * `user.edit`, because that permission is coarse — it gates profile editing,
+ * facility moves and role changes alike. Once a supervisor gains any
+ * staff-editing power (see {@link STAFF_PROFILE_ACTOR_ROLES}), an implied rule
+ * would have silently handed them the facility move as well.
+ */
+export const FACILITY_CHANGE_ACTOR_ROLES: readonly Role[] = ['owner', 'admin', 'hr'];
+
+/**
+ * Roles permitted to edit a staff member's basic profile — name, job title and
+ * contact details.
+ *
+ * Founder answer to Q2 (docs/local/RBAC-founder-answers-2026-09-15.md): the
+ * supervisor's "U" on Staff Management covers "assigning courses and basic
+ * profile editing", confirmed on follow-up as "name, job title, contact; own
+ * facility only; facility/role/invite/remove stay Owner/Admin/HR".
+ *
+ * Supervisor is therefore in THIS list and deliberately NOT in
+ * {@link FACILITY_CHANGE_ACTOR_ROLES} or {@link ROLE_CHANGE_ACTOR_ROLES}: the
+ * narrow capability ships as its own actor list rather than as a `user.edit`
+ * grant, which would have carried the facility move and the role change with
+ * it. Membership here is only half the gate — a supervisor is additionally
+ * narrowed to staff their own facilities admit, at the call site.
+ */
+export const STAFF_PROFILE_ACTOR_ROLES: readonly Role[] = [
+  ...FACILITY_CHANGE_ACTOR_ROLES,
+  'supervisor',
+];
+
 /** Why {@link canChangeRole} denied a role change (maps to caller-facing copy). */
 export type RoleChangeDenyReason =
   'actor_not_permitted' | 'self_change' | 'target_not_reachable' | 'role_not_grantable';

@@ -18,7 +18,11 @@ import Image from 'next/image';
 import AssignCoursesModal from './AssignCoursesModal';
 import ChangeFacilityModal from './ChangeFacilityModal';
 import type { AccessibleFacility } from '@/lib/facility/scope';
-import { getRoleDisplayName } from '@/lib/rbac/role-utils';
+import {
+  getRoleDisplayName,
+  FACILITY_CHANGE_ACTOR_ROLES,
+  STAFF_PROFILE_ACTOR_ROLES,
+} from '@/lib/rbac/role-utils';
 import { isOrgWideFacilityRole } from '@/lib/facility/org-wide-roles';
 import AssignRetakeModal from '../training/AssignRetakeModal';
 import CertificateModal from '../training/CertificateModal';
@@ -168,14 +172,19 @@ export default function StaffProfileClient({
   // downstream of it is membership-scoped.
   const { user, stats, enrollments } = staff;
 
-  // Moving a member between facilities is a roster mutation, so it stays on
-  // `user.edit`. Assigning from a staff PROFILE additionally requires roster
-  // rights: the RBAC matrix keeps Clinical Director/Finance view-only on staff
+  // Who may touch a staff profile at all — Owner/Admin/HR plus, under founder
+  // answer Q2, the facility supervisor. Deliberately an actor-role list and not
+  // `can(..., 'user.edit')`: that permission also gates the facility move and
+  // the role change, which stay Owner/Admin/HR (see role-utils.ts).
+  //
+  // Assigning from a staff PROFILE additionally requires those roster rights:
+  // the RBAC matrix keeps Clinical Director/Finance view-only on staff
   // (rbac-staff-view-only.spec.ts), so `assignment.create` alone — which a
   // Clinical Director holds for course-side training-path assignment — must
-  // not surface mutating affordances here. Both only hide dead-end UI; the
-  // server actions are authoritative.
-  const canEdit = can(dbRoleToRoleKey(viewerRole), 'user.edit');
+  // not surface mutating affordances here. ⛔ Do NOT collapse this to a bare
+  // `assignment.create` check; that is exactly the regression the spec guards.
+  // Both only hide dead-end UI; the server actions are authoritative.
+  const canEdit = STAFF_PROFILE_ACTOR_ROLES.includes(viewerRole);
   const canAssignCourses = canEdit && can(dbRoleToRoleKey(viewerRole), 'assignment.create');
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -187,13 +196,15 @@ export default function StaffProfileClient({
   // reassign anyone out of it, so the action is hidden rather than offered as a
   // dead end (the server action remains authoritative).
   // Two different questions, deliberately kept apart:
-  //   VISIBLE  — does the VIEWER hold `user.edit` (owner, admin, HR) and reach
-  //              more than one facility? A single-facility viewer cannot move
-  //              anyone anywhere, so the action is absent rather than dead.
+  //   VISIBLE  — is the VIEWER an Owner/Admin/HR (Rule A) reaching more than one
+  //              facility? A single-facility viewer cannot move anyone anywhere,
+  //              so the action is absent rather than dead. Not `canEdit`: a
+  //              supervisor edits profiles but never moves anyone.
   //   ENABLED  — is the TARGET facility-bound at all? An org-wide role has no
   //              facility scope to change, so the control is shown greyed rather
   //              than silently missing. `setStaffFacilities` refuses it too.
-  const canChangeFacility = canEdit && facilities.length > 1;
+  const canChangeFacility =
+    FACILITY_CHANGE_ACTOR_ROLES.includes(viewerRole) && facilities.length > 1;
   const targetIsOrgWide = isOrgWideFacilityRole(user.role as Role);
   const changeFacilityBlockedReason = targetIsOrgWide
     ? `${getRoleDisplayName(user.role as Role)} is an organization-wide role, so it is not assigned to a facility.`

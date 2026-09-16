@@ -8,6 +8,8 @@ import {
   dbRoleToRoleKey,
   canChangeRole,
   getRoleDisplayName,
+  FACILITY_CHANGE_ACTOR_ROLES,
+  STAFF_PROFILE_ACTOR_ROLES,
   type RoleChangeDenyReason,
 } from '@/lib/rbac/role-utils';
 import { isOrgWideFacilityRole } from '@/lib/facility/org-wide-roles';
@@ -36,7 +38,7 @@ import { captureServer } from '@/lib/analytics/server';
 // `role_not_grantable` are only reachable when an owner is involved (owner is in
 // no grant list), so both reuse the established owner-immutability message.
 const ROLE_CHANGE_DENIED_MESSAGES: Record<RoleChangeDenyReason, string> = {
-  actor_not_permitted: "Only an Owner or Supervisor can change a staff member's role.",
+  actor_not_permitted: "Only an Owner, Admin or HR can change a staff member's role.",
   self_change: 'You cannot change your own role.',
   target_not_reachable:
     'The Owner role cannot be changed here. It is set only when an organization is created.',
@@ -222,10 +224,14 @@ export async function updateStaffDetails(
   },
 ) {
   const session = await auth();
+  // Gated on the actor-role list rather than `can(..., 'user.edit')`: Q2 grants
+  // supervisors basic profile editing, but `user.edit` also gates the facility
+  // move and the role change, both of which the directive reserves for
+  // Owner/Admin/HR.
   if (
     !session?.user?.id ||
     !session.user.organizationId ||
-    !can(dbRoleToRoleKey(session.user.role), 'user.edit')
+    !STAFF_PROFILE_ACTOR_ROLES.includes(session.user.role)
   ) {
     return { success: false, error: 'Unauthorized' };
   }
@@ -239,9 +245,32 @@ export async function updateStaffDetails(
     return { success: false, error: 'Forbidden' };
   }
 
+  // Q2 confines a supervisor's profile edit to their OWN facility. Tenancy alone
+  // does not do that, so the target is narrowed the same way `removeStaff` and
+  // `setStaffFacilities` narrow theirs — org-wide callers partition to `allowed`
+  // untouched.
+  const { rejected: outOfFacility } = await partitionOrgUsersByFacility(
+    session,
+    session.user.organizationId,
+    [organizationUserId],
+  );
+  if (outOfFacility.length > 0) {
+    logger.warn({
+      msg: '[staff] updateStaffDetails denied — target outside caller facilities',
+      userId: session.user.id,
+      role: session.user.role,
+      targetOrgUserId: organizationUserId,
+    });
+    return { success: false, error: 'Forbidden' };
+  }
+
   // A role change is a privileged, narrower operation than a name/job-title edit:
-  // only an Owner/Supervisor may re-role a reachable target, never themselves,
-  // and never to/from owner. Unchanged role (e.g. a plain profile edit) skips it.
+  // only an Owner/Admin/HR may re-role a reachable target, never themselves, and
+  // never to/from owner. Unchanged role (e.g. a plain profile edit) skips it.
+  // This is also what keeps a supervisor — who reaches this action for profile
+  // edits under Q2 — out of role changes: `canChangeRole` checks
+  // ROLE_CHANGE_ACTOR_ROLES, which they are not in, so the attempt is refused
+  // here with `actor_not_permitted` and needs no second gate above.
   const roleChanged = data.role !== target.role;
   if (roleChanged) {
     const decision = canChangeRole(
@@ -483,10 +512,14 @@ export async function setStaffFacilities(
   facilityIds: string[],
 ): Promise<{ success: boolean; error?: string }> {
   const session = await auth();
+  // Rule A, stated explicitly: only Owner/Admin/HR may change the facility of a
+  // supervisor or worker. Previously implied by `user.edit`, which is too coarse
+  // to be load-bearing now that a supervisor holds a narrow staff-editing power
+  // of their own (STAFF_PROFILE_ACTOR_ROLES).
   if (
     !session?.user?.id ||
     !session.user.organizationId ||
-    !can(dbRoleToRoleKey(session.user.role), 'user.edit')
+    !FACILITY_CHANGE_ACTOR_ROLES.includes(session.user.role)
   ) {
     return { success: false, error: 'Unauthorized' };
   }
