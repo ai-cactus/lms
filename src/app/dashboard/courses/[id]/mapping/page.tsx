@@ -1,28 +1,36 @@
-import { auth } from '@/auth';
+import { notFound } from 'next/navigation';
 import prisma from '@/lib/prisma';
+import { requirePermission } from '@/lib/rbac/require-permission';
 import { getMappingSuggestions } from '@/app/actions/mapping';
 import MappingCard from './mapping-card';
 
 export default async function MappingPage({ params }: { params: Promise<{ id: string }> }) {
-  await auth();
+  // Was `await auth()` with the result discarded — no role check and no tenancy
+  // predicate, so any authenticated session could read any organisation's raw
+  // source-document text by typing a course id. The page renders
+  // DocumentVersion.content, so it gates on the Document Hub's own permission
+  // (`document.read`) rather than `course.read`, which every worker holds.
+  const ctx = await requirePermission('document.read', { onDeny: 'notFound' });
   const { id } = await params;
 
-  // We ideally need the text content.
-  // Flow: Course -> DocumentVersion -> Content
-  const course = await prisma.course.findUnique({
-    where: { id },
-    include: { versions: { include: { documentVersion: true } } },
-  });
+  // Flow: Course -> CourseVersion -> DocumentVersion -> content. Narrowed to the
+  // caller's own organisation, so a course id from another tenant is
+  // indistinguishable from one that does not exist.
+  const course = ctx.organizationId
+    ? await prisma.course.findFirst({
+        where: { id, creator: { organizationId: ctx.organizationId } },
+        include: { versions: { include: { documentVersion: true } } },
+      })
+    : null;
 
   if (!course || !course.versions.length) {
-    return <div>Course not found or no content.</div>;
+    notFound();
   }
 
-  const docVersion = course.versions[0].documentVersion; // simplified
+  const docVersion = course.versions[0].documentVersion;
   const content = docVersion.content || 'No text content extracted.';
 
-  // Mock getting suggestions (Server Side for initial render or simple display)
-  const suggestions = await getMappingSuggestions(content.substring(0, 500)); // Sample first 500 chars
+  const suggestions = await getMappingSuggestions(content.substring(0, 500));
 
   return (
     <div className="flex h-[calc(100vh-64px)] flex-col overflow-hidden md:flex-row">
