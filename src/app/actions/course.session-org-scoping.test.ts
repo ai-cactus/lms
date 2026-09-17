@@ -85,7 +85,11 @@ describe('getCourses — org-scoping sourced from the session', () => {
     await getCourses();
 
     expect(mockOrgCourseOfferingFindMany).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ where: { organizationId: 'org-A' } }),
+      // The archive predicate rides along because the query extension cannot
+      // reach a nested traversal; the tenancy half is still asserted exactly.
+      expect.objectContaining({
+        where: { organizationId: 'org-A', course: { archivedAt: null } },
+      }),
     );
   });
 
@@ -98,7 +102,11 @@ describe('getCourses — org-scoping sourced from the session', () => {
     await getCourses();
 
     expect(mockOrgCourseOfferingFindMany).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ where: { organizationId: 'org-B' } }),
+      // The archive predicate rides along because the query extension cannot
+      // reach a nested traversal; the tenancy half is still asserted exactly.
+      expect.objectContaining({
+        where: { organizationId: 'org-B', course: { archivedAt: null } },
+      }),
     );
   });
 

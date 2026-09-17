@@ -354,10 +354,11 @@ export default function DocumentListClient({
           <AlertDialogHeader>
             <AlertDialogTitle>Delete document?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently remove &ldquo;{deleteTarget?.name}&rdquo; and all its versions
-              from storage. This action cannot be undone.
+              &ldquo;{deleteTarget?.name}&rdquo; will be removed from the Documents hub. Nothing is
+              erased: the file, every version and its PHI reports are retained for compliance. It
+              cannot be restored from the app.
               {deleteTarget?.hasCourse &&
-                ' This document is the source for a generated course — the course will remain, but its source-document link will be removed.'}
+                ' This document is the source for a generated course — that course is unaffected, but it will no longer be able to open this document.'}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -380,13 +381,20 @@ export default function DocumentListClient({
               {deletableSelectedIds.length === 1 ? 'document' : 'documents'}?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently remove{' '}
-              {deletableSelectedIds.length === 1 ? 'this document' : 'these documents'} and all
-              their versions from storage. This action cannot be undone.
+              {deletableSelectedIds.length === 1 ? 'This document' : 'These documents'} will be
+              removed from the Documents hub. Nothing is erased: the{' '}
+              {deletableSelectedIds.length === 1 ? 'file' : 'files'}, every version and their PHI
+              reports are retained for compliance.{' '}
+              {deletableSelectedIds.length === 1 ? 'It cannot' : 'They cannot'} be restored from the
+              app.
               {courseBackedSelectedCount > 0 &&
                 ` ${courseBackedSelectedCount} selected ${
                   courseBackedSelectedCount === 1 ? 'document backs' : 'documents back'
-                } a generated course — the courses will remain, but their source-document links will be removed.`}
+                } a generated course — ${
+                  courseBackedSelectedCount === 1 ? 'that course is' : 'those courses are'
+                } unaffected, but will no longer be able to open ${
+                  courseBackedSelectedCount === 1 ? 'its source document' : 'their source documents'
+                }.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

@@ -1,7 +1,7 @@
 /**
  * `getEnrollmentWithResults` backs the admin-side quiz-results page and returns
  * question-by-question answers alongside the CORRECT answers. Its entire gate
- * was `isEnrolledUser || isCourseCreator`.
+ * was once `isEnrolledUser || isCourseCreator`.
  *
  * Cross-tenant was closed only by accident — both sides of the authorship test
  * compare against the caller's own `organizationUserId`, so no other tenant's
@@ -13,6 +13,14 @@
  * assignment and its progress, which every worker and Finance may read;
  * `assessment` is defined in the registry as "Quizzes, questions &
  * question-by-question attempt logs" — exactly this payload.
+ *
+ * Authorship was retired as a condition on 2026-09-17 (staging QA ISSUE-4). It
+ * closed nothing the org and facility checks do not, and it made founder ruling
+ * Q6 ("HR can build quizzes and view results") unreachable: HR authors almost no
+ * courses, so HR held the verb and was still refused every real results page.
+ * What governs now is ownership of the RECORD — the caller's own organisation —
+ * which is what the sibling `getEnrollmentQuizResult` (staff.ts) has always
+ * used for the same payload.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -100,6 +108,17 @@ function setCreatorSession(role: string, organizationId: string | null = ORG_ID)
   mockWorkerAuth.mockResolvedValue(null);
 }
 
+/**
+ * A same-org administrator who authored NOTHING — the caller the retired
+ * authorship gate refused, and the one every real HR user is.
+ */
+function setNonAuthorSession(role: string, organizationId: string | null = ORG_ID) {
+  mockAuth.mockResolvedValue({
+    user: { id: 'u-bystander', role, organizationId, organizationUserId: 'ou-bystander' },
+  });
+  mockWorkerAuth.mockResolvedValue(null);
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   mockEnrollmentFindUnique.mockResolvedValue(enrollmentFixture());
@@ -132,19 +151,14 @@ describe('getEnrollmentWithResults — permission gate', () => {
     expect(mockEnrollmentFindFirst).not.toHaveBeenCalled();
   });
 
-  it('holding assessment.read without authorship is still refused — the fix narrows, it never widens', async () => {
-    mockAuth.mockResolvedValue({
-      user: {
-        id: 'u-x',
-        role: 'owner',
-        organizationId: ORG_ID,
-        organizationUserId: 'ou-bystander',
-      },
-    });
-    mockWorkerAuth.mockResolvedValue(null);
+  it('ISSUE-4: a manager holding assessment.read reads results for a course they did NOT author', async () => {
+    // The exact shape that was broken on staging: the caller's membership id is
+    // not the course's `createdByOrgUserId`. Under the retired authorship gate
+    // this threw, and the page turned it into a 404 for every course an
+    // administrator had not personally created.
+    setNonAuthorSession('owner');
 
-    await expect(getEnrollmentWithResults('enr-1')).rejects.toThrow('Access denied');
-    expect(mockEnrollmentFindFirst).not.toHaveBeenCalled();
+    await expect(getEnrollmentWithResults('enr-1')).resolves.toMatchObject({ id: 'enr-1' });
   });
 
   it('an unknown/stale role key is denied', async () => {
@@ -178,31 +192,37 @@ describe('getEnrollmentWithResults — permission gate', () => {
   );
 
   /**
-   * Inverted 2026-09-16: HR was denied here while the registry withheld
-   * `assessment.read` from it. The founder's ruling on the Quiz row — "HR can
-   * build quizzes and view results"
-   * (docs/local/RBAC_for_multi-tenancy-updated.md) — granted the verb, and the
-   * grant alone readmits HR through this unchanged gate.
-   *
-   * Authorship still applies: `setCreatorSession` makes HR the course creator,
-   * which this action requires of every administrative reader.
+   * Inverted twice. HR was first denied because the registry withheld
+   * `assessment.read`; the founder's ruling on the Quiz row — "HR can build
+   * quizzes and view results" (docs/local/RBAC_for_multi-tenancy-updated.md) —
+   * granted the verb, and HR was STILL denied, because the gate also demanded
+   * authorship of the course. This is the case staging QA proved broken, so it
+   * is asserted on a course HR did not author: anything else re-passes for the
+   * wrong reason.
    */
-  it('HR is admitted — the founder ruling granted it assessment.read', async () => {
-    setCreatorSession('hr');
+  it('ISSUE-4: HR reads results for a course HR did not author — the founder Q6 ruling, delivered', async () => {
+    setNonAuthorSession('hr');
 
     await expect(getEnrollmentWithResults('enr-1')).resolves.toMatchObject({ id: 'enr-1' });
   });
 
-  it('clinical_director — the registry’s assessment-oversight role — is admitted', async () => {
-    setCreatorSession('clinical_director');
+  it('clinical_director — the registry’s assessment-oversight role — is admitted without authorship', async () => {
+    setNonAuthorSession('clinical_director');
 
     await expect(getEnrollmentWithResults('enr-1')).resolves.toMatchObject({ id: 'enr-1' });
+  });
+
+  it('finance is still refused a course it did not author — the verb, not authorship, is the gate', async () => {
+    setNonAuthorSession('finance');
+
+    await expect(getEnrollmentWithResults('enr-1')).rejects.toThrow('Access denied');
+    expect(mockEnrollmentFindFirst).not.toHaveBeenCalled();
   });
 });
 
 describe('getEnrollmentWithResults — tenancy and facility scope', () => {
   it('states cross-tenant isolation outright instead of relying on the authorship coincidence', async () => {
-    setCreatorSession('owner');
+    setNonAuthorSession('owner');
     mockEnrollmentFindUnique.mockResolvedValue(enrollmentFixture({ organizationId: OTHER_ORG_ID }));
 
     await expect(getEnrollmentWithResults('enr-1')).rejects.toThrow('Access denied');
