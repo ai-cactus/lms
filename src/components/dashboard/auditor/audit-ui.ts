@@ -44,10 +44,14 @@ export const auditRowAction =
   'text-[14px] font-semibold text-primary hover:underline disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:no-underline';
 
 /**
- * Course lifecycle pill for the Courses tab. The tab lists the WHOLE catalogue —
- * drafts and retired courses included — so each row has to say which, otherwise
- * a draft reading "0 assigned" is indistinguishable from a neglected published
- * course.
+ * Course lifecycle pill for the Courses tab. The tab lists every course that has
+ * been in service, RETIRED ones included — so each row has to say which,
+ * otherwise a retired course reading "0 assigned" is indistinguishable from a
+ * neglected published one.
+ *
+ * `draft` keeps a tone because the map is a total lookup over `CourseStatus` and
+ * a hole would fall through to the `inactive` tone; the auditor catalogue itself
+ * no longer returns drafts (`auditorCatalogueWhere`).
  */
 const auditStatusPillBase =
   'inline-block rounded-full px-2.5 py-1 text-[12px] font-medium capitalize leading-4';

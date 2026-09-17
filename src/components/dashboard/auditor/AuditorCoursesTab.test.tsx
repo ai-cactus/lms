@@ -128,12 +128,16 @@ describe('AuditorCoursesTab — export flow', () => {
 });
 
 describe('AuditorCoursesTab — course status', () => {
-  it('shows each row lifecycle status, drafts and inactive courses included', async () => {
+  it('renders whatever lifecycle status each row carries, retired courses included', async () => {
     render(<AuditorCoursesTab totalCourses={12} />);
     await screen.findByText('Course 1');
 
     // The column is dropped on a narrow card, so the pill also renders inline —
     // both copies matter, and both must read the row's own status.
+    //
+    // `draft` is still exercised as a status the RENDERER handles; the auditor
+    // catalogue no longer returns drafts, but nothing here should assume that —
+    // the component is handed rows, it does not query them.
     const draftRow = screen.getByText('Course 2').closest('tr')!;
     expect(within(draftRow).getAllByText('draft').length).toBeGreaterThan(0);
 

@@ -1,39 +1,41 @@
 /**
- * E2E spec: in-place staff role change — the UI path was REMOVED.
+ * E2E spec: in-place staff role change — WHO reaches the UI path.
  *
- * Background: the staff-profile header was reworked to the Figma design
- * (see rbac-staff-view-only.spec.ts) and now carries a single mutating
- * action, "Assign Course". `EditStaffModal` — which used to render an
- * editable, grouped role picker for an Owner/Supervisor re-roling a
- * reachable target, or a read-only role field otherwise — has ZERO product
- * usages left and has been deleted as dead code. There is no UI path left
- * to change a staff member's role in place; role assignment now happens
- * only at invite time (`InviteStaffModal`, see rbac-invite-roles.spec.ts).
+ * SUPERSEDED PREMISE, REWRITTEN 2026-09-17.
+ *
+ * This spec previously asserted that NO in-place role-editing path existed for
+ * anyone. That was never a product decision: the staff-profile header was
+ * reworked to the Figma design, `EditStaffModal` was left with zero usages and
+ * deleted as dead code, and this spec froze the resulting GAP as if it were
+ * intended. Live QA then found `updateStaffDetails` correctly authorized and
+ * invoked by nothing — two founder rulings (Q2, Q11) shipped as permissions
+ * against an action no screen could reach.
+ *
+ * The path is back, as two separate affordances, so the spec's subject is no
+ * longer "nothing exists" but WHICH VIEWER REACHES WHICH — which is the part
+ * that actually encodes the rulings:
+ *   - "Edit Profile"  → STAFF_PROFILE_ACTOR_ROLES (owner, admin, hr, supervisor)
+ *   - "Change Role"   → ROLE_CHANGE_ACTOR_ROLES  (owner, admin, hr)
  *
  * Scenarios covered here:
- *   - Owner / Supervisor / HR see NO
- *     role-editing affordance anywhere on a staff profile — only "Assign
- *     Course" — including when viewing their OWN profile.
+ *   - Owner / HR see both affordances on a reachable target's profile;
+ *     Supervisor sees Edit Profile and NEVER Change Role (Q2 grants basic
+ *     profile editing, Q11 keeps re-roling with Owner/Admin/HR).
+ *   - Nobody re-roles THEMSELVES — Change Role is absent on the viewer's own
+ *     profile (`canChangeRole`'s `self_change`), though Edit Profile remains.
  *   - Owner / Supervisor can still remove a staff member from the roster via
- *     the staff-list row kebab (`RemoveStaffModal`, unaffected by this
- *     change) — but that same kebab menu offers no re-role affordance
- *     either, confirming role assignment isn't reachable from there.
+ *     the staff-list row kebab (`RemoveStaffModal`, unaffected) — and that
+ *     kebab still offers no re-role affordance, so the profile page remains
+ *     the only in-place path.
  *
- * Dropped (entire premise required the deleted UI):
- *   - "owner changes an HR staffer to Nurse: live session dies, re-login
- *     lands on /worker, history preserved" — exercised `EditStaffModal`'s
- *     editable role picker end-to-end, including the sessionVersion-bump
- *     kill-switch and post-change re-login. That picker no longer exists.
- *     The underlying `updateStaffDetails` behavior (session kill via
- *     `sessionVersion` bump, the `canChangeRole` guard, and the fact that
- *     `managerId`/enrollments/certificates are untouched by design — no
- *     cascading writes) remains covered at the server-action level in
- *     `src/app/actions/staff.test.ts` ("in-place role change (canChangeRole
- *     integration)") and `src/lib/rbac/role-utils.test.ts`.
- *   - "supervisor cannot select Owner in the role picker" and "hr sees a
- *     read-only role field" — both asserted properties of a combobox that
- *     no longer renders; superseded here by the blanket "no role-editing
- *     affordance at all" assertion, which is true regardless of viewer role.
+ * The flows themselves (a supervisor's edit persisting, HR's picker omitting
+ * Owner/Admin, the sessionVersion kill-switch) are driven in
+ * `tests/e2e/staff-profile-edit.spec.ts`; this spec stays a gating spec.
+ *
+ * Still covered at the server-action level rather than here: the
+ * `canChangeRole` guard's four denial reasons and the no-cascading-writes
+ * guarantee — `src/app/actions/staff.test.ts` ("in-place role change
+ * (canChangeRole integration)") and `src/lib/rbac/role-utils.test.ts`.
  *
  * Pre-conditions:
  *   - App running on http://localhost:3005 (Playwright webServer).
@@ -167,16 +169,21 @@ async function loginAs(page: Page, email: string, password: string): Promise<voi
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-// Every viewer here reaches the staff profile's one mutating affordance.
-// Supervisor regained it on 2026-09-16 (founder Q2 — the supervisor's "U" on
-// Staff Management covers assigning courses and basic profile editing), so this
-// spec's subject is now purely the absence of a ROLE-editing path: that stays
-// gone for all three, supervisor included, since role changes are
-// ROLE_CHANGE_ACTOR_ROLES (Owner/Admin/HR) and have no in-place UI at all.
+// Every viewer here reaches the staff profile's mutating affordances. What
+// separates them is the ROLE change: supervisor regained profile editing and
+// course assignment on 2026-09-16 (founder Q2 — the supervisor's "U" on Staff
+// Management covers "assigning courses and basic profile editing"), but re-roling
+// stays ROLE_CHANGE_ACTOR_ROLES (Owner/Admin/HR) per Q11. Two actor lists, and
+// this spec is what stops them being collapsed into one.
 
-test.describe('Staff role change — no in-place UI path remains', () => {
+test.describe('Staff role change — who reaches the in-place UI path', () => {
+  // `expect.soft` is deliberate on none of these: each is a distinct ruling.
+  const CHANGE_ROLE_ACTORS = { owner: true, hr: true, supervisor: false } as const;
+
   for (const role of ['owner', 'supervisor', 'hr'] as const) {
-    test(`${role}: staff profile shows no role-editing affordance`, async ({ page }) => {
+    test(`${role}: profile offers Edit Profile, and Change Role only if entitled`, async ({
+      page,
+    }) => {
       test.setTimeout(90_000);
       const viewerEmail = uid(`viewer-${role}`);
       const viewerPassword = 'RoleChgView!9';
@@ -188,13 +195,18 @@ test.describe('Staff role change — no in-place UI path remains', () => {
         await page.goto(`/dashboard/staff/${seeded.targetOrgUserId}`);
 
         await expect(page.getByRole('heading', { name: 'Trainings' })).toBeVisible();
-
-        // "Assign Course" is the ONLY mutating affordance left on the profile —
-        // and crucially it is NOT a role-editing one.
         await expect(page.getByRole('button', { name: 'Assign Course' })).toBeVisible();
 
-        // The deleted EditStaffModal's affordances must not exist anywhere.
-        await expect(page.getByRole('button', { name: 'Edit Profile' })).toHaveCount(0);
+        // Q2 — every staff-profile actor, supervisor included.
+        await expect(page.getByRole('button', { name: 'Edit Profile' })).toBeVisible();
+
+        // Q11 — the supervisor is the whole reason the two lists are separate.
+        await expect(page.getByRole('button', { name: 'Change Role' })).toHaveCount(
+          CHANGE_ROLE_ACTORS[role] ? 1 : 0,
+        );
+
+        // Nothing opens until asked: both modals mount on demand, so the page
+        // carries no dialog and no role combobox at rest.
         await expect(page.getByRole('dialog')).toHaveCount(0);
         await expect(page.getByRole('combobox')).toHaveCount(0);
       } finally {
@@ -203,7 +215,10 @@ test.describe('Staff role change — no in-place UI path remains', () => {
     });
   }
 
-  test('owner: viewing their own profile also shows no role-editing affordance', async ({
+  // `canChangeRole` refuses `self_change`, so the control is absent rather than
+  // offered and then refused. Editing your own name is not a role change and
+  // stays available.
+  test('owner: viewing their own profile can edit it but cannot re-role themselves', async ({
     page,
   }) => {
     test.setTimeout(90_000);
@@ -216,7 +231,8 @@ test.describe('Staff role change — no in-place UI path remains', () => {
       await page.goto(`/dashboard/staff/${seeded.viewerOrgUserId}`);
 
       await expect(page.getByRole('heading', { name: 'Trainings' })).toBeVisible();
-      await expect(page.getByRole('button', { name: 'Edit Profile' })).toHaveCount(0);
+      await expect(page.getByRole('button', { name: 'Edit Profile' })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Change Role' })).toHaveCount(0);
       await expect(page.getByRole('dialog')).toHaveCount(0);
       await expect(page.getByRole('combobox')).toHaveCount(0);
     } finally {

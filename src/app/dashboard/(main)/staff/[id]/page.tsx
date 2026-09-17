@@ -26,6 +26,11 @@ export default async function StaffProfilePage({ params }: PageProps) {
   }
 
   return (
-    <StaffProfileClient staff={staff} viewerRole={ctx.role} facilities={ctx.accessibleFacilities} />
+    <StaffProfileClient
+      staff={staff}
+      viewerRole={ctx.role}
+      facilities={ctx.accessibleFacilities}
+      viewerOrganizationUserId={ctx.organizationUserId}
+    />
   );
 }

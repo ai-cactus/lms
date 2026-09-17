@@ -17,11 +17,15 @@ import Link from 'next/link';
 import Image from 'next/image';
 import AssignCoursesModal from './AssignCoursesModal';
 import ChangeFacilityModal from './ChangeFacilityModal';
+import ChangeRoleModal from './ChangeRoleModal';
+import EditProfileModal, { type EditableStaffMember } from './EditProfileModal';
 import type { AccessibleFacility } from '@/lib/facility/scope';
 import {
   getRoleDisplayName,
   FACILITY_CHANGE_ACTOR_ROLES,
   STAFF_PROFILE_ACTOR_ROLES,
+  ROLE_CHANGE_ACTOR_ROLES,
+  GRANTABLE_ROLES,
 } from '@/lib/rbac/role-utils';
 import { isOrgWideFacilityRole } from '@/lib/facility/org-wide-roles';
 import AssignRetakeModal from '../training/AssignRetakeModal';
@@ -37,6 +41,8 @@ import { cn } from '@/lib/utils';
 import {
   ArrowLeft,
   Building2,
+  Pencil,
+  ShieldCheck,
   User,
   X,
   BookOpen,
@@ -62,6 +68,8 @@ interface StaffProfileClientProps {
       email: string;
       avatarUrl: string | null;
       role: string;
+      firstName: string;
+      lastName: string;
       jobTitle: string;
       facilityName: string | null;
     };
@@ -92,6 +100,8 @@ interface StaffProfileClientProps {
   };
   viewerRole: Role;
   facilities: AccessibleFacility[];
+  /** The viewer's own membership id — their own profile never offers Change Role. */
+  viewerOrganizationUserId: string | null;
 }
 
 const headCls = 'h-10 px-[18px] text-[15.5px] font-medium tracking-[0.31px] text-[#666d80]';
@@ -166,6 +176,7 @@ export default function StaffProfileClient({
   staff,
   viewerRole,
   facilities,
+  viewerOrganizationUserId,
 }: StaffProfileClientProps) {
   // NOTE: `user.id` here is the OrganizationUser (membership) id, not the global
   // identity id — getStaffDetails maps orgUser.id onto this field. Everything
@@ -187,7 +198,41 @@ export default function StaffProfileClient({
   const canEdit = STAFF_PROFILE_ACTOR_ROLES.includes(viewerRole);
   const canAssignCourses = canEdit && can(dbRoleToRoleKey(viewerRole), 'assignment.create');
 
+  // Deliberately NOT `canEdit`. A supervisor edits profiles under Q2 but is not
+  // in ROLE_CHANGE_ACTOR_ROLES, so they must not see this affordance at all —
+  // two different lists, and collapsing them would offer them a control
+  // `canChangeRole` refuses with `actor_not_permitted`.
+  //
+  // The remaining two conditions mirror the reachability rules `canChangeRole`
+  // applies, so the button is absent rather than dead:
+  //   - the target's CURRENT role must be grantable by this viewer (an owner is
+  //     in no grant list, and HR cannot reach an admin) — `target_not_reachable`;
+  //   - nobody re-roles themselves — `self_change`.
+  //
+  // ⛔ The supervisor is currently fenced out TWICE: by the actor list, and
+  // because `GRANTABLE_ROLES.supervisor` is empty. That redundancy is why a
+  // component test cannot falsify the first condition on its own today — it is
+  // not a reason to drop it. Grant a supervisor anything (say, for invites) and
+  // the actor list becomes the only thing keeping them out of role changes.
+  const grantableRoles = GRANTABLE_ROLES[viewerRole] ?? [];
+  const canChangeRole =
+    ROLE_CHANGE_ACTOR_ROLES.includes(viewerRole) &&
+    grantableRoles.includes(user.role as Role) &&
+    user.id !== viewerOrganizationUserId;
+
+  const editableMember: EditableStaffMember = {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    jobTitle: user.jobTitle,
+    role: user.role as Role,
+  };
+
   const [searchQuery, setSearchQuery] = useState('');
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+  const [isChangeRoleOpen, setIsChangeRoleOpen] = useState(false);
   const [certificateSearchQuery, setCertificateSearchQuery] = useState('');
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [isChangeFacilityOpen, setIsChangeFacilityOpen] = useState(false);
@@ -334,8 +379,28 @@ export default function StaffProfileClient({
               </span>
             </div>
 
-            {(canAssignCourses || canChangeFacility) && (
+            {(canAssignCourses || canChangeFacility || canEdit || canChangeRole) && (
               <div className="flex shrink-0 flex-wrap items-center gap-3">
+                {canEdit && (
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsEditProfileOpen(true)}
+                    className="h-12 gap-2 rounded-[12px] px-6 text-[15.5px] font-semibold tracking-[-0.31px]"
+                  >
+                    <Pencil className="size-5" />
+                    Edit Profile
+                  </Button>
+                )}
+                {canChangeRole && (
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsChangeRoleOpen(true)}
+                    className="h-12 gap-2 rounded-[12px] px-6 text-[15.5px] font-semibold tracking-[-0.31px]"
+                  >
+                    <ShieldCheck className="size-5" />
+                    Change Role
+                  </Button>
+                )}
                 {canChangeFacility && (
                   <Button
                     variant="outline"
@@ -706,6 +771,25 @@ export default function StaffProfileClient({
           </Table>
         )}
       </section>
+
+      {/* Mounted on demand so each open re-seeds from the freshly-refreshed
+          member rather than from a stale kept-alive instance. */}
+      {isEditProfileOpen && (
+        <EditProfileModal
+          isOpen
+          onClose={() => setIsEditProfileOpen(false)}
+          member={editableMember}
+        />
+      )}
+
+      {isChangeRoleOpen && (
+        <ChangeRoleModal
+          isOpen
+          onClose={() => setIsChangeRoleOpen(false)}
+          member={editableMember}
+          viewerRole={viewerRole}
+        />
+      )}
 
       <ChangeFacilityModal
         isOpen={isChangeFacilityOpen}

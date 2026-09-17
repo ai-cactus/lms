@@ -989,7 +989,12 @@ export async function getDashboardData(requestedFacilityIds?: string[] | null) {
     organizationId
       ? prisma.enrollment.groupBy({
           by: ['courseId', 'status'],
-          where: { ...scope.enrollmentWhere, course: scope.courseWhere },
+          // `liveCourseWhere`, not `courseWhere`: this `course` key replaces the
+          // archive predicate `enrollmentWhere` carries, and the "Total Courses"
+          // read above is archive-filtered by the query extension. A bare
+          // `courseWhere` here therefore counts enrolments on courses the same
+          // dashboard says do not exist.
+          where: { ...scope.enrollmentWhere, course: scope.liveCourseWhere },
           _count: { _all: true },
         })
       : Promise.resolve([]),
@@ -999,7 +1004,7 @@ export async function getDashboardData(requestedFacilityIds?: string[] | null) {
           by: ['organizationUserId', 'status'],
           where: {
             ...scope.enrollmentWhere,
-            course: scope.courseWhere,
+            course: scope.liveCourseWhere,
             // Numerator and denominator must be the same population: the coverage
             // base below is the active worker roster, so without this an admin's
             // own enrollment — or a deactivated worker's — landed in the split but
@@ -1013,7 +1018,7 @@ export async function getDashboardData(requestedFacilityIds?: string[] | null) {
     // monthly performance and per-course pass/fail distribution.
     organizationId
       ? prisma.enrollment.findMany({
-          where: { ...scope.enrollmentWhere, course: scope.courseWhere, score: { not: null } },
+          where: { ...scope.enrollmentWhere, course: scope.liveCourseWhere, score: { not: null } },
           select: { courseId: true, score: true, completedAt: true },
         })
       : Promise.resolve([]),

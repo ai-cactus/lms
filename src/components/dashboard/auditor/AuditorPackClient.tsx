@@ -73,7 +73,7 @@ export default function AuditorPackClient({
           icon={<GraduationCap />}
           label="All Courses"
           value={String(stats.totalCourses)}
-          hint="Every course in your organization — draft, published and inactive"
+          hint="Every course your organization has put into service — published and retired"
         />
         <StatCard
           icon={<UserPlus />}
