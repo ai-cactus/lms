@@ -148,4 +148,40 @@ describe('resolveDashboardScope — courseWhere', () => {
 
     expect(scope.courseWhere).toEqual({ organizationId: ORG_ID });
   });
+
+  // `courseWhere` stays archive-neutral because its callers are TOP-LEVEL
+  // Course reads, where the query extension in `db/index.ts` already excludes
+  // archived rows. It is `liveCourseWhere` that travels through a nested
+  // `course:` relation, which the extension cannot reach.
+  it('leaves courseWhere archive-neutral and puts the predicate on liveCourseWhere', async () => {
+    const scope = await resolveDashboardScope(session({ role: 'owner' }));
+
+    expect(scope.courseWhere).not.toHaveProperty('archivedAt');
+    expect(scope.liveCourseWhere).toEqual({ organizationId: ORG_ID, archivedAt: null });
+  });
+
+  it('ANDs the archive predicate with the adopted union rather than replacing it', async () => {
+    prismaMock.orgCourseOffering.findMany.mockResolvedValue([{ courseId: 'adopted-1' }]);
+
+    const scope = await resolveDashboardScope(session({ role: 'owner' }));
+
+    expect(scope.liveCourseWhere).toEqual({
+      OR: [{ organizationId: ORG_ID }, { id: { in: ['adopted-1'] } }],
+      archivedAt: null,
+    });
+  });
+});
+
+// Archiving retires a course from the catalogue, so its enrolments must stop
+// feeding overdue, at-risk and coverage figures a manager can no longer act on.
+// The predicate lives on the shared bundle so a NEW aggregate cannot omit it —
+// the same reasoning as the org pin above.
+describe('resolveDashboardScope — the archive predicate', () => {
+  it('is always present on enrollmentWhere, whatever the facility scope', async () => {
+    const orgWide = await resolveDashboardScope(session({ role: 'owner' }));
+    const facilityBound = await resolveDashboardScope(session({ role: 'supervisor' }));
+
+    expect(orgWide.enrollmentWhere.course).toEqual({ archivedAt: null });
+    expect(facilityBound.enrollmentWhere.course).toEqual({ archivedAt: null });
+  });
 });

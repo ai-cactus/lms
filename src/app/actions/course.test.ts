@@ -343,10 +343,13 @@ describe('getDashboardData', () => {
     // literal was the single-facility dashboard bug (see dashboard-parity.test.ts).
     // `active: true` arrived with founder Q23: removeStaff now retains a departed
     // member's enrollments, so a dashboard must exclude them or report on people
-    // who have left.
+    // who have left. `archivedAt: null` is the same shape of rule for courses:
+    // the archive filter is a query extension on Course's OWN reads and cannot
+    // reach this nested traversal, so "Total Courses" and every enrolment-derived
+    // figure would otherwise count different catalogues.
     expect(mockEnrollmentFindMany).toHaveBeenCalledWith({
       where: {
-        course: { organizationId: ORG_ID },
+        course: { organizationId: ORG_ID, archivedAt: null },
         organizationUser: { organizationId: ORG_ID, active: true },
         score: { not: null },
       },

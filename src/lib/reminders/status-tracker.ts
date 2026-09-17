@@ -140,6 +140,8 @@ function displayName(enrollment: EnrollmentRow): string {
  * timezone, and assignment reminder-stage overrides. Overdue rows are sorted
  * most-overdue first; near-deadline rows soonest-due first.
  *
+ * Enrolments on an ARCHIVED course are excluded — see the query below.
+ *
  * `now` is injectable (defaulting to the current instant) so callers/tests can
  * pin the clock — mirroring `runReminderSweep`'s explicit `now`.
  *
@@ -162,12 +164,22 @@ export async function getStatusTrackerSummaryForOrg(
       ? { facilityId }
       : {};
 
+  // Archived courses are excluded on BOTH reads. The archive filter is a query
+  // extension on Course's own reads (`db/index.ts`) and cannot reach a nested
+  // relation, so without this the tracker lists an overdue row naming a course
+  // the Courses page says does not exist — and no manager action can clear it.
+  // The learner's own view of that enrolment deliberately survives (Q24); this
+  // is the MANAGER's actionable picture, and it sits on the same screen as the
+  // dashboard totals, which now count the same population.
+  const liveCourse = { course: { archivedAt: null } };
+
   const [overdueEnrollments, nearDeadlineEnrollments] = await Promise.all([
     prisma.enrollment.findMany({
       where: {
         dueAt: { not: null, lt: now },
         status: { notIn: [...TERMINAL_STATUSES] },
         organizationUser: { is: { organizationId: orgId, active: true } },
+        ...liveCourse,
         ...facilityFilter,
       },
       select: enrollmentRowSelect,
@@ -177,6 +189,7 @@ export async function getStatusTrackerSummaryForOrg(
         dueAt: { gte: now, lte: addDays(now, AT_RISK_WINDOW_DAYS) },
         status: { notIn: [...TERMINAL_STATUSES] },
         organizationUser: { is: { organizationId: orgId, active: true } },
+        ...liveCourse,
         ...facilityFilter,
       },
       select: enrollmentRowSelect,

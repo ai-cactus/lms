@@ -180,6 +180,13 @@ describe('dashboard-parity — Tier 1: predicate parity', () => {
       // `facilityId` (the `null` branch of the `string[] | null` contract),
       // never widen-by-omission on one side and narrow on the other.
       expect(where).not.toHaveProperty('facilityId');
+      // The archive predicate — invariant C. The query extension filters Course's
+      // OWN reads, so `course.count` drops an archived course while a nested
+      // `course:` traversal keeps it. `scope.enrollmentWhere` carries this, but a
+      // call site that restates `course:` SHADOWS it — which is exactly how
+      // "Total Courses" and "Total Staff Assigned" came to describe different
+      // catalogues. Asserting it on every captured predicate catches both.
+      expect(where.course).toMatchObject({ archivedAt: null });
     }
 
     const allWheres = [
@@ -217,6 +224,7 @@ describe('dashboard-parity — Tier 1: predicate parity', () => {
       // to that IDENTICAL id set, never fall back to `{}` (the D-01 fail-open
       // `staff-where.ts`'s header exists to prevent) on either side.
       expect(where.facilityId).toEqual({ in: ['fac-a', 'fac-b'] });
+      expect(where.course).toMatchObject({ archivedAt: null });
     }
   });
 
