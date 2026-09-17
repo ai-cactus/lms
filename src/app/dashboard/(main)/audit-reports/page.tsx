@@ -18,7 +18,10 @@ export default async function AuditorPackPage() {
   // D-01: was `isAdminRole`, which admits Finance — a role holding neither
   // `audit.read` nor any auditPack permission. The sidebar already gated this
   // correctly on `auditPack.read`; the route did not, so a typed URL reached it.
-  const ctx = await requirePermission('auditPack.read');
+  //
+  // Q26: denial is `notFound` — bouncing to /dashboard would tell a role with no
+  // audit remit that Audit Reports is a module they simply cannot open.
+  const ctx = await requirePermission('auditPack.read', { onDeny: 'notFound' });
   const { organizationId } = ctx;
 
   const organization = organizationId

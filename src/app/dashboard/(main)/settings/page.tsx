@@ -1,12 +1,10 @@
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
 import { ShieldAlert } from 'lucide-react';
-import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
 import { Button } from '@/components/ui/button';
 import { BILLING_PLANS } from '@/lib/billing-plans';
-import { ADMIN_ROLES, dbRoleToRoleKey } from '@/lib/rbac/role-utils';
-import { can } from '@/lib/rbac/permissions';
+import { ADMIN_ROLES } from '@/lib/rbac/role-utils';
+import { requirePermission } from '@/lib/rbac/require-permission';
 import SettingsClient, {
   type SettingsFacility,
   type SettingsTeamMember,
@@ -22,38 +20,17 @@ export const metadata = {
 };
 
 export default async function SettingsPageRoute() {
-  const session = await auth();
-
-  if (!session?.user?.id) {
-    redirect('/login');
-  }
-
-  const { role, organizationId } = session.user;
-
   // Facility + team-access settings are an org-level mutation, so this gate keys
-  // off `organization.edit` — Owner/Admin/HR. Kept in lockstep with
-  // the Settings nav row in roles-matrix-config so the menu never offers a link
-  // this route then refuses. Other admins get a proper access-denied state
-  // (mirrors the Billing route's gate pattern).
-  if (!can(dbRoleToRoleKey(role), 'organization.edit')) {
-    return (
-      <div className="flex min-h-[60vh] flex-col items-center justify-center px-4 text-center">
-        <div className="flex size-14 items-center justify-center rounded-full bg-error/10 text-error">
-          <ShieldAlert className="size-7" aria-hidden="true" />
-        </div>
-        <h1 className="mt-6 text-2xl font-semibold text-foreground">
-          You don&apos;t have access to Settings
-        </h1>
-        <p className="mt-2 max-w-md text-sm text-text-secondary">
-          Facility and team-access settings are limited to your organization&apos;s owner and
-          admins.
-        </p>
-        <Button asChild className="mt-6">
-          <Link href="/dashboard">Back to dashboard</Link>
-        </Button>
-      </div>
-    );
-  }
+  // off `organization.edit` — Owner/Admin/HR. Kept in lockstep with the Settings
+  // nav row in roles-matrix-config so the menu never offers a link this route
+  // then refuses.
+  //
+  // Q26: this used to render an in-page access-denied card naming the module.
+  // An unauthorised module is hidden from the nav AND answers a typed URL with
+  // "Page not found" — the card told a Supervisor that Settings exists.
+  const { role, organizationId } = await requirePermission('organization.edit', {
+    onDeny: 'notFound',
+  });
 
   if (!organizationId) {
     return (

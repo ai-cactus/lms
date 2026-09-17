@@ -11,7 +11,12 @@ export default async function TrainingPage() {
   // URL — reached the roster-wide training figures. `course.read` is the same
   // gate the Courses list uses, and taking it through the facility variant means
   // the page cannot obtain the verb without also obtaining its scope.
-  const { dataFacilityIds } = await requirePermissionWithFacilityScope('course.read');
+  //
+  // Q26: denial is `notFound`, not a redirect — a bounce to /dashboard is itself
+  // evidence that the Training module exists.
+  const { dataFacilityIds } = await requirePermissionWithFacilityScope('course.read', undefined, {
+    onDeny: 'notFound',
+  });
 
   const { courses, stats } = await getDashboardData(dataFacilityIds);
 

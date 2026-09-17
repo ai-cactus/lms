@@ -132,7 +132,7 @@ test.describe('Settings page — access is Owner/Admin/HR', () => {
       await expect(page.getByRole('tab', { name: /users.*permissions/i })).toBeVisible();
       await expect(page.getByRole('tab', { name: /^roles$/i })).toBeVisible();
       await expect(page.getByRole('tab', { name: /^facility$/i })).toBeVisible();
-      await expect(page.getByText(/don.t have access to settings/i)).not.toBeVisible();
+      await expect(page.getByRole('heading', { name: /page not found/i })).toHaveCount(0);
     } finally {
       await cleanup(seeded);
     }
@@ -150,14 +150,14 @@ test.describe('Settings page — access is Owner/Admin/HR', () => {
 
       await page.goto('/dashboard/settings');
       await page.waitForLoadState('networkidle');
-      await expect(page.getByText(/don.t have access to settings/i)).not.toBeVisible();
+      await expect(page.getByRole('heading', { name: /page not found/i })).toHaveCount(0);
       await expect(page.getByRole('tab', { name: /^facility$/i })).toBeVisible();
     } finally {
       await cleanup(seeded);
     }
   });
 
-  test('clinical_director gets access-denied at /dashboard/settings and has no Settings nav entry', async ({
+  test('clinical_director gets a 404 at /dashboard/settings and has no Settings nav entry', async ({
     page,
   }) => {
     const email = uid('cd');
@@ -168,10 +168,14 @@ test.describe('Settings page — access is Owner/Admin/HR', () => {
       // No Settings nav entry at all without `organization.edit`.
       await expect(page.getByRole('link', { name: /^settings$/i })).not.toBeVisible();
 
-      // Direct navigation is still gated server-side.
-      await page.goto('/dashboard/settings');
+      // Founder Q26: the two halves are one rule — hidden in the nav AND "Page
+      // not found" on a typed URL. This used to be an in-page card that named
+      // Settings, which told the role exactly what it was being refused.
+      const res = await page.goto('/dashboard/settings');
       await page.waitForLoadState('networkidle');
-      await expect(page.getByText(/don.t have access to settings/i)).toBeVisible();
+      expect(res?.status()).toBe(404);
+      await expect(page.getByRole('heading', { name: /page not found/i })).toBeVisible();
+      await expect(page.getByText(/don.t have access to settings/i)).toHaveCount(0);
       await expect(page.getByRole('tab', { name: /^facility$/i })).not.toBeVisible();
     } finally {
       await cleanup(seeded);
@@ -365,8 +369,11 @@ test.describe('Settings page — Add Facility (multi-facility v3)', () => {
       // clinical_director is denied the whole settings page (no
       // `organization.edit`), so the Add Facility button is unreachable —
       // confirms the deeper gate rather than merely the button's own check.
-      await page.goto('/dashboard/settings');
+      // Q26 made that denial a 404; pinned here so the button assertion below
+      // cannot pass merely because some other page rendered.
+      const res = await page.goto('/dashboard/settings');
       await page.waitForLoadState('networkidle');
+      expect(res?.status()).toBe(404);
       await expect(page.getByRole('button', { name: 'Add Facility' })).not.toBeVisible();
     } finally {
       await cleanup(seeded);
@@ -681,7 +688,9 @@ test.describe('Settings page — Notifications tab persistence', () => {
       await page.waitForLoadState('networkidle');
 
       await expect(page.getByRole('tab', { name: /^notification$/i })).not.toBeVisible();
-      await expect(page.getByText(/don.t have access to settings/i)).toBeVisible();
+      // Q26: the whole route 404s for a role without `organization.edit`, so the
+      // Notifications tab is unreachable because Settings itself is.
+      await expect(page.getByRole('heading', { name: /page not found/i })).toBeVisible();
     } finally {
       await cleanup(seeded);
     }
@@ -700,7 +709,7 @@ test.describe('Settings page — Notifications tab persistence', () => {
       await page.goto('/dashboard/settings');
       await page.waitForLoadState('networkidle');
 
-      await expect(page.getByText(/don.t have access to settings/i)).not.toBeVisible();
+      await expect(page.getByRole('heading', { name: /page not found/i })).toHaveCount(0);
       await expect(page.getByRole('tab', { name: /^notification$/i })).toBeVisible();
     } finally {
       await cleanup(seeded);

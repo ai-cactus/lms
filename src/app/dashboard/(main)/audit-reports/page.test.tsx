@@ -2,12 +2,14 @@
  * The Audit Reports billing gate moved from a modal (which redirected away on
  * close) to an inline empty state, so the page must now render the gate copy
  * and a link to Billing in place of the report UI — while keeping the RBAC
- * redirect for non-admin roles.
+ * refusal for roles without `auditPack.read`. That refusal is a 404 per founder
+ * ruling Q26 (docs/local/RBAC-founder-answers-2026-09-15.md): a redirect to
+ * /dashboard still reveals that an Audit Reports module exists.
  */
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockAuth, prismaMock, mockRedirect, mockGetStats } = vi.hoisted(() => ({
+const { mockAuth, prismaMock, mockRedirect, mockNotFound, mockGetStats } = vi.hoisted(() => ({
   mockAuth: vi.fn(),
   prismaMock: {
     user: { findUnique: vi.fn(), update: vi.fn() },
@@ -16,12 +18,15 @@ const { mockAuth, prismaMock, mockRedirect, mockGetStats } = vi.hoisted(() => ({
   mockRedirect: vi.fn(() => {
     throw new Error('NEXT_REDIRECT');
   }),
+  mockNotFound: vi.fn(() => {
+    throw new Error('NEXT_NOT_FOUND');
+  }),
   mockGetStats: vi.fn(),
 }));
 
 vi.mock('@/auth', () => ({ auth: mockAuth }));
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock, default: prismaMock }));
-vi.mock('next/navigation', () => ({ redirect: mockRedirect }));
+vi.mock('next/navigation', () => ({ redirect: mockRedirect, notFound: mockNotFound }));
 vi.mock('next/image', () => ({ default: ({ alt }: { alt: string }) => <img alt={alt} /> }));
 vi.mock('@/app/actions/auditor', () => ({ getAuditorOverviewStats: mockGetStats }));
 vi.mock('@/components/dashboard/auditor/AuditorPackClient', () => ({
@@ -102,21 +107,25 @@ describe('Audit Reports page — billing gate', () => {
     expect(screen.getByTestId('auditor-pack-client')).toBeInTheDocument();
   });
 
-  it('redirects a non-admin role away before any gate check', async () => {
+  it('404s a non-admin role before any gate check', async () => {
     mockAuth.mockResolvedValue(session('nurse'));
 
-    await expect(AuditorPackPage()).rejects.toThrow('NEXT_REDIRECT');
-    expect(mockRedirect).toHaveBeenCalledWith('/dashboard');
+    await expect(AuditorPackPage()).rejects.toThrow('NEXT_NOT_FOUND');
+    expect(mockNotFound).toHaveBeenCalled();
+    expect(mockRedirect).not.toHaveBeenCalled();
   });
 
   // D-01. The `nurse` case above passed under the old `isAdminRole` gate too —
   // nurse was never in ADMIN_ROLES. These are the roles that gate ADMITTED
   // while holding no auditPack permission, so they are the cases that matter.
-  it('redirects finance — in ADMIN_ROLES, but holds no auditPack permission at all', async () => {
+  it('404s finance — in ADMIN_ROLES, but holds no auditPack permission at all', async () => {
     mockAuth.mockResolvedValue(session('finance'));
 
-    await expect(AuditorPackPage()).rejects.toThrow('NEXT_REDIRECT');
-    expect(mockRedirect).toHaveBeenCalledWith('/dashboard');
+    // Q26: the refusal must not be a redirect. `not.toHaveBeenCalled` on
+    // mockRedirect is the half that fails if the default `onDeny` creeps back.
+    await expect(AuditorPackPage()).rejects.toThrow('NEXT_NOT_FOUND');
+    expect(mockNotFound).toHaveBeenCalled();
+    expect(mockRedirect).not.toHaveBeenCalled();
     expect(mockGetStats).not.toHaveBeenCalled();
   });
 

@@ -23,6 +23,7 @@ const {
   mockAuth,
   prismaMock,
   mockRedirect,
+  mockNotFound,
   mockGetCourseAssignmentSettings,
   mockGetRoleHolderCounts,
 } = vi.hoisted(() => ({
@@ -35,13 +36,16 @@ const {
   mockRedirect: vi.fn((path: string) => {
     throw new Error(`NEXT_REDIRECT:${path}`);
   }),
+  mockNotFound: vi.fn(() => {
+    throw new Error('NEXT_NOT_FOUND');
+  }),
   mockGetCourseAssignmentSettings: vi.fn(async () => null),
   mockGetRoleHolderCounts: vi.fn(async () => ({})),
 }));
 
 vi.mock('@/auth', () => ({ auth: mockAuth }));
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock, default: prismaMock }));
-vi.mock('next/navigation', () => ({ redirect: mockRedirect }));
+vi.mock('next/navigation', () => ({ redirect: mockRedirect, notFound: mockNotFound }));
 vi.mock('@/app/actions/enrollment', () => ({
   getCourseAssignmentSettings: mockGetCourseAssignmentSettings,
   getRoleHolderCounts: mockGetRoleHolderCounts,
@@ -65,6 +69,8 @@ function setSession(role: string) {
   mockAuth.mockResolvedValue({
     user: {
       id: 'user-1',
+      // Required: evaluatePermission masks the email into its denial warning.
+      email: 'gate@test.invalid',
       organizationUserId: ADMIN_ORG_USER_ID,
       organizationId: ORG_ID,
       role,
@@ -213,5 +219,38 @@ describe('AssignCoursePage — course lookup tenancy', () => {
     resolveCourseAgainstWhere(null);
 
     await expect(renderPage()).rejects.toThrow('NEXT_REDIRECT:/dashboard/courses');
+  });
+});
+
+/**
+ * Founder ruling Q26 (docs/local/RBAC-founder-answers-2026-09-15.md): a role
+ * that cannot access a module gets "Page not found", never a redirect.
+ *
+ * The page carries TWO refusals and only one of them is Q26's. The RBAC gate
+ * (`assignment.create`) 404s; the BILLING gate still redirects to
+ * /dashboard/courses, because a paused subscription is a fact about this
+ * organisation rather than a statement about what this role may see — and
+ * billing-plan-change-and-gating.spec.ts pins that redirect end-to-end.
+ */
+describe('AssignCoursePage — Q26 uniform deny', () => {
+  it('404s Finance, which holds no assignment.create, before the billing read', async () => {
+    setSession('finance');
+
+    await expect(renderPage()).rejects.toThrow('NEXT_NOT_FOUND');
+
+    expect(mockNotFound).toHaveBeenCalled();
+    expect(mockRedirect).not.toHaveBeenCalled();
+    expect(prismaMock.organization.findUnique).not.toHaveBeenCalled();
+    expect(prismaMock.course.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('still REDIRECTS an authorised role to /dashboard/courses while billing is paused', async () => {
+    setSession('supervisor');
+    prismaMock.organization.findUnique.mockResolvedValue({
+      subscription: { status: 'active', pausedAt: new Date('2026-09-01T00:00:00Z') },
+    });
+
+    await expect(renderPage()).rejects.toThrow('NEXT_REDIRECT:/dashboard/courses');
+    expect(mockNotFound).not.toHaveBeenCalled();
   });
 });
