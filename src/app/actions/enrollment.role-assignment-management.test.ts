@@ -21,6 +21,9 @@ const {
 } = vi.hoisted(() => ({
   prismaMock: {
     courseAssignment: { findMany: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
+    // A widen puts the course into service, so `publishCourseOnAssignment` runs
+    // for real here — it is the mechanism behind the no-draft-enrolments rule.
+    course: { update: vi.fn() },
     enrollment: { groupBy: vi.fn() },
     organization: { findUnique: vi.fn() },
     organizationUser: { findMany: vi.fn() },
@@ -99,12 +102,19 @@ describe('setRoleAssignmentTargets', () => {
       dueWindowDays: 30,
       facilityScoped: false,
       facilityIds: [],
-      course: { title: 'HIPAA Basics', reviewRequired: false },
+      course: {
+        id: 'course-1',
+        title: 'HIPAA Basics',
+        status: 'published',
+        isGlobal: false,
+        reviewRequired: false,
+      },
       ...overrides,
     };
   }
 
   beforeEach(() => {
+    prismaMock.course.update.mockResolvedValue({});
     prismaMock.courseAssignment.findFirst.mockResolvedValue(assignmentRowFor());
     prismaMock.organization.findUnique.mockResolvedValue({
       name: 'Acme Corp',
@@ -385,13 +395,30 @@ describe('setRoleAssignmentTargets', () => {
     expect(prismaMock.courseAssignment.update).not.toHaveBeenCalled();
   });
 
+  /** An ordinary unheld draft, as a fork or an un-assigned new course is. */
+  function draftCourse() {
+    return {
+      id: 'course-1',
+      title: 'HIPAA Basics',
+      status: 'draft',
+      isGlobal: false,
+      reviewRequired: false,
+    };
+  }
+
   // Item 7 — the review and billing gates apply to the widen only.
   describe('review and billing gates apply to the widen only', () => {
     it('refuses a widen when the course is held for quality review', async () => {
       prismaMock.courseAssignment.findFirst.mockResolvedValue(
         assignmentRowFor({
           targetRoles: ['nurse'],
-          course: { title: 'HIPAA Basics', reviewRequired: true },
+          course: {
+            id: 'course-1',
+            title: 'HIPAA Basics',
+            status: 'draft',
+            isGlobal: false,
+            reviewRequired: true,
+          },
         }),
       );
 
@@ -421,7 +448,13 @@ describe('setRoleAssignmentTargets', () => {
       prismaMock.courseAssignment.findFirst.mockResolvedValue(
         assignmentRowFor({
           targetRoles: ['nurse', 'hr'],
-          course: { title: 'HIPAA Basics', reviewRequired: true },
+          course: {
+            id: 'course-1',
+            title: 'HIPAA Basics',
+            status: 'draft',
+            isGlobal: false,
+            reviewRequired: true,
+          },
         }),
       );
 
@@ -431,6 +464,39 @@ describe('setRoleAssignmentTargets', () => {
       expect(prismaMock.courseAssignment.update).toHaveBeenCalledTimes(1);
       // Neither gate's lookup should even run for a narrow-only call.
       expect(prismaMock.organization.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('refuses a widen when the course cannot be taken out of draft', async () => {
+      // A row that already carries role targets was created by
+      // `assignCourseToRoles`, which publishes the draft — so a draft here means
+      // that transition failed. Widening would enrol the added roles' holders
+      // into a course whose record still reads "Draft", which the no-draft
+      // ruling forbids.
+      prismaMock.courseAssignment.findFirst.mockResolvedValue(
+        assignmentRowFor({ targetRoles: ['nurse'], course: draftCourse() }),
+      );
+      prismaMock.course.update.mockRejectedValue(new Error('db down'));
+
+      const result = await setRoleAssignmentTargets('ca-1', ['nurse', 'hr']);
+
+      expect(result.success).toBe(false);
+      expect(result.refusedReason).toMatch(/still a draft/i);
+      expect(prismaMock.courseAssignment.update).not.toHaveBeenCalled();
+      expect(mockCreateEnrollmentForUser).not.toHaveBeenCalled();
+    });
+
+    it('publishes an unheld draft on a widen rather than refusing it', async () => {
+      prismaMock.courseAssignment.findFirst.mockResolvedValue(
+        assignmentRowFor({ targetRoles: ['nurse'], course: draftCourse() }),
+      );
+
+      const result = await setRoleAssignmentTargets('ca-1', ['nurse', 'hr']);
+
+      expect(result.success).toBe(true);
+      expect(prismaMock.course.update).toHaveBeenCalledWith({
+        where: { id: 'course-1' },
+        data: expect.objectContaining({ status: 'published' }),
+      });
     });
 
     it('a narrow still succeeds for an org with lapsed billing', async () => {

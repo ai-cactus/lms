@@ -1,7 +1,7 @@
 import { NextResponse, NextRequest } from 'next/server';
 import { authorize } from '@/lib/rbac/authorize';
 import { resolveDataFacilityIds, staffFacilityWhere } from '@/lib/facility/staff-where';
-import { orgCourseWhere } from '@/lib/course/org-scope';
+import { auditorCatalogueWhere } from '@/lib/audit-reports/catalogue-scope';
 import prisma from '@/lib/prisma';
 import { rawPrisma } from '@/db/index';
 import { auditorExportQueue } from '@/lib/queue/auditor-export-queue';
@@ -85,13 +85,16 @@ export async function POST(req: NextRequest) {
       // Filtered, the catalogue would offer a course the UI lists (it reads raw
       // as well) and then 404 the export for it.
       //
-      // Tenancy is unaffected — `orgCourseWhere` is still the predicate, so a
-      // course outside this organisation still 404s. The facility narrowing
-      // below for `scope === 'staff'` is untouched.
+      // Tenancy is unaffected — `auditorCatalogueWhere` is still the predicate,
+      // so a course outside this organisation still 404s. It also excludes
+      // DRAFTS, which is what keeps this in step with the catalogue the screen
+      // offers: a draft is not listed there, so a report cannot be started for
+      // one here either. The facility narrowing below for `scope === 'staff'` is
+      // untouched.
       const course = await rawPrisma.course.findFirst({
         // Adopted (platform-catalogue) courses are authored by another tenant,
         // so a creator-only predicate 404s every video course the org offers.
-        where: { id: scopeId, ...(await orgCourseWhere(organizationId)) },
+        where: { id: scopeId, ...(await auditorCatalogueWhere(organizationId)) },
         select: { id: true },
       });
       if (!course) return NextResponse.json({ error: 'Course not found' }, { status: 404 });
