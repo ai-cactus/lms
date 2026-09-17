@@ -161,6 +161,30 @@ describe('auditor export — archived courses stay in the report', () => {
 
     // Q25: ownership is `Course.organizationId`. A `creator` join here would
     // return the same rows while undoing the migration onto the column.
-    expect(mockRawCourseFindMany.mock.calls[0][0].where).toEqual({ organizationId: 'org-1' });
+    //
+    // ⛔ This is the LOCKSTEP assertion: the exact same predicate — org column
+    // plus the draft exclusion — is asserted for the on-screen catalogue in
+    // auditor.d01-scope.test.ts. If the two ever differ, the auditor reads one
+    // number on screen and a different one in the PDF, which is the defect #632
+    // closed.
+    expect(mockRawCourseFindMany.mock.calls[0][0].where).toEqual({
+      organizationId: 'org-1',
+      status: { not: 'draft' },
+    });
+  });
+
+  it('excludes drafts from every catalogue branch — list and both counts', async () => {
+    await runScope('all-courses');
+    await runScope('org');
+    mockOrgUserCount.mockResolvedValue(0);
+    await runScope('all-staff');
+
+    // Reverses the earlier ruling that a draft is part of what the org has to
+    // account for. `inactive` is untouched: only `draft` is named.
+    expect(mockRawCourseFindMany.mock.calls[0][0].where.status).toEqual({ not: 'draft' });
+    for (const call of mockRawCourseCount.mock.calls) {
+      expect(call[0].where.status).toEqual({ not: 'draft' });
+    }
+    expect(mockRawCourseCount).toHaveBeenCalledTimes(2);
   });
 });

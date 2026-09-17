@@ -873,10 +873,11 @@ export async function assignCoursesToStaffMember(
           break;
         }
 
-        // Course held for quality review: nothing was written for this course.
-        // Report it as failed like any other per-course problem and continue.
+        // Per-course refusal (held for quality review, still a draft, past
+        // deadline): nothing was written for this course. Report it as failed
+        // like any other per-course problem and continue.
         logger.warn({
-          msg: '[enrollment] Course could not be assigned to staff member — held for quality review',
+          msg: '[enrollment] Course could not be assigned to staff member — refused',
           staffOrgUserId,
           courseId,
           userId: session.user.id,

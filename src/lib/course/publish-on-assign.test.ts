@@ -8,6 +8,10 @@
  * a staff profile therefore produced a course learners completed and earned
  * certificates for while the record still said Draft. Only the /assign page
  * published, and only for itself.
+ *
+ * The maintainer has since ruled that no learner may be enrolled in a draft, so
+ * the return value is now load-bearing: `true` means "in service, go ahead",
+ * `false` means the caller must refuse. These tests pin both halves.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -37,7 +41,7 @@ beforeEach(() => {
 
 describe('publishCourseOnAssignment', () => {
   it('publishes an unheld draft — the reported case', async () => {
-    await publishCourseOnAssignment(draft, 'user-1', 'ou-1');
+    await expect(publishCourseOnAssignment(draft, 'user-1', 'ou-1')).resolves.toBe(true);
 
     expect(mockUpdate).toHaveBeenCalledWith({
       where: { id: 'c1' },
@@ -52,38 +56,53 @@ describe('publishCourseOnAssignment', () => {
   });
 
   it('is a no-op for an already-published course, so re-assigning writes nothing', async () => {
-    await publishCourseOnAssignment({ ...draft, status: 'published' }, 'user-1', 'ou-1');
+    await expect(
+      publishCourseOnAssignment({ ...draft, status: 'published' }, 'user-1', 'ou-1'),
+    ).resolves.toBe(true);
 
     expect(mockUpdate).not.toHaveBeenCalled();
   });
 
   it('never touches a global catalogue course — its lifecycle belongs to another tenant', async () => {
-    await publishCourseOnAssignment({ ...draft, isGlobal: true }, 'user-1', 'ou-1');
+    // A global DRAFT is not ours to publish, so the caller is told to refuse
+    // rather than being left to enrol into it.
+    await expect(
+      publishCourseOnAssignment({ ...draft, isGlobal: true }, 'user-1', 'ou-1'),
+    ).resolves.toBe(false);
 
     expect(mockUpdate).not.toHaveBeenCalled();
   });
 
   it('never publishes a course held for quality review', async () => {
     // Assignment is blocked upstream for these; only the quality gate may clear
-    // the hold, so this must not relabel one behind its back.
-    await publishCourseOnAssignment({ ...draft, reviewRequired: true }, 'user-1', 'ou-1');
+    // the hold, so this must not relabel one behind its back — and must not let
+    // the caller enrol into it either.
+    await expect(
+      publishCourseOnAssignment({ ...draft, reviewRequired: true }, 'user-1', 'ou-1'),
+    ).resolves.toBe(false);
 
     expect(mockUpdate).not.toHaveBeenCalled();
   });
 
   it('leaves an inactive (retired) course alone rather than reviving it', async () => {
-    await publishCourseOnAssignment({ ...draft, status: 'inactive' }, 'user-1', 'ou-1');
-
     // Retirement is a deliberate act. Only `draft` — the "creation never
-    // finished" state this fix is about — moves.
+    // finished" state this fix is about — moves, and a retired course stays
+    // assignable, so this reports in-service.
+    await expect(
+      publishCourseOnAssignment({ ...draft, status: 'inactive' }, 'user-1', 'ou-1'),
+    ).resolves.toBe(true);
+
     expect(mockUpdate).not.toHaveBeenCalled();
   });
 
-  it('does not fail the assignment when the status write fails', async () => {
+  it('reports NOT in service when the status write fails, so the caller refuses', async () => {
     mockUpdate.mockRejectedValue(new Error('db down'));
 
-    // The assignment is already authorised; losing the relabel must not undo it.
-    await expect(publishCourseOnAssignment(draft, 'user-1', 'ou-1')).resolves.toBeUndefined();
+    // Reverses the old "never fail the assignment" behaviour: a course that
+    // could not leave draft must not gain enrollments. The failure is still
+    // logged rather than thrown — the caller returns a refusal, which survives
+    // production error redaction where a thrown message would not.
+    await expect(publishCourseOnAssignment(draft, 'user-1', 'ou-1')).resolves.toBe(false);
     expect(mockLoggerError).toHaveBeenCalled();
   });
 
@@ -91,7 +110,7 @@ describe('publishCourseOnAssignment', () => {
     // D10's permanent case: a caller with no OrganizationUser id (should not
     // occur in practice, but the parameter type allows it) must still get the
     // status flip; the hero's fallback-to-creator copy handles the null.
-    await publishCourseOnAssignment(draft, 'user-1', null);
+    await expect(publishCourseOnAssignment(draft, 'user-1', null)).resolves.toBe(true);
 
     expect(mockUpdate).toHaveBeenCalledWith({
       where: { id: 'c1' },

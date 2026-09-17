@@ -56,6 +56,21 @@ const REVIEW_GATE_ASSIGN_MESSAGE =
 const PAST_DEADLINE_ASSIGN_MESSAGE = 'The deadline must be in the future.';
 
 /**
+ * Refusal text for a course that is still a draft when the first enrollment
+ * would be written. Returned, not thrown, for the same redaction reason as
+ * {@link REVIEW_GATE_ASSIGN_MESSAGE}.
+ *
+ * Reaching this is rare by design: assigning an ordinary draft publishes it
+ * first (`publishCourseOnAssignment`), which is what the Assign & Publish flow
+ * relies on. This fires only when that transition could not be made — the
+ * update failed, or the draft is one this product may not publish.
+ *
+ * Module-private: a `'use server'` file may only export async functions.
+ */
+const DRAFT_ASSIGN_MESSAGE =
+  'This course is still a draft and could not be published, so it was not assigned.';
+
+/**
  * Normalise one optional date field of an assignment settings payload into the
  * sink's tri-state: an omitted key stays `undefined` so the org-wide row keeps
  * whatever another surface configured, while an explicit null (or the empty
@@ -344,8 +359,14 @@ export async function enrollUsers(
   // learners by any route. publishCourse enforces this on the publish path, but
   // the direct assign paths (staff profile, Assign & Publish) land here instead
   // and would otherwise enroll — and email — staff into a held draft.
-  // Deliberately keyed on reviewRequired, not on status: an ordinary unheld
-  // draft stays assignable, which is what the Assign & Publish flow relies on.
+  //
+  // Still keyed on reviewRequired rather than on status, and that is NOT the old
+  // "drafts are assignable" ruling: the maintainer has since ruled that no
+  // learner may be enrolled in a draft. A status gate here would break Assign &
+  // Publish, which submits a draft on purpose. The ruling is enforced at the
+  // point it actually means something instead — the draft is published below,
+  // before the first enrollment write, and the assignment is REFUSED if it
+  // cannot be.
   if (course.reviewRequired) {
     logger.warn({
       msg: '[enrollment] Course assignment blocked — course held for quality review',
@@ -418,6 +439,31 @@ export async function enrollUsers(
     }
   }
 
+  // Every gate above has passed, so this course is going into service — and a
+  // course in service is not a draft. Hoisted out of the `organizationId` block
+  // below because the ruling is about the LEARNER, not about the org row: an
+  // org-less caller enrols people just the same.
+  //
+  // This is the first write of the call, so refusing here is still fail-closed.
+  if (
+    !(await publishCourseOnAssignment(course, session.user.id, session.user.organizationUserId))
+  ) {
+    logger.warn({
+      msg: '[enrollment] Course assignment blocked — course is still a draft',
+      courseId,
+      organizationId,
+      userId: session.user.id,
+    });
+    return {
+      success: [],
+      alreadyEnrolled: [],
+      newInvited: [],
+      failed: [],
+      refusedReason: DRAFT_ASSIGN_MESSAGE,
+      ...(options?.deferWorkerNotification ? { deferred: [] } : {}),
+    };
+  }
+
   // Create a CourseAssignment batch to hold this assignment's schedule /
   // renewal / reminder settings. Workers in this call share these settings;
   // a later assignment creates a separate batch.
@@ -439,9 +485,6 @@ export async function enrollUsers(
         create: { organizationId, courseId, addedByAdminId: session.user.id },
       });
     }
-
-    // Every gate above has passed, so this course is going into service.
-    await publishCourseOnAssignment(course, session.user.id, session.user.organizationUserId);
 
     // Individual assignment: leave `targetRole` untouched (undefined) so re-adding
     // an individual worker never clears a course's role targeting.
@@ -821,6 +864,9 @@ async function assignCourseToRoleTargets(
   // F-051 review gate, as in enrollUsers above. publishCourse clears
   // reviewRequired before replaying a deferred assignment, so this never blocks
   // that replay — only a direct role assignment into a still-held course.
+  // Keyed on reviewRequired rather than status for the same reason as
+  // enrollUsers: the no-draft-enrolments ruling is enforced at the publish
+  // transition below, not by refusing the draft the wizard means to publish.
   if (course.reviewRequired) {
     logger.warn({
       msg: '[enrollment] Role assignment blocked — course held for quality review',
@@ -884,8 +930,28 @@ async function assignCourseToRoleTargets(
   }
 
   // Same rule as enrollUsers: a role assignment puts the course into service for
-  // everyone who holds that role, now and later, so it is no longer a draft.
-  await publishCourseOnAssignment(course, session.user.id, session.user.organizationUserId);
+  // everyone who holds that role, now and later, so it is no longer a draft —
+  // and if it cannot be taken out of draft, nobody is enrolled into it. First
+  // write of the call, so this refusal is fail-closed.
+  if (
+    !(await publishCourseOnAssignment(course, session.user.id, session.user.organizationUserId))
+  ) {
+    logger.warn({
+      msg: '[enrollment] Role assignment blocked — course is still a draft',
+      courseId,
+      organizationId,
+      targetRoles,
+      userId: session.user.id,
+    });
+    return {
+      assignmentId: null,
+      holderCount: 0,
+      enrolled: 0,
+      alreadyEnrolled: 0,
+      failed: 0,
+      refusedReason: DRAFT_ASSIGN_MESSAGE,
+    };
+  }
 
   // Offer a global catalog course to the org as part of the assignment (idempotent).
   if (course.isGlobal === true && !isOwnCourse) {
@@ -1720,7 +1786,9 @@ export async function setRoleAssignmentTargets(
       dueWindowDays: true,
       facilityScoped: true,
       facilityIds: true,
-      course: { select: { title: true, reviewRequired: true } },
+      course: {
+        select: { id: true, title: true, status: true, isGlobal: true, reviewRequired: true },
+      },
     },
   });
   if (!assignment) {
@@ -1838,6 +1906,29 @@ export async function setRoleAssignmentTargets(
       return { success: false, refusedReason: BILLING_GATE_ASSIGN_MESSAGE };
     }
     organizationName = organization?.name || organizationName;
+
+    // Widening enrols the holders of the added roles, so the same no-draft rule
+    // applies here as on every other assign path. A row that already carries
+    // role targets was created by `assignCourseToRoles`, which publishes the
+    // draft — so in practice this only fires when that transition failed and
+    // left the course behind. Last of the widen gates, as on the other paths:
+    // the publish is a write and must not happen ahead of a refusal.
+    if (
+      !(await publishCourseOnAssignment(
+        assignment.course,
+        session.user.id,
+        session.user.organizationUserId,
+      ))
+    ) {
+      logger.warn({
+        msg: '[assignment] Role-target widen blocked — course is still a draft',
+        assignmentId: assignment.id,
+        courseId: assignment.courseId,
+        organizationId,
+        userId: session.user.id,
+      });
+      return { success: false, refusedReason: DRAFT_ASSIGN_MESSAGE };
+    }
   }
 
   // `roleTargetColumns` writes the authoritative `targetRoles` AND the superseded

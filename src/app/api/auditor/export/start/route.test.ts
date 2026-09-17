@@ -21,7 +21,7 @@ const {
   mockJobCreate,
   mockQueueAdd,
   mockListAccessibleFacilities,
-  mockOrgCourseWhere,
+  mockAuditorCatalogueWhere,
   mockRawCourseFindFirst,
   mockFilteredCourseFindFirst,
 } = vi.hoisted(() => ({
@@ -31,7 +31,7 @@ const {
   mockJobCreate: vi.fn(),
   mockQueueAdd: vi.fn(),
   mockListAccessibleFacilities: vi.fn(),
-  mockOrgCourseWhere: vi.fn(),
+  mockAuditorCatalogueWhere: vi.fn(),
   mockRawCourseFindFirst: vi.fn(),
   mockFilteredCourseFindFirst: vi.fn(),
 }));
@@ -56,7 +56,9 @@ vi.mock('@/lib/queue/auditor-export-queue', () => ({
   auditorExportQueue: { add: mockQueueAdd },
 }));
 vi.mock('@/lib/queue/auditor-export-worker', () => ({ getExportWorker: vi.fn() }));
-vi.mock('@/lib/course/org-scope', () => ({ orgCourseWhere: mockOrgCourseWhere }));
+vi.mock('@/lib/audit-reports/catalogue-scope', () => ({
+  auditorCatalogueWhere: mockAuditorCatalogueWhere,
+}));
 vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
@@ -96,7 +98,8 @@ beforeEach(() => {
   mockOrgFindUnique.mockResolvedValue({ hasAuditorAccess: true });
   mockJobCreate.mockResolvedValue({ id: 'job-1' });
   mockQueueAdd.mockResolvedValue(undefined);
-  mockOrgCourseWhere.mockResolvedValue({ organizationId: ORG });
+  // The shared auditor catalogue predicate: this org's courses, drafts excluded.
+  mockAuditorCatalogueWhere.mockResolvedValue({ organizationId: ORG, status: { not: 'draft' } });
   mockRawCourseFindFirst.mockResolvedValue({ id: 'course-1' });
   // What the archive-filtered client would return for an archived course.
   mockFilteredCourseFindFirst.mockResolvedValue(null);
@@ -121,10 +124,13 @@ describe('POST /api/auditor/export/start — an archived course may still be rep
     const res = await POST(req({ scope: 'course', scopeId: 'course-elsewhere' }));
 
     expect(res.status).toBe(404);
-    // `orgCourseWhere` is still the predicate the lookup is scoped by.
+    // `auditorCatalogueWhere` is still the predicate the lookup is scoped by —
+    // tenancy AND the draft exclusion, so a report cannot be started for a
+    // course the screen's catalogue does not list.
     expect(mockRawCourseFindFirst.mock.calls[0][0].where).toEqual({
       id: 'course-elsewhere',
       organizationId: ORG,
+      status: { not: 'draft' },
     });
     expect(mockJobCreate).not.toHaveBeenCalled();
   });
