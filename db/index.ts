@@ -134,6 +134,12 @@ export type DbTransactionClient = Parameters<Parameters<DbClient['$transaction']
  *   5. `get-learn-payload.ts` — archiving retires a course for new assignment;
  *      it does not erase what a learner already did, so an enrolled worker must
  *      still be able to open it.
+ *   6. `actions/course.ts::getCourseById` — the learner's ENTRY POINT to the
+ *      same course, and the only reason (5) is reachable in the product. It
+ *      reads unfiltered and then refuses an archived course to everyone who is
+ *      not enrolled in it, because the answer depends on why access was granted
+ *      and the access gate runs after the lookup. Nothing else in that file is
+ *      widened; the course LISTS stay on the filtered client.
  *
  * Anywhere else, use `prisma`.
  */

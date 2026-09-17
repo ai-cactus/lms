@@ -73,10 +73,11 @@ export default function DocumentDeleteButton({
           <AlertDialogHeader>
             <AlertDialogTitle>Delete document?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently remove &ldquo;{filename}&rdquo; and all its versions from
-              storage. This action cannot be undone.
+              &ldquo;{filename}&rdquo; will be removed from the Documents hub. Nothing is erased:
+              the file, every version and its PHI reports are retained for compliance. It cannot be
+              restored from the app.
               {hasLinkedCourse &&
-                ' This document is the source for a generated course — the course will remain, but its source-document link will be removed.'}
+                ' This document is the source for a generated course — that course is unaffected, but it will no longer be able to open this document.'}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

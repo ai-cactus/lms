@@ -887,6 +887,28 @@ describe('CoursesListClient — delete refusals are readable', () => {
     expect(screen.getByText('Deletable Course')).toBeInTheDocument();
   });
 
+  /**
+   * ISSUE-1 (staging QA 2026-09-17). Since Q24 delete ARCHIVES: the course, its
+   * lessons, its enrollments and its certificates all survive, and — since the
+   * ISSUE-3 fix — a learner already enrolled keeps access to it. The old copy
+   * promised an irreversible destruction of all of that.
+   */
+  it('ISSUE-1: the confirmation describes archive-and-retain, never a permanent delete', async () => {
+    const user = userEvent.setup();
+
+    render(<CoursesListClient courses={[ownCourse()]} hasBilling viewerRole={'owner' as Role} />);
+
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+    const dialog = screen.getByRole('alertdialog');
+
+    expect(dialog).toHaveTextContent(/retained for compliance/i);
+    expect(dialog).toHaveTextContent(/staff already enrolled keep access/i);
+    // No in-product restore exists, so the copy must not imply one either.
+    expect(dialog).not.toHaveTextContent(/permanently remove/i);
+    expect(dialog).not.toHaveTextContent(/cannot be undone/i);
+    expect(dialog).not.toHaveTextContent(/restore it/i);
+  });
+
   it('removes the row only when the server confirms the delete', async () => {
     const user = userEvent.setup();
     mockDeleteCourse.mockResolvedValue({ success: true });

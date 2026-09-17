@@ -1,6 +1,7 @@
 'use server';
 
 import prisma from '@/lib/prisma';
+import { rawPrisma } from '@/db/index';
 import { Prisma } from '@/generated/prisma/client';
 import { dbRoleToRoleKey, isAdminRole, WORKER_ROLES } from '@/lib/rbac/role-utils';
 import { assertNoPhi } from '@/lib/documents/phiGate';
@@ -43,6 +44,29 @@ import { analyticsContextFrom } from '@/lib/analytics/identity';
 async function resolveSession() {
   const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
   return admin?.user?.id ? admin : worker?.user?.id ? worker : null;
+}
+
+/**
+ * The document id behind a course's "View Source Document" action, or null when
+ * there is nothing openable there.
+ *
+ * An ARCHIVED source document reads as null on purpose. The lineage row itself
+ * survives archiving by design (severing it would leave a retained course
+ * pointing at nothing), but the document viewer is an ordinary read and refuses
+ * an archived document — so a live id here produced a menu item that was
+ * enabled, clickable, and a guaranteed 404. Null puts it in the state the UI
+ * already has for a course with no source document at all: listed, disabled.
+ *
+ * Module-private: a `'use server'` file may only export async functions.
+ */
+function sourceDocumentIdOf(
+  versions:
+    | { documentVersion: { documentId: string; document: { archivedAt: Date | null } } }[]
+    | undefined,
+): string | null {
+  const latest = versions?.[0]?.documentVersion;
+  if (!latest || latest.document.archivedAt) return null;
+  return latest.documentId;
 }
 
 // KursWithStats is now imported from '@/types/course'
@@ -107,9 +131,15 @@ export async function getCourses(): Promise<CourseWithStats[]> {
       select: {
         ...courseCardSelect,
         // Latest source-document lineage, so the list can offer "View Source
-        // Document" only for courses that actually have one.
+        // Document" only for courses that actually have one. `archivedAt` rides
+        // along because the archive filter is a query extension on Document's
+        // OWN reads and cannot reach this traversal — see `sourceDocumentIdOf`.
         versions: {
-          select: { documentVersion: { select: { documentId: true } } },
+          select: {
+            documentVersion: {
+              select: { documentId: true, document: { select: { archivedAt: true } } },
+            },
+          },
           orderBy: { version: 'desc' },
           take: 1,
         },
@@ -118,14 +148,22 @@ export async function getCourses(): Promise<CourseWithStats[]> {
     }),
     organizationId
       ? prisma.orgCourseOffering.findMany({
-          where: { organizationId },
+          // The archive filter is a query extension on Course's OWN reads; it
+          // cannot reach a nested traversal, so an offering would hand this list
+          // an archived course back through the relation. Spelled as a relation
+          // predicate on the parent read, which Prisma does apply.
+          where: { organizationId, course: { archivedAt: null } },
           orderBy: { createdAt: 'desc' },
           select: {
             course: {
               select: {
                 ...courseCardSelect,
                 versions: {
-                  select: { documentVersion: { select: { documentId: true } } },
+                  select: {
+                    documentVersion: {
+                      select: { documentId: true, document: { select: { archivedAt: true } } },
+                    },
+                  },
                   orderBy: { version: 'desc' },
                   take: 1,
                 },
@@ -212,7 +250,9 @@ export async function getCourses(): Promise<CourseWithStats[]> {
       createdAt: Date;
       updatedAt: Date;
       _count: { lessons: number };
-      versions?: { documentVersion: { documentId: string } }[];
+      versions?: {
+        documentVersion: { documentId: string; document: { archivedAt: Date | null } };
+      }[];
     },
     counts: { total: number; completed: number },
   ): CourseWithStats => ({
@@ -227,7 +267,7 @@ export async function getCourses(): Promise<CourseWithStats[]> {
     updatedAt: course.updatedAt,
     lessonsCount: course._count.lessons,
     enrollmentsCount: counts.total,
-    sourceDocumentId: course.versions?.[0]?.documentVersion.documentId ?? null,
+    sourceDocumentId: sourceDocumentIdOf(course.versions),
     completionRate: counts.total > 0 ? Math.round((counts.completed / counts.total) * 100) : 0,
   });
 
@@ -329,10 +369,20 @@ export async function getCourseById(courseId: string): Promise<CourseWithRelatio
     ? { organizationUser: { OR: [{ organizationId }, { userId: session.user.id }] } }
     : { organizationUser: { userId: session.user.id } };
 
-  const course = await prisma.course.findUnique({
+  // ⛔ `rawPrisma`, deliberately — paired with the archive rule below, which is
+  // the only thing that may act on `archivedAt` here. Reading through the
+  // filtered client would decide the question before the access gate has run,
+  // and the answer depends on WHY the caller is being let in: an already
+  // enrolled learner keeps their course (Q24 — archiving retires a course for
+  // new assignment, it does not erase what someone already did), every other
+  // viewer must see it disappear. `archivedAt` is selected alongside the shared
+  // detail projection rather than added to it, so it stays an input to this
+  // decision and never becomes part of the UI's course contract.
+  const course = await rawPrisma.course.findUnique({
     where: { id: courseId },
     select: {
       ...courseDetailSelect,
+      archivedAt: true,
       enrollments: { ...courseDetailSelect.enrollments, where: rosterWhere },
     },
   });
@@ -356,6 +406,20 @@ export async function getCourseById(courseId: string): Promise<CourseWithRelatio
 
   if (!isCreator && !isEnrolled && !isSameOrgManager) {
     throw new CourseAccessError('forbidden');
+  }
+
+  // Q24, keyed on the reason access was granted rather than on the caller's
+  // identity or the call site. An archived course stays reachable through an
+  // ENROLLMENT and nothing else: the learner who was part-way through it keeps
+  // their entry point (`/worker/courses/[id]` → here → `/learn/[id]`, whose own
+  // payload already reads unfiltered for this reason), while authorship and a
+  // manager's org-wide review right both stop conferring access the moment the
+  // course is retired. Every catalogue and admin LIST is unaffected — those read
+  // through the filtered client and never see the row at all — so this is the
+  // one surface where the distinction has to be drawn, and drawing it here means
+  // no future caller of this action can get it wrong by passing a flag.
+  if (course.archivedAt && !isEnrolled) {
+    throw new CourseAccessError('notFound');
   }
 
   // Only the creator or an org admin may receive the enrolled-staff roster.

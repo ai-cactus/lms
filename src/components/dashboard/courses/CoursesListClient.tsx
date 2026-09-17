@@ -571,7 +571,10 @@ export default function CoursesListClient({
           <AlertDialogHeader>
             <AlertDialogTitle>Delete course?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently remove &ldquo;{deleteTarget?.title}&rdquo; and cannot be undone.
+              &ldquo;{deleteTarget?.title}&rdquo; will be removed from this list and can no longer
+              be assigned. Nothing is erased: the course, its lessons and every completion record
+              are retained for compliance, and staff already enrolled keep access to it. It cannot
+              be restored from the app.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

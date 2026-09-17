@@ -1172,8 +1172,6 @@ export async function getEnrollmentWithResults(enrollmentId: string) {
   // Everything past this point is a read of SOMEONE ELSE's question-by-question
   // answers alongside the correct ones, which is the `assessment` resource — not
   // `enrollment`, whose read verb is held by every worker and by Finance.
-  // Authorship alone was the whole gate here, so a course creator saw every
-  // participant's answers regardless of facility.
   //
   // `isAdminRole` is load-bearing here: this action takes `resolveSession()`,
   // which falls back to the WORKER instance, so a learner's session reaches this
@@ -1181,15 +1179,22 @@ export async function getEnrollmentWithResults(enrollmentId: string) {
   // so the verb alone does not separate "my answers" from "theirs".
   // `getEnrollmentQuizResult` pairs the same two, though there the admin
   // instance already fences workers out and the tier check is defensive.
+  //
+  // Course AUTHORSHIP used to be a fourth condition, kept on the reasoning that
+  // dropping it would widen access. It widened nothing that the org and facility
+  // checks below do not already close, and it silently revoked a granted
+  // capability: HR holds `assessment.read` by founder ruling Q6 ("HR can build
+  // quizzes and view results") but authors almost no courses — an adopted video
+  // course is authored by Theraptly, and a colleague's reading course by that
+  // colleague — so the ruling was unreachable in practice. The same payload is
+  // already served by `getEnrollmentQuizResult` (staff.ts) on tier + verb + org
+  // + facility with no authorship test, and two surfaces exposing one payload
+  // must not disagree. Ownership of the RECORD is what governs, and that is the
+  // organisation check immediately below — COU-004's ruling applied to the
+  // enrolment rather than the course.
   const roleKey = dbRoleToRoleKey(session.user.role);
-  const isCourseCreator = enrollment.course.createdByOrgUserId === session.user.organizationUserId;
 
-  if (
-    !roleKey ||
-    !isAdminRole(session.user.role) ||
-    !can(roleKey, 'assessment.read') ||
-    !isCourseCreator
-  ) {
+  if (!roleKey || !isAdminRole(session.user.role) || !can(roleKey, 'assessment.read')) {
     logger.warn({
       msg: '[enrollment] Quiz result read denied',
       userId: session.user.id,
@@ -1199,9 +1204,12 @@ export async function getEnrollmentWithResults(enrollmentId: string) {
     throw new Error('Access denied');
   }
 
-  // Tenant isolation was previously incidental — both sides of the authorship
-  // test were the caller's own membership id. Stated outright so it survives any
-  // future widening of the gate above.
+  // Tenant isolation. Once incidental — both sides of the authorship test were
+  // the caller's own membership id — and now the load-bearing ownership check
+  // that replaced it: the enrolment must belong to a member of the caller's own
+  // organisation. It is stated against the ENROLMENT rather than the course on
+  // purpose, because the course may legitimately be another tenant's (an adopted
+  // catalogue course) while the attempt being read is always ours.
   if (
     !session.user.organizationId ||
     enrollment.organizationUser.organizationId !== session.user.organizationId
