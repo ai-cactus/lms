@@ -22,6 +22,7 @@ vi.mock('@/app/actions/certificate', () => ({
 }));
 vi.mock('@/app/actions/staff', () => ({
   getEnrollmentQuizResult: vi.fn(),
+  updateStaffDetails: vi.fn(),
   setStaffFacilities: vi.fn(),
 }));
 
@@ -38,6 +39,8 @@ function makeStaff(role = 'nurse') {
       email: 'target@example.com',
       avatarUrl: null,
       role,
+      firstName: 'Target',
+      lastName: 'User',
       jobTitle: 'Nurse',
       facilityName: 'Akobo branch',
     },
@@ -53,6 +56,7 @@ describe('StaffProfileClient — Change Facility button', () => {
       <StaffProfileClient
         staff={makeStaff()}
         viewerRole={'owner' as Role}
+        viewerOrganizationUserId="ou-viewer"
         facilities={FACILITIES}
       />,
     );
@@ -74,6 +78,7 @@ describe('StaffProfileClient — Change Facility button', () => {
         <StaffProfileClient
           staff={makeStaff()}
           viewerRole={role as Role}
+          viewerOrganizationUserId="ou-viewer"
           facilities={FACILITIES}
         />,
       );
@@ -94,6 +99,7 @@ describe('StaffProfileClient — Change Facility button', () => {
         <StaffProfileClient
           staff={makeStaff(role)}
           viewerRole={'admin' as Role}
+          viewerOrganizationUserId="ou-viewer"
           facilities={FACILITIES}
         />,
       );
@@ -109,6 +115,7 @@ describe('StaffProfileClient — Change Facility button', () => {
         <StaffProfileClient
           staff={makeStaff(role)}
           viewerRole={'admin' as Role}
+          viewerOrganizationUserId="ou-viewer"
           facilities={FACILITIES}
         />,
       );
@@ -122,6 +129,7 @@ describe('StaffProfileClient — Change Facility button', () => {
       <StaffProfileClient
         staff={makeStaff('finance')}
         viewerRole={'admin' as Role}
+        viewerOrganizationUserId="ou-viewer"
         facilities={FACILITIES}
       />,
     );
@@ -138,6 +146,7 @@ describe('StaffProfileClient — Change Facility button', () => {
       <StaffProfileClient
         staff={makeStaff('hr')}
         viewerRole={'admin' as Role}
+        viewerOrganizationUserId="ou-viewer"
         facilities={FACILITIES}
       />,
     );
@@ -148,7 +157,14 @@ describe('StaffProfileClient — Change Facility button', () => {
   });
 
   it('is hidden when there are no facilities to move to', () => {
-    render(<StaffProfileClient staff={makeStaff()} viewerRole={'owner' as Role} facilities={[]} />);
+    render(
+      <StaffProfileClient
+        staff={makeStaff()}
+        viewerRole={'owner' as Role}
+        viewerOrganizationUserId="ou-viewer"
+        facilities={[]}
+      />,
+    );
 
     expect(screen.queryByRole('button', { name: /Change Facility/ })).not.toBeInTheDocument();
   });
@@ -158,6 +174,7 @@ describe('StaffProfileClient — Change Facility button', () => {
       <StaffProfileClient
         staff={makeStaff()}
         viewerRole={'owner' as Role}
+        viewerOrganizationUserId="ou-viewer"
         facilities={[FACILITIES[0]]}
       />,
     );
@@ -170,6 +187,7 @@ describe('StaffProfileClient — Change Facility button', () => {
       <StaffProfileClient
         staff={makeStaff()}
         viewerRole={'owner' as Role}
+        viewerOrganizationUserId="ou-viewer"
         facilities={FACILITIES}
       />,
     );

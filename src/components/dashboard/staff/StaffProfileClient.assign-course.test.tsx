@@ -24,6 +24,7 @@ vi.mock('@/app/actions/certificate', () => ({
 }));
 vi.mock('@/app/actions/staff', () => ({
   getEnrollmentQuizResult: vi.fn(),
+  updateStaffDetails: vi.fn(),
   setStaffFacilities: vi.fn(),
   assignCoursesToStaffMember: vi.fn(),
 }));
@@ -38,6 +39,8 @@ const STAFF = {
     email: 'frank@example.com',
     avatarUrl: null,
     role: 'nurse',
+    firstName: 'Target',
+    lastName: 'User',
     jobTitle: 'Nurse',
     facilityName: 'Northside Clinic',
   },
@@ -46,7 +49,14 @@ const STAFF = {
 };
 
 function renderFor(role: string) {
-  render(<StaffProfileClient staff={STAFF} viewerRole={role as Role} facilities={[]} />);
+  render(
+    <StaffProfileClient
+      staff={STAFF}
+      viewerRole={role as Role}
+      viewerOrganizationUserId="ou-viewer"
+      facilities={[]}
+    />,
+  );
 }
 
 describe('StaffProfileClient — Assign Course button', () => {

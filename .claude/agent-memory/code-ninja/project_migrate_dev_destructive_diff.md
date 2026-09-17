@@ -12,6 +12,8 @@ metadata:
 
 **Why:** the repo hand-authors migrations (`add_facility`, `add_manualchunk_embedding_vector`) precisely to avoid this; `migrate dev` autogen re-introduces the noise.
 
+**`--create-only` does NOT hang** (confirmed 2026-09-16, Prisma 7.10): `npx prisma migrate dev --create-only --name <n>` applies any pending migrations, writes the new folder, and exits. It is the practical way to scaffold the DDL and see the drift statements in situ before stripping them. Only the bare `migrate dev` hangs:
+
 **It also HANGS.** Because that drift is permanent, `npx prisma migrate dev` applies any pending hand-authored migration and then blocks forever on the interactive "Enter a name for the new migration" prompt for the leftover diff. In a non-interactive agent shell that reads as a timeout — the migration usually DID apply, so check `_prisma_migrations` before assuming failure, then kill the process. There is no `--skip-generate`-style flag that suppresses the prompt.
 
 **Verification recipe (Prisma 7.8):** apply by hand-authoring the folder, then confirm with `npx prisma migrate status` (expect "Database schema is up to date!") and `npx prisma migrate diff --from-config-datasource --to-schema prisma --script` — a clean run leaves ONLY the two known drift statements above. Prisma 7 REMOVED the older flag spellings (`--from-schema-datasource`, `--to-schema-datamodel`) that [[offline-migrations]] documents; use `--from-config-datasource` / `--to-schema`.
