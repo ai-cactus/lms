@@ -87,6 +87,17 @@ describe('StaffProfileClient — Edit Profile affordance (Q2)', () => {
     expect(editProfile()).not.toBeInTheDocument();
   });
 
+  // The job title had no rendered home on this page: the header chip read
+  // `getRoleDisplayName(role) || user.jobTitle`, and getRoleDisplayName never
+  // returns '' — it falls back to the raw enum value — so an edited job title
+  // was stored and then displayed nowhere, which reads as "it did not save".
+  it('shows the stored job title on the profile, alongside the role', () => {
+    renderProfile('supervisor');
+
+    expect(screen.getByText('Staff Nurse')).toBeInTheDocument();
+    expect(screen.getByText(/Akobo branch/)).toBeInTheDocument();
+  });
+
   it('opens the edit modal prefilled from the loaded member', async () => {
     const user = userEvent.setup();
     renderProfile('supervisor');
