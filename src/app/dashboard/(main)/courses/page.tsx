@@ -19,7 +19,10 @@ export default async function CoursesPage() {
   // `isAdminRole`, which admits Finance regardless of the registry — the same
   // enforcement-gap shape as D-01. `course.read` is the real gate, and Finance
   // no longer holds it.
-  const ctx = await requirePermission('course.read');
+  //
+  // Q26: a module a role cannot reach is hidden AND unreachable — a redirect
+  // to /dashboard still confirms Courses exists, so denial is a 404.
+  const ctx = await requirePermission('course.read', { onDeny: 'notFound' });
   const { organizationId, organizationUserId } = ctx;
 
   // A session with no active membership (onboarding not finished) has no courses

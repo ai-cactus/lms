@@ -24,10 +24,10 @@ export default async function CourseDetailsPage(props: PageProps) {
     notFound();
   }
 
-  // This page has no `course.read` gate, but /dashboard/courses does and
-  // redirects on deny — so sending every viewer there made "Go Back" a dead
-  // button for roles that lack it (finance, since 2026-08-25). Same predicate
-  // the sidebar uses to decide whether to offer Courses at all.
+  // This page has no `course.read` gate, but /dashboard/courses does and now
+  // 404s on deny (founder Q26) — so sending every viewer there made "Go Back" a
+  // dead button for roles that lack it (finance, since 2026-08-25). Same
+  // predicate the sidebar uses to decide whether to offer Courses at all.
   const roleKey = session?.user?.role ? dbRoleToRoleKey(session.user.role) : null;
 
   // Mirrors removeWorkerAssignment's own gate, so the control is only offered

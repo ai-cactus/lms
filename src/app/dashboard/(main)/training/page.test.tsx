@@ -42,7 +42,20 @@ describe('TrainingPage', () => {
 
     await TrainingPage();
 
-    expect(mockRequirePermissionWithFacilityScope).toHaveBeenCalledWith('course.read');
+    // Founder Q26 (docs/local/RBAC-founder-answers-2026-09-15.md): an
+    // unauthorised module 404s. The options object is the whole assertion — the
+    // default is `redirect`, so dropping it silently reinstates the bounce to
+    // /dashboard that tells the caller Training exists.
+    expect(mockRequirePermissionWithFacilityScope).toHaveBeenCalledWith('course.read', undefined, {
+      onDeny: 'notFound',
+    });
+  });
+
+  it('propagates the guard refusal without fetching any dashboard data', async () => {
+    mockRequirePermissionWithFacilityScope.mockRejectedValue(new Error('NEXT_NOT_FOUND'));
+
+    await expect(TrainingPage()).rejects.toThrow('NEXT_NOT_FOUND');
+    expect(mockGetDashboardData).not.toHaveBeenCalled();
   });
 
   it('passes the resolved dataFacilityIds straight to getDashboardData — never a bare unscoped call', async () => {

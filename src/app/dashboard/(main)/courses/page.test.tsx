@@ -26,6 +26,7 @@ const {
   mockGetCourses,
   mockListGlobalVideoCatalogCourses,
   mockRedirect,
+  mockNotFound,
   mockLoggerError,
 } = vi.hoisted(() => ({
   mockAuth: vi.fn(),
@@ -35,6 +36,9 @@ const {
   mockRedirect: vi.fn(() => {
     throw new Error('NEXT_REDIRECT');
   }),
+  mockNotFound: vi.fn(() => {
+    throw new Error('NEXT_NOT_FOUND');
+  }),
   mockLoggerError: vi.fn(),
 }));
 
@@ -42,6 +46,7 @@ vi.mock('@/auth', () => ({ auth: mockAuth }));
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock, default: prismaMock }));
 vi.mock('next/navigation', () => ({
   redirect: mockRedirect,
+  notFound: mockNotFound,
   useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
   usePathname: () => '/dashboard/courses',
   useSearchParams: () => new URLSearchParams(''),
@@ -137,5 +142,53 @@ describe('CoursesPage — video course entry point', () => {
 
     expect(screen.queryByText(/enrol staff automatically/i)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Revoke' })).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * Founder ruling Q26 (docs/local/RBAC-founder-answers-2026-09-15.md): a module a
+ * role cannot access is hidden from the nav AND answers a typed URL with "Page
+ * not found". The Courses route previously took `requirePermission`'s default
+ * `onDeny: 'redirect'`, so Finance — the one manager role without `course.read`
+ * — was bounced to /dashboard, which is itself evidence the module exists.
+ */
+describe('CoursesPage — Q26 uniform deny', () => {
+  it('404s Finance, which holds no course.read, without querying anything', async () => {
+    mockAuth.mockResolvedValue({
+      user: {
+        id: 'user-1',
+        email: 'gate@test.invalid',
+        role: 'finance',
+        organizationId: 'org-1',
+        organizationUserId: 'ou-1',
+      },
+    });
+
+    await expect(CoursesPage()).rejects.toThrow('NEXT_NOT_FOUND');
+
+    // The pair is the assertion: dropping the option leaves `notFound`
+    // uncalled and `redirect` called, so either half alone can pass wrongly.
+    expect(mockNotFound).toHaveBeenCalled();
+    expect(mockRedirect).not.toHaveBeenCalled();
+    expect(mockGetCourses).not.toHaveBeenCalled();
+    expect(prismaMock.organization.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('404s a worker role reaching the admin-side list by URL', async () => {
+    mockAuth.mockResolvedValue({
+      user: {
+        id: 'user-1',
+        email: 'gate@test.invalid',
+        role: 'front_desk_admin',
+        organizationId: 'org-1',
+        organizationUserId: 'ou-1',
+      },
+    });
+
+    // Worker roles DO hold `course.read` (their own training), so this case is
+    // admitted by the verb and must stay that way — the admin-side list is
+    // separated from the worker portal by the auth instance, not by this gate.
+    await expect(CoursesPage()).resolves.toBeDefined();
+    expect(mockNotFound).not.toHaveBeenCalled();
   });
 });

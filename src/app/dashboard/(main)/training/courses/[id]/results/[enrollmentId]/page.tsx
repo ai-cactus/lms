@@ -1,7 +1,8 @@
 import React from 'react';
 import QuizResults from '@/components/dashboard/training/QuizResults';
 import { getEnrollmentWithResults } from '@/app/actions/enrollment';
-import { redirect } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
+import { requirePermission } from '@/lib/rbac/require-permission';
 import { logger } from '@/lib/logger';
 
 export default async function QuizResultsPage({
@@ -10,6 +11,15 @@ export default async function QuizResultsPage({
   params: Promise<{ id: string; enrollmentId: string }>;
 }) {
   const { id, enrollmentId } = await params;
+
+  // Q26: the page-level module gate, mirroring the verb `getEnrollmentWithResults`
+  // already resolves. It does NOT replace the data layer's own checks — that
+  // action still enforces authorship, tenancy and facility scope, and still owns
+  // the learner's own-attempt exemption (every worker role holds `assessment.read`
+  // precisely so it can read its own sheet, so this guard does not close that).
+  // What it adds is a refusal BEFORE the query for a role with no assessment
+  // remit at all, in the uniform shape: "Page not found".
+  await requirePermission('assessment.read', { onDeny: 'notFound' });
 
   try {
     const enrollment = await getEnrollmentWithResults(enrollmentId);
@@ -94,33 +104,19 @@ export default async function QuizResultsPage({
     );
   } catch (error) {
     logger.error({ msg: 'Failed to load enrollment:', err: error });
-    // If it's an access/auth error, show a message instead of redirect
-    if (error instanceof Error) {
-      if (error.message === 'Unauthorized') {
-        return (
-          <div className="p-10 text-center">
-            <h2>Please Log In</h2>
-            <p>You need to be logged in to view quiz results.</p>
-          </div>
-        );
-      }
-      if (error.message === 'Access denied') {
-        return (
-          <div className="p-10 text-center">
-            <h2>Access Denied</h2>
-            <p>You don&apos;t have permission to view these results.</p>
-          </div>
-        );
-      }
-      if (error.message === 'Enrollment not found') {
-        return (
-          <div className="p-10 text-center">
-            <h2>Not Found</h2>
-            <p>This enrollment could not be found.</p>
-          </div>
-        );
-      }
+
+    // Q26: both refusals collapse to "Page not found". They must be
+    // INDISTINGUISHABLE — this URL carries an enrollment id, so an "Access
+    // Denied" card confirmed that the id exists and belongs to someone, which is
+    // exactly what the ruling is for. `Unauthorized` no longer reaches here: the
+    // guard above sends an unauthenticated caller to /login.
+    if (
+      error instanceof Error &&
+      (error.message === 'Access denied' || error.message === 'Enrollment not found')
+    ) {
+      notFound();
     }
+
     redirect(`/dashboard/training/courses/${id}`);
   }
 }

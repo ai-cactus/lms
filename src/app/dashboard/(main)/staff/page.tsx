@@ -15,7 +15,11 @@ export default async function StaffPage() {
   // D-01: this page previously called `auth()` and nothing else — no permission
   // check at all. The roster was reachable by anyone who typed the URL, and the
   // sidebar not linking it was doing the work authorization should have done.
-  const ctx = await requirePermissionWithFacilityScope('user.read');
+  //
+  // Q26: denial is `notFound` — a redirect still reveals that a roster exists.
+  const ctx = await requirePermissionWithFacilityScope('user.read', undefined, {
+    onDeny: 'notFound',
+  });
 
   const hasOrganization = !!ctx.organizationId;
   const organizationId = ctx.organizationId ?? undefined;

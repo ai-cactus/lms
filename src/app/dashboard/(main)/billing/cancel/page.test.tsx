@@ -9,20 +9,29 @@
  *
  * The gate now names the same verb the API requires, so the page is only
  * reachable by someone who could actually complete the flow.
+ *
+ * Founder ruling Q26 (docs/local/RBAC-founder-answers-2026-09-15.md) then made
+ * the RBAC refusal a 404 rather than a redirect. The BILLING-STATE redirects
+ * (no subscription, already scheduled to cancel) are a different gate and stay
+ * redirects — they answer "there is nothing here to cancel", not "you may not
+ * be here".
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockAuth, prismaMock, mockRedirect } = vi.hoisted(() => ({
+const { mockAuth, prismaMock, mockRedirect, mockNotFound } = vi.hoisted(() => ({
   mockAuth: vi.fn(),
   prismaMock: { organization: { findUnique: vi.fn() } },
   mockRedirect: vi.fn(() => {
     throw new Error('NEXT_REDIRECT');
   }),
+  mockNotFound: vi.fn(() => {
+    throw new Error('NEXT_NOT_FOUND');
+  }),
 }));
 
 vi.mock('@/auth', () => ({ auth: mockAuth }));
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock, default: prismaMock }));
-vi.mock('next/navigation', () => ({ redirect: mockRedirect }));
+vi.mock('next/navigation', () => ({ redirect: mockRedirect, notFound: mockNotFound }));
 vi.mock('@/components/billing/CancelSubscriptionClient', () => ({
   default: () => <div data-testid="cancel-client" />,
 }));
@@ -32,7 +41,8 @@ import CancelSubscriptionPage from './page';
 const ORG_ID = 'org-1';
 
 function session(role: string) {
-  return { user: { id: 'u-1', role, organizationId: ORG_ID } };
+  // `email` is required: evaluatePermission masks it into the denial warning.
+  return { user: { id: 'u-1', email: 'gate@test.invalid', role, organizationId: ORG_ID } };
 }
 
 beforeEach(() => {
@@ -52,12 +62,15 @@ beforeEach(() => {
 
 describe('CancelSubscriptionPage gate', () => {
   it.each(['hr', 'supervisor', 'clinical_director'])(
-    'redirects %s away — admin-tier, but holds no billing grant',
+    '404s %s — admin-tier, but holds no billing grant',
     async (role) => {
       mockAuth.mockResolvedValue(session(role));
 
-      await expect(CancelSubscriptionPage()).rejects.toThrow('NEXT_REDIRECT');
-      expect(mockRedirect).toHaveBeenCalledWith('/dashboard');
+      // Q26: not a redirect. `mockRedirect` must stay untouched, or the default
+      // `onDeny` has crept back and /dashboard once again confirms the page.
+      await expect(CancelSubscriptionPage()).rejects.toThrow('NEXT_NOT_FOUND');
+      expect(mockNotFound).toHaveBeenCalled();
+      expect(mockRedirect).not.toHaveBeenCalled();
       expect(prismaMock.organization.findUnique).not.toHaveBeenCalled();
     },
   );
@@ -72,7 +85,19 @@ describe('CancelSubscriptionPage gate', () => {
   it('refuses the subscription read before it happens — no billing state leaks on the way out', async () => {
     mockAuth.mockResolvedValue(session('hr'));
 
-    await expect(CancelSubscriptionPage()).rejects.toThrow('NEXT_REDIRECT');
+    await expect(CancelSubscriptionPage()).rejects.toThrow('NEXT_NOT_FOUND');
     expect(prismaMock.organization.findUnique).not.toHaveBeenCalled();
+  });
+
+  // The billing-state gate is deliberately NOT part of Q26: it is a statement
+  // about this organisation's subscription, not about what this role may see,
+  // and billing-plan-change-and-gating.spec.ts pins the same redirect end-to-end.
+  it('still REDIRECTS an owner to /dashboard/billing when there is nothing to cancel', async () => {
+    mockAuth.mockResolvedValue(session('owner'));
+    prismaMock.organization.findUnique.mockResolvedValue({ subscription: null });
+
+    await expect(CancelSubscriptionPage()).rejects.toThrow('NEXT_REDIRECT');
+    expect(mockRedirect).toHaveBeenCalledWith('/dashboard/billing');
+    expect(mockNotFound).not.toHaveBeenCalled();
   });
 });
