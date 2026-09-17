@@ -199,6 +199,25 @@ export const courseDetailSelect = {
   skillLevel: true,
   previewVideoStorageUri: true,
   createdByOrgUserId: true,
+  /**
+   * Latest source-document lineage, for the detail page's "Linked Policy
+   * Document" link. `archivedAt` rides along because the archive rule is a
+   * query extension on Document's OWN reads and cannot reach this traversal —
+   * an archived source must read as absent, not as a live link to a 404. See
+   * {@link courseSourceDocument}.
+   */
+  versions: {
+    orderBy: { version: 'desc' as const },
+    take: 1,
+    select: {
+      documentVersion: {
+        select: {
+          documentId: true,
+          document: { select: { originalName: true, archivedAt: true } },
+        },
+      },
+    },
+  },
   modules: {
     orderBy: { order: 'asc' as const },
     select: {
@@ -245,6 +264,12 @@ export const courseDetailSelect = {
           user: { select: { email: true, fullName: true } },
         },
       },
+      /**
+       * The facility snapshot taken when the enrollment was created — not the
+       * membership's current assignments, which a later transfer would rewrite.
+       * Null for a member who had no active facility row at the time.
+       */
+      facility: { select: { name: true } },
       certificate: { select: { id: true, issuedAt: true } },
     },
   },

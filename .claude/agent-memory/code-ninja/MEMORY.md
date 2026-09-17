@@ -97,5 +97,7 @@
 - [Wizard never assigns a draft](gotcha_wizard_never_assigns_a_draft.md) — step 7 publishes-or-parks; the flow that DOES submit a draft is the separate /assign page.
 - [Auditor catalogue lockstep](gotcha_auditor_catalogue_lockstep.md) — one shared predicate for screen+export; draft vs inactive vs archived are three different exclusions.
 - [Billing-state redirect is not RBAC](gotcha_billing_state_redirect_is_not_rbac.md) — 3 pages carry both gates; only the RBAC branch 404s, e2e pins the billing redirects.
+- [No time-on-task data exists](gotcha_no_time_on_task_data.md) — Course.duration is an AI estimate, Enrollment.startedAt is the ASSIGNMENT date; no "average duration" is computable.
+- [CoursePreview is shared with the worker route](gotcha_coursepreview_is_shared_with_worker.md) — editing the hero for an admin frame rewrites /worker/courses/[id] and its e2e journey.
 - [An e2e spec can freeze a gap as intent](gotcha_e2e_spec_can_freeze_a_gap_as_intent.md) — rbac-role-change.spec.ts guarded the QA defect; grep e2e for ABSENCE assertions, rewrite with a dated SUPERSEDED block.
 - [Prop-seeded modals mount on demand](gotcha_modal_prop_seeded_state_needs_on_demand_mount.md) — React Compiler bans the resync effect and reset-in-close() re-reads pre-refresh props.

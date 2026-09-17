@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
-  ArrowLeft,
   BarChart3,
   Calendar,
   Check,
@@ -17,6 +16,8 @@ import {
 } from 'lucide-react';
 
 import { CourseWithRelations, EnrollmentWithRelations } from '@/types/course';
+import { courseStatusBadge } from '@/lib/course/course-status-label';
+import { getRoleDisplayName } from '@/lib/rbac/role-utils';
 
 interface CoursePreviewProps {
   course: CourseWithRelations;
@@ -173,12 +174,39 @@ export default function CoursePreview({
       ? Math.max(1, Math.round(videoSeconds / 60))
       : (course.duration ?? null);
 
-  const creatorName = course.creator?.user?.fullName ?? course.creator?.user?.email ?? null;
-  const passingScore = course.quiz?.passingScore ?? null;
+  /**
+   * D8/D10. `approvedBy` records who signed the publish off, but a null is a
+   * permanent, reachable state — every course published before D8, any clean
+   * draft that `publishCourseOnAssignment` publishes as a side effect of being
+   * assigned, and every video course, which is uploaded system-wide and never
+   * goes through approval at all. It falls back to the creator under a
+   * DIFFERENT label, so the line never implies a review that did not happen.
+   */
+  const approver = course.approvedBy;
+  const creator = course.creator;
+  const attribution = approver
+    ? {
+        label: 'Approved by',
+        name: approver.user.fullName || approver.user.email,
+        role: getRoleDisplayName(approver.role),
+      }
+    : creator
+      ? {
+          label: 'Created by',
+          name: creator.user.fullName || creator.user.email,
+          role: getRoleDisplayName(creator.role),
+        }
+      : null;
+
+  const statusBadge = courseStatusBadge(course.status, course.reviewRequired);
+
+  // Text courses hang the quiz off the last lesson; video courses off the course.
+  const passingScore =
+    course.lessons?.find((l) => l.quiz)?.quiz?.passingScore ?? course.quiz?.passingScore ?? null;
   const skillLevel = course.skillLevel ?? null;
   const objectives = course.objectives ?? [];
 
-  // "Included Modules" = the course's video lessons (flat list).
+  // "Table of Content" = the course's lessons (flat list).
   const lessons = course.lessons ?? [];
   const visibleLessons = showAllModules ? lessons : lessons.slice(0, 4);
 
@@ -198,36 +226,63 @@ export default function CoursePreview({
     <div className="min-h-screen bg-[#f9fafb] first:-mt-10">
       <div className="relative -mx-10 mb-10 bg-[#1a202c] px-6 py-10 text-white md:px-[60px]">
         <div className="relative mx-auto max-w-[1200px]">
-          <Link
-            href={
-              mode === 'worker'
-                ? `/worker/courses/${course.id}`
-                : `/dashboard/training/courses/${course.id}`
-            }
-            className="mb-6 inline-flex items-center gap-1.5 text-sm font-medium text-[#a0aec0] no-underline hover:text-white"
-          >
-            <ArrowLeft className="size-4" aria-hidden="true" />
-            Back to course
-          </Link>
+          {/*
+            Breadcrumb, per the frame. The target is unchanged from the "Back to
+            course" link it replaces, so worker-mode navigation is untouched.
+          */}
+          <p className="mb-6 flex items-center gap-1.5 text-sm font-medium">
+            <Link
+              href={
+                mode === 'worker'
+                  ? `/worker/courses/${course.id}`
+                  : `/dashboard/training/courses/${course.id}`
+              }
+              className="text-[#a0aec0] no-underline hover:text-white"
+            >
+              Course
+            </Link>
+            <span className="text-[#a0aec0]">/</span>
+            <span className="min-w-0 truncate text-white">{course.title}</span>
+          </p>
 
           <h1 className="mb-3 text-3xl font-bold md:text-[36px]">{course.title}</h1>
           {course.description && (
             <p className="mb-4 text-base text-[#cbd5e0]">{course.description}</p>
           )}
 
-          {creatorName && !isVideoCourse && (
-            <div className="mb-6 inline-flex items-center gap-2 text-sm text-white">
-              <CircleCheck className="size-4 text-[#48bb78]" aria-hidden="true" />
+          {/*
+            One text run on purpose. The frame sets the role in a lighter weight
+            than the name, but splitting it across elements would break the
+            single-string assertion that both the unit suite and
+            course-details-hero.spec.ts use to pin this line.
+          */}
+          {attribution && (
+            <p className="mb-6 flex items-center gap-2 text-base font-semibold text-white">
+              <CircleCheck className="size-5 shrink-0 text-[#48bb78]" aria-hidden="true" />
               <span>
-                <strong>Created by: {creatorName}</strong>
+                {attribution.label}: {attribution.name} ({attribution.role})
               </span>
-            </div>
+            </p>
           )}
 
           <div className="flex flex-col gap-6 border-t border-dashed border-[#4a5568] pt-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex flex-wrap items-center gap-3">
-              <span className="rounded-full bg-[#c6f6d5] px-3 py-1 text-[13px] font-semibold text-[#22543d]">
-                {course.status === 'published' ? 'Active' : 'Inactive'}
+              {/*
+                The shared helper's classes are tuned for a light card and would
+                vanish on this hero, so only its LABEL is reused. The green is
+                reserved for the published state — it used to paint every status,
+                which made a draft read as live.
+              */}
+              <span
+                className={`rounded-full px-3 py-1 text-[13px] font-semibold ${
+                  course.status === 'published'
+                    ? 'bg-[#c6f6d5] text-[#22543d]'
+                    : course.reviewRequired
+                      ? 'bg-warning/25 text-warning'
+                      : 'border border-white/15 bg-white/10 text-white/85'
+                }`}
+              >
+                {statusBadge.label}
               </span>
               {watchMinutes != null && (
                 <span className="flex items-center rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[13px] text-white/85">
@@ -395,24 +450,61 @@ export default function CoursePreview({
               </div>
             )}
 
-            {(skillLevel || watchMinutes != null) && (
+            {(lessons.length > 0 || skillLevel || watchMinutes != null) && (
               <div className="rounded-xl border border-[#e2e8f0] bg-white p-6">
-                <h3 className="mb-5 text-lg font-bold text-[#1a202c]">Course Details</h3>
-                <div className="flex flex-col gap-4 text-sm">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <h3 className="text-lg font-bold text-[#1a202c]">Table of Content</h3>
+                  {lessons.length > 4 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllModules((v) => !v)}
+                      className="shrink-0 text-sm font-semibold text-primary hover:underline"
+                    >
+                      {showAllModules ? 'Show less' : 'View all'}
+                    </button>
+                  )}
+                </div>
+
+                {lessons.length > 0 && (
+                  // Deliberately unhighlighted: a preview has no "current"
+                  // lesson, so the frame's highlighted entry is placeholder.
+                  <ol className="flex list-none flex-col gap-3 border-t border-[#e2e8f0] pt-4">
+                    {visibleLessons.map((lesson) => {
+                      const clock = formatClock(lesson.videoDurationSeconds);
+                      return (
+                        <li key={lesson.id} className="flex items-center justify-between gap-3">
+                          <span className="min-w-0 truncate text-base text-[#808897]">
+                            {lesson.title}
+                          </span>
+                          {clock && (
+                            <span className="shrink-0 text-xs text-[#a0aec0]">{clock}</span>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ol>
+                )}
+
+                {/*
+                  Always rendered: `updatedAt` is never null, so this block has
+                  at least one honest row even when neither skill level nor a
+                  duration estimate was recorded.
+                */}
+                <div className="mt-6 flex flex-col gap-4 border-t border-[#e2e8f0] pt-6 text-sm">
                   {skillLevel && (
                     <div className="flex items-center justify-between gap-4">
                       <span className="flex items-center gap-2 text-[#718096]">
                         <BarChart3 className="size-4 text-slate-400" aria-hidden="true" />
                         Skill Level
                       </span>
-                      <span className="font-semibold capitalize text-[#2d3748]">{skillLevel}</span>
+                      <span className="font-semibold text-[#2d3748] capitalize">{skillLevel}</span>
                     </div>
                   )}
                   {watchMinutes != null && (
                     <div className="flex items-center justify-between gap-4">
                       <span className="flex items-center gap-2 text-[#718096]">
                         <Clock className="size-4 text-slate-400" aria-hidden="true" />
-                        Total Duration
+                        Duration
                       </span>
                       <span className="font-semibold text-[#2d3748]">{watchMinutes} mins</span>
                     </div>
@@ -431,45 +523,6 @@ export default function CoursePreview({
                     </span>
                   </div>
                 </div>
-              </div>
-            )}
-
-            {lessons.length > 0 && (
-              <div className="rounded-xl border border-[#e2e8f0] bg-white p-6">
-                <div className="mb-4 flex items-center justify-between">
-                  <h3 className="text-lg font-bold text-[#1a202c]">
-                    Included Modules ({lessons.length})
-                  </h3>
-                  {lessons.length > 4 && (
-                    <button
-                      type="button"
-                      onClick={() => setShowAllModules((v) => !v)}
-                      className="text-sm font-semibold text-primary hover:underline"
-                    >
-                      {showAllModules ? 'Show less' : 'View all'}
-                    </button>
-                  )}
-                </div>
-                <ul className="flex flex-col gap-4">
-                  {visibleLessons.map((lesson) => {
-                    const clock = formatClock(lesson.videoDurationSeconds);
-                    return (
-                      <li key={lesson.id} className="flex items-start gap-3">
-                        <CircleCheck
-                          className="mt-0.5 size-5 shrink-0 text-primary"
-                          aria-hidden="true"
-                        />
-                        <div className="min-w-0">
-                          <p className="truncate font-semibold text-[#1a202c]">{lesson.title}</p>
-                          <p className="text-xs text-[#718096]">
-                            {isVideoCourse ? 'Video' : 'Text'}
-                            {clock ? ` • ${clock}` : ''}
-                          </p>
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
               </div>
             )}
           </div>
