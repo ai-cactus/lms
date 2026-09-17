@@ -7,6 +7,7 @@ import { logger } from '@/lib/logger';
 import { Prisma } from '@/generated/prisma/browser';
 import { startedAtWhere, toReportPeriod } from '@/lib/audit-reports/date-range';
 import { auditorCatalogueWhere } from '@/lib/audit-reports/catalogue-scope';
+import { flattenAuditReport } from '@/lib/audit-reports/flatten';
 import type { OrgReportInput } from '@/lib/audit-reports/types';
 
 export function getExportWorker() {
@@ -422,6 +423,21 @@ export function getExportWorker() {
       await updateDbJob(90, 'Finalizing report...');
       await new Promise((r) => setTimeout(r, 400));
 
+      // How many rows the download will actually serialise. Counted with the
+      // same flattener the download route uses, so the two can never disagree.
+      // A completed job whose report flattens to nothing produces a zero-byte
+      // CSV; recording the count is what lets the banner say "no records
+      // matched" instead of offering a download that delivers an empty file.
+      const rowCount = flattenAuditReport(result).length;
+      if (rowCount === 0) {
+        logger.info({
+          msg: '[auditor] Export completed with no matching records',
+          organizationId,
+          jobId: dbJobId,
+          scope,
+        });
+      }
+
       if (dbJobId) {
         const existing = await prisma.job.findUnique({
           where: { id: dbJobId },
@@ -432,7 +448,12 @@ export function getExportWorker() {
           where: { id: dbJobId },
           data: {
             status: 'completed',
-            payload: { ...prev, progress: 100, message: 'Report Ready' },
+            payload: {
+              ...prev,
+              progress: 100,
+              message: rowCount === 0 ? 'No records matched' : 'Report Ready',
+              rowCount,
+            },
             result: result as unknown as Prisma.InputJsonValue,
           },
         });

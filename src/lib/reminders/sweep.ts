@@ -283,7 +283,17 @@ async function runRoleTargetReconcilePrePass(
     // backstop that silently stops seeing rows is the one failure mode nothing
     // downstream would report, so tolerate a desync in either direction.
     const assignments = await prisma.courseAssignment.findMany({
-      where: { OR: [{ targetRole: { not: null } }, { targetRoles: { isEmpty: false } }] },
+      where: {
+        OR: [{ targetRole: { not: null } }, { targetRoles: { isEmpty: false } }],
+        // A backstop that reconciled toward a WIDER archive rule than the live
+        // hook would simply re-create, every night, the enrolment the hook now
+        // refuses. Restated here because the Q24 archive filter is a query
+        // extension on top-level `course` reads and cannot reach this nested
+        // relation. Filtered in the query rather than in the loop: this pass
+        // runs org-wide, so a per-holder skip log would be nightly noise, and
+        // dropping the assignment here also drops its holder scan.
+        course: { archivedAt: null },
+      },
       select: {
         id: true,
         organizationId: true,
@@ -464,7 +474,15 @@ async function runRenewalRetriggerPrePass(
     // Gate on renewal assignments first (empty in the common case) so a run with
     // no recurring courses never scans the enrollment table.
     const assignments = await prisma.courseAssignment.findMany({
-      where: { renewalCycle: { not: 'none' } },
+      where: {
+        renewalCycle: { not: 'none' },
+        // A renewal CREATES a fresh enrollment, so an archived course on a
+        // recurring cycle would otherwise keep re-issuing retired training
+        // indefinitely. Same nested-relation caveat as the role-target pre-pass
+        // above: the Q24 archive filter does not reach `CourseAssignment.course`.
+        // The completed enrollments this renews from are untouched.
+        course: { archivedAt: null },
+      },
       select: {
         id: true,
         courseId: true,

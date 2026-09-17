@@ -77,7 +77,7 @@ describe('AuditExportBanner', () => {
 
   it('offers the finished report for download once the export completes', async () => {
     const user = userEvent.setup();
-    mockJobs(null, job({ status: 'completed', progress: 100 }));
+    mockJobs(null, job({ status: 'completed', progress: 100, rowCount: 48 }));
     render(<AuditExportBanner />);
 
     expect(screen.getByText('Exported 48 Course Reports')).toBeInTheDocument();
@@ -85,6 +85,27 @@ describe('AuditExportBanner', () => {
 
     await user.click(screen.getByRole('button', { name: /view report/i }));
     expect(mockDownloadJob).toHaveBeenCalledExactlyOnceWith('job-1');
+  });
+
+  // A report that flattens to no rows serialises to a zero-byte CSV. It used to
+  // be announced as an ordinary success with a download that delivered an empty
+  // file — indistinguishable, to the user, from the export never arriving.
+  it('says nothing matched, and offers no download, for an empty result', () => {
+    mockJobs(null, job({ status: 'completed', progress: 100, rowCount: 0 }));
+    render(<AuditExportBanner />);
+
+    expect(screen.getByText('No records matched this date range')).toBeInTheDocument();
+    expect(screen.queryByText(/exported 48 course reports/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /view report/i })).not.toBeInTheDocument();
+  });
+
+  it('still offers the download when the job reported no count at all', () => {
+    mockJobs(null, job({ status: 'completed', progress: 100 }));
+    render(<AuditExportBanner />);
+
+    // Jobs that predate the row count must not be mistaken for empty ones.
+    expect(screen.getByRole('button', { name: /view report/i })).toBeInTheDocument();
+    expect(screen.queryByText(/no records matched/i)).not.toBeInTheDocument();
   });
 
   it('keeps showing the in-flight export when a previous one has finished', () => {

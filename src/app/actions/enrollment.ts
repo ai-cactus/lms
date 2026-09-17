@@ -71,6 +71,21 @@ const DRAFT_ASSIGN_MESSAGE =
   'This course is still a draft and could not be published, so it was not assigned.';
 
 /**
+ * Refusal text for widening an assignment whose course has been archived.
+ * Returned, not thrown, for the same redaction reason as
+ * {@link REVIEW_GATE_ASSIGN_MESSAGE}.
+ *
+ * The direct assign paths never reach this: they resolve the course through the
+ * archive-filtered client and already refuse it as "Course not found". This one
+ * is reachable because the role picker resolves the course through the
+ * assignment row, a nested relation the filter cannot reach.
+ *
+ * Module-private: a `'use server'` file may only export async functions.
+ */
+const ARCHIVED_ASSIGN_MESSAGE =
+  'This course has been archived, so it can no longer be assigned to new roles.';
+
+/**
  * Normalise one optional date field of an assignment settings payload into the
  * sink's tri-state: an omitted key stays `undefined` so the org-wide row keeps
  * whatever another surface configured, while an explicit null (or the empty
@@ -1787,7 +1802,17 @@ export async function setRoleAssignmentTargets(
       facilityScoped: true,
       facilityIds: true,
       course: {
-        select: { id: true, title: true, status: true, isGlobal: true, reviewRequired: true },
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          isGlobal: true,
+          reviewRequired: true,
+          // ⚠️ Nested relation: the Q24 archive filter is a query extension on
+          // top-level `course` reads and does not reach it, so the archive
+          // state is read explicitly and gated with the other widen gates below.
+          archivedAt: true,
+        },
       },
     },
   });
@@ -1881,6 +1906,22 @@ export async function setRoleAssignmentTargets(
   // still be able to switch auto-enrolment off.
   let organizationName = 'Your Organization';
   if (added.length > 0) {
+    // Archiving retires a course for new assignment, and the assignment row
+    // outlives it — so a widen here would mint fresh obligations on a course the
+    // organisation has retired. The NARROW stays available on an archived row:
+    // it enrols nobody, and switching auto-enrolment off is exactly the cleanup
+    // an archive calls for.
+    if (assignment.course.archivedAt !== null) {
+      logger.warn({
+        msg: '[assignment] Role-target widen refused — course archived',
+        assignmentId: assignment.id,
+        courseId: assignment.courseId,
+        organizationId,
+        userId: session.user.id,
+      });
+      return { success: false, refusedReason: ARCHIVED_ASSIGN_MESSAGE };
+    }
+
     if (assignment.course.reviewRequired) {
       logger.warn({
         msg: '[assignment] Role-target widen blocked — course held for quality review',

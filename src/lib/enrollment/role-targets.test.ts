@@ -9,13 +9,13 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockMembershipFindFirst, mockAssignmentFindMany, mockCreateEnrollmentForUser } = vi.hoisted(
-  () => ({
+const { mockMembershipFindFirst, mockAssignmentFindMany, mockCreateEnrollmentForUser, mockLogger } =
+  vi.hoisted(() => ({
     mockMembershipFindFirst: vi.fn(),
     mockAssignmentFindMany: vi.fn(),
     mockCreateEnrollmentForUser: vi.fn(),
-  }),
-);
+    mockLogger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+  }));
 
 vi.mock('@/lib/prisma', () => {
   const prisma = {
@@ -24,9 +24,7 @@ vi.mock('@/lib/prisma', () => {
   };
   return { prisma, default: prisma };
 });
-vi.mock('@/lib/logger', () => ({
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
-}));
+vi.mock('@/lib/logger', () => ({ logger: mockLogger }));
 vi.mock('./create', () => ({ createEnrollmentForUser: mockCreateEnrollmentForUser }));
 
 import { enrollUserForRoleTargets } from './role-targets';
@@ -73,7 +71,7 @@ describe('enrollUserForRoleTargets', () => {
         dueWindowDays: 21,
         facilityScoped: false,
         facilityIds: [],
-        course: { title: 'Infection Control' },
+        course: { title: 'Infection Control', archivedAt: null },
       },
     ]);
 
@@ -103,7 +101,7 @@ describe('enrollUserForRoleTargets', () => {
         dueWindowDays: null,
         facilityScoped: false,
         facilityIds: [],
-        course: { title: 'HIPAA Basics' },
+        course: { title: 'HIPAA Basics', archivedAt: null },
       },
     ]);
 
@@ -125,7 +123,7 @@ describe('enrollUserForRoleTargets', () => {
         dueWindowDays: 30,
         facilityScoped: false,
         facilityIds: [],
-        course: { title: 'Annual Compliance' },
+        course: { title: 'Annual Compliance', archivedAt: null },
       },
     ]);
 
@@ -174,7 +172,7 @@ describe('enrollUserForRoleTargets — facility-scoped assignments', () => {
         dueWindowDays: 21,
         facilityScoped: true,
         facilityIds: ['facility-1', 'facility-2'],
-        course: { title: 'Infection Control' },
+        course: { title: 'Infection Control', archivedAt: null },
       },
     ]);
 
@@ -202,7 +200,7 @@ describe('enrollUserForRoleTargets — facility-scoped assignments', () => {
         dueWindowDays: 21,
         facilityScoped: true,
         facilityIds: ['facility-1'],
-        course: { title: 'Infection Control' },
+        course: { title: 'Infection Control', archivedAt: null },
       },
     ]);
 
@@ -227,7 +225,7 @@ describe('enrollUserForRoleTargets — facility-scoped assignments', () => {
         dueWindowDays: 21,
         facilityScoped: true,
         facilityIds: ['facility-1'],
-        course: { title: 'Infection Control' },
+        course: { title: 'Infection Control', archivedAt: null },
       },
     ]);
 
@@ -252,7 +250,7 @@ describe('enrollUserForRoleTargets — facility-scoped assignments', () => {
         dueWindowDays: 21,
         facilityScoped: false,
         facilityIds: [],
-        course: { title: 'Infection Control' },
+        course: { title: 'Infection Control', archivedAt: null },
       },
     ]);
 
@@ -280,7 +278,7 @@ describe('enrollUserForRoleTargets — facility-scoped assignments', () => {
         dueWindowDays: 21,
         facilityScoped: true,
         facilityIds: ['facility-1'],
-        course: { title: 'Matches' },
+        course: { title: 'Matches', archivedAt: null },
       },
       {
         id: 'non-matching-assignment',
@@ -289,7 +287,7 @@ describe('enrollUserForRoleTargets — facility-scoped assignments', () => {
         dueWindowDays: 21,
         facilityScoped: true,
         facilityIds: ['facility-2'],
-        course: { title: 'Does not match' },
+        course: { title: 'Does not match', archivedAt: null },
       },
     ]);
 
@@ -298,6 +296,75 @@ describe('enrollUserForRoleTargets — facility-scoped assignments', () => {
     expect(mockCreateEnrollmentForUser).toHaveBeenCalledExactlyOnceWith(
       { email: 'nurse1@test.com' },
       expect.objectContaining({ courseId: 'course-match' }),
+    );
+  });
+});
+
+/**
+ * Archiving a course retires it for NEW assignment, but the CourseAssignment row
+ * outlives the archive — and `CourseAssignment.course` is a nested relation, so
+ * the Q24 archive query extension does not reach it. Live QA caught this on
+ * staging: a role change (Therapist/Clinician → Nurse → Therapist/Clinician) left
+ * the worker holding a brand-new enrolment in an archived course.
+ *
+ * The read side of the archive leak was closed this release; this is the write
+ * side. "Archived rows don't appear" and "archived rows don't acquire new
+ * obligations" are separate guarantees and need separate tests.
+ */
+describe('enrollUserForRoleTargets — archived courses', () => {
+  const archivedAssignment = {
+    id: 'archived-assignment',
+    courseId: 'course-archived',
+    dueAt: null,
+    dueWindowDays: 21,
+    facilityScoped: false,
+    facilityIds: [],
+    course: { title: 'Retired Training', archivedAt: new Date('2026-09-01T00:00:00.000Z') },
+  };
+
+  it('never enrolls a new role holder into an archived course', async () => {
+    mockAssignmentFindMany.mockResolvedValue([archivedAssignment]);
+
+    await enrollUserForRoleTargets(ORG_USER_ID, ORG_ID);
+
+    expect(mockCreateEnrollmentForUser).not.toHaveBeenCalled();
+  });
+
+  it('records the skip at info — a retired course is a normal outcome, not an error', async () => {
+    mockAssignmentFindMany.mockResolvedValue([archivedAssignment]);
+
+    await enrollUserForRoleTargets(ORG_USER_ID, ORG_ID);
+
+    expect(mockLogger.info).toHaveBeenCalledWith(
+      expect.objectContaining({
+        msg: '[enrollment] Role-target auto-enroll skipped — course archived',
+        organizationUserId: ORG_USER_ID,
+        assignmentId: 'archived-assignment',
+        courseId: 'course-archived',
+      }),
+    );
+    expect(mockLogger.error).not.toHaveBeenCalled();
+  });
+
+  it('skips only the archived assignment — a live one in the same batch still enrolls', async () => {
+    mockAssignmentFindMany.mockResolvedValue([
+      archivedAssignment,
+      {
+        id: 'live-assignment',
+        courseId: 'course-live',
+        dueAt: null,
+        dueWindowDays: 21,
+        facilityScoped: false,
+        facilityIds: [],
+        course: { title: 'Current Training', archivedAt: null },
+      },
+    ]);
+
+    await enrollUserForRoleTargets(ORG_USER_ID, ORG_ID);
+
+    expect(mockCreateEnrollmentForUser).toHaveBeenCalledExactlyOnceWith(
+      { email: 'nurse1@test.com' },
+      expect.objectContaining({ courseId: 'course-live' }),
     );
   });
 });

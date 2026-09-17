@@ -72,18 +72,40 @@ export async function enrollInviteCourses(
           scheduleAt: true,
           dueAt: true,
           dueWindowDays: true,
-          course: { select: { title: true } },
+          // ⚠️ Nested relation, so the Q24 archive filter (a query extension on
+          // top-level `course` reads) does not apply — `archivedAt` is checked
+          // explicitly below. The fallback lookup needs no such check: it goes
+          // through the filtered client, where an archived course is not found.
+          course: { select: { title: true, archivedAt: true } },
         },
       });
 
-      const courseTitle =
-        assignment?.course.title ??
-        (await prisma.course.findUnique({ where: { id: courseId }, select: { title: true } }))
-          ?.title;
+      const course =
+        assignment?.course ??
+        (await prisma.course.findUnique({
+          where: { id: courseId },
+          select: { title: true, archivedAt: true },
+        }));
 
-      if (!courseTitle) {
+      if (!course) {
         continue;
       }
+
+      // A course parked on an invite can be archived before the invite is
+      // accepted. Archiving retires a course for new assignment, so the parked
+      // intent lapses rather than enrolling the new member into retired
+      // training. The other parked courses on the same invite still enrol.
+      if (course.archivedAt !== null) {
+        logger.info({
+          msg: '[enrollment] Invite-parked course skipped — course archived',
+          organizationUserId,
+          courseId,
+          inviteId,
+        });
+        continue;
+      }
+
+      const courseTitle = course.title;
 
       const ctx: CreateEnrollmentContext = {
         courseId,

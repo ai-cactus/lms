@@ -23,7 +23,9 @@ import type { UserRole } from '@/generated/prisma/enums';
  *
  * An assignment reaches a new holder only inside the facility scope its author
  * had — see {@link assignmentAdmitsHolder}. Org-wide assignments carry no scope
- * and so reach everyone, exactly as before. Idempotent —
+ * and so reach everyone, exactly as before. An ARCHIVED course never reaches a
+ * new holder at all: archiving retires a course for new assignment, and the
+ * assignment row outlives it. Idempotent —
  * an already-enrolled user is a no-op via {@link createEnrollmentForUser}'s
  * existence check. Never throws: an auto-enroll failure must not abort the caller
  * (staff edit, invite accept, signup) — the sweep backstop reconciles anything
@@ -63,7 +65,13 @@ export async function enrollUserForRoleTargets(
         dueWindowDays: true,
         facilityScoped: true,
         facilityIds: true,
-        course: { select: { title: true } },
+        // ⚠️ `archivedAt` is selected and checked in the loop below rather than
+        // left to the Q24 archive filter: that filter is a query extension on
+        // top-level `course` reads, and `CourseAssignment.course` is a NESTED
+        // relation it cannot reach. Restating `course: { archivedAt: null }` in
+        // the `where` would work too, but skipping in the loop is what makes the
+        // skip observable — see the facility-scope skip immediately below.
+        course: { select: { title: true, archivedAt: true } },
       },
     });
 
@@ -74,6 +82,21 @@ export async function enrollUserForRoleTargets(
     const holderFacilityIds = membership.facilities.map((link) => link.facilityId);
 
     for (const assignment of assignments) {
+      // Archiving a course retires it for NEW assignment; it does not erase what
+      // a learner already did. The assignment row survives the archive, so
+      // without this a role change keeps minting fresh obligations on a course
+      // the organisation has retired. A normal outcome, not an error — the
+      // caller (staff edit, invite accept, signup) proceeds either way.
+      if (assignment.course.archivedAt !== null) {
+        logger.info({
+          msg: '[enrollment] Role-target auto-enroll skipped — course archived',
+          organizationUserId,
+          assignmentId: assignment.id,
+          courseId: assignment.courseId,
+        });
+        continue;
+      }
+
       // Honour the reach the assigner actually had. Without this the assignment
       // would keep enrolling new joiners at facilities its author cannot see, so
       // a facility-bound supervisor's assignment would silently widen over time.

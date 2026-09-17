@@ -134,3 +134,36 @@ describe('GET export job status', () => {
     expect(res.status).toBe(200);
   });
 });
+
+/**
+ * The client has no other way to tell a report apart from an empty one: the
+ * export writes no file, so "completed" alone cannot distinguish "here are your
+ * rows" from "nothing matched, and the CSV would be zero bytes".
+ */
+describe('GET export job status — row count', () => {
+  it('surfaces the row count the worker recorded', async () => {
+    mockJobFindUnique.mockResolvedValue({
+      id: 'job-1',
+      userId: CALLER,
+      status: 'completed',
+      payload: { progress: 100, message: 'No records matched', rowCount: 0 },
+    });
+
+    const res = await GET(req(), params);
+
+    await expect(res.json()).resolves.toMatchObject({ status: 'completed', rowCount: 0 });
+  });
+
+  it('omits the count for a job that never recorded one', async () => {
+    mockJobFindUnique.mockResolvedValue({
+      id: 'job-1',
+      userId: CALLER,
+      status: 'completed',
+      payload: { progress: 100, message: 'Report Ready' },
+    });
+
+    const res = await GET(req(), params);
+
+    expect(await res.json()).not.toHaveProperty('rowCount');
+  });
+});

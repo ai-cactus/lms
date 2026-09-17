@@ -9,7 +9,8 @@
  * Acceptance criteria:
  *   - A facility supervisor opens a staff member in THEIR OWN facility, edits
  *     the name and job title, and the change persists (founder Q2 — the
- *     supervisor's "U" on Staff Management covers basic profile editing).
+ *     supervisor's "U" on Staff Management covers basic profile editing) AND is
+ *     visible on the reloaded profile.
  *   - That supervisor never sees "Change Role": they are in
  *     STAFF_PROFILE_ACTOR_ROLES but not ROLE_CHANGE_ACTOR_ROLES.
  *   - HR re-roles a worker, and Owner/Admin are ABSENT from the role list rather
@@ -190,6 +191,21 @@ test.describe('Staff profile — Edit Profile (founder Q2)', () => {
 
       await expect(dialog).toBeHidden();
       await expect(page.getByRole('heading', { name: 'Danielle Okafor' })).toBeVisible();
+
+      // QA reported the job title as "never persisting". It was written and read
+      // back correctly all along — the profile header rendered it behind
+      // `getRoleDisplayName(role) || user.jobTitle`, a branch that never falls
+      // through, so the saved value appeared NOWHERE on the page. Assert on a
+      // RELOADED page, not the post-save render, so this covers the store as
+      // well as the display.
+      await page.reload();
+      await page.waitForLoadState('networkidle');
+      await expect(page.getByText('Charge Nurse')).toBeVisible();
+
+      await page.getByRole('button', { name: 'Edit Profile' }).click();
+      const reopened = page.getByRole('dialog');
+      await expect(reopened.getByLabel(/Job title/)).toHaveValue('Charge Nurse');
+      await reopened.getByRole('button', { name: 'Cancel' }).click();
 
       const client = await db();
       try {
