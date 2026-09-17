@@ -94,4 +94,6 @@
 - [$extends breaks TransactionClient](gotcha_prisma_extension_breaks_transactionclient_type.md) — extending the client invalidates every `Prisma.TransactionClient` annotation; plus 2 Prisma-7 behaviours the docs don't state.
 - [e2e specs raw-SQL-insert courses](gotcha_e2e_specs_raw_sql_insert_courses.md) — 11 specs bypass Prisma, so a new NOT NULL column breaks them and CI won't tell you.
 - [Q26 deny-shape traps](gotcha_q26_deny_shape_traps.md) — maskEmail crashes email-less mocks; "card absent" assertions go vacuous; deny needs the notFound+no-redirect PAIR.
+- [Wizard never assigns a draft](gotcha_wizard_never_assigns_a_draft.md) — step 7 publishes-or-parks; the flow that DOES submit a draft is the separate /assign page.
+- [Auditor catalogue lockstep](gotcha_auditor_catalogue_lockstep.md) — one shared predicate for screen+export; draft vs inactive vs archived are three different exclusions.
 - [Billing-state redirect is not RBAC](gotcha_billing_state_redirect_is_not_rbac.md) — 3 pages carry both gates; only the RBAC branch 404s, e2e pins the billing redirects.
