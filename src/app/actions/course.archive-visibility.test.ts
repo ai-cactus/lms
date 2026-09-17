@@ -25,15 +25,15 @@ const {
   mockAdminAuth,
   mockWorkerAuth,
   mockOfferingFindMany,
-  mockGroupBy,
   mockOrgFindUnique,
+  mockOrgUserCount,
   mockResolveDataFacilityIds,
 } = vi.hoisted(() => ({
   mockAdminAuth: vi.fn(),
   mockWorkerAuth: vi.fn(),
   mockOfferingFindMany: vi.fn(),
-  mockGroupBy: vi.fn(),
   mockOrgFindUnique: vi.fn(),
+  mockOrgUserCount: vi.fn(),
   mockResolveDataFacilityIds: vi.fn(),
 }));
 
@@ -43,8 +43,64 @@ interface TableRow {
   [key: string]: unknown;
 }
 
+/**
+ * An enrollment row shaped for BOTH the dashboard's narrow projections and the
+ * status tracker's nested select. Its archive state is resolved by joining
+ * `courseTable` on `courseId`, exactly as the database would — so an enrollment
+ * predicate that omits `course: { archivedAt: null }` sees the archived row.
+ */
+interface EnrollmentTableRow {
+  id: string;
+  courseId: string;
+  organizationUserId: string;
+  status: string;
+  score: number | null;
+  completedAt: Date | null;
+  dueAt: Date | null;
+  assignment: null;
+  course: { title: string };
+  facility: null;
+  organizationUser: {
+    user: { email: string; fullName: string };
+    manager: null;
+    facilities: never[];
+  };
+}
+
+/** The operators these actions actually pass — deliberately not a general engine. */
+interface EnrollmentWhereShape {
+  course?: { archivedAt?: Date | null };
+  score?: { not?: number | null };
+  status?: { notIn?: readonly string[] };
+  dueAt?: { not?: Date | null; lt?: Date; gte?: Date; lte?: Date };
+}
+
 const courseTable: TableRow[] = [];
+const enrollmentTable: EnrollmentTableRow[] = [];
 const filteredFindManyCalls: unknown[] = [];
+
+/**
+ * Only the predicates that decide the archive question (plus the deadline and
+ * status clauses the status tracker needs to separate overdue from at-risk) are
+ * simulated. The tenancy, facility and roster predicates these actions also pass
+ * are proven by their own suites; re-implementing them here would test the mock.
+ */
+function matchesEnrollment(where: EnrollmentWhereShape | undefined, row: EnrollmentTableRow) {
+  if (where?.course && 'archivedAt' in where.course) {
+    const course = courseTable.find((c) => c.id === row.courseId);
+    if ((course?.archivedAt ?? null) !== (where.course.archivedAt ?? null)) return false;
+  }
+  if (where?.score?.not === null && row.score === null) return false;
+  if (where?.status?.notIn?.includes(row.status)) return false;
+  const due = where?.dueAt;
+  if (due) {
+    if (row.dueAt === null) return false;
+    if (due.lt && !(row.dueAt < due.lt)) return false;
+    if (due.gte && !(row.dueAt >= due.gte)) return false;
+    if (due.lte && !(row.dueAt <= due.lte)) return false;
+  }
+  return true;
+}
 
 vi.mock('@/lib/prisma', async () => {
   const { liveRowsOnly } =
@@ -65,7 +121,31 @@ vi.mock('@/lib/prisma', async () => {
       findUnique: vi.fn(),
     },
     orgCourseOffering: { findMany: (...a: unknown[]) => mockOfferingFindMany(...a) },
-    enrollment: { groupBy: (...a: unknown[]) => mockGroupBy(...a) },
+    organizationUser: { count: (...a: unknown[]) => mockOrgUserCount(...a) },
+    enrollment: {
+      findMany: ({ where }: { where?: EnrollmentWhereShape }) =>
+        Promise.resolve(enrollmentTable.filter((row) => matchesEnrollment(where, row))),
+      groupBy: ({
+        by,
+        where,
+      }: {
+        by: (keyof EnrollmentTableRow)[];
+        where?: EnrollmentWhereShape;
+      }) => {
+        const buckets = new Map<string, Record<string, unknown>>();
+        for (const row of enrollmentTable) {
+          if (!matchesEnrollment(where, row)) continue;
+          const key = JSON.stringify(by.map((field) => row[field]));
+          const bucket = buckets.get(key) ?? {
+            ...Object.fromEntries(by.map((field) => [field, row[field]])),
+            _count: { _all: 0 },
+          };
+          (bucket._count as { _all: number })._all += 1;
+          buckets.set(key, bucket);
+        }
+        return Promise.resolve([...buckets.values()]);
+      },
+    },
   };
   return { prisma, default: prisma };
 });
@@ -99,8 +179,9 @@ vi.mock('@/lib/logger', () => ({
 }));
 vi.mock('./notifications', () => ({ notifyOrganizationAdmins: vi.fn() }));
 
-import { getCourses, getCourseById } from './course';
+import { getCourses, getCourseById, getDashboardData } from './course';
 import { getAssignableCourses, listGlobalVideoCatalogCourses } from './offering';
+import { getStatusTrackerSummaryForOrg } from '@/lib/reminders/status-tracker';
 
 const ORG_ID = 'org-1';
 const CREATOR_USER_ID = 'user-creator';
@@ -189,11 +270,12 @@ function setWorkerSession(userId: string) {
 beforeEach(() => {
   vi.clearAllMocks();
   courseTable.length = 0;
+  enrollmentTable.length = 0;
   filteredFindManyCalls.length = 0;
   mockOrgFindUnique.mockResolvedValue({ subscription: { status: 'active', pausedAt: null } });
   mockResolveDataFacilityIds.mockResolvedValue(null);
   mockOfferingFindMany.mockResolvedValue([]);
-  mockGroupBy.mockResolvedValue([]);
+  mockOrgUserCount.mockResolvedValue(0);
 });
 
 describe('an archived course disappears from every catalogue and admin surface', () => {
@@ -310,5 +392,131 @@ describe("getCourseById — the learner's entry point to an archived course", ()
     setAdminSession('user-owner', 'owner');
 
     await expect(getCourseById('live-1')).resolves.toMatchObject({ id: 'live-1' });
+  });
+});
+
+/** An enrollment row shaped for BOTH dashboard projections and the tracker select. */
+function makeEnrollmentRow(
+  id: string,
+  courseId: string,
+  courseTitle: string,
+  organizationUserId: string,
+  overrides: Partial<EnrollmentTableRow> = {},
+): EnrollmentTableRow {
+  return {
+    id,
+    courseId,
+    organizationUserId,
+    status: 'in_progress',
+    score: null,
+    completedAt: null,
+    dueAt: null,
+    assignment: null,
+    course: { title: courseTitle },
+    facility: null,
+    organizationUser: {
+      user: {
+        email: `${organizationUserId}@example.com`,
+        fullName: `Worker ${organizationUserId}`,
+      },
+      manager: null,
+      facilities: [],
+    },
+    ...overrides,
+  };
+}
+
+/**
+ * The property here is INTERNAL to one action, not cross-branch.
+ * `dashboard-parity.test.ts` asserts the two dashboard actions agree with each
+ * other — which they did, both being wrong in the same way: "Total Courses" is a
+ * top-level Course read the query extension filters, while every
+ * enrolment-derived figure reaches Course through a nested relation the
+ * extension cannot touch. Archiving a course with live enrolments therefore
+ * split one screen across two populations, and parity could never see it.
+ */
+describe('an archived course leaves the dashboard aggregates as well as the catalogue', () => {
+  beforeEach(() => {
+    courseTable.push(
+      makeCourseRow('live-1', 'Live Course', null),
+      makeCourseRow('archived-1', 'Archived Course', new Date('2026-09-17')),
+    );
+    enrollmentTable.push(
+      makeEnrollmentRow('enr-live-1', 'live-1', 'Live Course', 'ou-w1', { score: 90 }),
+      makeEnrollmentRow('enr-live-2', 'live-1', 'Live Course', 'ou-w2', { score: 90 }),
+      makeEnrollmentRow('enr-arch-1', 'archived-1', 'Archived Course', 'ou-w3', { score: 10 }),
+      makeEnrollmentRow('enr-arch-2', 'archived-1', 'Archived Course', 'ou-w4', { score: 10 }),
+    );
+    setAdminSession('user-owner', 'owner');
+  });
+
+  it('counts Total Courses and Total Staff Assigned over the SAME population', async () => {
+    const { stats } = await getDashboardData(null);
+
+    // One live course, enrolled by exactly two of the four staff. Before the fix
+    // this read 1 course / 4 staff — a course-derived figure and an
+    // enrolment-derived one describing different catalogues on one screen.
+    expect(stats.totalCourses).toBe(1);
+    expect(stats.totalStaffAssigned).toBe(2);
+    expect(stats.trainingCoverage.totalStaff).toBe(2);
+  });
+
+  it('averages the grade over live courses only', async () => {
+    const { stats } = await getDashboardData(null);
+
+    // Live scores are 90, archived 10 — an unfiltered average is 50.
+    expect(stats.averageGrade).toBe(90);
+  });
+
+  it('lists per-course performance for the live course only', async () => {
+    const { stats } = await getDashboardData(null);
+
+    expect(stats.coursePerformance.map((entry) => entry.name)).toEqual(['Live Course']);
+  });
+
+  it('reports the live course card with only its own enrolments', async () => {
+    const { courses } = await getDashboardData(null);
+
+    expect(courses.map((course) => course.title)).toEqual(['Live Course']);
+    expect(courses[0].enrollmentsCount).toBe(2);
+  });
+});
+
+describe('the Status Tracker stops naming a course the Courses page says does not exist', () => {
+  const NOW = new Date('2026-09-17T12:00:00.000Z');
+
+  beforeEach(() => {
+    courseTable.push(
+      makeCourseRow('live-1', 'Live Course', null),
+      makeCourseRow('archived-1', 'Archived Course', new Date('2026-09-01')),
+    );
+    enrollmentTable.push(
+      makeEnrollmentRow('enr-live-overdue', 'live-1', 'Live Course', 'ou-w1', {
+        dueAt: new Date('2026-09-10T12:00:00.000Z'),
+      }),
+      makeEnrollmentRow('enr-arch-overdue', 'archived-1', 'Archived Course', 'ou-w2', {
+        dueAt: new Date('2026-09-10T12:00:00.000Z'),
+      }),
+      makeEnrollmentRow('enr-live-soon', 'live-1', 'Live Course', 'ou-w3', {
+        dueAt: new Date('2026-09-20T12:00:00.000Z'),
+      }),
+      makeEnrollmentRow('enr-arch-soon', 'archived-1', 'Archived Course', 'ou-w4', {
+        dueAt: new Date('2026-09-20T12:00:00.000Z'),
+      }),
+    );
+  });
+
+  it('omits the archived course from the overdue rows and their count', async () => {
+    const summary = await getStatusTrackerSummaryForOrg(ORG_ID, NOW);
+
+    expect(summary.rows.map((row) => row.courseTitle)).toEqual(['Live Course']);
+    expect(summary.overdueCount).toBe(1);
+  });
+
+  it('omits it from the at-risk rows too', async () => {
+    const summary = await getStatusTrackerSummaryForOrg(ORG_ID, NOW);
+
+    expect(summary.nearDeadline.rows.map((row) => row.courseTitle)).toEqual(['Live Course']);
+    expect(summary.nearDeadline.count).toBe(1);
   });
 });

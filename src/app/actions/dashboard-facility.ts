@@ -418,7 +418,11 @@ export async function getGlobalDashboardData(): Promise<GlobalDashboardData> {
       by: ['organizationUserId'],
       where: {
         ...enrollmentWhere,
-        course: scope.courseWhere,
+        // `liveCourseWhere`, not `courseWhere`: the `course.count` above is
+        // archive-filtered by the query extension, which cannot reach this
+        // nested predicate — and this key replaces the one `enrollmentWhere`
+        // carries. A bare `courseWhere` makes these two totals disagree.
+        course: scope.liveCourseWhere,
         organizationUser: scope.staffWhere({ roles: WORKER_ROLES }),
       },
       _count: { _all: true },
@@ -426,7 +430,7 @@ export async function getGlobalDashboardData(): Promise<GlobalDashboardData> {
 
     prisma.enrollment.aggregate({
       _avg: { score: true },
-      where: { ...enrollmentWhere, course: scope.courseWhere, score: { not: null } },
+      where: { ...enrollmentWhere, course: scope.liveCourseWhere, score: { not: null } },
     }),
   ]);
 
