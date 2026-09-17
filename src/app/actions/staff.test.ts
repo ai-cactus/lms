@@ -1062,7 +1062,13 @@ describe('getStaffDetails — org isolation (F-009)', () => {
       jobTitle: 'Nurse',
       managerId: null,
       organizationId,
-      user: { fullName: 'Target User', email: 'target@example.com', avatarUrl: null },
+      user: {
+        fullName: 'Target User',
+        email: 'target@example.com',
+        avatarUrl: null,
+        firstName: 'Target',
+        lastName: 'User',
+      },
       manager: null,
       facilities: [],
       enrollments: [],
@@ -1089,6 +1095,41 @@ describe('getStaffDetails — org isolation (F-009)', () => {
     expect(result).not.toBeNull();
     expect(result?.user.email).toBe('target@example.com');
     expect(result?.user.name).toBe('Target User');
+  });
+
+  // The profile page's Edit Profile / Change Role modals echo back whichever of
+  // `updateStaffDetails`' four fields they do not edit, so these three must be
+  // the STORED record, never a display fallback.
+  it('reports the editable name and job-title fields verbatim', async () => {
+    mockOrgUserFindUnique.mockResolvedValue(makeTargetOrgUser('org-a'));
+
+    const result = await getStaffDetails('target-1');
+
+    expect(result?.user.firstName).toBe('Target');
+    expect(result?.user.lastName).toBe('User');
+    expect(result?.user.jobTitle).toBe('Nurse');
+  });
+
+  it('reports a blank job title as blank rather than substituting a placeholder', async () => {
+    mockOrgUserFindUnique.mockResolvedValue({
+      ...makeTargetOrgUser('org-a'),
+      jobTitle: null,
+      user: {
+        fullName: 'Target User',
+        email: 'target@example.com',
+        avatarUrl: null,
+        firstName: null,
+        lastName: null,
+      },
+    });
+
+    const result = await getStaffDetails('target-1');
+
+    // A placeholder here would make Change Role silently write "Staff Member"
+    // into a job title the admin never touched.
+    expect(result?.user.jobTitle).toBe('');
+    expect(result?.user.firstName).toBe('');
+    expect(result?.user.lastName).toBe('');
   });
 
   it('rejects (throws) when the caller is not an admin', async () => {

@@ -120,7 +120,7 @@ describe('DocumentListClient — row action gating', () => {
     expect(screen.queryByRole('button', { name: 'Rename' })).not.toBeInTheDocument();
   });
 
-  it('keeps Delete enabled for a course-backed document and warns about the severed source link', async () => {
+  it('keeps Delete enabled for a course-backed document and says the course is unaffected but can no longer open it', async () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     const docWithCourse = makeDocWithCourse({ id: 'doc-1' });
 
@@ -130,8 +130,32 @@ describe('DocumentListClient — row action gating', () => {
 
     await user.click(screen.getByRole('button', { name: 'Delete' }));
     expect(
-      within(screen.getByRole('alertdialog')).getByText(/source-document link will be removed/),
+      within(screen.getByRole('alertdialog')).getByText(
+        /that course is unaffected, but it will no longer be able to open this document/i,
+      ),
     ).toBeInTheDocument();
+  });
+
+  /**
+   * ISSUE-1 (staging QA 2026-09-17). Since Q24 delete ARCHIVES: the row, its
+   * versions, its PHI reports and the stored object all survive. A dialog that
+   * still promised a permanent, irreversible erasure was telling an admin they
+   * were about to do the one thing the founder ruled out.
+   */
+  it('ISSUE-1: the confirmation describes archive-and-retain, never a permanent delete', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+
+    render(<DocumentListClient initialDocs={[baseDoc]} canUpload={true} canDelete={true} />);
+
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+    const dialog = screen.getByRole('alertdialog');
+
+    expect(dialog).toHaveTextContent(/retained for compliance/i);
+    expect(dialog).toHaveTextContent(/nothing is erased/i);
+    // No in-product restore exists, so the copy must not imply one either.
+    expect(dialog).not.toHaveTextContent(/permanently remove/i);
+    expect(dialog).not.toHaveTextContent(/cannot be undone/i);
+    expect(dialog).not.toHaveTextContent(/restore it/i);
   });
 });
 

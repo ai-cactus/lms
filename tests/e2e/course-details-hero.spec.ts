@@ -1,19 +1,32 @@
 /**
- * E2E spec for the course-details hero (PR-4 of the course-creation redesign).
+ * E2E spec for the course-details hero — which now lives on the PREVIEW page.
  *
- * Two things this spec exists to guard:
+ * The two course pages had merged into one: the dark hero, Course Overview,
+ * Table of Content and "View Course" were all rendering on the detail route
+ * while /preview was a near-duplicate. The detail page is now the light
+ * management view (title + status pill, linked policy document, Preview and
+ * Assign, the stat cards and the staff roster) and everything the design puts
+ * on Preview moved there. So the journey this spec drives is:
+ *
+ *     detail -> "Preview" -> preview page -> "View Course" -> /learn/[id]
+ *
+ * Three things it guards:
  *
  *   1. "View Course" must open THIS course, not some other one. Commit
- *      b88331f fixed the exact same regression shape on this page's "Go Back"
- *      link that morning (a link whose target silently didn't track the
- *      course being viewed), so this drives TWO distinct courses in one run
- *      and asserts each "View Course" click resolves to its OWN id — a test
- *      against only one course could not have caught that class of bug.
+ *      b88331f fixed the exact same regression shape on the detail page's "Go
+ *      Back" link (a link whose target silently didn't track the course being
+ *      viewed), so this drives TWO distinct courses in one run and asserts each
+ *      "View Course" click resolves to its OWN id — a test against only one
+ *      course could not have caught that class of bug.
  *
- *   2. The D10 attribution line for both reachable states: `approvedBy`
- *      populated (D8 — a reviewer confirmed the publish) and `approvedBy`
- *      null (D9 — `publishCourseOnAssignment` published the course as a side
- *      effect of being assigned, with no reviewer recorded).
+ *   2. "View Course" must NOT be on the detail page any more. Two competing
+ *      entry points into the player on one screen was the symptom that made the
+ *      pages read as duplicates, so its absence is asserted, not assumed.
+ *
+ *   3. The D10 attribution line, on the preview page, for both reachable
+ *      states: `approvedBy` populated (D8 — a reviewer confirmed the publish)
+ *      and `approvedBy` null (D9 — `publishCourseOnAssignment` published the
+ *      course as a side effect of being assigned, with no reviewer recorded).
  *
  * Both course rows are seeded directly in the DB with the DB state each path
  * produces, rather than driven through the wizard/confirm-modal UI: course
@@ -23,11 +36,9 @@
  * only needs to reproduce the COLUMN STATE each path leaves behind, not the
  * generation pipeline that got there.
  *
- * Locator note: the hero has TWO links whose accessible names both contain
- * "Course" ("View Course" and, via the breadcrumb "Course / Course Details"
- * text, unrelated but adjacent) — plus "Preview" as a separate ghost link.
- * Use `exact: true` for "View Course" so it never partial-matches something
- * else, per code-ninja's implementation note.
+ * Locator note: the preview hero has TWO links whose accessible names both
+ * contain "Course" ("View Course" and the breadcrumb's own "Course"). Use
+ * `exact: true` for each so neither partial-matches the other.
  *
  * Pre-conditions:
  *   - App running on http://localhost:3005 (Playwright webServer).
@@ -221,33 +232,35 @@ async function loginAsOwner(page: Page, email: string, password: string): Promis
   await page.waitForURL('**/dashboard**', { timeout: 45000 });
 }
 
-test.describe('Course details hero — "View Course" targeting and D10 attribution', () => {
-  test('"View Course" opens the correct, own course for two distinct courses in one run', async ({
+test.describe('Course preview hero — "View Course" targeting and D10 attribution', () => {
+  test('detail -> Preview -> View Course opens the correct, own course for two distinct courses in one run', async ({
     page,
   }) => {
-    test.setTimeout(60_000);
+    test.setTimeout(90_000);
     const seeded = await seedTwoCourses();
 
     try {
       await loginAsOwner(page, seeded.ownerEmail, seeded.ownerPassword);
 
-      await page.goto(`/dashboard/training/courses/${seeded.approvedCourseId}`);
-      await page.waitForLoadState('networkidle');
-      await page.getByRole('link', { name: 'View Course', exact: true }).click();
-      await page.waitForURL(`**/learn/${seeded.approvedCourseId}`, { timeout: 15000 });
-      await expect(page).toHaveURL(new RegExp(`/learn/${seeded.approvedCourseId}$`));
+      for (const courseId of [seeded.approvedCourseId, seeded.assignedCourseId]) {
+        await page.goto(`/dashboard/training/courses/${courseId}`);
+        await page.waitForLoadState('networkidle');
 
-      await page.goto(`/dashboard/training/courses/${seeded.assignedCourseId}`);
-      await page.waitForLoadState('networkidle');
-      await page.getByRole('link', { name: 'View Course', exact: true }).click();
-      await page.waitForURL(`**/learn/${seeded.assignedCourseId}`, { timeout: 15000 });
-      await expect(page).toHaveURL(new RegExp(`/learn/${seeded.assignedCourseId}$`));
+        // The detail page's own call to action is Preview; the player is
+        // reached from there, one hop further in.
+        await page.getByRole('link', { name: 'Preview', exact: true }).click();
+        await page.waitForURL(`**/training/courses/${courseId}/preview`, { timeout: 15000 });
+
+        await page.getByRole('link', { name: 'View Course', exact: true }).click();
+        await page.waitForURL(`**/learn/${courseId}`, { timeout: 15000 });
+        await expect(page).toHaveURL(new RegExp(`/learn/${courseId}$`));
+      }
     } finally {
       await cleanup(seeded);
     }
   });
 
-  test('shows "Approved by: {reviewer} (Admin)" for a course confirmed through the review modal (D8)', async ({
+  test('the detail page offers no "View Course" of its own — the player is reached through Preview', async ({
     page,
   }) => {
     test.setTimeout(60_000);
@@ -257,6 +270,31 @@ test.describe('Course details hero — "View Course" targeting and D10 attributi
       await loginAsOwner(page, seeded.ownerEmail, seeded.ownerPassword);
 
       await page.goto(`/dashboard/training/courses/${seeded.approvedCourseId}`);
+      await page.waitForLoadState('networkidle');
+
+      // Anchor on something the detail page definitely renders first, so the
+      // absence below is a real absence and not an unloaded page.
+      await expect(page.getByRole('link', { name: 'Preview', exact: true })).toBeVisible({
+        timeout: 15000,
+      });
+      await expect(page.getByRole('link', { name: 'View Course', exact: true })).toHaveCount(0);
+      await expect(page.getByText('Course Overview')).toHaveCount(0);
+      await expect(page.getByText('Table of Content')).toHaveCount(0);
+    } finally {
+      await cleanup(seeded);
+    }
+  });
+
+  test('the preview hero shows "Approved by: {reviewer} (Admin)" for a course confirmed through the review modal (D8)', async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    const seeded = await seedTwoCourses();
+
+    try {
+      await loginAsOwner(page, seeded.ownerEmail, seeded.ownerPassword);
+
+      await page.goto(`/dashboard/training/courses/${seeded.approvedCourseId}/preview`);
       await page.waitForLoadState('networkidle');
 
       await expect(page.getByText(`Approved by: ${seeded.reviewerFullName} (Admin)`)).toBeVisible({
@@ -268,7 +306,7 @@ test.describe('Course details hero — "View Course" targeting and D10 attributi
     }
   });
 
-  test('shows "Created by: {creator} (Owner (Organisation Admin))" for a course published by assignment, no reviewer recorded (D9)', async ({
+  test('the preview hero shows "Created by: {creator} (Owner (Organisation Admin))" for a course published by assignment, no reviewer recorded (D9)', async ({
     page,
   }) => {
     test.setTimeout(60_000);
@@ -277,7 +315,7 @@ test.describe('Course details hero — "View Course" targeting and D10 attributi
     try {
       await loginAsOwner(page, seeded.ownerEmail, seeded.ownerPassword);
 
-      await page.goto(`/dashboard/training/courses/${seeded.assignedCourseId}`);
+      await page.goto(`/dashboard/training/courses/${seeded.assignedCourseId}/preview`);
       await page.waitForLoadState('networkidle');
 
       // getRoleDisplayName('owner') -> 'Owner (Organisation Admin)' (the RBAC

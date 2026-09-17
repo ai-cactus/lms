@@ -91,7 +91,15 @@ export async function getStaffDetails(organizationUserId: string) {
         jobTitle: true,
         organizationId: true,
         managerId: true,
-        user: { select: { email: true, fullName: true, avatarUrl: true } },
+        user: {
+          select: {
+            email: true,
+            fullName: true,
+            avatarUrl: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
         manager: { select: { user: { select: { email: true, fullName: true } } } },
         facilities: {
           where: { active: true },
@@ -179,7 +187,14 @@ export async function getStaffDetails(organizationUserId: string) {
         email: orgUser.user.email,
         avatarUrl: orgUser.user.avatarUrl ?? null,
         role: orgUser.role,
-        jobTitle: orgUser.jobTitle || 'Staff Member',
+        // The three fields below are the EDITABLE record, reported verbatim —
+        // never a display fallback. `updateStaffDetails` takes all four fields
+        // together, so each profile affordance echoes back the ones it does not
+        // edit; substituting a placeholder here would make the Change Role modal
+        // silently overwrite a blank job title with "Staff Member".
+        firstName: orgUser.user.firstName ?? '',
+        lastName: orgUser.user.lastName ?? '',
+        jobTitle: orgUser.jobTitle ?? '',
         facilityName: orgUser.facilities[0]?.facility.name ?? null,
         managerId: orgUser.managerId ?? null,
         managerName: orgUser.manager
@@ -858,10 +873,11 @@ export async function assignCoursesToStaffMember(
           break;
         }
 
-        // Course held for quality review: nothing was written for this course.
-        // Report it as failed like any other per-course problem and continue.
+        // Per-course refusal (held for quality review, still a draft, past
+        // deadline): nothing was written for this course. Report it as failed
+        // like any other per-course problem and continue.
         logger.warn({
-          msg: '[enrollment] Course could not be assigned to staff member — held for quality review',
+          msg: '[enrollment] Course could not be assigned to staff member — refused',
           staffOrgUserId,
           courseId,
           userId: session.user.id,

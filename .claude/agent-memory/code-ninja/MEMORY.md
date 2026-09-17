@@ -83,3 +83,21 @@
 - [Dashboard: two actions, one population](gotcha_dashboard_two_actions_one_population.md) — lib/dashboard/scope.ts shares the POPULATION not the queries; the member org pin is mandatory or you get cross-tenant inflation.
 - [Partial prisma mocks break on a new query](gotcha_partial_prisma_mocks_break_on_new_query.md) — "undefined (reading 'findMany')" blames the lib, but it's a missing key in the test's hand-written vi.mock.
 - [Course roster spans tenants](gotcha_course_roster_spans_tenants.md) — video-course enrollments are cross-tenant; org filter lives in the query with an own-row exemption, and there is deliberately NO creator exemption.
+- [Shared worktree + agent auto-stash](gotcha_shared_worktree_agents_autostash.md) — a sibling agent's branch switch stashes YOUR work and mixes its edits into your files; commit early, stage by hunk.
+- [Worktree needs node_modules + generated](gotcha_worktree_needs_node_modules_and_generated.md) — a fresh worktree fails 26 suites with a misleading vi.mock error; the real cause is the missing `generated` symlink.
+- [RBAC actor lists vs permissions](gotcha_rbac_actor_lists_vs_permissions.md) — a ruling finer than a verb ships as a role-utils list, not a grant; 2 conjunctions that must not be simplified + why a new grant needs a grep of every gate site.
+- [org-picker.spec.ts is red on dev](gotcha_org_picker_spec_red_on_dev.md) — 1 pre-existing e2e failure (hr membership still sees Settings); don't attribute it to your branch.
+- [Self-service verbs pollute the matrix](gotcha_self_service_verbs_pollute_the_matrix.md) — a matrix `R` cell reads as `CR`; quiz authoring is gated on `course.edit`, and the new `open()` cell for unresolved rows.
+- [NOT NULL column needs its writer in the same PR](gotcha_required_column_needs_its_writer_same_pr.md) — a required column with no writer kills every create path AND reddens tsc; vitest never catches it. Land it nullable.
+- [Archive filter + rawPrisma](project_archive_filter_and_raw_prisma.md) — client-extension filter; 7 files MUST use rawPrisma; NO nested position is covered, and a restated `course:` key SHADOWS the bundle's predicate.
+- [Authorship is not ownership](gotcha_authorship_is_not_ownership.md) — a `createdBy… === me` gate silently revoked HR's granted `assessment.read`; siblings serving one payload must share one gate
+- [$extends breaks TransactionClient](gotcha_prisma_extension_breaks_transactionclient_type.md) — extending the client invalidates every `Prisma.TransactionClient` annotation; plus 2 Prisma-7 behaviours the docs don't state.
+- [e2e specs raw-SQL-insert courses](gotcha_e2e_specs_raw_sql_insert_courses.md) — 11 specs bypass Prisma, so a new NOT NULL column breaks them and CI won't tell you.
+- [Q26 deny-shape traps](gotcha_q26_deny_shape_traps.md) — maskEmail crashes email-less mocks; "card absent" assertions go vacuous; deny needs the notFound+no-redirect PAIR.
+- [Wizard never assigns a draft](gotcha_wizard_never_assigns_a_draft.md) — step 7 publishes-or-parks; the flow that DOES submit a draft is the separate /assign page.
+- [Auditor catalogue lockstep](gotcha_auditor_catalogue_lockstep.md) — one shared predicate for screen+export; draft vs inactive vs archived are three different exclusions.
+- [Billing-state redirect is not RBAC](gotcha_billing_state_redirect_is_not_rbac.md) — 3 pages carry both gates; only the RBAC branch 404s, e2e pins the billing redirects.
+- [No time-on-task data exists](gotcha_no_time_on_task_data.md) — Course.duration is an AI estimate, Enrollment.startedAt is the ASSIGNMENT date; no "average duration" is computable.
+- [CoursePreview is shared with the worker route](gotcha_coursepreview_is_shared_with_worker.md) — editing the hero for an admin frame rewrites /worker/courses/[id] and its e2e journey.
+- [An e2e spec can freeze a gap as intent](gotcha_e2e_spec_can_freeze_a_gap_as_intent.md) — rbac-role-change.spec.ts guarded the QA defect; grep e2e for ABSENCE assertions, rewrite with a dated SUPERSEDED block.
+- [Prop-seeded modals mount on demand](gotcha_modal_prop_seeded_state_needs_on_demand_mount.md) — React Compiler bans the resync effect and reset-in-close() re-reads pre-refresh props.

@@ -18,6 +18,7 @@ vi.mock('@/app/actions/certificate', () => ({
 }));
 vi.mock('@/app/actions/staff', () => ({
   getEnrollmentQuizResult: vi.fn(),
+  updateStaffDetails: vi.fn(),
   setStaffFacilities: vi.fn(),
   assignCoursesToStaffMember: vi.fn(),
 }));
@@ -32,6 +33,8 @@ const STAFF = {
     email: 'frank@example.com',
     avatarUrl: null,
     role: 'nurse',
+    firstName: 'Target',
+    lastName: 'User',
     jobTitle: 'Nurse',
     facilityName: 'Northside Clinic',
   },
@@ -40,7 +43,14 @@ const STAFF = {
 };
 
 function renderProfile() {
-  render(<StaffProfileClient staff={STAFF} viewerRole={'owner' as Role} facilities={[]} />);
+  render(
+    <StaffProfileClient
+      staff={STAFF}
+      viewerRole={'owner' as Role}
+      viewerOrganizationUserId="ou-viewer"
+      facilities={[]}
+    />,
+  );
 }
 
 describe('StaffProfileClient — certificate status badge', () => {

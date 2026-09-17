@@ -12,6 +12,7 @@ const {
   mockListAccessibleFacilities,
   mockOrgUserFindMany,
   mockOrgCourseOfferingFindMany,
+  mockRawCourseFindUnique,
 } = vi.hoisted(() => ({
   mockAdminAuth: vi.fn(),
   mockWorkerAuth: vi.fn(),
@@ -24,6 +25,7 @@ const {
   mockListAccessibleFacilities: vi.fn(),
   mockOrgUserFindMany: vi.fn(),
   mockOrgCourseOfferingFindMany: vi.fn(),
+  mockRawCourseFindUnique: vi.fn(),
 }));
 
 vi.mock('@/lib/prisma', () => {
@@ -43,6 +45,13 @@ vi.mock('@/lib/prisma', () => {
   };
   return { prisma, default: prisma };
 });
+// `getCourseById` reads the course row off the UN-extended client so the access
+// gate — not the archive filter — decides whether an archived course is visible
+// (an enrolled learner keeps theirs). The two clients get DIFFERENT spies, so a
+// regression that swaps them fails loudly instead of looking equivalent.
+vi.mock('@/db/index', () => ({
+  rawPrisma: { course: { findUnique: (...a: unknown[]) => mockRawCourseFindUnique(...a) } },
+}));
 vi.mock('@/auth', () => ({ auth: mockAdminAuth }));
 vi.mock('@/auth.worker', () => ({ auth: mockWorkerAuth }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
@@ -334,10 +343,13 @@ describe('getDashboardData', () => {
     // literal was the single-facility dashboard bug (see dashboard-parity.test.ts).
     // `active: true` arrived with founder Q23: removeStaff now retains a departed
     // member's enrollments, so a dashboard must exclude them or report on people
-    // who have left.
+    // who have left. `archivedAt: null` is the same shape of rule for courses:
+    // the archive filter is a query extension on Course's OWN reads and cannot
+    // reach this nested traversal, so "Total Courses" and every enrolment-derived
+    // figure would otherwise count different catalogues.
     expect(mockEnrollmentFindMany).toHaveBeenCalledWith({
       where: {
-        course: { organizationId: ORG_ID },
+        course: { organizationId: ORG_ID, archivedAt: null },
         organizationUser: { organizationId: ORG_ID, active: true },
         score: { not: null },
       },
@@ -697,7 +709,7 @@ describe('getCourseById', () => {
       const otherA = makeEnrollment('worker-other-a', 1);
       const otherB = makeEnrollment('worker-other-b', 2);
       const self = makeEnrollment(selfId, 3);
-      mockCourseFindUnique.mockResolvedValue(makeCourse([otherA, self, otherB]));
+      mockRawCourseFindUnique.mockResolvedValue(makeCourse([otherA, self, otherB]));
       setWorkerSession(selfId, role);
 
       const result = await getCourseById('course-1');
@@ -718,7 +730,7 @@ describe('getCourseById', () => {
     const selfId = 'worker-self';
     const others = Array.from({ length: 20 }, (_, i) => makeEnrollment(`other-${i}`, i));
     const self = makeEnrollment(selfId, 99);
-    mockCourseFindUnique.mockResolvedValue(makeCourse([...others, self]));
+    mockRawCourseFindUnique.mockResolvedValue(makeCourse([...others, self]));
     setWorkerSession(selfId, 'therapist_clinician');
 
     const result = await getCourseById('course-1');
@@ -733,7 +745,7 @@ describe('getCourseById', () => {
       const selfId = 'manager-self';
       const otherA = makeEnrollment('staff-a', 1);
       const self = makeEnrollment(selfId, 2);
-      mockCourseFindUnique.mockResolvedValue(makeCourse([otherA, self]));
+      mockRawCourseFindUnique.mockResolvedValue(makeCourse([otherA, self]));
       setAdminSession(selfId, role);
 
       const result = await getCourseById('course-1');
@@ -754,7 +766,7 @@ describe('getCourseById', () => {
     const otherA = makeEnrollment('staff-a', 1);
     const otherB = makeEnrollment('staff-b', 2);
     const creatorEnrollment = makeEnrollment(CREATOR_USER_ID, 3);
-    mockCourseFindUnique.mockResolvedValue(makeCourse([otherA, creatorEnrollment, otherB]));
+    mockRawCourseFindUnique.mockResolvedValue(makeCourse([otherA, creatorEnrollment, otherB]));
     setWorkerSession(CREATOR_USER_ID, 'nurse');
 
     const result = await getCourseById('course-1');
@@ -773,7 +785,7 @@ describe('getCourseById', () => {
       const otherA = makeEnrollment('staff-a', 1);
       const otherB = makeEnrollment('staff-b', 2);
       const adminEnrollment = makeEnrollment(adminId, 3);
-      mockCourseFindUnique.mockResolvedValue(makeCourse([otherA, adminEnrollment, otherB]));
+      mockRawCourseFindUnique.mockResolvedValue(makeCourse([otherA, adminEnrollment, otherB]));
       setAdminSession(adminId, role);
 
       const result = await getCourseById('course-1');
@@ -797,7 +809,7 @@ describe('getCourseById', () => {
       const sameFacility = makeEnrollment('staff-a', 1);
       const otherFacility = makeEnrollment('staff-b', 2);
       const own = makeEnrollment(supervisorId, 3);
-      mockCourseFindUnique.mockResolvedValue(makeCourse([sameFacility, own, otherFacility]));
+      mockRawCourseFindUnique.mockResolvedValue(makeCourse([sameFacility, own, otherFacility]));
       mockListAccessibleFacilities.mockResolvedValue([{ id: 'fac-1' }]);
       mockOrgUserFindMany.mockResolvedValue([{ id: 'ou-staff-a' }]);
       setAdminSession(supervisorId, role);
@@ -821,7 +833,7 @@ describe('getCourseById', () => {
   // for this case.
   it('the course creator who is also an org admin receives the full roster (org-wide role, not the removed creator exemption)', async () => {
     const otherA = makeEnrollment('staff-a', 1);
-    mockCourseFindUnique.mockResolvedValue(makeCourse([otherA]));
+    mockRawCourseFindUnique.mockResolvedValue(makeCourse([otherA]));
     setAdminSession(CREATOR_USER_ID, 'owner');
 
     const result = await getCourseById('course-1');
@@ -838,7 +850,7 @@ describe('getCourseById', () => {
     'a same-org manager (%s) who is neither creator nor enrolled can open the course (COU-002/COU-004)',
     async (role) => {
       const otherA = makeEnrollment('staff-a', 1);
-      mockCourseFindUnique.mockResolvedValue(makeCourse([otherA]));
+      mockRawCourseFindUnique.mockResolvedValue(makeCourse([otherA]));
       setAdminSession('manager-viewer', role);
 
       const result = await getCourseById('course-1');
@@ -849,7 +861,7 @@ describe('getCourseById', () => {
 
   it('finance — a same-org manager WITHOUT course.read — is denied (team QA #9)', async () => {
     const otherA = makeEnrollment('staff-a', 1);
-    mockCourseFindUnique.mockResolvedValue(makeCourse([otherA]));
+    mockRawCourseFindUnique.mockResolvedValue(makeCourse([otherA]));
     setAdminSession('manager-viewer', 'finance' as Role);
 
     await expect(getCourseById('course-1')).rejects.toThrow('Course not found');
@@ -857,7 +869,7 @@ describe('getCourseById', () => {
 
   it('a same-org WORKER who is neither creator nor enrolled is still denied (enrollment-gated)', async () => {
     const otherA = makeEnrollment('staff-a', 1);
-    mockCourseFindUnique.mockResolvedValue(makeCourse([otherA]));
+    mockRawCourseFindUnique.mockResolvedValue(makeCourse([otherA]));
     setWorkerSession('worker-browsing', 'nurse');
 
     await expect(getCourseById('course-1')).rejects.toThrow('Course not found');
@@ -866,7 +878,7 @@ describe('getCourseById', () => {
   it('a user who is neither creator, admin, nor enrolled still gets "Course not found" (access gate unchanged)', async () => {
     const otherA = makeEnrollment('staff-a', 1);
     const otherB = makeEnrollment('staff-b', 2);
-    mockCourseFindUnique.mockResolvedValue(makeCourse([otherA, otherB]));
+    mockRawCourseFindUnique.mockResolvedValue(makeCourse([otherA, otherB]));
     setWorkerSession('outsider-1', 'nurse');
 
     await expect(getCourseById('course-1')).rejects.toThrow('Course not found');
@@ -874,7 +886,7 @@ describe('getCourseById', () => {
 
   it('an admin from another org who is neither creator nor enrolled still gets "Course not found" (privilege does not widen the access gate)', async () => {
     const otherA = makeEnrollment('staff-a', 1);
-    mockCourseFindUnique.mockResolvedValue(makeCourse([otherA]));
+    mockRawCourseFindUnique.mockResolvedValue(makeCourse([otherA]));
     setAdminSession('admin-outsider', 'owner', 'org-2');
 
     await expect(getCourseById('course-1')).rejects.toThrow('Course not found');
@@ -888,13 +900,13 @@ describe('getCourseById', () => {
   });
 
   it('throws "Course not found" when the course does not exist', async () => {
-    mockCourseFindUnique.mockResolvedValue(null);
+    mockRawCourseFindUnique.mockResolvedValue(null);
     setWorkerSession('worker-1', 'nurse');
 
     await expect(getCourseById('course-1')).rejects.toThrow('Course not found');
   });
 
-  // CROSS-TENANT PII FIX: `mockCourseFindUnique` ignores `where`/`select` — every
+  // CROSS-TENANT PII FIX: `mockRawCourseFindUnique` ignores `where`/`select` — every
   // test above proves in-memory roster narrowing, but not that the CROSS-TENANT
   // half of the fix (scoping the query itself, before another org's rows are
   // ever fetched) is actually wired up. These assert on the ARGUMENTS passed to
@@ -902,13 +914,13 @@ describe('getCourseById', () => {
   describe('cross-tenant roster query filter — argument assertions', () => {
     it("scopes enrollments.where to the caller's organizationId OR their own userId when the session has an organizationId", async () => {
       const selfId = 'worker-self-query';
-      mockCourseFindUnique.mockResolvedValue(makeCourse([makeEnrollment(selfId, 1)]));
+      mockRawCourseFindUnique.mockResolvedValue(makeCourse([makeEnrollment(selfId, 1)]));
       setWorkerSession(selfId, 'nurse', ORG_ID);
 
       await getCourseById('course-1');
 
-      expect(mockCourseFindUnique).toHaveBeenCalledTimes(1);
-      const callArgs = mockCourseFindUnique.mock.calls[0][0];
+      expect(mockRawCourseFindUnique).toHaveBeenCalledTimes(1);
+      const callArgs = mockRawCourseFindUnique.mock.calls[0][0];
       expect(callArgs.where).toEqual({ id: 'course-1' });
       expect(callArgs.select.enrollments.where).toEqual({
         organizationUser: { OR: [{ organizationId: ORG_ID }, { userId: selfId }] },
@@ -917,7 +929,7 @@ describe('getCourseById', () => {
 
     it('fails closed to a self-only enrollments.where — never `organizationId: undefined`, which Prisma reads as no filter — when the session has no organizationId', async () => {
       const selfId = 'worker-no-org';
-      mockCourseFindUnique.mockResolvedValue(makeCourse([makeEnrollment(selfId, 1)]));
+      mockRawCourseFindUnique.mockResolvedValue(makeCourse([makeEnrollment(selfId, 1)]));
       mockAdminAuth.mockResolvedValue(null);
       mockWorkerAuth.mockResolvedValue({
         user: {
@@ -930,7 +942,7 @@ describe('getCourseById', () => {
 
       await getCourseById('course-1');
 
-      const callArgs = mockCourseFindUnique.mock.calls[0][0];
+      const callArgs = mockRawCourseFindUnique.mock.calls[0][0];
       expect(callArgs.select.enrollments.where).toEqual({ organizationUser: { userId: selfId } });
       // The trap this guards against: `organizationId: undefined` is not "no
       // match", it is a key Prisma drops — silently reopening the leak.
@@ -941,7 +953,7 @@ describe('getCourseById', () => {
 
     it("the OR clause always carries the caller's own userId, which is what keeps `isEnrolled` true for a membership under a different org than the active session", async () => {
       const selfId = 'multi-org-worker';
-      mockCourseFindUnique.mockResolvedValue(makeCourse([makeEnrollment(selfId, 1)]));
+      mockRawCourseFindUnique.mockResolvedValue(makeCourse([makeEnrollment(selfId, 1)]));
       // Active session org differs from wherever this user's enrollment record
       // actually hangs off — the own-userId clause (asserted above) is what a
       // real Prisma query would use to keep this row reachable regardless.
@@ -949,7 +961,7 @@ describe('getCourseById', () => {
 
       const result = await getCourseById('course-1');
 
-      const callArgs = mockCourseFindUnique.mock.calls[0][0];
+      const callArgs = mockRawCourseFindUnique.mock.calls[0][0];
       expect(callArgs.select.enrollments.where.organizationUser.OR).toContainEqual({
         userId: selfId,
       });
@@ -963,7 +975,7 @@ describe('getCourseById', () => {
 
     it('a caller with no organizationId still reaches their own enrolled course — no `forbidden` throw was added by this fix', async () => {
       const selfId = 'no-org-worker';
-      mockCourseFindUnique.mockResolvedValue(makeCourse([makeEnrollment(selfId, 1)]));
+      mockRawCourseFindUnique.mockResolvedValue(makeCourse([makeEnrollment(selfId, 1)]));
       mockAdminAuth.mockResolvedValue(null);
       mockWorkerAuth.mockResolvedValue({
         user: {

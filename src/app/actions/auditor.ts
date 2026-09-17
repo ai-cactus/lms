@@ -4,7 +4,7 @@ import { auth } from '@/auth';
 import { dbRoleToRoleKey, getRoleDisplayName } from '@/lib/rbac/role-utils';
 import { can, type Permission } from '@/lib/rbac/permissions';
 import { resolveDataFacilityIds, staffFacilityWhere } from '@/lib/facility/staff-where';
-import { orgCourseWhere } from '@/lib/course/org-scope';
+import { auditorCatalogueWhere } from '@/lib/audit-reports/catalogue-scope';
 import prisma from '@/lib/prisma';
 import { rawPrisma } from '@/db/index';
 import { logger } from '@/lib/logger';
@@ -24,8 +24,8 @@ export interface AuditorCourseRow {
   id: string;
   title: string;
   thumbnail: string | null;
-  /** `CourseStatus` — draft, published or inactive. Drafts and inactive courses
-   * are listed too: an audit of a catalogue that hides them under-reports it. */
+  /** `CourseStatus`. Only `published` and `inactive` reach an auditor: a retired
+   * course was in service and its records are evidence, a draft never was. */
   status: string;
   assignedStaff: number;
   completionRate: number;
@@ -118,15 +118,17 @@ export async function getAuditorOverviewStats(
 ): Promise<AuditorOverviewStats> {
   const { organizationId, subjectWhere } = await requireAuditorSession('auditPack.read');
   const dateWhere = startedAtWhere(range);
-  const courseWhere = await orgCourseWhere(organizationId);
+  const courseWhere = await auditorCatalogueWhere(organizationId);
 
   const [totalCourses, enrollmentStats, staffCount] = await Promise.all([
-    // Course CATALOGUE — org-level, never facility-narrowed (#17), and never
-    // status-narrowed: a draft or retired course is still part of what an
-    // auditor is shown the catalogue for. ⛔ `rawPrisma` for the same reason an
-    // ARCHIVED course is too (Q24) — and because the export worker counts them,
-    // so filtering here would show the auditor one number on screen and a
-    // different one in the PDF they download.
+    // Course CATALOGUE — org-level, never facility-narrowed (#17). Status is
+    // narrowed in exactly one way, by `auditorCatalogueWhere`: DRAFTS ARE
+    // EXCLUDED, superseding the earlier ruling that this spans every status.
+    // Retired (`inactive`) courses stay — they were in service. ⛔ `rawPrisma`
+    // for the same reason an ARCHIVED course is kept (Q24) — and because the
+    // export worker counts them, so filtering here alone would show the auditor
+    // one number on screen and a different one in the PDF they download. That
+    // is why the draft exclusion lives in the shared predicate and not inline.
     //
     // This widens the CATALOGUE only. The enrollment and staff queries below
     // are SUBJECT data and stay on the filtered client with their facility
@@ -179,12 +181,14 @@ export async function getAuditorCourses(
 ): Promise<AuditorCourseRow[]> {
   const { organizationId, subjectWhere } = await requireAuditorSession('auditPack.read');
   const dateWhere = startedAtWhere(range);
-  const courseWhere = await orgCourseWhere(organizationId);
+  const courseWhere = await auditorCatalogueWhere(organizationId);
 
-  // Course list itself is NOT narrowed — org-level catalogue (#17) — and spans
-  // every status, so the report reflects the whole catalogue rather than
-  // silently dropping drafts and retired courses. ⛔ `rawPrisma` extends that to
-  // ARCHIVED courses (Q24), keeping this list in step with the export worker's.
+  // Course list itself is NOT facility-narrowed — org-level catalogue (#17).
+  // It is status-narrowed in exactly one way: DRAFTS ARE EXCLUDED, superseding
+  // the earlier ruling that this list spans every status. Retired (`inactive`)
+  // courses stay listed. ⛔ `rawPrisma` still extends it to ARCHIVED courses
+  // (Q24), and the exclusion comes from `auditorCatalogueWhere` so this list and
+  // the export worker's cannot drift apart.
   //
   // Only the COURSE ROW is widened. The nested `enrollments` filter below keeps
   // both its organisation pin and `subjectWhere` (the caller's facility scope),
@@ -324,7 +328,7 @@ export async function generateAuditorPackCsv(): Promise<string> {
       'Email',
       'Course',
       // Two different states sit side by side here: the course's own lifecycle
-      // (the catalogue now spans drafts and retired courses) and this person's
+      // (a retired course keeps its enrollment records) and this person's
       // progress through it. Naming both avoids a bare, ambiguous "Status".
       'Course Status',
       'Enrollment Status',

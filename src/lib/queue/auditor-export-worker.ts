@@ -6,7 +6,7 @@ import { AUDITOR_EXPORT_QUEUE_NAME } from './auditor-export-queue';
 import { logger } from '@/lib/logger';
 import { Prisma } from '@/generated/prisma/browser';
 import { startedAtWhere, toReportPeriod } from '@/lib/audit-reports/date-range';
-import { orgCourseWhere } from '@/lib/course/org-scope';
+import { auditorCatalogueWhere } from '@/lib/audit-reports/catalogue-scope';
 import type { OrgReportInput } from '@/lib/audit-reports/types';
 
 export function getExportWorker() {
@@ -76,9 +76,16 @@ export function getExportWorker() {
       //
       //   SUBJECTS — whose training records may appear. Facility-narrowed.
       //              This is the security boundary.
-      //   CATALOGUE — which courses the organisation has. NEVER narrowed, and
-      //              never status-filtered: a draft or retired course is still
-      //              part of what the org has to account for.
+      //   CATALOGUE — which courses the organisation has. NEVER facility-
+      //              narrowed, and status-filtered in exactly one way: DRAFTS
+      //              ARE EXCLUDED. That supersedes the earlier ruling that a
+      //              draft is still part of what the org has to account for —
+      //              unfinished authoring is not a training obligation. Retired
+      //              (`inactive`) courses stay: they were in service.
+      //
+      // ⛔ The exclusion comes from `auditorCatalogueWhere`, which the
+      // audit-reports screen uses too. Applying it to one surface and not the
+      // other is the screen-disagrees-with-PDF defect #632 closed.
       //
       // Narrowing the catalogue too would delete a course from a supervisor's
       // report entirely whenever it happens to have been written by someone at
@@ -115,7 +122,7 @@ export function getExportWorker() {
       // The org's whole catalogue: authored in-house OR adopted from the
       // platform offering. Adopted courses are authored by another tenant, so a
       // creator-only predicate drops every one of them.
-      const courseWhere = await orgCourseWhere(organizationId);
+      const courseWhere = await auditorCatalogueWhere(organizationId);
 
       await updateDbJob(15, 'Fetching records...');
       await new Promise((r) => setTimeout(r, 600));

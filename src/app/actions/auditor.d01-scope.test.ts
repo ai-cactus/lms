@@ -189,7 +189,7 @@ describe('facility scope — subject data follows the caller, the catalogue does
   });
 });
 
-describe('catalogue scope — adopted courses and every status', () => {
+describe('catalogue scope — adopted courses, drafts excluded', () => {
   it('unions own courses with the organisation offering', async () => {
     mockAuth.mockResolvedValue(HR);
     prismaMock.orgCourseOffering.findMany.mockResolvedValue([{ courseId: 'adopted-1' }]);
@@ -198,6 +198,7 @@ describe('catalogue scope — adopted courses and every status', () => {
 
     expect(rawPrismaMock.course.findMany.mock.calls[0][0].where).toEqual({
       OR: [{ organizationId: ORG }, { id: { in: ['adopted-1'] } }],
+      status: { not: 'draft' },
     });
   });
 
@@ -206,17 +207,38 @@ describe('catalogue scope — adopted courses and every status', () => {
 
     await getAuditorCourses();
 
-    expect(rawPrismaMock.course.findMany.mock.calls[0][0].where).toEqual({ organizationId: ORG });
+    expect(rawPrismaMock.course.findMany.mock.calls[0][0].where).toEqual({
+      organizationId: ORG,
+      status: { not: 'draft' },
+    });
   });
 
-  it('does not filter the catalogue by status', async () => {
+  // ⛔ Reverses the earlier ruling that the auditor catalogue spans every
+  // status. Drafts are out; `inactive` stays. The SAME predicate is asserted in
+  // auditor-export-worker.archive-scope.test.ts — the screen and the PDF must
+  // filter identically or the auditor reads two different numbers.
+  it('excludes drafts from both the list and the overview count', async () => {
     mockAuth.mockResolvedValue(HR);
 
     await getAuditorCourses();
     await getAuditorOverviewStats();
 
-    expect(rawPrismaMock.course.findMany.mock.calls[0][0].where).not.toHaveProperty('status');
-    expect(rawPrismaMock.course.count.mock.calls[0][0].where).not.toHaveProperty('status');
+    expect(rawPrismaMock.course.findMany.mock.calls[0][0].where.status).toEqual({ not: 'draft' });
+    expect(rawPrismaMock.course.count.mock.calls[0][0].where.status).toEqual({ not: 'draft' });
+  });
+
+  it('keeps retired (inactive) courses — only `draft` is excluded', async () => {
+    mockAuth.mockResolvedValue(HR);
+
+    await getAuditorCourses();
+
+    // A retired course was in service and people took it; its records are the
+    // evidence an audit asks for. The predicate must exclude `draft` alone, not
+    // narrow to `published`.
+    expect(rawPrismaMock.course.findMany.mock.calls[0][0].where.status).not.toEqual({
+      equals: 'published',
+    });
+    expect(rawPrismaMock.course.findMany.mock.calls[0][0].where.status).toEqual({ not: 'draft' });
   });
 
   it('surfaces each course status on the row', async () => {
@@ -226,7 +248,7 @@ describe('catalogue scope — adopted courses and every status', () => {
         id: 'c1',
         title: 'Bloodborne Pathogens',
         thumbnail: null,
-        status: 'draft',
+        status: 'inactive',
         createdAt: new Date('2026-01-01'),
         enrollments: [],
       },
@@ -234,7 +256,7 @@ describe('catalogue scope — adopted courses and every status', () => {
 
     const rows = await getAuditorCourses();
 
-    expect(rows[0].status).toBe('draft');
+    expect(rows[0].status).toBe('inactive');
   });
 
   it('still narrows the per-course enrollment stats to the caller org', async () => {
