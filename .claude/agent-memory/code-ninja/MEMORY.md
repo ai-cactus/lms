@@ -95,3 +95,5 @@
 - [e2e specs raw-SQL-insert courses](gotcha_e2e_specs_raw_sql_insert_courses.md) — 11 specs bypass Prisma, so a new NOT NULL column breaks them and CI won't tell you.
 - [Q26 deny-shape traps](gotcha_q26_deny_shape_traps.md) — maskEmail crashes email-less mocks; "card absent" assertions go vacuous; deny needs the notFound+no-redirect PAIR.
 - [Billing-state redirect is not RBAC](gotcha_billing_state_redirect_is_not_rbac.md) — 3 pages carry both gates; only the RBAC branch 404s, e2e pins the billing redirects.
+- [No time-on-task data exists](gotcha_no_time_on_task_data.md) — Course.duration is an AI estimate, Enrollment.startedAt is the ASSIGNMENT date; no "average duration" is computable.
+- [CoursePreview is shared with the worker route](gotcha_coursepreview_is_shared_with_worker.md) — editing the hero for an admin frame rewrites /worker/courses/[id] and its e2e journey.

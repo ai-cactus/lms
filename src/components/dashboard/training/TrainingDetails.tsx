@@ -30,13 +30,9 @@ import {
   RotateCcw,
   UserMinus,
   ArrowLeft,
-  BarChart3,
   CheckCircle2,
-  CircleCheck,
   Clock,
-  Calendar,
-  Eye,
-  Share2,
+  UserPlus,
   XCircle,
   Search,
   Download,
@@ -50,13 +46,11 @@ import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Alert } from '@/components/ui/alert';
 import EmptyTableState from '@/components/ui/EmptyTableState';
-import { RichTextContent } from '@/components/courses/RichTextContent';
 import RoleTargetPicker, {
   type RoleTargetPickerMode,
 } from '@/components/dashboard/enrollment/RoleTargetPicker';
-import { courseTypeLabel } from '@/lib/video/course-type-label';
 import { courseStatusBadge } from '@/lib/course/course-status-label';
-import { getRoleDisplayName } from '@/lib/rbac/role-utils';
+import { courseSourceDocument } from '@/lib/course/source-document';
 import { CourseWithRelations } from '@/types/course';
 import type { CourseAssignmentSettings } from '@/app/actions/enrollment';
 import type { UserRole } from '@/generated/prisma/enums';
@@ -95,31 +89,6 @@ const headCls =
 const cellCls = 'h-[71px] px-5 text-[17.5px] font-medium tracking-[0.35px] text-[#0d0d12]';
 const tagCls =
   'inline-flex items-center gap-2 rounded-full px-3 py-1 text-[14px] font-medium whitespace-nowrap lg:text-[16.5px]';
-
-/** Chip treatment for the dark hero — the light-surface Badge variants vanish on it. */
-const heroChipCls = 'gap-1.5 rounded-full px-3 py-1 text-[13px] font-medium';
-const heroNeutralChipCls = 'border-background/25 bg-background/10 text-background/85';
-
-/** Label + value row in the right-hand rail (Skill Level / Duration / Last Updated). */
-function RailRow({
-  icon: Icon,
-  label,
-  value,
-}: {
-  icon: typeof Clock;
-  label: string;
-  value: React.ReactNode;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-4">
-      <span className="flex items-center gap-2 text-text-secondary">
-        <Icon className="size-4 shrink-0 text-text-tertiary" aria-hidden="true" />
-        {label}
-      </span>
-      <span className="text-right font-semibold text-foreground">{value}</span>
-    </div>
-  );
-}
 
 export default function TrainingDetails({
   course,
@@ -164,57 +133,9 @@ export default function TrainingDetails({
   const [roleTargetError, setRoleTargetError] = useState<string | null>(null);
 
   const enrollments = course.enrollments || [];
-  const lessons = course.lessons ?? [];
-  const objectives = course.objectives ?? [];
 
   const statusBadge = courseStatusBadge(course.status, course.reviewRequired);
-  // The shared helper's classes are tuned for a light card; on the dark hero its
-  // `text-foreground` would be invisible, so only the LABEL is reused here.
-  const heroStatusChipCls =
-    course.status === 'published'
-      ? 'border-success/40 bg-success/20 text-success'
-      : course.reviewRequired
-        ? 'border-warning/40 bg-warning/20 text-warning'
-        : heroNeutralChipCls;
-
-  // Video courses report "watch" time from the video length; text courses "read".
-  const videoLesson = lessons.find((l) => l.videoStorageUri);
-  const isVideoCourse = course.type === 'video' || Boolean(videoLesson);
-  const videoSeconds = videoLesson?.videoDurationSeconds ?? null;
-  const runtimeMinutes =
-    videoSeconds != null && videoSeconds > 0
-      ? Math.max(1, Math.round(videoSeconds / 60))
-      : (course.duration ?? null);
-
-  // Text courses hang the quiz off the last lesson; video courses off the course.
-  const passingScore =
-    lessons.find((l) => l.quiz)?.quiz?.passingScore ?? course.quiz?.passingScore ?? null;
-
-  /**
-   * D8/D10. `approvedBy` records who signed the publish off, but a null is a
-   * permanent, reachable state — every course published before D8, plus any
-   * clean draft that `publishCourseOnAssignment` publishes as a side effect of
-   * being assigned. It falls back to the creator under a DIFFERENT label, so the
-   * line never implies a review that did not happen.
-   */
-  const approver = course.approvedBy;
-  const creator = course.creator;
-  const attribution = approver
-    ? {
-        label: 'Approved by',
-        name: approver.user.fullName || approver.user.email,
-        role: getRoleDisplayName(approver.role),
-      }
-    : creator
-      ? {
-          label: 'Created by',
-          name: creator.user.fullName || creator.user.email,
-          role: getRoleDisplayName(creator.role),
-        }
-      : null;
-
-  const overviewHtml = course.overview || course.description || '';
-  const hasCourseContent = Boolean(overviewHtml) || objectives.length > 0;
+  const sourceDocument = courseSourceDocument(course.versions);
 
   /**
    * Live mode only. A draft-mode picker would collect a selection this page has
@@ -281,161 +202,53 @@ export default function TrainingDetails({
         </p>
       </div>
 
-      <section className="mb-5 flex flex-col gap-6 rounded-[17px] bg-foreground px-6 py-8 text-background md:px-9 md:py-10">
-        <div className="flex min-w-0 flex-col gap-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-[26px] leading-[1.2] font-bold tracking-[-0.02em] sm:text-[34px]">
-              {course.title}
-            </h1>
-            <Badge variant="outline" className={cn(heroChipCls, heroNeutralChipCls)}>
-              {courseTypeLabel(course.type)}
-            </Badge>
-          </div>
-
-          {course.description && (
-            <p className="max-w-3xl text-base leading-6 text-background/70">{course.description}</p>
-          )}
-
-          {attribution && (
-            <p className="flex items-center gap-2 text-base font-semibold">
-              <CircleCheck className="size-5 shrink-0 text-success" aria-hidden="true" />
-              <span>
-                {attribution.label}: {attribution.name} ({attribution.role})
-              </span>
+      <header className="mb-6 flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between lg:gap-8">
+        <div className="flex min-w-0 flex-col items-start gap-2">
+          <h1 className="text-[26px] leading-[1.2] font-bold tracking-[-0.02em] text-foreground sm:text-[32px]">
+            {course.title}
+          </h1>
+          <Badge
+            variant="outline"
+            className={cn('rounded-full px-3 py-1 text-sm font-medium', statusBadge.className)}
+          >
+            {statusBadge.label}
+          </Badge>
+          {sourceDocument && (
+            <p className="text-sm text-text-secondary">
+              Linked Policy Document:{' '}
+              <Link
+                href={`/dashboard/documents/${sourceDocument.id}`}
+                className="font-medium text-primary hover:underline"
+              >
+                {sourceDocument.name}
+              </Link>
             </p>
           )}
         </div>
 
-        <div className="flex flex-col gap-5 border-t border-dashed border-background/25 pt-5 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-wrap items-center gap-3">
-            <Badge variant="outline" className={cn(heroChipCls, heroStatusChipCls)}>
-              {statusBadge.label}
-            </Badge>
-            {runtimeMinutes != null && (
-              <Badge variant="outline" className={cn(heroChipCls, heroNeutralChipCls)}>
-                <Clock aria-hidden="true" />
-                {runtimeMinutes} min {isVideoCourse ? 'watch' : 'read'}
-              </Badge>
-            )}
-            {passingScore != null && (
-              <Badge variant="outline" className={cn(heroChipCls, heroNeutralChipCls)}>
-                <Calendar aria-hidden="true" />
-                Pass mark: {passingScore}%
-              </Badge>
-            )}
-          </div>
-
-          {/*
-            Three actions in descending emphasis, left to right. The frame shows
-            only "View Course"; Preview is kept as a tertiary affordance because
-            /preview has no other inbound link in the product and would otherwise
-            be reachable by URL alone.
-          */}
-          <div className="flex w-full flex-wrap items-center gap-2.5 lg:w-auto lg:shrink-0 lg:justify-end">
-            {/* D7: the details page's own call to action opens THIS course. */}
-            <Button
-              asChild
-              className="h-12 min-w-[150px] flex-1 rounded-md px-6 text-[15.5px] font-semibold tracking-[-0.31px] lg:flex-none"
-            >
-              <Link href={`/learn/${course.id}`}>View Course</Link>
-            </Button>
-            <Button
-              variant="outline"
-              className="h-12 min-w-[132px] flex-1 gap-2 rounded-md border-background/30 bg-transparent px-5 text-[16px] font-semibold text-background hover:bg-background/10 hover:text-background lg:flex-none has-[>svg]:px-5"
-              onClick={() => router.push(`/dashboard/training/courses/${course.id}/assign`)}
-            >
-              <Share2 className="size-[23px]" aria-hidden="true" />
-              Assign
-            </Button>
-            {/* Reads as a text link on its own row below `lg`, inline at `lg`. */}
-            <Button
-              asChild
-              variant="ghost"
-              size="sm"
-              className="w-full justify-start px-0 font-medium text-background/80 hover:bg-background/10 hover:text-background lg:w-auto lg:px-3"
-            >
-              <Link href={`/dashboard/training/courses/${course.id}/preview`}>
-                <Eye className="size-4" aria-hidden="true" />
-                Preview
-              </Link>
-            </Button>
-          </div>
+        {/*
+          D7 moved to /preview with the hero: the details page's primary action
+          now OPENS that preview, which is where "View Course" lives. Keeping a
+          second entry point into the player here would put two competing calls
+          to action on one screen.
+        */}
+        <div className="flex w-full flex-wrap items-center gap-3 lg:w-auto lg:shrink-0 lg:justify-end">
+          <Button
+            asChild
+            className="h-12 min-w-[132px] flex-1 rounded-md px-6 text-[15.5px] font-semibold tracking-[-0.31px] lg:flex-none"
+          >
+            <Link href={`/dashboard/training/courses/${course.id}/preview`}>Preview</Link>
+          </Button>
+          <Button
+            variant="outline"
+            className="h-12 min-w-[132px] flex-1 gap-2 rounded-md px-5 text-[16px] font-semibold lg:flex-none has-[>svg]:px-5"
+            onClick={() => router.push(`/dashboard/training/courses/${course.id}/assign`)}
+          >
+            <UserPlus className="size-5" aria-hidden="true" />
+            Assign
+          </Button>
         </div>
-      </section>
-
-      {hasCourseContent || lessons.length > 0 ? (
-        <div
-          className={cn(
-            'mb-5 grid grid-cols-1 gap-5',
-            hasCourseContent && 'lg:grid-cols-[minmax(0,1fr)_340px]',
-          )}
-        >
-          {hasCourseContent && (
-            <div className="rounded-[17px] border border-border bg-background p-6 md:p-8">
-              {overviewHtml && (
-                <>
-                  <h2 className="mb-4 text-2xl font-bold text-foreground">Course Overview</h2>
-                  <RichTextContent html={overviewHtml} />
-                </>
-              )}
-
-              {objectives.length > 0 && (
-                <>
-                  <h3
-                    className={cn('mb-4 text-xl font-bold text-foreground', overviewHtml && 'mt-8')}
-                  >
-                    What You&apos;ll Learn
-                  </h3>
-                  <ul className="flex list-disc flex-col gap-2 pl-5 text-base leading-relaxed text-text-secondary">
-                    {objectives.map((objective, index) => (
-                      <li key={index}>{objective}</li>
-                    ))}
-                  </ul>
-                </>
-              )}
-            </div>
-          )}
-
-          <aside className="rounded-[17px] border border-border bg-background p-6">
-            <h3 className="text-lg font-bold text-foreground">Table of Content</h3>
-            {lessons.length > 0 ? (
-              // Deliberately unhighlighted: an overview page has no "current"
-              // lesson, so the Figma frame's highlighted entry is placeholder.
-              <ol className="mt-4 flex list-none flex-col gap-3">
-                {lessons.map((lesson) => (
-                  <li key={lesson.id} className="truncate text-base text-text-secondary">
-                    {lesson.title}
-                  </li>
-                ))}
-              </ol>
-            ) : (
-              <p className="mt-4 text-sm text-text-muted">No lessons have been generated yet.</p>
-            )}
-
-            <div className="mt-6 flex flex-col gap-4 border-t border-border pt-6 text-sm">
-              {course.skillLevel && (
-                <RailRow
-                  icon={BarChart3}
-                  label="Skill Level"
-                  value={<span className="capitalize">{course.skillLevel}</span>}
-                />
-              )}
-              {course.duration != null && (
-                <RailRow icon={Clock} label="Duration" value={`${course.duration} mins`} />
-              )}
-              <RailRow
-                icon={Calendar}
-                label="Last Updated"
-                value={new Date(course.updatedAt).toLocaleDateString(undefined, {
-                  year: 'numeric',
-                  month: 'long',
-                  day: 'numeric',
-                })}
-              />
-            </div>
-          </aside>
-        </div>
-      ) : null}
+      </header>
 
       {showRoleTargets && pickerMode && (
         <div className="mb-5 rounded-[17px] border border-border bg-background p-6">
@@ -512,8 +325,15 @@ export default function TrainingDetails({
               <Clock className="size-[22px]" aria-hidden="true" />
             </span>
             <div className="flex min-w-0 flex-col gap-[7px]">
+              {/*
+                Design label. The value beneath it is `course.duration` — the
+                per-course ESTIMATE the AI produced at generation, not a measured
+                average: nothing in the schema records time-on-task, and the only
+                learner timestamps (`startedAt`/`completedAt`) fence assignment
+                to completion, i.e. calendar days, not minutes of study.
+              */}
               <span className="text-[14.5px] leading-none font-medium tracking-[-0.145px] text-[#6f767e]">
-                Estimated Duration
+                Average Duration
               </span>
               <span className="text-[22px] leading-none font-bold text-[#262626]">
                 {course.duration || 0} mins
@@ -582,16 +402,26 @@ export default function TrainingDetails({
             <Table className="table-fixed">
               <TableHeader>
                 <TableRow className="border-0 hover:bg-transparent">
-                  <TableHead className={cn(headCls, 'rounded-l-[9px] sm:w-[41%]')}>
+                  <TableHead className={cn(headCls, 'rounded-l-[9px] sm:w-[41%] xl:w-[34%]')}>
                     Staff Name
                   </TableHead>
-                  <TableHead className={cn(headCls, 'hidden sm:table-cell sm:w-[20%]')}>
+                  {/*
+                    Held back to `xl`: the dashboard's 280px sidebar makes `lg`
+                    narrower than a bare `md` viewport, so five columns only fit
+                    from `xl` up.
+                  */}
+                  <TableHead className={cn(headCls, 'hidden xl:table-cell xl:w-[20%]')}>
+                    Facility
+                  </TableHead>
+                  <TableHead className={cn(headCls, 'hidden sm:table-cell sm:w-[20%] xl:w-[13%]')}>
                     Score
                   </TableHead>
-                  <TableHead className={cn(headCls, 'hidden md:table-cell md:w-[19%]')}>
+                  <TableHead className={cn(headCls, 'hidden md:table-cell md:w-[19%] xl:w-[18%]')}>
                     Status
                   </TableHead>
-                  <TableHead className={cn(headCls, 'w-[56px] rounded-r-[9px] sm:w-[20%]')}>
+                  <TableHead
+                    className={cn(headCls, 'w-[56px] rounded-r-[9px] sm:w-[20%] xl:w-[15%]')}
+                  >
                     Action
                   </TableHead>
                 </TableRow>
@@ -629,6 +459,14 @@ export default function TrainingDetails({
                           </span>
                         </div>
                       </div>
+                    </TableCell>
+                    {/*
+                      The facility recorded ON the enrollment, not the member's
+                      current assignments — a transfer must not rewrite who was
+                      enrolled where. Null for a member with no active facility.
+                    */}
+                    <TableCell className={cn(cellCls, 'hidden truncate xl:table-cell')}>
+                      {enrollment.facility?.name ?? '-'}
                     </TableCell>
                     <TableCell className={cn(cellCls, 'hidden sm:table-cell')}>
                       {enrollment.score !== null ? `${enrollment.score}%` : '-'}
@@ -708,7 +546,7 @@ export default function TrainingDetails({
                   </TableRow>
                 ))}
                 {filteredEnrollments.length === 0 && (
-                  <EmptyTableState message="No staff enrolled yet." colSpan={4} asTableRow />
+                  <EmptyTableState message="No staff enrolled yet." colSpan={5} asTableRow />
                 )}
               </TableBody>
             </Table>
