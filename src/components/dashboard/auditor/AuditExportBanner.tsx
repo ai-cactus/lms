@@ -1,6 +1,6 @@
 'use client';
 
-import { CheckCircle2, FileText, Loader2, RefreshCw } from 'lucide-react';
+import { CheckCircle2, FileText, Info, Loader2, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useExportJobs, type ExportEntity } from './ExportJobsProvider';
 
@@ -61,6 +61,34 @@ export default function AuditExportBanner() {
   }
 
   if (!completedJob) return null;
+
+  // A report that flattens to no rows serialises to a zero-byte CSV. Offering
+  // "View Report" for it hands the user an empty file and reads as success, so
+  // the empty outcome gets its own terminal state and no download action.
+  // `undefined` (a job finished before the count existed) is NOT treated as
+  // empty — those jobs still get the download.
+  if (completedJob.rowCount === 0) {
+    return (
+      <div
+        className="mb-8 flex items-start gap-3 rounded-[12px] border border-warning/20 bg-warning/5 px-4 py-4 sm:px-5"
+        role="status"
+        aria-live="polite"
+      >
+        <span
+          className="flex size-9 shrink-0 items-center justify-center rounded-full bg-warning text-white"
+          aria-hidden="true"
+        >
+          <Info className="size-[18px]" />
+        </span>
+        <div className="text-sm">
+          <p className="font-bold text-warning">No records matched this date range</p>
+          <p className="text-text-secondary">
+            The export finished, but there was nothing to report. Try a wider date range.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
