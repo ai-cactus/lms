@@ -73,7 +73,7 @@ const assignmentRow = {
   dueWindowDays: 30,
   facilityScoped: false,
   createdAt: new Date('2026-01-01'),
-  course: { title: 'HIPAA Basics' },
+  course: { title: 'HIPAA Basics', archivedAt: null },
 };
 
 beforeEach(() => {
@@ -108,6 +108,7 @@ describe('setRoleAssignmentTargets', () => {
         status: 'published',
         isGlobal: false,
         reviewRequired: false,
+        archivedAt: null,
       },
       ...overrides,
     };
@@ -403,8 +404,68 @@ describe('setRoleAssignmentTargets', () => {
       status: 'draft',
       isGlobal: false,
       reviewRequired: false,
+      archivedAt: null,
     };
   }
+
+  /**
+   * The direct assign paths resolve the course through the archive-filtered
+   * client and already refuse an archived one as "Course not found". This path
+   * resolves it through `assignment.course` — a nested relation the Q24 archive
+   * extension cannot reach — so a widen here would mint fresh obligations on a
+   * course the organisation has retired.
+   *
+   * The NARROW is deliberately still allowed: it enrols nobody, and switching
+   * auto-enrolment off is exactly the cleanup an archive calls for.
+   */
+  describe('archived course — the widen is refused, the narrow is not', () => {
+    function archivedRow(targetRoles: string[]) {
+      return assignmentRowFor({
+        targetRoles,
+        course: {
+          id: 'course-1',
+          title: 'HIPAA Basics',
+          status: 'published',
+          isGlobal: false,
+          reviewRequired: false,
+          archivedAt: new Date('2026-09-01T00:00:00.000Z'),
+        },
+      });
+    }
+
+    it('refuses a widen and enrols nobody when the course has been archived', async () => {
+      prismaMock.courseAssignment.findFirst.mockResolvedValue(archivedRow(['nurse']));
+
+      const result = await setRoleAssignmentTargets('ca-1', ['nurse', 'hr']);
+
+      expect(result.success).toBe(false);
+      expect(result.refusedReason).toMatch(/archived/i);
+      expect(prismaMock.courseAssignment.update).not.toHaveBeenCalled();
+      expect(mockCreateEnrollmentForUser).not.toHaveBeenCalled();
+      expect(mockCreateEnrollmentsForUsers).not.toHaveBeenCalled();
+    });
+
+    it('refuses before the publish write — no course mutation on the refused path', async () => {
+      prismaMock.courseAssignment.findFirst.mockResolvedValue(archivedRow(['nurse']));
+
+      await setRoleAssignmentTargets('ca-1', ['nurse', 'hr']);
+
+      expect(prismaMock.course.update).not.toHaveBeenCalled();
+      expect(prismaMock.organization.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('still allows a narrow on an archived course — removing a role enrols nobody', async () => {
+      prismaMock.courseAssignment.findFirst.mockResolvedValue(archivedRow(['nurse', 'hr']));
+
+      const result = await setRoleAssignmentTargets('ca-1', ['nurse']);
+
+      expect(result).toEqual({ success: true, enrolled: 0 });
+      expect(prismaMock.courseAssignment.update.mock.calls[0][0].data).toEqual({
+        targetRole: 'nurse',
+        targetRoles: ['nurse'],
+      });
+    });
+  });
 
   // Item 7 — the review and billing gates apply to the widen only.
   describe('review and billing gates apply to the widen only', () => {
@@ -418,6 +479,7 @@ describe('setRoleAssignmentTargets', () => {
             status: 'draft',
             isGlobal: false,
             reviewRequired: true,
+            archivedAt: null,
           },
         }),
       );
@@ -454,6 +516,7 @@ describe('setRoleAssignmentTargets', () => {
             status: 'draft',
             isGlobal: false,
             reviewRequired: true,
+            archivedAt: null,
           },
         }),
       );
