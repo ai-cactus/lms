@@ -97,8 +97,14 @@ export async function resolveDashboardScope(
       adoptedCourseIds.length === 0
         ? authored
         : { OR: [authored, { id: { in: adoptedCourseIds } }] },
+    // `active: true` matches staffWhere below: a dashboard reports on the
+    // CURRENT workforce. removeStaff retains a departed member's in-flight
+    // enrollments for compliance (founder Q23) rather than deleting them, so
+    // without this they would keep inflating overdue and outstanding-training
+    // counts forever. The compliance copy of that data is the auditor pack,
+    // which deliberately includes deactivated members and does not use this.
     enrollmentWhere: {
-      organizationUser: { organizationId },
+      organizationUser: { organizationId, active: true },
       ...(dataFacilityIds === null ? {} : { facilityId: { in: dataFacilityIds } }),
     },
     staffWhere: (options) => ({

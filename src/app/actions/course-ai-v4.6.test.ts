@@ -234,7 +234,7 @@ describe('processBackgroundV46 — wall-clock timeout + settle guard', () => {
     vi.clearAllMocks();
     vi.useFakeTimers();
     process.env.V46_GENERATION_TIMEOUT_MS = '5000'; // short timeout for the test
-    mockAuth.mockResolvedValue({ user: { id: 'user-1' } });
+    mockAuth.mockResolvedValue({ user: { id: 'user-1', role: 'owner' } });
     mockExtractTextFromFile.mockResolvedValue('x'.repeat(200));
     // Foreground gate is neutral: PHI scan passes clean, rate limit allows.
     mockScanText.mockResolvedValue({ hasPHI: false, findings: [] });

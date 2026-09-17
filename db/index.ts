@@ -1,5 +1,6 @@
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@/generated/prisma/client';
+import { liveRowsOnly } from './archive-filter';
 
 /**
  * Single Prisma client for the whole app.
@@ -39,6 +40,101 @@ function createPrismaClient(): PrismaClient {
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
-export const prisma = globalForPrisma.prisma ?? createPrismaClient();
+const baseClient = globalForPrisma.prisma ?? createPrismaClient();
 
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
+if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = baseClient;
+
+/**
+ * Q24 archive filter, as ONE predicate rather than 47 call sites.
+ *
+ * Deleting a course or a document archives it (`archivedAt`) instead of
+ * destroying it, so every ordinary read has to exclude archived rows. Expressing
+ * that per call site is the exact pattern that produced the D-01 defect class
+ * here — see the header of `src/lib/facility/staff-where.ts`, which exists
+ * because "facility scoping was expressed ad hoc at each call site — or not at
+ * all". A query extension applies it once, to every top-level read, with no
+ * call-site change and no way to forget it on the next one.
+ *
+ * ⚠️ Writes are deliberately NOT intercepted. Rerouting `.delete()` to an
+ * archive `.update()` would make `deleteCourse`/`deleteDocument`'s intent
+ * invisible at the call site; both call `.update()` explicitly instead.
+ *
+ * ⚠️ A query extension cannot reach nested `include`/`select` — mutating those
+ * would change the output type, which Prisma forbids. So a traversal INTO
+ * Course/Document from another model is unfiltered. Every such relation is
+ * to-one (`Enrollment.course`, `Certificate.course`, `CourseAssignment.course`,
+ * `CourseVersion.documentVersion.document`), where Prisma has no `where` to
+ * begin with — and where leaving archived rows visible is the ruling anyway: a
+ * worker's own enrolment and certificate survive their course being archived.
+ * The only to-many traversals (`OrganizationUser.createdCourses` /
+ * `.documents`) are in the `/system` ops panel, which is meant to see
+ * everything.
+ */
+export const prisma = baseClient.$extends({
+  query: {
+    course: {
+      findFirst: ({ args, query }) => query(liveRowsOnly(args)),
+      findFirstOrThrow: ({ args, query }) => query(liveRowsOnly(args)),
+      findMany: ({ args, query }) => query(liveRowsOnly(args)),
+      findUnique: ({ args, query }) => query(liveRowsOnly(args)),
+      findUniqueOrThrow: ({ args, query }) => query(liveRowsOnly(args)),
+      count: ({ args, query }) => query(liveRowsOnly(args)),
+      aggregate: ({ args, query }) => query(liveRowsOnly(args)),
+      groupBy: ({ args, query }) => query(liveRowsOnly(args)),
+    },
+    document: {
+      findFirst: ({ args, query }) => query(liveRowsOnly(args)),
+      findFirstOrThrow: ({ args, query }) => query(liveRowsOnly(args)),
+      findMany: ({ args, query }) => query(liveRowsOnly(args)),
+      findUnique: ({ args, query }) => query(liveRowsOnly(args)),
+      findUniqueOrThrow: ({ args, query }) => query(liveRowsOnly(args)),
+      count: ({ args, query }) => query(liveRowsOnly(args)),
+      aggregate: ({ args, query }) => query(liveRowsOnly(args)),
+      groupBy: ({ args, query }) => query(liveRowsOnly(args)),
+    },
+  },
+});
+
+/** The app's Prisma client, archive filter included. */
+export type DbClient = typeof prisma;
+
+/**
+ * The client handed to a `prisma.$transaction(async (tx) => …)` callback.
+ *
+ * `Prisma.TransactionClient` describes the UN-extended client and an extended
+ * one does not satisfy it (prisma/prisma#20738 — a typing gap only; the
+ * extension itself does apply inside interactive transactions, verified against
+ * 7.10.0). Helpers that accept "a client or a transaction" must be typed off the
+ * real client, or every extended `tx` they are handed fails to typecheck.
+ */
+export type DbTransactionClient = Parameters<Parameters<DbClient['$transaction']>[0]>[0];
+
+/**
+ * ⛔ The SAME connection pool, WITHOUT the archive filter. Archived courses and
+ * documents come back from this client.
+ *
+ * Importing this is very likely a bug. It exists for the handful of paths whose
+ * correctness depends on seeing retained rows:
+ *
+ *   1. `video-sweep-worker.ts` — builds the "do not delete this object" storage
+ *      reference set. Filtered, an archived course's video drops out of that set
+ *      and the sweeper permanently deletes a file Q24 says must be retained.
+ *      This repo has already lost production videos twice.
+ *   2. `auditor-export-worker.ts` — a compliance export that silently omits
+ *      archived courses is incomplete while still looking correct.
+ *   3. `actions/auditor.ts` and `api/auditor/export/start/route.ts` — the
+ *      auditor's on-screen CATALOGUE, kept in step with the export above. An
+ *      auditor seeing one course count on screen and a different one in the
+ *      record they download undermines the artifact. These widen the Course row
+ *      ONLY: the `auditPack.*` gates and the facility narrowing on every
+ *      enrollment/staff query around them are untouched.
+ *   4. `system-admin.ts` — the user-deletion impact preview must count what the
+ *      hard delete will actually destroy, and the delete itself must resolve the
+ *      same rows it is about to remove.
+ *   5. `get-learn-payload.ts` — archiving retires a course for new assignment;
+ *      it does not erase what a learner already did, so an enrolled worker must
+ *      still be able to open it.
+ *
+ * Anywhere else, use `prisma`.
+ */
+export const rawPrisma = baseClient;

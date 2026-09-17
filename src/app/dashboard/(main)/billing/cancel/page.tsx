@@ -1,7 +1,4 @@
-import { auth } from '@/auth';
-import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
-import { can } from '@/lib/rbac/permissions';
-import type { Role } from '@/types/next-auth';
+import { requirePermission } from '@/lib/rbac/require-permission';
 import prisma from '@/lib/prisma';
 import { redirect } from 'next/navigation';
 import { BILLING_PLANS } from '@/lib/billing-plans';
@@ -13,20 +10,14 @@ export const metadata = {
 };
 
 export default async function CancelSubscriptionPage() {
-  const session = await auth();
-  if (!session?.user?.id) {
-    redirect('/login');
-  }
-
-  const { role, organizationId } = session.user;
   // Matches the verb the cancel API itself requires (`billing.edit`), so the
   // page is only reachable by someone who could actually complete the flow.
-  // Was `isAdminRole`, which admits HR, supervisor and clinical_director — none
-  // holds any `billing.*` grant, yet the page loaded and rendered the
-  // organisation's plan, period end and cancellation state to them.
-  if (!can(dbRoleToRoleKey(role as Role), 'billing.edit')) {
-    redirect('/dashboard');
-  }
+  //
+  // Q26: the RBAC denial is now "Page not found" rather than a redirect to
+  // /dashboard, which still told HR and Supervisor that a cancel page exists.
+  // The BILLING-STATE redirects below are a different gate and stay as they are:
+  // they answer "there is nothing here to cancel", not "you may not be here".
+  const { organizationId } = await requirePermission('billing.edit', { onDeny: 'notFound' });
 
   const organization = organizationId
     ? await prisma.organization.findUnique({

@@ -40,6 +40,9 @@ const {
   mockHasPendingPause: vi.fn(() => false),
 }));
 
+// Kept in the module scope rather than vi.hoisted() because the factory below
+// returns JSX, which vi.hoisted() cannot host.
+
 vi.mock('@/auth', () => ({ auth: mockAuth }));
 vi.mock('next/navigation', () => ({ redirect: mockRedirect }));
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock, default: prismaMock }));
@@ -74,7 +77,12 @@ vi.mock('@/components/providers/AdminSessionProvider', () => ({
 vi.mock('@/components/dashboard/auditor/ExportJobsProvider', () => ({
   ExportJobsProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
-vi.mock('@/components/billing/BillingPausedBanner', () => ({ default: () => null }));
+const mockBillingPausedBanner = vi.fn<(props: unknown) => JSX.Element>(() => (
+  <div data-testid="billing-paused-banner" />
+));
+vi.mock('@/components/billing/BillingPausedBanner', () => ({
+  default: (props: unknown) => mockBillingPausedBanner(props),
+}));
 const mockStatusTrackerAlertBanner = vi.fn<(props: unknown) => JSX.Element>(() => (
   <div data-testid="escalation-banner" />
 ));
@@ -176,5 +184,63 @@ describe('DashboardLayout — escalation banner facility scope', () => {
 
     await expect(DashboardLayout({ children: <div /> })).rejects.toThrow('NEXT_REDIRECT');
     expect(mockGetStatusTrackerSummaryForOrg).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The subscription-pause banner is billing information. It was gated on
+ * `isAdminRole`, which spans every manager seat, so HR, Clinical Director and
+ * Supervisor — none of whom hold any `billing.*` — were shown the organisation's
+ * pause state. It now keys off `billing.read`, the same permission as the
+ * Billing page and the Billing nav row.
+ */
+describe('DashboardLayout — subscription-pause banner is billing-gated', () => {
+  const PAUSED_SUBSCRIPTION = { pauseStartsAt: null, pausedAt: new Date(), pauseEndsAt: null };
+
+  beforeEach(() => {
+    prismaMock.organization.findUnique.mockResolvedValue({ subscription: PAUSED_SUBSCRIPTION });
+    mockResolveDataFacilityIds.mockResolvedValue(null);
+  });
+
+  it.each(['owner', 'admin', 'finance'])(
+    'shows the pause banner to role=%s, which holds billing.read',
+    async (role) => {
+      mockAuth.mockResolvedValue(session(role));
+      mockResolveMembershipForActiveSession.mockResolvedValue(membership(role));
+      mockGetPauseState.mockReturnValue('paused');
+
+      await renderLayout();
+
+      expect(mockGetPauseState).toHaveBeenCalledWith(PAUSED_SUBSCRIPTION);
+      expect(screen.getByTestId('billing-paused-banner')).toBeInTheDocument();
+    },
+  );
+
+  it.each(['hr', 'clinical_director', 'supervisor'])(
+    'THE LEAK FIX: hides the pause banner from role=%s, which holds no billing.*',
+    async (role) => {
+      mockAuth.mockResolvedValue(session(role));
+      mockResolveMembershipForActiveSession.mockResolvedValue(membership(role));
+      mockGetPauseState.mockReturnValue('paused');
+
+      await renderLayout();
+
+      // Not merely unrendered — the pause state is never resolved at all, so no
+      // billing fact reaches the component tree.
+      expect(mockGetPauseState).not.toHaveBeenCalled();
+      expect(mockHasPendingPause).not.toHaveBeenCalled();
+      expect(screen.queryByTestId('billing-paused-banner')).not.toBeInTheDocument();
+    },
+  );
+
+  it('hides the SCHEDULED-pause banner from a role without billing.read', async () => {
+    mockAuth.mockResolvedValue(session('hr'));
+    mockResolveMembershipForActiveSession.mockResolvedValue(membership('hr'));
+    mockGetPauseState.mockReturnValue('none');
+    mockHasPendingPause.mockReturnValue(true);
+
+    await renderLayout();
+
+    expect(screen.queryByTestId('billing-paused-banner')).not.toBeInTheDocument();
   });
 });

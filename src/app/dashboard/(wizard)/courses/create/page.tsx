@@ -14,7 +14,10 @@ export default async function CreateCoursePage() {
   // Authoring a course is a create verb, not an admin-tier one. `isAdminRole`
   // let Finance (and any other admin-tier role without course.create) reach the
   // wizard by URL.
-  const ctx = await requirePermission('course.create');
+  //
+  // Q26: a role without the authoring verb gets "Page not found", not a redirect.
+  // The BILLING gate below is a different concern and deliberately still redirects.
+  const ctx = await requirePermission('course.create', { onDeny: 'notFound' });
   const { organizationId } = ctx;
 
   // Confirm the org has an active subscription before allowing access to the

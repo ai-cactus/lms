@@ -14,12 +14,17 @@
  * Neither `tsc` nor vitest can see problem 1 on its own: a test asserting
  * `.rejects` passes, because the promise really does reject. These assert on
  * the RETURN VALUE, and that no write happens on any refusing path.
+ *
+ * Q24 then turned the delete itself into an ARCHIVE write: the row is retained
+ * and `archivedAt` is what hides it. Every assertion below pins `course.update`
+ * with the archive payload — a `course.delete` reappearing here would destroy a
+ * record the ruling says must survive.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const { prismaMock, mockAdminAuth } = vi.hoisted(() => ({
   prismaMock: {
-    course: { findUnique: vi.fn(), delete: vi.fn() },
+    course: { findUnique: vi.fn(), update: vi.fn(), delete: vi.fn() },
   },
   mockAdminAuth: vi.fn(),
 }));
@@ -49,14 +54,14 @@ function session(role: string, organizationUserId = 'ou-caller') {
 const colleaguesCourse = {
   id: 'course-1',
   isGlobal: false,
-  creator: { organizationId: ORG },
+  organizationId: ORG,
 };
 
 beforeEach(() => {
   vi.clearAllMocks();
   mockAdminAuth.mockResolvedValue(session('admin'));
   prismaMock.course.findUnique.mockResolvedValue(colleaguesCourse);
-  prismaMock.course.delete.mockResolvedValue({});
+  prismaMock.course.update.mockResolvedValue({});
 });
 
 describe('deleteCourse — refusals are returned, never thrown', () => {
@@ -69,7 +74,7 @@ describe('deleteCourse — refusals are returned, never thrown', () => {
         prismaMock.course.findUnique.mockResolvedValue({
           id: 'course-1',
           isGlobal: false,
-          creator: { organizationId: OTHER_ORG },
+          organizationId: OTHER_ORG,
         }),
     ],
     [
@@ -85,6 +90,7 @@ describe('deleteCourse — refusals are returned, never thrown', () => {
     expect(result.error).toEqual(expect.any(String));
     expect(result.error).not.toMatch(/#441|minified/i);
     // Fail-closed: the refusal returns BEFORE any write.
+    expect(prismaMock.course.update).not.toHaveBeenCalled();
     expect(prismaMock.course.delete).not.toHaveBeenCalled();
   });
 
@@ -92,13 +98,14 @@ describe('deleteCourse — refusals are returned, never thrown', () => {
     prismaMock.course.findUnique.mockResolvedValue({
       id: 'catalog-1',
       isGlobal: true,
-      creator: { organizationId: OTHER_ORG },
+      organizationId: OTHER_ORG,
     });
 
     const result = await deleteCourse('catalog-1');
 
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/shared catalogue/i);
+    expect(prismaMock.course.update).not.toHaveBeenCalled();
     expect(prismaMock.course.delete).not.toHaveBeenCalled();
   });
 
@@ -106,7 +113,7 @@ describe('deleteCourse — refusals are returned, never thrown', () => {
     prismaMock.course.findUnique.mockResolvedValue({
       id: 'course-1',
       isGlobal: false,
-      creator: { organizationId: OTHER_ORG },
+      organizationId: OTHER_ORG,
     });
 
     const result = await deleteCourse('course-1');
@@ -117,7 +124,7 @@ describe('deleteCourse — refusals are returned, never thrown', () => {
 });
 
 describe('deleteCourse — scoped to the organisation, not the author', () => {
-  it('deletes a course authored by a COLLEAGUE in the same org', async () => {
+  it('archives a course authored by a COLLEAGUE in the same org', async () => {
     // The reported case: the caller did not author it, and previously this
     // refused with a thrown "Course not found" → React error #441.
     mockAdminAuth.mockResolvedValue(session('admin', 'ou-someone-else'));
@@ -125,24 +132,46 @@ describe('deleteCourse — scoped to the organisation, not the author', () => {
     const result = await deleteCourse('course-1');
 
     expect(result).toEqual({ success: true });
-    expect(prismaMock.course.delete).toHaveBeenCalledWith({ where: { id: 'course-1' } });
+    expect(prismaMock.course.update).toHaveBeenCalledWith({
+      where: { id: 'course-1' },
+      data: {
+        archivedAt: expect.any(Date),
+        archivedByOrgUserId: 'ou-someone-else',
+      },
+    });
+    // Q24: the row is RETAINED. A hard delete here would destroy the course,
+    // its enrollments, its certificates and its stored video.
+    expect(prismaMock.course.delete).not.toHaveBeenCalled();
   });
 
-  it.each(['owner', 'admin', 'hr', 'clinical_director'])(
-    'lets %s delete their organisation’s course',
+  it('reads ownership off Course.organizationId, not a join through the author', async () => {
+    await deleteCourse('course-1');
+
+    const select = prismaMock.course.findUnique.mock.calls[0][0].select;
+    expect(select).toHaveProperty('organizationId', true);
+    // Q25 removed this join; re-adding it would still work today and silently
+    // undo the migration onto the column.
+    expect(select).not.toHaveProperty('creator');
+  });
+
+  it.each(['owner', 'admin', 'hr'])('lets %s delete their organisation’s course', async (role) => {
+    mockAdminAuth.mockResolvedValue(session(role));
+
+    await expect(deleteCourse('course-1')).resolves.toEqual({ success: true });
+  });
+
+  // clinical_director lost course.delete per founder Q3 ("Confirmed") — it
+  // authors courses (CRU) but deletion is reserved for Owner/Admin/HR.
+  it.each(['clinical_director', 'supervisor', 'finance', 'nurse'])(
+    'refuses %s — no course.delete',
     async (role) => {
       mockAdminAuth.mockResolvedValue(session(role));
 
-      await expect(deleteCourse('course-1')).resolves.toEqual({ success: true });
+      const result = await deleteCourse('course-1');
+
+      expect(result.success).toBe(false);
+      expect(prismaMock.course.update).not.toHaveBeenCalled();
+      expect(prismaMock.course.delete).not.toHaveBeenCalled();
     },
   );
-
-  it.each(['supervisor', 'finance', 'nurse'])('refuses %s — no course.delete', async (role) => {
-    mockAdminAuth.mockResolvedValue(session(role));
-
-    const result = await deleteCourse('course-1');
-
-    expect(result.success).toBe(false);
-    expect(prismaMock.course.delete).not.toHaveBeenCalled();
-  });
 });

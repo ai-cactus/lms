@@ -518,7 +518,7 @@ describe('Document Hub — per-role registry gate (RBAC billing+documents tighte
     await getDocuments();
 
     expect(prismaMock.document.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { organizationUser: { organizationId: 'org-1' } } }),
+      expect.objectContaining({ where: { organizationId: 'org-1' } }),
     );
   });
 
@@ -529,10 +529,10 @@ describe('Document Hub — per-role registry gate (RBAC billing+documents tighte
       user: { id: 'hr-1', organizationId: 'org-1', organizationUserId: 'ou-1', role: 'hr' },
     });
     prismaMock.document.findUnique.mockResolvedValue({
-      organizationUser: { organizationId: 'org-1' },
+      organizationId: 'org-1',
       versions: [],
     });
-    prismaMock.document.delete.mockResolvedValue({});
+    prismaMock.document.update.mockResolvedValue({});
 
     const result = await deleteDocument('doc-1');
 
@@ -545,9 +545,7 @@ describe('Document Hub — per-role registry gate (RBAC billing+documents tighte
     mockAuth.mockResolvedValue({
       user: { id: 'hr-1', organizationId: 'org-1', organizationUserId: 'ou-1', role: 'hr' },
     });
-    prismaMock.document.findUnique.mockResolvedValue({
-      organizationUser: { organizationId: 'org-1' },
-    });
+    prismaMock.document.findUnique.mockResolvedValue({ organizationId: 'org-1' });
     prismaMock.document.update.mockResolvedValue({});
 
     const result = await renameDocument('doc-1', 'New Name.pdf');
@@ -575,9 +573,7 @@ describe('Document Hub — per-role registry gate (RBAC billing+documents tighte
         role: 'clinical_director',
       },
     });
-    prismaMock.document.findUnique.mockResolvedValue({
-      organizationUser: { organizationId: 'org-1' },
-    });
+    prismaMock.document.findUnique.mockResolvedValue({ organizationId: 'org-1' });
     prismaMock.document.update.mockResolvedValue({});
 
     const result = await renameDocument('doc-1', 'New Name.pdf');
@@ -607,10 +603,11 @@ describe('Document Hub — full org parity (getDocuments/renameDocument/deleteDo
 
       await getDocuments();
 
+      // Q25: the Document Hub reads the OWNING ORG off the column. A
+      // `{ organizationUser: { organizationId } }` join here would return the
+      // same rows while silently undoing the migration onto it.
       expect(prismaMock.document.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { organizationUser: { organizationId: 'org-a' } },
-        }),
+        expect.objectContaining({ where: { organizationId: 'org-a' } }),
       );
     });
 
@@ -638,9 +635,8 @@ describe('Document Hub — full org parity (getDocuments/renameDocument/deleteDo
   describe('renameDocument — any org admin may rename any org document', () => {
     it('renames a document uploaded by a DIFFERENT admin in the same org (full parity)', async () => {
       mockAuth.mockResolvedValue(ORG_A_ADMIN_2);
-      prismaMock.document.findUnique.mockResolvedValue({
-        organizationUser: { organizationId: 'org-a' }, // uploaded by admin-a1, renamed by admin-a2
-      });
+      // uploaded by admin-a1, renamed by admin-a2
+      prismaMock.document.findUnique.mockResolvedValue({ organizationId: 'org-a' });
       prismaMock.document.update.mockResolvedValue({});
 
       const result = await renameDocument('doc-1', 'New Name.pdf');
@@ -656,9 +652,7 @@ describe('Document Hub — full org parity (getDocuments/renameDocument/deleteDo
 
     it('reports "not found" (never leaking existence) for a document in a different org', async () => {
       mockAuth.mockResolvedValue(ORG_B_ADMIN);
-      prismaMock.document.findUnique.mockResolvedValue({
-        organizationUser: { organizationId: 'org-a' },
-      });
+      prismaMock.document.findUnique.mockResolvedValue({ organizationId: 'org-a' });
 
       const result = await renameDocument('doc-1', 'New Name.pdf');
 
@@ -677,31 +671,57 @@ describe('Document Hub — full org parity (getDocuments/renameDocument/deleteDo
   });
 
   describe('deleteDocument — any org admin may delete any org document', () => {
-    it('deletes a document uploaded by a DIFFERENT admin in the same org (full parity)', async () => {
+    it('archives a document uploaded by a DIFFERENT admin in the same org (full parity)', async () => {
       mockAuth.mockResolvedValue(ORG_A_ADMIN_2);
       prismaMock.document.findUnique.mockResolvedValue({
-        organizationUser: { organizationId: 'org-a' },
-        versions: [{ id: 'ver-1', storagePath: 'gcs://bucket/policy.pdf' }],
+        organizationId: 'org-a',
+        versions: [{ id: 'ver-1' }],
       });
-      mockDeleteFile.mockResolvedValue(undefined);
-      prismaMock.document.delete.mockResolvedValue({});
+      prismaMock.document.update.mockResolvedValue({});
 
       const result = await deleteDocument('doc-1');
 
       expect(result).toEqual({ success: true });
-      expect(prismaMock.document.delete).toHaveBeenCalledWith({ where: { id: 'doc-1' } });
+      expect(prismaMock.document.update).toHaveBeenCalledWith({
+        where: { id: 'doc-1' },
+        data: { archivedAt: expect.any(Date), archivedByOrgUserId: 'ou-a2' },
+      });
     });
 
-    it('reports "not found" for a document in a different org and never deletes it', async () => {
+    // Q24 retains the document "for compliance". Three things must therefore
+    // survive, and each was previously destroyed by this action:
+    it('retains the row, the stored objects and the course lineage', async () => {
+      mockAuth.mockResolvedValue(ORG_A_ADMIN_2);
+      prismaMock.document.findUnique.mockResolvedValue({
+        organizationId: 'org-a',
+        versions: [{ id: 'ver-1' }],
+      });
+      prismaMock.document.update.mockResolvedValue({});
+
+      await deleteDocument('doc-1');
+
+      // 1. the row itself
+      expect(prismaMock.document.delete).not.toHaveBeenCalled();
+      // 2. the stored object — an archived record pointing at a deleted file is
+      //    worse than doing nothing.
+      expect(mockDeleteFile).not.toHaveBeenCalled();
+      // 3. the CourseVersion link, which only ever had to be cut to get past a
+      //    Restrict FK before a hard delete. Cutting it now would destroy a
+      //    course's "View Source Document" lineage for no reason.
+      expect(prismaMock.courseVersion.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('reports "not found" for a document in a different org and never archives it', async () => {
       mockAuth.mockResolvedValue(ORG_B_ADMIN);
       prismaMock.document.findUnique.mockResolvedValue({
-        organizationUser: { organizationId: 'org-a' },
+        organizationId: 'org-a',
         versions: [],
       });
 
       const result = await deleteDocument('doc-1');
 
       expect(result).toEqual({ error: 'Document not found' });
+      expect(prismaMock.document.update).not.toHaveBeenCalled();
       expect(prismaMock.document.delete).not.toHaveBeenCalled();
       expect(mockDeleteFile).not.toHaveBeenCalled();
     });

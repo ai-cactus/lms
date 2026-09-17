@@ -207,7 +207,10 @@ describe('GRANTABLE_ROLES — Admin grant matrix (Owner-equivalent, minus owner/
     expect(GRANTABLE_ROLES['admin']).not.toContain('admin'));
 });
 
-describe('GRANTABLE_ROLES — HR grant matrix (D1)', () => {
+// Founder Q10: "HR should be able to invite anyone except an owner; including
+// facility supervisors", narrowed in round 2 to "Make it 'Owner and Admin'".
+describe('GRANTABLE_ROLES — HR grant matrix (everything except owner and admin)', () => {
+  it('hr can grant supervisor', () => expect(GRANTABLE_ROLES['hr']).toContain('supervisor'));
   it('hr can grant hr', () => expect(GRANTABLE_ROLES['hr']).toContain('hr'));
   it('hr can grant clinical_director', () =>
     expect(GRANTABLE_ROLES['hr']).toContain('clinical_director'));
@@ -215,8 +218,9 @@ describe('GRANTABLE_ROLES — HR grant matrix (D1)', () => {
   it.each(WORKER_DB_ROLES)('hr can grant worker role %s', (workerRole) => {
     expect(GRANTABLE_ROLES['hr']).toContain(workerRole);
   });
-  it('hr CANNOT grant supervisor (D1)', () =>
-    expect(GRANTABLE_ROLES['hr']).not.toContain('supervisor'));
+  // The escalation fence: withholding admin is what stops HR minting an
+  // Owner-equivalent seat, and it is the ONLY thing enforcing that ceiling on
+  // the re-role path too (canChangeRole reads this same list).
   it('hr CANNOT grant admin', () => expect(GRANTABLE_ROLES['hr']).not.toContain('admin'));
   it('hr CANNOT grant owner', () => expect(GRANTABLE_ROLES['hr']).not.toContain('owner'));
 });
@@ -259,19 +263,14 @@ describe('isAdminRole', () => {
 });
 
 /**
- * canChangeRole — in-place staff role change guard (RBAC matrix realignment,
- * Change 2). Deliberately narrower than the invite-grant matrix: only an
- * Owner or facility Supervisor may re-role an existing account. Evaluated in
- * order: actor_not_permitted → self_change → target_not_reachable →
- * role_not_grantable. No I/O — pure function, no mocking required.
+ * canChangeRole — in-place staff role change guard. Owner, Admin and HR may
+ * re-role (founder Q11); who they may reach and what they may grant is capped
+ * by GRANTABLE_ROLES, applied to BOTH the target's current role and the new
+ * role. Evaluated in order: actor_not_permitted → self_change →
+ * target_not_reachable → role_not_grantable. No I/O — pure function, no mocking.
  */
 describe('canChangeRole', () => {
-  describe('actor_not_permitted — actor is not Owner/Supervisor', () => {
-    it('denies an hr actor (hr may edit/invite staff but not re-role them)', () => {
-      const result = canChangeRole('hr', 'hr-1', 'target-1', 'nurse', 'supervisor');
-      expect(result).toEqual({ allowed: false, reason: 'actor_not_permitted' });
-    });
-
+  describe('actor_not_permitted — actor is not Owner/Admin/HR', () => {
     it('denies a clinical_director actor', () => {
       const result = canChangeRole(
         'clinical_director',
@@ -301,7 +300,7 @@ describe('canChangeRole', () => {
     });
 
     it('checks actor permission BEFORE self-change — an unpermitted actor changing themselves still gets actor_not_permitted', () => {
-      const result = canChangeRole('hr', 'same-1', 'same-1', 'hr', 'nurse');
+      const result = canChangeRole('finance', 'same-1', 'same-1', 'finance', 'nurse');
       expect(result).toEqual({ allowed: false, reason: 'actor_not_permitted' });
     });
   });
@@ -374,13 +373,51 @@ describe('canChangeRole', () => {
     });
   });
 
-  describe('ROLE_CHANGE_ACTOR_ROLES', () => {
-    it('contains exactly owner and admin', () => {
-      expect([...ROLE_CHANGE_ACTOR_ROLES].sort()).toEqual(['admin', 'owner']);
+  // Founder Q11 round 2: "Make it except 'Owner and Admin'". HR is now a
+  // role-change actor, and the owner/admin ceiling is enforced entirely by
+  // GRANTABLE_ROLES.hr — canChangeRole applies that one list to the target's
+  // current role AND to the requested new role, so there is no second fence to
+  // keep in step.
+  describe('hr actor — may re-role everything except owner and admin', () => {
+    it('hr may promote a worker to supervisor', () => {
+      const result = canChangeRole('hr', 'hr-1', 'target-1', 'nurse', 'supervisor');
+      expect(result).toEqual({ allowed: true });
     });
 
-    it('does not include hr, despite hr holding broad invite-grant rights', () => {
-      expect(ROLE_CHANGE_ACTOR_ROLES).not.toContain('hr');
+    it('hr may change a supervisor to clinical_director', () => {
+      const result = canChangeRole('hr', 'hr-1', 'sup-2', 'supervisor', 'clinical_director');
+      expect(result).toEqual({ allowed: true });
+    });
+
+    it('hr CANNOT reach an owner target', () => {
+      const result = canChangeRole('hr', 'hr-1', 'owner-1', 'owner', 'hr');
+      expect(result).toEqual({ allowed: false, reason: 'target_not_reachable' });
+    });
+
+    it('hr CANNOT reach an admin target', () => {
+      const result = canChangeRole('hr', 'hr-1', 'adm-1', 'admin', 'hr');
+      expect(result).toEqual({ allowed: false, reason: 'target_not_reachable' });
+    });
+
+    it('hr CANNOT promote a reachable target to admin', () => {
+      const result = canChangeRole('hr', 'hr-1', 'target-1', 'nurse', 'admin');
+      expect(result).toEqual({ allowed: false, reason: 'role_not_grantable' });
+    });
+
+    it('hr CANNOT promote a reachable target to owner', () => {
+      const result = canChangeRole('hr', 'hr-1', 'target-1', 'nurse', 'owner');
+      expect(result).toEqual({ allowed: false, reason: 'role_not_grantable' });
+    });
+
+    it('hr cannot re-role themselves', () => {
+      const result = canChangeRole('hr', 'hr-1', 'hr-1', 'hr', 'supervisor');
+      expect(result).toEqual({ allowed: false, reason: 'self_change' });
+    });
+  });
+
+  describe('ROLE_CHANGE_ACTOR_ROLES', () => {
+    it('contains exactly owner, admin and hr (founder Q11)', () => {
+      expect([...ROLE_CHANGE_ACTOR_ROLES].sort()).toEqual(['admin', 'hr', 'owner']);
     });
 
     it('does not include supervisor (demoted to read-only)', () => {

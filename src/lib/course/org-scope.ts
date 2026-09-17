@@ -1,12 +1,16 @@
 /**
  * "Which courses belong to this organisation" — the single definition.
  *
- * `Course` has no `organizationId` column. A course written in-house is tied to
- * the org only through its creator's `OrganizationUser`, while a course taken
- * from the platform catalogue is tied through an `OrgCourseOffering` row and is
- * authored by ANOTHER tenant entirely. A query that spells out only the first
- * half — as every audit-report query did — silently drops every adopted course,
- * which for a video-only customer means an empty catalogue.
+ * A course written in-house carries the org on `Course.organizationId` (Q25),
+ * while a course taken from the platform catalogue belongs to ANOTHER tenant and
+ * is tied here only through an `OrgCourseOffering` row. A query that spells out
+ * only the first half — as every audit-report query did — silently drops every
+ * adopted course, which for a video-only customer means an empty catalogue.
+ *
+ * ⛔ Deliberately carries NO `archivedAt` filter. Archived rows are excluded by
+ * the client extension in `db/index.ts`, which the auditor export deliberately
+ * bypasses — and it builds its queries from this predicate. Baking the filter in
+ * here would re-exclude them at the one call site that most needs them.
  *
  * `getCourses` (`src/app/actions/course.ts`) builds the same union in row form
  * because it needs each offering's course payload; this module is the predicate
@@ -35,8 +39,8 @@ export async function listAdoptedCourseIds(organizationId: string): Promise<stri
  */
 export async function orgCourseWhere(organizationId: string): Promise<Prisma.CourseWhereInput> {
   const adoptedCourseIds = await listAdoptedCourseIds(organizationId);
-  if (adoptedCourseIds.length === 0) return { creator: { organizationId } };
-  return { OR: [{ creator: { organizationId } }, { id: { in: adoptedCourseIds } }] };
+  if (adoptedCourseIds.length === 0) return { organizationId };
+  return { OR: [{ organizationId }, { id: { in: adoptedCourseIds } }] };
 }
 
 /**
@@ -65,7 +69,5 @@ export function authoredCourseWhere(input: {
   const isOrgManager =
     !!organizationId && isAdminRole(role) && can(dbRoleToRoleKey(role), 'course.read');
 
-  return isOrgManager
-    ? { creator: { organizationId } }
-    : { createdByOrgUserId: organizationUserId };
+  return isOrgManager ? { organizationId } : { createdByOrgUserId: organizationUserId };
 }

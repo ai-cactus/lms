@@ -49,6 +49,7 @@
 import { Worker } from 'bullmq';
 import { redis } from './redis';
 import prisma from '@/lib/prisma';
+import { rawPrisma } from '@/db/index';
 import { logger } from '@/lib/logger';
 import { listFilesForActiveBackend, deleteFile } from '@/lib/storage';
 import {
@@ -117,7 +118,14 @@ async function buildReferencedUriSet(): Promise<Set<string>> {
       where: { videoStorageUri: { not: null } },
       select: { videoStorageUri: true },
     }),
-    prisma.course.findMany({
+    // ⛔ `rawPrisma`, deliberately: an ARCHIVED course still references its
+    // preview video, and Q24 says that file must be retained. Through the
+    // filtered client the row drops out of this set, the object looks orphaned,
+    // and the sweeper permanently deletes it once past the grace window. Every
+    // other guardrail in this file (opt-in flag, ownership interlock, dry-run,
+    // delete cap) defends against a misconfigured ENVIRONMENT; none of them
+    // notices the query itself having silently excluded rows.
+    rawPrisma.course.findMany({
       where: { previewVideoStorageUri: { not: null } },
       select: { previewVideoStorageUri: true },
     }),

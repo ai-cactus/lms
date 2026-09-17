@@ -64,14 +64,15 @@ describe('DashboardLayoutClient — Billing nav gate (billing.read)', () => {
   });
 });
 
-describe('DashboardLayoutClient — Settings nav gate (owner or admin, per organization.edit)', () => {
-  it.each(['owner', 'admin'])('shows the Settings nav link for %s', (role) => {
+describe('DashboardLayoutClient — Settings nav gate (Owner/Admin/HR, per organization.edit)', () => {
+  // HR joined the Settings gate with the founder's Q9 answer.
+  it.each(['owner', 'admin', 'hr'])('shows the Settings nav link for %s', (role) => {
     renderLayout(role);
 
     expect(screen.getByRole('link', { name: /^settings$/i })).toBeInTheDocument();
   });
 
-  it.each(['supervisor', 'hr', 'clinical_director', 'finance'])(
+  it.each(['supervisor', 'clinical_director', 'finance'])(
     'hides the Settings nav link for %s',
     (role) => {
       renderLayout(role);
@@ -208,6 +209,7 @@ describe('DashboardLayoutClient — exact sidebar module set for all 6 manager r
         'Help Center',
       ],
     },
+    // 'Settings' added with the founder's Q9 `organization.edit` grant.
     {
       role: 'hr',
       visible: [
@@ -217,6 +219,7 @@ describe('DashboardLayoutClient — exact sidebar module set for all 6 manager r
         'Status Tracker',
         'Staff Management',
         'Audit Reports',
+        'Settings',
         'Help Center',
       ],
     },

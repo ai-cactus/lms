@@ -1,26 +1,32 @@
 /**
  * Regression tests for the /dashboard/status-tracker server gate.
  *
- * The page redirects to /dashboard unless the caller holds roster-wide
- * `assignment.read` visibility. Per the RBAC access matrix, owner, admin,
- * supervisor, hr and clinicalDirector hold it; finance (an admin-tier role)
- * and every worker role do not — direct navigation to this URL must bounce
- * them back to /dashboard rather than leaking the roster-wide overdue-training
- * table.
+ * The page 404s unless the caller holds roster-wide `assignment.read`
+ * visibility. Per the RBAC access matrix, owner, admin, supervisor, hr and
+ * clinicalDirector hold it; finance (an admin-tier role) and every worker role
+ * do not — direct navigation to this URL must answer "Page not found" rather
+ * than leaking the roster-wide overdue-training table.
+ *
+ * The 404 (rather than the earlier bounce to /dashboard) is founder ruling Q26
+ * (docs/local/RBAC-founder-answers-2026-09-15.md): a redirect still reveals
+ * that a Status Tracker module exists.
  *
  * Follows the same pattern as billing/page.test.tsx: call the exported async
  * Server Component directly and assert on the resolved element / thrown
- * redirect. Heavy children are stubbed.
+ * control-flow signal. Heavy children are stubbed.
  */
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockAuth, mockGetStatusTrackerSummaryForOrg, mockRedirect, makeSession } = vi.hoisted(
-  () => ({
+const { mockAuth, mockGetStatusTrackerSummaryForOrg, mockRedirect, mockNotFound, makeSession } =
+  vi.hoisted(() => ({
     mockAuth: vi.fn(),
     mockGetStatusTrackerSummaryForOrg: vi.fn(),
     mockRedirect: vi.fn(() => {
       throw new Error('NEXT_REDIRECT');
+    }),
+    mockNotFound: vi.fn(() => {
+      throw new Error('NEXT_NOT_FOUND');
     }),
     makeSession: (role: string, extras: Record<string, unknown> = {}) => ({
       user: {
@@ -33,11 +39,10 @@ const { mockAuth, mockGetStatusTrackerSummaryForOrg, mockRedirect, makeSession }
         ...extras,
       },
     }),
-  }),
-);
+  }));
 
 vi.mock('@/auth', () => ({ auth: mockAuth }));
-vi.mock('next/navigation', () => ({ redirect: mockRedirect }));
+vi.mock('next/navigation', () => ({ redirect: mockRedirect, notFound: mockNotFound }));
 vi.mock('@/lib/reminders/status-tracker', () => ({
   getStatusTrackerSummaryForOrg: mockGetStatusTrackerSummaryForOrg,
 }));
@@ -83,25 +88,30 @@ describe('StatusTrackerPage — assignment.read gate', () => {
     },
   );
 
-  it('redirects finance to /dashboard (no roster-wide assignment visibility)', async () => {
+  // Q26: the assertion that matters is the pair — 404 fired AND no redirect. The
+  // `notFound` half alone would still pass if the option were dropped and the
+  // guard bounced to /dashboard instead.
+  it('404s finance (no roster-wide assignment visibility)', async () => {
     mockAuth.mockResolvedValueOnce(makeSession('finance'));
 
     await expect(StatusTrackerPage({ searchParams: Promise.resolve({}) })).rejects.toThrow(
-      'NEXT_REDIRECT',
+      'NEXT_NOT_FOUND',
     );
 
-    expect(mockRedirect).toHaveBeenCalledExactlyOnceWith('/dashboard');
+    expect(mockNotFound).toHaveBeenCalled();
+    expect(mockRedirect).not.toHaveBeenCalled();
     expect(mockGetStatusTrackerSummaryForOrg).not.toHaveBeenCalled();
   });
 
-  it('redirects a worker role (front_desk_admin) to /dashboard', async () => {
+  it('404s a worker role (front_desk_admin)', async () => {
     mockAuth.mockResolvedValueOnce(makeSession('front_desk_admin'));
 
     await expect(StatusTrackerPage({ searchParams: Promise.resolve({}) })).rejects.toThrow(
-      'NEXT_REDIRECT',
+      'NEXT_NOT_FOUND',
     );
 
-    expect(mockRedirect).toHaveBeenCalledExactlyOnceWith('/dashboard');
+    expect(mockNotFound).toHaveBeenCalled();
+    expect(mockRedirect).not.toHaveBeenCalled();
     expect(mockGetStatusTrackerSummaryForOrg).not.toHaveBeenCalled();
   });
 

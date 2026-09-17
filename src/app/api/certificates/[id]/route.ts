@@ -6,6 +6,10 @@ import { downloadFile } from '@/lib/storage';
 import { logger } from '@/lib/logger';
 import { audit, getClientContext } from '@/lib/audit';
 import { captureServer } from '@/lib/analytics/server';
+import { can } from '@/lib/rbac/permissions';
+import { dbRoleToRoleKey, isAdminRole } from '@/lib/rbac/role-utils';
+import { resolveDataFacilityIds, staffFacilityWhere } from '@/lib/facility/staff-where';
+
 export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   try {
@@ -29,12 +33,62 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
       return NextResponse.json({ error: 'Certificate not found' }, { status: 404 });
     }
 
+    // Self-access, on whichever instance the holder is signed in to. Resolved
+    // before the administrative branch for the same reason as
+    // `getCertificateDetails`: a holder with no active facility assignment
+    // narrows to `[]` and would otherwise be refused their own certificate.
     const isWorker = workerSession?.user?.organizationUserId === certificate.organizationUserId;
-    const isAdmin =
-      adminSession?.user?.id &&
-      adminSession.user.organizationId === certificate.organizationUser.organizationId;
+    const isSelf =
+      isWorker || adminSession?.user?.organizationUserId === certificate.organizationUserId;
 
-    if (!isWorker && !isAdmin) {
+    // The session this download is attributed to.
+    const actor = isWorker ? workerSession?.user : (adminSession?.user ?? workerSession?.user);
+
+    let authorized = isSelf;
+
+    // The administrative branch checked org equality and NOTHING else, so every
+    // admin-tier session in the organisation could pull any holder's PDF by id.
+    //
+    // What closes that here is `can(roleKey, 'certificate.read')` plus the
+    // facility narrowing below — those two are load-bearing. `isAdminRole` is
+    // NOT: `roleKey` comes from `adminSession`, and the admin instance already
+    // fences worker roles out. `auth.ts:6` builds it with
+    // `allowedRoles: ADMIN_ROLES`, and with no `sessionAllowedRoles` override
+    // that list also governs decode, so `create-auth-instance.ts:736` invalidates
+    // any session whose freshly-read membership role is not an admin role. A
+    // worker therefore cannot hold a valid `'@/auth'` session at all.
+    //
+    // It is kept as defence in depth against that list widening — the worker
+    // instance already sets `sessionAllowedRoles: ALL_ROLES` for learner-mode
+    // bridging, so "the instance implies the tier" is an assumption about THIS
+    // instance, not a property of the pair. Where the caller can arrive on
+    // either instance — `getCertificateDetails`, which resolves admin-then-worker
+    // — the same check IS load-bearing.
+    if (!authorized && adminSession?.user?.id && adminSession.user.organizationId) {
+      const roleKey = dbRoleToRoleKey(adminSession.user.role);
+      if (roleKey && isAdminRole(adminSession.user.role) && can(roleKey, 'certificate.read')) {
+        const dataFacilityIds = await resolveDataFacilityIds(adminSession);
+        const inScope = await prisma.certificate.findFirst({
+          where: {
+            id: params.id,
+            organizationUser: {
+              organizationId: adminSession.user.organizationId,
+              ...staffFacilityWhere(dataFacilityIds),
+            },
+          },
+          select: { id: true },
+        });
+        authorized = Boolean(inScope);
+      }
+    }
+
+    if (!authorized) {
+      logger.warn({
+        msg: '[certificate] Certificate download denied',
+        userId: actor?.id,
+        role: actor?.role,
+        certificateId: params.id,
+      });
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
@@ -47,8 +101,11 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
     // F-001: record certificate (PHI-adjacent) download on the authorized path.
     await audit({
       action: 'certificate.download',
-      actorId: isWorker ? workerSession?.user?.id : adminSession?.user?.id,
-      actorRole: isWorker ? 'worker' : 'admin',
+      actorId: actor?.id,
+      // The DB role, not the auth instance. Every other `audit()` call records
+      // the real role, and 'admin'/'worker' here named the cookie the request
+      // arrived on — which cannot answer "who read this certificate".
+      actorRole: actor?.role,
       organizationId: certificate.organizationUser.organizationId,
       targetType: 'certificate',
       targetId: params.id,
@@ -62,7 +119,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
       'certificate_downloaded',
       { course_id: certificate.enrollment?.courseId ?? '', format: 'pdf' },
       {
-        distinctId: (isWorker ? workerSession?.user?.id : adminSession?.user?.id) ?? '',
+        distinctId: actor?.id ?? '',
         organizationId: certificate.organizationUser.organizationId,
       },
     );

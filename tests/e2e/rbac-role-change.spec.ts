@@ -11,7 +11,7 @@
  * only at invite time (`InviteStaffModal`, see rbac-invite-roles.spec.ts).
  *
  * Scenarios covered here:
- *   - Owner / Supervisor / HR (every role holding `user.edit`) see NO
+ *   - Owner / Supervisor / HR see NO
  *     role-editing affordance anywhere on a staff profile — only "Assign
  *     Course" — including when viewing their OWN profile.
  *   - Owner / Supervisor can still remove a staff member from the roster via
@@ -167,16 +167,12 @@ async function loginAs(page: Page, email: string, password: string): Promise<voi
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-// RBAC ruling bundled with the multi-org schema refactor (src/lib/rbac/permissions.ts,
-// 427/427 passing, treated as ground truth): supervisor became READ-ONLY on every
-// resource (readEverythingExceptBilling + self-service perms only) — it no longer
-// holds `user.edit`, so it can no longer reach the "Assign Course" affordance that
-// updateStaffDetails/assignCourseToStaffMember gate on. Owner and hr are unaffected.
-const ASSIGN_COURSE_VISIBLE: Record<ViewerRole, boolean> = {
-  owner: true,
-  supervisor: false,
-  hr: true,
-};
+// Every viewer here reaches the staff profile's one mutating affordance.
+// Supervisor regained it on 2026-09-16 (founder Q2 — the supervisor's "U" on
+// Staff Management covers assigning courses and basic profile editing), so this
+// spec's subject is now purely the absence of a ROLE-editing path: that stays
+// gone for all three, supervisor included, since role changes are
+// ROLE_CHANGE_ACTOR_ROLES (Owner/Admin/HR) and have no in-place UI at all.
 
 test.describe('Staff role change — no in-place UI path remains', () => {
   for (const role of ['owner', 'supervisor', 'hr'] as const) {
@@ -193,15 +189,9 @@ test.describe('Staff role change — no in-place UI path remains', () => {
 
         await expect(page.getByRole('heading', { name: 'Trainings' })).toBeVisible();
 
-        if (ASSIGN_COURSE_VISIBLE[role]) {
-          // This viewer holds user.edit — "Assign Course" is the ONLY mutating
-          // affordance left on the profile.
-          await expect(page.getByRole('button', { name: 'Assign Course' })).toBeVisible();
-        } else {
-          // supervisor lost user.edit under the RBAC ruling — no mutating
-          // affordance at all remains on the profile.
-          await expect(page.getByRole('button', { name: 'Assign Course' })).toHaveCount(0);
-        }
+        // "Assign Course" is the ONLY mutating affordance left on the profile —
+        // and crucially it is NOT a role-editing one.
+        await expect(page.getByRole('button', { name: 'Assign Course' })).toBeVisible();
 
         // The deleted EditStaffModal's affordances must not exist anywhere.
         await expect(page.getByRole('button', { name: 'Edit Profile' })).toHaveCount(0);
@@ -293,8 +283,10 @@ test.describe('Staff role change — no in-place UI path remains', () => {
       const staffRow = page.locator('tr', { hasText: targetEmail });
       await expect(staffRow).toBeVisible();
 
-      // supervisor holds neither user.edit nor user.delete, so the row kebab —
-      // now limited to Change Facility / Remove Staff — renders not at all.
+      // supervisor is neither a Rule A facility-change actor nor a `user.delete`
+      // holder, so the row kebab — now limited to Change Facility / Remove
+      // Staff — renders not at all. Gaining the profile-edit and assign powers
+      // (Q2) deliberately did NOT add anything here.
       // Read-only access to the profile survives as the row click.
       await expect(staffRow.getByRole('button', { name: 'Row actions' })).toHaveCount(0);
       await expect(page.getByRole('menuitem', { name: /edit profile/i })).toHaveCount(0);

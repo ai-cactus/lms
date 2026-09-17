@@ -80,8 +80,20 @@ export async function audit(entry: AuditEntry): Promise<void> {
   }
 }
 
-/** Minimal client surface, so a transaction client can be passed in. */
-type AuditClient = Pick<Prisma.TransactionClient, 'auditLog'>;
+/**
+ * Minimal client surface, so any transaction client can be passed in.
+ *
+ * Structural rather than `Pick<Prisma.TransactionClient, 'auditLog'>`: the app's
+ * client carries the Q24 archive extension (see `db/index.ts`) and the
+ * `/system` hard-delete path deliberately opens its transaction on the
+ * un-extended one. Their delegates are not mutually assignable, so naming
+ * either concrete type would lock out the other.
+ */
+interface AuditClient {
+  auditLog: {
+    create(args: { data: Prisma.AuditLogUncheckedCreateInput }): Promise<unknown>;
+  };
+}
 
 function writeAuditRow(client: AuditClient, entry: AuditEntry) {
   return client.auditLog.create({

@@ -112,6 +112,7 @@ async function main() {
     update: {},
     create: {
       id: 'test-doc-id-01',
+      organizationId: org.id,
       organizationUserId: adminMembership.id,
       filename: 'HIPAA_Compliance_Guide.pdf',
       originalName: 'HIPAA_Compliance_Guide.pdf',

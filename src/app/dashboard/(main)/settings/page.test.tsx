@@ -1,16 +1,17 @@
 /**
  * Regression tests for the /dashboard/settings server gate.
  *
- * Settings is gated on the granular `organization.edit` permission — owner
- * and admin (Owner-equivalent) hold it, every other admin role (supervisor,
- * hr, clinical_director, finance) must see the styled access-denied card
- * instead of the real Settings UI — mirroring the Billing route's gate
- * pattern (see ./../billing/page.test.tsx).
+ * Settings is gated on the granular `organization.edit` permission — owner,
+ * admin (Owner-equivalent) and hr (founder Q9) hold it; supervisor,
+ * clinical_director and finance do not. Founder ruling Q26
+ * (docs/local/RBAC-founder-answers-2026-09-15.md) then changed the DENIAL SHAPE:
+ * the styled access-denied card, which named Settings to the role it was
+ * refusing, is replaced by `notFound()`.
  */
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockAuth, prismaMock, mockRedirect, makeSession } = vi.hoisted(() => ({
+const { mockAuth, prismaMock, mockRedirect, mockNotFound, makeSession } = vi.hoisted(() => ({
   mockAuth: vi.fn(),
   prismaMock: {
     organizationUser: { findMany: vi.fn(), count: vi.fn() },
@@ -22,6 +23,9 @@ const { mockAuth, prismaMock, mockRedirect, makeSession } = vi.hoisted(() => ({
   },
   mockRedirect: vi.fn(() => {
     throw new Error('NEXT_REDIRECT');
+  }),
+  mockNotFound: vi.fn(() => {
+    throw new Error('NEXT_NOT_FOUND');
   }),
   makeSession: (role: string, extras: Record<string, unknown> = {}) => ({
     user: {
@@ -38,7 +42,7 @@ const { mockAuth, prismaMock, mockRedirect, makeSession } = vi.hoisted(() => ({
 
 vi.mock('@/auth', () => ({ auth: mockAuth }));
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock, default: prismaMock }));
-vi.mock('next/navigation', () => ({ redirect: mockRedirect }));
+vi.mock('next/navigation', () => ({ redirect: mockRedirect, notFound: mockNotFound }));
 vi.mock('@/components/dashboard/settings/SettingsClient', () => ({
   default: ({
     teamMembers,
@@ -97,7 +101,7 @@ describe('SettingsPageRoute — organization.edit gate', () => {
     expect(prismaMock.organizationUser.findMany).not.toHaveBeenCalled();
   });
 
-  it.each(['owner', 'admin'])('renders the real Settings UI for %s', async (role) => {
+  it.each(['owner', 'admin', 'hr'])('renders the real Settings UI for %s', async (role) => {
     mockAuth.mockResolvedValueOnce(makeSession(role));
 
     const element = await SettingsPageRoute();
@@ -107,34 +111,36 @@ describe('SettingsPageRoute — organization.edit gate', () => {
       'facility Acme Clinic:Sasha Supervisor',
     );
     expect(screen.getByTestId('settings-client')).toHaveTextContent(`role ${role}`);
-    expect(screen.queryByText(/don.t have access to settings/i)).not.toBeInTheDocument();
+    expect(mockNotFound).not.toHaveBeenCalled();
   });
 
-  it.each(['supervisor', 'hr', 'clinical_director', 'finance'])(
-    'renders the access-denied card instead of Settings for %s',
+  // Q26: hidden in the nav AND "Page not found" on a typed URL. Never a redirect
+  // and never a card that names the module it is refusing.
+  it.each(['supervisor', 'clinical_director', 'finance'])(
+    '404s instead of rendering Settings for %s',
     async (role) => {
       mockAuth.mockResolvedValueOnce(makeSession(role));
 
-      const element = await SettingsPageRoute();
-      render(element);
+      await expect(SettingsPageRoute()).rejects.toThrow('NEXT_NOT_FOUND');
 
-      expect(screen.getByText(/don.t have access to settings/i)).toBeInTheDocument();
-      expect(screen.queryByTestId('settings-client')).not.toBeInTheDocument();
-      expect(screen.getByRole('link', { name: /back to dashboard/i })).toHaveAttribute(
-        'href',
-        '/dashboard',
-      );
+      expect(mockNotFound).toHaveBeenCalled();
+      expect(mockRedirect).not.toHaveBeenCalled();
+      expect(screen.queryByText(/don.t have access to settings/i)).not.toBeInTheDocument();
       // Denial happens before any organization-scoped queries fire.
       expect(prismaMock.facility.findMany).not.toHaveBeenCalled();
     },
   );
 
+  // Distinct from the RBAC denial: the role HOLDS organization.edit and is
+  // simply mid-onboarding, so it must NOT 404 — that would hide a module it may
+  // use.
   it('shows the "no organization" state for an owner with no organizationId', async () => {
     mockAuth.mockResolvedValueOnce(makeSession('owner', { organizationId: null }));
 
     const element = await SettingsPageRoute();
     render(element);
 
+    expect(mockNotFound).not.toHaveBeenCalled();
     expect(screen.getByText(/no organization found/i)).toBeInTheDocument();
     expect(screen.queryByTestId('settings-client')).not.toBeInTheDocument();
     expect(prismaMock.facility.findMany).not.toHaveBeenCalled();

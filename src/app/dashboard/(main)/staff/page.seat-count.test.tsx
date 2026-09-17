@@ -95,3 +95,29 @@ describe('StaffPage — seat count', () => {
     expect(screen.getByTestId('staff-list')).toHaveAttribute('data-pending', '2');
   });
 });
+
+/**
+ * Founder ruling Q26 (docs/local/RBAC-founder-answers-2026-09-15.md): a module a
+ * role cannot access is hidden from the nav AND answers a typed URL with "Page
+ * not found". The roster took `requirePermission`'s default `onDeny: 'redirect'`
+ * until this change, and a bounce to /dashboard still confirms a roster exists.
+ */
+describe('StaffPage — Q26 uniform deny', () => {
+  it('asks the guard for notFound, not the default redirect', async () => {
+    await StaffPage();
+
+    // The options object is the whole assertion: `user.read` alone still passes
+    // if the third argument is dropped, and the deny shape silently reverts.
+    expect(mockRequirePermission).toHaveBeenCalledWith('user.read', undefined, {
+      onDeny: 'notFound',
+    });
+  });
+
+  it('propagates the guard refusal without reading the roster', async () => {
+    mockRequirePermission.mockRejectedValueOnce(new Error('NEXT_NOT_FOUND'));
+
+    await expect(StaffPage()).rejects.toThrow('NEXT_NOT_FOUND');
+    expect(mockGetStaffUsers).not.toHaveBeenCalled();
+    expect(mockCountBillableStaff).not.toHaveBeenCalled();
+  });
+});

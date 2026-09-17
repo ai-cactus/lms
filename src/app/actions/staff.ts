@@ -8,6 +8,8 @@ import {
   dbRoleToRoleKey,
   canChangeRole,
   getRoleDisplayName,
+  FACILITY_CHANGE_ACTOR_ROLES,
+  STAFF_PROFILE_ACTOR_ROLES,
   type RoleChangeDenyReason,
 } from '@/lib/rbac/role-utils';
 import { isOrgWideFacilityRole } from '@/lib/facility/org-wide-roles';
@@ -15,7 +17,7 @@ import { can } from '@/lib/rbac/permissions';
 import { auth } from '@/auth';
 import { revalidatePath } from 'next/cache';
 import crypto from 'crypto';
-import type { EnrollmentStatus, UserRole } from '@/generated/prisma/enums';
+import type { UserRole } from '@/generated/prisma/enums';
 import { enrollUsers, type AssignmentSettingsInput } from '@/app/actions/enrollment';
 import { enrollUserForRoleTargets } from '@/lib/enrollment/role-targets';
 import { resolveDataFacilityIds, staffFacilityWhere } from '@/lib/facility/staff-where';
@@ -36,7 +38,7 @@ import { captureServer } from '@/lib/analytics/server';
 // `role_not_grantable` are only reachable when an owner is involved (owner is in
 // no grant list), so both reuse the established owner-immutability message.
 const ROLE_CHANGE_DENIED_MESSAGES: Record<RoleChangeDenyReason, string> = {
-  actor_not_permitted: "Only an Owner or Supervisor can change a staff member's role.",
+  actor_not_permitted: "Only an Owner, Admin or HR can change a staff member's role.",
   self_change: 'You cannot change your own role.',
   target_not_reachable:
     'The Owner role cannot be changed here. It is set only when an organization is created.',
@@ -222,10 +224,14 @@ export async function updateStaffDetails(
   },
 ) {
   const session = await auth();
+  // Gated on the actor-role list rather than `can(..., 'user.edit')`: Q2 grants
+  // supervisors basic profile editing, but `user.edit` also gates the facility
+  // move and the role change, both of which the directive reserves for
+  // Owner/Admin/HR.
   if (
     !session?.user?.id ||
     !session.user.organizationId ||
-    !can(dbRoleToRoleKey(session.user.role), 'user.edit')
+    !STAFF_PROFILE_ACTOR_ROLES.includes(session.user.role)
   ) {
     return { success: false, error: 'Unauthorized' };
   }
@@ -239,9 +245,32 @@ export async function updateStaffDetails(
     return { success: false, error: 'Forbidden' };
   }
 
+  // Q2 confines a supervisor's profile edit to their OWN facility. Tenancy alone
+  // does not do that, so the target is narrowed the same way `removeStaff` and
+  // `setStaffFacilities` narrow theirs — org-wide callers partition to `allowed`
+  // untouched.
+  const { rejected: outOfFacility } = await partitionOrgUsersByFacility(
+    session,
+    session.user.organizationId,
+    [organizationUserId],
+  );
+  if (outOfFacility.length > 0) {
+    logger.warn({
+      msg: '[staff] updateStaffDetails denied — target outside caller facilities',
+      userId: session.user.id,
+      role: session.user.role,
+      targetOrgUserId: organizationUserId,
+    });
+    return { success: false, error: 'Forbidden' };
+  }
+
   // A role change is a privileged, narrower operation than a name/job-title edit:
-  // only an Owner/Supervisor may re-role a reachable target, never themselves,
-  // and never to/from owner. Unchanged role (e.g. a plain profile edit) skips it.
+  // only an Owner/Admin/HR may re-role a reachable target, never themselves, and
+  // never to/from owner. Unchanged role (e.g. a plain profile edit) skips it.
+  // This is also what keeps a supervisor — who reaches this action for profile
+  // edits under Q2 — out of role changes: `canChangeRole` checks
+  // ROLE_CHANGE_ACTOR_ROLES, which they are not in, so the attempt is refused
+  // here with `actor_not_permitted` and needs no second gate above.
   const roleChanged = data.role !== target.role;
   if (roleChanged) {
     const decision = canChangeRole(
@@ -483,10 +512,14 @@ export async function setStaffFacilities(
   facilityIds: string[],
 ): Promise<{ success: boolean; error?: string }> {
   const session = await auth();
+  // Rule A, stated explicitly: only Owner/Admin/HR may change the facility of a
+  // supervisor or worker. Previously implied by `user.edit`, which is too coarse
+  // to be load-bearing now that a supervisor holds a narrow staff-editing power
+  // of their own (STAFF_PROFILE_ACTOR_ROLES).
   if (
     !session?.user?.id ||
     !session.user.organizationId ||
-    !can(dbRoleToRoleKey(session.user.role), 'user.edit')
+    !FACILITY_CHANGE_ACTOR_ROLES.includes(session.user.role)
   ) {
     return { success: false, error: 'Unauthorized' };
   }
@@ -912,8 +945,34 @@ export async function getEnrollmentQuizResult(enrollmentId: string) {
   }
 
   // D-01: exposes another person's quiz answers and score.
+  //
+  // `assessment.read`, not `assignment.read`. The registry defines `assessment`
+  // as "Quizzes, questions & question-by-question attempt logs" — this payload —
+  // while `assignment` is the org's auto-enrolment configuration. Two different
+  // resources, and that distinction outlives any one role's letters, so this
+  // gate stays on the assessment verb whoever happens to hold it.
+  //
+  // HR holds it, by founder ruling: "HR can build quizzes and view results"
+  // (docs/local/RBAC_for_multi-tenancy-updated.md — Quiz row, CRUD). It did not
+  // when this gate was first written, and the narrowing then rested on this
+  // role's own registry description, which said HR was "blocked from
+  // question-by-question assessment scoring". That sentence was ours, not his;
+  // asked to settle it (docs/local/RBAC-founder-answers-2026-09-15.md) he chose
+  // the broad reading. Do not re-narrow HR here on the strength of the old
+  // wording — the ruling governs, and the description now agrees with it.
+  //
+  // The verb is what does the work here. `isAdminRole` is defence in depth, not
+  // load-bearing: this module's `auth` is the admin instance (`@/auth`), which
+  // fences worker roles out at decode (`auth.ts:6` +
+  // `create-auth-instance.ts:736`), so no worker session reaches this line. It
+  // matters because every worker role DOES hold `assessment.read` — granted so a
+  // learner can read their OWN attempt — so if this action ever moves to a
+  // resolve-either-instance session, as `getEnrollmentWithResults` uses, the verb
+  // alone would open someone else's answers to all eight. Keep them paired.
+  //
+  // Together they resolve to owner, admin, hr, supervisor and clinical_director.
   const roleKey = dbRoleToRoleKey(session.user.role);
-  if (!roleKey || !can(roleKey, 'assignment.read')) {
+  if (!roleKey || !isAdminRole(session.user.role) || !can(roleKey, 'assessment.read')) {
     logger.warn({
       msg: '[staff] Quiz result read denied',
       userId: session.user.id,
@@ -1114,27 +1173,20 @@ export async function removeStaff(organizationUserId: string) {
 
     const staffName = staffOrgUser.user.fullName || staffOrgUser.user.email;
 
-    // Drop in-flight training on removal so a re-invite yields a clean slate.
-    // Only the "active" statuses (the F-053 partial-index set) are deleted —
-    // cascading their ReminderLog / ReminderNudge / QuizAttempt rows. Terminal
-    // statuses (completed, attested, locked, failed, retry_requested) and their
-    // certificates are retained for compliance history.
-    const ACTIVE_ENROLLMENT_STATUSES: EnrollmentStatus[] = [
-      'enrolled',
-      'assigned',
-      'in_progress',
-      'lessons_complete',
-    ];
-
+    // Removal revokes ACCESS, never training history. Founder decision Q23
+    // (docs/local/RBAC-founder-answers-2026-09-15.md): a deactivated account's
+    // records are kept for compliance, so nothing here deletes enrollments,
+    // certificates or quiz attempts — including IN-FLIGHT enrollments, which an
+    // auditor needs in order to see that training was started but not finished.
+    // Consequence to preserve: re-inviting the same person restores the SAME
+    // membership row, so their unfinished courses reappear rather than starting
+    // from a clean slate. That is intended; wiping them would destroy evidence.
+    //
     // Single transaction: deactivate the membership, bump the identity's
     // sessionVersion so any live session is invalidated on its next JWT decode
-    // (F-059 kill-switch), drop the in-flight enrollments, and expire any
-    // pending invite for this email in the org so a live `/join` token can't
-    // immediately re-add the person.
-    const [droppedEnrollments] = await prisma.$transaction([
-      prisma.enrollment.deleteMany({
-        where: { organizationUserId, status: { in: ACTIVE_ENROLLMENT_STATUSES } },
-      }),
+    // (F-059 kill-switch), and expire any pending invite for this email in the
+    // org so a live `/join` token can't immediately re-add the person.
+    await prisma.$transaction([
       prisma.organizationUser.update({
         where: { id: organizationUserId },
         data: { active: false, deactivatedAt: new Date() },
@@ -1157,6 +1209,14 @@ export async function removeStaff(organizationUserId: string) {
     // so the removed user's next decode misses the cache and is invalidated.
     await invalidateRevalidationCache(staffOrgUser.userId);
 
+    logger.info({
+      msg: '[staff] Staff member removed — membership deactivated, training records retained',
+      actorId: session.user.id,
+      orgId: admin.organizationId,
+      organizationUserId,
+      targetEmail: maskEmail(staffOrgUser.user.email),
+    });
+
     // F-001: record the sensitive mutation on the authorized, successful path.
     await audit({
       action: 'staff.remove',
@@ -1165,7 +1225,9 @@ export async function removeStaff(organizationUserId: string) {
       organizationId: admin.organizationId,
       targetType: 'user',
       targetId: organizationUserId,
-      metadata: { droppedEnrollmentCount: droppedEnrollments.count },
+      // Q23 retention rule, recorded on the audit trail itself so a compliance
+      // reviewer can see the removal was non-destructive without reading code.
+      metadata: { enrollmentsRetained: true },
       ...getClientContext(await headers()),
     });
 

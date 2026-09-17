@@ -24,7 +24,9 @@
  * is still asserted here.
  *
  * Scenarios:
- *   - Finance / Clinical Director: no Assign Course on a staff profile; no
+ *   - Finance / Clinical Director: DENIED the roster outright, and explicitly no
+ *     Assign Course / Change Facility on a staff profile — Clinical Director
+ *     holds every `assignment.*` verb, so that absence is a real assertion; no
  *     row-level Remove Staff action in the staff list; no kebab at all on a
  *     pending-invite row (no invite.edit/invite.delete).
  *   - HR: retains every affordance above (regression against the coarse
@@ -232,6 +234,15 @@ test.describe('RBAC — Finance / Clinical Director are DENIED staff (D-01)', ()
         await page.waitForLoadState('networkidle');
 
         expect(await page.content()).not.toContain(targetEmail);
+
+        // ⛔ Explicit since 2026-09-16, when supervisor gained a staff-profile
+        // actor list of its own. Clinical Director holds ALL FOUR
+        // `assignment.*` verbs, so the profile's Assign Course gate must stay a
+        // CONJUNCTION (profile actor list AND assignment.create) — simplifying
+        // it to a bare `assignment.create` check would surface this button here
+        // for a role the matrix makes view-only on Staff Management.
+        await expect(page.getByRole('button', { name: 'Assign Course' })).toHaveCount(0);
+        await expect(page.getByRole('button', { name: 'Change Facility' })).toHaveCount(0);
       } finally {
         await cleanupScenario(seeded);
       }

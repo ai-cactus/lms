@@ -102,7 +102,7 @@ describe('TrainingPage — org-scoped population (real getDashboardData)', () =>
 
     expect(screen.getByTestId('training-client')).toHaveTextContent('1');
     expect(mockCourseFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { creator: { organizationId: ORG_ID } } }),
+      expect.objectContaining({ where: { organizationId: ORG_ID } }),
     );
   });
 });

@@ -4,7 +4,7 @@
  * The matrix is derived live from the RBAC registry (`permissions.ts`) via
  * `can()`, so these spot-checks double as a guard that the registry keeps giving
  * the expected shape (owner = everything, finance ≈ billing, workers ≈ nothing,
- * Settings = owner-only).
+ * Settings = Owner/Admin/HR).
  */
 import { describe, it, expect } from 'vitest';
 import {
@@ -102,14 +102,20 @@ describe('supervisor', () => {
 });
 
 describe('hr', () => {
-  it('manages staff, invites and now courses, but cannot author clinical assessments or reach billing/settings', () => {
+  it('manages staff, invites, courses, quizzes, settings and facilities, but cannot reach billing', () => {
     expect(rowByLabel('Manage staff roster').check('hr')).toBe(true);
     expect(rowByLabel('Invite & change user roles').check('hr')).toBe(true);
     // HR gained full course CRUD per the updated ruling (previously blocked).
     expect(rowByLabel('Build & edit courses').check('hr')).toBe(true);
-    expect(rowByLabel('Author clinical assessments').check('hr')).toBe(false);
+    // HR gained organization.edit + facility.create per founder Q8/Q9.
+    expect(rowByLabel('Settings').check('hr')).toBe(true);
+    expect(rowByLabel('Create & switch facilities').check('hr')).toBe(true);
+    // Both assessment rows flipped to true 2026-09-16 on the founder's Quiz
+    // ruling — "HR can build quizzes and view results" — which is exactly these
+    // two rows: `assessment.edit` authors, `assessment.read` opens the scores.
+    expect(rowByLabel('Author clinical assessments').check('hr')).toBe(true);
+    expect(rowByLabel('View question-level scores').check('hr')).toBe(true);
     expect(rowByLabel('Billing').check('hr')).toBe(false);
-    expect(rowByLabel('Settings').check('hr')).toBe(false);
   });
 });
 
@@ -125,13 +131,15 @@ describe('clinicalDirector', () => {
 });
 
 describe('Settings row', () => {
-  it('is owner-or-admin only', () => {
+  // Founder Q9 put organisation settings with Owner/Admin/HR; the row keys off
+  // `organization.edit`, which is also the Q13 notification-config gate.
+  const SETTINGS_HOLDERS: readonly RoleKey[] = ['owner', 'admin', 'hr'];
+
+  it('is Owner/Admin/HR only', () => {
     const settings = rowByLabel('Settings');
-    expect(settings.check('owner')).toBe(true);
-    expect(settings.check('admin')).toBe(true);
     for (const column of MATRIX_COLUMNS) {
-      if (column.key === 'owner' || column.key === 'admin') continue;
-      expect(settings.check(column.key), `${column.key} must not access Settings`).toBe(false);
+      const expected = SETTINGS_HOLDERS.includes(column.key);
+      expect(settings.check(column.key), `${column.key}: Settings`).toBe(expected);
     }
   });
 });
@@ -196,9 +204,18 @@ describe('per-role NAVIGATION module list — exact assertions for owner/admin/4
       'supervisor',
       ['Dashboard', 'Documents', 'Courses', 'Status Tracker', 'Staff Management', 'Help Center'],
     ],
+    // 'Settings' added 2026-09-16 — HR gained organization.edit per founder Q9.
     [
       'hr',
-      ['Dashboard', 'Documents', 'Courses', 'Status Tracker', 'Staff Management', 'Help Center'],
+      [
+        'Dashboard',
+        'Documents',
+        'Courses',
+        'Status Tracker',
+        'Staff Management',
+        'Settings',
+        'Help Center',
+      ],
     ],
     ['clinicalDirector', ['Dashboard', 'Documents', 'Courses', 'Status Tracker', 'Help Center']],
     // Courses removed 2026-08-25 — team QA #9: Finance must not view courses

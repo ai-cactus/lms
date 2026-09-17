@@ -1,6 +1,7 @@
 'use server';
 
 import prisma from '@/lib/prisma';
+import { rawPrisma } from '@/db/index';
 import { cookies, headers } from 'next/headers';
 import crypto from 'crypto';
 import { revalidatePath } from 'next/cache';
@@ -533,9 +534,13 @@ export async function getUserDeletePreview(userId: string): Promise<DeletePrevie
     inviteCount,
     verificationTokenCount,
   ] = await Promise.all([
-    prisma.course.count({ where: { createdByOrgUserId: { in: orgUserIds } } }),
+    // ⛔ `rawPrisma` for the two archivable models: this preview tells the
+    // operator what a HARD delete is about to destroy, and the delete below
+    // destroys archived rows too. Counting through the filtered client
+    // under-reports the damage on the very screen that authorises it.
+    rawPrisma.course.count({ where: { createdByOrgUserId: { in: orgUserIds } } }),
     prisma.enrollment.count({ where: { organizationUserId: { in: orgUserIds } } }),
-    prisma.document.count({ where: { organizationUserId: { in: orgUserIds } } }),
+    rawPrisma.document.count({ where: { organizationUserId: { in: orgUserIds } } }),
     prisma.notification.count({ where: { organizationUserId: { in: orgUserIds } } }),
     prisma.job.count({ where: { userId } }),
     prisma.invite.count({ where: { email: user.email } }),
@@ -543,7 +548,7 @@ export async function getUserDeletePreview(userId: string): Promise<DeletePrevie
   ]);
 
   // Count cascade relations through courses
-  const userCourses = await prisma.course.findMany({
+  const userCourses = await rawPrisma.course.findMany({
     where: { createdByOrgUserId: { in: orgUserIds } },
     select: { id: true },
   });
@@ -612,7 +617,14 @@ export async function deleteUserWithRelations(
     // must not be awaited inside a transaction callback.
     const clientContext = await systemClientContext();
 
-    const result = await prisma.$transaction(async (tx) => {
+    // ⛔ `rawPrisma.$transaction`, so every `tx.*` below is UN-filtered. This
+    // is a hard delete of an entire identity: `tx.course.deleteMany` and
+    // `tx.document.deleteMany` remove archived rows regardless (writes are
+    // never intercepted), so the `findMany` that derives `courseIds` for the
+    // cascade must see the same rows. Filtered, an archived course's
+    // enrollments and quiz attempts would survive the pass that is supposed to
+    // clear them and then block the delete on a foreign key.
+    const result = await rawPrisma.$transaction(async (tx) => {
       const counts: Record<string, number> = {};
 
       const orgUsers = await tx.organizationUser.findMany({

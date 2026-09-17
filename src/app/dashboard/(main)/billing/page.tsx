@@ -1,16 +1,9 @@
-import Link from 'next/link';
-import { ShieldAlert } from 'lucide-react';
-import { auth } from '@/auth';
-import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
-import { can } from '@/lib/rbac/permissions';
+import { requirePermission } from '@/lib/rbac/require-permission';
 import prisma from '@/lib/prisma';
-import { redirect } from 'next/navigation';
-import { Button } from '@/components/ui/button';
 import BillingPage from '@/components/billing/BillingPage';
 import { countBillableStaff } from '@/lib/seat-limits';
 import { BILLING_PLANS } from '@/lib/billing-plans';
 import { getPlanPrices } from '@/lib/billing-prices';
-import type { Role } from '@/types/next-auth';
 
 export const metadata = {
   title: 'Billing & Subscription | Theraptly',
@@ -18,36 +11,12 @@ export const metadata = {
 };
 
 export default async function BillingPageRoute() {
-  const session = await auth();
-
-  if (!session?.user?.id) {
-    redirect('/login');
-  }
-
-  const { role, organizationId } = session.user;
-
   // Billing is reserved for roles holding `billing.read` (owner, finance).
-  // Other admins (e.g. supervisor) reaching this URL get a proper access-denied
-  // state instead of the raw "Forbidden" the billing APIs would otherwise return.
-  if (!can(dbRoleToRoleKey(role as Role), 'billing.read')) {
-    return (
-      <div className="flex min-h-[60vh] flex-col items-center justify-center px-4 text-center">
-        <div className="flex size-14 items-center justify-center rounded-full bg-error/10 text-error">
-          <ShieldAlert className="size-7" aria-hidden="true" />
-        </div>
-        <h1 className="mt-6 text-2xl font-semibold text-foreground">
-          You don&apos;t have access to Billing
-        </h1>
-        <p className="mt-2 max-w-md text-sm text-text-secondary">
-          Billing and subscription management is limited to your organization&apos;s owner and
-          finance roles.
-        </p>
-        <Button asChild className="mt-6">
-          <Link href="/dashboard">Back to dashboard</Link>
-        </Button>
-      </div>
-    );
-  }
+  //
+  // Q26: this used to render an in-page access-denied card naming the module.
+  // An unauthorised module is hidden from the nav AND answers a typed URL with
+  // "Page not found", so a role with no billing remit never learns it exists.
+  const { organizationId } = await requirePermission('billing.read', { onDeny: 'notFound' });
 
   // Fetch org staff count + active subscription plan for the UI, plus live
   // Stripe plan prices — independent reads, so run them concurrently.

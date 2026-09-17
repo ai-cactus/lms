@@ -135,27 +135,30 @@ async function seedTwoCourses(): Promise<Seeded> {
 
     await client.query(
       `INSERT INTO courses (
-         id, title, description, status, created_by_org_user_id, approved_by_org_user_id,
-         approved_at, type, is_global, review_required, created_at, updated_at
-       ) VALUES ($1, $2, $3, 'published'::"CourseStatus", $4, $5, NOW(), 'text'::"CourseType", false, false, NOW(), NOW())`,
+         id, title, description, status, created_by_org_user_id, organization_id,
+         approved_by_org_user_id, approved_at, type, is_global, review_required,
+         created_at, updated_at
+       ) VALUES ($1, $2, $3, 'published'::"CourseStatus", $4, $5, $6, NOW(), 'text'::"CourseType", false, false, NOW(), NOW())`,
       [
         approvedCourseId,
         approvedCourseTitle,
         'A course confirmed through the publish review modal.',
         ownerOrgUserId,
+        orgId,
         reviewerOrgUserId,
       ],
     );
     await client.query(
       `INSERT INTO courses (
-         id, title, description, status, created_by_org_user_id, approved_by_org_user_id,
-         type, is_global, review_required, created_at, updated_at
-       ) VALUES ($1, $2, $3, 'published'::"CourseStatus", $4, NULL, 'text'::"CourseType", false, false, NOW(), NOW())`,
+         id, title, description, status, created_by_org_user_id, organization_id,
+         approved_by_org_user_id, type, is_global, review_required, created_at, updated_at
+       ) VALUES ($1, $2, $3, 'published'::"CourseStatus", $4, $5, NULL, 'text'::"CourseType", false, false, NOW(), NOW())`,
       [
         assignedCourseId,
         assignedCourseTitle,
         'A clean draft published as a side effect of being assigned.',
         ownerOrgUserId,
+        orgId,
       ],
     );
 

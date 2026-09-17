@@ -466,7 +466,9 @@ export async function createCourse(data: { title: string; description?: string }
     throw new Error('Unauthorized');
   }
 
-  if (!session.user.organizationUserId) {
+  // Both halves are required: `organizationUserId` records authorship,
+  // `organizationId` is the course's OWNER (Q25) and is NOT NULL on the row.
+  if (!session.user.organizationUserId || !session.user.organizationId) {
     throw new Error('You must belong to an organization to create courses');
   }
 
@@ -487,6 +489,7 @@ export async function createCourse(data: { title: string; description?: string }
     data: {
       title: data.title,
       description: data.description || null,
+      organizationId: session.user.organizationId,
       createdByOrgUserId: session.user.organizationUserId,
     },
   });
@@ -751,6 +754,11 @@ export async function publishCourse(courseId: string, opts?: { acknowledgeWarnin
 }
 
 /**
+ * Archives a course. Q24: "delete" retains — the row, its lessons, enrollments,
+ * certificates and stored video all survive; `archivedAt` is what removes it
+ * from every list. The user-facing verb stays "Delete", and so does the audit
+ * action name, because nothing about the operator's intent has changed.
+ *
  * Refusals are RETURNED, never thrown.
  *
  * Next.js redacts a thrown Server Action message in production: the client
@@ -780,22 +788,24 @@ export async function deleteCourse(
   }
 
   const organizationId = session.user.organizationId;
+  // Already-archived courses come back null from the filtered client, so the
+  // not-found branch below covers a repeat delete — no separate guard needed.
   const existing = await prisma.course.findUnique({
     where: { id: courseId },
     select: {
       id: true,
       isGlobal: true,
-      creator: { select: { organizationId: true } },
+      organizationId: true,
     },
   });
 
   // COU-002/COU-004 and PR #523 established that a course belongs to the
   // ORGANIZATION, not to the member who authored it — `getCourses`,
-  // `getCourseById` and `enrollUsers` all scope that way. This check was still
-  // on authorship (`createdByOrgUserId`), so a manager could see a colleague's
-  // course, was offered Delete on it, and was then refused.
+  // `getCourseById` and `enrollUsers` all scope that way. Q25 made that a
+  // column, so ownership is now read directly instead of joined through the
+  // author's membership.
   const ownedByCallerOrg =
-    !!organizationId && !!existing && existing.creator?.organizationId === organizationId;
+    !!organizationId && !!existing && existing.organizationId === organizationId;
 
   if (!ownedByCallerOrg) {
     logger.warn({
@@ -817,9 +827,19 @@ export async function deleteCourse(
     return { success: false, error: 'Course not found.' };
   }
 
-  await prisma.course.delete({ where: { id: courseId } });
+  // Q24: delete ARCHIVES. The row, its lessons, its enrollments, its
+  // certificates and its stored video all survive — `archivedAt` is what hides
+  // it from every list, so the user-facing effect is unchanged while the record
+  // stays available for compliance.
+  await prisma.course.update({
+    where: { id: courseId },
+    data: {
+      archivedAt: new Date(),
+      archivedByOrgUserId: session.user.organizationUserId,
+    },
+  });
 
-  logger.info({ msg: '[course] Course deleted', courseId, userId: session.user.id });
+  logger.info({ msg: '[course] Course archived', courseId, userId: session.user.id });
   revalidatePath('/dashboard/training');
   revalidatePath('/dashboard/courses');
   return { success: true };
@@ -837,6 +857,27 @@ export async function getDashboardData(requestedFacilityIds?: string[] | null) {
   const session = await resolveSession();
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
+  }
+
+  // This action had NO permission gate, only a session check — and it resolves a
+  // WORKER session too, so any learner could POST to it and read their facility's
+  // roster-wide training figures (headcount, colleagues' scores, pass/fail).
+  // The page in front of it gates on `course.read`, which is not a boundary twice
+  // over: every worker role holds that verb, and a `'use server'` export is
+  // reachable without visiting the page at all.
+  //
+  // The gate is `getGlobalDashboardData`'s (dashboard-facility.ts), deliberately
+  // verbatim: the two actions are maintained in parity (dashboard-parity.test.ts)
+  // and must not disagree about who may ask. Aggregates only — no staff name or
+  // email — so finance qualifies via `billing.read`.
+  const roleKey = dbRoleToRoleKey(session.user.role);
+  if (!can(roleKey, 'assignment.read') && !can(roleKey, 'billing.read')) {
+    logger.warn({
+      msg: '[course] getDashboardData denied — no roster or billing visibility',
+      userId: session.user.id,
+      role: session.user.role,
+    });
+    throw new Error('Forbidden');
   }
 
   // Every figure below counts over the ORGANISATION's courses and members, not
@@ -1369,8 +1410,22 @@ export async function createFullCourse(data: {
     throw new Error('Unauthorized');
   }
 
-  if (!session.user.organizationUserId) {
+  // See createCourse: the course's owning organization is a required column.
+  if (!session.user.organizationUserId || !session.user.organizationId) {
     throw new Error('Organization not found');
+  }
+
+  // This is a POST-invocable Server Action, and route protection only separates
+  // administrative from worker traffic — so without this, Finance and Facility
+  // Supervisor (neither of whom holds `course.create`) could author a course.
+  // Checked before any write, including the document/quality reads below.
+  if (!can(dbRoleToRoleKey(session.user.role), 'course.create')) {
+    logger.warn({
+      msg: '[course] createFullCourse denied — missing course.create',
+      userId: session.user.id,
+      role: session.user.role,
+    });
+    throw new Error('Insufficient permissions');
   }
 
   // Detect prompt version
@@ -1417,6 +1472,7 @@ export async function createFullCourse(data: {
       pendingAssignment: pendingAssignment
         ? (pendingAssignment as Prisma.InputJsonValue)
         : undefined,
+      organizationId: session.user.organizationId,
       createdByOrgUserId: session.user.organizationUserId,
       // Pipeline version tracking
       promptVersion,
@@ -1734,12 +1790,41 @@ export async function updateQuizQuestions(
     throw new Error('Unauthorized');
   }
 
+  // Same POST-invocable exposure as `createFullCourse`: ownership is not
+  // authorization. `course.edit` matches the lesson mutators in `lesson.ts`,
+  // which govern course content (modules, lessons, quizzes) through the parent
+  // course resource.
+  if (!can(dbRoleToRoleKey(session.user.role), 'course.edit')) {
+    logger.warn({
+      msg: '[course] updateQuizQuestions denied — missing course.edit',
+      courseId,
+      userId: session.user.id,
+      role: session.user.role,
+    });
+    throw new Error('Insufficient permissions');
+  }
+
   const course = await prisma.course.findUnique({
     where: { id: courseId },
-    include: { lessons: { include: { quiz: true } } },
+    include: {
+      lessons: { include: { quiz: true } },
+      creator: { select: { organizationId: true } },
+    },
   });
 
-  if (!course || course.createdByOrgUserId !== session.user.organizationUserId) {
+  // COU-004: a course belongs to the ORGANIZATION, not to the member who
+  // authored it — matching `deleteCourse`. Author-equality refused a colleague
+  // editing a course their own org owns.
+  if (
+    !course ||
+    !session.user.organizationId ||
+    course.creator?.organizationId !== session.user.organizationId
+  ) {
+    logger.warn({
+      msg: '[course] updateQuizQuestions: not found or outside caller organization',
+      courseId,
+      userId: session.user.id,
+    });
     throw new Error('Unauthorized or Course not found');
   }
 
@@ -1801,12 +1886,32 @@ export async function updateLessonContent(lessonId: string, content: string, tit
     throw new Error('Unauthorized');
   }
 
+  if (!can(dbRoleToRoleKey(session.user.role), 'course.edit')) {
+    logger.warn({
+      msg: '[course] updateLessonContent denied — missing course.edit',
+      lessonId,
+      userId: session.user.id,
+      role: session.user.role,
+    });
+    throw new Error('Insufficient permissions');
+  }
+
   const lesson = await prisma.lesson.findUnique({
     where: { id: lessonId },
-    include: { course: true },
+    include: { course: { include: { creator: { select: { organizationId: true } } } } },
   });
 
-  if (!lesson || lesson.course.createdByOrgUserId !== session.user.organizationUserId) {
+  // COU-004 org ownership, as in `deleteCourse` — see `updateQuizQuestions`.
+  if (
+    !lesson ||
+    !session.user.organizationId ||
+    lesson.course.creator?.organizationId !== session.user.organizationId
+  ) {
+    logger.warn({
+      msg: '[course] updateLessonContent: not found or outside caller organization',
+      lessonId,
+      userId: session.user.id,
+    });
     throw new Error('Unauthorized or Lesson not found');
   }
 

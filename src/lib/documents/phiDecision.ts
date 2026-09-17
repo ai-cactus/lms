@@ -34,6 +34,7 @@ import { createHash } from 'node:crypto';
 import prisma from '@/lib/prisma';
 import { logger } from '@/lib/logger';
 import type { Prisma } from '@/generated/prisma/client';
+import type { DbTransactionClient } from '@/db/index';
 import type { ScanResult, PHIDecidedBy } from '@/lib/documents/phiScanner';
 
 /**
@@ -52,7 +53,7 @@ export type PhiDecisionSource =
 export type PhiDecisionOutcome = 'allowed' | 'blocked_phi' | 'blocked_scan_failed';
 
 /** Minimal Prisma client surface, so a transaction client can be passed in. */
-type PrismaLike = Pick<Prisma.TransactionClient, 'phiDecision'>;
+type PrismaLike = Pick<DbTransactionClient, 'phiDecision'>;
 
 export interface PhiDecisionInput {
   source: PhiDecisionSource;

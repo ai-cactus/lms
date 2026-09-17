@@ -6,6 +6,8 @@ import prisma from '@/lib/prisma';
 import { auth } from '@/auth';
 import { logger } from '@/lib/logger';
 import { checkRateLimit } from '@/lib/rate-limit';
+import { can } from '@/lib/rbac/permissions';
+import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
 
 // Token budget for quick metadata analysis (~50k chars)
 const MAX_ANALYSIS_TOKENS = 12500;
@@ -64,6 +66,26 @@ export async function analyzeStoredDocument(documentId: string): Promise<Analyze
       quizTitle: '',
       error: 'Unauthorized',
     };
+
+  // Authenticated-only until now, so Finance and Supervisor — neither of whom
+  // may build a course — could drive Vertex spend from this endpoint. Gated on
+  // the same verb as the generation pipeline it feeds: this action exists only
+  // to prefill the course wizard.
+  if (!can(dbRoleToRoleKey(session.user.role), 'course.create')) {
+    logger.warn({
+      msg: '[course] Document analysis denied — missing course.create',
+      userId: session.user.id,
+      role: session.user.role,
+    });
+    return {
+      title: '',
+      description: '',
+      objectives: [],
+      duration: '',
+      quizTitle: '',
+      error: 'Insufficient permissions',
+    };
+  }
 
   // F-018: this is an AI-backed endpoint, so it carries the same per-user
   // quota as the other generation paths — an authenticated caller must not be

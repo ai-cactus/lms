@@ -52,6 +52,8 @@ model Organization {
   documentCategories          DocumentCategory[]
   offerings                   OrgCourseOffering[]
   courseAssignments           CourseAssignment[]
+  courses                     Course[]
+  documents                   Document[]
 
   @@map("organizations")
 }
@@ -117,7 +119,9 @@ model OrganizationUser {
 
   createdCourses    Course[]                 @relation("CourseCreator")
   approvedCourses   Course[]                 @relation("CourseApprover")
+  archivedCourses   Course[]                 @relation("CourseArchiver")
   documents         Document[]
+  archivedDocuments Document[]               @relation("DocumentArchiver")
   enrollments       Enrollment[]
   certificates      Certificate[]
   notifications     Notification[]

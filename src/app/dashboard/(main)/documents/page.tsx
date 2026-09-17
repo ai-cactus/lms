@@ -1,9 +1,7 @@
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
 import { ShieldAlert } from 'lucide-react';
-import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
-import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
+import { requirePermission } from '@/lib/rbac/require-permission';
 import { can } from '@/lib/rbac/permissions';
 import { getDocumentCategories } from '@/app/actions/document-categories';
 import { Button } from '@/components/ui/button';
@@ -23,34 +21,33 @@ export const metadata = {
 const DOCUMENTS_LIMIT = 200;
 
 export default async function DocumentsPage() {
-  const session = await auth();
-
-  if (!session?.user?.id) {
-    redirect('/login');
-  }
-
-  const { role, organizationId } = session.user;
-  const roleKey = dbRoleToRoleKey(role);
-
   // Registry gate: only roles granted `document.read` may open the org-wide
   // Document Hub (e.g. Finance and every worker role have no document access).
   // Mirrors the server actions in `src/app/actions/documents.ts`; the tenancy
   // boundary is the uploader's organizationId.
-  if (!organizationId || !can(roleKey, 'document.read')) {
+  //
+  // Q26: this used to render an in-page access-denied card, which names the
+  // module it is refusing. The founder ruling is that an unauthorised module is
+  // hidden from the nav AND answers a typed URL with "Page not found".
+  const { roleKey, organizationId } = await requirePermission('document.read', {
+    onDeny: 'notFound',
+  });
+
+  // Distinct from the denial above: the role HOLDS document.read, it just has no
+  // active membership yet. Falling through would query `organizationId: null`,
+  // which reads as "every document that belongs to no organisation".
+  if (!organizationId) {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center px-4 text-center">
         <div className="flex size-14 items-center justify-center rounded-full bg-error/10 text-error">
           <ShieldAlert className="size-7" aria-hidden="true" />
         </div>
-        <h1 className="mt-6 text-2xl font-semibold text-foreground">
-          You don&apos;t have access to Documents
-        </h1>
+        <h1 className="mt-6 text-2xl font-semibold text-foreground">No organization found</h1>
         <p className="mt-2 max-w-md text-sm text-text-secondary">
-          The Document Hub is limited to roles that manage compliance documents. Contact your
-          organization&apos;s owner if you need access.
+          Complete onboarding to set up your organization before managing documents.
         </p>
         <Button asChild className="mt-6">
-          <Link href="/dashboard">Back to dashboard</Link>
+          <Link href="/onboarding">Complete onboarding</Link>
         </Button>
       </div>
     );
@@ -62,7 +59,10 @@ export default async function DocumentsPage() {
   const categories = await getDocumentCategories();
 
   const docs = await prisma.document.findMany({
-    where: { organizationUser: { organizationId } },
+    // Q25: the Document Hub lists the ORGANIZATION's documents, read off the
+    // document's own column. Archived ones are excluded by the client extension
+    // (db/index.ts), not by a predicate here.
+    where: { organizationId },
     include: {
       versions: {
         include: {

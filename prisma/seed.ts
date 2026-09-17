@@ -404,9 +404,10 @@ async function main(): Promise<void> {
   // 3. Document + version owned by the admin (feeds the ENG-024 wizard picker).
   await prisma.document.upsert({
     where: { id: DOC_ID },
-    update: { organizationUserId: admin.id },
+    update: { organizationUserId: admin.id, organizationId: org.id },
     create: {
       id: DOC_ID,
+      organizationId: org.id,
       organizationUserId: admin.id,
       filename: 'e2e-compliance-policy.pdf',
       originalName: 'Compliance Policy.pdf',
@@ -432,9 +433,10 @@ async function main(): Promise<void> {
   const DOC2_VERSION_ID = '33333333-3333-4333-8333-333333333334';
   await prisma.document.upsert({
     where: { id: DOC2_ID },
-    update: { organizationUserId: admin2.id },
+    update: { organizationUserId: admin2.id, organizationId: org.id },
     create: {
       id: DOC2_ID,
+      organizationId: org.id,
       organizationUserId: admin2.id,
       filename: 'e2e-admin2-policy.pdf',
       originalName: 'Admin2 Policy.pdf',
@@ -462,7 +464,7 @@ async function main(): Promise<void> {
   //    course.quiz — so the quiz attaches via courseId, not lessonId).
   await prisma.course.upsert({
     where: { id: COURSE_ID },
-    update: { status: 'published', createdByOrgUserId: admin.id },
+    update: { status: 'published', createdByOrgUserId: admin.id, organizationId: org.id },
     create: {
       id: COURSE_ID,
       title: 'E2E Compliance Training',
@@ -470,6 +472,7 @@ async function main(): Promise<void> {
       status: 'published',
       type: 'text',
       isGlobal: false,
+      organizationId: org.id,
       createdByOrgUserId: admin.id,
       category: 'Compliance',
       overview: 'Learn how to handle sensitive records and report incidents.',

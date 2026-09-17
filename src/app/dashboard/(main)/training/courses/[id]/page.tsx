@@ -24,19 +24,21 @@ export default async function CourseDetailsPage(props: PageProps) {
     notFound();
   }
 
-  // Mirrors removeWorkerAssignment's own gate, so the control is only offered
-  // where it would actually succeed. An admin viewing a course someone else
-  // created still sees the roster — reading it and withdrawing from it are
-  // separate rights.
-  const canWithdrawAssignments =
-    !!session?.user?.organizationUserId &&
-    course.createdByOrgUserId === session.user.organizationUserId;
-
-  // This page has no `course.read` gate, but /dashboard/courses does and
-  // redirects on deny — so sending every viewer there made "Go Back" a dead
-  // button for roles that lack it (finance, since 2026-08-25). Same predicate
-  // the sidebar uses to decide whether to offer Courses at all.
+  // This page has no `course.read` gate, but /dashboard/courses does and now
+  // 404s on deny (founder Q26) — so sending every viewer there made "Go Back" a
+  // dead button for roles that lack it (finance, since 2026-08-25). Same
+  // predicate the sidebar uses to decide whether to offer Courses at all.
   const roleKey = session?.user?.role ? dbRoleToRoleKey(session.user.role) : null;
+
+  // Mirrors removeWorkerAssignment's own gate, so the control is only offered
+  // where it would actually succeed: the `assignment.delete` verb plus COU-004
+  // org ownership of the course. Reading the roster and withdrawing from it stay
+  // separate rights, but neither is authorship any more — a colleague's course
+  // is the organization's course.
+  const canWithdrawAssignments =
+    Boolean(roleKey && can(roleKey, 'assignment.delete')) &&
+    !!session?.user?.organizationId &&
+    course.creator.organizationId === session.user.organizationId;
   const backHref = roleKey && can(roleKey, 'course.read') ? '/dashboard/courses' : '/dashboard';
 
   // Both reads THROW `Forbidden` without `assignment.read`, so they must be
@@ -56,8 +58,6 @@ export default async function CourseDetailsPage(props: PageProps) {
       assignmentSettings={assignmentSettings}
       roleHolderCounts={roleHolderCounts}
       canCreateRoleTargets={Boolean(roleKey && can(roleKey, 'assignment.create'))}
-      // Supervisor holds `assignment.create` but not `assignment.delete`, so the
-      // picker must render add-only for them (D6).
       canRevokeRoleTargets={Boolean(roleKey && can(roleKey, 'assignment.delete'))}
     />
   );

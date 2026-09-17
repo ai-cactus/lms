@@ -86,8 +86,26 @@ describe('resolveDashboardScope — the org pin', () => {
     const orgWide = await resolveDashboardScope(session({ role: 'owner' }));
     const facilityBound = await resolveDashboardScope(session({ role: 'supervisor' }));
 
-    expect(orgWide.enrollmentWhere.organizationUser).toEqual({ organizationId: ORG_ID });
-    expect(facilityBound.enrollmentWhere.organizationUser).toEqual({ organizationId: ORG_ID });
+    expect(orgWide.enrollmentWhere.organizationUser).toEqual({
+      organizationId: ORG_ID,
+      active: true,
+    });
+    expect(facilityBound.enrollmentWhere.organizationUser).toEqual({
+      organizationId: ORG_ID,
+      active: true,
+    });
+  });
+
+  // Q23 retention: removeStaff no longer deletes a departed member's in-flight
+  // enrollments, so the dashboard's own predicate is the only thing keeping
+  // them out of overdue/outstanding counts. Dropping it would silently reinstate
+  // departed staff in every aggregate built on enrollmentWhere.
+  it('pins enrollmentWhere to ACTIVE memberships so retained records of removed staff stay out of the counts', async () => {
+    const orgWide = await resolveDashboardScope(session({ role: 'owner' }));
+    const facilityBound = await resolveDashboardScope(session({ role: 'supervisor' }));
+
+    expect(orgWide.enrollmentWhere.organizationUser).toMatchObject({ active: true });
+    expect(facilityBound.enrollmentWhere.organizationUser).toMatchObject({ active: true });
   });
 
   it('is always present on staffWhere()', async () => {
@@ -121,13 +139,13 @@ describe('resolveDashboardScope — courseWhere', () => {
     const scope = await resolveDashboardScope(session({ role: 'owner' }));
 
     expect(scope.courseWhere).toEqual({
-      OR: [{ creator: { organizationId: ORG_ID } }, { id: { in: ['adopted-1'] } }],
+      OR: [{ organizationId: ORG_ID }, { id: { in: ['adopted-1'] } }],
     });
   });
 
   it('is the plain authored predicate when nothing is adopted', async () => {
     const scope = await resolveDashboardScope(session({ role: 'owner' }));
 
-    expect(scope.courseWhere).toEqual({ creator: { organizationId: ORG_ID } });
+    expect(scope.courseWhere).toEqual({ organizationId: ORG_ID });
   });
 });

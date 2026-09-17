@@ -1,23 +1,25 @@
 /**
- * E2E spec: removing a staffer with in-flight training, then re-inviting the
- * same email, yields a clean slate for in-flight work while completed
- * training history survives (fix/worker-invite, Phase 3 of the plan).
+ * E2E spec: removing a staffer revokes access but RETAINS every training
+ * record — in-flight as well as completed — and a re-invite of the same email
+ * restores them.
  *
- * Root-cause bug this guards: removeStaff() previously only nulled
- * organizationId — the User row and ALL enrollments (including in-flight
- * ones) survived, so a re-invite/relink resurrected stale in-flight course
- * assignments the client did not expect. The fix deletes the removed user's
- * ACTIVE-status enrollments (enrolled | assigned | in_progress |
- * lessons_complete) inside the same transaction as the org-unlink, while
- * terminal statuses (completed, attested, ...) and their certificates are
- * retained for compliance — and expires any pending invite for that email so
- * a live `/join` token can't immediately re-add the person.
+ * Founder decision Q23 (docs/local/RBAC-founder-answers-2026-09-15.md):
+ * "Delete deactivated account but records should be kept for compliance
+ * purposes." This spec is the inversion of the earlier clean-slate behaviour:
+ * removeStaff() used to delete the removed user's ACTIVE-status enrollments
+ * (enrolled | assigned | in_progress | lessons_complete) so a re-invite got a
+ * fresh start. That destroyed the evidence that training had been started but
+ * not finished, so the deletion was removed. removeStaff() now only
+ * deactivates the membership, bumps sessionVersion, and expires any pending
+ * invite for that email (so a live `/join` token can't immediately re-add the
+ * person).
  *
  * This spec seeds a worker with ONE in-flight enrollment and ONE completed
  * enrollment (different courses), removes them via the real Staff page UI,
- * confirms the DB-level split, re-invites the same email, accepts via
- * /join/[token], and confirms the worker's Trainings list post-accept: the
- * in-flight course is gone, the completed one remains.
+ * confirms BOTH rows survive in the DB, re-invites the same email, accepts via
+ * /join/[token], and confirms the worker's Trainings list post-accept: both
+ * courses are back, because the accept reactivates the SAME membership row the
+ * retained enrollments still hang off.
  *
  * Pre-conditions:
  *   - App running on http://localhost:3005 (Playwright webServer).
@@ -156,17 +158,18 @@ async function seedOrgOwnerWorkerAndEnrollments(): Promise<Seeded> {
     );
 
     await client.query(
-      `INSERT INTO courses (id, title, status, created_by_org_user_id, type, is_global, created_at, updated_at)
-       VALUES ($1, $2, 'published'::"CourseStatus", $3, 'text'::"CourseType", false, NOW(), NOW())`,
-      [inFlightCourseId, inFlightCourseTitle, ownerOrgUserId],
+      `INSERT INTO courses (id, title, status, created_by_org_user_id, organization_id, type, is_global, created_at, updated_at)
+       VALUES ($1, $2, 'published'::"CourseStatus", $3, $4, 'text'::"CourseType", false, NOW(), NOW())`,
+      [inFlightCourseId, inFlightCourseTitle, ownerOrgUserId, orgId],
     );
     await client.query(
-      `INSERT INTO courses (id, title, status, created_by_org_user_id, type, is_global, created_at, updated_at)
-       VALUES ($1, $2, 'published'::"CourseStatus", $3, 'text'::"CourseType", false, NOW(), NOW())`,
-      [completedCourseId, completedCourseTitle, ownerOrgUserId],
+      `INSERT INTO courses (id, title, status, created_by_org_user_id, organization_id, type, is_global, created_at, updated_at)
+       VALUES ($1, $2, 'published'::"CourseStatus", $3, $4, 'text'::"CourseType", false, NOW(), NOW())`,
+      [completedCourseId, completedCourseTitle, ownerOrgUserId, orgId],
     );
 
-    // In-flight enrollment: the "active" status set removeStaff() must drop.
+    // In-flight enrollment: the status set removeStaff() used to drop and must
+    // now retain — this row is the whole point of the spec.
     await client.query(
       `INSERT INTO enrollments (id, organization_user_id, course_id, status, progress, started_at)
        VALUES ($1, $2, $3, 'in_progress'::"EnrollmentStatus", 40, NOW())`,
@@ -240,8 +243,8 @@ async function login(page: Page, email: string, password: string): Promise<void>
   await page.click('button[type="submit"]');
 }
 
-test.describe('Remove staffer with in-flight training, then re-invite — clean slate', () => {
-  test('in-flight enrollment is dropped on removal and never resurrected; completed training is retained', async ({
+test.describe('Remove staffer with in-flight training, then re-invite — records retained (Q23)', () => {
+  test('removal retains BOTH in-flight and completed training, and a re-invite restores them', async ({
     page,
   }) => {
     test.setTimeout(180_000);
@@ -264,7 +267,7 @@ test.describe('Remove staffer with in-flight training, then re-invite — clean 
       await removeDialog.getByRole('button', { name: 'Remove Staff' }).click();
       await expect(removeDialog).toBeHidden({ timeout: 10000 });
 
-      // ── DB confirmation: in-flight enrollment gone, completed one retained ──
+      // ── DB confirmation: BOTH enrollments retained (Q23 compliance rule) ────
       const dbAfterRemoval = await db();
       try {
         // removeStaff() deactivates the organization_users membership row — it
@@ -277,10 +280,13 @@ test.describe('Remove staffer with in-flight training, then re-invite — clean 
         expect(orgUserRes.rows[0].active).toBe(false);
         expect(orgUserRes.rows[0].deactivated_at).not.toBeNull();
 
-        const inFlightRes = await dbAfterRemoval.query(`SELECT id FROM enrollments WHERE id = $1`, [
-          seeded.inFlightEnrollmentId,
-        ]);
-        expect(inFlightRes.rows).toHaveLength(0);
+        // The regression this guards: the in-flight row used to be deleted here.
+        const inFlightRes = await dbAfterRemoval.query(
+          `SELECT id, status FROM enrollments WHERE id = $1`,
+          [seeded.inFlightEnrollmentId],
+        );
+        expect(inFlightRes.rows).toHaveLength(1);
+        expect(inFlightRes.rows[0].status).toBe('in_progress');
 
         const completedRes = await dbAfterRemoval.query(
           `SELECT id, status FROM enrollments WHERE id = $1`,
@@ -360,7 +366,7 @@ test.describe('Remove staffer with in-flight training, then re-invite — clean 
         await joinContext.close();
       }
 
-      // ── Step 4: log back in and confirm Trainings shows a clean slate ───────
+      // ── Step 4: log back in and confirm the retained training is restored ───
       const reloginContext = await page.context().browser()!.newContext();
       const reloginPage = await reloginContext.newPage();
       try {
@@ -370,15 +376,17 @@ test.describe('Remove staffer with in-flight training, then re-invite — clean 
         await reloginPage.goto('/worker/trainings');
         await reloginPage.waitForLoadState('networkidle');
 
-        // The re-invite (a plain staff invite, not a course invite) parks no
-        // course — the in-flight course must NOT reappear anywhere on the list.
-        // "My Courses" is the landing tab and holds every enrollment, so its
-        // count is the whole picture.
-        await expect(reloginPage.getByRole('button', { name: /^my courses/i })).toContainText('1');
-        await expect(reloginPage.getByText(seeded.inFlightCourseTitle)).toHaveCount(0);
-        // The completed course's history survives the removal — it lives under
-        // the Completed tab (a plain button toggle), which must be selected
-        // before asserting.
+        // The accept reactivates the SAME membership row, so both retained
+        // enrollments come back with it. "My Courses" is the landing tab and
+        // holds every enrollment, so its count is the whole picture: 2, not 1.
+        await expect(reloginPage.getByRole('button', { name: /^my courses/i })).toContainText('2');
+        // The unfinished course resumes where it left off rather than vanishing
+        // — that continuity IS the compliance requirement.
+        await expect(reloginPage.getByText(seeded.inFlightCourseTitle)).toBeVisible({
+          timeout: 15000,
+        });
+        // The completed course's history lives under the Completed tab (a plain
+        // button toggle), which must be selected before asserting.
         await reloginPage.getByRole('button', { name: /^completed/i }).click();
         await expect(reloginPage.getByText(seeded.completedCourseTitle)).toBeVisible({
           timeout: 15000,
@@ -406,15 +414,24 @@ test.describe('Remove staffer with in-flight training, then re-invite — clean 
         expect(res.rows[0].organization_id).toBe(seeded.orgId);
         expect(res.rows[0].active).toBe(true);
 
+        // Both retained enrollments still hang off that same membership row.
         const enrollmentsRes = await dbAfterAccept.query(
-          `SELECT course_id, status FROM enrollments WHERE organization_user_id = $1`,
+          `SELECT course_id, status FROM enrollments WHERE organization_user_id = $1 ORDER BY status`,
           [seeded.workerOrgUserId],
         );
-        expect(enrollmentsRes.rows).toHaveLength(1);
-        expect(enrollmentsRes.rows[0]).toMatchObject({
-          course_id: seeded.completedCourseId,
-          status: 'completed',
-        });
+        expect(enrollmentsRes.rows).toHaveLength(2);
+        expect(enrollmentsRes.rows).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              course_id: seeded.completedCourseId,
+              status: 'completed',
+            }),
+            expect.objectContaining({
+              course_id: seeded.inFlightCourseId,
+              status: 'in_progress',
+            }),
+          ]),
+        );
       } finally {
         await dbAfterAccept.end();
       }

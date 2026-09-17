@@ -1,8 +1,7 @@
 import React from 'react';
-import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
 import { can } from '@/lib/rbac/permissions';
+import { requirePermission } from '@/lib/rbac/require-permission';
 import { redirect } from 'next/navigation';
-import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
 import { hasActiveBilling } from '@/lib/billing';
 import { getCourseAssignmentSettings, getRoleHolderCounts } from '@/app/actions/enrollment';
@@ -15,15 +14,18 @@ interface PageProps {
 }
 
 export default async function AssignCoursePage(props: PageProps) {
-  const session = await auth();
-  if (!session?.user?.id) redirect('/login');
-
-  const { role, organizationId, organizationUserId } = session.user;
   // Gate the wizard on the same permission its submit actions require, so a
-  // read-only admin-tier role (Supervisor) or one with no training remit
-  // (Finance) is redirected here rather than reaching a page whose every
+  // role with no training remit (Finance) never reaches a page whose every
   // action would deny.
-  if (!can(dbRoleToRoleKey(role), 'assignment.create')) redirect('/dashboard');
+  //
+  // Q26: the RBAC denial is now "Page not found". The BILLING redirect below is
+  // untouched — a paused subscription is a state of this org, not a statement
+  // about what this role may see, and billing-plan-change-and-gating.spec.ts
+  // pins that redirect.
+  const { roleKey, organizationId, organizationUserId } = await requirePermission(
+    'assignment.create',
+    { onDeny: 'notFound' },
+  );
 
   // Block URL-bypass of the billing gate: assigning courses requires active
   // billing. Redirect to the courses list where the gate UI is shown.
@@ -103,8 +105,8 @@ export default async function AssignCoursePage(props: PageProps) {
       existingSettings={existingSettings}
       roleHolderCounts={roleHolderCounts}
       // The picker is now the only revoke surface (D5), and revoking is
-      // `assignment.delete` — which a supervisor deliberately does not hold.
-      canRevokeRoleTargets={can(dbRoleToRoleKey(role), 'assignment.delete')}
+      // `assignment.delete`.
+      canRevokeRoleTargets={can(roleKey, 'assignment.delete')}
       pendingInvitedEmails={pendingInvitedEmails}
     />
   );

@@ -1,22 +1,43 @@
 // ── Document Management ──────────────────────────────────────────────────────
 
 model Document {
-  id                 String            @id @default(uuid())
-  organizationUserId String            @map("organization_user_id")
-  filename           String
-  originalName       String            @map("original_name")
-  mimeType           String            @map("mime_type")
-  size               Int
+  id                  String            @id @default(uuid())
+  /// The owning organization (Q25). A document belongs to the org, not to the
+  /// person who uploaded it — `organizationUserId` records the uploader only.
+  /// This is the tenancy column the Document Hub reads; nothing joins through
+  /// OrganizationUser for it.
+  organizationId      String            @map("organization_id")
+  organizationUserId  String            @map("organization_user_id")
+  filename            String
+  originalName        String            @map("original_name")
+  mimeType            String            @map("mime_type")
+  size                Int
   /// Free-form classification chosen at upload (e.g. "Policy", "Training Manual").
   /// Null for documents uploaded before categories existed, and for uploads that
   /// omit one.
-  category           String?
-  createdAt          DateTime          @default(now()) @map("created_at")
-  updatedAt          DateTime          @updatedAt @map("updated_at")
-  organizationUser   OrganizationUser  @relation(fields: [organizationUserId], references: [id], onDelete: Cascade)
-  versions           DocumentVersion[]
+  category            String?
+  /// Soft-delete marker (Q24): deleting a document archives and retains it. Null
+  /// means live; non-null hides it from every list, with recovery via ops only.
+  archivedAt          DateTime?         @map("archived_at")
+  archivedByOrgUserId String?           @map("archived_by_org_user_id")
+  createdAt           DateTime          @default(now()) @map("created_at")
+  updatedAt           DateTime          @updatedAt @map("updated_at")
+  /// ⚠️ `onDelete: Cascade` destroys this document — and every version of it —
+  /// when the uploader's OrganizationUser row is hard-deleted. That fails
+  /// UNSAFE: it silently discards retained documents, which is exactly what Q24
+  /// forbids. Inert today — `removeStaff` only deactivates, and self-service
+  /// account deletion is deferred — but whoever implements a real membership
+  /// delete must change this before doing so. Contrast `Course.creator`, which
+  /// is a Restrict and therefore fails safe.
+  organizationUser    OrganizationUser  @relation(fields: [organizationUserId], references: [id], onDelete: Cascade)
+  organization        Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  archivedBy          OrganizationUser? @relation("DocumentArchiver", fields: [archivedByOrgUserId], references: [id], onDelete: SetNull)
+  versions            DocumentVersion[]
 
   @@index([organizationUserId])
+  @@index([organizationId])
+  // The shape of the new default access pattern: an org's live documents.
+  @@index([organizationId, archivedAt])
   @@index([category])
   @@map("documents")
 }

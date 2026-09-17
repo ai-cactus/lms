@@ -163,9 +163,13 @@ describe('setRoleAssignmentTargets', () => {
     });
   });
 
-  // Item 2 — permission split. Confirmed against the real registry: supervisor
-  // holds assignment.create but NOT assignment.delete
-  // (src/lib/rbac/permissions.ts).
+  // Item 2 — permission split. `assignment.create` gates the widen and
+  // `assignment.delete` the narrow. Since 2026-09-16 supervisor holds BOTH: the
+  // delete verb was granted for founder Rule C (per-staff withdrawal on the
+  // course roster), and the registry has no finer grain than the resource. The
+  // narrow therefore carries a SECOND, scope-based gate so the verb does not
+  // reach further than Rule C granted — see the org-wide refusal below, which
+  // mirrors the widen's "carries no role-target scope" guard.
   describe('permission split — create gates the widen, delete gates the narrow', () => {
     it('a supervisor (create, no delete) may widen', async () => {
       mockAdminAuth.mockResolvedValue(session('supervisor'));
@@ -182,8 +186,10 @@ describe('setRoleAssignmentTargets', () => {
       expect(prismaMock.courseAssignment.update).toHaveBeenCalledTimes(1);
     });
 
-    it('a supervisor is REFUSED a narrow, by return — never a throw', async () => {
-      mockAdminAuth.mockResolvedValue(session('supervisor'));
+    // A role without `assignment.delete` is refused BY RETURN — never a throw,
+    // which production would redact to React error #441.
+    it('a role holding create but not delete is REFUSED a narrow, by return', async () => {
+      mockAdminAuth.mockResolvedValue(session('nurse'));
       prismaMock.courseAssignment.findFirst.mockResolvedValue(
         assignmentRowFor({ targetRoles: ['nurse', 'hr'] }),
       );
@@ -193,6 +199,63 @@ describe('setRoleAssignmentTargets', () => {
       expect(result.success).toBe(false);
       expect(result.refusedReason).toBeTruthy();
       expect(prismaMock.courseAssignment.update).not.toHaveBeenCalled();
+    });
+
+    // Rule C, the case the grant exists for: the row records a facility scope,
+    // so narrowing it reaches only staff the supervisor already manages.
+    it('a supervisor may narrow a FACILITY-SCOPED assignment (Rule C)', async () => {
+      mockAdminAuth.mockResolvedValue(session('supervisor'));
+      prismaMock.courseAssignment.findFirst.mockResolvedValue(
+        assignmentRowFor({
+          targetRoles: ['nurse', 'hr'],
+          facilityScoped: true,
+          facilityIds: ['facility-1'],
+        }),
+      );
+
+      const result = await setRoleAssignmentTargets('ca-1', ['nurse']);
+
+      expect(result.success).toBe(true);
+      expect(prismaMock.courseAssignment.update).toHaveBeenCalledTimes(1);
+    });
+
+    /**
+     * The scope half of the narrow gate, mirroring the widen's
+     * "carries no role-target scope" refusal above.
+     *
+     * `assignment.delete` was granted to supervisor for per-staff withdrawal on
+     * the course roster (Rule C). It also gates THIS path, where an org-wide
+     * assignment auto-enrols across the whole organisation — so removing a role
+     * from one reaches staff outside the caller's facilities, which Rule C does
+     * not grant. Holding the verb is not holding it over this row.
+     */
+    it('a facility-bound supervisor is REFUSED a narrow on an ORG-WIDE assignment — scope, not verb', async () => {
+      mockAdminAuth.mockResolvedValue(session('supervisor'));
+      prismaMock.courseAssignment.findFirst.mockResolvedValue(
+        // facilityScoped: false — the fixture default, i.e. an org-wide row.
+        assignmentRowFor({ targetRoles: ['nurse', 'hr'] }),
+      );
+
+      const result = await setRoleAssignmentTargets('ca-1', ['nurse']);
+
+      expect(result.success).toBe(false);
+      expect(result.refusedReason).toMatch(/assigned across the whole organization/i);
+      expect(prismaMock.courseAssignment.update).not.toHaveBeenCalled();
+    });
+
+    // The guard must narrow nobody who was not already narrowed: an org-wide
+    // actor keeps both rows exactly as before.
+    it.each([
+      ['org-wide', { targetRoles: ['nurse', 'hr'] }],
+      ['facility-scoped', { targetRoles: ['nurse', 'hr'], facilityScoped: true }],
+    ] as const)('an org-wide owner still narrows a %s assignment', async (_label, overrides) => {
+      mockAdminAuth.mockResolvedValue(session('owner'));
+      prismaMock.courseAssignment.findFirst.mockResolvedValue(assignmentRowFor(overrides));
+
+      const result = await setRoleAssignmentTargets('ca-1', ['nurse']);
+
+      expect(result.success).toBe(true);
+      expect(prismaMock.courseAssignment.update).toHaveBeenCalledTimes(1);
     });
 
     it.each(['owner', 'admin', 'hr', 'clinical_director'])(

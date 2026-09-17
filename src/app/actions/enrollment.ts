@@ -1,7 +1,7 @@
 'use server';
 
 import prisma from '@/lib/prisma';
-import { dbRoleToRoleKey, ALL_ROLES } from '@/lib/rbac/role-utils';
+import { dbRoleToRoleKey, isAdminRole, ALL_ROLES } from '@/lib/rbac/role-utils';
 import { can, type RoleKey } from '@/lib/rbac/permissions';
 import { hasActiveBilling, BILLING_GATE_ASSIGN_MESSAGE } from '@/lib/billing';
 import { auth as adminAuth } from '@/auth';
@@ -35,6 +35,7 @@ import {
   type StageRowInput,
 } from '@/lib/enrollment/assignment';
 import { assignmentFacilityScope } from '@/lib/enrollment/assignment-facility-scope';
+import { isOrgWideFacilityRole } from '@/lib/facility/org-wide-roles';
 import { combineDateAndTime, isPastDeadlineChange } from '@/lib/reminders/deadline';
 import { captureServer } from '@/lib/analytics/server';
 import { analyticsContextFrom } from '@/lib/analytics/identity';
@@ -155,6 +156,27 @@ export async function getAvailableUsers() {
   const session = await resolveSession();
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
+  }
+
+  // The rows below carry staff EMAIL addresses, and this had no permission gate
+  // at all — a session check only. It resolves a WORKER session too, so any
+  // learner could POST to it and read their facility's roster. No page links it
+  // today, which changes nothing: a `'use server'` export is an HTTP endpoint
+  // whether or not the UI calls it.
+  //
+  // Same pair `searchStaffUsers` (user.ts) uses, and for the same reason:
+  // `user.read` is the Staff Management verb, while clinical director reaches
+  // the assignee picker through `assignment.create` instead. Neither verb is in
+  // `workerPermissions`, so this admits exactly the five manager roles that may
+  // assign training.
+  const roleKey = dbRoleToRoleKey(session.user.role);
+  if (!can(roleKey, 'user.read') && !can(roleKey, 'assignment.create')) {
+    logger.warn({
+      msg: '[enrollment] getAvailableUsers denied — no roster or assignment visibility',
+      userId: session.user.id,
+      role: session.user.role,
+    });
+    throw new Error('Forbidden');
   }
 
   // Restrict to the caller's ACTIVE organization — never return members of
@@ -1140,10 +1162,79 @@ export async function getEnrollmentWithResults(enrollmentId: string) {
     throw new Error('Enrollment not found');
   }
 
-  const isEnrolledUser = enrollment.organizationUserId === session.user.organizationUserId;
+  // The learner always reads their own attempt. Ahead of the narrowing below for
+  // the same reason as `getCertificateDetails`: a member with no active facility
+  // assignment resolves to `[]` and would otherwise lose their own results.
+  if (enrollment.organizationUserId === session.user.organizationUserId) {
+    return enrollment;
+  }
+
+  // Everything past this point is a read of SOMEONE ELSE's question-by-question
+  // answers alongside the correct ones, which is the `assessment` resource — not
+  // `enrollment`, whose read verb is held by every worker and by Finance.
+  // Authorship alone was the whole gate here, so a course creator saw every
+  // participant's answers regardless of facility.
+  //
+  // `isAdminRole` is load-bearing here: this action takes `resolveSession()`,
+  // which falls back to the WORKER instance, so a learner's session reaches this
+  // line. Every worker role holds `assessment.read` (to read its OWN attempt),
+  // so the verb alone does not separate "my answers" from "theirs".
+  // `getEnrollmentQuizResult` pairs the same two, though there the admin
+  // instance already fences workers out and the tier check is defensive.
+  const roleKey = dbRoleToRoleKey(session.user.role);
   const isCourseCreator = enrollment.course.createdByOrgUserId === session.user.organizationUserId;
 
-  if (!isEnrolledUser && !isCourseCreator) {
+  if (
+    !roleKey ||
+    !isAdminRole(session.user.role) ||
+    !can(roleKey, 'assessment.read') ||
+    !isCourseCreator
+  ) {
+    logger.warn({
+      msg: '[enrollment] Quiz result read denied',
+      userId: session.user.id,
+      role: session.user.role,
+      enrollmentId,
+    });
+    throw new Error('Access denied');
+  }
+
+  // Tenant isolation was previously incidental — both sides of the authorship
+  // test were the caller's own membership id. Stated outright so it survives any
+  // future widening of the gate above.
+  if (
+    !session.user.organizationId ||
+    enrollment.organizationUser.organizationId !== session.user.organizationId
+  ) {
+    logger.warn({
+      msg: '[enrollment] Cross-tenant quiz result access blocked',
+      userId: session.user.id,
+      role: session.user.role,
+      enrollmentId,
+    });
+    throw new Error('Access denied');
+  }
+
+  // null for org-wide roles; an array (possibly empty) for a facility-bound one.
+  const dataFacilityIds = await resolveDataFacilityIds(session);
+
+  // findFirst so the facility predicate composes into the query — an
+  // out-of-facility enrollment must be indistinguishable from a missing one.
+  const inScope = await prisma.enrollment.findFirst({
+    where: {
+      id: enrollmentId,
+      organizationUser: { is: staffFacilityWhere(dataFacilityIds) },
+    },
+    select: { id: true },
+  });
+
+  if (!inScope) {
+    logger.warn({
+      msg: '[enrollment] Out-of-facility quiz result read blocked',
+      userId: session.user.id,
+      role: session.user.role,
+      enrollmentId,
+    });
     throw new Error('Access denied');
   }
 
@@ -1408,10 +1499,29 @@ export async function removeWorkerAssignment(
     return { success: false, error: 'Not authenticated' };
   }
 
+  // Withdrawal is an `assignment.delete` verb, not an authorship right. Founder
+  // (docs/local/RBAC-founder-answers-2026-09-15.md, Rule C): "Supervisors should
+  // be able to withdraw course from staff in their facility" — which authorship
+  // could never express, and which left assign-without-withdraw as the only
+  // asymmetric pair in the registry.
+  const roleKey = dbRoleToRoleKey(session.user.role);
+  if (!roleKey || !can(roleKey, 'assignment.delete')) {
+    logger.warn({
+      msg: '[enrollment] removeWorkerAssignment denied — missing assignment.delete',
+      enrollmentId,
+      userId: session.user.id,
+      role: session.user.role,
+    });
+    return {
+      success: false,
+      error: 'You do not have permission to withdraw course assignments.',
+    };
+  }
+
   const enrollment = await prisma.enrollment.findUnique({
     where: { id: enrollmentId },
     include: {
-      course: true,
+      course: { include: { creator: { select: { organizationId: true } } } },
     },
   });
 
@@ -1419,32 +1529,44 @@ export async function removeWorkerAssignment(
     return { success: false, error: 'That assignment no longer exists.' };
   }
 
-  // Ensure the membership trying to remove the assignment is the course creator
-  if (enrollment.course.createdByOrgUserId !== session.user.organizationUserId) {
+  // COU-004, as elsewhere in this file: a course belongs to the ORGANIZATION,
+  // not to the member who authored it. Gating on authorship refused a colleague
+  // a withdrawal on the very course they could assign. A caller with no
+  // organization matches nothing, so the comparison fails closed.
+  if (
+    !session.user.organizationId ||
+    enrollment.course.creator.organizationId !== session.user.organizationId
+  ) {
+    logger.warn({
+      msg: '[enrollment] removeWorkerAssignment denied — course outside the caller organization',
+      enrollmentId,
+      userId: session.user.id,
+      role: session.user.role,
+    });
     return {
       success: false,
-      error: 'Only the person who created this course can withdraw its assignments.',
+      error: 'That course does not belong to your organization.',
     };
   }
 
-  // Creating a course does not widen who you may act on: a facility-bound
-  // creator must still not strip an enrollment from another site's worker.
-  if (session.user.organizationId) {
-    const { rejected } = await partitionOrgUsersByFacility(session, session.user.organizationId, [
-      enrollment.organizationUserId,
-    ]);
-    if (rejected.length > 0) {
-      logger.warn({
-        msg: "[enrollment] removeWorkerAssignment denied — target outside the caller's facilities",
-        enrollmentId,
-        userId: session.user.id,
-        role: session.user.role,
-      });
-      return {
-        success: false,
-        error: 'That staff member is outside the facilities you manage.',
-      };
-    }
+  // Holding `assignment.delete` does not widen WHO you may act on: a
+  // facility-bound caller must still not strip an enrollment from another
+  // site's worker. This is what confines a supervisor's withdrawal to "staff in
+  // their facility".
+  const { rejected } = await partitionOrgUsersByFacility(session, session.user.organizationId, [
+    enrollment.organizationUserId,
+  ]);
+  if (rejected.length > 0) {
+    logger.warn({
+      msg: "[enrollment] removeWorkerAssignment denied — target outside the caller's facilities",
+      enrollmentId,
+      userId: session.user.id,
+      role: session.user.role,
+    });
+    return {
+      success: false,
+      error: 'That staff member is outside the facilities you manage.',
+    };
   }
 
   await prisma.enrollment.delete({
@@ -1647,6 +1769,33 @@ export async function setRoleAssignmentTargets(
     return {
       success: false,
       refusedReason: 'You do not have permission to remove roles from this assignment.',
+    };
+  }
+
+  // Holding the verb is not holding it over THIS row. The mirror of the widen
+  // guard above: that one refuses a row with no role-target scope to inherit,
+  // this one refuses a row whose scope is WIDER than the caller's. An org-wide
+  // assignment auto-enrols across the whole organisation, so removing a role
+  // from it reaches staff a facility-bound caller may not act on — which is why
+  // supervisor's `assignment.delete` (founder Rule C, "withdraw course from
+  // staff in their facility") must not extend here. A facility-scoped row stays
+  // narrowable: that IS the Rule C case.
+  if (
+    removed.length > 0 &&
+    !assignment.facilityScoped &&
+    !isOrgWideFacilityRole(session.user.role)
+  ) {
+    logger.warn({
+      msg: '[assignment] Role-target narrow refused — organization-wide assignment, facility-bound caller',
+      assignmentId: assignment.id,
+      courseId: assignment.courseId,
+      organizationId,
+      userId: session.user.id,
+    });
+    return {
+      success: false,
+      refusedReason:
+        'This course is assigned across the whole organization, so only an organization-wide role can remove a role from it.',
     };
   }
 

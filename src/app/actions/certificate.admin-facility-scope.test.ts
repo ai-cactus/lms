@@ -4,10 +4,12 @@
  * profile 404s on (e.g. someone outside the caller's facility) still yields
  * their full training/certificate history through this id-addressed action.
  *
- * Two things changed on this branch and both need direct coverage:
- *  - the gate moved from `isAdminRole` (admits finance and clinical_director,
- *    neither of whom holds `user.read`) to `can(roleKey, 'user.read')`.
- *  - the query now composes `staffFacilityWhere`, so an out-of-facility target
+ * Two things need direct coverage:
+ *  - the gate, now `isAdminRole(role) && can(roleKey, 'certificate.read')` —
+ *    the same pair as `getCertificateDetails` and the download route. It read
+ *    `can(roleKey, 'user.read')` until founder Q7 was applied; see the "role
+ *    gate" block below for why that denied the wrong role.
+ *  - the query composes `staffFacilityWhere`, so an out-of-facility target
  *    must come back EMPTY, indistinguishable from an unknown organizationUserId.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -55,8 +57,20 @@ beforeEach(() => {
 });
 
 describe('getAdminWorkerCertificates — role gate', () => {
-  it.each(['owner', 'admin', 'hr', 'supervisor'])(
-    '%s (holds user.read) is admitted',
+  /**
+   * Founder Q7: "All Clinical/Quality to see certificates. For Clinical/Quality
+   * directors to see certificates, they need access to all staff. Finance
+   * should not be able to see certificates."
+   *
+   * The gate asked for `user.read`, which reads as "the staff-profile verb" but
+   * denies clinical_director — the role Q7 names first. Certificates are a
+   * Clinical/Quality concern; Staff Management is not, and Q7 does not open it
+   * to them. So the certificate verb decides certificate reads, and this action
+   * now agrees with `getCertificateDetails` and the download route instead of
+   * contradicting them on the same staff profile.
+   */
+  it.each(['owner', 'admin', 'hr', 'supervisor', 'clinical_director'])(
+    '%s is admitted',
     async (role) => {
       setSession('viewer-1', role);
 
@@ -66,17 +80,51 @@ describe('getAdminWorkerCertificates — role gate', () => {
     },
   );
 
-  it.each(['finance', 'clinical_director'])(
-    'THE FIX: %s (isAdminRole but no user.read) is now denied — previously admitted by isAdminRole',
+  it('THE FIX: clinical_director is admitted — Q7 names it first, and `user.read` denied it', async () => {
+    setSession('viewer-1', 'clinical_director');
+
+    await expect(getAdminWorkerCertificates('ou-target')).resolves.toEqual([]);
+    expect(prismaMock.certificate.findMany).toHaveBeenCalledOnce();
+  });
+
+  it('Q7 "access to all staff": clinical_director is org-wide, so no facility predicate narrows it', async () => {
+    setSession('viewer-1', 'clinical_director');
+    // Assignments it does not have, to prove the verdict comes from the role's
+    // org-wide status rather than from an empty roster.
+    mockListAccessibleFacilities.mockResolvedValue([{ id: 'fac-1' }]);
+
+    await getAdminWorkerCertificates('ou-target');
+
+    const where = prismaMock.certificate.findMany.mock.calls[0][0].where;
+    expect(where.organizationUser.facilities).toBeUndefined();
+  });
+
+  /**
+   * DEFENCE IN DEPTH, and the assertion is deliberately weaker than it looks.
+   *
+   * This action takes `adminAuth()`, and the admin instance invalidates any
+   * session whose freshly-read role is not an admin role (`auth.ts:6` +
+   * `create-auth-instance.ts:736`). So the session staged below cannot exist in
+   * production, and this does NOT prove a real attack is refused — the test
+   * below, on the worker instance, is the one that covers the reachable case.
+   *
+   * It is kept because the pairing still matters: every worker role holds
+   * `certificate.read` (`workerPermissions`, so a learner can read their own),
+   * so if this action ever moves to a resolve-either-instance session — as its
+   * sibling `getCertificateDetails` uses — the verb alone would admit all eight.
+   * This pins the gate against that refactor, not against today's traffic.
+   */
+  it.each(['nurse', 'therapist_clinician', 'front_desk_admin'])(
+    '%s would be refused even if the admin instance ever stopped fencing it out',
     async (role) => {
-      setSession('viewer-1', role);
+      setSession('worker-1', role);
 
       await expect(getAdminWorkerCertificates('ou-target')).rejects.toThrow('Unauthorized');
       expect(prismaMock.certificate.findMany).not.toHaveBeenCalled();
     },
   );
 
-  it('a worker is denied', async () => {
+  it('THE REACHABLE CASE: a worker on the worker instance is denied', async () => {
     mockAdminAuth.mockResolvedValue(null);
     mockWorkerAuth.mockResolvedValue({
       user: { id: 'worker-1', role: 'nurse', organizationId: ORG_ID, organizationUserId: 'ou-w1' },
@@ -85,6 +133,31 @@ describe('getAdminWorkerCertificates — role gate', () => {
     await expect(getAdminWorkerCertificates('ou-target')).rejects.toThrow('Unauthorized');
     expect(prismaMock.certificate.findMany).not.toHaveBeenCalled();
   });
+
+  it('an unknown/stale role key is denied', async () => {
+    setSession('viewer-1', 'not_a_real_role');
+
+    await expect(getAdminWorkerCertificates('ou-target')).rejects.toThrow('Unauthorized');
+    expect(prismaMock.certificate.findMany).not.toHaveBeenCalled();
+  });
+
+  /**
+   * ⛔ FINANCE IS DELIBERATELY UNASSERTED HERE — and it is the reason this
+   * branch must merge AFTER fix/rbac-registry-role-grants (Phase 1).
+   *
+   * Q7 says Finance must not see certificates, and Phase 1 delivers that by
+   * removing `certificate.read` from the finance role. On THIS branch finance
+   * still holds the verb and is admin-tier, so the gate admits it — whereas the
+   * `user.read` gate this replaced denied it. Merged out of order, this commit
+   * therefore GRANTS Finance certificate access on the staff profile until
+   * Phase 1 lands.
+   *
+   * An assertion either way would be red on one side of that merge, so the cell
+   * belongs to Phase 1's conformance test, which owns the registry change. What
+   * is pinned here is the shape that makes Phase 1 sufficient: the gate consults
+   * `can(role, 'certificate.read')`, so removing the verb is all Phase 1 needs
+   * to do — no second edit to this file.
+   */
 
   it('throws Unauthorized with no session or no organizationId', async () => {
     mockAdminAuth.mockResolvedValue({ user: { id: 'u1', role: 'owner', organizationId: null } });

@@ -58,6 +58,8 @@ const {
   mockOrgUserFacilityUpdateMany,
   mockOrgUserFacilityUpsert,
   mockInvalidateRevalidationCache,
+  mockOrgUserFindMany,
+  mockListAccessibleFacilities,
   prismaMock,
 } = vi.hoisted(() => {
   const mockOrgUserFindUnique = vi.fn();
@@ -72,6 +74,7 @@ const {
   const mockFacilityFindMany = vi.fn();
   const mockOrgUserFacilityUpdateMany = vi.fn();
   const mockOrgUserFacilityUpsert = vi.fn();
+  const mockOrgUserFindMany = vi.fn();
   const txClient = {
     organizationUserFacility: {
       updateMany: mockOrgUserFacilityUpdateMany,
@@ -91,7 +94,7 @@ const {
     organizationUser: {
       findUnique: mockOrgUserFindUnique,
       findFirst: mockOrgUserFindUnique,
-      findMany: vi.fn().mockResolvedValue([]),
+      findMany: mockOrgUserFindMany,
       update: mockOrgUserUpdate,
     },
     user: { update: mockUserUpdate },
@@ -132,6 +135,8 @@ const {
     mockEnrollUsers: vi.fn(),
     mockEnrollUserForRoleTargets: vi.fn(),
     mockInvalidateRevalidationCache: vi.fn(),
+    mockOrgUserFindMany,
+    mockListAccessibleFacilities: vi.fn(),
     prismaMock,
   };
 });
@@ -165,6 +170,13 @@ vi.mock('@/lib/enrollment/role-targets', () => ({
 // called — a stub that silently swallows the call would hide a real regression.
 vi.mock('@/lib/auth/session-revalidation-cache', () => ({
   invalidateRevalidationCache: mockInvalidateRevalidationCache,
+}));
+// The facility narrowing itself is exercised for real (target-scope and
+// staff-where are NOT mocked); only the roster lookup behind the caller's
+// accessible set is stubbed, so a supervisor session resolves to a real scope.
+vi.mock('@/lib/facility/scope', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/facility/scope')>()),
+  listAccessibleFacilities: mockListAccessibleFacilities,
 }));
 
 import {
@@ -232,6 +244,8 @@ beforeEach(() => {
     failed: [],
   });
   mockInvalidateRevalidationCache.mockResolvedValue(undefined);
+  mockOrgUserFindMany.mockResolvedValue([]);
+  mockListAccessibleFacilities.mockResolvedValue([]);
 });
 
 // ── updateStaffDetails() ────────────────────────────────────────────────────────
@@ -386,16 +400,16 @@ describe('updateStaffDetails() — happy path', () => {
 // ── updateStaffDetails() — RBAC matrix realignment ──────────────────────────────
 
 /**
- * Permission-gate matrix for updateStaffDetails: gated on `can(..., 'user.edit')`.
- * Finance and Clinical Director hold `user.read` only (view-only on staff) and
- * must be denied. RBAC ruling: Supervisor was demoted to read-only and no
- * longer holds `user.edit` either (previously it did) — moved into the deny
- * list. HR, Owner, and the new Owner-equivalent `admin` role retain full edit
- * rights.
+ * Actor-role gate for updateStaffDetails: STAFF_PROFILE_ACTOR_ROLES, NOT
+ * `can(..., 'user.edit')`. Founder Q2 grants the supervisor basic profile
+ * editing (name, job title, contact) over their own facility, while `user.edit`
+ * also gates the facility move and the role change — both reserved for
+ * Owner/Admin/HR. Finance and Clinical Director hold `user.read` only and stay
+ * denied.
  */
-describe('updateStaffDetails() — permission matrix (user.edit gate)', () => {
-  it.each(['finance', 'clinical_director', 'supervisor'] as const)(
-    'denies %s (view-only on staff — no longer holds user.edit)',
+describe('updateStaffDetails() — permission matrix (STAFF_PROFILE_ACTOR_ROLES gate)', () => {
+  it.each(['finance', 'clinical_director', 'nurse'] as const)(
+    'denies %s (view-only on staff) before touching the database',
     async (role) => {
       mockAuth.mockResolvedValue({
         user: { id: 'admin-1', email: 'a@acme.com', role, organizationId: 'org-1' },
@@ -408,6 +422,53 @@ describe('updateStaffDetails() — permission matrix (user.edit gate)', () => {
       expect(mockOrgUserUpdate).not.toHaveBeenCalled();
     },
   );
+
+  // Q2: the supervisor's "U" on Staff Management, delivered as this actor list
+  // rather than as a `user.edit` grant.
+  it('allows a supervisor to edit a profile for staff inside their own facility', async () => {
+    mockAuth.mockResolvedValue({
+      user: { id: 'sup-1', email: 'sup@acme.com', role: 'supervisor', organizationId: 'org-1' },
+    });
+    mockListAccessibleFacilities.mockResolvedValue([{ id: 'fac-1' }]);
+    mockOrgUserFindMany.mockResolvedValue([
+      { id: 'target-1', facilities: [{ facilityId: 'fac-1' }] },
+    ]);
+    mockOrgUserFindUnique.mockResolvedValue({
+      userId: 'target-user-1',
+      organizationId: 'org-1',
+      role: 'nurse',
+    });
+
+    const result = await updateStaffDetails('target-1', { ...baseData, role: 'nurse' });
+
+    expect(result.success).toBe(true);
+    expect(mockUserUpdate).toHaveBeenCalledWith({
+      where: { id: 'target-user-1' },
+      data: { firstName: 'Jane', lastName: 'Doe', fullName: 'Jane Doe' },
+    });
+  });
+
+  // "own facility only" is the other half of Q2 — tenancy alone does not give it.
+  it('denies a supervisor editing staff outside their facilities', async () => {
+    mockAuth.mockResolvedValue({
+      user: { id: 'sup-1', email: 'sup@acme.com', role: 'supervisor', organizationId: 'org-1' },
+    });
+    mockListAccessibleFacilities.mockResolvedValue([{ id: 'fac-1' }]);
+    mockOrgUserFindMany.mockResolvedValue([
+      { id: 'target-1', facilities: [{ facilityId: 'fac-2' }] },
+    ]);
+    mockOrgUserFindUnique.mockResolvedValue({
+      userId: 'target-user-1',
+      organizationId: 'org-1',
+      role: 'nurse',
+    });
+
+    const result = await updateStaffDetails('target-1', { ...baseData, role: 'nurse' });
+
+    expect(result).toEqual({ success: false, error: 'Forbidden' });
+    expect(mockOrgUserUpdate).not.toHaveBeenCalled();
+    expect(mockUserUpdate).not.toHaveBeenCalled();
+  });
 
   it.each(['hr', 'owner', 'admin'] as const)(
     'allows %s to edit name/job-title without changing the role',
@@ -434,10 +495,11 @@ describe('updateStaffDetails() — permission matrix (user.edit gate)', () => {
 });
 
 /**
- * In-place role change (Change 2). A role-changing update runs the pure
- * `canChangeRole` guard from role-utils; only Owner/Admin may re-role a
- * reachable target (ROLE_CHANGE_ACTOR_ROLES = ['owner', 'admin']), never
- * themselves, and a successful change bumps sessionVersion in a separate User
+ * In-place role change. A role-changing update runs the pure `canChangeRole`
+ * guard from role-utils; only Owner/Admin/HR may re-role a reachable target
+ * (ROLE_CHANGE_ACTOR_ROLES), never themselves, and HR's reach is capped at
+ * everything below the two Owner-equivalent seats by GRANTABLE_ROLES.hr. A
+ * successful change bumps sessionVersion in a separate User
  * write (killing the target's live sessions) and records a
  * `staff.role.change` audit entry. A same-role resubmit (no actual change)
  * must skip both the bump and the audit entirely.
@@ -507,7 +569,10 @@ describe('updateStaffDetails() — in-place role change (canChangeRole integrati
     expect(mockInvalidateRevalidationCache).not.toHaveBeenCalled();
   });
 
-  it('denies a role change attempted by hr (hr may edit staff but not re-role them)', async () => {
+  // Founder Q11: HR may re-role everything except the two Owner-equivalent
+  // seats. The ceiling is GRANTABLE_ROLES.hr, applied by canChangeRole to both
+  // the target's current role and the requested new role.
+  it('allows hr to promote a worker to supervisor', async () => {
     mockAuth.mockResolvedValue({
       user: { id: 'hr-1', email: 'hr@acme.com', role: 'hr', organizationId: 'org-1' },
     });
@@ -519,8 +584,46 @@ describe('updateStaffDetails() — in-place role change (canChangeRole integrati
 
     const result = await updateStaffDetails('target-1', { ...baseData, role: 'supervisor' });
 
+    expect(result).toEqual({ success: true });
+    expect(mockOrgUserUpdate).toHaveBeenCalledWith({
+      where: { id: 'target-1' },
+      data: expect.objectContaining({ role: 'supervisor', roleAssignedAt: expect.any(Date) }),
+    });
+    expect(mockAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'staff.role.change' }),
+    );
+  });
+
+  it('denies hr promoting a target to admin — the Owner-equivalent escalation fence', async () => {
+    mockAuth.mockResolvedValue({
+      user: { id: 'hr-1', email: 'hr@acme.com', role: 'hr', organizationId: 'org-1' },
+    });
+    mockOrgUserFindUnique.mockResolvedValue({
+      userId: 'target-user-1',
+      organizationId: 'org-1',
+      role: 'nurse',
+    });
+
+    const result = await updateStaffDetails('target-1', { ...baseData, role: 'admin' });
+
     expect(result.success).toBe(false);
-    expect(result.error).toBe("Only an Owner or Supervisor can change a staff member's role.");
+    expect(mockOrgUserUpdate).not.toHaveBeenCalled();
+    expect(mockAudit).not.toHaveBeenCalled();
+  });
+
+  it('denies hr re-roling an admin target — an admin is out of HR reach', async () => {
+    mockAuth.mockResolvedValue({
+      user: { id: 'hr-1', email: 'hr@acme.com', role: 'hr', organizationId: 'org-1' },
+    });
+    mockOrgUserFindUnique.mockResolvedValue({
+      userId: 'target-user-1',
+      organizationId: 'org-1',
+      role: 'admin',
+    });
+
+    const result = await updateStaffDetails('target-1', { ...baseData, role: 'nurse' });
+
+    expect(result.success).toBe(false);
     expect(mockOrgUserUpdate).not.toHaveBeenCalled();
     expect(mockAudit).not.toHaveBeenCalled();
   });
@@ -561,20 +664,32 @@ describe('updateStaffDetails() — in-place role change (canChangeRole integrati
     });
   });
 
-  // RBAC ruling: supervisor was demoted to read-only — it no longer holds
-  // user.edit at all, so it can't reach updateStaffDetails for ANY edit, role
-  // change or not. This is the representative "supervisor write denied" check
-  // for the role-change path specifically.
-  it("denies supervisor attempting to change a staff member's role — no longer holds user.edit", async () => {
+  // A supervisor now REACHES this action for profile edits (Q2), so the
+  // role-change refusal has to come from `canChangeRole` — supervisor is not in
+  // ROLE_CHANGE_ACTOR_ROLES — rather than from the outer gate. The target here
+  // is inside their facility precisely so nothing else can be doing the work.
+  it("denies a supervisor changing a staff member's role, even inside their own facility", async () => {
     mockAuth.mockResolvedValue({
       user: { id: 'sup-1', email: 'sup@acme.com', role: 'supervisor', organizationId: 'org-1' },
+    });
+    mockListAccessibleFacilities.mockResolvedValue([{ id: 'fac-1' }]);
+    mockOrgUserFindMany.mockResolvedValue([
+      { id: 'target-1', facilities: [{ facilityId: 'fac-1' }] },
+    ]);
+    mockOrgUserFindUnique.mockResolvedValue({
+      userId: 'target-user-1',
+      organizationId: 'org-1',
+      role: 'nurse',
     });
 
     const result = await updateStaffDetails('target-1', { ...baseData, role: 'hr' });
 
-    expect(result).toEqual({ success: false, error: 'Unauthorized' });
-    expect(mockOrgUserFindUnique).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      success: false,
+      error: "Only an Owner, Admin or HR can change a staff member's role.",
+    });
     expect(mockOrgUserUpdate).not.toHaveBeenCalled();
+    expect(mockUserUpdate).not.toHaveBeenCalled();
   });
 });
 
@@ -1088,6 +1203,67 @@ describe('getEnrollmentQuizResult — org isolation (F-010)', () => {
     await expect(getEnrollmentQuizResult(ENROLLMENT_ID)).rejects.toThrow('Unauthorized');
     expect(mockEnrollmentFindUnique).not.toHaveBeenCalled();
   });
+
+  /**
+   * The gate moved from `assignment.read` to `isAdminRole && assessment.read`.
+   *
+   * `assignment` is the org's auto-enrolment configuration; `assessment` is
+   * "Quizzes, questions & question-by-question attempt logs" — this payload.
+   * Two different resources, which is why this gate reads the assessment verb
+   * regardless of which roles hold it at any given moment.
+   *
+   * HR is one of them, by founder ruling — "HR can build quizzes and view
+   * results" (docs/local/RBAC_for_multi-tenancy-updated.md). This gate briefly
+   * excluded HR on the strength of the role's own registry description, which
+   * he reversed when asked (docs/local/RBAC-founder-answers-2026-09-15.md).
+   * Finance is still out: it holds no `assessment.*` at all.
+   */
+  describe('the verb: isAdminRole && assessment.read', () => {
+    it.each(['owner', 'admin', 'supervisor', 'clinical_director', 'hr'])(
+      '%s is admitted',
+      async (role) => {
+        mockAuth.mockResolvedValue({ user: { id: 'a-1', role, organizationId: 'org-a' } });
+        mockEnrollmentFindUnique.mockResolvedValue(makeEnrollment('org-a'));
+
+        await expect(getEnrollmentQuizResult(ENROLLMENT_ID)).resolves.not.toBeNull();
+      },
+    );
+
+    it('USER-VISIBLE: HR reads question-level scores, per the founder ruling', async () => {
+      mockAuth.mockResolvedValue({ user: { id: 'hr-1', role: 'hr', organizationId: 'org-a' } });
+      mockEnrollmentFindUnique.mockResolvedValue(makeEnrollment('org-a'));
+
+      await expect(getEnrollmentQuizResult(ENROLLMENT_ID)).resolves.not.toBeNull();
+    });
+
+    it('finance stays denied', async () => {
+      mockAuth.mockResolvedValue({ user: { id: 'f-1', role: 'finance', organizationId: 'org-a' } });
+
+      await expect(getEnrollmentQuizResult(ENROLLMENT_ID)).rejects.toThrow('Unauthorized');
+    });
+
+    /**
+     * DEFENCE IN DEPTH — this module's `auth` is the admin instance, which
+     * invalidates any session whose freshly-read role is not an admin role
+     * (`auth.ts:6` + `create-auth-instance.ts:736`), so the sessions staged
+     * below cannot exist and this proves less than its shape suggests.
+     *
+     * Kept because every worker role holds `assessment.read` (granted so a
+     * learner can read their OWN attempt), so the tier check is what would save
+     * this action if it ever moved to a resolve-either-instance session — as
+     * `getEnrollmentWithResults` uses, where the same check IS load-bearing
+     * against a session a nurse can really hold.
+     */
+    it.each(['nurse', 'therapist_clinician', 'front_desk_admin'])(
+      '%s would be denied even if the admin instance ever stopped fencing it out',
+      async (role) => {
+        mockAuth.mockResolvedValue({ user: { id: 'w-1', role, organizationId: 'org-a' } });
+
+        await expect(getEnrollmentQuizResult(ENROLLMENT_ID)).rejects.toThrow('Unauthorized');
+        expect(mockEnrollmentFindUnique).not.toHaveBeenCalled();
+      },
+    );
+  });
 });
 
 /**
@@ -1254,15 +1430,20 @@ describe('removeStaff() — org disconnect + sessionVersion bump (QA ISSUE 2)', 
 });
 
 /**
- * fix/worker-invite: removeStaff() now drops the removed user's IN-FLIGHT
- * enrollments (so a subsequent re-invite yields a clean slate) while
- * retaining terminal/completed ones for compliance history, and expires any
- * pending Invite for that email in the org (so a live `/join` token can't
- * immediately re-add the person). All four writes — the enrollment cleanup,
- * the membership deactivation, the identity sessionVersion bump, and the
- * invite expiry — run inside a single $transaction.
+ * Founder decision Q23 (docs/local/RBAC-founder-answers-2026-09-15.md):
+ * "Delete deactivated account but records should be kept for compliance
+ * purposes." removeStaff() therefore revokes ACCESS only — it deactivates the
+ * membership, bumps the identity's sessionVersion, and expires any pending
+ * Invite for that email in the org (so a live `/join` token can't immediately
+ * re-add the person) — and deletes NO training record of any status.
+ *
+ * This supersedes the earlier fix/worker-invite behaviour, which deleted the
+ * in-flight ("active"-status) enrollments so a re-invite got a clean slate.
+ * That clean slate destroyed the evidence that training had been started but
+ * not finished, so it was reversed. The three remaining writes still run
+ * inside a single $transaction.
  */
-describe('removeStaff() — drops in-flight enrollments and expires pending invites (fix/worker-invite)', () => {
+describe('removeStaff() — retains training records and expires pending invites (Q23)', () => {
   const ADMIN_SESSION = makeAdminSession('owner');
   const ADMIN_ORG_USER = {
     role: 'owner',
@@ -1284,22 +1465,32 @@ describe('removeStaff() — drops in-flight enrollments and expires pending invi
     mockUserUpdate.mockResolvedValue({});
   });
 
-  it('deletes only the active-status enrollments for the removed membership', async () => {
-    mockEnrollmentDeleteMany.mockResolvedValue({ count: 2 });
-
+  it('COMPLIANCE (Q23): deletes no enrollment of any status — in-flight training history is retained, not wiped', async () => {
     await removeStaff('target-1');
 
-    expect(mockEnrollmentDeleteMany).toHaveBeenCalledWith({
-      where: {
-        organizationUserId: 'target-1',
-        status: { in: ['enrolled', 'assigned', 'in_progress', 'lessons_complete'] },
-      },
+    expect(mockEnrollmentDeleteMany).not.toHaveBeenCalled();
+
+    // Asserted at the transaction level too, so a deletion reintroduced as a
+    // fourth op is caught even if it were routed around the delegate above.
+    expect(mockTransaction.mock.calls[0][0]).toHaveLength(3);
+  });
+
+  it('COMPLIANCE (Q23): deactivates the membership rather than deleting it, so the retained records keep an owner', async () => {
+    await removeStaff('target-1');
+
+    expect(mockOrgUserUpdate).toHaveBeenCalledWith({
+      where: { id: 'target-1' },
+      data: { active: false, deactivatedAt: expect.any(Date) },
     });
-    // Terminal statuses (completed, attested, locked, failed, retry_requested)
-    // are never named in the deleteMany filter — they are retained by omission.
-    const call = mockEnrollmentDeleteMany.mock.calls[0][0];
-    expect(call.where.status.in).not.toContain('completed');
-    expect(call.where.status.in).not.toContain('attested');
+  });
+
+  it('still revokes access: the sessionVersion bump kills live sessions on their next decode', async () => {
+    await removeStaff('target-1');
+
+    expect(mockUserUpdate).toHaveBeenCalledWith({
+      where: { id: 'target-user-1' },
+      data: { sessionVersion: { increment: 1 } },
+    });
   });
 
   it("expires (not deletes) any pending invite for the removed user's email in the org", async () => {
@@ -1311,44 +1502,30 @@ describe('removeStaff() — drops in-flight enrollments and expires pending invi
     });
   });
 
-  it('runs the enrollment cleanup, membership deactivation, sessionVersion bump, and invite expiry inside a single $transaction', async () => {
+  it('runs the membership deactivation, sessionVersion bump, and invite expiry inside a single $transaction', async () => {
     await removeStaff('target-1');
 
     expect(mockTransaction).toHaveBeenCalledOnce();
-    const opsCountAtCallTime = mockTransaction.mock.calls[0][0].length;
-    // 4 ops: enrollment.deleteMany, organizationUser.update (deactivate),
-    // user.update (sessionVersion bump), invite.updateMany. Previously the
-    // membership deactivation and the identity's sessionVersion bump were a
-    // single combined User write; the multi-org split separates "deactivate
-    // the org membership" from "kill the identity's live sessions" into two
-    // distinct writes on two distinct models.
-    expect(opsCountAtCallTime).toBe(4);
-    expect(mockEnrollmentDeleteMany).toHaveBeenCalledOnce();
+    // 3 ops: organizationUser.update (deactivate), user.update (sessionVersion
+    // bump), invite.updateMany. Deactivating the org membership and killing the
+    // identity's live sessions are two writes on two models because of the
+    // multi-org split.
+    expect(mockTransaction.mock.calls[0][0]).toHaveLength(3);
     expect(mockOrgUserUpdate).toHaveBeenCalledOnce();
     expect(mockUserUpdate).toHaveBeenCalledOnce();
     expect(mockInviteUpdateMany).toHaveBeenCalledOnce();
   });
 
-  it('records the dropped-enrollment count on the staff.remove audit entry', async () => {
-    mockEnrollmentDeleteMany.mockResolvedValue({ count: 3 });
-
+  it('records the retention rule on the staff.remove audit entry', async () => {
     await removeStaff('target-1');
 
     expect(mockAudit).toHaveBeenCalledWith(
       expect.objectContaining({
         action: 'staff.remove',
-        metadata: { droppedEnrollmentCount: 3 },
+        targetType: 'user',
+        targetId: 'target-1',
+        metadata: { enrollmentsRetained: true },
       }),
-    );
-  });
-
-  it('records a zero dropped-enrollment count when the removed user had no in-flight training', async () => {
-    mockEnrollmentDeleteMany.mockResolvedValue({ count: 0 });
-
-    await removeStaff('target-1');
-
-    expect(mockAudit).toHaveBeenCalledWith(
-      expect.objectContaining({ metadata: { droppedEnrollmentCount: 0 } }),
     );
   });
 });
@@ -1463,8 +1640,11 @@ describe('setStaffFacilities', () => {
     expect(mockOrgUserFacilityUpdateMany).not.toHaveBeenCalled();
   });
 
+  // Rule A: only Owner/Admin/HR may move staff between facilities. Supervisor is
+  // the load-bearing case — it now holds a staff-EDITING power (Q2 profile
+  // edits), and this asserts that power stops short of the facility move.
   it.each(['supervisor', 'finance', 'clinical_director'])(
-    'denies role=%s — lacks user.edit',
+    'denies role=%s — not in FACILITY_CHANGE_ACTOR_ROLES (Rule A)',
     async (role) => {
       mockAuth.mockResolvedValue(makeSession(role));
 
@@ -1475,7 +1655,7 @@ describe('setStaffFacilities', () => {
     },
   );
 
-  it.each(['owner', 'admin', 'hr'])('allows role=%s (holds user.edit)', async (role) => {
+  it.each(['owner', 'admin', 'hr'])('allows role=%s (Rule A actor)', async (role) => {
     mockAuth.mockResolvedValue(makeSession(role));
 
     const result = await setStaffFacilities('target-1', ['fac-1']);

@@ -197,8 +197,13 @@ test.describe('D-01 — Finance is denied every roster and audit surface', () =>
   test('cannot read the staff roster by direct URL, and no staff email leaks', async ({ page }) => {
     await login(page, seeded.byEmail.finance.email);
 
-    await page.goto('/dashboard/staff');
+    const res = await page.goto('/dashboard/staff');
     await page.waitForLoadState('networkidle');
+
+    // Founder Q26: the denial shape is "Page not found", not a redirect. Pinned
+    // explicitly because the body assertion below passes for ANY page without
+    // those emails on it — including a bounce to /dashboard.
+    expect(res?.status()).toBe(404);
 
     // The load-bearing assertion: not "the link is hidden", but "the bytes are
     // not in the response".
@@ -207,13 +212,21 @@ test.describe('D-01 — Finance is denied every roster and audit surface', () =>
     expect(body).not.toContain(seeded.byEmail.workerB1.email);
   });
 
-  test('cannot reach /dashboard/audit-reports by direct URL', async ({ page }) => {
+  test('gets a 404 at /dashboard/audit-reports by direct URL (Q26 — not a redirect)', async ({
+    page,
+  }) => {
     await login(page, seeded.byEmail.finance.email);
 
-    await page.goto('/dashboard/audit-reports');
+    const res = await page.goto('/dashboard/audit-reports');
     await page.waitForLoadState('networkidle');
 
-    expect(page.url()).not.toContain('/audit-reports');
+    // Was `expect(page.url()).not.toContain('/audit-reports')` — i.e. it pinned
+    // the redirect that founder Q26 replaces. A bounce to /dashboard still
+    // reveals that an Audit Reports module exists; "Page not found" does not, so
+    // the URL must now STAY put and the response must be a 404.
+    expect(res?.status()).toBe(404);
+    expect(page.url()).toContain('/audit-reports');
+    await expect(page.getByRole('heading', { name: /page not found/i })).toBeVisible();
   });
 
   test('GET /api/auditor/export returns 403 and no email in the body', async ({ page }) => {
@@ -238,8 +251,11 @@ test.describe('D-01 — Clinical Director is denied the roster by direct URL', (
   test('the nav was already hidden; the URL is what mattered', async ({ page }) => {
     await login(page, seeded.byEmail.cd.email);
 
-    await page.goto('/dashboard/staff');
+    const res = await page.goto('/dashboard/staff');
     await page.waitForLoadState('networkidle');
+
+    // Q26 again — pinned for the same reason as the Finance case above.
+    expect(res?.status()).toBe(404);
 
     const body = await page.content();
     expect(body).not.toContain(seeded.byEmail.workerA1.email);

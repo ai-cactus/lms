@@ -20,7 +20,11 @@ import * as crypto from 'crypto';
  *     no manager-tier role without document access is seeded by default and
  *     every worker-category role is blocked at the /login form itself before
  *     it could ever reach /dashboard/documents, see rbac-facility-tab.spec.ts's
- *     equivalent note) gets the access-denied card, not a redirect.
+ *     equivalent note) gets a 404 "Page Not Found" — founder ruling Q26
+ *     (docs/local/RBAC-founder-answers-2026-09-15.md): an unauthorised module is
+ *     hidden from the nav AND answers a typed URL with "Page not found". This
+ *     spec previously asserted an in-page access-denied card, which named the
+ *     very module it was refusing.
  *
  * Live document UPLOAD is out of scope (see documents.spec.ts) — this spec
  * only asserts Hub visibility/gating, reusing the seeded fixture documents.
@@ -149,7 +153,7 @@ test.describe('Documents Hub — document.read RBAC gate', () => {
     await expect(page.getByText(/don.t have access to documents/i)).toHaveCount(0);
   });
 
-  test('a Finance user (no document.* grants) sees the access-denied card, not the document list', async ({
+  test('a Finance user (no document.* grants) gets a 404, not the document list and not a card naming the module', async ({
     page,
   }) => {
     const email = uid('finance');
@@ -158,15 +162,21 @@ test.describe('Documents Hub — document.read RBAC gate', () => {
 
     try {
       await login(page, email, password);
-      await page.goto('/dashboard/documents');
+      const res = await page.goto('/dashboard/documents');
       await page.waitForLoadState('networkidle');
 
-      await expect(page.getByText(/don.t have access to documents/i)).toBeVisible();
+      // The status code is the load-bearing assertion — the rendered heading
+      // alone would also appear on a genuinely missing route.
+      expect(res?.status()).toBe(404);
+      await expect(page.getByRole('heading', { name: /page not found/i })).toBeVisible();
+
+      // Q26's point: the refusal must not name what it is refusing, and must not
+      // bounce (a redirect to /dashboard is itself evidence the module exists).
+      await expect(page.getByText(/don.t have access to documents/i)).toHaveCount(0);
+      expect(page.url()).toContain('/dashboard/documents');
+
       await expect(page.getByRole('button', { name: /upload file/i })).toHaveCount(0);
       await expect(page.getByRole('table')).toHaveCount(0);
-
-      await page.getByRole('link', { name: /back to dashboard/i }).click();
-      await page.waitForURL('**/dashboard');
     } finally {
       await cleanup(seeded);
     }

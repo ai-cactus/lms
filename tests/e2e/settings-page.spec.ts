@@ -1,11 +1,18 @@
 /**
- * E2E spec: /dashboard/settings (Phase C — new owner-only Settings page).
+ * E2E spec: /dashboard/settings.
+ *
+ * The page gates on `organization.edit`, which the founder's Q9 answer put with
+ * Owner, Admin and HR (docs/local/RBAC-founder-answers-2026-09-15.md). The
+ * denial cases therefore use `clinical_director` — an admin-tier role that still
+ * holds no organisation-settings access.
  *
  * Acceptance criteria:
  *   - Owner sees all three tabs (Users & Permissions, Roles, Facility) and the
  *     "Settings" nav entry in the sidebar.
- *   - A non-owner admin (hr) gets the styled access-denied card at
- *     /dashboard/settings AND does not see the "Settings" nav item at all.
+ *   - HR reaches the page and its tabs (gained `organization.edit` per Q9).
+ *   - A role without `organization.edit` (clinical_director) gets the styled
+ *     access-denied card at /dashboard/settings AND does not see the "Settings"
+ *     nav item at all.
  *   - Saving the Facility tab's name/type persists via `updateFacility` (DB
  *     row updated). The same action backs the supervisor's own-facility form on
  *     /dashboard/profile, covered in rbac-facility-tab.spec.ts.
@@ -23,7 +30,7 @@ import * as crypto from 'crypto';
 const DB_URL =
   process.env.DATABASE_URL || 'postgresql://postgres:0951@localhost:5433/lms?schema=public';
 
-type Role = 'owner' | 'hr';
+type Role = 'owner' | 'hr' | 'clinical_director';
 
 interface Seeded {
   userId: string;
@@ -109,7 +116,7 @@ async function login(page: import('@playwright/test').Page, email: string, passw
   await page.waitForURL('**/dashboard**', { timeout: 15000 });
 }
 
-test.describe('Settings page — owner-only access', () => {
+test.describe('Settings page — access is Owner/Admin/HR', () => {
   test('owner sees the Settings nav entry and all three tabs at /dashboard/settings', async ({
     page,
   }) => {
@@ -125,13 +132,13 @@ test.describe('Settings page — owner-only access', () => {
       await expect(page.getByRole('tab', { name: /users.*permissions/i })).toBeVisible();
       await expect(page.getByRole('tab', { name: /^roles$/i })).toBeVisible();
       await expect(page.getByRole('tab', { name: /^facility$/i })).toBeVisible();
-      await expect(page.getByText(/don.t have access to settings/i)).not.toBeVisible();
+      await expect(page.getByRole('heading', { name: /page not found/i })).toHaveCount(0);
     } finally {
       await cleanup(seeded);
     }
   });
 
-  test('hr gets access-denied at /dashboard/settings and has no Settings nav entry', async ({
+  test('hr sees the Settings nav entry and reaches the tabs (gained organization.edit per Q9)', async ({
     page,
   }) => {
     const email = uid('hr');
@@ -139,13 +146,36 @@ test.describe('Settings page — owner-only access', () => {
     try {
       await login(page, email, 'HrSet!99xPP');
 
-      // No Settings nav entry at all for a non-owner admin.
-      await expect(page.getByRole('link', { name: /^settings$/i })).not.toBeVisible();
+      await expect(page.getByRole('link', { name: /^settings$/i })).toBeVisible();
 
-      // Direct navigation is still gated server-side.
       await page.goto('/dashboard/settings');
       await page.waitForLoadState('networkidle');
-      await expect(page.getByText(/don.t have access to settings/i)).toBeVisible();
+      await expect(page.getByRole('heading', { name: /page not found/i })).toHaveCount(0);
+      await expect(page.getByRole('tab', { name: /^facility$/i })).toBeVisible();
+    } finally {
+      await cleanup(seeded);
+    }
+  });
+
+  test('clinical_director gets a 404 at /dashboard/settings and has no Settings nav entry', async ({
+    page,
+  }) => {
+    const email = uid('cd');
+    const seeded = await seedWithRole('clinical_director', email, 'CdSet!99xPP');
+    try {
+      await login(page, email, 'CdSet!99xPP');
+
+      // No Settings nav entry at all without `organization.edit`.
+      await expect(page.getByRole('link', { name: /^settings$/i })).not.toBeVisible();
+
+      // Founder Q26: the two halves are one rule — hidden in the nav AND "Page
+      // not found" on a typed URL. This used to be an in-page card that named
+      // Settings, which told the role exactly what it was being refused.
+      const res = await page.goto('/dashboard/settings');
+      await page.waitForLoadState('networkidle');
+      expect(res?.status()).toBe(404);
+      await expect(page.getByRole('heading', { name: /page not found/i })).toBeVisible();
+      await expect(page.getByText(/don.t have access to settings/i)).toHaveCount(0);
       await expect(page.getByRole('tab', { name: /^facility$/i })).not.toBeVisible();
     } finally {
       await cleanup(seeded);
@@ -330,20 +360,38 @@ test.describe('Settings page — Add Facility (multi-facility v3)', () => {
     }
   });
 
-  test('a non-owner admin (hr) has no Add Facility button — lacks facility.create', async ({
-    page,
-  }) => {
+  test('clinical_director has no Add Facility button — lacks facility.create', async ({ page }) => {
+    const email = uid('cd-addfac');
+    const seeded = await seedWithRole('clinical_director', email, 'AddFacCd!99x');
+    try {
+      await login(page, email, 'AddFacCd!99x');
+
+      // clinical_director is denied the whole settings page (no
+      // `organization.edit`), so the Add Facility button is unreachable —
+      // confirms the deeper gate rather than merely the button's own check.
+      // Q26 made that denial a 404; pinned here so the button assertion below
+      // cannot pass merely because some other page rendered.
+      const res = await page.goto('/dashboard/settings');
+      await page.waitForLoadState('networkidle');
+      expect(res?.status()).toBe(404);
+      await expect(page.getByRole('button', { name: 'Add Facility' })).not.toBeVisible();
+    } finally {
+      await cleanup(seeded);
+    }
+  });
+
+  // Founder Q8 put facility create/edit/delete with Owner/Admin/HR, so HR
+  // reaches the button the previous case proves is gated.
+  test('hr sees the Add Facility button (gained facility.create per Q8)', async ({ page }) => {
     const email = uid('hr-addfac');
     const seeded = await seedWithRole('hr', email, 'AddFacHr!99x');
     try {
       await login(page, email, 'AddFacHr!99x');
 
-      // hr is denied the whole settings page (owner-only per the earlier
-      // access-control suite), so the Add Facility button is unreachable —
-      // confirms the deeper gate rather than merely the button's own check.
       await page.goto('/dashboard/settings');
       await page.waitForLoadState('networkidle');
-      await expect(page.getByRole('button', { name: 'Add Facility' })).not.toBeVisible();
+      await page.getByRole('tab', { name: /^facility$/i }).click();
+      await expect(page.getByRole('button', { name: 'Add Facility' })).toBeVisible();
     } finally {
       await cleanup(seeded);
     }
@@ -631,7 +679,29 @@ test.describe('Settings page — Notifications tab persistence', () => {
     }
   });
 
-  test('a non-owner admin (hr) cannot reach the Notifications tab at all', async ({ page }) => {
+  test('clinical_director cannot reach the Notifications tab at all', async ({ page }) => {
+    const email = uid('cd-notif');
+    const seeded = await seedWithRole('clinical_director', email, 'CdNotif!y99x');
+    try {
+      await login(page, email, 'CdNotif!y99x');
+      await page.goto('/dashboard/settings');
+      await page.waitForLoadState('networkidle');
+
+      await expect(page.getByRole('tab', { name: /^notification$/i })).not.toBeVisible();
+      // Q26: the whole route 404s for a role without `organization.edit`, so the
+      // Notifications tab is unreachable because Settings itself is.
+      await expect(page.getByRole('heading', { name: /page not found/i })).toBeVisible();
+    } finally {
+      await cleanup(seeded);
+    }
+  });
+
+  // Founder Q13 (notifications/reminders/escalation → Owner/Admin/HR) is settled
+  // by the Q9 `organization.edit` grant alone: notification-settings.ts gates on
+  // exactly that permission, so HR reaching this tab IS the Q13 conformance.
+  test('hr reaches the Notifications tab (Q13, via the organization.edit grant)', async ({
+    page,
+  }) => {
     const email = uid('hr-notif');
     const seeded = await seedWithRole('hr', email, 'HrNotif!y99x');
     try {
@@ -639,8 +709,8 @@ test.describe('Settings page — Notifications tab persistence', () => {
       await page.goto('/dashboard/settings');
       await page.waitForLoadState('networkidle');
 
-      await expect(page.getByRole('tab', { name: /^notification$/i })).not.toBeVisible();
-      await expect(page.getByText(/don.t have access to settings/i)).toBeVisible();
+      await expect(page.getByRole('heading', { name: /page not found/i })).toHaveCount(0);
+      await expect(page.getByRole('tab', { name: /^notification$/i })).toBeVisible();
     } finally {
       await cleanup(seeded);
     }

@@ -217,7 +217,7 @@ export const roles = {
     category: 'manager',
     displayName: 'Facility Supervisor',
     description:
-      'Facility-level overseer. READ-ONLY on documents, courses, staff and audits — a supervisor’s power is SCOPE, not verbs: their read access spans the facilities assigned to them (OrganizationUserFacility), enforced at the data layer. May generate an auditor pack, but only over that same facility scope. Cannot create or edit facilities, cannot change staff roles, and has no billing access whatsoever.',
+      'Facility-level overseer. READ-ONLY on documents, courses, staff and audits — a supervisor’s power is SCOPE, not verbs: their read access spans the facilities assigned to them (OrganizationUserFacility), enforced at the data layer. May generate an auditor pack and issue a completion certificate, but only over that same facility scope. Cannot create or edit facilities, cannot change staff roles, and has no billing access whatsoever.',
     permissions: [
       ...readEverythingExceptBilling,
       ...selfServicePermissions,
@@ -246,7 +246,20 @@ export const roles = {
       // enrolment target are narrowed to the caller's facilities in the same
       // commit. Never grant these without that narrowing.
       'assignment.create',
+      // Founder Rule C (docs/local/RBAC-founder-answers-2026-09-15.md):
+      // "Supervisors should be able to withdraw course from staff in their
+      // facility". Closes the assign-but-never-withdraw asymmetry this role was
+      // left with. Scope, not reach: `removeWorkerAssignment` narrows the target
+      // to the caller's facilities, so the verb only ever reaches staff a
+      // supervisor already manages.
+      'assignment.delete',
       'enrollment.create',
+      // Certificates CR per the updated matrix — see the `hr` block for the Q1
+      // reading. Scope, not reach: `issueCertificate` narrows the target
+      // enrollment to the caller's facilities in the same commit, because
+      // founder Q7 limits a supervisor to their own facility's staff. Never
+      // grant this without that narrowing.
+      'certificate.create',
     ],
   },
 
@@ -255,7 +268,7 @@ export const roles = {
     category: 'manager',
     displayName: 'HR',
     description:
-      'Workforce personnel & operational compliance manager. Full CRUD over staff, documents and courses; invites staff, assigns training paths and views broad pass/fail and completion metrics. Reads the audit trail but cannot alter it. Blocked from billing and from question-by-question assessment scoring.',
+      'Workforce personnel & operational compliance manager. Full CRUD over staff, documents, courses, quizzes and facilities; invites staff, assigns training paths and views broad pass/fail and completion metrics. Builds quizzes and reviews granular, question-by-question assessment results — granted by founder ruling ("HR can build quizzes and view results"), which reversed an earlier, narrower reading of this role. Manages organisation settings, including notification, reminder and escalation configuration. Reads the audit trail but cannot alter it. Blocked from billing.',
     permissions: [
       'user.create',
       'user.read',
@@ -276,6 +289,31 @@ export const roles = {
       'course.read',
       'course.edit',
       'course.delete',
+      // Quiz CRUD — founder ruling closing the one cell the updated matrix left
+      // ambiguous: "HR can build quizzes and view results"
+      // (docs/local/RBAC_for_multi-tenancy-updated.md). `assessment` bundles
+      // authoring a quiz with reading a NAMED learner's answer sheet, so he was
+      // asked which the row's CRUD meant (docs/local/RBAC-founder-answers-2026-09-15.md)
+      // and answered both. `assessment.read` is the half that readmits HR to the
+      // two answer-sheet gates (`getEnrollmentQuizResult` in staff.ts,
+      // `getEnrollmentWithResults` in enrollment.ts), reversing the narrowing
+      // that had rested on this role's own description rather than on a ruling.
+      //
+      // `assessment.delete` has no call site anywhere — quiz deletion is not a
+      // product capability — so it is granted for matrix conformance and is
+      // inert today, exactly as it is for Owner and Admin.
+      'assessment.create',
+      'assessment.read',
+      'assessment.edit',
+      'assessment.delete',
+      // `certificate.create` added 2026-09-16 — the updated matrix
+      // (docs/local/RBAC_for_multi-tenancy-updated.md) moves Certificates from
+      // `R` to `CR` for every role holding the row. Read the same way as founder
+      // Q1 on Audits: "Managers with access should be able to Generate reports.
+      // If that is a create action, then we should add create to the rules."
+      // Producing the artifact over records you may already read is the create,
+      // and `issueCertificate` is the path that now checks it.
+      'certificate.create',
       'certificate.read',
       'category.read',
       'document.create',
@@ -283,7 +321,20 @@ export const roles = {
       'document.edit',
       'document.delete',
       'organization.read',
+      // `organization.edit` + facility CRUD granted 2026-09-16 — founder
+      // answers to Q8 (facility create/edit/delete) and Q9 (organisation
+      // settings), both "Owner/Admin/HR"
+      // (docs/local/RBAC-founder-answers-2026-09-15.md).
+      //
+      // `organization.edit` is also what settles Q13 (notifications, reminders
+      // and escalation configuration → Owner/Admin/HR): the notification-settings
+      // actions already gate on exactly this permission, so the grant is the
+      // whole fix — no change to those actions is needed or wanted.
+      'organization.edit',
+      'facility.create',
       'facility.read',
+      'facility.edit',
+      'facility.delete',
       'audit.read',
       'auditPack.create',
       'auditPack.read',
@@ -299,16 +350,19 @@ export const roles = {
     category: 'manager',
     displayName: 'Clinical Director',
     description:
-      'Clinical quality-assurance & assessment oversight lead. Builds and edits clinical modules/assessments, assigns clinical training paths, and reviews granular, question-by-question assessment logs. Creates and edits documents but cannot DELETE them (deletion is reserved for Owner/Admin/HR). Reads the audit trail. Has no Staff Management access at all, and is blocked from billing and subscription tiers.',
+      'Clinical quality-assurance & assessment oversight lead. Builds and edits clinical modules/assessments, assigns clinical training paths, and reviews granular, question-by-question assessment logs. Creates and edits courses, quizzes and documents but cannot DELETE any of the three (deletion of all three is reserved for Owner/Admin/HR). Reads the audit trail. Has no Staff Management access at all, and is blocked from billing and subscription tiers.',
     permissions: [
       'course.create',
       'course.read',
       'course.edit',
-      'course.delete',
+      // Courses CRU — delete is deliberately withheld per the RBAC matrix.
       'assessment.create',
       'assessment.read',
       'assessment.edit',
-      'assessment.delete',
+      // Quiz CRU — delete is deliberately withheld. The updated matrix
+      // (docs/local/RBAC_for_multi-tenancy-updated.md) prints Clinical/Quality as
+      // CRU on the new Quiz row, the same shape it already gives Documents and
+      // Courses; deletion stays with Owner/Admin/HR.
       'enrollment.create',
       'enrollment.read',
       'enrollment.edit',
@@ -325,6 +379,9 @@ export const roles = {
       'document.read',
       'document.edit',
       'standardManual.read',
+      // Certificates CR per the updated matrix — see the `hr` block for the Q1
+      // reading that makes generating the artifact a create.
+      'certificate.create',
       'certificate.read',
       'organization.read',
       'facility.read',
@@ -343,7 +400,7 @@ export const roles = {
     category: 'manager',
     displayName: 'Finance',
     description:
-      'Billing, subscription & financial reporting manager. Manages billing settings, payment methods and invoices, and views their own personal learner transcripts. Blocked from Staff Management, from the audit trail, from building courses, from assigning compliance paths and from viewing any worker test metrics.',
+      'Billing, subscription & financial reporting manager. Manages billing settings, payment methods and invoices, and tracks their own personal course progress. Blocked from Staff Management, from the audit trail, from certificates, from building courses, from assigning compliance paths and from viewing any worker test metrics.',
     permissions: [
       'billing.create',
       'billing.read',
@@ -359,10 +416,15 @@ export const roles = {
       // PASS on TC-FIN-003 criterion 9.9 and is stale on this point.
       //
       // The nav follows automatically: roles-matrix-config.ts:59 gates the
-      // Courses item on perm('course.read'). Finance's own learner transcripts
-      // run on enrollment.read / certificate.read, which it keeps.
+      // Courses item on perm('course.read').
+      //
+      // `certificate.read` REMOVED 2026-09-16 — founder answer to Q7
+      // (docs/local/RBAC-founder-answers-2026-09-15.md, round 2): "Finance
+      // should not be able to see certificates." A certificate carries staff
+      // name, email, course and score, which is the same worker-metrics surface
+      // Finance is already blocked from. `enrollment.read` is deliberately
+      // untouched — it is what keeps Finance's OWN learner progress visible.
       'enrollment.read',
-      'certificate.read',
       'notification.create',
       'notification.read',
       'notification.edit',

@@ -84,7 +84,7 @@ describe('course-ai module surface', () => {
 });
 
 describe('analyzeStoredDocument', () => {
-  const authedSession = { user: { id: 'user-1', organizationUserId: 'ou-1' } };
+  const authedSession = { user: { id: 'user-1', role: 'owner', organizationUserId: 'ou-1' } };
 
   function mockStoredDoc() {
     prismaMock.document.findUnique.mockResolvedValue({
@@ -121,13 +121,54 @@ describe('analyzeStoredDocument', () => {
   });
 
   it('refuses a session with no organization membership', async () => {
-    mockAuth.mockResolvedValue({ user: { id: 'user-1' } });
+    mockAuth.mockResolvedValue({ user: { id: 'user-1', role: 'owner' } });
 
     const result = await analyzeStoredDocument('doc-1');
 
     expect(result.error).toBe('Unauthorized');
     expect(mockCallVertexAI).not.toHaveBeenCalled();
   });
+
+  // Was authenticated-only, so any admin-tier session could drive Vertex spend
+  // from this endpoint. `course.create` is the verb the generation pipeline it
+  // feeds already checks; finance and supervisor hold neither it nor any other
+  // course-write verb, and every worker role is likewise excluded.
+  it.each(['finance', 'supervisor', 'nurse'])(
+    'refuses role=%s — missing course.create — before any DB read or Vertex call',
+    async (role) => {
+      mockAuth.mockResolvedValue({ user: { id: 'user-x', role, organizationUserId: 'ou-1' } });
+      mockCheckRateLimit.mockResolvedValue({ allowed: true, resetInSeconds: 0 });
+
+      const result = await analyzeStoredDocument('doc-1');
+
+      expect(result.error).toBe('Insufficient permissions');
+      expect(prismaMock.document.findUnique).not.toHaveBeenCalled();
+      expect(mockCallVertexAI).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['owner', 'admin', 'hr', 'clinical_director'])(
+    'allows role=%s through to the normal analysis path',
+    async (role) => {
+      mockAuth.mockResolvedValue({ user: { id: 'user-1', role, organizationUserId: 'ou-1' } });
+      mockCheckRateLimit.mockResolvedValue({ allowed: true, resetInSeconds: 0 });
+      mockStoredDoc();
+      mockCallVertexAI.mockResolvedValue(
+        JSON.stringify({
+          title: 'T',
+          description: 'D',
+          objectives: ['a', 'b', 'c'],
+          duration: '30',
+          quizTitle: 'Q',
+        }),
+      );
+
+      const result = await analyzeStoredDocument('doc-1');
+
+      expect(result.error).toBeUndefined();
+      expect(mockCallVertexAI).toHaveBeenCalledTimes(1);
+    },
+  );
 
   // F-018: an authenticated caller must not be able to replay the action to
   // drive unbounded Vertex spend.

@@ -1,5 +1,5 @@
 import React, { FC } from 'react';
-import { isAdminRole, dbRoleToRoleKey, getRoleDisplayName } from '@/lib/rbac/role-utils';
+import { dbRoleToRoleKey, getRoleDisplayName } from '@/lib/rbac/role-utils';
 import { can } from '@/lib/rbac/permissions';
 import type { Role } from '@/types/next-auth';
 import { auth } from '@/auth';
@@ -79,7 +79,12 @@ const DashboardLayout: FC<WithChildren> = async ({ children }) => {
         })
       )?.subscription
     : null;
-  const isBillingAdmin = isAdminRole(role);
+  // Registry-gated, not `isAdminRole`: ADMIN_ROLES spans every manager seat, so
+  // HR, Clinical Director and Supervisor — none of whom hold any `billing.*` —
+  // were being shown the organisation's subscription-pause state. The banner is
+  // billing information, so it keys off the same permission as the Billing page
+  // and the Billing nav row.
+  const isBillingAdmin = can(dbRoleToRoleKey(role as Role), 'billing.read');
   const pauseState = isBillingAdmin ? getPauseState(subscription) : 'none';
   const showPendingPause = isBillingAdmin && pauseState === 'none' && hasPendingPause(subscription);
 

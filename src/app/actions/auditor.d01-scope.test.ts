@@ -23,19 +23,26 @@
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
-const { prismaMock, mockAuth, mockResolveDataFacilityIds } = vi.hoisted(() => ({
+const { prismaMock, rawPrismaMock, mockAuth, mockResolveDataFacilityIds } = vi.hoisted(() => ({
   prismaMock: {
+    // Course gets a SEPARATE pair of spies from `rawPrismaMock` below, wired to
+    // the empty "live rows only" answer. The catalogue is read off the
+    // un-extended client so the screen agrees with the export worker (Q24), and
+    // splitting the spies is what makes a regression that swaps them fail
+    // loudly instead of returning an equivalent-looking result.
     course: { count: vi.fn(), findMany: vi.fn() },
     enrollment: { findMany: vi.fn() },
     organizationUser: { count: vi.fn(), findMany: vi.fn() },
     organization: { findUnique: vi.fn() },
     orgCourseOffering: { findMany: vi.fn() },
   },
+  rawPrismaMock: { course: { count: vi.fn(), findMany: vi.fn() } },
   mockAuth: vi.fn(),
   mockResolveDataFacilityIds: vi.fn(),
 }));
 
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock, default: prismaMock }));
+vi.mock('@/db/index', () => ({ rawPrisma: rawPrismaMock }));
 vi.mock('@/auth', () => ({ auth: mockAuth }));
 // Only the resolver is mocked; `staffFacilityWhere` runs for real so these
 // assert on the predicate the shipped helper actually builds.
@@ -63,6 +70,8 @@ const hasFacilityPredicate = (where: Record<string, unknown> | undefined) =>
 
 beforeEach(() => {
   vi.clearAllMocks();
+  rawPrismaMock.course.count.mockResolvedValue(0);
+  rawPrismaMock.course.findMany.mockResolvedValue([]);
   prismaMock.course.count.mockResolvedValue(0);
   prismaMock.course.findMany.mockResolvedValue([]);
   prismaMock.enrollment.findMany.mockResolvedValue([]);
@@ -104,7 +113,7 @@ describe('facility scope — subject data follows the caller, the catalogue does
 
     await getAuditorCourses();
 
-    const call = prismaMock.course.findMany.mock.calls[0][0];
+    const call = rawPrismaMock.course.findMany.mock.calls[0][0];
     // The course list itself carries no facility predicate…
     expect(hasFacilityPredicate(call.where)).toBe(false);
     // …but the enrollments counted inside each row do.
@@ -176,7 +185,7 @@ describe('facility scope — subject data follows the caller, the catalogue does
     expect(hasFacilityPredicate(prismaMock.organizationUser.findMany.mock.calls[0][0].where)).toBe(
       false,
     );
-    expect(hasFacilityPredicate(prismaMock.course.findMany.mock.calls[0][0].where)).toBe(false);
+    expect(hasFacilityPredicate(rawPrismaMock.course.findMany.mock.calls[0][0].where)).toBe(false);
   });
 });
 
@@ -187,19 +196,17 @@ describe('catalogue scope — adopted courses and every status', () => {
 
     await getAuditorCourses();
 
-    expect(prismaMock.course.findMany.mock.calls[0][0].where).toEqual({
-      OR: [{ creator: { organizationId: ORG } }, { id: { in: ['adopted-1'] } }],
+    expect(rawPrismaMock.course.findMany.mock.calls[0][0].where).toEqual({
+      OR: [{ organizationId: ORG }, { id: { in: ['adopted-1'] } }],
     });
   });
 
-  it('falls back to the creator predicate when the org has adopted nothing', async () => {
+  it('falls back to the bare organisation predicate when the org has adopted nothing', async () => {
     mockAuth.mockResolvedValue(HR);
 
     await getAuditorCourses();
 
-    expect(prismaMock.course.findMany.mock.calls[0][0].where).toEqual({
-      creator: { organizationId: ORG },
-    });
+    expect(rawPrismaMock.course.findMany.mock.calls[0][0].where).toEqual({ organizationId: ORG });
   });
 
   it('does not filter the catalogue by status', async () => {
@@ -208,13 +215,13 @@ describe('catalogue scope — adopted courses and every status', () => {
     await getAuditorCourses();
     await getAuditorOverviewStats();
 
-    expect(prismaMock.course.findMany.mock.calls[0][0].where).not.toHaveProperty('status');
-    expect(prismaMock.course.count.mock.calls[0][0].where).not.toHaveProperty('status');
+    expect(rawPrismaMock.course.findMany.mock.calls[0][0].where).not.toHaveProperty('status');
+    expect(rawPrismaMock.course.count.mock.calls[0][0].where).not.toHaveProperty('status');
   });
 
   it('surfaces each course status on the row', async () => {
     mockAuth.mockResolvedValue(HR);
-    prismaMock.course.findMany.mockResolvedValue([
+    rawPrismaMock.course.findMany.mockResolvedValue([
       {
         id: 'c1',
         title: 'Bloodborne Pathogens',
@@ -235,9 +242,82 @@ describe('catalogue scope — adopted courses and every status', () => {
 
     await getAuditorCourses();
 
-    const select = prismaMock.course.findMany.mock.calls[0][0].select;
+    const select = rawPrismaMock.course.findMany.mock.calls[0][0].select;
     expect(select.enrollments.where.organizationUser).toEqual(
       expect.objectContaining({ organizationId: ORG }),
+    );
+  });
+});
+
+/**
+ * Q24: "delete" archives. An archived course is still part of what the
+ * organisation has to account for, so it belongs in the auditor's catalogue —
+ * and the export worker already counts it. Reading this surface through the
+ * archive-filtered client would show the auditor one number on screen and a
+ * different one in the PDF they download, which is the one thing a compliance
+ * artifact cannot do.
+ *
+ * The widening is the COURSE ROW and nothing else. The last test here is the
+ * important one: it pins that a facility-bound auditor did not gain visibility
+ * of another facility's staff along the way.
+ */
+describe('archived courses — the catalogue is read off the un-extended client', () => {
+  const ARCHIVED_ROW = {
+    id: 'c-archived',
+    title: 'Retired Bloodborne Pathogens',
+    thumbnail: null,
+    status: 'published',
+    createdAt: new Date('2026-01-01'),
+    enrollments: [{ status: 'completed' }],
+  };
+
+  it('lists an archived course in the auditor catalogue', async () => {
+    mockAuth.mockResolvedValue(HR);
+    rawPrismaMock.course.findMany.mockResolvedValue([ARCHIVED_ROW]);
+    // What the archive-filtered client would return instead.
+    prismaMock.course.findMany.mockResolvedValue([]);
+
+    const rows = await getAuditorCourses();
+
+    expect(rows.map((r) => r.id)).toEqual(['c-archived']);
+    expect(prismaMock.course.findMany).not.toHaveBeenCalled();
+  });
+
+  it('counts an archived course in the overview catalogue total', async () => {
+    mockAuth.mockResolvedValue(HR);
+    rawPrismaMock.course.count.mockResolvedValue(7);
+    prismaMock.course.count.mockResolvedValue(6);
+
+    const stats = await getAuditorOverviewStats();
+
+    expect(stats.totalCourses).toBe(7);
+    expect(prismaMock.course.count).not.toHaveBeenCalled();
+  });
+
+  it('does NOT widen subject data — a supervisor keeps the facility narrowing on staff and enrollments', async () => {
+    mockAuth.mockResolvedValue(SUPERVISOR);
+    mockResolveDataFacilityIds.mockResolvedValue(['annex']);
+    rawPrismaMock.course.findMany.mockResolvedValue([ARCHIVED_ROW]);
+
+    await getAuditorCourses();
+    await getAuditorOverviewStats();
+    await getAuditorStaff();
+
+    // The archived course still lists — with its per-course rollup confined to
+    // the caller's own facilities.
+    const courseCall = rawPrismaMock.course.findMany.mock.calls[0][0];
+    expect(hasFacilityPredicate(courseCall.where)).toBe(false);
+    expect(hasFacilityPredicate(courseCall.select.enrollments.where.organizationUser)).toBe(true);
+
+    // …and every SUBJECT query around it is untouched by the widening.
+    expect(
+      hasFacilityPredicate(prismaMock.enrollment.findMany.mock.calls[0][0].where.organizationUser),
+    ).toBe(true);
+    expect(hasFacilityPredicate(prismaMock.organizationUser.count.mock.calls[0][0].where)).toBe(
+      true,
+    );
+    expect(hasFacilityPredicate(prismaMock.organizationUser.findMany.mock.calls[0][0].where)).toBe(
+      true,
     );
   });
 });
@@ -291,6 +371,7 @@ describe('the verb gate still holds', () => {
     await expect(getAuditorCourses()).rejects.toThrow('Unauthorized');
     await expect(getAuditorOverviewStats()).rejects.toThrow('Unauthorized');
     expect(prismaMock.organizationUser.findMany).not.toHaveBeenCalled();
+    expect(rawPrismaMock.course.findMany).not.toHaveBeenCalled();
     expect(prismaMock.course.findMany).not.toHaveBeenCalled();
   });
 });

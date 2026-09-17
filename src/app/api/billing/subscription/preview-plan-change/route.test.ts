@@ -88,6 +88,7 @@ vi.mock('@/lib/billing-plans', () => ({
 // ---------------------------------------------------------------------------
 // Import under test AFTER all vi.mock() declarations.
 // ---------------------------------------------------------------------------
+import { can, roles, type RoleKey } from '@/lib/rbac/permissions';
 import { POST } from './route';
 
 // ---------------------------------------------------------------------------
@@ -119,10 +120,12 @@ beforeEach(() => {
 });
 
 // ---------------------------------------------------------------------------
-// RBAC: billing.* is reserved for owner + finance. Regression guard for the
-// isAdminRole → authorize('billing.read') migration.
+// RBAC: billing.* is reserved for owner/admin + finance. Regression guard for
+// the isAdminRole → authorize('billing.read') migration, then the move to
+// `billing.edit` — this POST is the first leg of a plan change, so it carries
+// the same edit verb as every sibling mutation on that flow.
 // ---------------------------------------------------------------------------
-describe('POST /api/billing/subscription/preview-plan-change — RBAC (billing.read registry enforcement)', () => {
+describe('POST /api/billing/subscription/preview-plan-change — RBAC (billing.edit registry enforcement)', () => {
   it.each(['supervisor', 'hr', 'clinical_director'])(
     'denies role=%s with 403 and never touches the subscription row',
     async (role) => {
@@ -137,19 +140,35 @@ describe('POST /api/billing/subscription/preview-plan-change — RBAC (billing.r
     },
   );
 
-  it('allows role=finance through to the normal preview path', async () => {
-    mockAuth.mockResolvedValue({
-      user: { id: 'user-1', role: 'finance', organizationId: 'org-1' },
-    });
-    prismaMock.subscription.findUnique.mockResolvedValue(
-      liveSubscription({ plan: 'growth', billingCycle: 'monthly' }),
+  // The three legitimate callers of a plan change. Pinned explicitly because
+  // raising the verb from `billing.read` to `billing.edit` is only safe while
+  // all three still hold it.
+  it.each(['owner', 'admin', 'finance'])(
+    'allows role=%s through to the normal preview path',
+    async (role) => {
+      mockAuth.mockResolvedValue({ user: { id: 'user-1', role, organizationId: 'org-1' } });
+      prismaMock.subscription.findUnique.mockResolvedValue(
+        liveSubscription({ plan: 'growth', billingCycle: 'monthly' }),
+      );
+
+      const res = await POST(makeReq({ planKey: 'growth', billingCycle: 'monthly' }));
+      const body = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body).toEqual({ classification: 'no_op' });
+    },
+  );
+
+  // The registry invariant the verb change rests on: raising a billing endpoint
+  // from read to edit locks nobody out today, because no role is granted
+  // `billing.read` without `billing.edit`. If a read-only billing role is ever
+  // added, this fails and the preview gate must be reconsidered alongside it.
+  it('no role holds billing.read without billing.edit', () => {
+    const readOnlyBillingRoles = (Object.keys(roles) as RoleKey[]).filter(
+      (roleKey) => can(roleKey, 'billing.read') && !can(roleKey, 'billing.edit'),
     );
 
-    const res = await POST(makeReq({ planKey: 'growth', billingCycle: 'monthly' }));
-    const body = await res.json();
-
-    expect(res.status).toBe(200);
-    expect(body).toEqual({ classification: 'no_op' });
+    expect(readOnlyBillingRoles).toEqual([]);
   });
 });
 

@@ -1,9 +1,13 @@
 /**
- * `Course` has no `organizationId`, so "the org's courses" is a union of two
- * unrelated links: authorship (via the creator's membership) and adoption (via
- * `OrgCourseOffering`, where the author is a DIFFERENT tenant). Every audit
- * query spelled out only the first half and silently lost the whole video
- * catalogue; these pin the union so a third copy cannot drift again.
+ * "The org's courses" is a union of two unrelated links: ownership (Q25's
+ * `Course.organizationId`) and adoption (via `OrgCourseOffering`, where the
+ * course belongs to a DIFFERENT tenant). Every audit query spelled out only the
+ * first half and silently lost the whole video catalogue; these pin the union so
+ * a third copy cannot drift again.
+ *
+ * They also pin the predicate SHAPE. Ownership is a column, not a join through
+ * the author's membership — a `{ creator: { organizationId } }` here would still
+ * return the right rows today while quietly reintroducing the join Q25 removed.
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
@@ -40,14 +44,12 @@ describe('orgCourseWhere', () => {
     prismaMock.orgCourseOffering.findMany.mockResolvedValue([{ courseId: 'adopted-1' }]);
 
     await expect(orgCourseWhere('org-a')).resolves.toEqual({
-      OR: [{ creator: { organizationId: 'org-a' } }, { id: { in: ['adopted-1'] } }],
+      OR: [{ organizationId: 'org-a' }, { id: { in: ['adopted-1'] } }],
     });
   });
 
   it('omits the empty OR branch when nothing is adopted', async () => {
-    await expect(orgCourseWhere('org-a')).resolves.toEqual({
-      creator: { organizationId: 'org-a' },
-    });
+    await expect(orgCourseWhere('org-a')).resolves.toEqual({ organizationId: 'org-a' });
   });
 
   it('never widens past the organisation — an org with no courses matches nothing extra', async () => {
@@ -56,7 +58,7 @@ describe('orgCourseWhere', () => {
     const where = await orgCourseWhere('org-a');
 
     expect(JSON.stringify(where)).not.toContain('org-b');
-    expect(where).toHaveProperty('creator.organizationId', 'org-a');
+    expect(where).toEqual({ organizationId: 'org-a' });
   });
 });
 
@@ -71,7 +73,7 @@ describe('authoredCourseWhere', () => {
         organizationId: 'org-a',
         organizationUserId: 'ou-1',
       }),
-    ).toEqual({ creator: { organizationId: 'org-a' } });
+    ).toEqual({ organizationId: 'org-a' });
   });
 
   it('a facility-bound manager (supervisor, holds course.read) also gets the organisation-wide authored set — courses are global, not facility-scoped', () => {
@@ -81,7 +83,7 @@ describe('authoredCourseWhere', () => {
         organizationId: 'org-a',
         organizationUserId: 'ou-1',
       }),
-    ).toEqual({ creator: { organizationId: 'org-a' } });
+    ).toEqual({ organizationId: 'org-a' });
   });
 
   it('keeps an admin-tier role WITHOUT course.read (finance) scoped to its own authored courses', () => {

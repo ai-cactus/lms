@@ -145,15 +145,17 @@ async function seedHeldDraftCourse(parkedEmail: string): Promise<Seeded> {
 
     await client.query(
       `INSERT INTO courses (
-         id, title, description, status, created_by_org_user_id, type, is_global,
-         review_required, quality_warnings, pending_assignment, created_at, updated_at
-       ) VALUES ($1, $2, $3, 'draft'::"CourseStatus", $4, 'text'::"CourseType", false,
-         true, $5, $6, NOW(), NOW())`,
+         id, title, description, status, created_by_org_user_id, organization_id,
+         type, is_global, review_required, quality_warnings, pending_assignment,
+         created_at, updated_at
+       ) VALUES ($1, $2, $3, 'draft'::"CourseStatus", $4, $5, 'text'::"CourseType", false,
+         true, $6, $7, NOW(), NOW())`,
       [
         courseId,
         `Publish Review Gate E2E Course ${slug}`,
         'A degraded course held for review.',
         ownerOrgUserId,
+        orgId,
         ['No slides were generated for this course.'],
         JSON.stringify({ mode: 'email', emails: [parkedEmail], dueAt: null }),
       ],

@@ -1,44 +1,48 @@
 /**
  * Regression tests for the /dashboard/billing server gate.
  *
- * The gate switched from `isAdminRole(user.role)` (true for every admin role,
- * including supervisor) to `can(dbRoleToRoleKey(user.role), 'billing.read')`
- * — only `owner` and `finance` hold that permission. A role like `supervisor`
- * or `hr` reaching this route must now see the styled access-denied card
- * instead of the real billing UI.
+ * The gate is `billing.read` — owner, admin and finance hold it; `supervisor`
+ * and `hr` do not. Founder ruling Q26
+ * (docs/local/RBAC-founder-answers-2026-09-15.md) then changed the DENIAL SHAPE:
+ * the styled access-denied card, which named Billing to a role with no billing
+ * remit, is replaced by `notFound()`.
  */
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockAuth, prismaMock, mockRedirect, mockGetPlanPrices, makeSession } = vi.hoisted(() => ({
-  mockAuth: vi.fn(),
-  prismaMock: {
-    organization: { findUnique: vi.fn() },
-    // The page resolves org-wide headcount through countBillableStaff
-    // (src/lib/seat-limits.ts) rather than reading a facility's declared string.
-    organizationUser: { count: vi.fn() },
-    invite: { count: vi.fn() },
-  },
-  mockRedirect: vi.fn(() => {
-    throw new Error('NEXT_REDIRECT');
-  }),
-  mockGetPlanPrices: vi.fn(),
-  makeSession: (role: string, extras: Record<string, unknown> = {}) => ({
-    user: {
-      id: 'user-1',
-      organizationUserId: 'ou-1',
-      organizationId: 'org-1',
-      role,
-      email: 'x@acme.com',
-      name: 'Test User',
-      ...extras,
+const { mockAuth, prismaMock, mockRedirect, mockNotFound, mockGetPlanPrices, makeSession } =
+  vi.hoisted(() => ({
+    mockAuth: vi.fn(),
+    prismaMock: {
+      organization: { findUnique: vi.fn() },
+      // The page resolves org-wide headcount through countBillableStaff
+      // (src/lib/seat-limits.ts) rather than reading a facility's declared string.
+      organizationUser: { count: vi.fn() },
+      invite: { count: vi.fn() },
     },
-  }),
-}));
+    mockRedirect: vi.fn(() => {
+      throw new Error('NEXT_REDIRECT');
+    }),
+    mockNotFound: vi.fn(() => {
+      throw new Error('NEXT_NOT_FOUND');
+    }),
+    mockGetPlanPrices: vi.fn(),
+    makeSession: (role: string, extras: Record<string, unknown> = {}) => ({
+      user: {
+        id: 'user-1',
+        organizationUserId: 'ou-1',
+        organizationId: 'org-1',
+        role,
+        email: 'x@acme.com',
+        name: 'Test User',
+        ...extras,
+      },
+    }),
+  }));
 
 vi.mock('@/auth', () => ({ auth: mockAuth }));
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock, default: prismaMock }));
-vi.mock('next/navigation', () => ({ redirect: mockRedirect }));
+vi.mock('next/navigation', () => ({ redirect: mockRedirect, notFound: mockNotFound }));
 // `@/lib/billing-prices` is `server-only` (throws when imported outside a
 // React Server Component module graph — the `react-server` resolve condition
 // Next sets isn't present under vitest/jsdom). This page test isn't
@@ -86,33 +90,33 @@ describe('BillingPageRoute — billing.read gate', () => {
     render(element);
 
     expect(screen.getByTestId('billing-page')).toHaveTextContent('plan growth');
-    expect(screen.queryByText(/don.t have access to billing/i)).not.toBeInTheDocument();
+    expect(mockNotFound).not.toHaveBeenCalled();
   });
 
   // supervisor was demoted to read-only-minus-billing; hr never had billing access.
-  it.each(['supervisor', 'hr'])(
-    'renders the access-denied card instead of billing for %s',
-    async (role) => {
-      mockAuth.mockResolvedValueOnce(makeSession(role));
+  // Q26: hidden in the nav AND "Page not found" on a typed URL. Never a redirect
+  // (a bounce to /dashboard still reveals Billing exists) and never a card that
+  // names the module.
+  it.each(['supervisor', 'hr'])('404s instead of rendering billing for %s', async (role) => {
+    mockAuth.mockResolvedValueOnce(makeSession(role));
 
-      const element = await BillingPageRoute();
-      render(element);
+    await expect(BillingPageRoute()).rejects.toThrow('NEXT_NOT_FOUND');
 
-      expect(screen.getByText(/don.t have access to billing/i)).toBeInTheDocument();
-      expect(screen.queryByTestId('billing-page')).not.toBeInTheDocument();
-      expect(screen.getByRole('link', { name: /back to dashboard/i })).toHaveAttribute(
-        'href',
-        '/dashboard',
-      );
-    },
-  );
+    expect(mockNotFound).toHaveBeenCalled();
+    expect(mockRedirect).not.toHaveBeenCalled();
+    expect(screen.queryByText(/don.t have access to billing/i)).not.toBeInTheDocument();
+    expect(prismaMock.organization.findUnique).not.toHaveBeenCalled();
+  });
 
+  // Unauthenticated is deliberately NOT the Q26 case — /login is somewhere
+  // useful to go, and a 404 would strand a logged-out visitor.
   it('redirects to /login when there is no session', async () => {
     mockAuth.mockResolvedValueOnce(null);
 
     await expect(BillingPageRoute()).rejects.toThrow('NEXT_REDIRECT');
 
     expect(mockRedirect).toHaveBeenCalledExactlyOnceWith('/login');
+    expect(mockNotFound).not.toHaveBeenCalled();
     expect(prismaMock.organization.findUnique).not.toHaveBeenCalled();
   });
 
@@ -129,8 +133,7 @@ describe('BillingPageRoute — billing.read gate', () => {
   it('does not call getPlanPrices for a role denied billing access', async () => {
     mockAuth.mockResolvedValueOnce(makeSession('supervisor'));
 
-    const element = await BillingPageRoute();
-    render(element);
+    await expect(BillingPageRoute()).rejects.toThrow('NEXT_NOT_FOUND');
 
     expect(mockGetPlanPrices).not.toHaveBeenCalled();
   });

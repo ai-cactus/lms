@@ -36,6 +36,8 @@ import { MAX_DOCUMENT_UPLOAD_BYTES } from '@/lib/documents/upload-config';
 import { checkRateLimit } from '@/lib/rate-limit';
 import prisma from '@/lib/prisma';
 import { auth } from '@/auth';
+import { can } from '@/lib/rbac/permissions';
+import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
 import { JobResponse } from '@/types/job';
 import { Prisma } from '@/generated/prisma/client';
 import {
@@ -127,6 +129,26 @@ export interface GeneratedCourseV46 {
 export async function generateCourseAndQuizV46(
   formData: FormData,
 ): Promise<{ jobId?: string; error?: string }> {
+  // Authorization runs FIRST — ahead of file buffering, text extraction, the PHI
+  // scan and any Vertex spend. This action was authenticated-only, so every
+  // admin-tier role (Finance and Supervisor included, neither of which may build
+  // a course) could drive the generation pipeline by invoking it directly.
+  // `course.create` is the same verb createCourse() checks — generating a course
+  // and persisting one are the same right.
+  const session = await auth();
+  if (!session?.user?.id) {
+    return { error: 'Unauthorized' };
+  }
+
+  if (!can(dbRoleToRoleKey(session.user.role), 'course.create')) {
+    logger.warn({
+      msg: '[v4.6] Course generation denied — missing course.create',
+      userId: session.user.id,
+      role: session.user.role,
+    });
+    return { error: 'Insufficient permissions' };
+  }
+
   const rawData = formData.get('data');
   if (!rawData || typeof rawData !== 'string') {
     return { error: 'Missing course data' };
@@ -162,8 +184,7 @@ export async function generateCourseAndQuizV46(
     // at upload time in the Document Hub (see uploadDocument), so re-scanning
     // would be redundant. Only the fresh-upload path below needs a scan.
     try {
-      const session = await auth();
-      if (!session?.user?.id || !session.user.organizationUserId) {
+      if (!session.user.organizationUserId) {
         return { error: 'Unauthorized' };
       }
 
@@ -195,11 +216,6 @@ export async function generateCourseAndQuizV46(
     }
   } else {
     return { error: 'No document provided. Please select or upload a document.' };
-  }
-
-  const session = await auth();
-  if (!session?.user?.id) {
-    return { error: 'Unauthorized' };
   }
 
   const userId = session.user.id;

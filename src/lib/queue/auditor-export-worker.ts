@@ -1,6 +1,7 @@
 import { Worker } from 'bullmq';
 import { redis } from './redis';
 import prisma from '@/lib/prisma';
+import { rawPrisma } from '@/db/index';
 import { AUDITOR_EXPORT_QUEUE_NAME } from './auditor-export-queue';
 import { logger } from '@/lib/logger';
 import { Prisma } from '@/generated/prisma/browser';
@@ -132,7 +133,11 @@ export function getExportWorker() {
       let result;
 
       if (scope === 'course' && scopeId) {
-        const course = await prisma.course.findFirst({
+        // ⛔ `rawPrisma`, deliberately: a compliance export must account for
+        // every course the org has had, ARCHIVED ones included (Q24). Through
+        // the filtered client the export is quietly incomplete and still looks
+        // correct — the worst possible failure for an audit artifact.
+        const course = await rawPrisma.course.findFirst({
           // Scoped to the org's catalogue, not looked up by bare id — the job
           // payload is server-derived, but a report must never be able to name a
           // course this organisation does not have.
@@ -255,7 +260,8 @@ export function getExportWorker() {
         throw new Error(`scopeId required for ${scope} scope`);
       } else if (scope === 'all-courses') {
         const [courses, totalStaff] = await Promise.all([
-          prisma.course.findMany({
+          // ⛔ `rawPrisma` — see the note on the course-scope lookup above.
+          rawPrisma.course.findMany({
             where: courseWhere,
             select: {
               title: true,
@@ -313,7 +319,8 @@ export function getExportWorker() {
             },
             orderBy: { createdAt: 'desc' },
           }),
-          prisma.course.count({ where: courseWhere }),
+          // ⛔ `rawPrisma` — see the note on the course-scope lookup above.
+          rawPrisma.course.count({ where: courseWhere }),
         ]);
 
         await updateDbJob(60, 'Aggregating staff activity...');
@@ -343,7 +350,8 @@ export function getExportWorker() {
         });
       } else {
         const [totalCourses, totalStaff] = await Promise.all([
-          prisma.course.count({ where: courseWhere }),
+          // ⛔ `rawPrisma` — see the note on the course-scope lookup above.
+          rawPrisma.course.count({ where: courseWhere }),
           prisma.organizationUser.count({ where: subjectMemberWhere }),
         ]);
 

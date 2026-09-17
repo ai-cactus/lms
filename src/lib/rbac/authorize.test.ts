@@ -104,10 +104,12 @@ describe('authorize() — authenticated but permission denied (403)', () => {
     expect(call.email).toBe('wo***@masked');
   });
 
-  it('returns ok:false when hr requests facility.edit', async () => {
+  // HR gained facility CRUD with the founder's Q8 ruling, so billing — which it
+  // is still blocked from outright — is what proves the gate bites for HR.
+  it('returns ok:false when hr requests billing.edit', async () => {
     mockAuth.mockResolvedValue(makeSession('hr'));
 
-    const result = await authorize('facility.edit');
+    const result = await authorize('billing.edit');
 
     expect(result.ok).toBe(false);
     expect(mockApiError).toHaveBeenCalledWith('Forbidden', 403, 'INSUFFICIENT_PERMISSIONS');
@@ -211,6 +213,17 @@ describe('authorize() — authenticated and permitted (ok)', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error('Expected ok');
     expect(result.ctx.roleKey).toBe('supervisor');
+  });
+
+  // Founder Q8/Q9 put facilities and organisation settings with Owner/Admin/HR.
+  it('returns ok:true when hr requests facility.edit', async () => {
+    mockAuth.mockResolvedValue(makeSession('hr'));
+
+    const result = await authorize('facility.edit');
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('Expected ok');
+    expect(result.ctx.roleKey).toBe('hr');
   });
 
   it('returns ok:true when finance requests billing.read', async () => {

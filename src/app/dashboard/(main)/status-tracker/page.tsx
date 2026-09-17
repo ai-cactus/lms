@@ -29,7 +29,11 @@ export default async function StatusTrackerPage({ searchParams }: StatusTrackerP
   // 'all' means "all facilities I CAN SEE", never "no filter". `dataFacilityIds`
   // encodes that distinction: null only for an org-wide role viewing all.
   const { facility: facilityParam } = await searchParams;
-  const ctx = await requirePermissionWithFacilityScope('assignment.read', facilityParam);
+  //
+  // Q26: denial is `notFound`, not a redirect.
+  const ctx = await requirePermissionWithFacilityScope('assignment.read', facilityParam, {
+    onDeny: 'notFound',
+  });
   const { organizationId, dataFacilityIds } = ctx;
   const scopedFacilityIds = ctx.selectedFacilityIds;
   const facilities = ctx.accessibleFacilities;
