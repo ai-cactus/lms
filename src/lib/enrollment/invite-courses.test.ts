@@ -159,7 +159,7 @@ describe('enrollInviteCourses — materialising parked courses', () => {
       scheduleAt,
       dueAt,
       dueWindowDays: 14,
-      course: { title: 'Safety Training' },
+      course: { title: 'Safety Training', archivedAt: null },
     });
 
     await enrollInviteCourses(ORG_USER_ID, INVITE_ID);
@@ -172,7 +172,7 @@ describe('enrollInviteCourses — materialising parked courses', () => {
         scheduleAt: true,
         dueAt: true,
         dueWindowDays: true,
-        course: { select: { title: true } },
+        course: { select: { title: true, archivedAt: true } },
       },
     });
     expect(mockCreateEnrollmentForUser).toHaveBeenCalledWith(
@@ -202,13 +202,16 @@ describe('enrollInviteCourses — materialising parked courses', () => {
     });
     prismaMock.organizationUser.findFirst.mockResolvedValue(baseMembership);
     prismaMock.courseAssignment.findFirst.mockResolvedValue(null);
-    prismaMock.course.findUnique.mockResolvedValue({ title: 'Fallback Course' });
+    prismaMock.course.findUnique.mockResolvedValue({
+      title: 'Fallback Course',
+      archivedAt: null,
+    });
 
     await enrollInviteCourses(ORG_USER_ID, INVITE_ID);
 
     expect(prismaMock.course.findUnique).toHaveBeenCalledWith({
       where: { id: 'course-2' },
-      select: { title: true },
+      select: { title: true, archivedAt: true },
     });
     expect(mockCreateEnrollmentForUser).toHaveBeenCalledWith(
       { email: 'staff@example.com' },
@@ -238,7 +241,7 @@ describe('enrollInviteCourses — materialising parked courses', () => {
       scheduleAt: null,
       dueAt: null,
       dueWindowDays: null,
-      course: { title: 'Safety Training' },
+      course: { title: 'Safety Training', archivedAt: null },
     });
 
     await enrollInviteCourses(ORG_USER_ID, INVITE_ID);
@@ -273,8 +276,8 @@ describe('enrollInviteCourses — materialising parked courses', () => {
     prismaMock.organizationUser.findFirst.mockResolvedValue(baseMembership);
     prismaMock.courseAssignment.findFirst.mockResolvedValue(null);
     prismaMock.course.findUnique
-      .mockResolvedValueOnce({ title: 'Course A' })
-      .mockResolvedValueOnce({ title: 'Course B' });
+      .mockResolvedValueOnce({ title: 'Course A', archivedAt: null })
+      .mockResolvedValueOnce({ title: 'Course B', archivedAt: null });
 
     await enrollInviteCourses(ORG_USER_ID, INVITE_ID);
 
@@ -303,7 +306,7 @@ describe('enrollInviteCourses — materialising parked courses', () => {
       scheduleAt: null,
       dueAt: null,
       dueWindowDays: null,
-      course: { title: 'Safety Training' },
+      course: { title: 'Safety Training', archivedAt: null },
     });
     mockCreateEnrollmentForUser.mockResolvedValue({
       status: 'alreadyEnrolled',
@@ -329,7 +332,7 @@ describe('enrollInviteCourses — materialising parked courses', () => {
       scheduleAt: null,
       dueAt: null,
       dueWindowDays: null,
-      course: { title: 'Safety Training' },
+      course: { title: 'Safety Training', archivedAt: null },
     });
 
     await enrollInviteCourses(ORG_USER_ID, INVITE_ID);
@@ -358,9 +361,9 @@ describe('enrollInviteCourses — batched notice for 3+ parked courses', () => {
     prismaMock.organizationUser.findFirst.mockResolvedValue(baseMembership);
     prismaMock.courseAssignment.findFirst.mockResolvedValue(null);
     prismaMock.course.findUnique
-      .mockResolvedValueOnce({ title: 'Course A' })
-      .mockResolvedValueOnce({ title: 'Course B' })
-      .mockResolvedValueOnce({ title: 'Course C' });
+      .mockResolvedValueOnce({ title: 'Course A', archivedAt: null })
+      .mockResolvedValueOnce({ title: 'Course B', archivedAt: null })
+      .mockResolvedValueOnce({ title: 'Course C', archivedAt: null });
     mockCreateEnrollmentForUser
       .mockResolvedValueOnce({
         status: 'enrolled',
@@ -437,8 +440,8 @@ describe('enrollInviteCourses — batched notice for 3+ parked courses', () => {
     prismaMock.organizationUser.findFirst.mockResolvedValue(baseMembership);
     prismaMock.courseAssignment.findFirst.mockResolvedValue(null);
     prismaMock.course.findUnique
-      .mockResolvedValueOnce({ title: 'Course A' })
-      .mockResolvedValueOnce({ title: 'Course B' });
+      .mockResolvedValueOnce({ title: 'Course A', archivedAt: null })
+      .mockResolvedValueOnce({ title: 'Course B', archivedAt: null });
     mockCreateEnrollmentForUser.mockResolvedValue({
       status: 'alreadyEnrolled',
       email: 'staff@example.com',
@@ -449,5 +452,79 @@ describe('enrollInviteCourses — batched notice for 3+ parked courses', () => {
 
     expect(mockCollectDeferredNotices).toHaveBeenCalledWith([]);
     expect(mockNotifyCoursesAssigned).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * A course is parked on an invite when it is assigned to an address that has no
+ * account yet, and materialised days later when that invite is accepted. It can
+ * be archived in between — and the title is read off `assignment.course`, a
+ * nested relation the Q24 archive extension cannot filter. The parked intent
+ * lapses instead of enrolling the new member into retired training.
+ */
+describe('enrollInviteCourses — archived parked courses', () => {
+  it('does not materialise a parked course that has since been archived', async () => {
+    prismaMock.invite.findUnique.mockResolvedValue({
+      organizationId: 'org-1',
+      facilityId: 'facility-1',
+      courseAssignments: [{ courseId: 'course-1' }],
+    });
+    prismaMock.organizationUser.findFirst.mockResolvedValue(baseMembership);
+    prismaMock.courseAssignment.findFirst.mockResolvedValue({
+      id: 'assignment-1',
+      scheduleAt: null,
+      dueAt: null,
+      dueWindowDays: null,
+      course: {
+        title: 'Retired Training',
+        archivedAt: new Date('2026-09-01T00:00:00.000Z'),
+      },
+    });
+
+    await enrollInviteCourses(ORG_USER_ID, INVITE_ID);
+
+    expect(mockCreateEnrollmentForUser).not.toHaveBeenCalled();
+    expect(mockLogger.info).toHaveBeenCalledWith(
+      expect.objectContaining({
+        msg: '[enrollment] Invite-parked course skipped — course archived',
+        organizationUserId: ORG_USER_ID,
+        courseId: 'course-1',
+        inviteId: INVITE_ID,
+      }),
+    );
+  });
+
+  it("skips only the archived course — the invite's other parked courses still enrol", async () => {
+    prismaMock.invite.findUnique.mockResolvedValue({
+      organizationId: 'org-1',
+      facilityId: 'facility-1',
+      courseAssignments: [{ courseId: 'course-archived' }, { courseId: 'course-live' }],
+    });
+    prismaMock.organizationUser.findFirst.mockResolvedValue(baseMembership);
+    prismaMock.courseAssignment.findFirst
+      .mockResolvedValueOnce({
+        id: 'assignment-archived',
+        scheduleAt: null,
+        dueAt: null,
+        dueWindowDays: null,
+        course: {
+          title: 'Retired Training',
+          archivedAt: new Date('2026-09-01T00:00:00.000Z'),
+        },
+      })
+      .mockResolvedValueOnce({
+        id: 'assignment-live',
+        scheduleAt: null,
+        dueAt: null,
+        dueWindowDays: null,
+        course: { title: 'Current Training', archivedAt: null },
+      });
+
+    await enrollInviteCourses(ORG_USER_ID, INVITE_ID);
+
+    expect(mockCreateEnrollmentForUser).toHaveBeenCalledExactlyOnceWith(
+      { email: 'staff@example.com' },
+      expect.objectContaining({ courseId: 'course-live' }),
+    );
   });
 });

@@ -1217,6 +1217,42 @@ describe('runReminderSweep — renewal re-trigger pre-pass', () => {
   });
 });
 
+// ─── Archived courses never acquire new obligations (write side of Q24) ───────
+
+/**
+ * Both write pre-passes reach Course through `CourseAssignment.course`, a nested
+ * relation the Q24 archive query extension cannot filter — so each restates the
+ * predicate in its own `where`. Asserted on the query rather than on an outcome
+ * because that IS the mechanism: the archived assignment never leaves the
+ * database, so no per-row skip is observable.
+ *
+ * The role-target pass must match the live `enrollUserForRoleTargets` hook
+ * exactly, or the nightly run simply re-creates the enrolment the hook refuses.
+ */
+describe('runReminderSweep — archived courses are excluded from both write pre-passes', () => {
+  function whereFor(predicate: (where: Record<string, unknown>) => boolean) {
+    const call = prismaMock.courseAssignment.findMany.mock.calls
+      .map((args: unknown[]) => (args[0] as { where: Record<string, unknown> }).where)
+      .find(predicate);
+    expect(call).toBeDefined();
+    return call as Record<string, unknown>;
+  }
+
+  it('the role-target reconcile pre-pass excludes assignments whose course is archived', async () => {
+    await runReminderSweep(BASE_OPTS);
+
+    const where = whereFor((w) => 'OR' in w);
+    expect(where.course).toEqual({ archivedAt: null });
+  });
+
+  it('the renewal re-trigger pre-pass excludes assignments whose course is archived', async () => {
+    await runReminderSweep(BASE_OPTS);
+
+    const where = whereFor((w) => 'renewalCycle' in w);
+    expect(where.course).toEqual({ archivedAt: null });
+  });
+});
+
 // ─── Dry-run accuracy (Issue #12): wouldSend vs skipped ───────────────────────
 
 describe('runReminderSweep — dry-run tally accuracy', () => {
