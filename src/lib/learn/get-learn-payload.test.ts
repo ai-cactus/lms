@@ -14,6 +14,7 @@ const {
   mockAdminAuth,
   mockWorkerAuth,
   mockCourseFindUnique,
+  mockFilteredCourseFindUnique,
   mockEnrollmentFindFirst,
   mockOrganizationUserFindUnique,
   mockQuizFindUnique,
@@ -21,6 +22,7 @@ const {
   mockAdminAuth: vi.fn(),
   mockWorkerAuth: vi.fn(),
   mockCourseFindUnique: vi.fn(),
+  mockFilteredCourseFindUnique: vi.fn(),
   mockEnrollmentFindFirst: vi.fn(),
   mockOrganizationUserFindUnique: vi.fn(),
   mockQuizFindUnique: vi.fn(),
@@ -31,15 +33,22 @@ vi.mock('@/auth.worker', () => ({ auth: mockWorkerAuth }));
 vi.mock('next/headers', () => ({
   cookies: vi.fn().mockRejectedValue(new Error('no request scope')),
 }));
+// The course lookup comes off the UN-extended client: archiving retires a
+// course for new assignment, it does not erase a learner's own enrolment, so an
+// already-enrolled worker must still be able to open it. The two clients get
+// DIFFERENT spies so a regression that swaps them is visible.
 vi.mock('@/lib/prisma', () => {
   const prisma = {
-    course: { findUnique: (...a: unknown[]) => mockCourseFindUnique(...a) },
+    course: { findUnique: (...a: unknown[]) => mockFilteredCourseFindUnique(...a) },
     enrollment: { findFirst: (...a: unknown[]) => mockEnrollmentFindFirst(...a) },
     organizationUser: { findUnique: (...a: unknown[]) => mockOrganizationUserFindUnique(...a) },
     quiz: { findUnique: (...a: unknown[]) => mockQuizFindUnique(...a) },
   };
   return { prisma, default: prisma };
 });
+vi.mock('@/db/index', () => ({
+  rawPrisma: { course: { findUnique: (...a: unknown[]) => mockCourseFindUnique(...a) } },
+}));
 vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn(), info: vi.fn(), warn: vi.fn() } }));
 
 import {
@@ -146,6 +155,35 @@ describe('getLearnPayload — access matrix', () => {
     const result = await getLearnPayload('course-1');
 
     expect(result).toEqual({ error: 'Not enrolled in this course', status: 403 });
+  });
+
+  // Q24 maintainer ruling: archiving RETIRES a course for new assignment; it
+  // does not erase what a worker already did. The course row is therefore read
+  // off the un-extended client — through the archive-filtered one this 404s and
+  // the learner loses access to training they were already enrolled in.
+  it('still serves an ARCHIVED course to the worker already enrolled in it', async () => {
+    mockWorkerAuth.mockResolvedValue({
+      user: { id: 'w1', organizationUserId: 'ou-worker', role: 'nurse' },
+    });
+    mockCourseFindUnique.mockResolvedValue({
+      ...makeCourse(),
+      archivedAt: new Date('2026-09-01T00:00:00.000Z'),
+    });
+    mockEnrollmentFindFirst.mockResolvedValue({
+      id: 'enr-1',
+      progress: 40,
+      status: 'in_progress',
+      score: null,
+      videoPositionSeconds: 0,
+      quizAttempts: [],
+    });
+    // The filtered client would return null for an archived row.
+    mockFilteredCourseFindUnique.mockResolvedValue(null);
+
+    const payload = asPayload(await getLearnPayload('course-1'));
+
+    expect(payload.course.id).toBe('course-1');
+    expect(mockFilteredCourseFindUnique).not.toHaveBeenCalled();
   });
 
   it('403s an authenticated worker whose session carries no membership', async () => {

@@ -202,9 +202,9 @@ async function seedCourseFixture(): Promise<CourseFixture> {
     );
 
     await client.query(
-      `INSERT INTO courses (id, title, status, created_by_org_user_id, type, is_global, created_at, updated_at)
-       VALUES ($1, $2, 'published'::"CourseStatus", $3, 'video'::"CourseType", false, NOW(), NOW())`,
-      [courseId, `Video Playback E2E Course ${slug}`, creatorOrgUserId],
+      `INSERT INTO courses (id, title, status, created_by_org_user_id, organization_id, type, is_global, created_at, updated_at)
+       VALUES ($1, $2, 'published'::"CourseStatus", $3, $4, 'video'::"CourseType", false, NOW(), NOW())`,
+      [courseId, `Video Playback E2E Course ${slug}`, creatorOrgUserId, orgId],
     );
 
     // Two video lessons — B exists solely so the "only the active player

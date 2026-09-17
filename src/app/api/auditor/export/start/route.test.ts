@@ -22,6 +22,8 @@ const {
   mockQueueAdd,
   mockListAccessibleFacilities,
   mockOrgCourseWhere,
+  mockRawCourseFindFirst,
+  mockFilteredCourseFindFirst,
 } = vi.hoisted(() => ({
   mockAuthorize: vi.fn(),
   mockOrgFindUnique: vi.fn(),
@@ -30,17 +32,25 @@ const {
   mockQueueAdd: vi.fn(),
   mockListAccessibleFacilities: vi.fn(),
   mockOrgCourseWhere: vi.fn(),
+  mockRawCourseFindFirst: vi.fn(),
+  mockFilteredCourseFindFirst: vi.fn(),
 }));
 
 vi.mock('@/lib/prisma', () => {
   const prisma = {
     organization: { findUnique: mockOrgFindUnique },
     organizationUser: { findFirst: mockOrgUserFindFirst },
-    course: { findFirst: vi.fn() },
+    // A SEPARATE spy from `rawPrisma` below: the scopeId check reads the
+    // un-extended client so an ARCHIVED course can still be reported on (Q24),
+    // matching what the worker behind it will produce.
+    course: { findFirst: mockFilteredCourseFindFirst },
     job: { create: mockJobCreate },
   };
   return { prisma, default: prisma };
 });
+vi.mock('@/db/index', () => ({
+  rawPrisma: { course: { findFirst: mockRawCourseFindFirst } },
+}));
 vi.mock('@/lib/rbac/authorize', () => ({ authorize: mockAuthorize }));
 vi.mock('@/lib/queue/auditor-export-queue', () => ({
   auditorExportQueue: { add: mockQueueAdd },
@@ -86,8 +96,38 @@ beforeEach(() => {
   mockOrgFindUnique.mockResolvedValue({ hasAuditorAccess: true });
   mockJobCreate.mockResolvedValue({ id: 'job-1' });
   mockQueueAdd.mockResolvedValue(undefined);
-  mockOrgCourseWhere.mockResolvedValue({ creator: { organizationId: ORG } });
+  mockOrgCourseWhere.mockResolvedValue({ organizationId: ORG });
+  mockRawCourseFindFirst.mockResolvedValue({ id: 'course-1' });
+  // What the archive-filtered client would return for an archived course.
+  mockFilteredCourseFindFirst.mockResolvedValue(null);
   mockListAccessibleFacilities.mockResolvedValue([{ id: ANNEX }]);
+});
+
+describe('POST /api/auditor/export/start — an archived course may still be reported on', () => {
+  it('accepts a course scope whose course is archived, and never consults the filtered client', async () => {
+    setCaller('hr');
+
+    const res = await POST(req({ scope: 'course', scopeId: 'course-1' }));
+
+    expect(res.status).toBe(200);
+    expect(mockRawCourseFindFirst).toHaveBeenCalledTimes(1);
+    expect(mockFilteredCourseFindFirst).not.toHaveBeenCalled();
+  });
+
+  it('still refuses a course outside the caller organisation — the widening is archival, not tenancy', async () => {
+    setCaller('hr');
+    mockRawCourseFindFirst.mockResolvedValue(null);
+
+    const res = await POST(req({ scope: 'course', scopeId: 'course-elsewhere' }));
+
+    expect(res.status).toBe(404);
+    // `orgCourseWhere` is still the predicate the lookup is scoped by.
+    expect(mockRawCourseFindFirst.mock.calls[0][0].where).toEqual({
+      id: 'course-elsewhere',
+      organizationId: ORG,
+    });
+    expect(mockJobCreate).not.toHaveBeenCalled();
+  });
 });
 
 describe('POST /api/auditor/export/start — stamped facility scope', () => {

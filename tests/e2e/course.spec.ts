@@ -193,14 +193,14 @@ async function seedCourseTabsFixture(): Promise<CourseTabsSeeded> {
     const videoCourseId = crypto.randomUUID();
     const slidesCourseId = crypto.randomUUID();
     await client.query(
-      `INSERT INTO courses (id, title, status, created_by_org_user_id, type, is_global, created_at, updated_at)
-       VALUES ($1, $2, 'published'::"CourseStatus", $3, 'video'::"CourseType", false, NOW(), NOW())`,
-      [videoCourseId, videoCourseTitle, ownerOrgUserId],
+      `INSERT INTO courses (id, title, status, created_by_org_user_id, organization_id, type, is_global, created_at, updated_at)
+       VALUES ($1, $2, 'published'::"CourseStatus", $3, $4, 'video'::"CourseType", false, NOW(), NOW())`,
+      [videoCourseId, videoCourseTitle, ownerOrgUserId, orgId],
     );
     await client.query(
-      `INSERT INTO courses (id, title, status, created_by_org_user_id, type, is_global, created_at, updated_at)
-       VALUES ($1, $2, 'published'::"CourseStatus", $3, 'text'::"CourseType", false, NOW(), NOW())`,
-      [slidesCourseId, slidesCourseTitle, ownerOrgUserId],
+      `INSERT INTO courses (id, title, status, created_by_org_user_id, organization_id, type, is_global, created_at, updated_at)
+       VALUES ($1, $2, 'published'::"CourseStatus", $3, $4, 'text'::"CourseType", false, NOW(), NOW())`,
+      [slidesCourseId, slidesCourseTitle, ownerOrgUserId, orgId],
     );
 
     // getCourses() (src/app/actions/course.ts) only returns courses the

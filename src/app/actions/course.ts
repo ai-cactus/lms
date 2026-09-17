@@ -466,7 +466,9 @@ export async function createCourse(data: { title: string; description?: string }
     throw new Error('Unauthorized');
   }
 
-  if (!session.user.organizationUserId) {
+  // Both halves are required: `organizationUserId` records authorship,
+  // `organizationId` is the course's OWNER (Q25) and is NOT NULL on the row.
+  if (!session.user.organizationUserId || !session.user.organizationId) {
     throw new Error('You must belong to an organization to create courses');
   }
 
@@ -487,6 +489,7 @@ export async function createCourse(data: { title: string; description?: string }
     data: {
       title: data.title,
       description: data.description || null,
+      organizationId: session.user.organizationId,
       createdByOrgUserId: session.user.organizationUserId,
     },
   });
@@ -751,6 +754,11 @@ export async function publishCourse(courseId: string, opts?: { acknowledgeWarnin
 }
 
 /**
+ * Archives a course. Q24: "delete" retains — the row, its lessons, enrollments,
+ * certificates and stored video all survive; `archivedAt` is what removes it
+ * from every list. The user-facing verb stays "Delete", and so does the audit
+ * action name, because nothing about the operator's intent has changed.
+ *
  * Refusals are RETURNED, never thrown.
  *
  * Next.js redacts a thrown Server Action message in production: the client
@@ -780,22 +788,24 @@ export async function deleteCourse(
   }
 
   const organizationId = session.user.organizationId;
+  // Already-archived courses come back null from the filtered client, so the
+  // not-found branch below covers a repeat delete — no separate guard needed.
   const existing = await prisma.course.findUnique({
     where: { id: courseId },
     select: {
       id: true,
       isGlobal: true,
-      creator: { select: { organizationId: true } },
+      organizationId: true,
     },
   });
 
   // COU-002/COU-004 and PR #523 established that a course belongs to the
   // ORGANIZATION, not to the member who authored it — `getCourses`,
-  // `getCourseById` and `enrollUsers` all scope that way. This check was still
-  // on authorship (`createdByOrgUserId`), so a manager could see a colleague's
-  // course, was offered Delete on it, and was then refused.
+  // `getCourseById` and `enrollUsers` all scope that way. Q25 made that a
+  // column, so ownership is now read directly instead of joined through the
+  // author's membership.
   const ownedByCallerOrg =
-    !!organizationId && !!existing && existing.creator?.organizationId === organizationId;
+    !!organizationId && !!existing && existing.organizationId === organizationId;
 
   if (!ownedByCallerOrg) {
     logger.warn({
@@ -817,9 +827,19 @@ export async function deleteCourse(
     return { success: false, error: 'Course not found.' };
   }
 
-  await prisma.course.delete({ where: { id: courseId } });
+  // Q24: delete ARCHIVES. The row, its lessons, its enrollments, its
+  // certificates and its stored video all survive — `archivedAt` is what hides
+  // it from every list, so the user-facing effect is unchanged while the record
+  // stays available for compliance.
+  await prisma.course.update({
+    where: { id: courseId },
+    data: {
+      archivedAt: new Date(),
+      archivedByOrgUserId: session.user.organizationUserId,
+    },
+  });
 
-  logger.info({ msg: '[course] Course deleted', courseId, userId: session.user.id });
+  logger.info({ msg: '[course] Course archived', courseId, userId: session.user.id });
   revalidatePath('/dashboard/training');
   revalidatePath('/dashboard/courses');
   return { success: true };
@@ -1390,7 +1410,8 @@ export async function createFullCourse(data: {
     throw new Error('Unauthorized');
   }
 
-  if (!session.user.organizationUserId) {
+  // See createCourse: the course's owning organization is a required column.
+  if (!session.user.organizationUserId || !session.user.organizationId) {
     throw new Error('Organization not found');
   }
 
@@ -1451,6 +1472,7 @@ export async function createFullCourse(data: {
       pendingAssignment: pendingAssignment
         ? (pendingAssignment as Prisma.InputJsonValue)
         : undefined,
+      organizationId: session.user.organizationId,
       createdByOrgUserId: session.user.organizationUserId,
       // Pipeline version tracking
       promptVersion,

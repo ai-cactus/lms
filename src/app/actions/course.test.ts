@@ -337,7 +337,7 @@ describe('getDashboardData', () => {
     // who have left.
     expect(mockEnrollmentFindMany).toHaveBeenCalledWith({
       where: {
-        course: { creator: { organizationId: ORG_ID } },
+        course: { organizationId: ORG_ID },
         organizationUser: { organizationId: ORG_ID, active: true },
         score: { not: null },
       },
@@ -474,7 +474,7 @@ describe('getDashboardData', () => {
 
       expect(result.courses.map((c) => c.id)).toContain('hr-authored-course');
       expect(mockCourseFindMany).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { creator: { organizationId: ORG_ID } } }),
+        expect.objectContaining({ where: { organizationId: ORG_ID } }),
       );
     });
 
@@ -499,7 +499,7 @@ describe('getDashboardData', () => {
     // belongs in `courseWhere`) but is ALSO adopted by a DIFFERENT organisation
     // via `OrgCourseOffering` — meaning that other org's own members could be
     // enrolled in the very same course row. A course-only enrollment predicate
-    // (`course: { creator: { organizationId } } }` with no member pin) would
+    // (`course: { organizationId } }` with no member pin) would
     // therefore also match THEIR enrollments. This test fails if
     // `organizationUser: { organizationId }` is ever dropped from
     // `enrollmentWhere` — see `dashboard-parity.test.ts` for the same property

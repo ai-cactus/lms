@@ -62,7 +62,10 @@ export default async function DocumentsPage() {
   const categories = await getDocumentCategories();
 
   const docs = await prisma.document.findMany({
-    where: { organizationUser: { organizationId } },
+    // Q25: the Document Hub lists the ORGANIZATION's documents, read off the
+    // document's own column. Archived ones are excluded by the client extension
+    // (db/index.ts), not by a predicate here.
+    where: { organizationId },
     include: {
       versions: {
         include: {

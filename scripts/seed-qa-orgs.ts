@@ -972,7 +972,7 @@ async function seedPaginationOrg(now: Date, adminPasswordHash: string, staffPass
   return { org, admin, staffIds };
 }
 
-async function seedDocuments(adminId: string, staffIds: string[], now: Date) {
+async function seedDocuments(orgId: string, adminId: string, staffIds: string[], now: Date) {
   const documentVersionIds: string[] = [];
 
   for (const [index, doc] of DOCUMENTS.entries()) {
@@ -986,6 +986,7 @@ async function seedDocuments(adminId: string, staffIds: string[], now: Date) {
     await prisma.document.upsert({
       where: { id },
       update: {
+        organizationId: orgId,
         organizationUserId: ownerId,
         filename: doc.filename,
         originalName: doc.originalName,
@@ -996,6 +997,7 @@ async function seedDocuments(adminId: string, staffIds: string[], now: Date) {
       },
       create: {
         id,
+        organizationId: orgId,
         organizationUserId: ownerId,
         filename: doc.filename,
         originalName: doc.originalName,
@@ -1025,7 +1027,7 @@ async function seedDocuments(adminId: string, staffIds: string[], now: Date) {
   return documentVersionIds;
 }
 
-async function seedTextCourses(adminId: string, now: Date) {
+async function seedTextCourses(orgId: string, adminId: string, now: Date) {
   const categories = await prisma.courseCategory.findMany({
     where: { isSystem: true },
     select: { id: true, slug: true },
@@ -1044,6 +1046,7 @@ async function seedTextCourses(adminId: string, now: Date) {
       update: {
         title: course.title,
         status: course.status,
+        organizationId: orgId,
         createdByOrgUserId: adminId,
         categoryId: categoryIdBySlug.get(course.categorySlug) ?? null,
         createdAt,
@@ -1065,6 +1068,7 @@ async function seedTextCourses(adminId: string, now: Date) {
         categoryId: categoryIdBySlug.get(course.categorySlug) ?? null,
         skillLevel: course.skillLevel,
         duration: course.duration,
+        organizationId: orgId,
         createdByOrgUserId: adminId,
         createdAt,
         updatedAt: createdAt,
@@ -1160,6 +1164,7 @@ async function seedVideoCourses(now: Date) {
         status: 'published',
         type: 'video',
         isGlobal: true,
+        organizationId: systemMembership.organizationId,
         createdByOrgUserId: systemMembership.id,
         previewVideoStorageUri: VIDEO_STORAGE_URI,
         previewVideoDurationSeconds: VIDEO_DURATION_SECONDS,
@@ -1178,6 +1183,7 @@ async function seedVideoCourses(now: Date) {
         category: course.category,
         skillLevel: 'beginner',
         duration: 1,
+        organizationId: systemMembership.organizationId,
         createdByOrgUserId: systemMembership.id,
         previewVideoStorageUri: VIDEO_STORAGE_URI,
         previewVideoDurationSeconds: VIDEO_DURATION_SECONDS,
@@ -1722,8 +1728,8 @@ async function main(): Promise<void> {
   ]);
 
   const { org, admin, staffIds } = await seedPaginationOrg(now, paginationAdminHash, staffHash);
-  const documentVersionIds = await seedDocuments(admin.id, staffIds, now);
-  const { publishedCourseIds } = await seedTextCourses(admin.id, now);
+  const documentVersionIds = await seedDocuments(org.id, admin.id, staffIds, now);
+  const { publishedCourseIds } = await seedTextCourses(org.id, admin.id, now);
   const videoCourseIds = await seedVideoCourses(now);
   const adoptedVideoCourseIds = await seedOfferings(org.id, admin.id, videoCourseIds);
   await seedDocumentCourseLinks(documentVersionIds, publishedCourseIds);

@@ -231,7 +231,9 @@ describe('DocumentsPageRoute — document.read gate', () => {
     render(element);
 
     expect(prismaMock.document.findMany).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ where: { organizationUser: { organizationId: 'org-1' } } }),
+      // Q25: ownership is the document's own column. A join through the
+      // uploader's membership returns the same rows while undoing the migration.
+      expect.objectContaining({ where: { organizationId: 'org-1' } }),
     );
     expect(screen.getByTestId('document-list-client')).toHaveTextContent('docs 2');
   });

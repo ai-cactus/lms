@@ -139,13 +139,13 @@ describe('resolveDashboardScope — courseWhere', () => {
     const scope = await resolveDashboardScope(session({ role: 'owner' }));
 
     expect(scope.courseWhere).toEqual({
-      OR: [{ creator: { organizationId: ORG_ID } }, { id: { in: ['adopted-1'] } }],
+      OR: [{ organizationId: ORG_ID }, { id: { in: ['adopted-1'] } }],
     });
   });
 
   it('is the plain authored predicate when nothing is adopted', async () => {
     const scope = await resolveDashboardScope(session({ role: 'owner' }));
 
-    expect(scope.courseWhere).toEqual({ creator: { organizationId: ORG_ID } });
+    expect(scope.courseWhere).toEqual({ organizationId: ORG_ID });
   });
 });

@@ -36,14 +36,9 @@ model Course {
   duration                    Int?
   /// The owning organization (Q25). A course belongs to the org, not to the
   /// person who authored it — `createdByOrgUserId` records authorship only.
-  /// Backfilled from the creator's membership; every read scope is expected to
-  /// migrate onto this column rather than joining through OrganizationUser.
-  ///
-  /// Nullable **for the migration window only** — never because a course may
-  /// legitimately lack an organization. PR A backfilled every existing row but
-  /// deliberately added no writer, so the column cannot be NOT NULL yet without
-  /// breaking every insert. PR B adds the writers and then the constraint.
-  organizationId              String?                  @map("organization_id")
+  /// This is the tenancy column every read scope uses (`orgCourseWhere`,
+  /// `authoredCourseWhere`); nothing joins through OrganizationUser for it.
+  organizationId              String                   @map("organization_id")
   createdByOrgUserId          String                   @map("created_by_org_user_id")
   objectives                  String[]                 @default([])
   overview                    String?
@@ -98,7 +93,7 @@ model Course {
   /// merely refused); the mirror-image field `Document.organizationUser` is a
   /// Cascade and fails UNSAFE — see the note there.
   creator                     OrganizationUser         @relation("CourseCreator", fields: [createdByOrgUserId], references: [id], onDelete: Restrict)
-  organization                Organization?            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization                Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   archivedBy                  OrganizationUser?        @relation("CourseArchiver", fields: [archivedByOrgUserId], references: [id], onDelete: SetNull)
   forkedFrom                  Course?                  @relation("CourseFork", fields: [forkedFromCourseId], references: [id], onDelete: SetNull)
   forks                       Course[]                 @relation("CourseFork")

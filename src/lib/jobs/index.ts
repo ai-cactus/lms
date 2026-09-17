@@ -52,6 +52,7 @@ async function processJob(jobId: string, payload: Record<string, unknown>) {
           data: {
             title: 'Generated Course from Document',
             description: 'Automatically generated from compliance doc.',
+            organizationId: membership.organizationId,
             createdByOrgUserId: membership.organizationUserId,
             status: 'draft',
           },

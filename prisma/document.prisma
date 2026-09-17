@@ -4,14 +4,9 @@ model Document {
   id                  String            @id @default(uuid())
   /// The owning organization (Q25). A document belongs to the org, not to the
   /// person who uploaded it — `organizationUserId` records the uploader only.
-  /// Backfilled from the uploader's membership; every read scope is expected to
-  /// migrate onto this column rather than joining through OrganizationUser.
-  ///
-  /// Nullable **for the migration window only** — never because a document may
-  /// legitimately lack an organization. PR A backfilled every existing row but
-  /// deliberately added no writer, so the column cannot be NOT NULL yet without
-  /// breaking every insert. PR B adds the writers and then the constraint.
-  organizationId      String?           @map("organization_id")
+  /// This is the tenancy column the Document Hub reads; nothing joins through
+  /// OrganizationUser for it.
+  organizationId      String            @map("organization_id")
   organizationUserId  String            @map("organization_user_id")
   filename            String
   originalName        String            @map("original_name")
@@ -35,7 +30,7 @@ model Document {
   /// delete must change this before doing so. Contrast `Course.creator`, which
   /// is a Restrict and therefore fails safe.
   organizationUser    OrganizationUser  @relation(fields: [organizationUserId], references: [id], onDelete: Cascade)
-  organization        Organization?     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization        Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   archivedBy          OrganizationUser? @relation("DocumentArchiver", fields: [archivedByOrgUserId], references: [id], onDelete: SetNull)
   versions            DocumentVersion[]
 

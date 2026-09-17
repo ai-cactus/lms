@@ -387,6 +387,7 @@ async function main() {
         return prisma.course.create({
           data: {
             title: c.title,
+            organizationId: admin.organizationId,
             createdByOrgUserId: admin.id,
             status: 'published',
             description: `Comprehensive training on ${c.title.toLowerCase()}.`,
