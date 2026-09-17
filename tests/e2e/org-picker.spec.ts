@@ -147,11 +147,21 @@ test.describe('Login membership resolution — 2+ active memberships', () => {
     await login(page, 'multi.org@test.com', 'MultiOrg123!');
     await page.waitForURL('**/select-organization**', { timeout: 45000 });
 
-    // Pick "E2E Test Organization" — the hr membership. hr does NOT get the
-    // Settings nav entry (owner/admin only per the RBAC ruling).
+    // Pick "E2E Test Organization" — the hr membership. HR DOES get the
+    // Settings nav entry: it is gated on `organization.edit`
+    // (roles-matrix-config.ts), which HR gained in #624 for founder Q9
+    // ("Who may change organisation settings — Owner/Admin/HR"). This
+    // assertion previously read `not.toBeVisible()` on the pre-Q9 rule.
+    //
+    // What this test actually proves is the membership RESOLUTION — that
+    // picking this org activates its `hr` role rather than the owner role the
+    // same user holds elsewhere. So it asserts the nav HR gets and, below, the
+    // one only an owner gets, which is what makes the two memberships
+    // distinguishable.
     await page.getByText('E2E Test Organization').click();
     await page.waitForURL('**/dashboard**', { timeout: 15000 });
-    await expect(page.getByRole('link', { name: /^settings$/i })).not.toBeVisible();
+    await expect(page.getByRole('link', { name: /^settings$/i })).toBeVisible();
+    await expect(page.getByRole('link', { name: /^billing$/i })).not.toBeVisible();
   });
 
   test('selecting the OTHER organization activates the owner membership there, which DOES see Settings', async ({
@@ -185,8 +195,12 @@ test.describe('Login membership resolution — 2+ active memberships', () => {
 
     await page.waitForURL('**/dashboard**', { timeout: 45000 });
     expect(page.url()).not.toContain('/select-organization');
-    // Still the remembered (hr, first org) membership — hr has no Settings nav.
-    await expect(page.getByRole('link', { name: /^settings$/i })).not.toBeVisible();
+    // Still the remembered (hr, first org) membership. HR sees Settings
+    // (`organization.edit`, granted in #624 for founder Q9) but never Billing,
+    // so Billing's absence is what proves the hr membership was remembered
+    // rather than the owner one this user holds in the other org.
+    await expect(page.getByRole('link', { name: /^settings$/i })).toBeVisible();
+    await expect(page.getByRole('link', { name: /^billing$/i })).not.toBeVisible();
   });
 
   /**
