@@ -76,12 +76,18 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ jobI
         : {};
     const progress = (payloadObj.progress as number) ?? (job.status === 'completed' ? 100 : 0);
     const message = (payloadObj.message as string) ?? 'Processing...';
+    // Rows the finished report will serialise. Absent on jobs that predate the
+    // field, which the client reads as "unknown" and still offers to download —
+    // the safe direction, since those jobs were produced before the empty case
+    // was distinguishable at all.
+    const rowCount = typeof payloadObj.rowCount === 'number' ? payloadObj.rowCount : undefined;
 
     return NextResponse.json({
       jobId: job.id,
       status: job.status,
       progress,
       message,
+      rowCount,
     });
   } catch (error) {
     logger.error({ msg: 'Failed to get job status:', err: error });

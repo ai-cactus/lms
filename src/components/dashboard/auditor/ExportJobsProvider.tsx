@@ -27,6 +27,13 @@ export interface ExportJob {
   count: number;
   status: 'processing' | 'completed' | 'failed';
   progress: number;
+  /**
+   * Rows the finished report will serialise, known only once the job completes.
+   * `0` means the export matched nothing and its CSV would be empty; `undefined`
+   * means the job never reported a count (it predates the field), which the
+   * banner treats as "assume there is a report" rather than suppressing it.
+   */
+  rowCount?: number;
 }
 
 interface StartArgs {
@@ -73,6 +80,7 @@ function triggerBrowserDownload(jobId: string) {
 interface ExportStatusResponse {
   status: string;
   progress: number;
+  rowCount?: number;
 }
 
 /** Poll cadence for export jobs (ms) — matches the provider's original 1.5s. */
@@ -92,7 +100,7 @@ function ExportJobWatcher({
 }: {
   jobId: string;
   onProgress: (jobId: string, progress: number) => void;
-  onSettled: (jobId: string, outcome: 'completed' | 'failed') => void;
+  onSettled: (jobId: string, outcome: 'completed' | 'failed', rowCount?: number) => void;
 }) {
   const poll = useCallback(async (): Promise<JobPollResult<ExportStatusResponse>> => {
     const res = await fetch(`/api/auditor/export/${jobId}/status`);
@@ -111,7 +119,7 @@ function ExportJobWatcher({
   const { status, error } = useJobStatus<ExportStatusResponse>({
     poll,
     intervalMs: EXPORT_POLL_INTERVAL_MS,
-    onCompleted: () => onSettled(jobId, 'completed'),
+    onCompleted: (data) => onSettled(jobId, 'completed', data.rowCount),
   });
 
   // A `failed` status or a terminal hook error (e.g. the poll-cap timeout) both
@@ -162,24 +170,29 @@ export function ExportJobsProvider({ children }: { children: React.ReactNode }) 
 
   // Finalize a job exactly once — the guard survives StrictMode double-mounts and
   // any repeat terminal observation across watcher remounts.
-  const handleSettled = useCallback((jobId: string, outcome: 'completed' | 'failed') => {
-    if (finalizedRef.current.has(jobId)) return;
-    finalizedRef.current.add(jobId);
+  const handleSettled = useCallback(
+    (jobId: string, outcome: 'completed' | 'failed', rowCount?: number) => {
+      if (finalizedRef.current.has(jobId)) return;
+      finalizedRef.current.add(jobId);
 
-    if (outcome === 'completed') {
-      setJobs((prev) =>
-        prev.map((j) => (j.id === jobId ? { ...j, status: 'completed', progress: 100 } : j)),
-      );
-      setCompletedJobId(jobId);
-      return;
-    }
+      if (outcome === 'completed') {
+        setJobs((prev) =>
+          prev.map((j) =>
+            j.id === jobId ? { ...j, status: 'completed', progress: 100, rowCount } : j,
+          ),
+        );
+        setCompletedJobId(jobId);
+        return;
+      }
 
-    setJobs((prev) => {
-      const label = prev.find((j) => j.id === jobId)?.label ?? 'Export';
-      toast.error(`${label} failed`, { description: 'Please try again.' });
-      return prev.map((j) => (j.id === jobId ? { ...j, status: 'failed' } : j));
-    });
-  }, []);
+      setJobs((prev) => {
+        const label = prev.find((j) => j.id === jobId)?.label ?? 'Export';
+        toast.error(`${label} failed`, { description: 'Please try again.' });
+        return prev.map((j) => (j.id === jobId ? { ...j, status: 'failed' } : j));
+      });
+    },
+    [],
+  );
 
   const startExport = useCallback(async (args: StartArgs) => {
     const { entity, count, ...payload } = args;

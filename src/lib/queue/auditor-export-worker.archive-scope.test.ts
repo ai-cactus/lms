@@ -70,12 +70,19 @@ vi.mock('@/lib/prisma', () => {
 vi.mock('@/db/index', () => ({
   rawPrisma: { course: { findMany: mockRawCourseFindMany, count: mockRawCourseCount } },
 }));
+// Every stand-in stamps `scope`, exactly as the real builders do — the worker
+// now flattens its own result to count the rows the download will serialise, so
+// a builder mock returning `undefined` is no longer a faithful substitute.
 vi.mock('@/lib/audit-reports/report-data', () => ({
-  buildCourseReport: vi.fn(),
-  buildStaffReport: vi.fn(),
-  buildOrgReport: vi.fn(),
+  buildCourseReport: vi.fn(() => ({
+    scope: 'course',
+    course: { title: 'Course' },
+    staffPerformance: [],
+  })),
+  buildStaffReport: vi.fn(() => ({ scope: 'staff', transcript: [] })),
+  buildOrgReport: vi.fn(() => ({ scope: 'org', activity: [] })),
   buildAllCoursesReport: mockBuildAllCoursesReport,
-  buildAllStaffReport: vi.fn(),
+  buildAllStaffReport: vi.fn(() => ({ scope: 'all-staff', staff: [] })),
 }));
 
 import { getExportWorker } from './auditor-export-worker';
@@ -109,7 +116,10 @@ beforeEach(() => {
   mockEnrollmentFindMany.mockResolvedValue([]);
   mockJobFindUnique.mockResolvedValue({ payload: {} });
   mockJobUpdate.mockResolvedValue({});
-  mockBuildAllCoursesReport.mockImplementation((input: unknown) => input);
+  mockBuildAllCoursesReport.mockImplementation((input: unknown) => ({
+    ...(input as Record<string, unknown>),
+    scope: 'all-courses',
+  }));
   // What a regression would read: the archive-filtered client, which returns
   // nothing for an archived course.
   mockFilteredCourseFindMany.mockResolvedValue([]);
