@@ -1,6 +1,6 @@
 ---
 name: archive-filter-and-raw-prisma
-description: Course/Document reads are archive-filtered by a client extension in db/index.ts; four named paths must use the un-extended rawPrisma, and nested include/select is NOT covered
+description: Course/Document reads are archive-filtered by a client extension in db/index.ts; 7 named paths must use the un-extended rawPrisma, and NO nested position (where, include or select) is covered
 metadata:
   type: project
 ---
@@ -18,6 +18,19 @@ Since Phase 6 PR B (2026-09-16), deleting a course or a document **archives** it
 - `src/app/actions/course.ts::getCourseById` (added 2026-09-17, staging QA ISSUE-3) — the ENTRY POINT to the above. `/worker/courses/[id]` 404'd on an archived course, so `get-learn-payload`'s carve-out was unreachable in the product. It reads unfiltered, selects `archivedAt` **alongside** `courseDetailSelect` (never *into* it — the field stays out of `CourseWithRelations` and the UI contract), and then refuses an archived course to anyone who is not enrolled: `if (course.archivedAt && !isEnrolled) throw notFound`. The rule is keyed on WHY access was granted, not on the caller or the call site, which is why it beat the two alternatives considered (an `includeArchived` flag the next admin surface could pass, or a duplicate read alongside the gate). Note this deliberately drops authorship and the org-manager review right for an archived course — only `getCourses` and the other LISTS keep it invisible, and those stay on the filtered client.
 
 **Nested traversal, one real hole closed:** `getCourses`' adopted-offering read now states `where: { organizationId, course: { archivedAt: null } }`, and the source-document lineage select pulls `documentVersion.document.archivedAt` so `sourceDocumentIdOf` can report an archived source as "no source document" (which is the state the row-actions menu already renders disabled). Both are relation predicates/fields on the PARENT read — the shape a query extension cannot supply for you.
+
+**The extension cannot reach a nested `where` either — and that is where it bit a SECOND time (2026-09-17, `fix/dashboard-archive-leak`).** `prisma.course.count({ where: courseWhere })` is filtered; `prisma.enrollment.groupBy({ where: { course: courseWhere } })` is not. So one dashboard screen showed Total Courses excluding an archived course while Total Staff Assigned, Average Grade, course performance and the whole Status Tracker still counted its enrolments. Parity tests could never see it (both dashboard actions were wrong identically); the property that fails is INTERNAL — within one action, the course-derived and enrolment-derived figures must describe the same population.
+
+The fix shape, in `src/lib/dashboard/scope.ts`, is TWO predicates and both are load-bearing:
+- `enrollmentWhere` carries `course: { archivedAt: null }` — this is what fixes the ~15 per-facility aggregates in `dashboard-facility.ts` that only spread it, and what stops a NEW aggregate omitting it.
+- `liveCourseWhere` (= `courseWhere` + `archivedAt: null`) exists because a call site that restates `course:` to narrow to the org catalogue **SHADOWS** the key from the spread. `{ ...scope.enrollmentWhere, course: scope.courseWhere }` silently drops the bundle's predicate — object-literal key precedence, no type error, no lint. That shadowing is the trap to remember.
+- `courseWhere` stays archive-neutral: its callers are top-level Course reads the extension already filters.
+
+`getStatusTrackerSummaryForOrg` (`src/lib/reminders/status-tracker.ts`) had no archive predicate at all and is the most visible symptom — an overdue row naming a course the Courses page says does not exist, which no manager action can clear. It does not use `DashboardScope`, so it states `course: { archivedAt: null }` on both of its reads.
+
+Guard: parity Tier 1 now asserts `where.course` matches `{ archivedAt: null }` on EVERY captured enrollment predicate, which catches both a dropped bundle predicate and a shadowing call site. Behavioural coverage lives in `course.archive-visibility.test.ts`, whose harness was extended with an in-memory enrollment table joined to the course table on `courseId`.
+
+Still-open latent site found by the sweep: `listOfferedVideoCourses` (`src/app/actions/offering.ts` ~:247) filters `course: { status: 'published' }` with no archive predicate — but it has **zero callers** repo-wide (stale since the courses video/reading consolidation deleted the outer tabs), so it was left alone; it should be deleted, not patched.
 
 **The extension cannot reach nested `include`/`select`** — mutating those changes the output type, which Prisma forbids. Every traversal into Course/Document from another model is to-one (`Enrollment.course`, `Certificate.course`, `CourseAssignment.course`, `CourseVersion.documentVersion.document`) where Prisma has no `where` anyway, and leaving archived rows visible there is the desired behaviour. The only to-many ones (`OrganizationUser.createdCourses` / `.documents`) are in the `/system` ops panel, which should see everything.
 

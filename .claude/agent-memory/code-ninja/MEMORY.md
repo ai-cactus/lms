@@ -89,7 +89,7 @@
 - [org-picker.spec.ts is red on dev](gotcha_org_picker_spec_red_on_dev.md) — 1 pre-existing e2e failure (hr membership still sees Settings); don't attribute it to your branch.
 - [Self-service verbs pollute the matrix](gotcha_self_service_verbs_pollute_the_matrix.md) — a matrix `R` cell reads as `CR`; quiz authoring is gated on `course.edit`, and the new `open()` cell for unresolved rows.
 - [NOT NULL column needs its writer in the same PR](gotcha_required_column_needs_its_writer_same_pr.md) — a required column with no writer kills every create path AND reddens tsc; vitest never catches it. Land it nullable.
-- [Archive filter + rawPrisma](project_archive_filter_and_raw_prisma.md) — Course/Document reads are archive-filtered by a client extension; 6 files MUST use rawPrisma; nested include is NOT covered.
+- [Archive filter + rawPrisma](project_archive_filter_and_raw_prisma.md) — client-extension filter; 7 files MUST use rawPrisma; NO nested position is covered, and a restated `course:` key SHADOWS the bundle's predicate.
 - [Authorship is not ownership](gotcha_authorship_is_not_ownership.md) — a `createdBy… === me` gate silently revoked HR's granted `assessment.read`; siblings serving one payload must share one gate
 - [$extends breaks TransactionClient](gotcha_prisma_extension_breaks_transactionclient_type.md) — extending the client invalidates every `Prisma.TransactionClient` annotation; plus 2 Prisma-7 behaviours the docs don't state.
 - [e2e specs raw-SQL-insert courses](gotcha_e2e_specs_raw_sql_insert_courses.md) — 11 specs bypass Prisma, so a new NOT NULL column breaks them and CI won't tell you.
