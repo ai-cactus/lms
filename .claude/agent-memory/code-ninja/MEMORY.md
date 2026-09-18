@@ -44,6 +44,7 @@
 - [shadcn Table/Select specificity traps](gotcha_shadcn_table_row_border.md) — header divider needs `border-none` (not `border-0`); `SelectTrigger` height needs `data-[size=default]:h-12`.
 - [Figma ERROR SCREENS section](reference_figma_error_screens.md) — "Link Expired" frames are really the 404 page; no /timeout route; error boundary is undesigned.
 - [Figma Course Wizard frames](reference_figma_course_wizard.md) — there is no COURSE CREATION section; frame→step map + the wizard's 1:1 chrome geometry.
+- [Figma learn-player frames](reference_figma_learn_player.md) — LMS-166 is the slides view with the left rail (120×76.2, 16:10); the frame has NO slide number and NO selected state.
 - [Figma WORKER CERTIFICATES + cert modal](reference_figma_worker_certificates.md) — they live in a second "WORKERS" section (14044:73449), not WORKER USERTYPE; grep the page metadata dump by text.
 - [Full-bleed dialog + fixed-px artwork](gotcha_fullbleed_dialog_scaling.md) — grid min-content breaks %-width scale measurement; viewport-corner close needs viewport-spanning content.
 - [Figma STAFF section map](reference_figma_staff_section.md) — list/profile/mobile frames; the profile design omits the real Passed/Locked states and its Retry row is unbuildable literally.
