@@ -29,7 +29,12 @@ const SingleQuestionSchema = z.object({
   options: z.array(z.string()).length(4),
   answer: z.number().min(0).max(3),
   type: z.string().default('multiple_choice'),
-  explanation: z.string().optional(),
+  // Required on purpose. This was `.optional()`, so a model response that
+  // omitted the explanation validated cleanly and produced a question with no
+  // rationale — indistinguishable from a good one until an author noticed the
+  // gap. The explanation is the pedagogical point of a quiz answer, so an
+  // absent one must fail loudly and let the author retry.
+  explanation: z.string().trim().min(1),
 });
 
 type GeneratedQuestion = z.infer<typeof SingleQuestionSchema>;
@@ -201,6 +206,7 @@ Instructions:
 3. Ensure the question string is clear and grammatically correct.
 4. Keep the options concise.
 5. IMPORTANT: The correct answer MUST NOT always be at index 0. Randomly distribute the correct answer across ALL positions (0, 1, 2, 3). Each position should be equally likely to be correct.
+6. REQUIRED: "explanation" must be a non-empty sentence stating why the correct option is correct, grounded in the course content above. Never omit it, and never return it as an empty string.
 
 Return ONLY a valid JSON object matching this schema:
 {
@@ -214,7 +220,9 @@ Return ONLY a valid JSON object matching this schema:
     // 3. Call AI
     const rawResponse = await callVertexAI(prompt, {
       temperature: 0.7, // Little bit of creativity for varied questions
-      maxOutputTokens: 1024,
+      // Headroom for the now-mandatory explanation. A truncated response is
+      // unparseable JSON, which fails the whole call rather than degrading.
+      maxOutputTokens: 1536,
     });
 
     const jsonStr = extractJsonFromResponse(rawResponse);
@@ -325,6 +333,7 @@ Instructions:
 4. Ensure every question string is clear and grammatically correct.
 5. Keep the options concise.
 6. IMPORTANT: The correct answer MUST NOT always be at index 0. Randomly distribute the correct answer across ALL positions (0, 1, 2, 3). Each position should be equally likely to be correct.
+7. REQUIRED: every question's "explanation" must be a non-empty sentence stating why its correct option is correct, grounded in the course content above. Never omit it, and never return it as an empty string.
 
 Return ONLY a valid JSON object matching this schema:
 {

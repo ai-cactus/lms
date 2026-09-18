@@ -206,6 +206,97 @@ describe('generateSingleQuestion — prompt injection hardening', () => {
   });
 });
 
+// ── explanation is mandatory on the AI path ──────────────────────────────────
+
+/**
+ * `explanation` was `.optional()`, so a model response that omitted it passed
+ * validation and produced a question with no rationale — silently unlike every
+ * question the v4.6 pipeline generates. An explanation is the pedagogical point
+ * of a quiz answer, so its absence must fail the call and let the author retry
+ * rather than ship a blank.
+ */
+describe('generateSingleQuestion — explanation is required', () => {
+  beforeEach(() => {
+    prismaMock.course.findUnique.mockResolvedValue(courseOwnedBy(OWN_ORG));
+  });
+
+  it('returns the explanation on the happy path', async () => {
+    mockCallVertexAI.mockResolvedValue(VALID_AI_RESPONSE);
+
+    const result = await generateSingleQuestion({ courseId: 'course-1' });
+
+    expect(result.success).toBe(true);
+    expect(result.question?.explanation).toBe('Policy states 72 hours.');
+  });
+
+  it('rejects a response with no explanation instead of returning a blank one', async () => {
+    mockCallVertexAI.mockResolvedValue(
+      JSON.stringify({
+        question: 'What is the escalation window?',
+        options: ['24h', '48h', '72h', '96h'],
+        answer: 2,
+      }),
+    );
+
+    const result = await generateSingleQuestion({ courseId: 'course-1' });
+
+    expect(result.success).toBe(false);
+    expect(result.question).toBeUndefined();
+    expect(result.error).toBe('AI generated invalid question format.');
+  });
+
+  it('rejects a whitespace-only explanation', async () => {
+    mockCallVertexAI.mockResolvedValue(
+      JSON.stringify({
+        question: 'What is the escalation window?',
+        options: ['24h', '48h', '72h', '96h'],
+        answer: 2,
+        explanation: '   ',
+      }),
+    );
+
+    const result = await generateSingleQuestion({ courseId: 'course-1' });
+
+    expect(result.success).toBe(false);
+    expect(result.question).toBeUndefined();
+  });
+
+  it('instructs the model that the explanation is required', async () => {
+    mockCallVertexAI.mockResolvedValue(VALID_AI_RESPONSE);
+
+    await generateSingleQuestion({ courseId: 'course-1' });
+
+    expect(mockCallVertexAI.mock.calls[0][0] as string).toMatch(
+      /REQUIRED: "explanation" must be a non-empty sentence/,
+    );
+  });
+
+  it('rejects a regenerated quiz when any question is missing its explanation', async () => {
+    mockCallVertexAI.mockResolvedValue(
+      JSON.stringify({
+        questions: [
+          {
+            question: 'What is the escalation window?',
+            options: ['24h', '48h', '72h', '96h'],
+            answer: 2,
+            explanation: 'Policy states 72 hours.',
+          },
+          {
+            question: 'Who owns the escalation runbook?',
+            options: ['A', 'B', 'C', 'D'],
+            answer: 1,
+          },
+        ],
+      }),
+    );
+
+    const result = await regenerateQuiz({ courseId: 'course-1', questionCount: 2 });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('AI generated an invalid quiz format.');
+  });
+});
+
 // ── regenerateQuiz ───────────────────────────────────────────────────────────
 
 function question(overrides: Partial<Record<string, unknown>> = {}) {
