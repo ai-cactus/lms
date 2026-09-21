@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dialog';
 import NotificationPanel from '@/components/notifications/NotificationPanel';
 import { useNotifications } from '@/components/notifications/useNotifications';
+import { resolveNotificationLink } from '@/lib/notifications/safe-link';
 import { clearSiblingSessionCookie } from '@/app/actions/session-bridge';
 import { Bell, Building2, ChevronDown, User, LogOut, Menu } from 'lucide-react';
 
@@ -222,8 +223,9 @@ export const DefaultDashboardNavBar: FC<DefaultDashboardNavBarProps> = ({
 
   const handleItemClick = (id: string, linkUrl?: string | null) => {
     markRead(id);
-    if (linkUrl) {
-      router.push(linkUrl);
+    const href = resolveNotificationLink(id, linkUrl);
+    if (href) {
+      router.push(href);
       setIsNotifOpen(false);
     }
   };

@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Button } from '@/components/ui/button';
+import { toSafeAppPath } from '@/lib/notifications/safe-link';
 import {
   formatRelativeTime,
   getNotificationVisual,
@@ -11,7 +12,7 @@ import {
 interface NotificationItemProps {
   notif: NotificationLike;
   onClick?: () => void;
-  /** When provided, rows carrying a `linkUrl` render a "View details" action. */
+  /** When provided, rows carrying a safe in-app `linkUrl` render a "View details" action. */
   onViewDetails?: () => void;
 }
 
@@ -21,7 +22,7 @@ export default function NotificationItem({ notif, onClick, onViewDetails }: Noti
   const showRetake = ['QUIZ_RETRY_LIMIT_REACHED', 'COURSE_RETRY_REQUESTED'].includes(
     notif.type || '',
   );
-  const showViewDetails = Boolean(onViewDetails && notif.linkUrl);
+  const showViewDetails = Boolean(onViewDetails && toSafeAppPath(notif.linkUrl));
 
   return (
     <div

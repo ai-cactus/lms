@@ -131,3 +131,44 @@ describe('NotificationsView preference toggles', () => {
     expect(assignedSwitch).toHaveAttribute('aria-checked', 'false');
   });
 });
+
+describe('NotificationsView link safety', () => {
+  const withLink = (linkUrl: string) => ({
+    success: true,
+    notifications: [{ ...NOTIF, linkUrl }],
+    nextCursor: null,
+    hasMore: false,
+    unreadCount: 1,
+  });
+
+  it('renders no "View details" button and never navigates for an off-site link', async () => {
+    const user = userEvent.setup();
+    mockGetNotifications.mockResolvedValue(withLink('https://evil.com/phish'));
+    render(<NotificationsView backHref="/dashboard" audience="worker" />);
+
+    await user.click(await screen.findByText('Course assigned'));
+
+    expect(screen.queryByRole('button', { name: 'View details' })).not.toBeInTheDocument();
+    expect(mockMarkAsRead).toHaveBeenCalledWith('notif-1');
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it('hides "View details" for a protocol-relative link', async () => {
+    mockGetNotifications.mockResolvedValue(withLink('//evil.com'));
+    render(<NotificationsView backHref="/dashboard" audience="worker" />);
+
+    await screen.findByText('Course assigned');
+    expect(screen.queryByRole('button', { name: 'View details' })).not.toBeInTheDocument();
+  });
+
+  it('navigates to a valid in-app path from "View details"', async () => {
+    const user = userEvent.setup();
+    mockGetNotifications.mockResolvedValue(withLink('/worker/trainings?tab=assigned#top'));
+    render(<NotificationsView backHref="/dashboard" audience="worker" />);
+
+    await user.click(await screen.findByRole('button', { name: 'View details' }));
+
+    expect(mockPush).toHaveBeenCalledTimes(1);
+    expect(mockPush).toHaveBeenCalledWith('/worker/trainings?tab=assigned#top');
+  });
+});
