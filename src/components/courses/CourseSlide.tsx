@@ -192,25 +192,44 @@ export default function CourseSlide({
       </div>
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        <div className="hidden w-[240px] shrink-0 flex-col gap-2 overflow-y-auto border-r border-border-default bg-background px-3 py-4 md:flex">
-          {pages.map((page, i) => (
-            <button
-              key={i}
-              className={`group flex w-full flex-col overflow-hidden rounded-lg border-[1.5px] bg-background transition-all hover:border-text-muted hover:shadow-[0_2px_6px_rgba(0,0,0,0.06)] ${i === pageIndex ? 'border-primary shadow-[0_0_0_1px_var(--primary),0_2px_8px_rgba(71,48,247,0.12)]' : 'border-border-default'}`}
-              onClick={() => setPageIndex(i)}
-              aria-label={`Go to slide ${i + 1}`}
-            >
-              <div
-                className={`h-2.5 w-full shrink-0 ${i === pageIndex ? 'bg-success' : 'bg-border-default'}`}
-              />
-              <span
-                className={`line-clamp-2 px-2.5 py-2 text-[11px] leading-[1.3] ${i === pageIndex ? 'font-bold text-foreground' : 'font-semibold text-text-muted'}`}
+        {/* Rail geometry follows Figma LMS - 166 (120px previews at 16:10, ~15px
+            apart), which is the same rail the wizard's review deck already
+            builds. The frame carries no slide number and no selected state, so
+            both are additions on top of it. */}
+        <nav
+          aria-label="Slides"
+          className="hidden w-[144px] shrink-0 flex-col gap-3.5 overflow-y-auto border-r border-border-default bg-background px-3 py-4 md:flex"
+        >
+          {pages.map((page, i) => {
+            const isActive = i === pageIndex;
+            return (
+              <button
+                key={i}
+                type="button"
+                className={`flex aspect-[16/10] w-full shrink-0 flex-col gap-0.5 overflow-hidden rounded-lg border-[1.5px] bg-background px-1.5 py-1 text-left transition-all hover:border-text-muted hover:shadow-[0_2px_6px_rgba(0,0,0,0.06)] ${isActive ? 'border-primary shadow-[0_0_0_1px_var(--primary),0_2px_8px_rgba(71,48,247,0.12)]' : 'border-border-default'}`}
+                onClick={() => setPageIndex(i)}
+                aria-label={`Go to slide ${i + 1}${page.heading ? `: ${page.heading}` : ''}`}
+                aria-current={isActive ? 'true' : undefined}
               >
-                {page.heading || `Slide ${i + 1}`}
-              </span>
-            </button>
-          ))}
-        </div>
+                {/* Filled pill, not bare text: the number has to stay readable
+                    whatever the slide's own content puts behind it. */}
+                <span
+                  aria-hidden="true"
+                  className={`inline-flex h-4 w-fit min-w-4 shrink-0 items-center justify-center rounded px-1 text-[9px] font-bold leading-none ${isActive ? 'bg-primary text-primary-foreground' : 'bg-text-muted text-background'}`}
+                >
+                  {i + 1}
+                </span>
+                {page.heading && (
+                  <span
+                    className={`line-clamp-3 text-[10px] leading-[1.3] ${isActive ? 'font-bold text-foreground' : 'font-semibold text-text-muted'}`}
+                  >
+                    {page.heading}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </nav>
 
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden px-3 py-4 md:px-8 md:py-6">
           <div className="relative mx-auto flex w-full max-w-full flex-1 flex-col overflow-hidden rounded-xl border border-border-default bg-background shadow-[0_4px_16px_rgba(0,0,0,0.06)] md:max-w-[820px]">
