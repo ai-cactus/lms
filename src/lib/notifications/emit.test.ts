@@ -36,7 +36,7 @@ vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
   maskEmail: (e: string) => e,
 }));
-vi.mock('@/app/actions/notifications', () => ({ createNotification: mockCreateNotification }));
+vi.mock('@/lib/notifications/create', () => ({ createNotification: mockCreateNotification }));
 vi.mock('@/lib/email', () => ({ sendInstantNotificationEmail: mockSendInstantEmail }));
 vi.mock('./recipients', () => ({ resolveRoleRecipients: mockResolveRoleRecipients }));
 vi.mock('./category-preferences', () => ({

@@ -58,7 +58,7 @@ vi.mock('@/generated/prisma/client', () => ({
   Prisma: { PrismaClientKnownRequestError: MockPrismaKnownRequestError },
 }));
 
-vi.mock('@/app/actions/notifications', () => ({
+vi.mock('@/lib/notifications/create', () => ({
   createNotification: mockCreateNotification,
 }));
 
