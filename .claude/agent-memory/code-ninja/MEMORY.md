@@ -104,3 +104,5 @@
 - [Prop-seeded modals mount on demand](gotcha_modal_prop_seeded_state_needs_on_demand_mount.md) — React Compiler bans the resync effect and reset-in-close() re-reads pre-refresh props.
 - [.rich-slide wrapper nests the heading](gotcha_rich_slide_wrapper_nests_the_heading.md) — the slide unit is the div, NOT the h2/h3; heading splits tear the wrapper and drop slide-heading's class.
 - [Two quiz explanation shapes](gotcha_two_quiz_explanation_shapes.md) — flat string (quiz-ai actions, AdminQuizEditor) vs object (v4.6, Step 6); only correctExplanation is persisted.
+- [sanitizeHtml drops editing attrs](gotcha_sanitize_allowed_attr_strips_editing_attrs.md) — contenteditable/role/spellcheck are stripped silently; data-*/aria-* survive. Add a second config, never widen the reader's.
+- [Parallel contract PRs](project_parallel_contract_prs.md) — how to prove a branch that imports an unmerged Server Action: stub, typecheck, revert. vi.mock stays green while tsc is red.
