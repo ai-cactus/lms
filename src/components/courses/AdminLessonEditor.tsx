@@ -6,6 +6,7 @@ import CourseArticle from '@/components/courses/CourseArticle';
 import { updateLessonContent } from '@/app/actions/course';
 import 'react-quill-new/dist/quill.snow.css';
 import { Pencil } from 'lucide-react';
+import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { sanitizeHtml } from '@/lib/sanitize';
 import { logger } from '@/lib/logger';
@@ -20,6 +21,13 @@ interface AdminLessonEditorProps {
     moduleIndex: number;
     totalModules: number;
   };
+  /**
+   * Whether this viewer may actually SAVE. Server-derived
+   * (`LearnPayload.user.canEditContent`) and narrower than the admin review
+   * itself: without it the read-only review still renders, just with no edit
+   * control, because `updateLessonContent` would refuse every save.
+   */
+  canEdit: boolean;
   onNext: () => void;
   onPrev: () => void;
   isFirst: boolean;
@@ -28,6 +36,7 @@ interface AdminLessonEditorProps {
 
 export default function AdminLessonEditor({
   lesson,
+  canEdit,
   onNext,
   onPrev,
   isFirst,
@@ -37,12 +46,14 @@ export default function AdminLessonEditor({
   const [content, setContent] = useState(lesson.content);
   const [title, setTitle] = useState(lesson.title);
   const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const titleRef = React.useRef<HTMLTextAreaElement>(null);
 
   React.useEffect(() => {
     setContent(lesson.content);
     setTitle(lesson.title);
     setIsEditing(false); // Reset to read mode on change
+    setSaveError(null);
   }, [lesson.id, lesson.content, lesson.title]);
 
   React.useEffect(() => {
@@ -54,12 +65,19 @@ export default function AdminLessonEditor({
 
   const handleSave = async () => {
     setIsSaving(true);
+    setSaveError(null);
     try {
-      await updateLessonContent(lesson.id, content, title);
+      const result = await updateLessonContent(lesson.id, content, title);
+      if (!result.success) {
+        setSaveError(result.error ?? 'Your changes could not be saved.');
+        return;
+      }
       setIsEditing(false);
     } catch (error) {
-      logger.error({ msg: 'Failed to save lesson:', err: error });
-      alert('Failed to save changes');
+      // Only genuinely unexpected failures reach here; the action returns every
+      // refusal it can explain.
+      logger.error({ msg: '[course] Failed to save lesson', err: error, lessonId: lesson.id });
+      setSaveError('Something went wrong while saving. Please try again.');
     } finally {
       setIsSaving(false);
     }
@@ -69,6 +87,7 @@ export default function AdminLessonEditor({
     setContent(lesson.content);
     setTitle(lesson.title);
     setIsEditing(false);
+    setSaveError(null);
   };
 
   const quillModules = {
@@ -103,23 +122,31 @@ export default function AdminLessonEditor({
       isFirst={isFirst}
       isLast={isLast}
     >
-      <div className="mb-5 flex justify-end gap-3">
-        {isEditing ? (
-          <>
-            <Button variant="outline" onClick={handleCancel} disabled={isSaving}>
-              Cancel
+      {saveError && (
+        <Alert variant="error" className="mb-5 text-left">
+          {saveError}
+        </Alert>
+      )}
+
+      {canEdit && (
+        <div className="mb-5 flex justify-end gap-3">
+          {isEditing ? (
+            <>
+              <Button variant="outline" onClick={handleCancel} disabled={isSaving}>
+                Cancel
+              </Button>
+              <Button variant="default" onClick={handleSave} disabled={isSaving}>
+                {isSaving ? 'Saving...' : 'Save Changes'}
+              </Button>
+            </>
+          ) : (
+            <Button variant="outline" onClick={() => setIsEditing(true)}>
+              <Pencil className="size-3.5" aria-hidden="true" />
+              Edit Article
             </Button>
-            <Button variant="default" onClick={handleSave} disabled={isSaving}>
-              {isSaving ? 'Saving...' : 'Save Changes'}
-            </Button>
-          </>
-        ) : (
-          <Button variant="outline" onClick={() => setIsEditing(true)}>
-            <Pencil className="size-3.5" aria-hidden="true" />
-            Edit Article
-          </Button>
-        )}
-      </div>
+          )}
+        </div>
+      )}
 
       {isEditing ? (
         <div className="[&_.ql-container]:!text-[18px] [&_.ql-container]:font-[450] [&_.ql-container]:leading-[1.8] [&_.ql-container]:text-text-secondary [&_.ql-container]:font-[inherit] [&_.ql-container]:!border-none [&_.ql-editor]:!p-0 [&_.ql-toolbar]:!border-none [&_.ql-toolbar]:!border-b [&_.ql-toolbar]:!border-b-[#f3f4f6] [&_.ql-toolbar]:mb-6 [&_.ql-toolbar]:bg-transparent [&_.ql-toolbar]:!py-2 [&_.ql-toolbar]:!px-0">

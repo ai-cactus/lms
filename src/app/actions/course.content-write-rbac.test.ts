@@ -41,8 +41,14 @@ vi.mock('@/lib/logger', () => ({
 }));
 vi.mock('./notifications', () => ({ notifyOrganizationAdmins: vi.fn() }));
 vi.mock('./enrollment', () => ({ enrollUsers: vi.fn(), assignCourseToRoles: vi.fn() }));
-vi.mock('@/lib/documents/phiGate', () => ({ assertNoPhi: mockAssertNoPhi }));
+// The REAL `PhiBlockedError` is kept: `updateLessonContent` catches it by
+// `instanceof`, so a stand-in class would let that branch rot undetected.
+vi.mock('@/lib/documents/phiGate', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/documents/phiGate')>()),
+  assertNoPhi: mockAssertNoPhi,
+}));
 
+import { PhiBlockedError } from '@/lib/documents/phiGate';
 import { createFullCourse, updateQuizQuestions, updateLessonContent } from './course';
 
 const ORG = 'org-1';
@@ -77,6 +83,9 @@ const courseInput = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // `clearAllMocks` clears calls but keeps implementations, so a rejection set
+  // by one PHI test would leak into every test after it.
+  mockAssertNoPhi.mockReset();
   mockAdminAuth.mockResolvedValue(session('owner'));
   prismaMock.course.findUnique.mockResolvedValue(colleaguesCourse);
   prismaMock.course.create.mockResolvedValue({ id: 'course-1', lessons: [] });
@@ -135,15 +144,37 @@ describe('updateQuizQuestions — requires course.edit', () => {
   });
 });
 
+/**
+ * `updateLessonContent` RETURNS its refusals rather than throwing them.
+ *
+ * React redacts a thrown Server Action message to error #441 in production, so
+ * every refusal below used to reach the user as `alert('Failed to save
+ * changes')` with no reason at all. The gate itself is unchanged — what changed
+ * is that the caller can now say WHY. `rejects.toThrow` is therefore the wrong
+ * assertion here, and `resolves` is load-bearing: a regression back to `throw`
+ * must redden these.
+ */
 describe('updateLessonContent — requires course.edit', () => {
-  it.each(DENIED_ROLES)('%s is denied before the database is touched', async (role) => {
+  it.each(DENIED_ROLES)('%s is refused before the database is touched', async (role) => {
     mockAdminAuth.mockResolvedValue(session(role));
 
-    await expect(updateLessonContent('lesson-1', 'new content')).rejects.toThrow(
-      'Insufficient permissions',
-    );
+    await expect(updateLessonContent('lesson-1', 'new content')).resolves.toEqual({
+      success: false,
+      error: 'Your role does not have permission to edit course content.',
+    });
 
     expect(prismaMock.lesson.findUnique).not.toHaveBeenCalled();
+    expect(prismaMock.lesson.update).not.toHaveBeenCalled();
+  });
+
+  // The population the "Edit Article" affordance was lying to: supervisor holds
+  // course.read (so the admin review opens) but not course.edit.
+  it('a supervisor is still refused when the action is called directly', async () => {
+    mockAdminAuth.mockResolvedValue(session('supervisor'));
+
+    const result = await updateLessonContent('lesson-1', 'new content');
+
+    expect(result.success).toBe(false);
     expect(prismaMock.lesson.update).not.toHaveBeenCalled();
   });
 
@@ -161,10 +192,62 @@ describe('updateLessonContent — requires course.edit', () => {
       course: { id: 'course-1', creator: { organizationId: OTHER_ORG } },
     });
 
-    await expect(updateLessonContent('lesson-1', 'new content')).rejects.toThrow(
-      'Unauthorized or Lesson not found',
-    );
+    await expect(updateLessonContent('lesson-1', 'new content')).resolves.toEqual({
+      success: false,
+      error: 'This lesson could not be found in your organization, so it cannot be edited here.',
+    });
     expect(prismaMock.lesson.update).not.toHaveBeenCalled();
+  });
+
+  // An adopted GLOBAL catalogue course is readable by every org (the learn
+  // payload grants the review), but it is owned by whoever authored it — so an
+  // owner with the verb is still refused, and used to be refused silently.
+  it('an owner is refused on a global catalogue course another org authored', async () => {
+    mockAdminAuth.mockResolvedValue(session('owner'));
+    prismaMock.lesson.findUnique.mockResolvedValue({
+      id: 'lesson-1',
+      courseId: 'course-1',
+      title: 'Lesson 1',
+      course: { id: 'course-1', isGlobal: true, creator: { organizationId: OTHER_ORG } },
+    });
+
+    const result = await updateLessonContent('lesson-1', 'new content');
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBeTruthy();
+    expect(prismaMock.lesson.update).not.toHaveBeenCalled();
+  });
+
+  it('an unauthenticated caller is told so rather than throwing', async () => {
+    mockAdminAuth.mockResolvedValue(null);
+
+    const result = await updateLessonContent('lesson-1', 'new content');
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBeTruthy();
+    expect(prismaMock.lesson.findUnique).not.toHaveBeenCalled();
+  });
+
+  // PhiBlockedError already carries a user-safe message — the one refusal where
+  // the wording is the entire value of the gate.
+  it('surfaces the PHI gate’s own message instead of losing it to redaction', async () => {
+    mockAssertNoPhi.mockRejectedValue(new PhiBlockedError('This content appears to contain PHI.'));
+
+    await expect(updateLessonContent('lesson-1', 'Jane Doe, DOB 1/1/80')).resolves.toEqual({
+      success: false,
+      error: 'This content appears to contain PHI.',
+    });
+    expect(prismaMock.lesson.update).not.toHaveBeenCalled();
+  });
+
+  // Only EXPECTED refusals are returned. An unexpected failure has nothing
+  // actionable to tell the user, so it still propagates.
+  it('rethrows an unexpected failure from the PHI gate', async () => {
+    mockAssertNoPhi.mockRejectedValue(new Error('vertex unreachable'));
+
+    await expect(updateLessonContent('lesson-1', 'new content')).rejects.toThrow(
+      'vertex unreachable',
+    );
   });
 
   // The role gate runs ahead of the PHI scan, so a caller who may not edit
@@ -172,9 +255,9 @@ describe('updateLessonContent — requires course.edit', () => {
   it('denies before the PHI gate runs', async () => {
     mockAdminAuth.mockResolvedValue(session('finance'));
 
-    await expect(updateLessonContent('lesson-1', 'new content')).rejects.toThrow(
-      'Insufficient permissions',
-    );
+    await expect(updateLessonContent('lesson-1', 'new content')).resolves.toMatchObject({
+      success: false,
+    });
     expect(mockAssertNoPhi).not.toHaveBeenCalled();
   });
 });

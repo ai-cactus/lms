@@ -170,6 +170,53 @@ describe('Step6QuizReview', () => {
     });
   });
 
+  it('carries the AI-generated explanation onto the added question', async () => {
+    // Regression: `handleGenerateQuestion` used to copy only question/options/
+    // answer/type out of the action result, so a question added with AI landed
+    // with no explanation at all while every originally generated question had
+    // one. The flat string the action returns is widened to the per-option
+    // shape the card renders and `saveCourse` persists.
+    const user = userEvent.setup();
+    generateSingleQuestion.mockResolvedValue({
+      success: true,
+      question: {
+        question: 'What is the escalation window?',
+        options: ['24h', '48h', '72h', '96h'],
+        answer: 2,
+        type: 'multiple_choice',
+        explanation: 'Policy states 72 hours.',
+      },
+    });
+    const { onQuizUpdate } = renderStep(TAGGED_QUIZ);
+
+    await user.click(screen.getByRole('button', { name: 'Add new question' }));
+    await user.click(screen.getByRole('button', { name: /Generate with AI/i }));
+    await screen.findByDisplayValue('What is the escalation window?');
+    await user.click(screen.getByRole('button', { name: 'Save Question' }));
+
+    const updated = onQuizUpdate.mock.calls[0][0] as QuizQuestion[];
+    expect(updated[3]).toMatchObject({
+      question: 'What is the escalation window?',
+      explanation: {
+        correctExplanation: 'Policy states 72 hours.',
+        incorrectOptions: {},
+      },
+    });
+  });
+
+  it('renders the explanation on an AI-added question the same way as a generated one', () => {
+    renderStep([
+      question({
+        question: 'Privacy Q1',
+        explanation: { correctExplanation: 'Policy states 72 hours.', incorrectOptions: {} },
+      }),
+    ]);
+
+    expect(
+      within(questionCard('Privacy Q1')).getByText(/Correct: Policy states 72 hours\./),
+    ).toBeInTheDocument();
+  });
+
   it('still edits a question in place', async () => {
     const user = userEvent.setup();
     const { onQuizUpdate } = renderStep(TAGGED_QUIZ);
@@ -229,12 +276,14 @@ describe('Step6QuizReview', () => {
             options: ['A', 'B', 'C', 'D'],
             answer: 1,
             type: 'multiple_choice',
+            explanation: 'B is correct because the policy says so.',
           },
           {
             question: 'Fresh Q2',
             options: ['A', 'B', 'C', 'D'],
             answer: 3,
             type: 'multiple_choice',
+            explanation: 'D is correct because the manual says so.',
           },
         ],
       });
@@ -249,6 +298,12 @@ describe('Step6QuizReview', () => {
       const updated = onQuizUpdate.mock.calls[0][0] as QuizQuestion[];
       expect(updated).toHaveLength(2);
       expect(updated.map((q) => q.question)).toEqual(['Fresh Q1', 'Fresh Q2']);
+      // Same regression as the single-question path: the regenerated set used
+      // to be re-mapped without its explanations.
+      expect(updated.map((q) => q.explanation?.correctExplanation)).toEqual([
+        'B is correct because the policy says so.',
+        'D is correct because the manual says so.',
+      ]);
     });
 
     it('cancelling leaves the quiz untouched', async () => {

@@ -44,6 +44,7 @@
 - [shadcn Table/Select specificity traps](gotcha_shadcn_table_row_border.md) — header divider needs `border-none` (not `border-0`); `SelectTrigger` height needs `data-[size=default]:h-12`.
 - [Figma ERROR SCREENS section](reference_figma_error_screens.md) — "Link Expired" frames are really the 404 page; no /timeout route; error boundary is undesigned.
 - [Figma Course Wizard frames](reference_figma_course_wizard.md) — there is no COURSE CREATION section; frame→step map + the wizard's 1:1 chrome geometry.
+- [Figma learn-player frames](reference_figma_learn_player.md) — LMS-166 is the slides view with the left rail (120×76.2, 16:10); the frame has NO slide number and NO selected state.
 - [Figma WORKER CERTIFICATES + cert modal](reference_figma_worker_certificates.md) — they live in a second "WORKERS" section (14044:73449), not WORKER USERTYPE; grep the page metadata dump by text.
 - [Full-bleed dialog + fixed-px artwork](gotcha_fullbleed_dialog_scaling.md) — grid min-content breaks %-width scale measurement; viewport-corner close needs viewport-spanning content.
 - [Figma STAFF section map](reference_figma_staff_section.md) — list/profile/mobile frames; the profile design omits the real Passed/Locked states and its Retry row is unbuildable literally.
@@ -102,3 +103,4 @@
 - [An e2e spec can freeze a gap as intent](gotcha_e2e_spec_can_freeze_a_gap_as_intent.md) — rbac-role-change.spec.ts guarded the QA defect; grep e2e for ABSENCE assertions, rewrite with a dated SUPERSEDED block.
 - [Prop-seeded modals mount on demand](gotcha_modal_prop_seeded_state_needs_on_demand_mount.md) — React Compiler bans the resync effect and reset-in-close() re-reads pre-refresh props.
 - [.rich-slide wrapper nests the heading](gotcha_rich_slide_wrapper_nests_the_heading.md) — the slide unit is the div, NOT the h2/h3; heading splits tear the wrapper and drop slide-heading's class.
+- [Two quiz explanation shapes](gotcha_two_quiz_explanation_shapes.md) — flat string (quiz-ai actions, AdminQuizEditor) vs object (v4.6, Step 6); only correctExplanation is persisted.
