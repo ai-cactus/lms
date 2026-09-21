@@ -106,3 +106,4 @@
 - [Two quiz explanation shapes](gotcha_two_quiz_explanation_shapes.md) — flat string (quiz-ai actions, AdminQuizEditor) vs object (v4.6, Step 6); only correctExplanation is persisted.
 - [sanitizeHtml drops editing attrs](gotcha_sanitize_allowed_attr_strips_editing_attrs.md) — contenteditable/role/spellcheck are stripped silently; data-*/aria-* survive. Add a second config, never widen the reader's.
 - [Parallel contract PRs](project_parallel_contract_prs.md) — how to prove a branch that imports an unmerged Server Action: stub, typecheck, revert. vi.mock stays green while tsc is red.
+- [Next 16 cannot block Back](gotcha_next16_no_navigation_blocking.md) — onNavigate covers Link clicks only; the sentinel workaround, the 2 Next internals it relies on, and the re-push that traps users.
