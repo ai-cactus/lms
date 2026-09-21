@@ -165,7 +165,11 @@ async function cleanup(s: Seeded): Promise<void> {
   try {
     await client.connect();
     await client.query(`DELETE FROM organizations WHERE id = $1`, [s.orgId]);
-    await client.query(`DELETE FROM users WHERE id = ANY($1::uuid[])`, [s.userIds]);
+    // `users.id` is a Prisma `String` column (plain `text`, not a native `uuid`
+    // column) — casting the array param to `::uuid[]` made Postgres compare
+    // `uuid = text`, which it refuses ("operator does not exist: text = uuid").
+    // Cast to the column's actual type instead.
+    await client.query(`DELETE FROM users WHERE id = ANY($1::text[])`, [s.userIds]);
   } catch (error) {
     console.warn('[d01] cleanup did not complete:', (error as Error).message);
   } finally {
