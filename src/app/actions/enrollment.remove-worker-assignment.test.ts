@@ -8,8 +8,11 @@
  *    "Supervisors should be able to withdraw course from staff in their
  *    facility" — which an authorship rule can never express, and which left
  *    assign-without-withdraw as an asymmetry in the registry.
- *  - COU-004 org ownership: a course belongs to the ORGANIZATION, so a
- *    colleague's course is withdrawable; another tenant's is not.
+ *  - tenancy of the RECORD: the enrolment must belong to a member of the
+ *    caller's organisation. Not the course creator's organisation — an adopted
+ *    video course is authored by Theraptly, and keying on its creator refused
+ *    every organisation a withdrawal from its own learner (the ISSUE-4 ruling,
+ *    applied here as in `getEnrollmentWithResults`).
  *  - facility reach: holding the verb does not widen WHO you may act on, so a
  *    facility-bound caller must not strip an enrollment from another site's
  *    worker.
@@ -81,7 +84,7 @@ beforeEach(() => {
     id: 'enr-1',
     organizationUserId: TARGET_OU,
     courseId: 'course-1',
-    course: { createdByOrgUserId: CREATOR_OU, creator: { organizationId: ORG } },
+    organizationUser: { organizationId: ORG },
   });
   mockOrgUserFindMany.mockResolvedValue([{ id: TARGET_OU, facilities: [{ facilityId: F1 }] }]);
   mockListAccessibleFacilities.mockResolvedValue([{ id: F1 }]);
@@ -109,18 +112,54 @@ describe('removeWorkerAssignment', () => {
     expect(mockEnrollmentDelete).toHaveBeenCalledWith({ where: { id: 'enr-1' } });
   });
 
-  it('RETURNS a refusal when the course belongs to another organization', async () => {
+  // Positive control for the tenancy key: the course is Theraptly's, the
+  // learner is ours. The creator-org rule refused exactly this.
+  it("lets the org's own HR withdraw its learner from an adopted Theraptly course", async () => {
+    setSession('hr', 'ou-hr');
     mockEnrollmentFindUnique.mockResolvedValue({
       id: 'enr-1',
       organizationUserId: TARGET_OU,
       courseId: 'course-1',
-      course: { createdByOrgUserId: CREATOR_OU, creator: { organizationId: 'org-other' } },
+      organizationUser: { organizationId: ORG },
+      course: { createdByOrgUserId: 'ou-system', creator: { organizationId: 'org-theraptly' } },
+    });
+
+    const result = await removeWorkerAssignment('enr-1');
+
+    expect(result).toEqual({ success: true });
+    expect(mockEnrollmentDelete).toHaveBeenCalledWith({ where: { id: 'enr-1' } });
+    // The course's authorship is never consulted — only the enrolment's org.
+    expect(mockEnrollmentFindUnique).toHaveBeenCalledWith({
+      where: { id: 'enr-1' },
+      include: { organizationUser: { select: { organizationId: true } } },
+    });
+  });
+
+  it('RETURNS a refusal when the enrollment belongs to another organization', async () => {
+    mockEnrollmentFindUnique.mockResolvedValue({
+      id: 'enr-1',
+      organizationUserId: TARGET_OU,
+      courseId: 'course-1',
+      organizationUser: { organizationId: 'org-other' },
     });
 
     const result = await removeWorkerAssignment('enr-1');
 
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/does not belong to your organization/i);
+    expect(mockEnrollmentDelete).not.toHaveBeenCalled();
+    // Refused before the facility lookup, so a foreign row is not probed further.
+    expect(mockOrgUserFindMany).not.toHaveBeenCalled();
+  });
+
+  it('refuses a caller with no active organization', async () => {
+    mockAuth.mockResolvedValue({
+      user: { id: 'user-1', organizationUserId: CREATOR_OU, organizationId: null, role: 'owner' },
+    });
+
+    const result = await removeWorkerAssignment('enr-1');
+
+    expect(result.success).toBe(false);
     expect(mockEnrollmentDelete).not.toHaveBeenCalled();
   });
 

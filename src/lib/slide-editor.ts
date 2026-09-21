@@ -315,6 +315,64 @@ export function buildEditableSlideHtml(
   return out + html.slice(cursor);
 }
 
+const RUN_MARKER_PATTERN = new RegExp(
+  `[\\s/]${EDITABLE_RUN_ATTRIBUTE}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`,
+  'i',
+);
+
+/** Every `data-slide-run` value on an element in `html`, in document order. */
+function collectRunMarkers(html: string): string[] {
+  const markers: string[] = [];
+  let cursor = 0;
+
+  while (cursor < html.length) {
+    const tagStart = html.indexOf('<', cursor);
+    if (tagStart === -1) break;
+
+    if (html.startsWith('<!--', tagStart)) {
+      const commentEnd = html.indexOf('-->', tagStart);
+      cursor = commentEnd === -1 ? html.length : commentEnd + 3;
+      continue;
+    }
+
+    const tagEnd = findTagEnd(html, tagStart);
+    if (tagEnd === -1) break;
+
+    const match = RUN_MARKER_PATTERN.exec(html.slice(tagStart, tagEnd + 1));
+    if (match) markers.push(match[1] ?? match[2] ?? match[3] ?? '');
+    cursor = tagEnd + 1;
+  }
+
+  return markers;
+}
+
+/**
+ * Whether `edits` can be spliced into a section without landing anywhere but
+ * the region each one was typed into.
+ *
+ * The editor resolves a keystroke to its region through the nearest
+ * `[data-slide-run]` ancestor, and course HTML is stored content: a section that
+ * already carries that attribute on an element of its own would route typed
+ * text into whichever region the forged index names, and the save would splice
+ * it there. So the section's editable rendering must carry exactly the markers
+ * `buildEditableSlideHtml` emitted — each of `0..runs.length - 1`, once — and
+ * every edit must name one of them. Anything else is refused, never repaired.
+ */
+export function canApplyTextRunEdits(
+  html: string,
+  runs: readonly SlideTextRun[],
+  edits: SlideRunEdits,
+): boolean {
+  const markers = collectRunMarkers(buildEditableSlideHtml(html, runs));
+  if (markers.length !== runs.length) return false;
+  if (markers.some((marker, index) => marker !== String(index))) return false;
+
+  return Object.keys(edits).every((key) => {
+    const index = Number(key);
+    return Number.isInteger(index) && index >= 0 && index < runs.length;
+  });
+}
+
 /**
  * Splice edited text back into a section's own source.
  *

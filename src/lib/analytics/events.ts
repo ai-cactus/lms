@@ -179,7 +179,17 @@ export interface AnalyticsEventProperties {
     content_type: 'article' | 'slides' | 'video';
   };
 
-  course_completed: { course_id: string; total_minutes: number | null; is_retake: boolean };
+  /**
+   * `minutes_since_assigned` is calendar time from enrollment creation to the
+   * passing quiz — NOT time spent studying. No time-on-task is recorded, so a
+   * true course duration is not available. (Renamed from `total_minutes`,
+   * which mislabelled the same value.)
+   */
+  course_completed: {
+    course_id: string;
+    minutes_since_assigned: number | null;
+    is_retake: boolean;
+  };
 
   quiz_started: { course_id: string; question_count: number; attempt_number: number };
 

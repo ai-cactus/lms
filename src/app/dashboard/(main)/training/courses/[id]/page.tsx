@@ -30,15 +30,14 @@ export default async function CourseDetailsPage(props: PageProps) {
   // predicate the sidebar uses to decide whether to offer Courses at all.
   const roleKey = session?.user?.role ? dbRoleToRoleKey(session.user.role) : null;
 
-  // Mirrors removeWorkerAssignment's own gate, so the control is only offered
-  // where it would actually succeed: the `assignment.delete` verb plus COU-004
-  // org ownership of the course. Reading the roster and withdrawing from it stay
-  // separate rights, but neither is authorship any more — a colleague's course
-  // is the organization's course.
+  // Mirrors removeWorkerAssignment's own gate: the `assignment.delete` verb and
+  // an organisation to act in. Tenancy is per ENROLMENT there, not per course —
+  // an adopted video course is authored by Theraptly, yet its roster here is
+  // this organisation's own learners (both course-detail reads scope the roster
+  // to the caller's org), so keying this on the course creator hid the control
+  // on every adopted course.
   const canWithdrawAssignments =
-    Boolean(roleKey && can(roleKey, 'assignment.delete')) &&
-    !!session?.user?.organizationId &&
-    course.creator.organizationId === session.user.organizationId;
+    Boolean(roleKey && can(roleKey, 'assignment.delete')) && !!session?.user?.organizationId;
   const backHref = roleKey && can(roleKey, 'course.read') ? '/dashboard/courses' : '/dashboard';
 
   // Both reads THROW `Forbidden` without `assignment.read`, so they must be

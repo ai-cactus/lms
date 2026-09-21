@@ -192,6 +192,30 @@ describe('saving', () => {
     expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
   });
 
+  // Stored course HTML carrying the editor's own region attribute. A keystroke
+  // resolves to its region through the nearest `[data-slide-run]`, so typing on
+  // this locked badge would otherwise be spliced over the slide heading (run 0).
+  it('refuses to save when the lesson carries a forged region marker', async () => {
+    const forged = TELL_SLIDE.replace(
+      '>CONCEPT</span>',
+      '><span data-slide-run="0" contenteditable="true">CONCEPT</span></span>',
+    );
+    renderEditor({ slideContent: forged });
+
+    const forgedRegion = document.querySelector<HTMLElement>(
+      '.slide-type-badge [data-slide-run="0"]',
+    );
+    expect(forgedRegion).not.toBeNull();
+    typeInto(forgedRegion!, 'Overwritten heading');
+    await userEvent.click(saveButton());
+
+    expect(
+      await screen.findByText(/contains markup the editor cannot save safely/),
+    ).toBeInTheDocument();
+    expect(updateLessonSlideContent).not.toHaveBeenCalled();
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
+  });
+
   it('confirms before leaving the module with unsaved edits', async () => {
     const { onToggleView } = renderEditor();
 
