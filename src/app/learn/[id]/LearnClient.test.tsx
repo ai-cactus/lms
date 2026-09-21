@@ -84,6 +84,7 @@ const makePayload = (overrides: Partial<LearnPayload> = {}): LearnPayload => ({
     name: 'Jane Worker',
     role: 'nurse',
     isAdminView: false,
+    canEditContent: false,
     organizationName: 'Acme Health',
     email: 'jane@example.com',
     jobTitle: 'RN',

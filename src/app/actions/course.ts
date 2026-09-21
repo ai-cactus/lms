@@ -4,7 +4,7 @@ import prisma from '@/lib/prisma';
 import { rawPrisma } from '@/db/index';
 import { Prisma } from '@/generated/prisma/client';
 import { dbRoleToRoleKey, isAdminRole, WORKER_ROLES } from '@/lib/rbac/role-utils';
-import { assertNoPhi } from '@/lib/documents/phiGate';
+import { assertNoPhi, PhiBlockedError } from '@/lib/documents/phiGate';
 import { can } from '@/lib/rbac/permissions';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
@@ -1949,10 +1949,27 @@ export async function updateQuizQuestions(
   return { success: true };
 }
 
-export async function updateLessonContent(lessonId: string, content: string, title?: string) {
+/**
+ * Saves a lesson body from the in-course rich-text editor.
+ *
+ * Every EXPECTED refusal is returned, never thrown: React redacts a thrown
+ * Server Action message to error #441 in production, so a thrown refusal
+ * reaches the user as no reason at all. `throw` is reserved here for genuinely
+ * unexpected failures, where there is nothing actionable to tell them anyway.
+ *
+ * ⛔ This is the authorisation decision. `LearnPayload.user.canEditContent`
+ * mirrors the same predicate to decide whether to OFFER the editor, but it is a
+ * UI affordance that never reaches this function — both halves are re-derived
+ * and re-checked here on every call.
+ */
+export async function updateLessonContent(
+  lessonId: string,
+  content: string,
+  title?: string,
+): Promise<{ success: boolean; error?: string }> {
   const session = await resolveSession();
   if (!session?.user?.id) {
-    throw new Error('Unauthorized');
+    return { success: false, error: 'Your session has expired. Sign in again and retry.' };
   }
 
   if (!can(dbRoleToRoleKey(session.user.role), 'course.edit')) {
@@ -1962,7 +1979,10 @@ export async function updateLessonContent(lessonId: string, content: string, tit
       userId: session.user.id,
       role: session.user.role,
     });
-    throw new Error('Insufficient permissions');
+    return {
+      success: false,
+      error: 'Your role does not have permission to edit course content.',
+    };
   }
 
   const lesson = await prisma.lesson.findUnique({
@@ -1971,6 +1991,8 @@ export async function updateLessonContent(lessonId: string, content: string, tit
   });
 
   // COU-004 org ownership, as in `deleteCourse` — see `updateQuizQuestions`.
+  // Missing and foreign are answered identically on purpose: distinguishing them
+  // would confirm to another tenant that a lesson id exists.
   if (
     !lesson ||
     !session.user.organizationId ||
@@ -1981,18 +2003,30 @@ export async function updateLessonContent(lessonId: string, content: string, tit
       lessonId,
       userId: session.user.id,
     });
-    throw new Error('Unauthorized or Lesson not found');
+    return {
+      success: false,
+      error: 'This lesson could not be found in your organization, so it cannot be edited here.',
+    };
   }
 
   // F-089: this is the rich-text editor's save path — the most likely place for
   // someone to paste a real clinical note. Gated like every other ingress.
-  await assertNoPhi({
-    text: content,
-    source: 'lesson_edit',
-    actorId: session.user.id,
-    organizationId: session.user.organizationId ?? undefined,
-    logContext: { lessonId },
-  });
+  try {
+    await assertNoPhi({
+      text: content,
+      source: 'lesson_edit',
+      actorId: session.user.id,
+      organizationId: session.user.organizationId ?? undefined,
+      logContext: { lessonId },
+    });
+  } catch (error) {
+    // PhiBlockedError already carries a user-safe message and is the whole point
+    // of the gate — surface it verbatim rather than losing it to redaction.
+    if (error instanceof PhiBlockedError) {
+      return { success: false, error: error.message };
+    }
+    throw error;
+  }
 
   await prisma.lesson.update({
     where: { id: lessonId },

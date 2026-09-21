@@ -456,6 +456,7 @@ describe('getLearnPayload — membership', () => {
       // D-16: view mode is server-decided. False here because this is a real
       // worker in the worker portal.
       isAdminView: false,
+      canEditContent: false,
       organizationName: 'Acme Health',
       email: 'jane@example.com',
       jobTitle: 'RN',
@@ -563,6 +564,109 @@ describe('getLearnPayload — learner view mode (D-16)', () => {
     const payload = asPayload(await getLearnPayload('course-1'));
 
     expect(payload.user.isAdminView).toBe(false);
+  });
+});
+
+/**
+ * `canEditContent` — the "Edit Article" affordance.
+ *
+ * `isAdminView` was doing a job it was never narrow enough for. It admits every
+ * role that may REVIEW a course (`course.read` + admin category), but saving a
+ * lesson needs `course.edit` AND ownership of the course by the caller's org.
+ * Two populations were therefore shown an editor whose every save was refused:
+ * a supervisor (read but not edit), and any admin on an adopted GLOBAL
+ * catalogue course another organisation authored.
+ *
+ * The flag decides only whether the control is OFFERED — `updateLessonContent`
+ * re-checks the identical predicate itself, which is what
+ * `course.content-write-rbac.test.ts` pins.
+ */
+describe('getLearnPayload — canEditContent', () => {
+  const adminSession = (role: string, organizationId = 'org-1') => ({
+    user: { id: 'a1', organizationUserId: 'ou-adm', organizationId, role },
+  });
+
+  beforeEach(() => {
+    mockWorkerAuth.mockResolvedValue(null);
+    mockEnrollmentFindFirst.mockResolvedValue(null);
+    mockOrganizationUserFindUnique.mockResolvedValue({
+      role: 'owner',
+      user: { fullName: 'Admin One', email: 'a@example.com' },
+      organization: { name: 'Acme Health' },
+      jobTitle: 'Owner',
+    });
+  });
+
+  // Positive control: a fix that simply hid the editor from everyone would pass
+  // every negative case below.
+  it.each(['owner', 'admin', 'hr'])(
+    '%s editing their OWN organisation’s course keeps the editor',
+    async (role) => {
+      mockAdminAuth.mockResolvedValue(adminSession(role));
+      mockCourseFindUnique.mockResolvedValue(makeCourse({ creatorOrgId: 'org-1' }));
+
+      const payload = asPayload(await getLearnPayload('course-1'));
+
+      expect(payload.user.isAdminView).toBe(true);
+      expect(payload.user.canEditContent).toBe(true);
+    },
+  );
+
+  it('a supervisor gets the review but NOT the editor — they hold course.read, not course.edit', async () => {
+    mockAdminAuth.mockResolvedValue(adminSession('supervisor'));
+    mockCourseFindUnique.mockResolvedValue(makeCourse({ creatorOrgId: 'org-1' }));
+
+    const payload = asPayload(await getLearnPayload('course-1'));
+
+    expect(payload.user.isAdminView).toBe(true);
+    expect(payload.user.canEditContent).toBe(false);
+  });
+
+  it('an owner opening a published GLOBAL course another org authored gets no editor', async () => {
+    mockAdminAuth.mockResolvedValue(adminSession('owner', 'org-2'));
+    mockCourseFindUnique.mockResolvedValue(
+      makeCourse({ creatorOrgId: 'org-1', isGlobal: true, status: 'published' }),
+    );
+
+    const payload = asPayload(await getLearnPayload('course-1'));
+
+    // The review still opens — that is the point of a shared catalogue.
+    expect(payload.user.isAdminView).toBe(true);
+    expect(payload.user.canEditContent).toBe(false);
+  });
+
+  it('a manager who chose LEARN mode gets neither view nor editor', async () => {
+    const learnMode = {
+      user: { id: 'a1', organizationUserId: 'ou-adm', organizationId: 'org-1', role: 'owner' },
+    };
+    mockWorkerAuth.mockResolvedValue(learnMode);
+    mockAdminAuth.mockResolvedValue(learnMode);
+    mockCourseFindUnique.mockResolvedValue(makeCourse({ creatorOrgId: 'org-1' }));
+
+    const payload = asPayload(await getLearnPayload('course-1'));
+
+    expect(payload.user.isAdminView).toBe(false);
+    expect(payload.user.canEditContent).toBe(false);
+  });
+
+  it('a real worker in their own course gets no editor', async () => {
+    mockAdminAuth.mockResolvedValue(null);
+    mockWorkerAuth.mockResolvedValue({
+      user: { id: 'w1', organizationUserId: 'ou-worker', organizationId: 'org-1', role: 'nurse' },
+    });
+    mockCourseFindUnique.mockResolvedValue(makeCourse({ creatorOrgId: 'org-1' }));
+    mockEnrollmentFindFirst.mockResolvedValue({
+      id: 'enr-1',
+      progress: 0,
+      status: 'in_progress',
+      score: null,
+      videoPositionSeconds: 0,
+      quizAttempts: [],
+    });
+
+    const payload = asPayload(await getLearnPayload('course-1'));
+
+    expect(payload.user.canEditContent).toBe(false);
   });
 });
 
