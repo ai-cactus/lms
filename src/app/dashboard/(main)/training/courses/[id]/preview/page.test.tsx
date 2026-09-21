@@ -57,6 +57,21 @@ describe('CoursePreviewPage', () => {
     expect(mockLoadCourseDetail).not.toHaveBeenCalled();
   });
 
+  // Every worker role holds `course.read` for its own learning, so the verb
+  // alone would admit them; the admin-category check is what refuses here.
+  it('404s a worker role that holds course.read, without loading the course', async () => {
+    mockRequirePermission.mockResolvedValue({
+      userId: 'user-2',
+      role: 'nurse',
+      roleKey: 'nurse',
+      organizationId: 'org-1',
+      organizationUserId: 'ou-2',
+    });
+
+    await expect(CoursePreviewPage({ params })).rejects.toThrow('NEXT_NOT_FOUND');
+    expect(mockLoadCourseDetail).not.toHaveBeenCalled();
+  });
+
   it('calls notFound() when loadCourseDetail resolves null', async () => {
     mockLoadCourseDetail.mockResolvedValue(null);
 

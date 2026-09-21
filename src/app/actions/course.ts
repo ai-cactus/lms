@@ -3,7 +3,12 @@
 import prisma from '@/lib/prisma';
 import { rawPrisma } from '@/db/index';
 import { Prisma } from '@/generated/prisma/client';
-import { dbRoleToRoleKey, isAdminRole, WORKER_ROLES } from '@/lib/rbac/role-utils';
+import {
+  canViewOrgCourses,
+  dbRoleToRoleKey,
+  isAdminRole,
+  WORKER_ROLES,
+} from '@/lib/rbac/role-utils';
 import { assertNoPhi, PhiBlockedError } from '@/lib/documents/phiGate';
 import { interactiveBudget } from '@/lib/ai-client';
 import { can } from '@/lib/rbac/permissions';
@@ -1196,14 +1201,23 @@ export async function getDashboardData(requestedFacilityIds?: string[] | null) {
     coverageBase,
   );
 
+  // Finance reaches this action through `billing.read` for the AGGREGATES
+  // (counts, coverage, averages — the same family the Global View shows it).
+  // The course list and the per-course chart name individual courses, which a
+  // role holding nothing on Courses must not receive. Stripped here rather than
+  // at the page because a `'use server'` export is callable without the page.
+  // The rows are still read: `totalCourses` and the parity-tested totals are
+  // derived from them, and the tile must not change with the viewer's role.
+  const mayViewCourses = canViewOrgCourses(session.user.role);
+
   return {
-    courses,
+    courses: mayViewCourses ? courses : [],
     stats: {
       totalCourses,
       totalStaffAssigned,
       averageGrade: averageScore,
       monthlyPerformance,
-      coursePerformance,
+      coursePerformance: mayViewCourses ? coursePerformance : [],
       trainingCoverage: {
         completed: coverage.completed,
         inProgress: coverage.inProgress,
