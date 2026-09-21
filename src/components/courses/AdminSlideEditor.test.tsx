@@ -205,3 +205,116 @@ describe('saving', () => {
     expect(onToggleView).toHaveBeenCalledTimes(1);
   });
 });
+
+/**
+ * The browser Back button is the one exit `beforeunload` cannot see: the App
+ * Router serves it as a client-side popstate, and Next 16 has no API to cancel
+ * one. These drive jsdom's real session history, so "did it prompt" and "where
+ * did the browser end up" are separate questions — the second is the one that
+ * says whether someone could be trapped on the page.
+ */
+describe('browser Back button', () => {
+  let priorPage: string;
+  let hostPage: string;
+  let backToken = 0;
+
+  beforeEach(() => {
+    backToken += 1;
+    priorPage = `prior-${backToken}`;
+    hostPage = `host-${backToken}`;
+    window.history.pushState({ page: priorPage }, '');
+    window.history.pushState({ page: hostPage }, '');
+  });
+
+  const currentPage = () => (window.history.state as { page?: string } | null)?.page;
+
+  async function pressBack() {
+    const traversed = new Promise<void>((resolve) => {
+      window.addEventListener('popstate', () => resolve(), { once: true });
+    });
+    window.history.back();
+    await traversed;
+  }
+
+  it('holds the press and confirms through the same dialog as every other exit', async () => {
+    renderEditor();
+    typeInto(regionNamed('Slide heading'), 'Guarding Client Information');
+
+    await pressBack();
+
+    const dialog = await screen.findByRole('alertdialog');
+    expect(within(dialog).getByText('Leave without saving?')).toBeInTheDocument();
+    // Held, not left.
+    expect(currentPage()).toBe(hostPage);
+  });
+
+  it('leaves the editor alone when nothing has been edited', async () => {
+    renderEditor();
+
+    await pressBack();
+
+    // A prompt that fires on a clean editor trains people to dismiss it, and
+    // then it fails on the one occasion it mattered.
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(currentPage()).toBe(priorPage);
+  });
+
+  it('gives the dialog default focus to keeping the edits, not discarding them', async () => {
+    renderEditor();
+    typeInto(regionNamed('Slide heading'), 'Guarding Client Information');
+
+    await pressBack();
+
+    const dialog = await screen.findByRole('alertdialog');
+    await waitFor(() =>
+      expect(within(dialog).getByRole('button', { name: 'Keep editing' })).toHaveFocus(),
+    );
+  });
+
+  it('discarding leaves on the first press, for the page the admin came from', async () => {
+    renderEditor();
+    typeInto(regionNamed('Slide heading'), 'Guarding Client Information');
+
+    await pressBack();
+    const dialog = await screen.findByRole('alertdialog');
+
+    const traversed = new Promise<void>((resolve) => {
+      window.addEventListener('popstate', () => resolve(), { once: true });
+    });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Discard changes' }));
+    await traversed;
+
+    expect(currentPage()).toBe(priorPage);
+  });
+
+  it('keeping the edits re-guards the next press', async () => {
+    renderEditor();
+    typeInto(regionNamed('Slide heading'), 'Guarding Client Information');
+
+    await pressBack();
+    await userEvent.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Keep editing' }),
+    );
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    // A fresh throwaway entry is parked in front of the page again, so Back is
+    // back to where it was before the press — not silently unguarded.
+    expect(window.history.state).toHaveProperty('__lmsUnsavedChangesGuard', true);
+
+    await pressBack();
+
+    expect(await screen.findByRole('alertdialog')).toBeInTheDocument();
+    expect(currentPage()).toBe(hostPage);
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
+  });
+
+  it('stops holding the press once the deck is saved', async () => {
+    renderEditor();
+    typeInto(regionNamed('Slide heading'), 'Guarding Client Information');
+    await userEvent.click(saveButton());
+    await waitFor(() => expect(updateLessonSlideContent).toHaveBeenCalledTimes(1));
+
+    await pressBack();
+
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+  });
+});
