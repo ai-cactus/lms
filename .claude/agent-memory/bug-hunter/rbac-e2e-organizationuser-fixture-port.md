@@ -52,10 +52,10 @@ identity (`resolveActiveMembership()` → `{kind:'none'}`) has no signal anywher
 that it was ever "meant" to be a worker: `authenticate()` only routes to the
 worker portal when an ACTIVE membership resolves to a worker role, which
 `none` never does. Confirmed empirically: a "nurse"-seeded, zero-membership
-identity logging in via `/login` lands on `/dashboard` (admin portal, founder
-activation modal) — NOT `/worker` or `/onboarding-worker`. Rewrote
+identity logging in via `/login` lands on the admin `/onboarding` wizard
+(proxy route-gate; the activation modal is no longer reached) — NOT `/worker` or `/onboarding-worker`. Rewrote
 `rbac-removed-staff-login.spec.ts`'s "org-less WORKER" test to assert this new
-reality (reaches `/dashboard` like the org-less OWNER case) instead of forcing
+reality (reaches `/onboarding` like the org-less OWNER case) instead of forcing
 the old worker-portal assertion. The `?worker=true` query param on `/login` is
 now vestigial — grepped `src/app/(auth)/login/page.tsx` and confirmed it never
 reads that param; routing is 100% DB-resolved-role driven regardless of which
@@ -83,5 +83,4 @@ chain — but every ported file still deletes
 robust if those cascade rules ever change.
 
 Related: [[user-organizationuser-split-test-patterns]],
-[[rbac-matrix-realignment-role-change]], [[rbac-facility-tab-readonly-update]],
-[[rbac-8-worker-role-split]].
+[[rbac-matrix-realignment-role-change]], [[rbac-8-worker-role-split]].

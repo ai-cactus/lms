@@ -1,13 +1,13 @@
 ---
 name: e2e-specs-raw-sql-insert-courses
-description: 11 e2e specs INSERT INTO courses with raw SQL, so any new NOT NULL column on courses breaks them — and CI skips e2e on feature PRs, so nothing tells you
+description: 13 e2e specs INSERT INTO courses with raw SQL, so any new NOT NULL column on courses breaks them — and CI skips e2e on feature PRs, so nothing tells you
 metadata:
   type: project
 ---
 
-**Eleven `tests/e2e/*.spec.ts` files build their own fixtures with raw `pg` SQL rather than Prisma**, including `INSERT INTO courses (...)`. They therefore bypass the generated client entirely: `tsc` cannot see them, vitest cannot see them, and adding a required column to `courses` (or `documents`) breaks every one of them with `null value in column "…" violates not-null constraint`.
+**Thirteen `tests/e2e/*.spec.ts` files build their own fixtures with raw `pg` SQL rather than Prisma**, including `INSERT INTO courses (...)`. They therefore bypass the generated client entirely: `tsc` cannot see them, vitest cannot see them, and adding a required column to `courses` (or `documents`) breaks every one of them with `null value in column "…" violates not-null constraint`.
 
-The specs: `assign-course-invite`, `course-details-hero`, `course-publish-review-gate`, `course-role-assignment`, `course`, `facility-dashboard`, `remove-reinvite-retention`, `staff-assign-courses`, `staff-assign-multiple-courses`, `video-playback`, `worker-trainings-preview-flow`. Each seed helper has a local `orgId` in scope, so the fix is mechanical.
+The specs: `assign-course-invite`, `course-details-hero`, `course-publish-review-gate`, `course-role-assignment`, `course`, `facility-dashboard`, `learn-admin-edit-affordance`, `quiz-ai-generation`, `remove-reinvite-retention`, `staff-assign-courses`, `staff-assign-multiple-courses`, `video-playback`, `worker-trainings-preview-flow`. Each seed helper has a local `orgId` in scope, so the fix is mechanical.
 
 **Why this bites:** CI does not run Playwright on feature PRs (CLAUDE.md), so the PR merges green and the breakage only surfaces on a promotion PR days later. Phase 6 PR B hit this — the unit suite was 243/4649 green and `tsc` was clean while three e2e specs were dead.
 

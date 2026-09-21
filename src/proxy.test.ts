@@ -1,5 +1,5 @@
 /**
- * Unit tests for src/proxy.ts (the auth/RBAC edge middleware).
+ * Unit tests for src/proxy.ts (the auth/RBAC proxy).
  *
  * Focus: the new admin onboarding gates added alongside the staging-complaint
  * fix batch (mirrors the pre-existing worker gates) —
@@ -377,9 +377,9 @@ describe('proxy — API default-deny (F-013)', () => {
     /**
      * /api/system/** authenticates with the HMAC system_admin_auth cookie, not a
      * NextAuth session, so requiring one here would lock the platform console
-     * out entirely. Enforcing it at this layer would mean re-implementing that
-     * HMAC with Web Crypto (the Edge runtime has no node:crypto) — duplicated
-     * security logic, which is worse than the exemption. Unifying the two is
+     * out entirely. Enforcing it at this layer would mean verifying that HMAC a
+     * second time — duplicated security logic, which is worse than the
+     * exemption. Unifying the two is
      * §4.4 of docs/rebuild/09-PLATFORM-ADMIN-SPEC.md.
      */
     it('passes /api/system/** through to its own auth mechanism', async () => {

@@ -15,7 +15,7 @@ Theraptly is a multi-tenant, AI-powered Learning Management System for **healthc
 
 ### Overall verdict
 
-The codebase is **more mature than its 0.1.0 version implies** and has clearly survived at least one adversarial security pass — the twelve findings recorded in `docs/hack-check.md` are all genuinely remediated, and the security fundamentals (parameterized SQL, DOMPurify, signed-URL proxies, Stripe signature verification, secure cookies, CSPRNG tokens) are largely correct. Engineering hygiene is good: zero stray `console.*`, a structured logger, `strict` TypeScript, and 553 unit cases over the pure-logic libraries.
+The codebase is **more mature than its 0.1.0 version implies** and has clearly survived at least one adversarial security pass — the twelve findings recorded in `docs/local/hack-check.md` (local-only, gitignored) are all genuinely remediated, and the security fundamentals (parameterized SQL, DOMPurify, signed-URL proxies, Stripe signature verification, secure cookies, CSPRNG tokens) are largely correct. Engineering hygiene is good: zero stray `console.*`, a structured logger, `strict` TypeScript, and 553 unit cases over the pure-logic libraries.
 
 The risk is concentrated in **three structural gaps**, each of which is individually a launch-blocker for a HIPAA product at scale:
 
@@ -131,7 +131,7 @@ Subsystem rebuild details are distributed across the backend, security/complianc
 
 ## 8. Infrastructure & operations
 
-**Architecture.** Single VM, Docker Compose per environment (dev/staging/prod), app behind nginx + a Cloudflare Tunnel. Postgres/Redis/MinIO run as containers on host bind mounts with no published ports; GCS is primary storage with MinIO fallback. Two deploy mechanisms coexist: current Docker/GHCR GitHub Actions and legacy PM2 shell scripts (**F-029**).
+**Architecture.** Single VM, Docker Compose per environment (dev/staging/prod), app behind nginx + a Cloudflare Tunnel *(as recorded 2026-07-05; since verified that the tunnel goes straight to the app and nginx is not in the request path — see `../deployment.md` §2.3)*. Postgres/Redis/MinIO run as containers on host bind mounts with no published ports; GCS is primary storage with MinIO fallback. Two deploy mechanisms coexist: current Docker/GHCR GitHub Actions and legacy PM2 shell scripts (**F-029**).
 
 **Findings.**
 - **F-004 (Critical)** — no backups of Postgres, MinIO, or Redis; all on one disk.

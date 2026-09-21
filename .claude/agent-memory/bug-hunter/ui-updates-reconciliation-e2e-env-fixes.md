@@ -60,8 +60,8 @@ partial reset):
   (quiz attempt history, `course_assignments.target_role`) tied to the SAME shared
   `E2E Compliance Training` course/quiz IDs used across course.spec.ts, quiz.spec.ts,
   quiz-retake-attestation.spec.ts, and reminders.spec.ts. Specifically: `reminders.spec.ts`'s
-  TC-016 test (assign-to-whole-role) leaves a `course_assignments` row with `target_role` set,
-  which makes the Assign page default to "A whole role" mode on next load — breaking
+  TC-016 test (assign-to-whole-role) leaves a `course_assignments.target_roles` entry set,
+  which makes the Assign page default to "Roles" mode on next load — breaking
   REM-001/TC-015/TC-018 (which expect "Specific people" mode / `#assign-input` to exist) on any
   SECOND run of the file without a reseed in between. Within one fresh sequential run this is
   fine (those three tests are positioned earlier in the file than TC-016), it only bites re-runs.

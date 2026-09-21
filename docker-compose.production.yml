@@ -1,7 +1,7 @@
 # docker-compose.production.yml
 #
 # Manages the full LMS production stack:
-#   - app   → Next.js (port 3000, served via Nginx on the host)
+#   - app   → Next.js (port 3000, reached via the Cloudflare Tunnel on the host)
 #   - db    → PostgreSQL 16 + pgvector (internal network only — no host port)
 #   - redis → Redis 7 (internal network only — no host port)
 #
@@ -32,8 +32,8 @@ services:
     restart: unless-stopped
     logging: *default-logging
     ports:
-      # Bind to loopback only: traffic must enter via the host nginx reverse proxy
-      # (Cloudflare Tunnel -> nginx -> 127.0.0.1:3000), never directly off the VM's
+      # Bind to loopback only: traffic must enter via the Cloudflare Tunnel
+      # (cloudflared -> 127.0.0.1:3000), never directly off the VM's
       # public interfaces (which would bypass Cloudflare/WAF and real-IP handling).
       - '127.0.0.1:3000:3000'
     env_file:

@@ -2,7 +2,7 @@
 
 **Program:** Theraptly LMS platform speed optimization (Tiers 1–4 + Argo)
 **Reporting date:** 2026-08-08
-**Status:** Build complete & verified; production rollout + time-gated decisions outstanding
+**Status:** Build complete & verified. Tier 3 reached production with the 2026-08-18 release. The Argo trial keep/cancel outcome is not recorded here.
 **Companion docs:** `platform-speed-optimization-plan-2026-07-22.md` (plan), `docs/perf/tier3-implementation-plan.md` (Tier 3 detail), `platform-speed-measurement-runbook-2026-07-23.md` (methodology)
 
 ---
@@ -27,7 +27,7 @@ The platform speed program is **implemented, tested, and merged**, and the appli
 |---|---|---|---|
 | **1** | Edge caching (public pages) | Serve `/login`, marketing, etc. from Cloudflare's edge | ✅ Live (prod) |
 | **2** | Tunnel & origin | cloudflared updated (2026.7.3), QUIC confirmed, **2 replicas**, origin keep-alives | ✅ Live (prod); cold-path penalty eliminated |
-| **3** | App-level (Next.js + Prisma) | Auth-query cache, session reads, query-shape fixes, dynamic imports, log hygiene | ✅ Merged; **deployed to staging** |
+| **3** | App-level (Next.js + Prisma) | Auth-query cache, session reads, query-shape fixes, dynamic imports, log hygiene | ✅ Merged; on **production** since the 2026-08-18 release |
 | **4.3** | Argo Smart Routing | Fastest edge→origin path for dynamic traffic | 🔵 Enabled on **prod**; trial decision pending (day 3–7) |
 | **4.4** | Origin placement | Move origin closer to US users | ⏸️ Decision framework only — trigger-gated, no action |
 | **4 (DB)** | `pg_stat_statements` | Query-level profiling of the Tier 3 wins | ⬜ Optional / recommended for hard query metrics |

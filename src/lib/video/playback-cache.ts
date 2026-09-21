@@ -392,8 +392,8 @@ export function invalidatePlaybackAuthz(organizationUserId: string, courseId: st
  *
  * `private` is sufficient to keep these bytes out of shared caches: it permits
  * storage only in a cache dedicated to a single user. Verified for this
- * deployment — nginx has no `proxy_cache` configured, and Cloudflare sits in
- * front as a *tunnel* rather than a caching edge (and does not cache 206
+ * deployment — there is no reverse proxy between the tunnel and the app, and
+ * Cloudflare sits in front as a *tunnel* rather than a caching edge (and does not cache 206
  * responses by default in any case). `Vary: Cookie` closes the residual where
  * user A logs out and user B logs in on the same browser profile.
  *

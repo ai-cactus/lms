@@ -13,7 +13,7 @@ active, managerId, joinedAt, roleAssignedAt, lastLoginAt) plus
 `Document.organizationUserId`, `Enrollment.organizationUserId`,
 `Certificate.organizationUserId`, `Notification.organizationUserId`,
 `NotificationPreference.organizationUserId`) point at `OrganizationUser.id`, not
-`User.id`. Full plan: `docs/multi-org-schema-upgrade-plan.md`.
+`User.id`.
 
 Ported 10 test files to green (173 tests): the three quiz API routes
 (save/start/submit), the video route, `create-auth-instance.test.ts`,
@@ -57,7 +57,7 @@ null`). A test asserting the old "cross-tenant → failed" behavior encodes stal
 logic and must flip to asserting `'invited'`.
 
 **Intended behavior change — admin role no longer force-killed.** Per
-`multi-org-schema-upgrade-plan.md` Decisions §8, `admin` re-enters `UserRole` as a
+the multi-org schema upgrade plan's Decisions §8, `admin` re-enters `UserRole` as a
 normal Owner-equivalent role; the old JWT-re-validation guard that force-invalidated
 legacy-`admin` sessions is gone from `create-auth-instance.ts`. The pre-refactor
 version of `create-auth-instance.test.ts` (as found on this branch) had NO test
@@ -145,7 +145,7 @@ into `documents.test.ts`. When porting ANY RBAC-gated action test on this
 branch, don't assume the old allow/deny matrix still holds — check
 `src/lib/rbac/permissions.ts`'s actual `roles.<role>.permissions` array first.
 
-**`ROLE_CHANGE_ACTOR_ROLES` is `['owner', 'admin']` — supervisor can no longer
+**`ROLE_CHANGE_ACTOR_ROLES` is `['owner', 'admin', 'hr']` (in `src/lib/rbac/role-utils.ts`) — supervisor can no longer
 re-role ANYONE.** `staff.ts#updateStaffDetails`'s role-change path
 (`canChangeRole`) used to accept supervisor as an actor pre-ruling; now
 supervisor is blocked even earlier, at the coarse `user.edit` gate, before
@@ -155,14 +155,9 @@ testing an unreachable path and must be removed/replaced — use `admin` (the
 new Owner-equivalent role) to keep meaningful `ROLE_CHANGE_ACTOR_ROLES`
 coverage instead.
 
-**Suspected stale copy bug (not fixed — flagged only):**
-`staff.ts` `ROLE_CHANGE_DENIED_MESSAGES.actor_not_permitted` still reads
-`"Only an Owner or Supervisor can change a staff member's role."`, but
-`ROLE_CHANGE_ACTOR_ROLES` is `['owner', 'admin']` — supervisor is DENIED by
-this exact message while being named in it as an allowed actor. Functionally
-correct (denies supervisor), just misleading copy; should probably say "Owner
-or Admin". Left as-is per instructions (test asserts the actual returned
-string).
+**Stale copy bug — FIXED:** `staff.ts` `ROLE_CHANGE_DENIED_MESSAGES.actor_not_permitted`
+used to say "Owner or Supervisor". It now reads `"Only an Owner, Admin or HR can change a
+staff member's role."` Tests assert the actual returned string.
 
-Related: [[project-rbac-proxy-bug]], [[rbac-matrix-realignment-role-change]],
+Related: [[rbac-matrix-realignment-role-change]],
 [[documents-hub-rbac-gate-tests]].

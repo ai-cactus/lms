@@ -1,13 +1,13 @@
 ---
 name: dashboard-metrics-glossary
-description: multi_facility_notes.pdf holds the canonical dashboard metrics glossary; two decisions taken during the alignment pass still need product sign-off
+description: The Dashboard Metrics Glossary (from a product PDF no longer in the repo) is canonical for dashboard metric names/formulas; code-side record is src/lib/facility/metrics.ts; two alignment-pass decisions still need product sign-off
 metadata:
   type: project
 ---
 
-`multi_facility_notes.pdf` (repo root) contains the "Theraptly LMS — Dashboard Metrics Glossary (Standardized)" — §0 canonical terms, §0.1 Risk Level, §0.2 Audit Readiness, §0.3 time windows. It is the single source of truth for metric names/definitions across the Manager Dashboard, Priority Risks, Facility Overview, Status Tracker and Audit Report Overview.
+The "Theraptly LMS — Dashboard Metrics Glossary (Standardized)" came from `multi_facility_notes.pdf`, which is **no longer in the repo** (it was never tracked; ask the user for it if you need the original). Its code-side record is the §-references in `src/lib/facility/metrics.ts`. Sections: §0 canonical terms, §0.1 Risk Level, §0.2 Audit Readiness, §0.3 time windows. It is the single source of truth for metric names/definitions across the Manager Dashboard, Priority Risks, Facility Overview, Status Tracker and Audit Report Overview.
 
-**Why:** the QA notes in the same PDF (DASH-001/002/003) flagged duplicate labels and undefined Risk Level / Audit Readiness; the glossary was written to retire the old names for good.
+**Why:** the QA notes in that PDF (DASH-001/002/003) flagged duplicate labels and undefined Risk Level / Audit Readiness; the glossary was written to retire the old names for good.
 
 **How to apply:** when touching any dashboard metric, take the label and the formula from the glossary rather than from the surrounding screen. Two judgment calls made during the 2026-08-11 alignment pass are still unconfirmed with product:
 

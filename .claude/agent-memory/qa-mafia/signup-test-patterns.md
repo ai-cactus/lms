@@ -39,6 +39,6 @@ Mocking Next.js server action responses via `page.route()` with a custom RSC for
 
 ## Email sending bypass
 
-The LMS uses SMTP (nodemailer/Zoho) for verification emails. SMTP creds are not configured in dev. `signupWithRole` will fail and clean up the token if email sending fails. Cannot test the full "signup → email sent → verify-email" flow without SMTP credentials.
+The LMS sends verification emails over SMTP (nodemailer). Local dev and e2e use MailHog on localhost:1025 (see [[local-dev-env-setup]]), so the full "signup → email sent → verify-email" flow is testable locally once MailHog is running. If sending fails, signup deletes the token and fails closed.
 
 **Workaround for token consumption tests:** Insert verification tokens directly into DB using the `pg` client and drive `/verify?token=<token>` to test the actual verification API without email.

@@ -39,17 +39,13 @@ now 4, was more before column removal) — never the illustrated panel.
 (`course.edit`), Delete (`course.delete`). Any lingering "Duplicate" assertion in older specs is
 now vacuous (the concept doesn't exist) and should be deleted, not just re-targeted.
 
-**Header lost the "Prebuilt Courses" button entirely** (`PrebuiltCourseCatalog.tsx` still exists
-as a component file but is no longer wired into `CoursesListClient`) — don't add regression
+**Header lost the "Prebuilt Courses" button entirely** (`PrebuiltCourseCatalog.tsx` has
+since been deleted) — don't add regression
 coverage for it; a negative assertion on it is meaningless now (true for every role).
 
 `buildPaginationRange` (exported from `CoursesTableFooter.tsx`) was previously untested anywhere
 in the repo — added direct unit coverage of its ellipsis-windowing logic in
 `CoursesListClient.test.tsx` since no dedicated `CoursesTableFooter.test.tsx` exists.
 
-See also [[e2e-local-auth-url-env-trap]] and [[local-production-build-e2e-run]] for running this
-spec locally — as of 2026-08-08 this sandbox has neither Docker nor a native Postgres
-install/service (`pg_isready` on 5432/5433 both refuse, `docker`/`pg_ctl`/`postgresql.service`
-all absent), so `tests/e2e/course.spec.ts`'s new/updated tests were written and typechecked/linted
-clean but never executed — a stronger version of prior "Docker daemon unreachable" sessions where
-Docker itself was at least present.
+See also [[e2e-local-auth-url-env-trap]]. E2E runs locally via `npm run e2e:local` (production
+build, `lms_e2e` DB, seed on every run).

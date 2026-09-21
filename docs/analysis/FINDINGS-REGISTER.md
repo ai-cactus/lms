@@ -101,13 +101,13 @@ Counts: **8 Critical · 24 High · 21 Medium · 14 Low** (deduplicated across th
 | **F-066** | No timeout on embeddings AI call | AI | `ai-client.ts:244` — `generateBatchEmbeddings` has no AbortController |
 | **F-067** | No log shipping/retention/correlation IDs; `serializeError` may spread sensitive props | Observability | `logger.ts:74-77` stdout only; `:31-35` spreads all own error props |
 | **F-068** | God files correlate with untested high-churn areas | Quality | `course.ts` 1,337 · `email.ts` 1,148 · `learn/[id]/page.tsx` 1,118 · `course-ai-v4.6.ts` 996 |
-| **F-069** | Stale docs mislead compliance review | Docs | `docs/phi-redactor.md` documents old fail-open + API-key auth (both contradict current code); `docs/system-architecture.md` still says "CSS Modules" and single-process |
+| **F-069** | Stale docs mislead compliance review | Docs | `docs/phi-redactor.md` *(deleted 2026-09-21)* documents old fail-open + API-key auth (both contradict current code); `docs/system-architecture.md` *(deleted 2026-09-21)* still says "CSS Modules" and single-process |
 
 ---
 
 ## Verified-good (record for the rebuild — do not regress)
 
-- The **12 prior security findings** in `docs/hack-check.md` are all genuinely fixed on `dev` (invite org/role from session, staff same-org mutations, CSPRNG tokens, org-code rate-limit, auditor download isolation).
+- The **12 prior security findings** in `docs/local/hack-check.md` (local-only, gitignored) are all genuinely fixed on `dev` (invite org/role from session, staff same-org mutations, CSPRNG tokens, org-code rate-limit, auditor download isolation).
 - **PHI currently routes only through BAA-eligible Vertex AI** (OAuth service account); the consumer Gemini SDK (`@google/generative-ai`, non-BAA endpoint) is a declared dependency but **unreferenced in `src/`**. Keep it that way.
 - **Parameterized SQL** everywhere (`$queryRaw`/`$executeRawUnsafe` all parameterized); **DOMPurify** on every `dangerouslySetInnerHTML` sink; **signed-URL** media proxies (no SSRF from user input); **Stripe signature verification**; secure cookie flags + separate admin/worker realms.
 - **Zero `console.*`** outside the logger; **`maskEmail`** helper exists; strong unit coverage of `lib/` pure logic (553 cases).

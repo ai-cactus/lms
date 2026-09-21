@@ -1,6 +1,6 @@
 ---
 name: archive-filter-and-raw-prisma
-description: Course/Document reads are archive-filtered by a client extension in db/index.ts; 7 named paths must use the un-extended rawPrisma, and NO nested position (where, include or select) is covered
+description: Course/Document reads are archive-filtered by a client extension in db/index.ts; 8 named files must use the un-extended rawPrisma, and NO nested position (where, include or select) is covered
 metadata:
   type: project
 ---
@@ -9,7 +9,7 @@ Since Phase 6 PR B (2026-09-16), deleting a course or a document **archives** it
 
 **The filter is a Prisma query extension in `db/index.ts`**, applied to `findFirst`, `findFirstOrThrow`, `findMany`, `findUnique`, `findUniqueOrThrow`, `count`, `aggregate`, `groupBy` on Course and Document. Deliberately **not** on writes — rerouting `.delete()` to an archive `.update()` would make the two archive writes' intent invisible at the call site. The merge helper is `db/archive-filter.ts` (pure, unit-tested; the `...args.where` spread is load-bearing — dropping it would discard every caller's tenancy predicate).
 
-**Seven files import `rawPrisma` and MUST keep doing so.** Each is guarded by a test that gives the two clients different spies, so a swap fails loudly rather than looking equivalent:
+**Eight files import `rawPrisma` and MUST keep doing so** (the seven below plus `src/lib/audit-reports/catalogue-scope.ts`, the shared auditor predicate — see [[gotcha_auditor_catalogue_lockstep]]). Each is guarded by a test that gives the two clients different spies, so a swap fails loudly rather than looking equivalent:
 - `src/lib/queue/video-sweep-worker.ts` — the storage reference set; filtered, the sweeper deletes an archived course's video.
 - `src/lib/queue/auditor-export-worker.ts` — 4 Course queries; filtered, the compliance export is silently incomplete.
 - `src/app/actions/auditor.ts` + `src/app/api/auditor/export/start/route.ts` — the auditor's ON-SCREEN catalogue, kept in step with the export above. These widen the Course ROW only; the `auditPack.*` gates, `orgCourseWhere` and every facility narrowing around them are untouched, and a test pins that a supervisor keeps facility scope on staff/enrollments/rollups.
@@ -30,7 +30,7 @@ The fix shape, in `src/lib/dashboard/scope.ts`, is TWO predicates and both are l
 
 Guard: parity Tier 1 now asserts `where.course` matches `{ archivedAt: null }` on EVERY captured enrollment predicate, which catches both a dropped bundle predicate and a shadowing call site. Behavioural coverage lives in `course.archive-visibility.test.ts`, whose harness was extended with an in-memory enrollment table joined to the course table on `courseId`.
 
-Still-open latent site found by the sweep: `listOfferedVideoCourses` (`src/app/actions/offering.ts` ~:247) filters `course: { status: 'published' }` with no archive predicate — but it has **zero callers** repo-wide (stale since the courses video/reading consolidation deleted the outer tabs), so it was left alone; it should be deleted, not patched.
+`listOfferedVideoCourses` (`offering.ts`), which the sweep found filtering `status: 'published'` with no archive predicate and zero callers, has since been deleted.
 
 **The extension cannot reach nested `include`/`select`** — mutating those changes the output type, which Prisma forbids. Every traversal into Course/Document from another model is to-one (`Enrollment.course`, `Certificate.course`, `CourseAssignment.course`, `CourseVersion.documentVersion.document`) where Prisma has no `where` anyway, and leaving archived rows visible there is the desired behaviour. The only to-many ones (`OrganizationUser.createdCourses` / `.documents`) are in the `/system` ops panel, which should see everything.
 

@@ -328,7 +328,7 @@ describe('DashboardPage — facility scope wiring', () => {
   it('renders the Global View with no comparison for an unscoped request', async () => {
     // The branch now decides from `listAccessibleFacilities`, not from what
     // `getGlobalDashboardData` reports — the two are the same call in
-    // production (see page.tsx:66-79), so a realistic fixture stubs both alike.
+    // production (see the Global View branch in page.tsx), so a realistic fixture stubs both alike.
     mockListAccessibleFacilities.mockResolvedValue([FACILITY_A, FACILITY_B]);
     mockGetGlobalDashboardData.mockResolvedValue({ facilities: [FACILITY_A, FACILITY_B] });
 
@@ -383,7 +383,7 @@ describe('DashboardPage — facility scope wiring', () => {
   // `compare` result always implies `accessibleFacilities.length >= 2`, and the
   // branch would always render the Global View. This version instead pins the
   // real mechanism: the branch decides from `listAccessibleFacilities` alone
-  // (page.tsx:79), never from `scope.facilities` or `getGlobalDashboardData`'s
+  // (the Global View branch in page.tsx), never from `scope.facilities` or `getGlobalDashboardData`'s
   // own result — so even a stale/inconsistent `compare` selection cannot force
   // the Global View once the accessible set has shrunk to one facility.
   it('falls back to the organisation dashboard once the accessible facility set is down to one, regardless of what the scope selection reports', async () => {
@@ -415,7 +415,7 @@ describe('DashboardPage — facility scope wiring', () => {
       expect(screen.queryByTestId('global-dashboard')).not.toBeInTheDocument();
       expect(screen.getByTestId('my-courses')).toBeInTheDocument();
       // Pins the wasted-work fix: ~17 aggregates used to be computed and
-      // discarded on every single-facility load (page.tsx:76-78).
+      // discarded on every single-facility load (see the Global View branch in page.tsx).
       expect(mockGetGlobalDashboardData).not.toHaveBeenCalled();
     });
 

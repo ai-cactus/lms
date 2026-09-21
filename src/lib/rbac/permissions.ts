@@ -1,11 +1,11 @@
 /**
  * Resource-Based RBAC — Permission & Role Registry
  * -------------------------------------------------------------------------
- * Theraptly uses a Dual-Layer Claims-Based architecture (see `rbac_spec.md`).
+ * Theraptly uses a Dual-Layer Claims-Based architecture.
  * This file defines the **System Role** layer: the O(1) permission dictionary
  * used for client-side UI visibility and server-side API route enforcement.
  *
- *   permissionsMatrix[user.systemRole].includes('billing.read')  // O(1)-ish check
+ *   can(roleKey, 'billing.read')  // O(1)-ish check
  *
  * Conventions
  *   - Permissions are flat `"<resource>.<action>"` strings.
@@ -19,13 +19,13 @@
  * Scope note
  *   These strings encode *what* action is allowed, not *whose* records.
  *   Row-level scope is enforced separately in the data layer. The tenancy
- *   hierarchy is Organisation → Facility (facilities are a planned sub-unit;
- *   the parent tenant may later be renamed). Scope tiers, widest first:
+ *   hierarchy is Organisation → Facility (the parent tenant may later be
+ *   renamed). Scope tiers, widest first:
  *       owner        — organisation-wide (every facility under the org)
- *       supervisor   — single facility only (full access minus billing)
+ *       supervisor   — assigned facilities only; read-only apart from
+ *                      assign/withdraw, certificate issue and audit packs; no billing
  *       hr/clinical_director/finance/worker — own records / functional area
- *   Where a role is limited in scope it is called out in its `description`
- *   and in the companion `RBAC-Roles-And-Permissions.docx` review document.
+ *   Where a role is limited in scope it is called out in its `description`.
  */
 
 export const RESOURCES = [
@@ -234,9 +234,9 @@ export const roles = {
       'auditPack.create',
       // Team QA 2026-08-25, section 3.1 and C8: "Facility supervisors should be
       // able to assign courses" / "they can assign existing courses to existing
-      // staff". Both verbs are required — the assign route and role-target path
-      // check `assignment.create` (enrollment.ts:520, staff.ts:662) while the
-      // enrolment itself checks `enrollment.create` (enrollment.ts:175).
+      // staff". Both verbs are required — the assign paths (`enrollUsers`,
+      // `assignCourseToRoleTargets`, `assignCoursesToStaffMember`) check
+      // `assignment.create`, while `assignRetake` checks `enrollment.create`.
       //
       // C8 is otherwise unchanged: no course.* or document.* write verbs, and
       // no user.create — a supervisor assigns EXISTING courses to EXISTING
@@ -411,8 +411,7 @@ export const roles = {
       // `course.read` REMOVED 2026-08-25 — team QA finding #9: "Finance is also
       // showing courses on the dashboard sidebar / Finance managers should not
       // be able to view courses from the admin side." Product decision recorded
-      // 2026-08-22 and the test catalog corrected
-      // (docs/qa-test-cases-08-20.md:1191-1194); the phase-8 report still reads
+      // 2026-08-22 and the test catalog corrected; the phase-8 report still reads
       // PASS on TC-FIN-003 criterion 9.9 and is stale on this point.
       //
       // The nav follows automatically: roles-matrix-config.ts:59 gates the

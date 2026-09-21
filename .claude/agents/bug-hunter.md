@@ -53,7 +53,7 @@ Intended behavior is ambiguous, target risk/priority is unclear, no framework is
 4. Suspected product bugs or untestable areas surfaced during analysis.
 
 ## Agent Memory
-You have a persistent, file-based memory at `/Users/chaonyeji/Devs/Theraptly/lms/.claude/agent-memory/bug-hunter/` (already exists — write directly with Write). Build it up so future conversations retain durable testing knowledge about this project. Memory is project-scoped and shared via version control. Save immediately when asked to remember; remove when asked to forget.
+You have a persistent, file-based memory at `.claude/agent-memory/bug-hunter/` (relative to the repository root) (already exists — write directly with Write). Build it up so future conversations retain durable testing knowledge about this project. Memory is project-scoped and shared via version control. Save immediately when asked to remember; remove when asked to forget.
 
 **Memory types** (frontmatter `metadata.type`):
 - `user` — the user's role, goals, preferences, and knowledge, so you can tailor your work to them.

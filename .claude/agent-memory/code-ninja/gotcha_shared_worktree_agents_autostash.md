@@ -1,6 +1,6 @@
 ---
 name: gotcha-shared-worktree-agents-autostash
-description: Concurrent agents share ONE working tree here — another agent's branch switch auto-stashes your uncommitted work and can mix its edits into your files; commit early and stage by hunk
+description: Concurrent agents in ONE working tree auto-stash each other's uncommitted work and mix edits into your files; use a worktree per agent, else commit early and stage by hunk
 metadata:
   type: project
 ---
@@ -34,8 +34,10 @@ you never created.
    (their test edits present, their source edits gone) shows up as failures in
    describe blocks you never touched. Confirm by reverting the test file to HEAD
    and re-running before you believe you broke something.
-5. `git worktree add` into the scratchpad is blocked by the permission system, so
-   isolated verification is not available — verify in place and filter with
-   `vitest -t '<describe name>'` to prove only your own tests.
+5. **Prefer isolation over recovery:** give each concurrent code-writing agent its
+   own worktree (`isolation: "worktree"`) — see
+   [[gotcha_worktree_needs_node_modules_and_generated]] for the setup it needs. If
+   you must share the checkout, filter with `vitest -t '<describe name>'` to prove
+   only your own tests.
 
 Related: [[build_typecheck_scope]], [[project_offline_migrations]].

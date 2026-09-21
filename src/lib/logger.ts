@@ -15,7 +15,7 @@ type LogLevel = 'info' | 'warn' | 'error' | 'debug';
  * Correlation-ID provider, registered at runtime by the Node-only request
  * context module (src/lib/request-context.ts) via setCorrelationIdProvider().
  *
- * The logger must stay usable in the browser and the Edge middleware runtime,
+ * The logger must stay usable in the browser and the Edge runtime,
  * neither of which can load `node:async_hooks`. Statically importing the
  * request-context module here would pull that Node builtin into client/edge
  * bundles and break the build, so we keep the logger dependency-free and let

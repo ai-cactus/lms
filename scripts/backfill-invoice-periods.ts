@@ -35,9 +35,8 @@ import { deriveInvoiceServicePeriod } from '@/lib/stripe-invoice-period';
 
 /**
  * Minimal .env loader (no deps) — fills process.env WITHOUT overwriting any
- * variable already present in the real environment. Mirrors the loader in
- * scripts/backfill-org-timezones.ts so `npx tsx scripts/backfill-invoice-periods.ts`
- * works standalone (the Prisma client reads DATABASE_URL lazily at query time,
+ * variable already present in the real environment, so
+ * `npx tsx scripts/backfill-invoice-periods.ts` works standalone (the Prisma client reads DATABASE_URL lazily at query time,
  * so loading env before main() runs is sufficient).
  */
 function loadEnvFile(file: string): boolean {

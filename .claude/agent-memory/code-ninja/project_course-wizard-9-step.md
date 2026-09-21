@@ -28,10 +28,10 @@ existing multi-module courses must keep rendering.
 Deliberate, not oversights:
 
 - `CourseAssignment.targetRole` is still written (= first role) alongside
-  `targetRoles`, because the nightly reminder sweep's role-target reconcile
-  pre-pass (`src/lib/reminders/sweep.ts`) reads the single column — **the sweep
-  therefore backstops only the FIRST targeted role; the live hook
-  `enrollUserForRoleTargets` covers all of them.** Migrating the sweep is open.
+  `targetRoles`. The nightly reminder sweep's role-target reconcile pre-pass
+  (`src/lib/reminders/sweep.ts`) now unions both columns and reconciles every
+  targeted role — see [[gotcha_targetroles_backfill_is_provable]] for why the OR
+  stays.
 - The wizard's "N days before" reminder rows are capped at 3 because they map
   onto the three worker-audience ladder stages (FRIENDLY_REMINDER /
   URGENT_REMINDER / DAY_OF_DEADLINE).
@@ -48,10 +48,11 @@ Deliberate, not oversights:
 Closed since: "Regenerate Quiz" now exists (`regenerateQuiz` in
 `src/app/actions/quiz-ai.ts`, own rate-limit budget `quiz-regenerate:`).
 
-Still open: **`docs/phi-redactor.md` is stale** — it documents
-`steps/Step2Documents.tsx`, `PhiErrorModal.tsx` and an `isScanningPhi` prop that
-no longer exist. It needs a rewrite against the current PHI flow, not a path
-swap. The generation step's subtitle also promises an email notification that
-does not exist (no generation-complete type in `src/lib/notifications/catalog.ts`).
+`docs/phi-redactor.md` was deleted 2026-09-21 as wholly stale; the authoritative
+PHI reference is `docs/analysis/DATA-CLASSIFICATION.md`.
+
+Still open: the generation step's subtitle promises an email notification that
+does not exist (no generation-complete type in `src/lib/notifications/catalog.ts`)
+— tracked as BUG-15 in `docs/local/OPEN-ISSUES.md`.
 
 See [[course-wizard-phi-attestation]] and [[local-ui-verification]].

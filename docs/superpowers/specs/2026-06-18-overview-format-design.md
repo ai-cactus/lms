@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-18
 **Branch:** `feat/overview-format`
-**Status:** Design approved, pending spec review
+**Status:** Implemented (`Course.overview`)
 
 ## Problem
 

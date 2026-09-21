@@ -19,9 +19,9 @@ Only `web` is reachable from the internet (through the ingress/WAF). `api`, `wor
 
 ## 2. Ingress & transport
 
-- **One consistent path:** ingress/WAF (Cloudflare **Enterprise with a BAA**, or an in-house LB with WAF) → `web`. Today the Cloudflare Tunnel routes straight to the app and bypasses nginx, and nginx's `server_name` doesn't match the prod host (F-043) — collapse to a single enforced ingress that applies body-size limits, timeouts, real-IP, and security headers.
+- **One consistent path:** ingress/WAF (Cloudflare **Enterprise with a BAA**, or an in-house LB with WAF) → `web`. Today the Cloudflare Tunnel routes straight to the app; nginx is not used (F-043 resolved by withdrawal, `deployment.md` §2.3). The target keeps a single enforced ingress that applies body-size limits, timeouts, real-IP, and security headers.
 - **TLS everywhere:** public TLS at the edge; **internal service-to-service TLS/mTLS** on the private network (today app→MinIO is `MINIO_USE_SSL:false`, app→Postgres/Redis are plaintext on the bridge — tolerable on one host, a §164.312(e) violation the moment services split across machines — F-025).
-- **Security headers** (missing today — F-019): CSP, `Strict-Transport-Security`, `X-Frame-Options: DENY`/`frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`. Set at the edge and/or `web` (helmet on `api`).
+- **Security headers** (shipped from `next.config.ts` since the 2026-07 audit — F-019; keep them in the target): CSP, `Strict-Transport-Security`, `X-Frame-Options: DENY`/`frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`. Set at the edge and/or `web` (helmet on `api`).
 - **Uploads bypass the app:** browser → signed URL → storage directly (avoids the Cloudflare 100 MB proxied-body cap vs the 500 MB app limit mismatch — F-cross).
 
 ## 3. Runtime services
@@ -73,9 +73,9 @@ Only `web` is reachable from the internet (through the ingress/WAF). `api`, `wor
 |-------|--------|
 | One Next.js process does web + API + workers + cron | Three services: `web` / `api` / `worker`; cron in `worker` |
 | Workers start on `/system` page-load | Workers always-on at service boot (F-005) |
-| Single VM, bind mounts, no backups | Managed/replicated stores, encrypted, backed up (F-004, F-025) |
+| Single VM, bind mounts, backups unconfirmed (OPEN-ISSUES RISK-08) | Managed/replicated stores, encrypted, backed up (F-004, F-025) |
 | ~~Two deploy systems (PM2 + Docker)~~ — PM2 removed 2026-08-10 | One, immutable tags, one-shot migrations (F-029) |
-| Tunnel bypasses nginx; hostname mismatch | Single enforced ingress with headers + limits (F-043, F-019) |
+| ~~Tunnel bypasses nginx~~ — nginx withdrawn 2026-08-10; the tunnel goes straight to the app | Single enforced ingress with headers + limits (F-043, F-019) |
 | Secrets as one base64 blob; some in VCS | Secrets manager + rotation; none in VCS (F-060) |
 | Gemini key in browser build | No `NEXT_PUBLIC_` secret ever (F-008) |
 | No monitoring/alerting/IR | APM + alerts + runbook |

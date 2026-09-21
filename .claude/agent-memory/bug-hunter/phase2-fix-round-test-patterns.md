@@ -1,6 +1,6 @@
 ---
 name: phase2-fix-round-test-patterns
-description: Test patterns, gotchas, and a real product bug found while testing Phase 2 (deadline-drop, role-target assignment, renewal re-trigger, ADMIN_PRE_DEADLINE_REMINDER, video mediaStatus, PHI attestation, quiz chunking) on branch fix/phase-02
+description: Test patterns, gotchas, and two product bugs (both since fixed) found while testing Phase 2 (deadline-drop, role-target assignment, renewal re-trigger, ADMIN_PRE_DEADLINE_REMINDER, video mediaStatus, PHI attestation, quiz chunking) on branch fix/phase-02
 metadata:
   type: project
 ---
@@ -82,25 +82,16 @@ NOT a balanced split — it's greedy `min(6, remaining)` per iteration, so
 `planQuizChunks(25) = [6,6,6,6,1]`, not `[6,6,6,7]` — verify the actual chunk
 plan before writing sub-batch-count assertions.
 
-## Product bug found (reported, not fixed)
+## Product bugs found — both since FIXED
 
-`src/app/dashboard/(main)/documents/[id]/page.tsx` line ~28 still gates the
-individual document VIEWER page on exact `doc.userId !== session.user.id`,
-never updated to org-wide scope. `getDocuments`/`renameDocument`/
-`deleteDocument` in `documents.ts` WERE correctly updated for the approved
-"Document Hub full parity" decision (`qa-reports/phase-2-fix-plan.md` line 5).
-Net effect: an org admin sees/renames/deletes another admin's doc from the
-LIST, but clicking into it to VIEW/preview 404s unless they're the uploader.
-Confirmed via `git log` — this file has zero commits on `fix/phase-02`. Fix
-direction: compare `doc.user.organizationId` to the caller's org (mirroring
-`deleteDocument`), gated by `isAdminRole`, not exact `userId`.
-
-Also documented (not fixed, low severity): `uploadDocument`'s server-side
-`.doc` guard is `ALLOWED_MIME.includes(file.type) || ALLOWED_EXT.test(name)` —
-an OR — so a `.doc` file with a spoofed `application/pdf` MIME type is
-admitted. See `documents.test.ts`'s "documents that a .doc file with a spoofed
-... MIME type is NOT blocked today" test, which pins current behavior with an
-explanatory comment rather than asserting it's correct.
+- **Doc viewer org-scope:** the viewer used to gate on exact `doc.userId`, so
+  another admin's document 404'd when opened from the list. It now lives at
+  `src/app/dashboard/(viewer)/documents/[id]/page.tsx` and gates on
+  `can(…,'document.read')` plus
+  `doc.organizationUser.organizationId === session.user.organizationId`.
+- **`.doc` spoofed-MIME:** `uploadDocument` used to accept extension OR MIME. It
+  now requires the extension AND a non-contradicting MIME. Test: `rejects a .doc
+  file with a spoofed application/pdf MIME type`.
 
 ## E2E seed fixture additions (prisma/seed.ts)
 

@@ -1,29 +1,26 @@
 ---
 name: phase5-platform-wide-patterns
-description: 2FA is email-OTP (not TOTP) with a critical double-challenge login bug; Help Center is explicit placeholder copy with no search; InactivityTimer mechanics and how to test it fast — from the 2026-07-17 LOCAL Phase 5 run
+description: 2FA is email-OTP (not TOTP); the 2026-07-17 MFA bugs and Help Center no-search are all FIXED; InactivityTimer mechanics and how to test it fast
 metadata:
   type: reference
 ---
 
-**Full report:** `qa-reports/phase5-platform-wide.md` (2026-07-17, LOCAL, branch `rbac`) — verdict FAIL overall (38/43 criteria passed; 2FA login flow and Help Center search are the blockers).
+**Full report:** `qa-reports/phase5-platform-wide.md` (2026-07-17, LOCAL, branch `rbac`) — verdict FAIL at the time (38/43). Both blockers, the 2FA login flow and Help Center search, have since been fixed.
 
-## 2FA is email-OTP, not TOTP — and login-time 2FA has a critical double-challenge bug
+## 2FA is email-OTP, not TOTP
 
-The app has a **complete, unused TOTP implementation** (`generateTotpSecret`/`verifyTotpCode` in `src/lib/mfa.ts`, using `otpauth`, RFC 6238) and a QR-code-ready `MfaSettings.tsx` component — but `MfaSettings.tsx` is **dead code, never imported anywhere**. The only reachable 2FA UI is `TwoFactorAuthTab.tsx` (Profile → "Two Factor Auth (2FA)" tab), which exclusively creates `mfa_factors` rows with `type: 'email'`: setup/disable both email a 6-digit code (subject "Your Theraptly LMS verification code", body has a `<div style="font-size:32px...">` block with the 6 digits — grab it from MailHog same as any other OTP). If a future story assumes TOTP/QR-code 2FA, correct it to email-OTP or flag the mismatch — don't silently reinterpret the story.
+The only reachable 2FA UI is the Profile 2FA tab. It creates `mfa_factors` rows with `type: 'email'`. Setup and disable both email a 6-digit code (subject "Your Theraptly LMS verification code"); grab it from MailHog like any other OTP. The dead TOTP `MfaSettings.tsx` component has been deleted. If a future story assumes TOTP/QR-code 2FA, correct it to email-OTP or flag the mismatch; don't silently reinterpret the story.
 
-**CRITICAL confirmed bug — every 2FA login currently costs the user TWO separate emailed codes, not one.** Login → password → redirected to `/mfa/verify?challenge=...` ("Two-Factor Authentication" heading) → enter correct code → API returns 200 → browser goes to `/dashboard` → **307-redirects to a second, different screen** `/verify-2fa?callbackUrl=%2Fdashboard` ("Verify it's you" heading, different copy) → must enter **another** freshly-emailed code before finally reaching the dashboard. Root cause: `src/proxy.ts` middleware gates on `token.mfaEnabled===true && token.mfaVerified!==true`; `/api/auth/mfa/verify/route.ts`'s attempt to re-encode the session JWT with `mfaVerified:true` doesn't reliably take effect before the next request, so the user falls into the legacy `/verify-2fa` flow (`src/app/actions/verify-mfa.ts` / `src/app/verify-2fa/page.tsx`) as a fallback. Confirmed via live network trace (`GET /dashboard → 307 → GET /verify-2fa`) and code read — not an environment artifact.
+**Every 2FA bug this run found is FIXED:**
+- **Double challenge:** the legacy `/verify-2fa` page and action are gone. An unverified MFA session now goes back to `/login` (`src/proxy.ts`).
+- **A wrong code burned the challenge:** `/api/auth/mfa/verify` now checks the code and stamps the session *before* `redeemMfaChallenge`.
+- **Duplicate OTP emails on page load:** `(auth)/mfa/verify/page.tsx` guards send-on-mount with `didSendRef`.
+- **Rate limit silently swallowed:** `/api/auth/mfa/send` now returns 429 with the error. `sendLoginMfaCode` still overwrites one `mfa_factors.secret` row per send, so when several emails are close together, only the latest one's code is valid.
+- **QA unblock, if the 3/15-min send limit is hit locally:** `docker exec lms-dev-redis redis-cli DEL "mfa-send:<userId>"`.
 
-**Companion bug — one wrong code on `/mfa/verify` permanently burns the login attempt.** `src/app/api/auth/mfa/verify/route.ts` calls `redeemMfaChallenge(challenge)` (single-use, deletes the Redis challenge) **before** validating the code. A wrong guess deletes the challenge regardless of correctness, so the very next attempt — even with the right code — fails "Invalid or expired challenge," forcing a full restart from `/login`. Test methodology implication: **never interleave a deliberate wrong-code test with the "correct code succeeds" test on the same challenge** — do them as two separate login attempts, or you'll burn your own test run chasing a false "can't reach dashboard" symptom.
+## Help Center (`/dashboard/help`)
 
-**Companion bug — intermittent duplicate OTP emails on `/mfa/verify`/`/verify-2fa` page load, silently invalidating the first.** No idempotency guard (`useRef`) around the send-on-mount effect; under Next dev (React StrictMode double-invoke is the leading suspect, unconfirmed against production build) two emails with different codes can arrive within milliseconds. `sendLoginMfaCode` (`src/app/actions/mfa.ts`) **overwrites the same `mfa_factors.secret` row on every send**, so only the LATEST email's code is valid — always use the most-recently-created MailHog message for this account/subject when multiple candidates exist near the same timestamp, check the `Created` field to the millisecond.
-
-**Companion bug — the per-user MFA send-rate-limit (3/15min) failure is silently swallowed.** `/api/auth/mfa/send/route.ts` never inspects `sendLoginMfaCode`'s return value; if the limit is hit it still responds `200 {success:true}`, so the client shows "we sent a code" with nothing actually sent, no visible error. Given the duplicate-send bug above, the 3-attempt budget can be exhausted by just 1-2 page loads. **QA workaround used to unblock testing:** `docker exec lms-dev-redis redis-cli DEL "mfa-send:<userId>"` — legitimate, scoped, self-service (analogous to using MailHog instead of real email); the key has a ~15min natural TTL if you'd rather just wait.
-
-## Help Center (`/dashboard/help`) has zero search and explicit placeholder copy
-
-`src/components/help/HelpCenterContent.tsx` is a static "Contact Support" card + a hard-coded 5-entry `<details>` FAQ accordion — **no search input, no filter logic of any kind** exists on the page at all. The component's own source comment: `// PLACEHOLDER copy — final product FAQ wording is pending from the product team.` All 5 FAQ entries are worker/learner-scoped (starting a training, certificates, failing a quiz, password reset, updating profile) despite the page being reached from the admin/owner sidebar's SETTINGS section — no owner-relevant content at all. If a future story tests "Help Center search," expect an automatic BLOCKED/FAIL until this ships — there's nothing to search yet.
-
-**UPDATE 2026-07-27 (staging, fix commit `0bcebc3`) — FIXED and re-verified live.** `HelpCenterContent.tsx` now has a client-side `searchbox` ("Search help articles…") that filters the same 5 FAQ entries by question/answer substring match, plus a proper "No results found" empty state when nothing matches. Also in the same commit: the OTP email's "Code expires in X minutes" copy is now derived from `OTP_EXPIRY_MINUTES` (`src/lib/mfa.ts`) instead of a hardcoded "15 minutes" — live-confirmed a real OTP email now reads "10 minutes", matching actual server enforcement.
+Fixed 2026-07-27 (`0bcebc3`). `HelpCenterContent.tsx` has a client-side searchbox ("Search help articles…") that filters the FAQ entries, with a "No results found" empty state. The FAQ copy is still flagged in source as placeholder and is learner-scoped. The OTP email's expiry copy is derived from `OTP_EXPIRY_MINUTES`.
 
 ## InactivityTimer (client-side session-timeout) — mechanics + fast test recipe
 
@@ -31,4 +28,4 @@ The app has a **complete, unused TOTP implementation** (`generateTotpSecret`/`ve
 
 **To test this fast:** ask the orchestrator to set `INACTIVITY_TIMEOUT_MINUTES` + `NEXT_PUBLIC_INACTIVITY_TIMEOUT_MINUTES` to ~3 and restart the dev server (qa-mafia should never change env/config itself). At 3 min: warning appears ~60s idle (countdown starts at "2:00"), expiry+redirect at exactly 180s idle. **Do the whole wait inside ONE synchronous `playwright-cli run-code` script** (`page.waitForSelector('text=Session Expiring Soon', {timeout:...})` then `page.waitForURL('**/login**', {timeout:...})`) rather than a backgrounded shell `sleep` — see [[long-wait-tests-must-stay-synchronous]] for why. For the "activity resets the timer" case, dispatch a real harmless keypress (e.g. `page.keyboard.press('Shift')`) every ~45s in a loop inside the same script — `waitForTimeout` alone does NOT count as activity since it doesn't dispatch a DOM event the listener sees.
 
-See also [[local-dev-env-access]] for the general MailHog/DB access pattern, [[rbac-role-grant-matrix]] for the Settings owner-only gate (still accurate), [[lms-v2-signup-onboarding-settings-flow]] for the onboarding wizard needed to reach a usable Settings/Profile page.
+See also [[local-dev-env-setup]] for the general MailHog/DB access pattern, [[lms-v2-signup-onboarding-settings-flow]] for the Settings gate (`organization.edit` — Owner/Admin/HR), [[lms-v2-signup-onboarding-settings-flow]] for the onboarding wizard needed to reach a usable Settings/Profile page.

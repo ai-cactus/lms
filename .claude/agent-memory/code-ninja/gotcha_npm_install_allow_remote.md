@@ -1,16 +1,29 @@
 ---
 name: npm-install-allow-remote
-description: Fresh `npm install` fails with EALLOWREMOTE on npm 12 because 293 lockfile entries resolve to registry.npmmirror.com; use --allow-remote=all.
+description: npm 12 refuses 'remote' tarballs by default; the npmmirror lockfile URLs are gone, but the xlsx CDN tarball dep likely still needs --allow-remote=all
 metadata:
   type: project
 ---
 
-A fresh `npm install` in this repo fails on npm 12+ with `npm error code EALLOWREMOTE / Refusing to fetch "zod-validation-error@https://registry.npmmirror.com/..."`. Work around it with `npm install --allow-remote=all` (also needed for `npm update`).
+npm 12+ defaults to `allow-remote=none` and aborts an install with
+`npm error code EALLOWREMOTE / Refusing to fetch …` when a dependency resolves to
+a non-registry URL.
 
-**Why:** `package-lock.json` carries ~293 `resolved` URLs pointing at `registry.npmmirror.com` (a China mirror, left over from a past contributor's environment). npm's `replace-registry-host=npmjs` doesn't recognise that host, so npm classifies those tarballs as "remote" type, and npm 12 refuses remote fetches by default (`allow-remote=none`). Most entries survive from cache; the first uncached one aborts the install. Separately, `xlsx` is a genuinely remote dep (`https://cdn.sheetjs.com/...tgz`) declared in `package.json`.
+**History:** `package-lock.json` used to carry ~293 `resolved` URLs pointing at
+`registry.npmmirror.com`, which npm classified as remote. Those were repointed to
+`registry.npmjs.org` in `4213cf43` (`grep -c npmmirror package-lock.json` → 0).
 
-**How to apply:** Always pass `--allow-remote=all` when installing/updating in a clean checkout or worktree. It does not dirty the lockfile — verified that install with the flag leaves `package-lock.json` byte-identical. CI is unaffected: the audit workflows never install, and other jobs run on node 24's bundled npm 11, which has no such gate. If someone ever normalises those URLs to `registry.npmjs.org`, the flag becomes unnecessary (integrity hashes are identical, since npmmirror serves the same tarballs).
+**What remains:** `xlsx` is a genuinely remote dependency declared in
+`package.json` (`https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz`), so a clean
+`npm install` / `npm update` on npm 12 very likely still needs
+`--allow-remote=all`. Not re-tested since the lockfile cleanup — if a plain
+install succeeds, this note can go. The flag does not dirty the lockfile. CI is
+unaffected: other jobs run on node 24's bundled npm 11, which has no such gate.
 
-**Also:** npm 12 blocks install scripts for 8 packages (`@prisma/engines`, `esbuild`, `prisma`, `unrs-resolver`, `core-js`, `fsevents`, `msgpackr-extract`) because there is **no** `allowScripts` field in `package.json`. This is harmless — `prisma generate`, `npm test` and `npm run build` all work without them, so don't add an allowlist to silence the warning.
+**Also:** npm 12 blocks install scripts for several packages (`@prisma/engines`,
+`esbuild`, `prisma`, `unrs-resolver`, `core-js`, `fsevents`, `msgpackr-extract`)
+because there is **no** `allowScripts` field in `package.json`. This is harmless —
+`prisma generate`, `npm test` and `npm run build` all work without them, so don't
+add an allowlist to silence the warning.
 
 See [[offline-migrations]] for the related dev-DB connectivity gotcha.

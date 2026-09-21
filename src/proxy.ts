@@ -57,8 +57,9 @@ function getContext(pathname: string): 'worker' | 'admin' | null {
  * by default, and opening it is a visible, reviewable edit to this file.
  *
  * SCOPE — this layer does authN only. Roles, org scoping, enrollment and MFA
- * step-up stay in the handlers: the Edge runtime cannot reach Prisma, and those
- * checks need the database. This does not replace `guardApiSession`; it means a
+ * step-up stay in the handlers. That is a deliberate choice: those checks need
+ * the database, and running them here would add a database round-trip to every
+ * matched request. This does not replace `guardApiSession`; it means a
  * forgotten one is no longer an unauthenticated hole.
  */
 
@@ -79,9 +80,8 @@ const PUBLIC_API_ROUTES: readonly string[] = [
  *
  * `/api/system/**` uses the HMAC `system_admin_auth` cookie
  * (src/lib/system-auth.ts), verified inside each handler. Enforcing it here would
- * mean re-implementing that HMAC with Web Crypto, since the Edge runtime has no
- * `node:crypto` — duplicated security logic in two places, which is worse than
- * this exemption. Unifying the two mechanisms is §4.4 of
+ * mean verifying that HMAC a second time in this file — duplicated security
+ * logic in two places, which is worse than this exemption. Unifying the two mechanisms is §4.4 of
  * docs/rebuild/09-PLATFORM-ADMIN-SPEC.md.
  */
 const SELF_AUTHENTICATED_API_PREFIXES: readonly string[] = ['/api/system/'];
@@ -138,9 +138,9 @@ export async function proxy(req: NextRequest) {
   // it on the request (to downstream handlers) and the response (to clients and
   // log pipelines).
   //
-  // NOTE: the middleware runs on the Edge runtime, which cannot load
-  // `node:async_hooks`, so we do NOT bind an AsyncLocalStorage scope here — we
-  // only propagate the ID via headers. Node-runtime code that wants all its
+  // NOTE: by deliberate choice we do NOT bind an AsyncLocalStorage scope here
+  // (the Next 16 proxy runs on the Node.js runtime, so this is not a platform
+  // limit) — we only propagate the ID via headers. Node-runtime code that wants all its
   // logs stamped with this ID can read the x-correlation-id header and wrap its
   // work in runWithCorrelationId() (e.g. background jobs).
   //

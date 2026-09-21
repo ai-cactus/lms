@@ -727,7 +727,7 @@ export async function getCourseAssignmentSettings(
     return null;
   }
 
-  // Narrowed to the caller's facilities for the same reason listRoleAssignments
+  // Narrowed to the caller's facilities for the same reason getRoleHolderCounts
   // narrows it: the row is org-level configuration, but "how many people did this
   // enrol" is subject data.
   const dataFacilityIds = await resolveDataFacilityIds(session);

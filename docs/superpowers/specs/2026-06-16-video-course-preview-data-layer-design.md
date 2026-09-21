@@ -1,7 +1,9 @@
 # Video Course Flow — Data Layer Design
 
 **Date:** 2026-06-16
-**Branch:** `feat/video-course-designs`
+**Branch:** `feat/video-course-designs` · **Status:** Implemented, then partly reversed (see banner)
+
+> **Adoption retired 2026-08-10.** The "shared offering" adoption model (§3 — `offerCourseToOrg` creating an `OrgCourseOffering`) and the org-facing "Choose a Prebuilt Course" flow were removed by the 2026-08-10 video-course ruling; global video courses are assigned directly and `OrgCourseOffering` is no longer populated. See OPEN-ISSUES Q-09 and BUG-01 (`docs/local/OPEN-ISSUES.md`).
 **Scope:** Data layer for the full prebuilt-video-course flow (Prisma schema + migration + types + read/write data functions) **plus the system back-office upload interface** (§9.1) so every required video-course field is captured. All *org-facing* visual/UI work (preview page, learn page, assign screen, listings) is a later phase. We lock the schema once here so the design phases that follow don't trigger repeat migrations.
 
 ---

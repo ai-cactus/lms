@@ -5,7 +5,9 @@ metadata:
   type: reference
 ---
 
-**Route:** `/dashboard/courses` (admin), component `src/components/dashboard/courses/CoursesListClient.tsx`. This superseded the older "My Courses" / "Available Video Courses" tab UI referenced in [[courses-billing-gate]] — that memory's *UI shape* details (tab names, "Slides" label) are stale; its billing-gate mechanics may still be relevant but were not re-verified this run (both seeded QA orgs already had active paid plans, so the paywall didn't fire).
+**Route:** `/dashboard/courses` (admin), component `src/components/dashboard/courses/CoursesListClient.tsx`. This superseded the older "My Courses" / "Available Video Courses" tab UI.
+
+**Billing gate:** custom course creation is billing-gated for every role (no free tier). An org with no active plan gets a blocking "A plan is required…" dialog. The video catalog is billing-gated too (`listGlobalVideoCatalogCourses` checks `hasActiveBilling`). Use a subscribed fixture org; current credentials: see [[staging-two-facility-fixture-recipe]].
 
 **Tabs:** exactly `Video` and `Reading Course`, each with a `rounded-full` count badge. Active tab: `border-primary`/`text-primary`; inactive: `text-[#5d5d5d]`. Switching tabs resets pagination to page 1 (verified: page-2 state does not survive a tab round-trip, even switching back to the same tab).
 
@@ -23,4 +25,4 @@ metadata:
 
 **Minor recurring a11y gap:** the Rename dialog (and likely other dialogs app-wide, per prior QA memory) fires a Radix `Missing Description or aria-describedby for DialogContent` console warning — cosmetic/non-blocking, not a functional defect.
 
-**Seeded QA fixtures (2026-08, `scripts/seed-qa-orgs.ts`, idempotent):** `qa.admin@paginationqa.test` / `QaPagination123!` — org "QA Pagination Org" (enterprise plan), 6 video + 16 reading courses, 32 staff, good for pagination/search/menu-variety testing. `qa.admin@emptyqa.test` / `QaEmptyOrg123!` — org "QA Empty Org" (starter plan), 0 courses, admin only — good for the fully-empty-state case. Both orgs already have active paid subscriptions, so [[courses-billing-gate]]'s paywall did not block "Create your first course" navigation from either account.
+**Seeded QA fixtures (2026-08, `scripts/seed-qa-orgs.ts`, idempotent):** `qa.admin@paginationqa.test` — org "QA Pagination Org" (enterprise plan), 6 video + 16 reading courses, 32 staff, good for pagination/search/menu-variety testing. `qa.admin@emptyqa.test` — org "QA Empty Org" (starter plan), 0 courses, admin only — good for the fully-empty-state case. Passwords are the `*_ADMIN_PASSWORD` constants in `scripts/seed-qa-orgs.ts`. Both orgs already have active paid subscriptions, so the course-creation paywall did not block "Create your first course" navigation from either account.

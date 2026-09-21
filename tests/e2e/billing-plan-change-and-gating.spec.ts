@@ -668,9 +668,9 @@ async function setSubscriptionSchedule(
 /**
  * "Your subscription is paused" genuinely renders in THREE places at once on
  * `/dashboard/billing?tab=subscription`: the site-wide BillingPausedBanner
- * (layout-level, `src/components/billing/BillingPausedBanner.tsx:63`), the
- * Subscription tab's own status card (`SubscriptionTab.tsx:779`), and — were
- * it mounted — OverviewTab's copy (`OverviewTab.tsx:310`, not mounted here
+ * (layout-level, `src/components/billing/BillingPausedBanner.tsx`), the
+ * Subscription tab's own status card (`SubscriptionTab.tsx`), and — were
+ * it mounted — OverviewTab's copy (`OverviewTab.tsx`, not mounted here
  * since only one tab renders at a time). A bare `getByText` is a genuine
  * Playwright strict-mode violation, not a rendering bug — `.first()`/`.last()`
  * would silently stop checking the region that actually matters.

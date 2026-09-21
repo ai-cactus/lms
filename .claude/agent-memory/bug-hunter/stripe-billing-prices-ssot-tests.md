@@ -37,20 +37,12 @@ the *type* from `billing-prices.ts`, like `SubscriptionTab.tsx` /
 `BillingPage.tsx`) never triggers the `server-only` runtime import. No mocking
 needed for those.
 
-**This sandbox has no real Stripe test-mode credentials.** `.env` ships all
-`STRIPE_STARTER_*_PRICE_ID` / `STRIPE_GROWTH_*_PRICE_ID` / `STRIPE_PRO_*_PRICE_ID`
-vars as empty strings (as of the 2026-07-28 4-tier rename, `STRIPE_PROFESSIONAL_*`
-no longer exists — `professional` was renamed to `growth` and a new `pro` tier
-was inserted between `growth` and `enterprise`; see
-[[billing-4tier-rename-test-updates]]); `.env.local` has a `STRIPE_SECRET_KEY`
-that is a short placeholder
-(`sk_test_` + ~14 chars, not a real ~100+ char key). Consequence: the real
-(unmocked) `fetchPlanPricesUncached()` running against the live dev server
-always returns an all-empty `PlanPriceMap` — every plan card renders "Price
-unavailable" for real, with no Stripe network calls actually succeeding
-(price ids are empty/falsy so `if (priceId)` skips job creation entirely — no
-jobs, no calls, no errors logged). This makes any e2e assertion of a specific
-Stripe-derived dollar amount meaningless locally.
+**Stripe credentials vary by session.** As of 2026-09-21, `.env` has a full `sk_test_`
+key set and every `STRIPE_{STARTER,GROWTH,PRO}_*_PRICE_ID` set, so the price assertion
+RUNS instead of self-skipping. (`STRIPE_PROFESSIONAL_*` no longer exists: see
+[[billing-4tier-rename-test-updates]].) When the price IDs are empty, the real
+`fetchPlanPricesUncached()` returns an all-empty `PlanPriceMap`, every plan card shows
+"Price unavailable", and no Stripe calls are made. Keep using the `isReal*` guards below.
 
 **E2E self-skip pattern for env-gated Stripe assertions.** Rather than
 hardcoding an expected price or skipping the whole spec, the new

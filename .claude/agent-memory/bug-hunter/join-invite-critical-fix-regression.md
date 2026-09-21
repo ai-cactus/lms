@@ -12,8 +12,8 @@ Verified 2026-07-06 on branch `rbac`, 937/937 vitest green (up from baseline 913
 **`can(role, permission)` in `src/lib/rbac/permissions.ts` does NOT throw for an unrecognized/undefined role** — it does `const entry = roles[role as RoleKey]; if (!entry) return false;`. This supersedes the throw-risk noted in [[rbac-8-worker-role-split]] for this specific `can()` call site (that memory's throw concern was about `roles[undefined].permissions` with no guard — a guard has since been added here). Still worth re-checking `authorize.ts`'s own handling before assuming it's fully hardened everywhere; this note only covers `permissions.ts`'s `can()`.
 
 **Permission facts used to build the RBAC UI-gate test fixtures this session** (`src/lib/rbac/permissions.ts`):
-- `invite.create`: owner, supervisor, hr → yes. finance, clinical_director, all 8 worker roles → no.
-- `billing.read`: owner, finance → yes. supervisor (gets `everythingExceptBilling`), hr, clinical_director, all worker roles → no.
+- `invite.create`: owner, admin, hr → yes. supervisor (read-only since the 2026-09 RBAC directive), finance, clinical_director, all 8 worker roles → no.
+- `billing.read`: owner, admin, finance → yes. supervisor (gets `readEverythingExceptBilling`), hr, clinical_director, all worker roles → no.
 
 **New test files added this session** (all new, no prior coverage existed for these components):
 - `src/app/api/invite/accept/route.test.ts` — first test for this route. Regression-guards missing/blank token (4xx, no DB query), unknown/expired token (400, no account), and valid token creating the account under exactly that invite's `organizationId`/`role` (asserted via `toHaveBeenCalledExactlyOnceWith`, not just `objectContaining`, on the `user.create` call... actually used `objectContaining` for `user.create` data since `profile.create` nested object isn't the focus, but exact-match on `invite.findUnique`/`invite.update` args).

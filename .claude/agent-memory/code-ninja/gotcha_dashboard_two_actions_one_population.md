@@ -24,8 +24,8 @@ to one author's courses for any non-manager caller — keep it per-aggregate.
   `organizationUser: { organizationId }`. `OrgCourseOffering` links a course to
   ANY organisation, so a course-only predicate counts another tenant's learners
   on an adopted course. The failure mode is a bigger, plausible-looking number.
-- `getCourses`' own `ownCounts` groupBy (`course.ts`, `where: { course:
-  authoredWhere, ... }`) still lacks that pin — known, deliberately unfixed.
+- `getCourses`' own `ownCounts` groupBy (`course.ts`) now carries that pin too
+  (`organizationUser: { organizationId }` beside `course: authoredWhere`) — keep it.
 - `GlobalDashboardData.organisationTotals` is not rendered; it exists so
   cross-action parity is testable at all (the two views share no visible number).
 

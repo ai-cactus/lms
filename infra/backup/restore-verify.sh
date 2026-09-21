@@ -200,5 +200,5 @@ echo
 log "───────────────────────────────────────────────"
 log "RESTORE VERIFIED — RTO (restore only): ${ELAPSED}s"
 log "Source: ${OBJECT}"
-log "Record this figure and the date in docs/local/RUNBOOK.md item 9."
+log "Record this figure and the date in docs/security-infra-runbook.md §3."
 log "───────────────────────────────────────────────"

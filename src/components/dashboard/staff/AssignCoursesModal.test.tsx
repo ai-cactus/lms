@@ -9,9 +9,9 @@
  * (newly created enrollments) rather than the number of rows ticked.
  *
  * The flow posts to `assignCoursesToStaffMember` (src/app/actions/staff.ts) —
- * the action that also emails and notifies the member. Wiring it to
- * `assignCoursesToUser` instead is the regression these tests now guard: that
- * action writes enrollments silently, and because the modal ignored the
+ * the action that also emails and notifies the member. The modal was once wired
+ * to the since-removed `assignCoursesToUser`, which wrote enrollments silently —
+ * the regression these tests now guard — and because the modal ignored the
  * announcement outcome entirely, nothing surfaced it. Hence the coverage of the
  * `emailSent: false` warning below.
  */

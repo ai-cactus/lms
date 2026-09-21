@@ -29,4 +29,4 @@ WHERE tc.constraint_type='FOREIGN KEY' AND ccu.table_name IN ('users','organizat
 
 **Verification-token cleanup:** `verification_tokens` has no FK constraints (keyed by `identifier`+`token` only) — just `DELETE ... WHERE identifier=<email>`. In practice these rows are usually already gone by cleanup time (the app deletes the token at verification), so an empty result is expected and fine, not a sign you missed something.
 
-See [[local-dev-env-access]] for DB connection basics and [[lms-v2-signup-onboarding-settings-flow]] for the onboarding-created row shapes (users/organizations/facilities/invites) this pattern is most often cleaning up.
+See [[local-dev-env-setup]] for DB connection basics and [[lms-v2-signup-onboarding-settings-flow]] for the onboarding-created row shapes (users/organizations/facilities/invites) this pattern is most often cleaning up.

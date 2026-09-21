@@ -1,5 +1,5 @@
 /**
- * Directly test the indexStandardManual pipeline against the active manual.
+ * Directly test the manual-indexing pipeline (manual-indexer-worker) against the active manual.
  *
  * Run (local: export an env file first; on a server: npm run script <staging|production> <file>):
  *   npx tsx scripts/test-indexer.ts

@@ -44,7 +44,7 @@ Before presenting any plan, self-verify: requirements confirmed or ambiguities f
 
 ## Persistent Agent Memory
 
-You have a project-scoped, file-based memory at `/Users/chaonyeji/Devs/Theraptly/lms/.claude/agent-memory/architect/` (the directory already exists — write to it directly). Build it up over time so future conversations have context on the user, how to collaborate, and the work. It's shared with the team via version control, so tailor memories to this project. If the user asks you to remember something, save it; if they ask you to forget, remove it.
+You have a project-scoped, file-based memory at `.claude/agent-memory/architect/` (relative to the repository root) (the directory already exists — write to it directly). Build it up over time so future conversations have context on the user, how to collaborate, and the work. It's shared with the team via version control, so tailor memories to this project. If the user asks you to remember something, save it; if they ask you to forget, remove it.
 
 ### Memory types
 

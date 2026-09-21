@@ -1,6 +1,6 @@
 ---
 name: quiz-attempt-route-tests
-description: F-031 quiz start/save/submit route test suite — append-history tx-mock pattern, boundary-score generation, and a flagged allowedAttempts null inconsistency
+description: F-031 quiz start/save/submit route test suite — append-history tx-mock pattern, boundary-score generation, and the allowedAttempts null inconsistency (since fixed)
 metadata:
   type: project
 ---
@@ -54,21 +54,11 @@ mfaEnabled, mfaVerified } }` session objects directly (via the mocked
 simpler and also verifies the guard wiring itself, not just that a mocked
 gate returns null.
 
-## Suspected product bug (reported, not fixed): allowedAttempts null-handling inconsistency
+## allowedAttempts null-handling — FIXED (a9e183fe, 2026-07-05)
 
-`quiz.allowedAttempts` is `Int?` (nullable, DB default 1) in `prisma/quiz.prisma`.
-The two routes treat an explicit `null` differently:
-- `start/route.ts`: `const allowedAttempts = quiz?.allowedAttempts ?? 1;` —
-  null coerces to a limit of 1.
-- `submit/route.ts`: `if (quiz.allowedAttempts && completedCount >=
-  quiz.allowedAttempts)` — null (or 0) is falsy, so the limit check is
-  skipped entirely (unlimited attempts).
-If a quiz's `allowedAttempts` is ever explicitly `null` (not just left at
-the DB default), `/start` would block after 1 completed attempt while
-`/submit`, if reached directly, would allow unlimited submissions. Low
-likelihood in normal flow (admin UI likely always sets an integer) but
-worth a follow-up decision on canonical null-handling. Not fixed here per
-"do not modify product code."
+`quiz.allowedAttempts` is `Int?`. `start` used to coerce null to 1 while
+`submit` treated null as unlimited. Both now treat null/0 as unlimited:
+`if (quiz?.allowedAttempts && completedCount >= quiz.allowedAttempts)`.
 
 ## Verification technique
 

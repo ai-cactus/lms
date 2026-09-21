@@ -71,7 +71,7 @@ describe('can() — supervisor (demoted to read-only + self-service)', () => {
     'notification.create',
     'notification.edit',
     'notification.delete',
-    // The one write verb a supervisor holds. Added 2026-08-24 for team QA
+    // One of the few write verbs a supervisor holds. Added 2026-08-24 for team QA
     // finding #17: "when downloading an audit report for courses, all courses
     // are listed, but the data in the export should be limited to the facility"
     // — the team asked for the DATA to be scoped, not the capability removed,
@@ -114,10 +114,6 @@ describe('can() — supervisor (demoted to read-only + self-service)', () => {
     expect(can('supervisor', 'billing.delete')).toBe(false);
   });
   it('supervisor is denied billing.read', () => {
-    // SUSPECTED BUG (left failing intentionally, see report): the ruling says
-    // supervisor gets "no billing", but `readEverything` in permissions.ts
-    // grants `billing.read` to every read-only role including supervisor.
-    // Not silently updated to match observed behavior.
     expect(can('supervisor', 'billing.read')).toBe(false);
   });
   it('supervisor is denied facility.edit (full facility CRUD is now owner/admin-only)', () => {

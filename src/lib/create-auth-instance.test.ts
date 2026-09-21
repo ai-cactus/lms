@@ -233,7 +233,7 @@ describe('least-privilege regression guard: worker instance authorize()', () => 
 /**
  * Admin-role intended-behavior flip: the pre-refactor JWT re-validation guard
  * that force-invalidated any session carrying the RETIRED legacy `admin` role
- * has been REMOVED per docs/multi-org-schema-upgrade-plan.md Decisions §8 —
+ * has been REMOVED by the multi-org schema upgrade —
  * `admin` re-enters the `UserRole` enum as a full, non-retired, Owner-equivalent
  * role. There was no test in this file's prior version literally asserting the
  * old kill-switch (it predates this file), but the behavior it would have

@@ -1,7 +1,7 @@
 # Figma v3 (LMS V3, August '26) — Multi-Facility Design Reconciliation
 
 Source: Figma file `THERAPTLY` (`cySAabdYLDKzwbs88owBHn`), page **🧩 LMS V3 (August '26)** (`15038:76076`).
-Reconciled against: current implementation on branch `multi-facility`, and `docs/multi-org-schema-upgrade-plan.md`.
+Reconciled against: the implementation on branch `multi-facility` as of 2026-08-03/06 (since merged into `dev`), and `multi-org-schema-upgrade-plan.md` — a local plan that was never committed and is no longer available; §3 records what it said.
 
 ## 1. What the v3 design introduces
 
@@ -298,6 +298,8 @@ Three `Dashboard - Global View` frames replace the earlier ADMINS sketches:
   surface.
 
 ### 4.5 Course creation: prebuilt catalog step (`15203:110598`)
+
+> **Retired 2026-08-10.** The video-course ruling removed org adoption of prebuilt courses (prebuilt = global video courses, assigned directly; no adoption step). Do not build against this frame. See OPEN-ISSUES Q-09.
 
 Full-page "Choose a Prebuilt Course on Theraptly" (search + catalog table: HIPAA
 Compliance, Data Privacy & Security, Infection Control, Patient Rights; Time App.;

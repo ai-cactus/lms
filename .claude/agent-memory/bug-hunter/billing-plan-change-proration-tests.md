@@ -25,14 +25,10 @@ in the route at all. Don't infer "still current" from a small `git diff` on a te
 always diff the test's assertions against the CURRENT route/component body when the file under
 test changed significantly, regardless of how small the test file's own working-tree diff looks.
 
-**`isLessThanOneMonthRemaining`'s `setMonth` calendar-month arithmetic has the same
-month-length-overflow quirk as `pauseEndDate()` (see [[reminders-test-patterns]]'s DST/midnight
-note).** `new Date(2026-03-31).setMonth(1)` (target: February) overflows the nonexistent Feb 31
-forward into March, landing on **Mar 3** (2026 is not a leap year → Feb has 28 days), not the
-naively-expected Feb 28. Pinned as a documented-behavior test rather than treated as a bug —
-consistent with the codebase's own comment ("consistent with `pauseEndDate()` in billing.ts").
-Any future `now`/period-end boundary math test in this codebase should check for this overflow
-pattern near month-end dates.
+**(Historical) `isLessThanOneMonthRemaining` was removed** when the 2026-08-27 policy made every
+upgrade `immediate_prorate`. The `setMonth` month-end overflow quirk (Mar 31 → "Feb 31" rolls to
+Mar 3) still matters for `pauseEndDate()` and the test helper `periodEndFor`. Check for it in any
+boundary test near a month end (see [[reminders-test-patterns]]).
 
 **Product-level UI coverage gap (reported, not fixed — code-ninja's call):** in
 `SubscriptionTab.tsx`, a plan card's Subscribe button is disabled whenever
@@ -54,7 +50,7 @@ concluded that pattern was "fixed"). It flaked in a full-spec run but passed rel
 isolation and on retries — looks like `next dev` compile/HMR background activity, not a logic
 bug (this session did not modify product code to chase it). Because the exact same
 navigation-timing mechanics are already covered by the existing "Defect C" resume e2e test in
-`billing-plan-change-and-gating.spec.ex`, the new scheduled-banner e2e test deliberately does
+`billing-plan-change-and-gating.spec.ts`, the new scheduled-banner e2e test deliberately does
 **not** re-assert the final `?tab=overview` URL — it stops at "the cancel-scheduled-change fetch
 fired and no inline error appeared," to avoid duplicating flake-prone coverage of a mechanism
 that's already pinned elsewhere.
@@ -74,27 +70,11 @@ claimed regression against the actual mock boundary before assuming a fix is nee
 See also [[billing-phase4-defect-tests]], [[project-billing-defect-c-resolved]], and
 [[stripe-billing-prices-ssot-tests]] for the surrounding Phase-4 billing test history.
 
-**2026-07-17 follow-up — cycle-consistency invariant bug in the original test file, now fixed.**
-A live QA run found the original `classifyPlanChange` upgrade tests asserted `immediate_prorate`
-using a `currentPeriodEnd` picked independently of `currentCycle` (e.g. `currentCycle: 'monthly'`
-paired with a `currentPeriodEnd` 2+ months out) — a combination that can never occur for a real
-subscription, since a monthly subscription's period end is always exactly `start + 1 month`.
-Confirmed as a **test-only bug, not a product bug**: product owner confirmed (2026-07-17) that a
-MONTHLY tier upgrade is INTENDED to always resolve to `scheduled` (runs to end of month, charged
-at renewal) — `immediate_prorate` is only reachable for quarterly/yearly cycles. Fixed by adding a
-`periodEndFor(start, cycle)` helper (same `setMonth` arithmetic as the product code) so every
-upgrade-classification test derives `currentPeriodEnd` from a realistic subscription start tied to
-its cycle, and added an explicit "monthly upgrade always schedules" describe block as the
-anti-regression guard, plus quarterly/yearly early-vs-final-month describe blocks.
-
-**Non-obvious boundary gotcha found while building the fix:** classification depends only on
-`currentCycle` (via `currentPeriodEnd`), **never on `targetCycle`** — so a monthly→yearly upgrade
-still always schedules; only the CURRENT cycle matters. Also: at the **exact literal instant** a
-billing period starts (`now === periodStart`, 0 elapsed time), `isLessThanOneMonthRemaining`
-returns **false** (exactly 1 month remains, and the comparison is strict `>`), so the classifier
-would return `immediate_prorate` at that one exact instant — the "monthly always schedules"
-guarantee only holds for `now` strictly *after* period start, not at t=0. Verified numerically
-before writing assertions; the new monthly-upgrade test cases deliberately start at `start + 1ms`
-rather than `start` itself to avoid asserting a false invariant.
+**Policy reversed 2026-08-27.** Every tier upgrade now classifies `immediate_prorate` on every
+cycle. Downgrades and same-tier cycle-only changes are `scheduled`. See
+[[billing-deferred-pause-proration-tests]]. The 2026-07-17 "monthly upgrade always schedules"
+rule and its t=0 boundary no longer exist. The `periodEndFor(start, cycle)` fixture helper
+survives in `billing-plan-change.test.ts`, so a test's `currentPeriodEnd` stays consistent with
+its `currentCycle`.
 
 Full suite after this fix: **118 files / 1638 tests, 0 failures** (classifier file alone: 38/38).

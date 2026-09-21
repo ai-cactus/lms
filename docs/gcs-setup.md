@@ -56,50 +56,40 @@ gcloud storage buckets update "gs://${BUCKET_NAME}" \
 
 ---
 
-## 3. Configure IAM — Grant the VM Access
+## 3. Authentication — two code paths
 
-The app reads/writes GCS using **Application Default Credentials (ADC)**. On a GCP VM this resolves to the VM's service account automatically — no key file needed.
+`src/lib/storage/gcs-provider.ts` supports exactly two ways to authenticate, chosen by whether `GCS_KEY_BASE64` is set:
 
-### Option A — VM Service Account (Recommended for Production)
+| Path | When it is used | What it needs |
+| --- | --- | --- |
+| **Application Default Credentials (ADC)** | `GCS_KEY_BASE64` is **unset** — the provider constructs a bare `Storage()` | Whatever ADC resolves on the host: an attached service account on a GCP VM, or `gcloud auth application-default login` locally (stored in `~/.config/gcloud/application_default_credentials.json`) |
+| **In-memory service-account key** | `GCS_KEY_BASE64` is **set** — the provider decodes it and constructs `Storage({ projectId, credentials })` | A base64-encoded service-account JSON key (`base64 -w0 key.json`) and `GOOGLE_PROJECT_ID`. A malformed value makes the provider refuse to construct rather than fall back |
 
-Find the VM's service account email:
+Which path staging and production should use is **pending a decision — see OPEN-ISSUES Q-12** (`docs/local/OPEN-ISSUES.md`). This guide does not recommend one.
 
-```bash
-gcloud compute instances describe YOUR_VM_NAME \
-  --zone=YOUR_ZONE \
-  --format='get(serviceAccounts[0].email)'
-```
-
-Grant `Storage Object Admin` on the bucket only (principle of least privilege):
+Whichever identity is used, grant it access **on the bucket only**, never at project level, and never let one environment's identity reach another environment's bucket:
 
 ```bash
-SA_EMAIL="your-vm-sa@your-project.iam.gserviceaccount.com"
+SA_EMAIL="<service-account>@<project>.iam.gserviceaccount.com"
 
 gcloud storage buckets add-iam-policy-binding "gs://${BUCKET_NAME}" \
   --member="serviceAccount:${SA_EMAIL}" \
   --role="roles/storage.objectAdmin"
 ```
 
-### Option B — Local Development (ADC via gcloud)
-
-```bash
-gcloud auth application-default login
-```
-
-This stores credentials in `~/.config/gcloud/application_default_credentials.json`. The GCS SDK picks them up automatically.
-
 ---
 
 ## 4. Add to Environment
 
-Set `GCP_BUCKET_NAME` in your environment file:
+Set `GCP_BUCKET_NAME` in your environment file, plus `GCS_KEY_BASE64` (and `GOOGLE_PROJECT_ID`) only if you use the in-memory key path:
 
 ```dotenv
 # .env.production / .env.staging
 GCP_BUCKET_NAME=lms-documents-yourcompany
+# GCS_KEY_BASE64=<base64 of the service-account JSON>   # key path only; leave unset for ADC
 ```
 
-**No** `GOOGLE_APPLICATION_CREDENTIALS` key file path is required — ADC handles it.
+With `GCP_BUCKET_NAME` unset, the GCS provider is unavailable and uploads fall back to MinIO (see below).
 
 ---
 
