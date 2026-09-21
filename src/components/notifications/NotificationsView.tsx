@@ -9,6 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { getNotificationPreferences, setNotificationPreference } from '@/app/actions/notifications';
 import NotificationItem from '@/components/notifications/NotificationItem';
 import { useNotifications } from '@/components/notifications/useNotifications';
+import { resolveNotificationLink } from '@/lib/notifications/safe-link';
 import {
   notificationTypesFor,
   type NotificationAudience,
@@ -49,7 +50,8 @@ export default function NotificationsView({ backHref, audience }: NotificationsV
 
   const handleItemClick = (id: string, linkUrl?: string | null) => {
     markRead(id);
-    if (linkUrl) router.push(linkUrl);
+    const href = resolveNotificationLink(id, linkUrl);
+    if (href) router.push(href);
   };
 
   const togglePref = (type: string) => {
