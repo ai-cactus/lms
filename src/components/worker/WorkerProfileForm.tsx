@@ -161,9 +161,10 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
       const result = await updateProfile({
         first_name: formData.first_name,
         last_name: formData.last_name,
-        jobTitle: formData.jobTitle || undefined,
+        // `null`, not `undefined`: an emptied field must clear the stored title,
+        // and the action reads `undefined` as "leave unchanged".
+        jobTitle: formData.jobTitle.trim() || null,
         avatarUrl: avatarUrl || undefined,
-        // Worker cannot update company name, so we don't send it or send empty
       });
 
       if (result.success) {

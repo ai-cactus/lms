@@ -15,6 +15,7 @@ import {
   staffFacilityWhere,
 } from '@/lib/facility/staff-where';
 import { invalidateRevalidationCache } from '@/lib/auth/session-revalidation-cache';
+import { getActiveMembership } from '@/lib/auth/membership';
 import bcrypt from 'bcryptjs';
 import { BCRYPT_COST } from '@/lib/bcrypt-config';
 
@@ -221,7 +222,7 @@ export async function updateProfile(data: {
   first_name: string;
   last_name: string;
   company_name?: string;
-  jobTitle?: string;
+  jobTitle?: string | null;
   avatarUrl?: string;
 }) {
   const session = await resolveSession();
@@ -252,10 +253,40 @@ export async function updateProfile(data: {
       return { success: false, error: 'User ID missing' };
     }
 
+    // jobTitle lives on the active membership, not the identity. `undefined`
+    // means "leave unchanged"; `null` or a blank string clears it. The membership
+    // is re-read from (user, active org) rather than trusted off
+    // `session.user.organizationUserId`, which is null for an org-less session
+    // and can be missing on a legacy token preserved by the JWT callback's
+    // fail-open path. It is resolved BEFORE any write so such a session is
+    // refused outright — previously the title was skipped while the name still
+    // saved and the action reported success.
+    let membershipUpdate: { organizationUserId: string; jobTitle: string | null } | null = null;
+    if (data.jobTitle !== undefined) {
+      const membership = session.user.organizationId
+        ? await getActiveMembership(session.user.id, session.user.organizationId)
+        : null;
+      if (!membership) {
+        logger.warn({
+          msg: '[user] updateProfile: job title sent without an active membership',
+          userId: session.user.id,
+          orgId: session.user.organizationId,
+        });
+        return {
+          success: false,
+          error: 'Your job title could not be saved because you are not in an active organization.',
+        };
+      }
+      membershipUpdate = {
+        organizationUserId: membership.organizationUserId,
+        jobTitle: data.jobTitle?.trim() || null,
+      };
+    }
+
     logger.info({ msg: '[user] Updating profile', userId: session.user.id });
     // firstName/lastName/fullName/avatarUrl now live directly on the identity;
     // companyName has no home anymore (organization name lives on Organization).
-    await prisma.user.update({
+    const userWrite = prisma.user.update({
       where: { id: session.user.id },
       data: {
         firstName,
@@ -264,13 +295,18 @@ export async function updateProfile(data: {
         avatarUrl: data.avatarUrl,
       },
     });
-
-    // jobTitle now lives on the active membership, not the identity.
-    if (session.user.organizationUserId && data.jobTitle !== undefined) {
-      await prisma.organizationUser.update({
-        where: { id: session.user.organizationUserId },
-        data: { jobTitle: data.jobTitle },
-      });
+    if (membershipUpdate) {
+      // One save, two tables: commit both or neither, so a failed title write
+      // can never leave a half-applied profile behind a reported failure.
+      await prisma.$transaction([
+        userWrite,
+        prisma.organizationUser.update({
+          where: { id: membershipUpdate.organizationUserId },
+          data: { jobTitle: membershipUpdate.jobTitle },
+        }),
+      ]);
+    } else {
+      await userWrite;
     }
 
     logger.info({
