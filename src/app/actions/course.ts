@@ -5,6 +5,7 @@ import { rawPrisma } from '@/db/index';
 import { Prisma } from '@/generated/prisma/client';
 import { dbRoleToRoleKey, isAdminRole, WORKER_ROLES } from '@/lib/rbac/role-utils';
 import { assertNoPhi, PhiBlockedError } from '@/lib/documents/phiGate';
+import { interactiveBudget } from '@/lib/ai-client';
 import { can } from '@/lib/rbac/permissions';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
@@ -2018,6 +2019,7 @@ export async function updateLessonContent(
       actorId: session.user.id,
       organizationId: session.user.organizationId ?? undefined,
       logContext: { lessonId },
+      budget: interactiveBudget(),
     });
   } catch (error) {
     // PhiBlockedError already carries a user-safe message and is the whole point
@@ -2120,6 +2122,7 @@ export async function updateLessonSlideContent(
       actorId: session.user.id,
       organizationId: session.user.organizationId ?? undefined,
       logContext: { lessonId },
+      budget: interactiveBudget(),
     });
   } catch (error) {
     // PhiBlockedError already carries a user-safe message and is the whole point

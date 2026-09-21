@@ -1,7 +1,12 @@
 'use server';
 
 import { z } from 'zod';
-import { callVertexAI, truncateToContext } from '@/lib/ai-client';
+import {
+  callVertexAI,
+  interactiveBudget,
+  truncateToContext,
+  VertexBudgetExceededError,
+} from '@/lib/ai-client';
 import prisma from '@/lib/prisma';
 import { auth } from '@/auth';
 import { logger } from '@/lib/logger';
@@ -30,6 +35,12 @@ export type AnalyzedMetadata = z.infer<typeof CourseMetadataSchema> & { error?: 
 // course-ai-v4.6.ts.
 const ANALYSIS_FAILED_USER_MESSAGE =
   "We couldn't analyze this document automatically. You can fill in the details manually or try again.";
+
+// Kept apart from the message above: a slow AI service is worth retrying, a
+// failed analysis usually is not, and the wizard should not send the author off
+// to fill seven fields by hand over a transient delay.
+const ANALYSIS_TIMED_OUT_USER_MESSAGE =
+  'The AI service is taking longer than usual to respond. Please try again in a moment, or fill in the details manually.';
 
 /**
  * Analyze a previously-uploaded document stored in the database.
@@ -161,7 +172,9 @@ export async function analyzeStoredDocument(documentId: string): Promise<Analyze
             Return ONLY valid JSON.
         `;
 
-    const textPart = await callVertexAI(prompt);
+    // The course wizard awaits this action, so it gets a wall-clock budget
+    // rather than the background-job retry ladder.
+    const textPart = await callVertexAI(prompt, { retry: interactiveBudget() });
     let rawText = textPart;
 
     logger.info({ msg: 'Raw AI Response:', data: rawText });
@@ -194,14 +207,19 @@ export async function analyzeStoredDocument(documentId: string): Promise<Analyze
     }
   } catch (error: unknown) {
     const err = error as Error;
-    logger.error({ msg: 'Stored Document Analysis Error:', err: err });
+    const timedOut = error instanceof VertexBudgetExceededError;
+    if (timedOut) {
+      logger.warn({ msg: '[course] Document analysis abandoned — Vertex time budget exhausted' });
+    } else {
+      logger.error({ msg: 'Stored Document Analysis Error:', err: err });
+    }
     return {
       title: 'Course Title',
       description: 'Failed to analyze document automatically.',
       objectives: ['Review the document content.'],
       duration: '30',
       quizTitle: 'Quiz',
-      error: ANALYSIS_FAILED_USER_MESSAGE,
+      error: timedOut ? ANALYSIS_TIMED_OUT_USER_MESSAGE : ANALYSIS_FAILED_USER_MESSAGE,
     };
   }
 }

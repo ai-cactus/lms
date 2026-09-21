@@ -6,6 +6,85 @@ const DEFAULT_MAX_RETRIES = 5;
 const BASE_DELAY_MS = 1000;
 const VERTEX_AI_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes per request
 
+/**
+ * Wall-clock ceiling for Vertex work a browser is synchronously waiting on.
+ *
+ * The retry ladder below is sized for background jobs: 5 attempts, 1s→16s of
+ * backoff between them (31s in total), and five minutes allowed per attempt.
+ * Nothing caps the sum, so a rate-limited or slow Vertex can hold a request
+ * open for minutes. Cloudflare terminates a request at ~100s with a 524, which
+ * reaches the browser as a network failure — no status, no reason, nothing a
+ * caller can turn into a useful message.
+ *
+ * 45s is the budget a browser-awaited request may spend on Vertex. It leaves
+ * the rest of the ~100s window for authentication, database work and the
+ * response itself, and it is deliberately the budget for the WHOLE request:
+ * an action that scans for PHI and then generates shares one deadline (see
+ * `interactiveBudget`), because the browser is waiting on the action, not on
+ * any single call inside it.
+ *
+ * Background jobs deliberately do not use this. Nothing waits on them and
+ * Vertex rate-limiting is real, so they keep the full ladder.
+ */
+export const INTERACTIVE_VERTEX_BUDGET_MS = 45 * 1000;
+
+export interface RetryBudget {
+  /**
+   * Absolute epoch-ms ceiling for the whole call. No attempt starts and no
+   * backoff is slept past it, and an in-flight attempt is aborted when it is
+   * reached.
+   *
+   * Absolute rather than a per-call duration on purpose: a duration cannot be
+   * shared by the several Vertex calls one request makes, and an attempt count
+   * bounds neither — one slow response can outlast any number of attempts.
+   * The deadline is the thing that actually has to be met.
+   */
+  deadlineAt?: number;
+  /** Maximum attempts including the first. Defaults to `DEFAULT_MAX_RETRIES`. */
+  maxAttempts?: number;
+}
+
+/**
+ * Raised when a call gives up because its wall-clock budget is spent, rather
+ * than because Vertex rejected it. Callers the browser is waiting on surface
+ * this as "taking longer than usual, try again" — a generic generation failure
+ * would tell the user to fix content that is in fact fine.
+ */
+export class VertexBudgetExceededError extends Error {
+  constructor(label: string) {
+    super(`${label} exceeded its wall-clock retry budget.`);
+    this.name = 'VertexBudgetExceededError';
+  }
+}
+
+/**
+ * A budget for one browser-awaited request. Create it once at the top of the
+ * action or route handler and pass the SAME object to every Vertex-backed call
+ * it makes, so the deadline bounds the request rather than each call.
+ */
+export function interactiveBudget(budgetMs: number = INTERACTIVE_VERTEX_BUDGET_MS): RetryBudget {
+  return { deadlineAt: Date.now() + budgetMs };
+}
+
+function msRemaining(budget: RetryBudget | undefined): number {
+  return budget?.deadlineAt === undefined ? Infinity : budget.deadlineAt - Date.now();
+}
+
+/**
+ * Sleeps the backoff for `attempt`, or reports that the budget cannot absorb
+ * it. A backoff that would end past the deadline is time spent to no purpose —
+ * the attempt it precedes could never run.
+ */
+async function backoffWithinBudget(
+  attempt: number,
+  budget: RetryBudget | undefined,
+): Promise<boolean> {
+  const delay = BASE_DELAY_MS * Math.pow(2, attempt) + Math.random() * 500;
+  if (delay >= msRemaining(budget)) return false;
+  await new Promise((r) => setTimeout(r, delay));
+  return true;
+}
+
 /** Rough token estimate: ~4 characters per token for English text. */
 export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
@@ -61,15 +140,29 @@ function requireProjectId(): string {
   return projectId;
 }
 
-async function withRetry<T>(fn: () => Promise<T>, label: string): Promise<T> {
+async function withRetry<T>(
+  fn: (attemptTimeoutMs: number) => Promise<T>,
+  label: string,
+  budget?: RetryBudget,
+): Promise<T> {
+  const maxAttempts = budget?.maxAttempts ?? DEFAULT_MAX_RETRIES;
   let lastError: Error | null = null;
 
-  for (let attempt = 0; attempt < DEFAULT_MAX_RETRIES; attempt++) {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const remaining = msRemaining(budget);
+    if (remaining <= 0) {
+      logger.warn({
+        msg: `[ai-client] ${label} gave up on its time budget before attempt ${attempt + 1}`,
+        data: lastError?.message,
+      });
+      throw new VertexBudgetExceededError(label);
+    }
+
     try {
       if (attempt > 0) {
-        logger.info({ msg: `[ai-client] ${label} retry ${attempt}/${DEFAULT_MAX_RETRIES - 1}...` });
+        logger.info({ msg: `[ai-client] ${label} retry ${attempt}/${maxAttempts - 1}...` });
       }
-      return await fn();
+      return await fn(Math.min(VERTEX_AI_TIMEOUT_MS, remaining));
     } catch (err: unknown) {
       const error = err as Error;
       lastError = error;
@@ -82,12 +175,15 @@ async function withRetry<T>(fn: () => Promise<T>, label: string): Promise<T> {
 
       if (!isRetryable) throw err;
 
-      const delay = BASE_DELAY_MS * Math.pow(2, attempt) + Math.random() * 500;
       logger.warn({
-        msg: `[ai-client] ${label} retryable error (attempt ${attempt + 1}/${DEFAULT_MAX_RETRIES}):`,
+        msg: `[ai-client] ${label} retryable error (attempt ${attempt + 1}/${maxAttempts}):`,
         data: error.message,
       });
-      await new Promise((r) => setTimeout(r, delay));
+
+      if (!(await backoffWithinBudget(attempt, budget))) {
+        logger.warn({ msg: `[ai-client] ${label} exhausted its time budget`, data: error.message });
+        throw new VertexBudgetExceededError(label);
+      }
     }
   }
 
@@ -104,11 +200,20 @@ export interface VertexAIConfig {
    * job with no user never produces an event attributed to an invented person.
    */
   telemetry?: AiTelemetry;
+  /**
+   * Bounds the retry ladder. Omit it and the call keeps the background-job
+   * behaviour (5 attempts, no wall-clock ceiling); pass `interactiveBudget()`
+   * on any path a browser is synchronously waiting on.
+   */
+  retry?: RetryBudget;
 }
 
 /**
  * Call Vertex AI with automatic retry + exponential backoff for 429/5xx errors.
  * Returns the raw text output from the model.
+ *
+ * @throws {VertexBudgetExceededError} when `config.retry` sets a deadline the
+ * retry ladder cannot finish inside.
  */
 export async function callVertexAI(prompt: string, config?: VertexAIConfig): Promise<string> {
   const projectId = requireProjectId();
@@ -179,15 +284,30 @@ export async function callVertexAI(prompt: string, config?: VertexAIConfig): Pro
     });
   };
 
-  for (let attempt = 0; attempt < DEFAULT_MAX_RETRIES; attempt++) {
+  const budget = config?.retry;
+  const maxAttempts = budget?.maxAttempts ?? DEFAULT_MAX_RETRIES;
+  let budgetExceeded = false;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const remaining = msRemaining(budget);
+    if (remaining <= 0) {
+      budgetExceeded = true;
+      break;
+    }
+
     // Each attempt gets its own AbortController so a timeout on one
-    // attempt doesn't interfere with retries.
+    // attempt doesn't interfere with retries. The per-attempt timeout is
+    // clamped to what is left of the budget, so a single slow response cannot
+    // outlast the deadline the caller has to meet.
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), VERTEX_AI_TIMEOUT_MS);
+    const timeoutId = setTimeout(
+      () => controller.abort(),
+      Math.min(VERTEX_AI_TIMEOUT_MS, remaining),
+    );
 
     try {
       if (attempt > 0) {
-        logger.info({ msg: `[ai-client] Retry ${attempt}/${DEFAULT_MAX_RETRIES - 1}...` });
+        logger.info({ msg: `[ai-client] Retry ${attempt}/${maxAttempts - 1}...` });
       }
 
       const response = await fetch(url, {
@@ -209,9 +329,10 @@ export async function callVertexAI(prompt: string, config?: VertexAIConfig): Pro
           data: lastError.message,
         });
 
-        // Exponential backoff with jitter
-        const delay = BASE_DELAY_MS * Math.pow(2, attempt) + Math.random() * 500;
-        await new Promise((r) => setTimeout(r, delay));
+        if (!(await backoffWithinBudget(attempt, budget))) {
+          budgetExceeded = true;
+          break;
+        }
         continue;
       }
 
@@ -255,19 +376,23 @@ export async function callVertexAI(prompt: string, config?: VertexAIConfig): Pro
       // Timeout / abort → treat as retryable
       if (error.name === 'AbortError') {
         lastError = new Error(
-          `Vertex AI request timed out after ${VERTEX_AI_TIMEOUT_MS / 1000}s (attempt ${attempt + 1})`,
+          `Vertex AI request timed out after ${Math.round(Math.min(VERTEX_AI_TIMEOUT_MS, remaining) / 1000)}s (attempt ${attempt + 1})`,
         );
         logger.warn({ msg: `[ai-client] ${lastError.message}` });
-        const delay = BASE_DELAY_MS * Math.pow(2, attempt) + Math.random() * 500;
-        await new Promise((r) => setTimeout(r, delay));
+        if (!(await backoffWithinBudget(attempt, budget))) {
+          budgetExceeded = true;
+          break;
+        }
         continue;
       }
       // If it was already a retryable error we handled above, it was stored in lastError
       // If it's a network error, we should retry too
       if (error.message?.includes('fetch failed')) {
         lastError = error;
-        const delay = BASE_DELAY_MS * Math.pow(2, attempt) + Math.random() * 500;
-        await new Promise((r) => setTimeout(r, delay));
+        if (!(await backoffWithinBudget(attempt, budget))) {
+          budgetExceeded = true;
+          break;
+        }
         continue;
       }
       // Non-retryable errors: throw immediately
@@ -278,12 +403,28 @@ export async function callVertexAI(prompt: string, config?: VertexAIConfig): Pro
     }
   }
 
-  // Retries exhausted. Recorded so a stage that ALWAYS fails is as visible as
-  // one that succeeds — otherwise the only signal is an absence of events,
-  // which reads identically to the feature not being used.
-  const exhausted = lastError || new Error('Vertex AI call failed after all retries.');
+  // Retries exhausted, or the wall-clock budget ran out first. Recorded so a
+  // stage that ALWAYS fails is as visible as one that succeeds — otherwise the
+  // only signal is an absence of events, which reads identically to the
+  // feature not being used.
+  //
+  // The two are logged apart on purpose: "ran out of time" and "Vertex kept
+  // rejecting us" call for different fixes, and a 524 in front of this used to
+  // erase the distinction entirely.
+  if (budgetExceeded) {
+    logger.warn({
+      msg: '[ai-client] Vertex AI call abandoned — wall-clock budget exhausted',
+      model,
+      elapsedMs: Date.now() - startedAt,
+      lastError: lastError?.message,
+    });
+  }
+
+  const exhausted = budgetExceeded
+    ? new VertexBudgetExceededError('Vertex AI call')
+    : lastError || new Error('Vertex AI call failed after all retries.');
   record({
-    attempt: DEFAULT_MAX_RETRIES - 1,
+    attempt: maxAttempts - 1,
     inputTokens: 0,
     outputTokens: 0,
     error: exhausted,
@@ -294,8 +435,8 @@ export async function callVertexAI(prompt: string, config?: VertexAIConfig): Pro
 /**
  * Generate a 768-dimensional vector embedding for the given text using text-embedding-004.
  */
-export async function generateEmbedding(text: string): Promise<number[]> {
-  const results = await generateBatchEmbeddings([text]);
+export async function generateEmbedding(text: string, budget?: RetryBudget): Promise<number[]> {
+  const results = await generateBatchEmbeddings([text], budget);
   return results[0];
 }
 
@@ -303,10 +444,15 @@ export async function generateEmbedding(text: string): Promise<number[]> {
  * Generate embeddings for multiple texts in a single Vertex AI API call.
  * text-embedding-004 supports up to 250 instances per request.
  *
- * @param texts Array of text strings to embed (max 250 per call enforced internally)
- * @returns     Array of 768-dimensional embedding vectors, same order as input
+ * @param texts  Array of text strings to embed (max 250 per call enforced internally)
+ * @param budget Optional wall-clock ceiling. Omit it for background jobs; pass
+ *               `interactiveBudget()` on any path a browser is waiting on.
+ * @returns      Array of 768-dimensional embedding vectors, same order as input
  */
-export async function generateBatchEmbeddings(texts: string[]): Promise<number[][]> {
+export async function generateBatchEmbeddings(
+  texts: string[],
+  budget?: RetryBudget,
+): Promise<number[][]> {
   if (texts.length === 0) return [];
 
   const projectId = requireProjectId();
@@ -328,49 +474,53 @@ export async function generateBatchEmbeddings(texts: string[]): Promise<number[]
     })),
   });
 
-  return withRetry(async () => {
-    // F-066: bound each attempt with an AbortController timeout so a hung
-    // embedding request cannot stall indefinitely (mirrors callVertexAI). An
-    // AbortError is retryable in withRetry, so a timed-out attempt is retried.
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), VERTEX_AI_TIMEOUT_MS);
+  return withRetry(
+    async (attemptTimeoutMs) => {
+      // F-066: bound each attempt with an AbortController timeout so a hung
+      // embedding request cannot stall indefinitely (mirrors callVertexAI). An
+      // AbortError is retryable in withRetry, so a timed-out attempt is retried.
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), attemptTimeoutMs);
 
-    try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body,
-        signal: controller.signal,
-      });
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body,
+          signal: controller.signal,
+        });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(
-          `Vertex AI Batch Embedding ${response.status} ${response.statusText}: ${errorText}`,
-        );
-      }
-
-      const json = await response.json();
-      const predictions: Array<{ embeddings: { values: number[] } }> = json.predictions ?? [];
-
-      if (predictions.length !== texts.length) {
-        throw new Error(
-          `Vertex AI returned ${predictions.length} predictions for ${texts.length} inputs`,
-        );
-      }
-
-      return predictions.map((p, i) => {
-        const values = p?.embeddings?.values;
-        if (!Array.isArray(values)) {
-          throw new Error(`Vertex AI Embedding: no values for input at index ${i}`);
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(
+            `Vertex AI Batch Embedding ${response.status} ${response.statusText}: ${errorText}`,
+          );
         }
-        return values;
-      });
-    } finally {
-      clearTimeout(timeoutId);
-    }
-  }, 'Embedding');
+
+        const json = await response.json();
+        const predictions: Array<{ embeddings: { values: number[] } }> = json.predictions ?? [];
+
+        if (predictions.length !== texts.length) {
+          throw new Error(
+            `Vertex AI returned ${predictions.length} predictions for ${texts.length} inputs`,
+          );
+        }
+
+        return predictions.map((p, i) => {
+          const values = p?.embeddings?.values;
+          if (!Array.isArray(values)) {
+            throw new Error(`Vertex AI Embedding: no values for input at index ${i}`);
+          }
+          return values;
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    },
+    'Embedding',
+    budget,
+  );
 }

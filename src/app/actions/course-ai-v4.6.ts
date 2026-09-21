@@ -28,6 +28,7 @@ import {
 } from '@/lib/ai/course-pipeline-v46';
 import { extractTextFromFile } from '@/lib/file-parser';
 import { scanText } from '@/lib/documents/phiScanner';
+import { interactiveBudget } from '@/lib/ai-client';
 import { runWithAiContext, getAiContext } from '@/lib/analytics/ai-context';
 import { captureServer } from '@/lib/analytics/server';
 import type { AnalyticsEventProperties } from '@/lib/analytics/events';
@@ -236,7 +237,10 @@ export async function generateCourseAndQuizV46(
   if (file) {
     let phiResult;
     try {
-      phiResult = await scanText(sourceText);
+      // This scan runs in the action's AWAITED prelude, before the Job exists —
+      // the browser is holding the connection for it. The pipeline inside
+      // after() below deliberately gets no budget: nothing is waiting on it.
+      phiResult = await scanText(sourceText, interactiveBudget());
     } catch (err) {
       logger.error({ msg: '[v4.6] PHI scan error on upload path', err, userId });
       return { error: 'We could not verify this document for PHI. Please try again in a moment.' };

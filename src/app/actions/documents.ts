@@ -5,6 +5,7 @@ import prisma from '@/lib/prisma';
 import { saveFile } from '@/lib/documents/uploadHandler';
 import { calculateHash } from '@/lib/documents/versioning';
 import { scanText } from '@/lib/documents/phiScanner';
+import { interactiveBudget } from '@/lib/ai-client';
 import { recordPhiDecision, recordPhiDecisionInTransaction } from '@/lib/documents/phiDecision';
 import { MAX_DOCUMENT_UPLOAD_BYTES } from '@/lib/documents/upload-config';
 import { extractTextFromFile } from '@/lib/file-parser';
@@ -272,7 +273,9 @@ async function processSingleUpload(
   // 3. Scan for PHI
   let phiResult;
   try {
-    phiResult = await scanText(textContent);
+    // Browser-awaited upload: the scan gets a wall-clock budget so a slow
+    // Vertex fails closed with "try again" instead of running past the gateway.
+    phiResult = await scanText(textContent, interactiveBudget());
   } catch (e) {
     logger.error({ msg: '[doc] PHI scan error', err: e });
     return {
