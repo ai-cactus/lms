@@ -3,9 +3,10 @@
  * `requirePermission('course.read')`, which REDIRECTS on deny — so a viewer
  * who could open this page but lacked `course.read` (finance, since
  * 2026-08-25) was bounced straight back to it: a visibly dead button. The
- * page now computes `backHref` from the viewer's own permissions and this
- * component just renders wherever it's told, defaulting to `/dashboard`
- * (reachable by every role) so a caller that forgets the prop fails safe.
+ * detail page now gates on `course.read` itself, so it always passes
+ * `/dashboard/courses`; this component just renders wherever it's told,
+ * defaulting to `/dashboard` (reachable by every role) so a caller that
+ * forgets the prop fails safe.
  */
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
@@ -44,7 +45,7 @@ function baseCourse(overrides: Partial<CourseWithRelations> = {}): CourseWithRel
 }
 
 describe('TrainingDetails — "Go Back" link', () => {
-  it('links to the caller-supplied backHref (e.g. /dashboard for a viewer without course.read)', () => {
+  it('links to the caller-supplied backHref', () => {
     render(<TrainingDetails course={baseCourse()} backHref="/dashboard" />);
 
     expect(screen.getByRole('link', { name: /Go Back/ })).toHaveAttribute('href', '/dashboard');
