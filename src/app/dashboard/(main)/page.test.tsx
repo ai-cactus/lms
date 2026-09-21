@@ -263,7 +263,12 @@ describe('DashboardPage — organisation course table', () => {
 
   it('renders no course table for Finance and hands it no course rows', async () => {
     mockAuth.mockResolvedValue({
-      user: { id: 'finance-1', organizationUserId: 'ou-2', organizationId: 'org-42', role: 'finance' },
+      user: {
+        id: 'finance-1',
+        organizationUserId: 'ou-2',
+        organizationId: 'org-42',
+        role: 'finance',
+      },
     });
 
     render(await DashboardPage(noSearchParams()));
