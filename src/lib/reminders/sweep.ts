@@ -1,6 +1,6 @@
 import prisma from '@/lib/prisma';
 import { logger } from '@/lib/logger';
-import { createNotification } from '@/app/actions/notifications';
+import { createNotification } from '@/lib/notifications/create';
 import { runRetentionPurge, type RetentionPurgeSummary } from '@/lib/retention';
 import { createEnrollmentForUser, type CreateEnrollmentContext } from '@/lib/enrollment/create';
 import { assignmentAdmitsHolder } from '@/lib/enrollment/assignment-facility-scope';

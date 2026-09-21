@@ -111,7 +111,7 @@ vi.mock('@/lib/enrollment/create', () => ({
 }));
 
 // Renewal re-trigger pre-pass notifies + emails directly (not via createEnrollmentForUser).
-vi.mock('@/app/actions/notifications', () => ({
+vi.mock('@/lib/notifications/create', () => ({
   createNotification: mockCreateNotification,
   notifyOrganizationAdmins: vi.fn(),
 }));

@@ -10,7 +10,7 @@ import { can } from '@/lib/rbac/permissions';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
-import { notifyOrganizationAdmins } from './notifications';
+import { createNotification, notifyOrganizationAdmins } from '@/lib/notifications/create';
 import { CourseWithStats, CourseWithRelations, courseDetailSelect } from '@/types/course';
 import { QuizQuestion } from '@/types/quiz';
 import type { StaffEntry } from '@/types/enrollment';
@@ -2343,7 +2343,6 @@ export async function assignRetake(
     },
   });
 
-  const { createNotification } = await import('./notifications');
   await createNotification({
     organizationUserId: lockedEnrollment.organizationUserId,
     type: 'RETAKE_ASSIGNED',

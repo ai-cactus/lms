@@ -2,7 +2,7 @@ import prisma from '@/lib/prisma';
 import { Prisma } from '@/generated/prisma/client';
 import type { ReminderStage, ReminderNudgeKind } from '@/generated/prisma/enums';
 import { logger, maskEmail } from '@/lib/logger';
-import { createNotification } from '@/app/actions/notifications';
+import { createNotification } from '@/lib/notifications/create';
 import { REMINDER_STAGE_DEFAULTS } from './stages';
 import { resolveEscalationRecipients, type EscalationRecipients } from './recipients';
 import { diffInDaysInTz } from './time';

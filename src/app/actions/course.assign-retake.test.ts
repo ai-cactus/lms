@@ -34,8 +34,10 @@ vi.mock('next/cache', () => ({ revalidatePath: mockRevalidatePath }));
 vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
-// assignRetake dynamically imports './notifications' for createNotification.
-vi.mock('./notifications', () => ({ createNotification: mockCreateNotification }));
+vi.mock('@/lib/notifications/create', () => ({
+  createNotification: mockCreateNotification,
+  notifyOrganizationAdmins: vi.fn(),
+}));
 
 import { assignRetake } from './course';
 
