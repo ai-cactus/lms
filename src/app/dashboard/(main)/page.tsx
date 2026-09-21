@@ -9,7 +9,7 @@ import DashboardEmptyState from '@/components/dashboard/DashboardEmptyState';
 import DashboardCreateCourseButton from '@/components/dashboard/DashboardCreateCourseButton';
 import StatusTrackerOverview from '@/components/dashboard/status-tracker/StatusTrackerOverview';
 import { hasActiveBilling } from '@/lib/billing';
-import { isWorkerRole, dbRoleToRoleKey } from '@/lib/rbac/role-utils';
+import { canViewOrgCourses, isWorkerRole, dbRoleToRoleKey } from '@/lib/rbac/role-utils';
 import { can } from '@/lib/rbac/permissions';
 import type { Role } from '@/types/next-auth';
 import { getStatusTrackerSummaryForOrg } from '@/lib/reminders/status-tracker';
@@ -62,6 +62,13 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   // STATUS TRACKER rows carry `workerName` and `workerEmail`. That is the D-01
   // boundary finance must stay outside of, so this keeps the narrower verb.
   const canSeeRosterMetrics = can(roleKey, 'assignment.read');
+
+  // The course table lists the ORGANISATION's courses and every row opens the
+  // course detail page, which is gated on this same predicate. Finance reaches
+  // this page via `billing.read` but holds nothing on Courses; getDashboardData
+  // already withholds the rows from it, and this keeps the empty table off
+  // screen too.
+  const canSeeOrgCourses = canViewOrgCourses(role);
 
   const accessibleFacilities = await listAccessibleFacilities(session);
 
@@ -254,7 +261,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
       <DashboardCharts stats={stats} />
 
-      <MyCoursesTable courses={courses} maxItems={5} />
+      {canSeeOrgCourses && <MyCoursesTable courses={courses} maxItems={5} />}
 
       {canSeeRosterMetrics && <StatusTrackerOverview rows={statusTrackerRows} />}
 

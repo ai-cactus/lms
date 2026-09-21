@@ -79,7 +79,7 @@ vi.mock('@/auth', () => ({ auth: mockAuth }));
 vi.mock('@/auth.worker', () => ({ auth: mockWorkerAuth }));
 vi.mock('next/cache', () => ({ revalidatePath: mockRevalidate }));
 vi.mock('@/lib/logger', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
-vi.mock('./notifications', () => ({
+vi.mock('@/lib/notifications/create', () => ({
   createNotification: mockNotificationCreate,
   notifyOrganizationAdmins: vi.fn(),
 }));

@@ -61,7 +61,7 @@ vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
-vi.mock('./notifications', () => ({
+vi.mock('@/lib/notifications/create', () => ({
   createNotification: vi.fn().mockResolvedValue(undefined),
   notifyOrganizationAdmins: vi.fn().mockResolvedValue(undefined),
 }));

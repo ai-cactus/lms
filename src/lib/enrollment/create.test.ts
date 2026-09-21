@@ -36,7 +36,7 @@ const { prismaMock, mockCreateNotification, mockSendCourseInviteEmail, mockSendC
   });
 
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock, default: prismaMock }));
-vi.mock('@/app/actions/notifications', () => ({ createNotification: mockCreateNotification }));
+vi.mock('@/lib/notifications/create', () => ({ createNotification: mockCreateNotification }));
 vi.mock('@/lib/email', () => ({
   sendCourseInviteEmail: mockSendCourseInviteEmail,
   sendCourseLaunchEmail: mockSendCourseLaunchEmail,

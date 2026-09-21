@@ -16,6 +16,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { useNotifications } from '@/components/notifications/useNotifications';
+import { resolveNotificationLink } from '@/lib/notifications/safe-link';
 import { clearSiblingSessionCookie } from '@/app/actions/session-bridge';
 
 interface HeaderProps {
@@ -57,8 +58,9 @@ export default function WorkerHeader({ fullName, onMenuClick }: Omit<HeaderProps
 
   const handleItemClick = (id: string, linkUrl?: string | null) => {
     markRead(id);
-    if (linkUrl) {
-      router.push(linkUrl);
+    const href = resolveNotificationLink(id, linkUrl);
+    if (href) {
+      router.push(href);
       setIsNotifOpen(false);
     }
   };

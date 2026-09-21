@@ -49,7 +49,7 @@ vi.mock('@/lib/logger', () => ({
 }));
 vi.mock('@/auth', () => ({ auth: mockAdminAuth }));
 vi.mock('@/auth.worker', () => ({ auth: mockWorkerAuth }));
-vi.mock('./notifications', () => ({
+vi.mock('@/lib/notifications/create', () => ({
   createNotification: vi.fn().mockResolvedValue(undefined),
   notifyOrganizationAdmins: vi.fn().mockResolvedValue(undefined),
 }));

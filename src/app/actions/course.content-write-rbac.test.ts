@@ -39,7 +39,7 @@ vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
   maskEmail: (e: string) => e,
 }));
-vi.mock('./notifications', () => ({ notifyOrganizationAdmins: vi.fn() }));
+vi.mock('@/lib/notifications/create', () => ({ notifyOrganizationAdmins: vi.fn() }));
 vi.mock('./enrollment', () => ({ enrollUsers: vi.fn(), assignCourseToRoles: vi.fn() }));
 // The REAL `PhiBlockedError` is kept: `updateLessonContent` catches it by
 // `instanceof`, so a stand-in class would let that branch rot undetected.

@@ -5,7 +5,7 @@ import prisma from '@/lib/prisma';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
-import { createNotification } from './notifications';
+import { createNotification } from '@/lib/notifications/create';
 import { logger } from '@/lib/logger';
 import { headers } from 'next/headers';
 import { checkRateLimit } from '@/lib/rate-limit';
