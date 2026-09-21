@@ -118,6 +118,12 @@ interface UserData {
    * is exactly what D-16 got wrong.
    */
   isAdminView: boolean;
+  /**
+   * Whether the admin view may also SAVE lesson content. Narrower than
+   * `isAdminView` — `course.edit` plus org ownership of the course, mirroring
+   * `updateLessonContent`. Server-decided for the same reason as above.
+   */
+  canEditContent: boolean;
   organizationName?: string;
   email: string;
   jobTitle: string;
@@ -1245,6 +1251,7 @@ export default function LearnClient({ initialData }: LearnClientProps) {
                         moduleIndex: idx,
                         totalModules: course.lessons.length,
                       }}
+                      canEdit={userData?.canEditContent === true}
                       onNext={handleNext}
                       onPrev={handlePrev}
                       isFirst={idx === 0}
