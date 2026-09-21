@@ -171,9 +171,11 @@ describe('CourseDetailsPage — data wiring', () => {
 
 /**
  * The withdraw control's gate is computed HERE, mirroring
- * removeWorkerAssignment's own gate — the `assignment.delete` verb plus COU-004
- * org ownership — so the action is never offered where it would be refused.
- * Authorship is deliberately NOT part of it any more.
+ * removeWorkerAssignment's own gate — the `assignment.delete` verb and an
+ * organisation to act in — so the action is never offered where it would be
+ * refused. Neither authorship nor the course CREATOR's organisation is part of
+ * it: tenancy is per enrolment, and the roster this page renders is already
+ * scoped to the caller's own organisation.
  */
 describe('CourseDetailsPage — withdraw gate', () => {
   it('allows withdrawing a course the viewer created', async () => {
@@ -216,16 +218,23 @@ describe('CourseDetailsPage — withdraw gate', () => {
     expect(screen.getByTestId('training-details')).toHaveAttribute('data-can-withdraw', 'true');
   });
 
-  it("withholds it for another tenant's course, even from an owner", async () => {
+  // An adopted video course is authored by Theraptly's system organisation, but
+  // every row on its roster here is this organisation's own learner. Keying the
+  // gate on the creator's organisation hid the control on every adopted course.
+  //
+  // No "role without assignment.delete" case here: every role that clears this
+  // page's `course.read` + isAdminRole gate also holds assignment.delete, so the
+  // verb term in the page's gate is defensive and unreachable through the page.
+  it('offers it on an adopted course authored by another organisation (Theraptly)', async () => {
     mockLoadCourseDetail.mockResolvedValue({
       id: 'course-1',
-      createdByOrgUserId: 'ou-other',
-      creator: { organizationId: 'org-other' },
+      createdByOrgUserId: 'ou-system',
+      creator: { organizationId: 'org-theraptly' },
     });
 
     render(await CourseDetailsPage({ params }));
 
-    expect(screen.getByTestId('training-details')).toHaveAttribute('data-can-withdraw', 'false');
+    expect(screen.getByTestId('training-details')).toHaveAttribute('data-can-withdraw', 'true');
   });
 
   it('withholds it when the session has no active organization', async () => {
