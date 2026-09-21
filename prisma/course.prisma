@@ -143,6 +143,12 @@ model Lesson {
   title                 String
   content               String
   slideContent          String?       @map("slide_content")
+  /// Authoritative "these slides have been hand-edited" signal. Null means the
+  /// slides are exactly what the AI produced. Nothing reads it yet, but any
+  /// future slide-regeneration feature MUST check it before overwriting an
+  /// author's work, and it doubles as the support/audit answer to "is this what
+  /// the AI generated, or did someone change it?".
+  slideContentEditedAt  DateTime?     @map("slide_content_edited_at")
   order                 Int
   duration              Int?
   videoProvider         String?       @map("video_provider")
