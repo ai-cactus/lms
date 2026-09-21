@@ -18,6 +18,7 @@ import {
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { updateLessonSlideContent } from '@/app/actions/course';
+import { useUnsavedChangesBackGuard } from '@/hooks/use-unsaved-changes-back-guard';
 import { logger } from '@/lib/logger';
 import { sanitizeEditableHtml } from '@/lib/sanitize';
 import {
@@ -272,6 +273,34 @@ export default function AdminSlideEditor({
     return () => window.removeEventListener('beforeunload', warn);
   }, [isDirty]);
 
+  // `beforeunload` covers tab close and reload, but the App Router serves the
+  // browser Back button as a client-side popstate it never sees — and Next 16
+  // offers no way to cancel one. This routes that press through the same
+  // dialog; see the hook for what the workaround costs.
+  const backGuard = useUnsavedChangesBackGuard({
+    enabled: isDirty,
+    onIntercept: (leave) => {
+      logger.info({
+        msg: '[course] Back press held for unsaved slide edits',
+        lessonId: lesson.id,
+      });
+      guardNavigation(leave);
+    },
+  });
+
+  /** Distinguishes a confirmed exit from a cancelled one in the dialog's close handler. */
+  const isDiscardingRef = useRef(false);
+
+  const closeGuardDialog = () => {
+    setPendingNavigation(null);
+    // A cancelled exit has already spent the guard's history entry, so put a
+    // fresh one back. A confirmed exit is on its way out and must not be
+    // re-guarded — re-arming there would push an entry into a pending
+    // traversal.
+    if (!isDiscardingRef.current) backGuard.rearm();
+    isDiscardingRef.current = false;
+  };
+
   const headerActions = (
     <>
       {isDirty ? (
@@ -352,7 +381,7 @@ export default function AdminSlideEditor({
 
       <AlertDialog
         open={pendingNavigation !== null}
-        onOpenChange={(open) => !open && setPendingNavigation(null)}
+        onOpenChange={(open) => !open && closeGuardDialog()}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -367,6 +396,7 @@ export default function AdminSlideEditor({
             <AlertDialogAction
               onClick={() => {
                 const navigate = pendingNavigation;
+                isDiscardingRef.current = true;
                 setPendingNavigation(null);
                 navigate?.();
               }}
