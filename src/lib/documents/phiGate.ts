@@ -22,6 +22,7 @@
  */
 
 import { scanText } from '@/lib/documents/phiScanner';
+import type { RetryBudget } from '@/lib/ai-client';
 import { recordPhiDecision, type PhiDecisionSource } from '@/lib/documents/phiDecision';
 import { logger } from '@/lib/logger';
 
@@ -51,6 +52,14 @@ export interface PhiGateInput {
   organizationId?: string;
   /** Extra context for the log line only — never persisted. */
   logContext?: Record<string, unknown>;
+  /**
+   * Wall-clock ceiling for the scan's Vertex work, shared with the rest of the
+   * request. Every caller of this gate is a Server Action the browser awaits,
+   * so each one passes `interactiveBudget()`; a scan that runs out of time
+   * fails closed and surfaces `SCAN_FAILED_MESSAGE`, which is what the user
+   * needs to hear anyway.
+   */
+  budget?: RetryBudget;
 }
 
 /**
@@ -69,7 +78,7 @@ export async function assertNoPhi(input: PhiGateInput): Promise<void> {
   // text still goes through the local pass (see scanText).
   if (!input.text || input.text.trim().length === 0) return;
 
-  const scan = await scanText(input.text);
+  const scan = await scanText(input.text, input.budget);
 
   await recordPhiDecision({
     source: input.source,

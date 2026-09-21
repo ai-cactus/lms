@@ -20,7 +20,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const { mockCallVertexAI } = vi.hoisted(() => ({ mockCallVertexAI: vi.fn() }));
 
-vi.mock('@/lib/ai-client', () => ({
+// Spread the real module rather than listing exports by hand: the code under
+// test also reads interactiveBudget/VertexBudgetExceededError from here, and a
+// partial factory turns a new export into an `undefined is not a function`
+// TypeError inside the code under test.
+vi.mock('@/lib/ai-client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/ai-client')>()),
   callVertexAI: mockCallVertexAI,
   truncateToContext: (text: string) => text,
   estimateTokens: (text: string) => Math.ceil(text.length / 4),

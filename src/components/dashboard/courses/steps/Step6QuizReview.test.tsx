@@ -154,7 +154,6 @@ describe('Step6QuizReview', () => {
   it('describes the course itself when generating a question with AI', async () => {
     const user = userEvent.setup();
     generateSingleQuestion.mockResolvedValue({ success: false, error: 'nope' });
-    vi.spyOn(window, 'alert').mockImplementation(() => {});
     renderStep(TAGGED_QUIZ, { modules: [{ documentId: 'doc-1' }] });
 
     await user.click(screen.getByRole('button', { name: 'Add new question' }));
@@ -325,16 +324,14 @@ describe('Step6QuizReview', () => {
         success: false,
         error: 'AI generated an invalid quiz format.',
       });
-      vi.spyOn(window, 'alert').mockImplementation(() => {});
       const { onQuizUpdate } = renderStep(TAGGED_QUIZ);
 
       await user.click(screen.getByRole('button', { name: /Regenerate Quiz/i }));
       const dialog = screen.getByRole('alertdialog');
       await user.click(within(dialog).getByRole('button', { name: 'Regenerate Quiz' }));
 
-      await vi.waitFor(() =>
-        expect(window.alert).toHaveBeenCalledWith('AI generated an invalid quiz format.'),
-      );
+      // The refusal lands in the shared Alert banner, not a native alert().
+      expect(await screen.findByText('AI generated an invalid quiz format.')).toBeInTheDocument();
       expect(onQuizUpdate).not.toHaveBeenCalled();
       // The original questions are still rendered — nothing was cleared.
       expect(screen.getByText('Privacy Q1')).toBeInTheDocument();

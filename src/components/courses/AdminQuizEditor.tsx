@@ -4,9 +4,26 @@ import React, { useState } from 'react';
 import { updateQuizQuestions } from '@/app/actions/course';
 import { useRouter } from 'next/navigation';
 import { generateSingleQuestion } from '@/app/actions/quiz-ai';
+import { Alert } from '@/components/ui/alert';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { logger } from '@/lib/logger';
 import { Sparkles } from 'lucide-react';
+
+// Client-side fallback only. The quiz AI action already returns a user-safe
+// message for every outcome it can name, the wall-clock timeout included —
+// this covers the transport itself failing.
+const UNEXPECTED_ERROR_MESSAGE =
+  'Something went wrong talking to the server. Please check your connection and try again.';
 
 interface QuizQuestion {
   question: string;
@@ -48,6 +65,10 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
   const [isSaving, setIsSaving] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editingQuestion, setEditingQuestion] = useState<QuizQuestion | null>(null);
+  const [status, setStatus] = useState<{ variant: 'error' | 'success'; message: string } | null>(
+    null,
+  );
+  const [pendingDeleteIndex, setPendingDeleteIndex] = useState<number | null>(null);
   const [newQuestion, setNewQuestion] = useState<QuizQuestion>({
     question: '',
     options: ['', '', '', ''],
@@ -61,9 +82,10 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
       !newQuestion.question.trim() ||
       (newQuestion.type !== 'true_false' && newQuestion.options.some((o) => !o.trim()))
     ) {
-      alert('Please fill in all fields.');
+      setStatus({ variant: 'error', message: 'Please fill in all fields.' });
       return;
     }
+    setStatus(null);
     setQuestions([...questions, newQuestion]);
     setIsAdding(false);
     setNewQuestion({
@@ -83,6 +105,7 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
 
   const handleGenerateQuestion = async () => {
     try {
+      setStatus(null);
       setIsGenerating(true);
       const res = await generateSingleQuestion({ courseId });
       if (res.success && res.question) {
@@ -94,11 +117,14 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
           explanation: res.question.explanation || '',
         });
       } else {
-        alert(res.error || 'Failed to generate question with AI.');
+        setStatus({
+          variant: 'error',
+          message: res.error || 'Failed to generate question with AI.',
+        });
       }
     } catch (error) {
       logger.error({ msg: 'Failed to call AI generation:', err: error });
-      alert('An unexpected error occurred.');
+      setStatus({ variant: 'error', message: UNEXPECTED_ERROR_MESSAGE });
     } finally {
       setIsGenerating(false);
     }
@@ -106,24 +132,25 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
 
   const handleSaveQuiz = async () => {
     try {
+      setStatus(null);
       setIsSaving(true);
       await updateQuizQuestions(courseId, questions);
-      alert('Quiz updated successfully!');
+      setStatus({ variant: 'success', message: 'Quiz updated successfully.' });
       router.refresh();
     } catch (error) {
       logger.error({ msg: 'Failed to save quiz:', err: error });
-      alert('Failed to save quiz. Please try again.');
+      setStatus({ variant: 'error', message: 'Failed to save quiz. Please try again.' });
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleDeleteQuestion = (index: number) => {
-    if (confirm('Are you sure you want to delete this question?')) {
-      const newQuestions = [...questions];
-      newQuestions.splice(index, 1);
-      setQuestions(newQuestions);
-    }
+  const confirmDeleteQuestion = () => {
+    if (pendingDeleteIndex === null) return;
+    const newQuestions = [...questions];
+    newQuestions.splice(pendingDeleteIndex, 1);
+    setQuestions(newQuestions);
+    setPendingDeleteIndex(null);
   };
 
   // .formInput / .typeSelect — full-width input box
@@ -157,6 +184,11 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
         className="flex w-full flex-1 flex-col overflow-y-auto pr-2 pb-10"
         style={{ height: 'auto', maxHeight: 'none' }}
       >
+        {status && (
+          <Alert variant={status.variant} className="mb-6 flex-shrink-0">
+            {status.message}
+          </Alert>
+        )}
         {/* Header Row — .quizHeaderRow */}
         <div className="mb-6 flex flex-shrink-0 items-center justify-between">
           {/* .quizHeaderLeft */}
@@ -278,7 +310,7 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
                             !editingQuestion.question.trim() ||
                             editingQuestion.options.some((o) => !o.trim())
                           ) {
-                            alert('Please fill in all fields.');
+                            setStatus({ variant: 'error', message: 'Please fill in all fields.' });
                             return;
                           }
                           const updatedQuiz = [...questions];
@@ -334,7 +366,7 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
                         variant="outline"
                         size="sm"
                         className="border-error/30 text-[12px] text-error"
-                        onClick={() => handleDeleteQuestion(index)}
+                        onClick={() => setPendingDeleteIndex(index)}
                       >
                         Delete
                       </Button>
@@ -487,6 +519,27 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
           </div>
         )}
       </div>
+
+      <AlertDialog
+        open={pendingDeleteIndex !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingDeleteIndex(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this question?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The question is removed from the list straight away, but the change only reaches the
+              course once you save the quiz.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeleteQuestion}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

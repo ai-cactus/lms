@@ -34,12 +34,20 @@ const { prismaMock, mockAuth, mockCallVertexAI, mockCheckRateLimit } = vi.hoiste
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock, default: prismaMock }));
 vi.mock('@/auth', () => ({ auth: mockAuth }));
 vi.mock('@/lib/rate-limit', () => ({ checkRateLimit: mockCheckRateLimit }));
-vi.mock('@/lib/ai-client', () => ({ callVertexAI: mockCallVertexAI }));
+// Spread the real module rather than listing exports by hand: the code under
+// test also reads interactiveBudget/VertexBudgetExceededError from here, and a
+// partial factory turns a new export into an `undefined is not a function`
+// TypeError inside the code under test.
+vi.mock('@/lib/ai-client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/ai-client')>()),
+  callVertexAI: mockCallVertexAI,
+}));
 vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
   maskEmail: (e: string) => e,
 }));
 
+import { VertexBudgetExceededError } from '@/lib/ai-client';
 import { generateSingleQuestion, regenerateQuiz } from './quiz-ai';
 
 const OWN_ORG = 'ou-mine';
@@ -319,6 +327,74 @@ const VALID_REGENERATED_QUIZ_RESPONSE = JSON.stringify({
 // PhiBlockedError without depending on the shared Vertex mock also serving as
 // the PHI scanner's own AI pass.
 const PHI_CONTEXT = 'Patient SSN: 123-45-6789, escalate per policy.';
+
+/**
+ * A browser-awaited action that exceeds the gateway's ~100s window dies as a
+ * Cloudflare 524 — a network failure the client can only report as "an
+ * unexpected error occurred", with no reason and no hint that retrying works.
+ *
+ * Both of these pin the two halves of the fix: the client now gives up on its
+ * own wall-clock budget, and the action RETURNS that refusal. Returning is
+ * load-bearing — a thrown message is redacted to React error #441 in a
+ * production build, so a throw here would put the user back where they started.
+ */
+describe('quiz AI actions — Vertex time budget', () => {
+  it('returns an actionable retry message when generation runs out of time', async () => {
+    prismaMock.course.findUnique.mockResolvedValue(courseOwnedBy(OWN_ORG));
+    mockCallVertexAI.mockRejectedValue(new VertexBudgetExceededError('Vertex AI call'));
+
+    const result = await generateSingleQuestion({ courseId: 'course-1' });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/taking longer than usual/i);
+    expect(result.error).toMatch(/try again/i);
+    // Distinct from the generic failure, so the user is not told to fix
+    // content that is in fact fine.
+    expect(result.error).not.toMatch(/couldn't generate a question/i);
+    // Nothing internal leaks on the way out.
+    expect(result.error).not.toContain('Vertex');
+    expect(result.error).not.toContain('budget');
+  });
+
+  it('returns the same retry message when regeneration runs out of time', async () => {
+    prismaMock.course.findUnique.mockResolvedValue(courseOwnedBy(OWN_ORG));
+    mockCallVertexAI.mockRejectedValue(new VertexBudgetExceededError('Vertex AI call'));
+
+    const result = await regenerateQuiz({ courseId: 'course-1', questionCount: 5 });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/taking longer than usual/i);
+    expect(result.error).not.toContain('Vertex');
+  });
+
+  it('passes one shared deadline to every Vertex call the action makes', async () => {
+    // The PHI scan and the generation call are separate round trips with their
+    // own ladders. Budgeting them independently would let their sum exceed the
+    // window the browser is actually waiting inside.
+    prismaMock.course.findUnique.mockResolvedValue(null);
+    prismaMock.phiDecision.create.mockResolvedValue({});
+    // Call 1 is the PHI scan (clean), call 2 the generation. Without a clean
+    // scan the gate blocks first and this test would never reach the second
+    // call — leaving the "one shared deadline" assertion vacuously true.
+    mockCallVertexAI
+      .mockResolvedValueOnce(JSON.stringify({ hasPHI: false, findings: [] }))
+      .mockResolvedValueOnce(VALID_AI_RESPONSE);
+
+    const before = Date.now();
+    const result = await generateSingleQuestion({ context: 'A'.repeat(600) });
+    const after = Date.now();
+
+    expect(result.success).toBe(true);
+    const budgets = mockCallVertexAI.mock.calls.map((call) => call[1]?.retry?.deadlineAt);
+    expect(budgets.length).toBe(2);
+    for (const deadline of budgets) {
+      expect(deadline).toBeGreaterThanOrEqual(before);
+      // 45s budget; the generous ceiling keeps this off the wall clock.
+      expect(deadline).toBeLessThanOrEqual(after + 60_000);
+    }
+    expect(new Set(budgets).size).toBe(1);
+  });
+});
 
 describe('regenerateQuiz — happy path', () => {
   it('returns the freshly generated questions', async () => {

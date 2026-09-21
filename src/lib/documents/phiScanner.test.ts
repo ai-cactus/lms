@@ -2,7 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { scanText } from './phiScanner';
 import { callVertexAI } from '@/lib/ai-client';
 
-vi.mock('@/lib/ai-client', () => ({
+// Spread the real module rather than listing exports by hand: the scanner also
+// reads VertexBudgetExceededError from here, and a partial factory turns every
+// new export into an `instanceof undefined` TypeError inside the code
+// under test.
+vi.mock('@/lib/ai-client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/ai-client')>()),
   callVertexAI: vi.fn(),
 }));
 
