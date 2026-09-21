@@ -23,6 +23,7 @@ import { logger } from '@/lib/logger';
 import { sanitizeEditableHtml } from '@/lib/sanitize';
 import {
   applyTextRunEdits,
+  canApplyTextRunEdits,
   buildEditableSlideHtml,
   scanEditableTextRuns,
   EDITABLE_RUN_ATTRIBUTE,
@@ -205,9 +206,26 @@ export default function AdminSlideEditor({
 
   const handleSave = async () => {
     const merged = flushPending();
-    setIsSaving(true);
     setSaveError(null);
 
+    const unsafeSectionIndex = sections.findIndex(
+      (section, index) =>
+        merged[index] !== undefined &&
+        !canApplyTextRunEdits(section.html, runsBySection[index], merged[index]),
+    );
+    if (unsafeSectionIndex !== -1) {
+      logger.warn({
+        msg: '[course] Slide save refused — section carries editor region markers of its own',
+        lessonId: lesson.id,
+        sectionIndex: unsafeSectionIndex,
+      });
+      setSaveError(
+        'This slide contains markup the editor cannot save safely, so your changes were not saved. Edit this lesson’s content directly instead.',
+      );
+      return;
+    }
+
+    setIsSaving(true);
     const slideContent = sections
       .map((section, index) => {
         const sectionEdits = merged[index];

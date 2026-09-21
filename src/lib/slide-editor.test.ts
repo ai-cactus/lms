@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest';
 import {
   applyTextRunEdits,
   buildEditableSlideHtml,
+  canApplyTextRunEdits,
   scanEditableTextRuns,
   EDITABLE_RUN_ATTRIBUTE,
 } from './slide-editor';
@@ -272,4 +273,67 @@ describe('buildEditableSlideHtml', () => {
     expect(sanitized).toContain('role="textbox"');
     expect(sanitized).toContain('class="rich-slide slide-type-tell"');
   });
+});
+
+/**
+ * Course HTML is stored content, so it can already carry the editor's own
+ * region attribute. The editor maps a keystroke to a region through the nearest
+ * `[data-slide-run]`, so a forged one would route typed text into another
+ * region and the save would splice it there. Refused, never repaired.
+ */
+describe('canApplyTextRunEdits', () => {
+  const forge = (marker: string) =>
+    TELL_SLIDE.replace('>CONCEPT</span>', `><span ${marker}>CONCEPT</span></span>`);
+
+  test('accepts every clean v4.6 section with in-range edits', () => {
+    for (const slide of [TELL_SLIDE, SHOW_SLIDE, DO_SLIDE]) {
+      const runs = scanEditableTextRuns(slide);
+      const everyRun = Object.fromEntries(runs.map((_, index) => [index, 'x']));
+      expect(canApplyTextRunEdits(slide, runs, everyRun)).toBe(true);
+    }
+  });
+
+  test('accepts an empty edit set on a clean section', () => {
+    expect(canApplyTextRunEdits(TELL_SLIDE, scanEditableTextRuns(TELL_SLIDE), {})).toBe(true);
+  });
+
+  test.each([
+    ['a forged in-range index', 'data-slide-run="0"'],
+    ['a forged out-of-range index', 'data-slide-run="99"'],
+    ['an unquoted attribute', 'data-slide-run=1'],
+    ['a single-quoted attribute', "data-slide-run='2'"],
+    ['an upper-case attribute name', 'DATA-SLIDE-RUN="0"'],
+    ['a non-canonical index', 'data-slide-run=" 0"'],
+  ])('refuses a section carrying %s', (_, marker) => {
+    const html = forge(marker);
+    expect(canApplyTextRunEdits(html, scanEditableTextRuns(html), { 0: 'x' })).toBe(false);
+  });
+
+  // HTML treats `/` between attributes as a separator, so a browser reads this
+  // span as carrying the attribute even with no whitespace before it.
+  test('refuses a forged attribute separated by a slash', () => {
+    const html = TELL_SLIDE.replace(
+      '>CONCEPT</span>',
+      '><span/data-slide-run="0">CONCEPT</span></span>',
+    );
+    expect(canApplyTextRunEdits(html, scanEditableTextRuns(html), { 0: 'x' })).toBe(false);
+  });
+
+  test('refuses even when the forged marker wraps no editable text', () => {
+    const html = TELL_SLIDE.replace('</div>', '<br data-slide-run="1"></div>');
+    expect(canApplyTextRunEdits(html, scanEditableTextRuns(html), {})).toBe(false);
+  });
+
+  test('ignores the attribute inside a comment, which the browser never renders', () => {
+    const html = TELL_SLIDE.replace('</h3>', '</h3><!-- <span data-slide-run="0"> -->');
+    expect(canApplyTextRunEdits(html, scanEditableTextRuns(html), { 0: 'x' })).toBe(true);
+  });
+
+  test.each([[-1], [99], [1.5]])(
+    'refuses an edit keyed to run %s, which was never emitted',
+    (key) => {
+      const runs = scanEditableTextRuns(TELL_SLIDE);
+      expect(canApplyTextRunEdits(TELL_SLIDE, runs, { [key]: 'x' })).toBe(false);
+    },
+  );
 });

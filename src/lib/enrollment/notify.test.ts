@@ -14,7 +14,7 @@ const { mockCreateNotification, mockSendCoursesAssignedEmail, mockLogger } = vi.
   mockLogger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-vi.mock('@/app/actions/notifications', () => ({ createNotification: mockCreateNotification }));
+vi.mock('@/lib/notifications/create', () => ({ createNotification: mockCreateNotification }));
 vi.mock('@/lib/email', () => ({ sendCoursesAssignedEmail: mockSendCoursesAssignedEmail }));
 vi.mock('@/lib/logger', () => ({
   logger: mockLogger,

@@ -1,6 +1,6 @@
 import prisma from '@/lib/prisma';
 import { logger } from '@/lib/logger';
-import { createNotification } from '@/app/actions/notifications';
+import { createNotification } from '@/lib/notifications/create';
 import { sendInstantNotificationEmail } from '@/lib/email';
 import { getRoleDisplayName } from '@/lib/rbac/role-utils';
 import type { Role } from '@/types/next-auth';

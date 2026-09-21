@@ -1,7 +1,7 @@
 import prisma from '@/lib/prisma';
 import { DEFAULT_SELF_SERVE_WORKER_ROLE } from '@/lib/rbac/role-utils';
 import { logger, maskEmail } from '@/lib/logger';
-import { createNotification } from '@/app/actions/notifications';
+import { createNotification } from '@/lib/notifications/create';
 import { computeDueAt, resolveStartDate } from '@/lib/reminders/deadline';
 import { resolveMemberFacilityId, resolveMemberFacilityIds } from '@/lib/facility/member-facility';
 import type { StaffEntry } from '@/types/enrollment';

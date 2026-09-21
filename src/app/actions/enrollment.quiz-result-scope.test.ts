@@ -60,7 +60,7 @@ vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
   maskEmail: (e: string) => e,
 }));
-vi.mock('./notifications', () => ({
+vi.mock('@/lib/notifications/create', () => ({
   createNotification: vi.fn(),
   notifyOrganizationAdmins: vi.fn(),
 }));

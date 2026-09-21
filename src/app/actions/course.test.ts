@@ -610,6 +610,69 @@ describe('getDashboardData', () => {
       },
     );
   });
+
+  /**
+   * Finance passes the action's gate on `billing.read` for the aggregates, but
+   * holds nothing on Courses. The course list and the per-course chart name
+   * individual courses, so they must not leave the server for it — while the
+   * aggregate tiles stay identical to what a course-viewing role gets.
+   */
+  describe('course-identifying fields', () => {
+    beforeEach(() => {
+      mockCourseFindMany.mockResolvedValue([
+        {
+          id: 'course-a',
+          title: 'Course A',
+          description: null,
+          thumbnail: null,
+          status: 'published',
+          type: 'document',
+          duration: 30,
+          createdAt: new Date(2026, 0, 1),
+          updatedAt: new Date(2026, 0, 1),
+          lessons: [{ quiz: { passingScore: 70 } }],
+        },
+      ]);
+      wireGroupBy(
+        [{ courseId: 'course-a', status: 'completed', _count: { _all: 1 } }],
+        [{ organizationUserId: 'u1', status: 'completed', _count: { _all: 1 } }],
+      );
+      mockEnrollmentFindMany.mockResolvedValue([
+        { courseId: 'course-a', score: 90, completedAt: new Date(2026, 0, 5) },
+      ]);
+      mockOrgUserCount.mockResolvedValue(1);
+    });
+
+    it('withholds the course list and per-course chart from Finance, keeping its aggregates', async () => {
+      mockAdminAuth.mockResolvedValue({
+        user: { id: 'f-1', role: 'finance', organizationUserId: 'ou-f', organizationId: ORG_ID },
+      });
+
+      const result = await getDashboardData();
+
+      expect(result.courses).toEqual([]);
+      expect(result.stats.coursePerformance).toEqual([]);
+      expect(JSON.stringify(result)).not.toContain('Course A');
+      expect(result.stats.totalCourses).toBe(1);
+      expect(result.stats.totalStaffAssigned).toBe(1);
+      expect(result.stats.averageGrade).toBe(90);
+    });
+
+    // Positive controls: a strip that fires for everyone must not pass.
+    it.each(['owner', 'admin', 'hr', 'clinical_director', 'supervisor'])(
+      'returns the course list and per-course chart to %s',
+      async (role) => {
+        mockAdminAuth.mockResolvedValue({
+          user: { id: 'a-1', role, organizationUserId: ORG_USER_ID, organizationId: ORG_ID },
+        });
+
+        const result = await getDashboardData();
+
+        expect(result.courses.map((course) => course.title)).toEqual(['Course A']);
+        expect(result.stats.coursePerformance.map((row) => row.name)).toEqual(['Course A']);
+      },
+    );
+  });
 });
 
 // The roster gate is `user.read` (the Staff Management permission), which is the

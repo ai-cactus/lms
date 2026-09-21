@@ -7,7 +7,7 @@ import { hasActiveBilling, BILLING_GATE_ASSIGN_MESSAGE } from '@/lib/billing';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
-import { notifyOrganizationAdmins } from './notifications';
+import { notifyOrganizationAdmins } from '@/lib/notifications/create';
 import { QuizAttemptResult } from '@/types/quiz';
 import { logger } from '@/lib/logger';
 import { invalidatePlaybackAuthz } from '@/lib/video/playback-cache';
@@ -1480,7 +1480,11 @@ export async function submitQuizAttempt(
         'course_completed',
         () => ({
           course_id: enrollment.courseId,
-          total_minutes: enrollment.startedAt
+          // `startedAt` is stamped at ENROLLMENT creation (the assignment), not
+          // when the learner first opened the course, and no time-on-task is
+          // recorded anywhere — so this is calendar time since assignment, not
+          // study duration.
+          minutes_since_assigned: enrollment.startedAt
             ? Math.round((Date.now() - enrollment.startedAt.getTime()) / 60_000)
             : null,
           is_retake: Boolean(enrollment.retakeOf),
@@ -1610,7 +1614,7 @@ export async function removeWorkerAssignment(
   const enrollment = await prisma.enrollment.findUnique({
     where: { id: enrollmentId },
     include: {
-      course: { include: { creator: { select: { organizationId: true } } } },
+      organizationUser: { select: { organizationId: true } },
     },
   });
 
@@ -1618,23 +1622,25 @@ export async function removeWorkerAssignment(
     return { success: false, error: 'That assignment no longer exists.' };
   }
 
-  // COU-004, as elsewhere in this file: a course belongs to the ORGANIZATION,
-  // not to the member who authored it. Gating on authorship refused a colleague
-  // a withdrawal on the very course they could assign. A caller with no
-  // organization matches nothing, so the comparison fails closed.
+  // Tenancy is decided by the ENROLMENT's organisation, not the course's
+  // creator — the ISSUE-4 ruling `getEnrollmentWithResults` applies to the same
+  // kind of record. An adopted video course is authored by Theraptly, so a
+  // creator-org test refused every organisation a withdrawal from its own
+  // learner on its own adopted course. A caller with no organization matches
+  // nothing, so the comparison fails closed.
   if (
     !session.user.organizationId ||
-    enrollment.course.creator.organizationId !== session.user.organizationId
+    enrollment.organizationUser.organizationId !== session.user.organizationId
   ) {
     logger.warn({
-      msg: '[enrollment] removeWorkerAssignment denied — course outside the caller organization',
+      msg: '[enrollment] removeWorkerAssignment denied — enrollment outside the caller organization',
       enrollmentId,
       userId: session.user.id,
       role: session.user.role,
     });
     return {
       success: false,
-      error: 'That course does not belong to your organization.',
+      error: 'That assignment does not belong to your organization.',
     };
   }
 

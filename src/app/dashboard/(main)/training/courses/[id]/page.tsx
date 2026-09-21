@@ -2,9 +2,9 @@ import React from 'react';
 import { notFound } from 'next/navigation';
 import TrainingDetails from '@/components/dashboard/training/TrainingDetails';
 import { loadCourseDetail } from '@/lib/course/load-course-detail';
-import { auth } from '@/auth';
 import { can } from '@/lib/rbac/permissions';
-import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
+import { isAdminRole } from '@/lib/rbac/role-utils';
+import { requirePermission } from '@/lib/rbac/require-permission';
 import { getCourseAssignmentSettings, getRoleHolderCounts } from '@/app/actions/enrollment';
 
 export const dynamic = 'force-dynamic';
@@ -19,33 +19,36 @@ interface PageProps {
 export default async function CourseDetailsPage(props: PageProps) {
   const params = await props.params;
 
-  const [course, session] = await Promise.all([loadCourseDetail(params.id), auth()]);
+  // The same gate as the sibling Preview route. Without it this page leaned
+  // entirely on loadCourseDetail, whose enrolment door let an admin-portal role
+  // with no Courses remit (Finance) open the management view of any course it
+  // was enrolled on. `isAdminRole` is load-bearing alongside the verb: every
+  // worker role holds `course.read` for its own learning, so the verb alone
+  // would admit them should a worker-role session ever reach this portal.
+  // `notFound` because the URL is id-addressed — a redirect confirms the id.
+  const { role, roleKey, organizationId } = await requirePermission('course.read', {
+    onDeny: 'notFound',
+  });
+  if (!isAdminRole(role)) notFound();
+
+  const course = await loadCourseDetail(params.id);
   if (!course) {
     notFound();
   }
 
-  // This page has no `course.read` gate, but /dashboard/courses does and now
-  // 404s on deny (founder Q26) — so sending every viewer there made "Go Back" a
-  // dead button for roles that lack it (finance, since 2026-08-25). Same
-  // predicate the sidebar uses to decide whether to offer Courses at all.
-  const roleKey = session?.user?.role ? dbRoleToRoleKey(session.user.role) : null;
+  // Mirrors removeWorkerAssignment's own gate: the `assignment.delete` verb and
+  // an organisation to act in. Tenancy is per ENROLMENT there, not per course —
+  // an adopted video course is authored by Theraptly, yet its roster here is
+  // this organisation's own learners (both course-detail reads scope the roster
+  // to the caller's org), so keying this on the course creator hid the control
+  // on every adopted course.
+  const canWithdrawAssignments = can(roleKey, 'assignment.delete') && !!organizationId;
 
-  // Mirrors removeWorkerAssignment's own gate, so the control is only offered
-  // where it would actually succeed: the `assignment.delete` verb plus COU-004
-  // org ownership of the course. Reading the roster and withdrawing from it stay
-  // separate rights, but neither is authorship any more — a colleague's course
-  // is the organization's course.
-  const canWithdrawAssignments =
-    Boolean(roleKey && can(roleKey, 'assignment.delete')) &&
-    !!session?.user?.organizationId &&
-    course.creator.organizationId === session.user.organizationId;
-  const backHref = roleKey && can(roleKey, 'course.read') ? '/dashboard/courses' : '/dashboard';
-
-  // Both reads THROW `Forbidden` without `assignment.read`, so they must be
-  // skipped rather than caught: this page is reachable by every enrolled
-  // learner, and a rejected promise here would take the whole page down for
-  // them. No settings means no role picker, which is the correct outcome anyway.
-  const canReadAssignments = Boolean(roleKey && can(roleKey, 'assignment.read'));
+  // Both reads THROW `Forbidden` without `assignment.read`, which a `course.read`
+  // holder does not necessarily have, so they must be skipped rather than
+  // caught: a rejected promise here would take the whole page down. No settings
+  // means no role picker, which is the correct outcome anyway.
+  const canReadAssignments = can(roleKey, 'assignment.read');
   const [assignmentSettings, roleHolderCounts] = canReadAssignments
     ? await Promise.all([getCourseAssignmentSettings(params.id), getRoleHolderCounts()])
     : [null, {}];
@@ -54,11 +57,11 @@ export default async function CourseDetailsPage(props: PageProps) {
     <TrainingDetails
       course={course}
       canWithdrawAssignments={canWithdrawAssignments}
-      backHref={backHref}
+      backHref="/dashboard/courses"
       assignmentSettings={assignmentSettings}
       roleHolderCounts={roleHolderCounts}
-      canCreateRoleTargets={Boolean(roleKey && can(roleKey, 'assignment.create'))}
-      canRevokeRoleTargets={Boolean(roleKey && can(roleKey, 'assignment.delete'))}
+      canCreateRoleTargets={can(roleKey, 'assignment.create')}
+      canRevokeRoleTargets={can(roleKey, 'assignment.delete')}
     />
   );
 }

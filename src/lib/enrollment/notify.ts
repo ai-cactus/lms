@@ -1,5 +1,5 @@
 import { logger, maskEmail } from '@/lib/logger';
-import { createNotification } from '@/app/actions/notifications';
+import { createNotification } from '@/lib/notifications/create';
 import type { DeferredWorkerNotification } from './create';
 
 /** One newly assigned course, as listed in a batched notice. */
