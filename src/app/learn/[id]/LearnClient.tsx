@@ -15,6 +15,7 @@ import CourseSlide from '@/components/courses/CourseSlide';
 import CourseArticle from '@/components/courses/CourseArticle';
 import AdminQuizEditor from '@/components/courses/AdminQuizEditor';
 import AdminLessonEditor from '@/components/courses/AdminLessonEditor';
+import AdminSlideEditor from '@/components/courses/AdminSlideEditor';
 import AdminCourseReview from '@/components/courses/AdminCourseReview';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -118,6 +119,12 @@ interface UserData {
    * is exactly what D-16 got wrong.
    */
   isAdminView: boolean;
+  /**
+   * Whether the admin view may also SAVE lesson content. Narrower than
+   * `isAdminView` — `course.edit` plus org ownership of the course, mirroring
+   * `updateLessonContent`. Server-decided for the same reason as above.
+   */
+  canEditContent: boolean;
   organizationName?: string;
   email: string;
   jobTitle: string;
@@ -1181,19 +1188,40 @@ export default function LearnClient({ initialData }: LearnClientProps) {
               </div>
             </div>
           ) : viewMode === 'slides' ? (
-            <CourseSlide
-              lesson={{
-                title: currentLesson!.title,
-                content: currentLesson!.slideContent || currentLesson!.content,
-                moduleIndex: activeIndex,
-                totalModules: course.lessons.length,
-              }}
-              onNext={handleNext}
-              onPrev={handlePrev}
-              isFirst={activeIndex === 0}
-              isLast={activeIndex === course.lessons.length - 1 && !course.quiz}
-              onToggleView={() => setViewMode('article')}
-            />
+            userData?.isAdminView === true && userData?.canEditContent === true ? (
+              // Remounting per lesson is what resets the editor's unsaved-edit
+              // state — a new lesson is a new deck, so there is no resync effect.
+              <AdminSlideEditor
+                key={currentLesson!.id}
+                lesson={{
+                  id: currentLesson!.id,
+                  title: currentLesson!.title,
+                  content: currentLesson!.content,
+                  slideContent: currentLesson!.slideContent,
+                  moduleIndex: activeIndex,
+                  totalModules: course.lessons.length,
+                }}
+                onNext={handleNext}
+                onPrev={handlePrev}
+                isFirst={activeIndex === 0}
+                isLast={activeIndex === course.lessons.length - 1 && !course.quiz}
+                onToggleView={() => setViewMode('article')}
+              />
+            ) : (
+              <CourseSlide
+                lesson={{
+                  title: currentLesson!.title,
+                  content: currentLesson!.slideContent || currentLesson!.content,
+                  moduleIndex: activeIndex,
+                  totalModules: course.lessons.length,
+                }}
+                onNext={handleNext}
+                onPrev={handlePrev}
+                isFirst={activeIndex === 0}
+                isLast={activeIndex === course.lessons.length - 1 && !course.quiz}
+                onToggleView={() => setViewMode('article')}
+              />
+            )
           ) : (
             <CourseArticle
               title={course.title}
@@ -1245,6 +1273,7 @@ export default function LearnClient({ initialData }: LearnClientProps) {
                         moduleIndex: idx,
                         totalModules: course.lessons.length,
                       }}
+                      canEdit={userData?.canEditContent === true}
                       onNext={handleNext}
                       onPrev={handlePrev}
                       isFirst={idx === 0}

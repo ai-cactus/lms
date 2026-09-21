@@ -25,6 +25,30 @@ function mayReviewWithoutEnrollment(role: Role | null | undefined): boolean {
   return can(dbRoleToRoleKey(role), 'course.read');
 }
 
+/**
+ * The exact predicate `updateLessonContent` (src/app/actions/course.ts) enforces
+ * before it writes a lesson body: the `course.edit` grant AND ownership of the
+ * course by the caller's own organisation.
+ *
+ * Opening a course and editing it are different rights, and the editor was
+ * offered on the strength of the first. A supervisor holds `course.read` but not
+ * `course.edit`, and any admin may open a published GLOBAL catalogue course they
+ * do not own — both were shown "Edit Article" and both were refused on save.
+ *
+ * ⛔ UI AFFORDANCE ONLY. This decides whether to OFFER the editor, nothing more.
+ * `updateLessonContent` re-derives and re-checks both halves itself on every
+ * call and must keep doing so — the flag never travels to the server action, and
+ * no future caller may treat it as the authorisation decision.
+ */
+function mayEditCourseContent(
+  role: Role | null | undefined,
+  callerOrganizationId: string | null | undefined,
+  courseOrganizationId: string | null | undefined,
+): boolean {
+  if (!role || !can(dbRoleToRoleKey(role), 'course.edit')) return false;
+  return Boolean(callerOrganizationId) && callerOrganizationId === courseOrganizationId;
+}
+
 const QUIZ_SELECT = {
   id: true,
   title: true,
@@ -175,6 +199,16 @@ export interface LearnPayload {
      * not re-derive this with isAdminRole(). D-16 / team QA #1, #4, #5.
      */
     isAdminView: boolean;
+    /**
+     * Whether to offer the lesson-content editor inside that admin view.
+     * Narrower than `isAdminView`: it mirrors `updateLessonContent`'s own gate
+     * (`course.edit` + org ownership of the course), so the product stops
+     * showing an "Edit Article" button to viewers whose every save is refused.
+     *
+     * ⛔ A UI affordance, not an authorisation. The server action re-checks the
+     * identical predicate on every call.
+     */
+    canEditContent: boolean;
     organizationName?: string;
     email: string;
     jobTitle: string;
@@ -356,6 +390,18 @@ export async function getLearnPayload(courseId: string): Promise<LearnPayload | 
     const inLearnerPortal = Boolean(session?.user?.id);
     const isAdmin = mayOpenWithoutEnrollment && !inLearnerPortal;
 
+    // `isAdmin` can only be true when there is no worker cookie, so the admin
+    // session IS the one `updateLessonContent`'s `resolveSession()` would pick:
+    // there is no ambiguity about whose organisation to compare against the
+    // course's. Anything outside the admin view is never offered the editor.
+    const canEditContent =
+      isAdmin &&
+      mayEditCourseContent(
+        adminSession?.user?.role,
+        adminSession?.user?.organizationId,
+        course.creator?.organizationId,
+      );
+
     // `answers` is a Prisma `Json` column the quiz endpoints always write as an
     // answer array; the client still guards with Array.isArray before reading it.
     const quizAttempts: LearnPayloadQuizAttempt[] = (enrollment?.quizAttempts ?? []).map(
@@ -535,6 +581,7 @@ export async function getLearnPayload(courseId: string): Promise<LearnPayload | 
         name: activeMembership?.user.fullName || activeMembership?.user.email || '',
         role: activeMembership?.role ?? null,
         isAdminView: isAdmin,
+        canEditContent,
         organizationName: activeMembership?.organization.name || undefined,
         email: activeMembership?.user.email || '',
         jobTitle: activeMembership?.jobTitle || '',

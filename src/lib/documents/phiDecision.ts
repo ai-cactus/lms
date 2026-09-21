@@ -47,6 +47,8 @@ export type PhiDecisionSource =
   | 'course_wizard_upload'
   /** Lesson body text typed or pasted into the authoring UI (F-089). */
   | 'lesson_edit'
+  /** Slide markup edited in place in the slide editor. */
+  | 'lesson_slide_edit'
   /** Free-text context supplied by the client to AI quiz generation (F-089). */
   | 'quiz_context';
 

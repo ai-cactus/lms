@@ -29,6 +29,7 @@ vi.mock('@/app/actions/video-progress', () => ({
 
 vi.mock('@/app/actions/course', () => ({
   retakeQuiz: vi.fn(),
+  updateLessonSlideContent: vi.fn().mockResolvedValue({ success: true }),
 }));
 
 import { saveVideoProgress } from '@/app/actions/video-progress';
@@ -84,6 +85,7 @@ const makePayload = (overrides: Partial<LearnPayload> = {}): LearnPayload => ({
     name: 'Jane Worker',
     role: 'nurse',
     isAdminView: false,
+    canEditContent: false,
     organizationName: 'Acme Health',
     email: 'jane@example.com',
     jobTitle: 'RN',
@@ -115,7 +117,8 @@ describe('LearnClient with server-provided initialData', () => {
     expect(video).not.toBeNull();
     expect(video).toHaveAttribute('src', '/api/video/lesson-1');
     expect(video).toHaveAttribute('poster', '/api/video/lesson-1/poster');
-    // The lesson title shows in both the article body and the module rail.
+    // The lesson title shows in both the article body and its Table of
+    // Contents. Not in CourseRail: that renders on quiz views only.
     expect(screen.getAllByText('Exposure control').length).toBeGreaterThan(0);
   });
 
@@ -1048,5 +1051,89 @@ describe('LearnClient — whole-course headings', () => {
 
     expect(screen.getByRole('button', { name: 'Proceed to Quiz' })).toBeDisabled();
     expect(screen.getByText('Work through every module to unlock the quiz')).toBeInTheDocument();
+  });
+});
+
+/**
+ * Unsaved slide edits vs. module navigation.
+ *
+ * AdminSlideEditor saves the whole deck in one call, so leaving a module
+ * discards every unsaved edit in it. The editor guards the exits it owns —
+ * Back/Next off the end of the deck, "View as Notes", `beforeunload` — but it
+ * cannot guard an exit it never sees, and `handleRailSelect` (CourseRail's
+ * modules and CourseArticle's Table of Contents) lives out here in LearnClient.
+ *
+ * What stops that from being a hole is that no module navigation is on screen
+ * while the editor is mounted: `showSharedLayout` renders CourseRail, its
+ * mobile toggle and the top bar on quiz views only, and the ToC belongs to the
+ * article view the editor replaces. That invariant is invisible from
+ * AdminSlideEditor.tsx, so it is pinned here: if this fails, module navigation
+ * has become reachable with the editor open, and the editor's dirty state has
+ * to be lifted into LearnClient and guarded before that ships.
+ */
+describe('AdminSlideEditor — module navigation is unreachable while the editor is open', () => {
+  const slideDeck = (heading: string) =>
+    `<div class="rich-slide slide-type-tell"><h3 class="slide-heading">${heading}</h3><p>${heading} body</p></div>`;
+
+  const adminSlidePayload = () => {
+    const payload = makePayload();
+    payload.user.isAdminView = true;
+    payload.user.canEditContent = true;
+    payload.course.lessons = [
+      textLesson('lesson-1', 'Module 1: Intro', { slideContent: slideDeck('Intro') }),
+      textLesson('lesson-2', 'Module 2: Hazards', { slideContent: slideDeck('Hazards') }),
+      textLesson('lesson-3', 'Module 3: Response', { slideContent: slideDeck('Response') }),
+    ];
+    return payload;
+  };
+
+  it('leaves the editor alone on screen — no course rail, no Table of Contents, no exit', () => {
+    const { container } = render(<LearnClient initialData={adminSlidePayload()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'View on Slides' }));
+
+    expect(screen.getByRole('button', { name: 'Save Slides' })).toBeInTheDocument();
+
+    expect(screen.queryByText('Table of Contents')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Open module list' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Exit$/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /QUIZ/ })).toBeNull();
+    // The other two modules are not one click away: the deck's own rail is the
+    // only <nav>, and it paginates slides inside THIS module.
+    expect(screen.queryByText('Hazards')).toBeNull();
+    expect(screen.queryByText('Response')).toBeNull();
+
+    const navs = Array.from(container.querySelectorAll('nav'));
+    expect(navs.map((nav) => nav.getAttribute('aria-label'))).toEqual(['Slides']);
+  });
+
+  it('keeps learner module navigation unprompted — the editor is absent, so nothing may interrupt it', () => {
+    if (!Element.prototype.scrollIntoView) {
+      Element.prototype.scrollIntoView = function scrollIntoViewNoop() {};
+    }
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      cb(0);
+      return 0;
+    });
+
+    const payload = makePayload();
+    payload.course.lessons = [
+      textLesson('lesson-1', 'Module 1: Intro'),
+      textLesson('lesson-2', 'Module 2: Hazards'),
+    ];
+
+    const { container } = render(<LearnClient initialData={payload} />);
+
+    const secondModule = container.querySelector('#module-1') as HTMLElement;
+    const scrollSpy = vi.spyOn(secondModule, 'scrollIntoView').mockImplementation(() => {});
+
+    const toc = screen.getByText('Table of Contents').parentElement!;
+    fireEvent.click(within(toc).getAllByRole('button')[1]);
+
+    // The navigation went through untouched — no confirmation stood between the
+    // click and the module.
+    expect(scrollSpy).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(screen.queryByText('Leave without saving?')).toBeNull();
   });
 });

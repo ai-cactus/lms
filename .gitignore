@@ -48,8 +48,12 @@ next-env.d.ts
 #files
 /src/generated/prisma
 # Prisma client output (prisma/schema.prisma → ../generated/prisma); regenerated
-# locally, in CI (npx prisma generate per job) and in the Dockerfile — never committed
-/generated/prisma
+# locally, in CI (npx prisma generate per job) and in the Dockerfile — never committed.
+# Ignore the DIRECTORY, not just its contents: an agent worktree that symlinks
+# `generated` at the main checkout would otherwise commit a mode-120000 symlink,
+# which `/generated/prisma` does not match. CI then fails at `npx prisma generate`
+# with `ENOTDIR: not a directory, mkdir .../generated`.
+/generated
 production/
 
 AGENT.md
