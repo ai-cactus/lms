@@ -14,7 +14,7 @@
  * This module re-exports only from the pure `permissions.ts` registry, so it is
  * safe to import from client components.
  */
-import { roles, type RoleKey } from './permissions';
+import { can, roles, type RoleKey } from './permissions';
 import type { Role } from '@/types/next-auth';
 
 // Typed as `readonly Role[]` (not narrow tuples) so `.includes(someRole)` accepts
@@ -230,6 +230,18 @@ export function isAdminRole(role: string | null | undefined): boolean {
 /** True when the value is a worker (learner) role. */
 export function isWorkerRole(role: string | null | undefined): boolean {
   return (WORKER_ROLES as readonly string[]).includes(role ?? '');
+}
+
+/**
+ * True when the role may see the ORGANISATION's courses — titles, per-course
+ * figures, the management views — as opposed to its own learning.
+ *
+ * Both halves are load-bearing. Every worker role holds `course.read` for its
+ * own enrolments, so the verb alone admits every learner; and `isAdminRole`
+ * alone admits Finance, which holds nothing on Courses.
+ */
+export function canViewOrgCourses(role: string | null | undefined): boolean {
+  return isAdminRole(role) && can(dbRoleToRoleKey(role as Role), 'course.read');
 }
 
 /** A single selectable role option inside a {@link RoleSelectGroup}. */

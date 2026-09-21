@@ -74,8 +74,11 @@ vi.mock('@/components/dashboard/FacilityScopeSwitcher', () => ({
 vi.mock('@/components/dashboard/DashboardChartsDynamic', () => ({
   default: () => <div data-testid="charts" />,
 }));
+const mockMyCoursesTable = vi.fn<(props: unknown) => JSX.Element>(() => (
+  <div data-testid="my-courses" />
+));
 vi.mock('@/components/dashboard/MyCoursesTable', () => ({
-  default: () => <div data-testid="my-courses" />,
+  default: (props: unknown) => mockMyCoursesTable(props),
 }));
 vi.mock('@/components/dashboard/DashboardEmptyState', () => ({
   default: () => <div data-testid="empty-state" />,
@@ -233,6 +236,60 @@ describe('DashboardPage — Status Tracker data wiring', () => {
     expect(mockGetStatusTrackerSummaryForOrg).not.toHaveBeenCalled();
     expect(screen.queryByTestId('status-tracker-overview')).not.toBeInTheDocument();
   });
+});
+
+/**
+ * The course table lists the ORGANISATION's courses and each row opens the
+ * course detail page. Finance reaches this dashboard via `billing.read` but
+ * holds nothing on Courses, so the table must not render for it and none of the
+ * course rows may reach the component's props. The action-level half (the
+ * rows never leave the server) is pinned in src/app/actions/course.test.ts.
+ */
+describe('DashboardPage — organisation course table', () => {
+  const COURSE_ROW = { id: 'course-a', title: 'Course A' };
+
+  beforeEach(() => {
+    mockGetDashboardData.mockResolvedValue({
+      courses: [COURSE_ROW],
+      stats: { totalCourses: 12, totalStaffAssigned: 34, averageGrade: 82 },
+    });
+    mockGetStatusTrackerSummaryForOrg.mockResolvedValue({
+      overdueCount: 0,
+      hardEscalationCount: 0,
+      rows: [],
+      nearDeadline: { count: 0, rows: [] },
+    });
+  });
+
+  it('renders no course table for Finance and hands it no course rows', async () => {
+    mockAuth.mockResolvedValue({
+      user: { id: 'finance-1', organizationUserId: 'ou-2', organizationId: 'org-42', role: 'finance' },
+    });
+
+    render(await DashboardPage(noSearchParams()));
+
+    expect(screen.queryByTestId('my-courses')).not.toBeInTheDocument();
+    expect(mockMyCoursesTable).not.toHaveBeenCalled();
+    // Finance's billing-relevant aggregates stay on the page.
+    expect(screen.getByText('12')).toBeInTheDocument();
+  });
+
+  // Positive controls: a gate that hides the table from everyone must not pass.
+  it.each(['owner', 'hr', 'clinical_director'])(
+    'renders the course table with its rows for %s',
+    async (role) => {
+      mockAuth.mockResolvedValue({
+        user: { id: 'viewer-1', organizationUserId: 'ou-3', organizationId: 'org-42', role },
+      });
+
+      render(await DashboardPage(noSearchParams()));
+
+      expect(screen.getByTestId('my-courses')).toBeInTheDocument();
+      expect(mockMyCoursesTable).toHaveBeenCalledWith(
+        expect.objectContaining({ courses: [COURSE_ROW] }),
+      );
+    },
+  );
 });
 
 describe('DashboardPage — facility scope wiring', () => {
