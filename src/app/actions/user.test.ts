@@ -23,7 +23,8 @@ const {
   // jobTitle now lives on the active OrganizationUser membership.
   prismaMock: {
     user: { findUnique: vi.fn(), update: vi.fn() },
-    organizationUser: { update: vi.fn(), findMany: vi.fn() },
+    organizationUser: { update: vi.fn(), findMany: vi.fn(), findFirst: vi.fn() },
+    $transaction: vi.fn(),
     invite: { findMany: vi.fn() },
     facility: { findMany: vi.fn() },
   },
@@ -74,6 +75,8 @@ beforeEach(() => {
   mockAdminAuth.mockResolvedValue(SESSION);
   mockWorkerAuth.mockResolvedValue(null);
   prismaMock.user.update.mockResolvedValue({ id: 'user-1' });
+  prismaMock.organizationUser.update.mockResolvedValue({ id: 'ou-1' });
+  prismaMock.$transaction.mockImplementation((ops: Promise<unknown>[]) => Promise.all(ops));
 });
 
 describe('updateProfile — server-side name validation', () => {
@@ -142,6 +145,128 @@ describe('updateProfile — server-side name validation', () => {
 
     expect(result).toEqual({ success: false, error: 'Not authenticated' });
     expect(prismaMock.user.update).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// updateProfile — job title. It lives on the active OrganizationUser, not on
+// the identity. The action used to write it only when the session happened to
+// carry `organizationUserId`, silently skipping it otherwise while the name
+// write succeeded and the action reported success.
+// ---------------------------------------------------------------------------
+
+describe('updateProfile — job title on the active membership', () => {
+  const MEMBERSHIP_ROW = {
+    id: 'ou-db',
+    role: 'worker',
+    organizationId: 'org-1',
+    organization: { name: 'Acme', slug: 'acme' },
+  };
+
+  function sessionWith(user: Record<string, unknown>) {
+    return { user: { id: 'user-1', email: 'user@acme.com', ...user } };
+  }
+
+  beforeEach(() => {
+    prismaMock.organizationUser.findFirst.mockResolvedValue(MEMBERSHIP_ROW);
+  });
+
+  it('writes the title to the membership resolved from the DB when the session lacks organizationUserId', async () => {
+    mockAdminAuth.mockResolvedValue(
+      sessionWith({ organizationId: 'org-1', organizationUserId: undefined }),
+    );
+
+    const result = await updateProfile(baseData({ jobTitle: 'Charge Nurse' }));
+
+    expect(result).toEqual({ success: true });
+    expect(prismaMock.organizationUser.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { userId: 'user-1', organizationId: 'org-1', active: true },
+      }),
+    );
+    expect(prismaMock.organizationUser.update).toHaveBeenCalledExactlyOnceWith({
+      where: { id: 'ou-db' },
+      data: { jobTitle: 'Charge Nurse' },
+    });
+  });
+
+  it('commits the name and the title in ONE transaction', async () => {
+    mockAdminAuth.mockResolvedValue(
+      sessionWith({ organizationId: 'org-1', organizationUserId: 'ou-db' }),
+    );
+
+    await updateProfile(baseData({ jobTitle: 'Charge Nurse' }));
+
+    expect(prismaMock.$transaction).toHaveBeenCalledOnce();
+    expect(prismaMock.$transaction.mock.calls[0][0]).toHaveLength(2);
+  });
+
+  it('refuses an org-less session outright instead of saving only the name', async () => {
+    mockAdminAuth.mockResolvedValue(
+      sessionWith({ organizationId: null, organizationUserId: null }),
+    );
+
+    const result = await updateProfile(baseData({ jobTitle: 'Charge Nurse' }));
+
+    expect(result).toEqual({ success: false, error: expect.stringMatching(/job title/i) });
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
+    expect(prismaMock.organizationUser.update).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('refuses when the session org has no active membership, writing nothing', async () => {
+    mockAdminAuth.mockResolvedValue(
+      sessionWith({ organizationId: 'org-1', organizationUserId: 'ou-stale' }),
+    );
+    prismaMock.organizationUser.findFirst.mockResolvedValue(null);
+
+    const result = await updateProfile(baseData({ jobTitle: 'Charge Nurse' }));
+
+    expect(result.success).toBe(false);
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
+    expect(prismaMock.organizationUser.update).not.toHaveBeenCalled();
+  });
+
+  it('reports failure when the transaction fails', async () => {
+    mockAdminAuth.mockResolvedValue(
+      sessionWith({ organizationId: 'org-1', organizationUserId: 'ou-db' }),
+    );
+    prismaMock.$transaction.mockRejectedValue(new Error('deadlock'));
+
+    const result = await updateProfile(baseData({ jobTitle: 'Charge Nurse' }));
+
+    expect(result).toEqual({ success: false, error: 'Failed to update profile' });
+  });
+
+  it.each([
+    ['null', null],
+    ['an empty string', ''],
+    ['whitespace', '   '],
+  ])('clears the stored title when sent %s', async (_label, jobTitle) => {
+    mockAdminAuth.mockResolvedValue(
+      sessionWith({ organizationId: 'org-1', organizationUserId: 'ou-db' }),
+    );
+
+    const result = await updateProfile(baseData({ jobTitle }));
+
+    expect(result).toEqual({ success: true });
+    expect(prismaMock.organizationUser.update).toHaveBeenCalledExactlyOnceWith({
+      where: { id: 'ou-db' },
+      data: { jobTitle: null },
+    });
+  });
+
+  it('leaves the title untouched, and needs no membership, when it is not sent', async () => {
+    mockAdminAuth.mockResolvedValue(
+      sessionWith({ organizationId: null, organizationUserId: null }),
+    );
+
+    const result = await updateProfile(baseData());
+
+    expect(result).toEqual({ success: true });
+    expect(prismaMock.organizationUser.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.organizationUser.update).not.toHaveBeenCalled();
+    expect(prismaMock.user.update).toHaveBeenCalledOnce();
   });
 });
 
