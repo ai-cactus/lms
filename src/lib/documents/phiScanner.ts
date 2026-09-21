@@ -1,4 +1,4 @@
-import { callVertexAI } from '@/lib/ai-client';
+import { callVertexAI, VertexBudgetExceededError, type RetryBudget } from '@/lib/ai-client';
 import { logger } from '@/lib/logger';
 import { scanForPii } from '@/lib/documents/piiPatterns';
 
@@ -177,11 +177,16 @@ function buildScanPrompt(chunk: string): string {
  * Scan a single chunk via the BAA-covered Vertex endpoint.
  * Offsets in the returned findings are relative to the FULL document (via chunkStart).
  */
-async function scanChunkWithAI(chunk: string, chunkStart: number): Promise<ScanResult> {
+async function scanChunkWithAI(
+  chunk: string,
+  chunkStart: number,
+  budget?: RetryBudget,
+): Promise<ScanResult> {
   try {
     const aiResponse = await callVertexAI(buildScanPrompt(chunk), {
       temperature: 0.1,
       telemetry: { stage: 'phi_scan' },
+      retry: budget,
     });
 
     const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
@@ -206,6 +211,14 @@ async function scanChunkWithAI(chunk: string, chunkStart: number): Promise<ScanR
 
     return failClosed('AI response had unexpected structure');
   } catch (error) {
+    // A spent time budget is not a scan failure on the merits — it means the
+    // caller's gateway window ran out. Logged apart so "the scanner is broken"
+    // and "the scanner was too slow for an interactive request" stay tellable.
+    // Both still fail closed: an unfinished scan never admits content.
+    if (error instanceof VertexBudgetExceededError) {
+      logger.warn({ msg: '[doc] PHI scan chunk abandoned — time budget exhausted' });
+      return failClosed('scan exceeded its time budget — blocking document');
+    }
     logger.error({ msg: '[doc] PHI scan chunk failed', err: String(error) });
     return failClosed('scan exception — blocking document');
   }
@@ -228,7 +241,14 @@ function chunkText(text: string): string[] {
   return chunks;
 }
 
-export async function scanText(text: string): Promise<ScanResult> {
+/**
+ * @param budget Optional wall-clock ceiling shared with the rest of the
+ *   request's Vertex work. The chunk loop below is sequential and unbounded in
+ *   length, so a browser-awaited caller must pass one — otherwise the scan
+ *   alone can outlast the gateway. A scan that runs out of time fails closed,
+ *   exactly like any other scan that cannot complete.
+ */
+export async function scanText(text: string, budget?: RetryBudget): Promise<ScanResult> {
   // ── Local PII pre-pass (deterministic, ZERO network) ──
   //
   // This runs on EVERY input, including very short ones. It previously sat behind
@@ -280,7 +300,7 @@ export async function scanText(text: string): Promise<ScanResult> {
 
   for (let i = 0; i < chunks.length; i++) {
     const chunkStart = i * CHUNK_SIZE;
-    const chunkResult = await scanChunkWithAI(chunks[i], chunkStart);
+    const chunkResult = await scanChunkWithAI(chunks[i], chunkStart, budget);
 
     // A scan that couldn't complete blocks the whole document (fail-closed).
     if (chunkResult.scanFailed) return chunkResult;

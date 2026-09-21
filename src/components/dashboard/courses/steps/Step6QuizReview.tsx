@@ -51,6 +51,12 @@ interface QuizSection {
 
 const UNTAGGED_SECTION_KEY = 'untagged';
 
+// Client-side fallback only. Both actions already return a user-safe message
+// for every outcome they can name, including the wall-clock timeout — this
+// covers the transport itself failing.
+const UNEXPECTED_ERROR_MESSAGE =
+  'Something went wrong talking to the server. Please check your connection and try again.';
+
 /** The single accordion group the frames draw around the whole question list. */
 const QUIZ_GROUP_KEY = 'quiz';
 
@@ -143,6 +149,7 @@ export default function Step6QuizReview({
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editingQuestion, setEditingQuestion] = useState<QuizQuestion | null>(null);
   const [newQuestion, setNewQuestion] = useState<QuizQuestion>(emptyQuestion);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const sections = useMemo(
     () => groupQuestionsByModule(questions, data.title || ''),
@@ -161,7 +168,7 @@ export default function Step6QuizReview({
 
   const handleAddQuestion = (section: QuizSection) => {
     if (!newQuestion.question.trim() || newQuestion.options.some((o) => !o.trim())) {
-      alert('Please fill in all fields.');
+      setActionError('Please fill in all fields.');
       return;
     }
     // Insert right after the section's last question so the flat quiz the wizard
@@ -207,11 +214,14 @@ export default function Step6QuizReview({
     const context = buildAiContext();
 
     if (!targetCourseId && !context) {
-      alert('Cannot generate a question right now. The course may not be fully saved yet.');
+      setActionError(
+        'Cannot generate a question right now. The course may not be fully saved yet.',
+      );
       return;
     }
 
     try {
+      setActionError(null);
       setIsGenerating(true);
       const res = await generateSingleQuestion({ courseId: targetCourseId, context });
       if (res.success && res.question) {
@@ -223,11 +233,11 @@ export default function Step6QuizReview({
           explanation: toQuestionExplanation(res.question.explanation),
         });
       } else {
-        alert(res.error || 'Failed to generate question with AI.');
+        setActionError(res.error || 'Failed to generate question with AI.');
       }
     } catch (error) {
       logger.error({ msg: 'Failed to call AI generation:', err: error });
-      alert('An unexpected error occurred.');
+      setActionError(UNEXPECTED_ERROR_MESSAGE);
     } finally {
       setIsGenerating(false);
     }
@@ -249,11 +259,14 @@ export default function Step6QuizReview({
     const context = buildAiContext();
 
     if (!targetCourseId && !context) {
-      alert('Cannot regenerate the quiz right now. The course may not be fully saved yet.');
+      setActionError(
+        'Cannot regenerate the quiz right now. The course may not be fully saved yet.',
+      );
       return;
     }
 
     try {
+      setActionError(null);
       setIsRegenerating(true);
       const res = await regenerateQuiz({
         courseId: targetCourseId,
@@ -275,11 +288,11 @@ export default function Step6QuizReview({
         setEditingQuestion(null);
         setAddingSectionKey(null);
       } else {
-        alert(res.error || 'Failed to regenerate the quiz.');
+        setActionError(res.error || 'Failed to regenerate the quiz.');
       }
     } catch (error) {
       logger.error({ msg: '[course] Quiz regeneration failed', err: error });
-      alert('An unexpected error occurred.');
+      setActionError(UNEXPECTED_ERROR_MESSAGE);
     } finally {
       setIsRegenerating(false);
     }
@@ -424,7 +437,7 @@ export default function Step6QuizReview({
                   !editingQuestion.question.trim() ||
                   editingQuestion.options.some((o) => !o.trim())
                 ) {
-                  alert('Please fill in all fields.');
+                  setActionError('Please fill in all fields.');
                   return;
                 }
                 const updatedQuiz = [...questions];
@@ -527,6 +540,11 @@ export default function Step6QuizReview({
           <Alert variant="warning" title="Fewer questions than requested" className="mb-6 shrink-0">
             The quiz has only {questions.length} of the {requestedCount} requested questions. You
             can add more manually below, or go back a step to retry generation.
+          </Alert>
+        )}
+        {actionError && (
+          <Alert variant="error" className="mb-6 shrink-0">
+            {actionError}
           </Alert>
         )}
         <div className="mb-5 flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">

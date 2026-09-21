@@ -1,7 +1,12 @@
 'use server';
 
 import { z } from 'zod';
-import { callVertexAI } from '@/lib/ai-client';
+import {
+  callVertexAI,
+  interactiveBudget,
+  VertexBudgetExceededError,
+  type RetryBudget,
+} from '@/lib/ai-client';
 import prisma from '@/lib/prisma';
 import { auth } from '@/auth';
 import { logger } from '@/lib/logger';
@@ -17,6 +22,17 @@ const GENERATION_FAILED_USER_MESSAGE =
 
 const REGENERATION_FAILED_USER_MESSAGE =
   "We couldn't regenerate the quiz just now. Please try again in a moment.";
+
+/**
+ * Distinct from the failure messages above on purpose. Both of these actions
+ * are awaited by the browser, and the gateway in front of them cuts the request
+ * at ~100s — long enough for the client's retry ladder to blow the window and
+ * produce a 524 that reaches the user as "an unexpected error occurred", with
+ * no reason and no hint that retrying is the right move. Giving up inside the
+ * budget lets us say the one useful thing instead: this was slow, not wrong.
+ */
+const GENERATION_TIMED_OUT_USER_MESSAGE =
+  'The AI service is taking longer than usual to respond. Please try again in a moment.';
 
 /**
  * Upper bound on a regenerated quiz, so a tampered `questionCount` cannot turn
@@ -73,6 +89,7 @@ async function resolveQuizContext(
   options: { courseId?: string; context?: string },
   actor: { userId: string; organizationUserId?: string | null; organizationId?: string | null },
   actionName: string,
+  budget: RetryBudget,
 ): Promise<{ ok: true; context: string } | { ok: false; error: string }> {
   let courseContext = '';
 
@@ -122,6 +139,7 @@ async function resolveQuizContext(
       source: 'quiz_context',
       actorId: actor.userId,
       organizationId: actor.organizationId ?? undefined,
+      budget,
     });
   }
 
@@ -136,6 +154,11 @@ export async function generateSingleQuestion(options: {
   courseId?: string;
   context?: string;
 }): Promise<{ success: boolean; question?: GeneratedQuestion; error?: string }> {
+  // One deadline for the whole action. The PHI scan and the generation call are
+  // both Vertex round trips with their own retry ladders, and the browser is
+  // waiting on the action — not on either call — so they share a single budget.
+  const budget = interactiveBudget();
+
   try {
     const session = await auth();
     if (!session?.user?.id) {
@@ -171,6 +194,7 @@ export async function generateSingleQuestion(options: {
         organizationId: session.user.organizationId,
       },
       'generateSingleQuestion',
+      budget,
     );
     if (!resolved.ok) {
       return { success: false, error: resolved.error };
@@ -223,6 +247,7 @@ Return ONLY a valid JSON object matching this schema:
       // Headroom for the now-mandatory explanation. A truncated response is
       // unparseable JSON, which fails the whole call rather than degrading.
       maxOutputTokens: 1536,
+      retry: budget,
     });
 
     const jsonStr = extractJsonFromResponse(rawResponse);
@@ -242,6 +267,13 @@ Return ONLY a valid JSON object matching this schema:
     // "we couldn't generate a question".
     if (err instanceof PhiBlockedError) {
       return { success: false, error: err.message };
+    }
+    if (err instanceof VertexBudgetExceededError) {
+      logger.warn({
+        msg: '[quiz] generateSingleQuestion abandoned — Vertex time budget exhausted',
+        courseId: options.courseId,
+      });
+      return { success: false, error: GENERATION_TIMED_OUT_USER_MESSAGE };
     }
     const error = err as Error;
     logger.error({ msg: 'generateSingleQuestion error:', err: error });
@@ -267,6 +299,8 @@ export async function regenerateQuiz(options: {
   context?: string;
   questionCount?: number;
 }): Promise<{ success: boolean; questions?: GeneratedQuestion[]; error?: string }> {
+  const budget = interactiveBudget();
+
   try {
     const session = await auth();
     if (!session?.user?.id) {
@@ -297,6 +331,7 @@ export async function regenerateQuiz(options: {
         organizationId: session.user.organizationId,
       },
       'regenerateQuiz',
+      budget,
     );
     if (!resolved.ok) {
       return { success: false, error: resolved.error };
@@ -354,6 +389,7 @@ Return ONLY a valid JSON object matching this schema:
       // response is unparseable JSON, which is how Stage C used to lose a whole
       // batch of questions.
       maxOutputTokens: Math.min(8192, 600 * requestedCount),
+      retry: budget,
     });
 
     const jsonStr = extractJsonFromResponse(rawResponse);
@@ -380,6 +416,13 @@ Return ONLY a valid JSON object matching this schema:
     // A PHI rejection is actionable by the user, so it survives the sanitiser.
     if (err instanceof PhiBlockedError) {
       return { success: false, error: err.message };
+    }
+    if (err instanceof VertexBudgetExceededError) {
+      logger.warn({
+        msg: '[quiz] regenerateQuiz abandoned — Vertex time budget exhausted',
+        courseId: options.courseId,
+      });
+      return { success: false, error: GENERATION_TIMED_OUT_USER_MESSAGE };
     }
     logger.error({ msg: '[quiz] regenerateQuiz error', err: err as Error });
     return { success: false, error: REGENERATION_FAILED_USER_MESSAGE };

@@ -62,7 +62,14 @@ vi.mock('@/auth', () => ({ auth: mockAdminAuth }));
 vi.mock('@/auth.worker', () => ({ auth: mockWorkerAuth }));
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock, default: prismaMock }));
 vi.mock('next/cache', () => ({ revalidatePath: mockRevalidate }));
-vi.mock('@/lib/ai-client', () => ({ callVertexAI: mockCallVertexAI }));
+// Spread the real module rather than listing exports by hand: the code under
+// test also reads interactiveBudget/VertexBudgetExceededError from here, and a
+// partial factory turns a new export into an `undefined is not a function`
+// TypeError inside the code under test.
+vi.mock('@/lib/ai-client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/ai-client')>()),
+  callVertexAI: mockCallVertexAI,
+}));
 vi.mock('@/lib/rate-limit', () => ({ checkRateLimit: mockCheckRateLimit }));
 vi.mock('@/lib/email', () => ({ sendQuizLockedEmail: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@/lib/logger', () => ({

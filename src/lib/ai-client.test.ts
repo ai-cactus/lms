@@ -5,6 +5,9 @@ import {
   truncateToContext,
   callVertexAI,
   generateBatchEmbeddings,
+  interactiveBudget,
+  INTERACTIVE_VERTEX_BUDGET_MS,
+  VertexBudgetExceededError,
 } from './ai-client';
 
 vi.mock('google-auth-library', () => {
@@ -451,6 +454,137 @@ describe('ai-client utilities', () => {
       const fetchBody = JSON.parse(fetchCall[1].body);
       expect(fetchBody.generationConfig.maxOutputTokens).toBe(1000);
       expect(fetchBody.generationConfig.temperature).toBe(0.2);
+    });
+  });
+
+  /**
+   * Regression cover for the Cloudflare 524 on "Generate with AI".
+   *
+   * The retry ladder (5 attempts, 1s→16s backoff, 5 minutes per attempt) has no
+   * wall-clock ceiling of its own, so against a slow or rate-limiting Vertex it
+   * can hold a request open far past the ~100s at which the gateway gives up.
+   * On a browser-awaited Server Action that surfaced as a 524 — a network
+   * failure with no status and no reason.
+   *
+   * These pin the deadline itself rather than an attempt count: an attempt
+   * count still lets one slow response outlast the window.
+   */
+  describe('interactive retry budget', () => {
+    const originalEnv = process.env;
+
+    /**
+     * A Vertex that takes `delayMs` to answer and honours the AbortSignal, so
+     * the clamped per-attempt timeout is exercised the way a real fetch would
+     * exercise it.
+     */
+    const slowFetch = (delayMs: number, respond: () => unknown) =>
+      vi.fn(
+        (_url: string, init: { signal: AbortSignal }) =>
+          new Promise((resolve, reject) => {
+            const timer = setTimeout(() => resolve(respond()), delayMs);
+            init.signal.addEventListener('abort', () => {
+              clearTimeout(timer);
+              const abortError = new Error('The operation was aborted.');
+              abortError.name = 'AbortError';
+              reject(abortError);
+            });
+          }),
+      );
+
+    const serviceUnavailable = () => ({
+      status: 503,
+      statusText: 'Service Unavailable',
+      text: async () => 'upstream unavailable',
+      ok: false,
+    });
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      process.env = { ...originalEnv };
+      process.env.GOOGLE_PROJECT_ID = 'test-project';
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+      vi.useRealTimers();
+      process.env = originalEnv;
+    });
+
+    it('gives up inside the budget when Vertex is slow and failing', async () => {
+      // 20s per attempt: enough that the unbudgeted ladder (5 × 20s of request
+      // plus 31s of backoff ≈ 131s) sails past the gateway's ~100s cut.
+      vi.stubGlobal('fetch', slowFetch(20_000, serviceUnavailable));
+
+      const startedAt = Date.now();
+      const call = callVertexAI('test', { retry: interactiveBudget() }).catch((e: Error) => e);
+      await vi.runAllTimersAsync();
+      const error = await call;
+
+      expect(error).toBeInstanceOf(VertexBudgetExceededError);
+      expect(Date.now() - startedAt).toBeLessThanOrEqual(INTERACTIVE_VERTEX_BUDGET_MS);
+      // It stopped because time ran out, not because it used up its attempts.
+      expect(vi.mocked(global.fetch).mock.calls.length).toBeLessThan(5);
+    });
+
+    it('aborts an attempt that would itself outlast the budget', async () => {
+      // One attempt, slower than the whole budget. An attempt *count* would not
+      // save this request; only the deadline does.
+      vi.stubGlobal('fetch', slowFetch(120_000, serviceUnavailable));
+
+      const startedAt = Date.now();
+      const call = callVertexAI('test', { retry: interactiveBudget() }).catch((e: Error) => e);
+      await vi.runAllTimersAsync();
+      const error = await call;
+
+      expect(error).toBeInstanceOf(VertexBudgetExceededError);
+      expect(Date.now() - startedAt).toBeLessThanOrEqual(INTERACTIVE_VERTEX_BUDGET_MS);
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('still succeeds inside the budget when Vertex recovers', async () => {
+      const fetchMock = vi
+        .fn()
+        .mockImplementationOnce(slowFetch(5_000, serviceUnavailable))
+        .mockImplementationOnce(
+          slowFetch(5_000, () => ({
+            ok: true,
+            json: async () => ({ candidates: [{ content: { parts: [{ text: 'recovered' }] } }] }),
+          })),
+        );
+      vi.stubGlobal('fetch', fetchMock);
+
+      const call = callVertexAI('test', { retry: interactiveBudget() });
+      await vi.runAllTimersAsync();
+
+      await expect(call).resolves.toBe('recovered');
+    });
+
+    it('leaves callers without a budget on the full background-job ladder', async () => {
+      // The control for the tests above, and the guard on the ⛔ in the brief:
+      // narrowing the async job paths would trade a visible failure for an
+      // invisible one, so an omitted budget must still spend the whole ladder.
+      vi.stubGlobal('fetch', slowFetch(20_000, serviceUnavailable));
+
+      const startedAt = Date.now();
+      const call = callVertexAI('test').catch((e: Error) => e);
+      await vi.runAllTimersAsync();
+      const error = await call;
+
+      expect(error).not.toBeInstanceOf(VertexBudgetExceededError);
+      expect(global.fetch).toHaveBeenCalledTimes(5);
+      expect(Date.now() - startedAt).toBeGreaterThan(INTERACTIVE_VERTEX_BUDGET_MS);
+    });
+
+    it('bounds generateBatchEmbeddings the same way', async () => {
+      vi.stubGlobal('fetch', slowFetch(20_000, serviceUnavailable));
+
+      const startedAt = Date.now();
+      const call = generateBatchEmbeddings(['text'], interactiveBudget()).catch((e: Error) => e);
+      await vi.runAllTimersAsync();
+      const error = await call;
+
+      expect(error).toBeInstanceOf(VertexBudgetExceededError);
+      expect(Date.now() - startedAt).toBeLessThanOrEqual(INTERACTIVE_VERTEX_BUDGET_MS);
     });
   });
 

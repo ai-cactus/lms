@@ -9,6 +9,7 @@ import { can } from '@/lib/rbac/permissions';
 import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
 import type { Role } from '@/types/next-auth';
 import { assertNoPhi } from '@/lib/documents/phiGate';
+import { interactiveBudget } from '@/lib/ai-client';
 
 /**
  * F-034: every mutator in this file previously checked only that SOME session
@@ -60,6 +61,7 @@ export async function createLesson(data: {
     actorId: session.user.id,
     organizationId: session.user.organizationId ?? undefined,
     logContext: { courseId: data.courseId },
+    budget: interactiveBudget(),
   });
 
   const course = await prisma.course.findUnique({
@@ -109,6 +111,7 @@ export async function updateLesson(
     actorId: session.user.id,
     organizationId: session.user.organizationId ?? undefined,
     logContext: { lessonId },
+    budget: interactiveBudget(),
   });
 
   const existing = await prisma.lesson.findUnique({
@@ -223,6 +226,7 @@ export async function createLessonWithQuiz(data: {
     actorId: session.user.id,
     organizationId: session.user.organizationId ?? undefined,
     logContext: { courseId: data.courseId },
+    budget: interactiveBudget(),
   });
 
   const course = await prisma.course.findUnique({

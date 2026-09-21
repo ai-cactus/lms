@@ -69,7 +69,12 @@ vi.mock('@/lib/rag', () => ({ retrieveRelevantChunks: vi.fn().mockResolvedValue(
 // not the foreground gate).
 vi.mock('@/lib/documents/phiScanner', () => ({ scanText: mockScanText }));
 vi.mock('@/lib/rate-limit', () => ({ checkRateLimit: mockCheckRateLimit }));
-vi.mock('@/lib/ai-client', () => ({
+// Spread the real module rather than listing exports by hand: the code under
+// test also reads interactiveBudget/VertexBudgetExceededError from here, and a
+// partial factory turns a new export into an `undefined is not a function`
+// TypeError inside the code under test.
+vi.mock('@/lib/ai-client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/ai-client')>()),
   callVertexAI: mockCallVertexAI,
   truncateToContext: (text: string) => text,
   estimateTokens: (text: string) => Math.ceil(text.length / 4),

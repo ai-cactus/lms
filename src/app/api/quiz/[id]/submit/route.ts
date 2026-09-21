@@ -4,7 +4,7 @@ import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { callVertexAI } from '@/lib/ai-client';
+import { callVertexAI, interactiveBudget, VertexBudgetExceededError } from '@/lib/ai-client';
 import { logger, maskEmail } from '@/lib/logger';
 import { ADMIN_ROLES } from '@/lib/rbac/role-utils';
 import { guardApiSession } from '@/lib/auth-guard';
@@ -96,6 +96,11 @@ No markdown, no extra text.`;
       temperature: 0.3,
       maxOutputTokens: 4096,
       telemetry: { stage: 'quiz_grade' },
+      // A learner is watching their submission spin. Explanations are a
+      // garnish on an already-computed score, so they get a wall-clock budget
+      // and the empty-map fallback below rather than the right to hold the
+      // response open until the gateway kills it.
+      retry: interactiveBudget(),
     });
 
     if (!textPart) return {};
@@ -114,6 +119,13 @@ No markdown, no extra text.`;
     });
     return explanationMap;
   } catch (err) {
+    if (err instanceof VertexBudgetExceededError) {
+      logger.warn({
+        msg: '[quiz] Explanation generation abandoned — Vertex time budget exhausted',
+        userId,
+      });
+      return {};
+    }
     logger.error({ msg: 'AI explanation generation failed:', err: err });
     return {};
   }
