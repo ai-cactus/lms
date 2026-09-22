@@ -28,9 +28,9 @@ pixel sizes, "15 minutes" — none of which are 6 digits). Track seen message
 IDs in a `Set` across polls in the same test (enrollment send + login
 step-up send both land in the same inbox) rather than assuming "newest" is
 always the right one. This avoids the `NEXTAUTH_SECRET`-export-in-shell
-requirement documented in [[mfa-e2e-enrollment-patterns]] for the DB-decrypt
-approach — both are now valid; prefer MailHog when the spec doesn't already
-need DB access for other reasons.
+requirement of the DB-decrypt approach (see "Carried over from the
+2026-07-13 enrollment e2e" below). Both are valid; prefer MailHog when the
+spec doesn't already need DB access for other reasons.
 
 **A `next dev -p 3005` Playwright webServer can hang completely (0% test
 progress, curl times out on every route, but the process itself spins at
@@ -90,5 +90,35 @@ mock}))` partial-mock pattern (only `hashRecoveryCode` is stubbed, to avoid
 paying real bcrypt-12 cost for the *setup* flow's 10 codes — `verifyRecoveryCode`
 is untouched, so seeding a fake hash string would never match).
 
-Related: [[mfa-e2e-enrollment-patterns]], [[rtl-strictmode-double-invoke-gotcha]],
+## Carried over from the 2026-07-13 enrollment e2e (`tests/e2e/mfa-enrollment.spec.ts`)
+
+The legacy `/verify-2fa` step-up page, its action, and the unused
+`MfaSettings.tsx` were deleted in `731a0e94` (2026-07-18). An MFA login lands
+only on `/mfa/verify?challenge=...`. An unverified MFA session is redirected to
+`/login` by `proxy.ts`. The 2FA tab now lives in
+`src/components/dashboard/profile/ProfileSettings.tsx`.
+
+**Org-less admin: seed an org before visiting `/dashboard/*`.** `proxy.ts`
+redirects an admin session without `organizationId` to `/onboarding`. The
+`(main)/layout.tsx` still also mounts `OrganizationActivationModal` as a
+fallback. Either way, a test that seeds an org-less owner and then visits a
+dashboard page ends up on onboarding. That is easy to misread as a routing bug.
+Fix: seed a minimal Organization + Facility and attach the user (see
+`seedMfaTestUser`). Cleanup must delete the user row before the org/facility
+rows (`onDelete: Restrict`).
+
+**There is only ever one `mfa_factors` row per user.** Enrollment, login
+send and disable-send all `update()` the same row's `secret` in place. So
+"poll until `secret` is non-null" returns the STALE value from the previous
+send. Poll for a secret that differs from the last-known one; see
+`pollForEmailFactorSecret(userId, excludeSecret, timeoutMs)`.
+
+**OTP decryption for e2e (DB-decrypt path):** `src/lib/mfa.ts` encrypts as
+base64(iv(12) + authTag(16) + AES-256-GCM ciphertext), key =
+sha256(`NEXTAUTH_SECRET`), plaintext `JSON.stringify({code, createdAt})`.
+The spec process must have `NEXTAUTH_SECRET` in its environment. Run through
+`npm run test:e2e` / `e2e:local`, which load `.env.e2e` (see
+[[e2e-local-auth-url-env-trap]]).
+
+Related: [[rtl-strictmode-double-invoke-gotcha]],
 [[e2e-webserver-dev-lock-conflict]], [[project-test-framework]].

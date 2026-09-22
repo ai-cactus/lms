@@ -130,9 +130,9 @@ describe('setRoleAssignmentTargets', () => {
     });
   });
 
-  // Item 1 — the single highest-value test in this PR. sweep.ts:276-290 still
-  // queries `targetRole: { not: null }`, so a desync here silently breaks the
-  // nightly reconciliation backstop.
+  // Item 1 — the single highest-value test in this PR. The sweep's
+  // runRoleTargetReconcilePrePass reads BOTH columns and only tolerates a
+  // desync, so the two must still be written together here.
   it('keeps targetRole and targetRoles in sync after a WIDEN', async () => {
     prismaMock.courseAssignment.findFirst.mockResolvedValue(
       assignmentRowFor({ targetRoles: ['nurse'] }),

@@ -33,9 +33,9 @@ deletes the course's `CourseAssignment` row before every seed. In this session, 
 - `quiz.spec.ts` ENG-020 / `quiz-retake-attestation.spec.ts`: exactly the failure mode seed.ts's
   own comment predicts — a leftover `quiz_attempts` row skips straight past the lesson content.
 
-**The fix — reproduce seed.ts's reset directly in SQL** (no seed script is wired into
-`package.json`, so `npx prisma db seed` isn't available; this session ran the equivalent
-statements against `docker exec lms-dev-db psql`):
+**The fix — reseed.** `npx prisma db seed` works (it is wired through `prisma.config.ts`
+`migrations.seed`), and `npm run e2e:local` reseeds on every run. The SQL below is only for a
+hand-rolled run against the dev DB (`docker exec lms-dev-db psql`):
 ```sql
 delete from quiz_attempts where enrollment_id in (
   '88888888-8888-4888-8888-888888888881', -- Sarah
@@ -56,7 +56,7 @@ genuine transient race, reproduced 0/1 on immediate rerun, unrelated to fixture 
 **How to apply:** before trusting a full-suite (or even a 2-3-file) local run's failures in any of
 these specs as a real regression, check whether the shared fixture rows are stale first — this is
 now the *first* thing to check, cheaper than the git-stash/CI-diff comparison below. If in doubt,
-apply the SQL reset above (or run the real seed script if one gets wired up) and rerun before
+apply the SQL reset above (or `npx prisma db seed`) and rerun before
 concluding a regression exists.
 
 **2026-08-04 original note** (root cause was not yet understood then — the "full-suite-only,

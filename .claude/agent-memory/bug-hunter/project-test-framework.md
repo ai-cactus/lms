@@ -5,7 +5,7 @@ metadata:
   type: project
 ---
 
-**Test runner:** Vitest v4.1.8 (`npm test` → `vitest run`)
+**Test runner:** Vitest ^4.1.11 (`npm test` → `vitest run`)
 **Config:** `vitest.config.mts` at project root — jsdom environment, setup file `vitest.setup.ts`, alias `@` → `./src`.
 
 **File placement conventions:**
@@ -31,7 +31,7 @@ metadata:
 - `next/navigation` → `vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }), useSearchParams: () => ({ get: vi.fn().mockReturnValue(null) }) }))`.
 - `next/image` → `vi.mock('next/image', () => ({ default: ({ alt }) => <img alt={alt} /> }))` — doesn't work in jsdom.
 - `next-auth/react` → `vi.mock('next-auth/react', () => ({ signIn: vi.fn() }))`.
-- `@/components/auth/AuthHeroSlider` → stub to null (framer-motion + real images crash jsdom).
+- `AuthHeroSlider` now lives at `src/app/(auth)/components/AuthHeroSlider.tsx` and is rendered by `(auth)/layout.tsx`, not the login page. The login test's `@/components/auth/AuthHeroSlider` mock targets a path that no longer exists.
 - `useActionState` (React 19): works natively in jsdom — mock the action function (`authenticate`) and the hook calls it as a regular async fn; wrap state-driven assertions in `waitFor`.
 - Button ambiguity: if a page has multiple buttons where `/name/i` matches several (e.g. "Log in" and "Log In with Microsoft"), use anchored regex `/^exact name$/i`.
 

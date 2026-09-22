@@ -21,9 +21,8 @@
  * AI credentials, and ai-client.ts's `requireProjectId` refuses to call Vertex
  * at all without a real project. A live run against this exact test file
  * confirmed the failure mode directly: Vertex responded "Could not load the
- * default credentials." This is the same constraint course-wizard-module-
- * builder.spec.ts and course-publish-review-gate.spec.ts document for the
- * same reason — a live success-path generation cannot be driven from this
+ * default credentials." This is the same constraint
+ * course-publish-review-gate.spec.ts documents for the same reason — a live success-path generation cannot be driven from this
  * environment, only from one with real Vertex credentials configured.
  *
  * What IS covered here for the generation step: entering it immediately shows

@@ -26,9 +26,10 @@ authenticated request was doing a `user.findUnique` per NextAuth instance.
   org-null-admin defense-in-depth guard, and any raw-SQL/out-of-band mutation that
   skips the server action. That residual lag is the *approved* tradeoff — don't
   remove the cache; set TTL=0 for instant revocation everywhere.
-- Two things are NOT subject to the lag and must stay that way: the retired-`admin`
-  role guard (runs against the token BEFORE the cache lookup) and `signout-all`
+- `signout-all` is NOT subject to the lag and must stay that way
   (`/api/auth/signout-all` deletes cookies directly, never touches this path).
+  (There is no longer a retired-`admin` token guard — `admin` is a live role; see
+  [[gotcha_admin_role_unretired]].)
 - Per-session MFA state (`session-mfa:` keys, `isSessionMfaVerified`) is read
   fresh per decode and is intentionally NOT in this cache.
 - Fail-open (F-036) preserved: a Redis miss/error falls back to the DB read; a DB

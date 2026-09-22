@@ -1,9 +1,8 @@
-# UI Migration Pattern — Tailwind v4 + shadcn
+# UI Pattern — Tailwind v4 + shadcn
 
-The canonical conventions for migrating this LMS off CSS Modules / legacy components to Tailwind v4 + shadcn. Established by the **auth slice** (the reference implementation). Every later slice (dashboard, worker/learn, onboarding, system, profile) follows this guide.
+The canonical UI conventions for this LMS: Tailwind v4 + shadcn. They were established by the **auth slice** during the CSS-Modules migration; that migration is **complete** (no `.module.css` remains in `src/`, and the legacy component barrel exports are gone), so this is now the standard for all new and touched UI.
 
-**Spec:** `docs/superpowers/specs/2026-06-10-auth-ui-migration-design.md` ·
-**Plan:** `docs/superpowers/plans/2026-06-10-auth-ui-migration.md`
+**Spec (historical):** `docs/superpowers/specs/2026-06-10-auth-ui-migration-design.md`
 
 ---
 
@@ -28,7 +27,7 @@ All base/reset/element rules live inside **`@layer base`**. Tailwind v4 puts uti
 
 ## 2. Hard rules
 
-- **No `.module.css`.** Convert layout/spacing to Tailwind utilities; delete the module when the last importer is gone.
+- **No `.module.css`.** Layout and spacing are Tailwind utilities; never add a CSS Module.
 - **No inline `style={{}}`** for presentation. (Functional exceptions like framer-motion props are fine.)
 - **No inline `<svg>`.** Use `lucide-react` icons.
 - **Theme utilities, not raw hex:** `text-foreground`, `text-text-secondary`, `text-text-tertiary`, `text-primary`, `text-error`/`text-success`/`text-warning`, `bg-background`, `bg-background-secondary`, `border-border`, `bg-primary/10`, etc.
@@ -108,18 +107,13 @@ Replace legacy `Modal` (and hand-rolled `fixed inset-0` overlays) with the shadc
 
 - `onOpenChange(false)` fires on ESC / overlay / the ✕ — route it to the existing `onClose`.
 - **Preserve form gating.** Native `required`/HTML validation does NOT carry over when you swap a native `<input type="checkbox" required>` for the shadcn `Checkbox` (Radix renders a `<button>`). Mirror the gate with controlled state and fold it into the submit button's `disabled` (e.g. `disabled={!file || !agreed}`). Pair `Checkbox id=…` with `<label htmlFor=…>` (the Radix root is a labelable `<button>`, so the label still toggles it).
-- Reference: `documents/upload-modal.tsx`, `dashboard/Header.tsx` (logout confirm). The pre-Dialog `CoursesListClient` rename modal uses a hand-rolled overlay — fine where it is, but new/ported modals should use `Dialog`.
+- Reference: `src/app/dashboard/(main)/documents/upload-modal.tsx`. The pre-Dialog `CoursesListClient` rename modal uses a hand-rolled overlay — fine where it is, but new/ported modals should use `Dialog`.
 
-## 4. Per-page migration procedure
+## 4. Verifying a UI change
 
-1. Read the page and its `.module.css`. Read an already-ported sibling as a reference.
-2. **Preserve all logic byte-for-byte** — state, handlers, server actions/fetches, validation, redirects, field `name=`, `autoComplete`, `Suspense`, storage keys. Only JSX + imports change.
-3. Swap legacy imports → `Button`/`Input` from their shadcn paths; add `Field`/`PasswordInput`/`Alert`/`OtpInput`/`AuthShell` as needed. Keep `Logo` from `@/components/ui`.
-4. Wrap content in `<AuthShell>` (split forms) or a centered card (status/standalone pages). Convert classes to Tailwind utilities.
-5. Replace legacy `<Input label error>` → `<Field label error><Input/></Field>`; passwords → `<PasswordInput>`; banners → `<Alert>`; OTP → `<OtpInput>`.
-6. Delete the page's `.module.css` (only if no other file imports it).
-7. Gate: `npm run lint && npx tsc --noEmit` clean; `grep` confirms no `module.css`/`style={{`/`console.` left.
-8. **Verify rendering yourself** before handing off: `npx tsx scripts/shot.ts <route>` screenshots the page at mobile/tablet/desktop against the dev server (`:3005`). Compare against the THERAPTLY Figma intent. If layout/flow is ambiguous, ask for the specific Figma frame.
+1. **Preserve logic** when restyling — state, handlers, server actions/fetches, validation, redirects, field `name=`, `autoComplete`, `Suspense`, storage keys. Only JSX + imports should change.
+2. Gate: `npm run lint && npx tsc --noEmit` clean; `grep` confirms no `module.css`/`style={{`/`console.` introduced.
+3. **Verify rendering yourself** before handing off: `npx tsx scripts/shot.ts <route>` screenshots the page at mobile/tablet/desktop against the dev server (`:3005`). Compare against the THERAPTLY Figma intent. If layout/flow is ambiguous, ask for the specific Figma frame.
 
 ## 5. Gotchas (learned the hard way)
 
@@ -128,16 +122,10 @@ Replace legacy `Modal` (and hand-rolled `fixed inset-0` overlays) with the shadc
 - **Controlled rapid input races** (OTP/autofill): keep a synchronously-updated `useRef` mirror of the value so a burst of keystrokes doesn't read a stale prop. (See `OtpInput`.)
 - **shadcn `Checkbox`** uses `onCheckedChange(checked)` — adapt legacy `onChange={e => e.target.checked}` accordingly.
 
-## 6. Retiring a legacy component
+## 6. Visual regression
 
-The barrel `src/components/ui/index.ts` still exports legacy `Button`/`Input`/`Checkbox`/`Select`/`Modal` for unmigrated slices. Flip a name to the shadcn version **only when `grep -rn "from '@/components/ui'"` shows no remaining consumer relies on the legacy API**. Until then both coexist (legacy has its own CSS-module styling, unaffected by the shadcn theme).
-Known remaining legacy consumers as of the auth slice: `src/components/auth/MfaSettings.tsx` (legacy `Button`), plus dashboard/worker/onboarding/system slices.
+Recommended next-level gate: add **Playwright visual-regression snapshots** (deferred in the auth slice) so future changes can't silently break layouts.
 
-## 7. Next slices (recommended order)
-
-dashboard → worker/learn → onboarding → system → profile.
-Recommended next-level gate once a slice stabilizes: add **Playwright visual-regression snapshots** (deferred in the auth slice) so future changes can't silently break layouts.
-
-## 8. New shared primitives produced by the auth slice
+## 7. Shared primitives produced by the auth slice
 
 `Field`, `PasswordInput`, `Alert`, `OtpInput`, `AuthShell`, plus `Button` `loading` and `Input` `startIcon`. All are unit-tested under `src/components/ui/*.test.tsx` and showcased on `/styleguide`.

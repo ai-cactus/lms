@@ -1,6 +1,6 @@
 # Deployment & Operations Guide
 
-**Status:** authoritative as of 2026-08-10. This document is the **single source of truth** for how Theraptly LMS is built, deployed, and operated, and it records the required ops steps for the infrastructure changes made during the security-audit remediation sweeps.
+**Status:** authoritative as of 2026-08-10; §3 and §4 refreshed 2026-09-21. This document is the **single source of truth** for how Theraptly LMS is built, deployed, and operated, and it records the required ops steps for the infrastructure changes made during the security-audit remediation sweeps.
 
 > Ongoing infrastructure hardening (backups, encryption at rest, the non-superuser
 > DB role, TLS in transit, secrets manager, SPOF removal) now lives in
@@ -68,14 +68,14 @@ Committed secrets were removed from `.claude/agent-memory/qa-mafia/*`. Rotate th
 Restructured 2026-08-09. The critical change: **deploys are now gated.** `ci.yml` previously ran only on `dev`, so pushes to `main`/`staging` triggered the deploy workflows with no lint, typecheck, test, audit or secret scan at all. GitHub Actions workflows do not block one another, so simply adding a push trigger would have run CI *alongside* a bad deploy rather than stopping it.
 
 - **`quality-gate.yml`** — a reusable (`workflow_call`) workflow holding the fast checks: **lint · format · typecheck · test · npm audit · secret scan**. `ci.yml`, `deploy-production.yml` and `deploy-staging.yml` all depend on it via `needs`, so a red gate stops a deploy.
-- **`ci.yml`** — calls the gate, plus **build** and **E2E (Playwright, blocking)**. Triggers on pushes to `dev` and on PRs into `dev`/`staging`/`main`/`master`, so the promotion PRs are covered.
+- **`ci.yml`** — calls the gate, plus **build** and **E2E (Playwright, blocking where it runs)**. **PR-only — there is deliberately no `push` trigger.** Runs on PRs into `dev`/`staging`/`main`/`master`. PRs into `dev` get Static Checks + Build Check only; the full unit suite and E2E run on PRs into `staging`/`main`, on `dependabot/**` branches, on any PR labelled `run-e2e`, and on `workflow_dispatch`. See the header of `ci.yml` and `CONTRIBUTING.md`.
 - **`security-scan.yml`** — Semgrep (SAST), Trivy (deps + IaC misconfig), CycloneDX SBOM, and a scheduled full-history gitleaks pass. Deliberately no CodeQL and no SARIF upload: both need paid GitHub Code Security on a private repo, so every job reports via job log + artifact instead and behaves the same either way.
 - **`prune-images.yml`** — dispatch-only GHCR cleanup (private packages count against a 500 MB allowance).
 - **`dependabot.yml`** — npm + github-actions, grouped, framework majors excluded.
 
-Still report-only pending a triage pass: `npm audit` (behind a `strict-audit` input — note `npm audit` exits non-zero identically for an advisory and a registry outage, so naive blocking would let a registry blip block a hotfix), Semgrep, and Trivy.
+`npm audit` blocks on the PR path (`strict-audit: true` in `ci.yml`) but stays report-only on the deploy workflows — `npm audit` exits non-zero identically for an advisory and a registry outage, and a registry blip must not block a hotfix. Semgrep and Trivy are report-only, and run only on PRs into `staging`/`main`, weekly, and on demand.
 
-E2E stays out of the shared gate on purpose: at ~30 minutes it would stall an urgent production deploy, so a direct push is gated on the fast checks and PR merges additionally get e2e.
+E2E stays out of the shared gate on purpose: at ~10–14 minutes it would stall an urgent production deploy, so a direct push is gated on the fast checks and promotion PRs additionally get e2e.
 
 The heavy `test` + `build` steps live in `.husky/pre-push` rather than `pre-commit` (lint-staged only), so commits stay fast and developers stop reaching for `--no-verify`.
 
@@ -84,18 +84,17 @@ The heavy `test` + `build` steps live in `.husky/pre-push` rather than `pre-comm
 > **See [`security-infra-runbook.md`](./security-infra-runbook.md)** for the executable version of this
 > checklist: ordering with dependency rationale (backups MUST precede any
 > encryption-at-rest migration; the `lms_app` role MUST precede RLS), concrete
-> commands, cost estimates, and a verification step per item. Two entries below
-> have moved on since this was written — monitoring/alerting is now built but
-> unapplied, and detection is no longer the binding constraint for incident
-> response.
+> commands, cost estimates, and a verification step per item. Whether backups and
+> monitoring are currently running on the VM is **unconfirmed — records conflict,
+> see OPEN-ISSUES RISK-08** (`docs/local/OPEN-ISSUES.md`).
 
 These are infrastructure/process work outside the codebase. Track them to closure:
 
-- [ ] **Backups (F-004):** automated, encrypted Postgres backups with PITR (WAL archiving) to off-host storage; **a tested restore runbook** (an untested backup is not a backup). MinIO/GCS object versioning + off-host replication. Redis off-host snapshot (AOF on the same disk is not a backup).
+- [ ] **Backups (F-004)** — status unconfirmed: records conflict, see OPEN-ISSUES RISK-08. Built in `infra/backup/`; pgBackRest was cancelled 2026-08-14 in favour of Cloud SQL PITR. Requirement: automated, encrypted Postgres backups with PITR (WAL archiving) to off-host storage; **a tested restore runbook** (an untested backup is not a backup). MinIO/GCS object versioning + off-host replication. Redis off-host snapshot (AOF on the same disk is not a backup).
 - [ ] **Encryption at rest (F-025):** managed encrypted Postgres (or LUKS-encrypted volumes); MinIO SSE and/or GCS CMEK; encrypted backups. Decide on `DocumentVersion.content` (extracted document text currently stored in the DB): encrypt the column or drop it and re-derive from object storage on demand.
 - [ ] **Encryption in transit (internal):** the current localhost/bridge hops (app→MinIO `MINIO_USE_SSL:false`, app→Postgres/Redis) are acceptable on one host but become a §164.312(e) gap the moment services split across machines — plan mTLS/private-network TLS before that.
 - [ ] **Availability (SOC 2 A1.2):** remove the single-VM SPOF — at least one standby for Postgres and Redis; ≥2 app replicas behind a load balancer.
-- [ ] **Monitoring/alerting (SOC 2 CC7):** APM/error tracking (e.g. Sentry), uptime alerts on `/api/health`, queue-depth/DLQ alerts, backup-success alerts. Decide a log-shipping destination (the new `x-correlation-id`/`correlationId` in logs is only as useful as where the logs land).
+- [ ] **Monitoring/alerting (SOC 2 CC7)** — built (`infra/gcp/`, `infra/otel/`); whether applied is unconfirmed: records conflict, see OPEN-ISSUES RISK-08. Requirement: APM/error tracking (e.g. Sentry), uptime alerts on `/api/health`, queue-depth/DLQ alerts, backup-success alerts. Decide a log-shipping destination (the new `x-correlation-id`/`correlationId` in logs is only as useful as where the logs land).
 - [ ] **Incident response (SOC 2 CC7.3/7.4):** runbook, on-call rotation, postmortem template.
 - [x] **Cloudflare account security — DONE (2026-08-10).** The INC-2026-08-04-01 follow-ups are addressed: the shared identity is retired, per-member accounts with 2FA are in place, zone rulesets were re-scanned across the dwell window, and the Global API Key was rolled. Detection is now covered by the Cloud Monitoring uptime check with a content matcher, which is what would have caught the original four-hour hijack (a status-code-only check stayed green throughout).
 - [ ] **Cloudflare BAA (F-043) — only if the PHI position changes.** TLS terminates at Cloudflare's edge, so if the product ever handles PHI the plan must be BAA-eligible (Free/Pro are not; Enterprise is). Under the current **non-PHI-by-policy** position this is not required — see [`analysis/DATA-CLASSIFICATION.md`](./analysis/DATA-CLASSIFICATION.md).

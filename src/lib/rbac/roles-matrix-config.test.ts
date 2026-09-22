@@ -90,11 +90,6 @@ describe('supervisor', () => {
     expect(rowByLabel('Manage staff roster').check('supervisor')).toBe(false);
     expect(rowByLabel('Invite & change user roles').check('supervisor')).toBe(false);
     expect(rowByLabel('Build & edit courses').check('supervisor')).toBe(false);
-    // SUSPECTED BUG (left failing intentionally, see report): the ruling states
-    // supervisor gets "no billing", but `readEverything` in permissions.ts grants
-    // `billing.read` to every resource for every read-only role, including
-    // supervisor, so this currently evaluates true. Not silently updated to
-    // match observed behavior — flagged for human confirmation instead.
     expect(rowByLabel('Billing').check('supervisor')).toBe(false);
     expect(rowByLabel('Manage billing & invoices').check('supervisor')).toBe(false);
     expect(rowByLabel('Settings').check('supervisor')).toBe(false);

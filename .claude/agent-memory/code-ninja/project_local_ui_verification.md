@@ -33,16 +33,16 @@ pick the one whose `/login` actually has inputs before blaming the script.
 
 **AI generation cannot complete locally.** `callVertexAI` uses Google ADC (`auth.getAccessToken()`), and no default credentials exist in this env — `GEMINI_API_KEY` in `.env` is unused by that path. Every v4.6 job therefore fails at Stage A with "Could not load the default credentials", ~10s after it is created. Job creation, polling, the generation UI and the failure/retry paths are all still verifiable live; only the generated content is not.
 
-**Walking steps 1-5 of the wizard live without any upload:** open
-`/dashboard/courses/create?documentId=<id>` — the deep link seeds module 1 with an
-already-stored document, so step 2 needs only a title/objective/deadline. A seeded usable id is
+**Walking the wizard live without any upload:** open
+`/dashboard/courses/create?documentId=<id>` — the deep link seeds the (single) module with an
+already-stored document, so the upload step is pre-filled. A seeded usable id is
 `32b4c693-5421-472d-baa4-10e7d9e332ca` (`Infection-Control-Policy.pdf`); confirm it still exists
-before relying on it. Selectors that matter: the step-2 deadline picker is
-`[aria-labelledby="module-deadline-label"]`, and the step-9 role picker is a **custom button +
-checkbox group**, not a Radix combobox — click `button:has-text("Choose for specific roles")` then
-`label[for="assign-group-workers"]` (`getByRole('option')` finds nothing).
+before relying on it. The wizard is 7 steps (see [[project_course-wizard-9-step]]); the step-7 role picker is
+`RoleTargetPicker`, a **custom button + checkbox group**, not a Radix combobox — its trigger text
+starts "Choose for specific roles" and `getByRole('option')` finds nothing. Read the current
+component for selectors rather than trusting old ones.
 
-**Step 6's "Your course is being created…" checklist is hard to catch.** With a short document the
+**The generate step's "Your course is being created…" checklist is hard to catch.** With a short document the
 job fails *synchronously* ("Document content is empty or too short to generate a course"), well
 under 2s — far faster than the ~10s Vertex-credential failure — so a plain `waitForTimeout` then
 screenshot lands on the failure screen instead. Polling runs through a **server action**, not a
@@ -57,9 +57,10 @@ the navigation itself and the banner never appears.
 - PDFs generated with **pdfkit are unusable**: `pdf-parse@1.1.1` rejects them ("Illegal character: 41" / "bad XRef entry"), which surfaces as "Extraction Failed" in the UI and looks like an app bug. Also import it as `pdf-parse/lib/pdf-parse.js` in scripts — the package entry point reads a missing `./test/data/...` file when it has no parent module.
 
 **Reaching a deep course-wizard step without re-running the upload:** the wizard restores from a
-sessionStorage draft, so seed `lms_course_wizard_draft_v2` with
-`{step, formData, generatedContent, savedAt: Date.now()}` (`selectedDocId` was dropped in Phase 6;
-a `generatedContent` stub lands you on steps 7-9 without ever running the AI), reload, and
+sessionStorage draft, so seed the current key (`DRAFT_KEY` in `CourseWizard.tsx`, currently
+`lms_course_wizard_draft_v4` — older keys are wiped on mount) with the shape the wizard writes
+(check `CourseWizard.tsx`; it is keyed by `stepKey`, not a step number; a `generatedContent` stub
+lands you on the review/assign steps without ever running the AI), reload, and
 click "Resume Draft" — that lands on any step with real state, no step-2 PHI upload needed. Two
 catches: the resume banner renders before hydration, so wait ~2.5s after it appears or the click is
 a no-op and the step never changes; and `formData` must be a COMPLETE `CourseWizardData` (a

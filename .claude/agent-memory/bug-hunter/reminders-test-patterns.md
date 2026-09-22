@@ -7,7 +7,7 @@ metadata:
 
 ## Test coverage for src/lib/reminders/
 
-All 8 modules in `src/lib/reminders/` now have test files. 447 tests total pass.
+`src/lib/reminders/` has 9 modules; every one except `email-sender.ts` has a test file.
 
 ### Pure-function modules (no mocks)
 - `time.test.ts` — localDateKey, startOfDayInTz, addDays, diffInDaysInTz
@@ -40,18 +40,13 @@ vi.mock('@/generated/prisma/client', () => ({
 `dispatchLadderStage` receives `enrollment: { id, userId, courseId }` (an object), NOT `enrollmentId`. Assertion must use `expect.objectContaining({ enrollment: expect.objectContaining({ id: 'e1' }) })`.
 
 ### sweep.test.ts mock ordering for enrollment.findMany
-`runReminderSweep` calls `enrollment.findMany` 2–3 times:
-1. Track A query (returns active reminder enrollments)
-2. Track B query (returns in_progress/locked enrollments)
-3. (only if locked exist) Active retakes query
-
-Set up with sequential `mockResolvedValueOnce` calls. For Track-A-only tests, return `[]` for the second call; for Track-B-only tests, return `[]` for the first call (which causes Track A to skip the reminderLog.findMany call entirely).
+`runReminderSweep` shares `enrollment.findMany` between Track A/B and 4 pre-passes (retry, retention, role-target-reconcile, renewal-retrigger). Read [[phase2-fix-round-test-patterns]]'s queue-corruption gotcha before chaining `mockResolvedValueOnce`: a pre-pass that short-circuits consumes no slot.
 
 ### Fake timers for compliance.ts
 `getOverdueComplianceForOrg` calls `new Date()` internally. Use `vi.useFakeTimers()` + `vi.setSystemTime(NOW)` in beforeEach, `vi.useRealTimers()` in afterEach.
 
 ### e2e spec location
-`tests/e2e/reminders.spec.ts` — authored but unrunnable until DB migration is applied and dev server is available. All 4 flows are documented (INITIAL_LAUNCH notification, manager assignment, dry-run sweep API, compliance banner). Uses `test.skip()` guards with informative messages.
+`tests/e2e/reminders.spec.ts` runs in CI-parity `npm run e2e:local`. Only REM-003 skips, and only when `PLAYWRIGHT_SYSTEM_ADMIN_COOKIE` is unset.
 
 ### Enrollment.test.ts fix (pre-existing)
 Added `sendCourseLaunchEmail: vi.fn().mockResolvedValue(undefined)` to the `@/lib/email` mock block. Phase 7 added this import to enrollment.ts but the test mock didn't export it.

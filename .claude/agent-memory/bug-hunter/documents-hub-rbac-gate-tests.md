@@ -1,6 +1,6 @@
 ---
 name: documents-hub-rbac-gate-tests
-description: Test patterns for the Documents Hub document.* registry gate (fix 867cda0) — RowActionsMenu Radix stub, no seeded finance/hr fixtures, worker roles can't reach /login at all
+description: Test patterns for the Documents Hub document.* registry gate (fix 867cda0) — RowActionsMenu Radix stub, no seeded finance fixture, worker roles can't reach /login at all
 metadata:
   type: project
 ---
@@ -10,8 +10,8 @@ Context: `src/app/dashboard/(main)/documents/page.tsx` gates on
 `DocumentListClient` takes `canUpload`/`canEdit`/`canDelete` props for Upload/Rename/Delete
 visibility and the empty-state copy. Registry partition for `document.*` (verify against
 `src/lib/rbac/permissions.ts` before trusting this, it can drift): full CRUD — owner,
-supervisor, clinicalDirector; read-only — hr; denied (no `document.read` at all) — finance +
-all 8 worker roles. See [[qa-still-open-2026-07-19-regression-tests]] for the original
+admin, hr, clinicalDirector; read-only — supervisor; denied (no `document.read` at all) —
+finance + all 8 worker roles (as of 2026-09-21). See [[qa-still-open-2026-07-19-regression-tests]] for the original
 discovery that this matrix is NOT uniform like billing's.
 
 **RowActionsMenu (shared `@/components/ui` Radix dropdown) has zero existing test coverage
@@ -25,8 +25,8 @@ trivially. Only safe here because `DocumentListClient.tsx` imports solely `{ Row
 type RowAction }` from the `@/components/ui` barrel — no other barrel export is used by that
 file, so the whole-module mock has no blast radius.
 
-**No seeded finance or hr fixture exists in `prisma/seed.ts`** (only owner `admin@test.com`,
-supervisor `admin2@test.com`, and worker-role users). To e2e-test the denied path, spec-local
+**No seeded finance fixture exists in `prisma/seed.ts`.** It has owner `admin@test.com`,
+supervisor `admin2@test.com`, one hr multi-org user `multi.org@test.com`, and worker-role users. To e2e-test the denied path, spec-local
 seed a `finance`-role manager in a fresh org (finance is NOT blocked at `/login` — only
 worker-category roles are). Confirmed **worker roles cannot reach `/dashboard/*` at all**:
 `src/app/actions/auth.ts` redirects any `isWorkerRole()` login straight to `/worker`

@@ -6,9 +6,9 @@
  * mapping and asserts the old hardcoded "Approved by: Admin" can never
  * reappear.
  *
- * Since D10, a REAL "Approved by"/"Created by" attribution line was added
- * back (derived from `course.approvedBy`/`course.creator`, never hardcoded) —
- * see TrainingDetails.attribution.test.tsx for that suite. Every fixture here
+ * Since D10, a REAL "Approved by"/"Created by" attribution line exists
+ * (derived from `course.approvedBy`/`course.creator`, never hardcoded), but it
+ * renders on the Preview page — see CoursePreview.attribution.test.tsx. Every fixture here
  * sets `approvedBy: null`, so the assertion below only proves the hardcoded
  * badge is gone, not that "Approved by" can never render.
  */
@@ -76,9 +76,9 @@ describe('TrainingDetails — status badge (Issue #13)', () => {
   // NOTE: this only proves the OLD hardcoded "Approved by: Admin" is gone for
   // a fixture with `approvedBy: null` (every course, in this suite, is such a
   // fixture). It is NOT proof that "Approved by" can never render at all —
-  // since D10, a real "Approved by: {name} ({role})" line renders whenever
-  // `course.approvedBy` is populated. See TrainingDetails.attribution.test.tsx
-  // for that (real, permanent) branch.
+  // since D10, a real "Approved by: {name} ({role})" line renders on the
+  // Preview page whenever `course.approvedBy` is populated. See
+  // CoursePreview.attribution.test.tsx for that (real, permanent) branch.
   it('never renders the old hardcoded "Approved by: Admin" badge, across every status (fixture has no recorded reviewer)', () => {
     for (const [status, reviewRequired] of [
       ['published', false],

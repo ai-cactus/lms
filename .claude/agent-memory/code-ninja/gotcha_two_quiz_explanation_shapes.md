@@ -27,7 +27,7 @@ where the object is expected renders as a blank "Correct: " rather than failing.
   the object (`toQuestionExplanation` in `Step6QuizReview.tsx`). Feeding it into
   `AdminQuizEditor` requires the raw string. Do not "unify" one into the other
   without touching both consumers.
-- **Only `correctExplanation` is persisted.** `saveCourse`
+- **Only `correctExplanation` is persisted.** `createFullCourse`
   (`src/app/actions/course.ts`) writes `q.explanation?.correctExplanation` into
   `Question.explanation`, which is a `String?`. `incorrectOptions` is
   wizard-preview-only and never reaches the database — so per-distractor

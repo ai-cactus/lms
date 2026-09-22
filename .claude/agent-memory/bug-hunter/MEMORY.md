@@ -1,66 +1,59 @@
 - [Test Framework & Patterns](project-test-framework.md) — Vitest, file placement, vi.hoisted mocking, auth/signup mock setup
 - [Constructor mock must use regular function](feedback-constructor-mock-arrow-fn.md) — mockImplementation with arrow fn throws when called with `new`
-- [Scripts testing constraints](project-scripts-testing.md) — transcode-worker.mjs can't import directly; Prisma 7.8 CJS crash; replicated-algorithm approach
+- [Scripts testing constraints](project-scripts-testing.md) — transcode-worker.ts main()-on-import constraint; replicated-algorithm approach; Prisma 7.8 adapter notes
 - [Storage/sweep test patterns](project-storage-sweep-tests.md) — abort-cleanup, GCS/MinIO list, listFiles dual-backend, video sweep tests
 - [Video sweep guardrails](video-sweep-guardrails-tests.md) — guardrail broke old empty-ref fixtures; opt-in flag trap; fire-and-forget needs microtask flush
 - [Resumable upload tests](resumable-upload-tests.md) — 3 files for GCS upload; JSDoc gotcha; reject-before-runAllTimers; e2e skipped
-- [RBAC proxy bug — admin login broken](project-rbac-proxy-bug.md) — requiredRole:'admin' rejects post-migration roles; fix via ADMIN_ROLES
 - [Reminders engine tests](reminders-test-patterns.md) — DST midnight gotcha, P2002 mock pattern, findMany ordering, fake timers
 - [QA wave 1 regression patterns](qa-wave1-regression-patterns.md) — billing double-charge, course-ai-v4.6 settle-race, PHI fail-closed, pdf-parse crash
-- [Org/Facility split tests](org-facility-split-test-patterns.md) — DEFAULT_TZ trap, staffCount billing gotcha, clearAllMocks doesn't reset mockResolvedValue
-- [RBAC 8-worker-role split](rbac-8-worker-role-split.md) — can() throws on unrecognized role; GRANTABLE_ROLES default is admin; e2e seeds via raw enum
+- [Org/Facility split tests](org-facility-split-test-patterns.md) — DEFAULT_TZ trap; billing plan gate counts real membership rows (P3-001), not Facility.staffCount; clearAllMocks doesn't reset mockResolvedValue
+- [RBAC 8-worker-role split](rbac-8-worker-role-split.md) — 8 worker roles / 14 total; unknown roles are least-privilege denies; e2e seeds via raw enum
 - [join/[token] fix + RBAC UI gates](join-invite-critical-fix-regression.md) — findUnique single-lookup fix, can() no longer throws, 4 new test files
-- [Signup owner-only + e2e env](signup-owner-only-e2e-env.md) — MailHog wired to real SMTP in dev; no-container sandboxes fail AC-3 closed (not a regression)
-- [MFA e2e enrollment patterns](mfa-e2e-enrollment-patterns.md) — /mfa/verify?challenge vs /verify-2fa distinct flows; org-less admin gated by modal not proxy
+- [Signup owner-only + e2e env](signup-owner-only-e2e-env.md) — ENG-001 self-skips without Entra creds; local/e2e mail goes to MailHog; check SMTP_HOST before trusting a mail failure
 - [Onboarding wizard/invite/settings tests](onboarding-invite-settings-phase-tests.md) — Radix Select id-clone breaks getByLabel; Docker can hang under disk pressure
 - [audit-fx regression patterns](audit-fx-regression-patterns.md) — F-009/F-010 org isolation, F-039 score fallback, F-048/F-038 leaks; revert-and-confirm technique
-- [Quiz attempt route tests (F-031)](quiz-attempt-route-tests.md) — append-history tx-mock pattern, boundary-score generation, allowedAttempts null quirk
+- [Quiz attempt route tests (F-031)](quiz-attempt-route-tests.md) — append-history tx-mock pattern, boundary-score generation, allowedAttempts null handling (fixed a9e183fe)
 - [getDashboardData tests](get-dashboard-data-test-patterns.md) — dual groupBy branch mocking, "failed" status quirk, totalStaff vs totalOrgStaff
-- [WSL2 Playwright browser install](wsl2-playwright-browser-install.md) — ubuntu26.04 unsupported; use PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64
-- [E2E local AUTH_URL env trap](e2e-local-auth-url-env-trap.md) — .env keeps resetting AUTH_URL=3000; always export AUTH_URL=3005, re-verify each session
+- [E2E local AUTH_URL env trap](e2e-local-auth-url-env-trap.md) — fixed by .env.e2e (AUTH_URL=:3005); bites only a raw `npx playwright test` because .env pins AUTH_URL=:3000
 - [Status Tracker rename + seed fixture](status-tracker-rename-e2e-seed-fixture.md) — Olivia Overdue fixture; email-substring collision; WSL2 cold-start flake
 - [E2E webServer dev-lock conflict](e2e-webserver-dev-lock-conflict.md) — stray :3000 `next dev` blocks :3005 webServer; kill it first
 - [Stripe invoice period tests](stripe-invoice-period-test-patterns.md) — full fixture typing, `?? default` nullish trap, regression-pin idiom
-- [RBAC sidebar module gating](rbac-sidebar-module-gating-tests.md) — exhaustive per-role canAccessModule/nav pattern (4 files)
-- [rbac-facility-tab read-only update](rbac-facility-tab-readonly-update.md) — all roles see facility tab read-only; use --workers=1 (Postgres connection limits)
-- [QA ISSUE 2/4 + CSV fix tests](qa-issue-2-4-and-csv-fix-tests.md) — org-less owner is modal-gated not route-gated; worker soft-nav needs hard page.goto
+- [RBAC sidebar module gating](rbac-sidebar-module-gating-tests.md) — exhaustive per-role canAccessModule/nav pattern for 6 manager roles + front_desk_admin
+- [QA ISSUE 2/4 + CSV fix tests](qa-issue-2-4-and-csv-fix-tests.md) — DashboardEmptyState click trap; org-less owner is route-gated to /onboarding; NEXTAUTH_SECRET for OTP decrypt
 - [HMR interference during e2e runs](hmr-interference-during-e2e-runs.md) — editing ANY file mid-run causes spurious click hangs via Fast Refresh
-- [RBAC matrix realignment + role-change](rbac-matrix-realignment-role-change.md) — HR user.delete bug RESOLVED; canChangeRole patterns; role-change e2e flow
+- [RBAC matrix realignment + role-change](rbac-matrix-realignment-role-change.md) — HR user.delete bug RESOLVED; canChangeRole patterns; supervisor now read-only; role change lives in ChangeRoleModal
 - [Partners feature tests](partners-feature-test-patterns.md) — Docker-free SMTP stub; getByRole('alert') collides with Next's route-announcer
 - [Billing Phase-4 defect tests](billing-phase4-defect-tests.md) — mockResolvedValueOnce fixture-pollution trap; waitForURL vs toHaveURL
 - [Billing Defect C — resolved](project-billing-defect-c-resolved.md) — resume-never-navigates bug; root cause was next/dynamic lazy-load race
-- [Stripe billing-prices SSOT tests](stripe-billing-prices-ssot-tests.md) — server-only import needs mocking; no real Stripe creds locally; e2e self-skip pattern
-- [Plan-change/proration classifier tests](billing-plan-change-proration-tests.md) — setMonth Mar-31 overflow gotcha; same-tier cycle-only change unreachable via UI
+- [Stripe billing-prices SSOT tests](stripe-billing-prices-ssot-tests.md) — server-only import needs mocking; Stripe creds vary by session; e2e self-skip pattern
+- [Plan-change/proration classifier tests](billing-plan-change-proration-tests.md) — since 2026-08-27 every upgrade is immediate_prorate (downgrades/same-tier cycle scheduled); same-tier cycle-only change unreachable via UI
 - [RTL StrictMode double-invoke gotcha](rtl-strictmode-double-invoke-gotcha.md) — hand-rolled `wrapper:<StrictMode>` doesn't double-invoke; use `{reactStrictMode:true}`
-- [Phase 2 fix round tests](phase2-fix-round-test-patterns.md) — sweep mock-queue-corruption gotcha; seed.ts singleton reset; real doc-viewer org-scope bug found
-- [2FA consolidation tests](mfa-2fa-consolidation-test-patterns.md) — MailHog HTTP OTP retrieval; sibling-cookie re-injection; disableMfa security-fix approach
+- [Phase 2 fix round tests](phase2-fix-round-test-patterns.md) — sweep mock-queue-corruption gotcha; seed.ts singleton reset; doc-viewer org-scope + .doc MIME bugs (since fixed)
+- [2FA consolidation tests](mfa-2fa-consolidation-test-patterns.md) — MailHog HTTP OTP retrieval; sibling-cookie re-injection; disableMfa fix; org-less-admin seeding, single mfa_factors row polling, OTP decrypt (merged from the enrollment note)
 - [Phase 3 quiz retake/attestation tests](phase3-quiz-retake-attestation-tests.md) — E2E_TEST_BYPASS_RATE_LIMIT needed in BOTH dev-server and playwright shells
 - [QA still-open 2026-07-19 regression tests](qa-still-open-2026-07-19-regression-tests.md) — worker e2e seeds now need a subscription row; reseed-before-rerun reconfirmed
-- [Worker-invite unification tests](worker-invite-unification-tests.md) — invite branch/enrollInviteCourses/seat-gated enrollUsers coverage; mockResolvedValueOnce leak
+- [Worker-invite unification tests](worker-invite-unification-tests.md) — invite branch/enrollInviteCourses/seat-gated enrollUsers coverage; removeStaff now retains all records (243375f4); mockResolvedValueOnce leak
 - [ui-updates restyle green-up + e2e env traps](ui-updates-reconciliation-e2e-env-fixes.md) — NEXT_PUBLIC_APP_URL baked at boot; NEXTAUTH_SECRET needed for MFA specs
-- [Documents Hub RBAC gate tests](documents-hub-rbac-gate-tests.md) — RowActionsMenu Radix stub pattern; registry-derived it.each partition
+- [Documents Hub RBAC gate tests](documents-hub-rbac-gate-tests.md) — document.* CRUD owner/admin/hr/CD, supervisor read-only, finance denied; RowActionsMenu Radix stub; registry-derived it.each partition
 - [Billing 3→4-tier rename updates](billing-4tier-rename-test-updates.md) — enum RENAME VALUE breaks raw-seeded e2e; price-id naming collision trap
-- [Notification engine tests](notification-engine-test-patterns.md) — vi.hoisted cross-ref trap; ISO-week test technique; digest-send e2e infeasible
+- [Notification engine tests](notification-engine-test-patterns.md) — vi.hoisted cross-ref trap; ISO-week test technique; digest-send e2e feasible via MailHog but not yet written
 - [User→OrganizationUser split tests](user-organizationuser-split-test-patterns.md) — 20 files/2 batches; createMembership() mocking; session-not-DB role reads
 - [RBAC e2e fixture port to OrganizationUser](rbac-e2e-organizationuser-fixture-port.md) — 6 spec files, 28 tests green; staff-profile URL keyed by organization_users.id
-- [Multi-facility v3 increment 2 tests](multi-facility-v3-increment2-test-patterns.md) — 9 new+7 extended unit files; getCourses() is per-creator not org-wide
+- [Multi-facility v3 increment 2 tests](multi-facility-v3-increment2-test-patterns.md) — 9 new+7 extended unit files; getCourses() org-wide for managers; both Global View tables use "View dashboard for <name>"
 - [Onboarding step3 redesign tests](onboarding-step3-redesign-test-patterns.md) — Radix hidden-select empty-echo bug found+fixed
 - [Proxy redirect during Server Action crash — RESOLVED](proxy-redirect-during-server-action-crash.md) — redirect-stub target crashes redirectTo; fixed via leaf-route targeting
-- [Local production-build e2e run recipe](local-production-build-e2e-run.md) — running full suite against `next build && next start`: env baking, MinIO port trap
-- [Add Facility modal v3 tests](add-facility-modal-v3-test-patterns.md) — Radix Popover-in-Dialog portal locator trap (scope to `page` not dialog)
+- [Add Facility modal v3 tests](add-facility-modal-v3-test-patterns.md) — Facility type is a Popover multi-select (click trigger, query portal checkboxes from `page`); SupervisorCombobox portal trap
 - [Vitest CPU-contention flake](vitest-cpu-contention-flake.md) — concurrent tsc/lint/build jobs can spuriously time out one test; re-isolate before calling it a regression
-- [Course wizard 9-step redesign tests](course-wizard-9step-redesign-tests.md) — deep-link `?documentId=` bypasses AI scan; analyzeStoredDocument fails-open
 - [Full e2e suite serial flakiness — root cause](full-e2e-suite-serial-flakiness.md) — stale local-DB fixture rows surviving prior runs; seed.ts has the SQL reset recipe
 - [InviteStaffModal v2 stale-selector traps](invite-staff-modal-v2-stale-selector-traps.md) — 5 cascading locator mismatches across 5 spec files; reseed between runs
 - [Portal-sessions + video-perf PR1 tests](portal-sessions-video-perf-tests.md) — cookie-gated auth concurrency tests; jsdom DOMException-is-not-Error gotcha
 - [Courses list Figma redesign tests](courses-list-figma-redesign-tests.md) — "Video 1" not "Video (1)" accessible names; per-tab empty-state regression risk
 - [Multi-course assign batched-email tests](multi-course-assign-batched-email-tests.md) — Server Actions auto-revalidate same tab; pg Date binding skews by host UTC
 - [Session-isolation fix verification](session-isolation-fix-verification.md) — RESOLVED 2026-08-23; 4-round arc ending in clearTabIdentity() on /login mount
-- [Tier 3 5.2 dynamic-import test techniques](tier3-dynamic-import-tests.md) — next/image can't SSR outside Next runtime; found CertificateModal overlap bug (unfixed then)
+- [Tier 3 5.2 dynamic-import test techniques](tier3-dynamic-import-tests.md) — next/image can't SSR outside Next runtime; found CertificateModal overlap bug (since fixed, 557a263e)
 - [CertificateModal overlap fix regression test](certificate-modal-overlap-fix-regression-test.md) — stash-revert-confirm proved it catches the bug
-- [Tier 3 5.1 session-revalidation cache tests](tier3-5.1-session-revalidation-cache-tests.md) — BLOCKING: default cache TTL breaks "removed staff killed on next nav"
-- [Tier 3 5.1 active-invalidation verification (RESOLVED)](tier3-5.1-active-invalidation-verification.md) — commit 66aa961 fix confirmed; fake-timer TTL-backstop technique
-- [Tier 3 5.3 over-fetch wave tests](tier3-5.3-overfetch-wave-tests.md) — 4th broken file missed by handoff; getCourseById PII finding confirmed not-a-regression
+- [Tier 3 5.1 auth revalidation cache (RESOLVED)](tier3-5.1-active-invalidation-verification.md) — unit/integration test files; 30s-TTL regression fixed by 66aa961 invalidateRevalidationCache(); fake-timer TTL-backstop technique; snapshot-allowlist gap
+- [Tier 3 5.3 over-fetch wave tests](tier3-5.3-overfetch-wave-tests.md) — 4th broken file missed by handoff; getCourseById roster leak (since fixed, 67a282b8)
 - [Vitest concurrent dynamic-import mock race](vitest-concurrent-dynamic-import-mock-race.md) — `await import()` under concurrency drops the mock for all but first caller
 - [Tier 3 5.3 PR-7 enrollment batching](tier3-5.3-pr7-enrollment-batching.md) — 26 tests green; ONE confirmed divergence in post-failure commit set, reported not fixed
 - [Billing cancel/resume/seats e2e fixes](billing-cancel-resume-seats-e2e-fixes.md) — heading-role + double-`.locator('..')` scoping beats `.first()`/`.last()`
@@ -70,18 +63,20 @@
 - [Server Action refusal-return test patterns](server-action-refusal-return-tests.md) — billing-gate identity-check idiom (import real constant, don't hardcode)
 - [Courses video/reading consolidation tests](courses-video-reading-consolidation-tests.md) — Input role is textbox not searchbox; e2e count-sensitivity claim disproven
 - [Facility-scope-and-switching test suite](facility-scope-and-switching-tests.md) — D-01 "verbs gated, reads not" fix; 19 files closing the getCourseForOrgView PII leak
-- [Duplicate removal + doc-identity fix validation](duplicate-removal-and-doc-identity-fix-validation.md) — confirmed PHI-scan-fails-closed blocks live-upload e2e (superseded — see PR-3a notes for the local-regex bypass that DOES work)
+- [Duplicate removal + doc-identity fix validation](duplicate-removal-and-doc-identity-fix-validation.md) — cross-user doc-attach fix regression technique; live uploads e2e-testable via the local-regex PHI path
 - [RoleTargetPicker PR-2 tests](role-target-picker-pr2-test-patterns.md) — pg doesn't parse custom enum[] columns (cast ::text[]); containers up ≠ DB migrated/seeded; ⚠️ why my import-graph sweep called #595 green while it shipped a broken e2e spec
 - [Course publish reviewer (D8) tests](course-publish-reviewer-d8-tests.md) — @ts-expect-error must sit above the property line or the pin silently fails tsc
-- [Course wizard single-document PR-3a tests](course-wizard-single-doc-pr3a-test-patterns.md) — local-regex PHI bypass for live SSN uploads (Vertex-free), pdfkit/pdf-parse incompatibility (use docx+mammoth), a pre-existing false-positive in quiz-ai.test.ts
+- [Course wizard single-document PR-3a tests](course-wizard-single-doc-pr3a-test-patterns.md) — local-regex PHI bypass for live SSN uploads (Vertex-free), pdfkit/pdf-parse incompatibility (use docx+mammoth), vacuous-pass trap in prompt-inspection tests (fixed #605)
 - [Course wizard PR-3b restyle tests](course-wizard-pr3b-restyle-test-patterns.md) — Playwright role="alert" collides with Next's route announcer (use hasText, not name); flattened-accordion rewrite pattern; migrate reset is AI-blocked, delete the stray row instead
 - [Course details PR-4 attribution tests](course-details-pr4-attribution-tests.md) — mayReviewWithoutEnrollment 14-role table; getRoleDisplayName returns FULL names ("Owner (Organisation Admin)"); e2e email-LIKE cleanup races concurrent tests; lessons-empty course renders straight into AdminQuizEditor
-- [RoleTargetPicker stale-locator sweep](role-target-picker-stale-locator-sweep.md) — TC-016 option→checkbox fix, second stale-copy bug, full-suite ECONNREFUSED collapse trap
+- [RoleTargetPicker stale-locator sweep](role-target-picker-stale-locator-sweep.md) — PR #595 broke TC-016 undetected for 5 merges; grep assertion text too, not just locators; full-suite ECONNREFUSED collapse trap
 - [Assign role-label + Due Date fix tests](assign-role-label-due-date-tests.md) — AssignPublishClient's first unit test file; sweep.ts dueAt/multi-role coverage; RTL getByRole has no `exact` option (Playwright-only)
 - [Assign-consolidation Phase 1 tests](assign-consolidation-phase1-tests.md) — sink tri-state, D-F fixture-date rot, un-mocked update() destructure trap, CourseWizard's first UI test (mock-everything recipe, onChange staleness trap)
 - [Assign-deadline-time Phase 4 tests](assign-deadline-time-phase4-tests.md) — jsdom can't reproduce Radix's portal-dismiss judgment (test the guard's own logic directly instead); vi.useFakeTimers() hangs waitFor unless {toFake:['Date']}; TimePicker mocked like DatePicker
 - [Reminder-ladder consolidation Phase 5 tests](reminder-ladder-consolidation-phase5-tests.md) — stateful fake-Prisma sink-safety proof, it.each array-spread trap, property round-trip sweep, first e2e for the ladder (REM-011)
 - [Assign-renewal-toggle Phase 6 tests](assign-renewal-toggle-phase6-tests.md) — final phase; shared Switch + RenewalScheduleInput; toggle-is-sole-'none'-path sabotage proof; both selector-contract claims held; no product defect
-- [Dashboard single-facility scope tests](dashboard-single-facility-scope-tests.md) — cross-branch parity sabotage-proof pattern, HR-authored-course e2e fixture, AVG-vs-round unresolved-by-design finding, getCourses org-pin gap still open
+- [Dashboard single-facility scope tests](dashboard-single-facility-scope-tests.md) — cross-branch parity sabotage-proof pattern, HR-authored-course e2e fixture, AVG-vs-round unresolved-by-design finding; getCourses org-pin gap fixed (c541c48c)
 - [Course roster cross-tenant PII fix tests](course-roster-cross-tenant-pii-tests.md) — mock-ignores-where trap solved via call-arg assertions + red/green proof; getCourseForOrgView's missing OR clause is correct, not a bug; TrainingDetails deliberately not tested
 - [Learn admin edit-affordance e2e](learn-admin-edit-affordance-e2e.md) — Quill e2e typing must use `.fill()` not press/pressSequentially (truncates+persists!); worktree `next build` needs real `npm ci`, symlinked node_modules fails Turbopack's root check
+- [Quiz error surfacing tests](quiz-error-surfacing-tests.md) — LearnClient readQuizErrorMessage + "LearnClient — quiz error surfacing" tests (7aa3a2f4)
+- [Session-isolation repro + stale generated client](session-isolation-repro-and-stale-generated-client.md) — session-isolation-repro.spec.ts regression locks (pass since 95fe604b); stale generated/prisma client 500s every login — run prisma generate after migrate deploy

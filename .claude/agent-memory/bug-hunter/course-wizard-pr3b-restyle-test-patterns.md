@@ -78,8 +78,8 @@ times in one test to compare button click targets — `getAllByRole` across two
 mounted instances is a trap (each mount gets its own `onChange` mock,
 so a stray click can silently assert against the wrong instance's spy).
 
-Confirmed e2e-DB-pollution-looks-like-a-regression again (see
-[e2e DB pollution looks like a regression](e2e-db-pollution-looks-like-a-regression.md)):
+Confirmed e2e-DB-pollution-looks-like-a-regression again (see user memory
+e2e-db-pollution-looks-like-a-regression):
 `course.spec.ts`'s ENG-022 test failed with a Playwright strict-mode "2
 elements" error on the worker's table row after running `prisma db seed`
 against an already-8-hours-seeded `lms_e2e` DB — a stray non-seed-ID

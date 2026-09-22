@@ -1,6 +1,6 @@
 ---
 name: gotcha-dashboard-responsive-breakpoints
-description: Inside the admin dashboard shell the 280px sidebar makes lg (1024) NARROWER than md (768), so wide table layouts must be gated at xl; plus SelectTrigger's `size` prop is inert
+description: the 280px sidebar makes `lg` narrower than `md`, so gate wide tables at `xl`; SelectTrigger has no size prop — set height with a plain h-* class.
 metadata:
   type: project
 ---
@@ -28,11 +28,10 @@ than scroll, per `docs/ui-migration-pattern.md` §3a; also set `table-fixed` on 
 `truncate` on cell contents does nothing (auto table layout sizes columns to the full nowrap text
 and the card overflows).
 
-**2. `SelectTrigger`'s `size` prop is inert.** `src/components/ui/select.tsx` destructures
-`size = 'default'` but never emits `data-size`, so the built-in `data-[size=default]:h-9` /
-`data-[size=sm]:h-8` rules and any `data-[size=sm]:h-10` override you add never match. To get the
-LMS-v2 40px pagination select, pass a plain `h-10` and omit `size` entirely. (ESLint already
-reports this as an unused-var warning.)
+**2. `SelectTrigger` has no `size` prop.** `src/components/ui/select.tsx` no longer accepts
+`size` or emits `data-size`, and carries no default height class. To get the LMS-v2 40px
+pagination select, pass a plain `h-10` in `className`. Don't add `data-[size=…]:*` overrides —
+nothing matches them. See [[gotcha_shadcn_table_row_border]].
 
 See [[reference-figma-courses-section]] for the shared card/table/pagination token set and
 [[local-ui-verification]] for driving the running app.

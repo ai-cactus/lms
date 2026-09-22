@@ -9,7 +9,7 @@ Branch `fix/course-roster-cross-tenant-pii` (2026-09-14), cut from dev @ `452866
 Product code (uncommitted, not touched by me) added an `enrollments.where` predicate
 to `getCourseById`'s and confirmed `getCourseForOrgView`'s `prisma.course.findUnique`/
 `findFirst` calls, closing a leak where an adopted video course's roster spanned
-every tenant. See [[gotcha_course_roster_spans_tenants]] (code-ninja memory) for the
+every tenant. See `gotcha_course_roster_spans_tenants` (code-ninja memory) for the
 product-side rationale.
 
 **Why this needed a different test shape:** `src/app/actions/course.test.ts`'s

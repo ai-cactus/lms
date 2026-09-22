@@ -19,9 +19,10 @@ migration); only the adoption *UI* went.
   Available tab returned the whole global catalog. A published global video course with no
   offering row was in one and not the other. The union is done **in the page**, not inside
   `getCourses`, deliberately: `getCourses` also feeds `AssignCoursesModal` and
-  `ConfirmPublishModal`, and `assignCourseToUsers` rejects any course whose
-  `creator.organizationId` is not the caller's org — widening `getCourses` would have put
-  courses into assignment pickers that the assign action then refuses. See
+  `ConfirmPublishModal`, and at the time `assignCourseToUsers` rejected any course whose
+  `creator.organizationId` was not the caller's org — widening `getCourses` would have put
+  courses into assignment pickers that the assign action then refused. (`assignCourseToUsers`
+  was deleted 2026-09-13; `enrollUsers` is now the only user-target assign action.) See
   [[gotcha_assignment_action_authorization_split]].
 - `listGlobalVideoCatalogCourses()` (in `offering.ts`) is the catalog→`CourseWithStats`
   projection. It rides the existing `unstable_cache`'d, tenant-independent
@@ -30,8 +31,8 @@ migration); only the adoption *UI* went.
   Any test that mocks `prisma.course.findMany` for this catalog must supply `createdAt`,
   `updatedAt`, `status`, `thumbnail`, `duration` and `_count.lessons` or the mapper throws.
 - Catalog rows carry `isGlobalCatalog: true` on `CourseWithStats` and get **no row-actions
-  menu**: rename/delete would mutate a course every tenant shares, and assign is refused by
-  the creator-org check above.
+  menu**: rename/delete would mutate a course every tenant shares, and assign of a shared
+  global course belongs on the assign page, not the row menu.
 - Availability is gated on `hasActiveBilling()` (no tier mapping) — the page's already-computed
   `hasBilling` decides whether the catalog read runs at all.
 
@@ -62,5 +63,5 @@ are all **deleted**. Two things to carry forward:
   narrows the cached Prisma `select` (`lessons`, `previewPosterStorageUri`), so it is a
   behaviour-affecting change, not cleanup; left in place with a comment saying so.
 
-Still deliberately alive: `/dashboard/courses/prebuilt`, linked from `Step1Category.tsx` and
-`CoursesListClient.tsx`. Not dead — removing it is a product change.
+`/dashboard/courses/prebuilt` (the prebuilt-course adoption route) has since been removed
+(`beb57e22`).

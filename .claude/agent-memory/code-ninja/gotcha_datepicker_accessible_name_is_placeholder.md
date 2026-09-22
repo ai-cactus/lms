@@ -22,5 +22,3 @@ assign surface, keep the existing placeholder strings verbatim and do **not** ad
 `label`. Give a *new* sibling picker a distinct placeholder instead (e.g.
 `Select due time` next to `Select due date`) so neither locator becomes
 ambiguous under Playwright strict mode.
-
-Related: [[gotcha-timepicker-popover-portals]].

@@ -21,6 +21,6 @@ already assign the same course through the other action.
 
 **How to apply now:**
 
-- `assignCourseToUsers` was **deleted** on 2026-09-13 (assign-surface consolidation Phase 3) — it bypassed the F-051 review gate and applied creator-org-only tenancy. `enrollUsers` is now the only user-target assign action; build new entry points on it. Note its own page-level gates differ: [[gotcha-assign-page-tenancy-narrower-than-action]].
+- `assignCourseToUsers` was **deleted** on 2026-09-13 (assign-surface consolidation Phase 3) — it bypassed the F-051 review gate and applied creator-org-only tenancy. `enrollUsers` is now the only user-target assign action; build new entry points on it.
 - `enrollUsers` selects `creator: { organizationId }`. **Any prisma mock returning a course from `course.findUnique` must include that relation** or the action throws `Cannot read properties of undefined`. A fixture meant to exercise only the global-catalog/offering branch needs a creator org that is NOT the caller's (`'org-platform'`), or it passes for the wrong reason.
-- **Still open:** `assignCourseToRoleTargets` (enrollment.ts, ~line 670) carries the same creator-identity gate and was deliberately left alone — role-target assignment of a colleague's non-global course still fails. Fix it the same way if it surfaces.
+- `assignCourseToRoleTargets` (enrollment.ts) has since gained the same `isSameOrgCourse` branch, so role-target assignment of a colleague's non-global course works too. Both paths now agree.

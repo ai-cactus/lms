@@ -6,8 +6,8 @@
  * Background: `createFullCourse` computes `reviewRequired` SERVER-SIDE from
  * the AI generation artifacts, and Steps 6-8 of the course wizard need a real
  * Vertex AI call this environment has no credentials for — the established
- * constraint documented in course-wizard-module-builder.spec.ts's own
- * docstring, which this spec follows. Naturally reaching `reviewRequired:
+ * constraint documented in course-creation.spec.ts's own docstring, which
+ * this spec follows. Naturally reaching `reviewRequired:
  * true` therefore requires a live degraded generation, which cannot be driven
  * here; the full defer/replay/idempotency state machine (createFullCourse ->
  * pendingAssignment -> publishCourse's acknowledge-and-replay) is exhaustively
@@ -15,8 +15,7 @@
  * and pending-assignment.test.ts.
  *
  * What THIS spec covers, DB-seeding a held draft directly to stand in for a
- * degraded generation's output (the same technique
- * course-wizard-module-builder.spec.ts uses to sidestep the AI dependency):
+ * degraded generation's output (DB seeding sidesteps the AI dependency):
  *
  *   1. A `reviewRequired` draft renders "Needs Review" on its training-details
  *      page (Issue #13, exercised through a real browser render) — never the

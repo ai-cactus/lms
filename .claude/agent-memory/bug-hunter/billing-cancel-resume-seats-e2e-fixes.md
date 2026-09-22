@@ -8,24 +8,12 @@ metadata:
 From the `bugfix/billing-cancel-resume-seats` branch (PR #525), extending
 `tests/e2e/billing-plan-change-and-gating.spec.ts` for #25/#26/#29/#33.
 
-**This sandbox cannot start the Next.js server in any mode — a hard,
-two-layered blocker, not something to keep retrying:**
-1. `next build` / `next dev` default to Turbopack in Next 16.3.1, which requires
-   native SWC bindings (`@next/swc-linux-x64-gnu`/`musl`) that are simply not
-   installed in `node_modules` here — fails immediately with "Turbopack is not
-   supported on this platform... Only WebAssembly (WASM) bindings were loaded."
-2. Forcing the fallback (`next build --webpack`) gets past that, then fails at
-   font compilation: `next/font` (`JetBrains_Mono`, `Playfair_Display` in
-   `src/app/layout.tsx`) needs outbound network access to Google's font CDN
-   (`ETIMEDOUT`/`ENETUNREACH` connecting to a `172.217.16.234:443`-style IP),
-   which this sandbox does not have.
-
-**How to apply:** don't spend more than ~2 attempts confirming this before
-reporting it as an environment blocker to the orchestrator — e2e must be
-verified by CI (or a working local machine) for this repo, full stop, in this
-sandbox. Report unit-test results (which run fine) as the landed, verifiable
-work, and hand e2e specs over unexecuted with this exact diagnosis rather than
-claiming a pass.
+**If `next build`/`next dev` fails with "Turbopack is not supported on this platform… Only
+WebAssembly (WASM) bindings were loaded"**, the native `@next/swc-*` binding is missing from
+`node_modules`. Run a real `npm ci`. A `next/font` `ETIMEDOUT` means there is no egress to
+Google Fonts. That was a 2026-08 sandbox-only condition: the current environment has
+`@next/swc-linux-x64-gnu` and runs `npm run e2e:local`. CI does NOT run e2e on feature PRs,
+so never defer e2e verification to CI. Run it locally.
 
 **A genuine (not route-announcer) 3-way duplicate-render string, found via CI,
 not locally:** "Your subscription is paused" renders in THREE places at once
@@ -33,14 +21,14 @@ on `/dashboard/billing?tab=subscription` — `BillingPausedBanner.tsx` (site-wid
 layout-level), `SubscriptionTab.tsx`'s own status card, and `OverviewTab.tsx`
 (not mounted simultaneously, since only one tab renders at a time, but still a
 real duplicate source). A bare `getByText` is a genuine Playwright strict-mode
-violation here — NOT the [[full-e2e-suite-strict-mode-route-announcer]]-style
+violation here — NOT the Next.js route-announcer strict-mode-style
 issue PR #520 fixed, and the coordinator was explicit: do not paper over it
 with `.first()`/`.last()`, since that silently stops checking the region that
 actually matters (a test that passes by not looking is worse than the failure).
 
 Fix technique, reusable whenever a string is intentionally repeated across a
 layout banner + a tab-local card: of the duplicates, only ONE tends to be a
-real semantic heading (`<h3>` in `SubscriptionTab.tsx:779`; the banner and
+real semantic heading (`<h3>` in `SubscriptionTab.tsx:890`; the banner and
 `OverviewTab` both use a plain `<p>` for the identical text) — so
 `page.getByRole('heading', { name: ... })` uniquely resolves to the one
 component that matters, same targeting principle as #520 (role over bare

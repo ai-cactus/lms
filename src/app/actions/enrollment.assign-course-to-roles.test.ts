@@ -196,7 +196,7 @@ describe('assignCourseToRoles — authorization and input', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Billing gate — shared with enrollUsers/assignCourseToUsers via
+// Billing gate — shared with enrollUsers via
 // hasActiveBilling(). Refused by RETURN (not thrown), so the reason survives
 // production error redaction. This is the gate CourseWizard reads
 // `refusedReason` from to show a specific banner instead of a generic one.

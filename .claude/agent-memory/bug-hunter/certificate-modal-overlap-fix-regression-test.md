@@ -48,6 +48,6 @@ doesn't touch anything build-mode-sensitive): full env block per
 `SMTP_PORT=1025` — omitting SMTP entirely makes `src/instrumentation.ts`'s
 `validateEnv()` throw at server boot ("email transport: set SMTP_USER +
 SMTP_PASSWORD...") and the whole webServer fails to start, not just mail-related
-tests. `DATABASE_URL` must point at `lms_e2e` (5433, password `0951` per
-[[e2e-local-verification-runbook]] in user memory) — reseed after switching the
+tests. `DATABASE_URL` must point at `lms_e2e` (port 5433; credentials in `.env.e2e`, see
+`e2e-local-verification-runbook` in user memory) — reseed after switching the
 target DB.

@@ -53,7 +53,7 @@ as before), `billing-stripe-plan-prices.spec.ts`, `worker-billing-gate.spec.ts`,
 `remove-reinvite-clean-slate.spec.ts`, `assign-course-invite.spec.ts`,
 `rbac-dual-cookie-login.spec.ts`, `documents-hub-rbac-gate.spec.ts` all green
 against a real migrated `lms_e2e` DB + prod build, using the same
-container/env mapping as [[e2e-local-verification-runbook]].
+container/env mapping as the user-memory note `e2e-local-verification-runbook`.
 
 See also [[stripe-billing-prices-ssot-tests]] (env var names there now
 corrected from `STRIPE_PROFESSIONAL_*` to `STRIPE_GROWTH_*`/`STRIPE_PRO_*`).

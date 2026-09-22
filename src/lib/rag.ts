@@ -7,7 +7,7 @@
  *
  * Requires:
  *   - pgvector extension enabled in PostgreSQL.
- *   - The `embedding` column on ManualChunk to be populated (see manual-indexer.ts).
+ *   - The `embedding` column on ManualChunk to be populated (see src/lib/queue/manual-indexer-worker.ts).
  *   - An active StandardManual record in the database.
  */
 

@@ -148,9 +148,6 @@ export async function createEnrollmentForUser(
   const lastName = entry.lastName?.trim() || undefined;
   const fullName =
     firstName && lastName ? `${firstName} ${lastName}` : (firstName ?? lastName ?? undefined);
-  // CSV supplies a coarse "admin" / "worker" token. Map "admin" to the RBAC
-  // successor `supervisor` (facility admin); everything else becomes the default
-  // self-serve worker role.
   const crypto = await import('crypto');
   const { sendCourseInviteEmail, sendCourseLaunchEmail } = await import('@/lib/email');
 

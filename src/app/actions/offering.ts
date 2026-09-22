@@ -41,7 +41,7 @@ function resolveOrg(
   // The tier check STAYS, composed with the verb rather than replaced by it:
   // `workerPermissions` grants every learner `course.read`, so gating the reads
   // on the permission alone would open the admin catalog to the whole workforce.
-  // Same reasoning as course.ts:69.
+  // Same reasoning as getCourseForOrgView in course.ts.
   if (!isAdminRole(sessionUser.role) || !can(dbRoleToRoleKey(sessionUser.role), permission)) {
     throw new Error('Forbidden');
   }

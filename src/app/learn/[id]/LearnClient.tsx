@@ -246,7 +246,8 @@ function deriveSeed(data: LearnPayload): SeededState {
 
     seed.timeLeft = Math.max(0, limit - elapsedSeconds);
   } else if (isCompleted) {
-    // Completed/attested: show course content by default, quiz results accessible via rail
+    // Completed/attested: show course content by default; quiz results are reachable
+    // from the article's Table of Contents or "Proceed to Quiz"
     seed.quizResults = data.quizResultsData || {
       passed: (data.enrollment.score || 0) >= (course.quiz?.passingScore || 70),
       score: data.enrollment.score || 0,

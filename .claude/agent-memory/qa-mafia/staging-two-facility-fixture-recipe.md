@@ -1,9 +1,31 @@
 ---
 name: staging-two-facility-fixture-recipe
-description: How to build a genuine two-facility staging org for supervisor facility-scoping QA, plus the billing-checkout classifier block that limits it
+description: AUTHORITATIVE staging QA fixture orgs (D01 + B4) and their CURRENT passwords, plus how the two-facility B4 org was built and the billing-checkout classifier block
 metadata:
   type: reference
 ---
+
+## Staging QA fixture orgs and current credentials (authoritative, as of 2026-09-21)
+
+This is the ONE place staging QA passwords are recorded. Other notes point here. When a round resets a password, update this table in place. Do not write the new value into the run note.
+
+**Passwords drift.** Other QA sessions reset them. Try the value below once. On "Invalid credentials", go straight to forgot-password + QA Gmail IMAP (see [[qa-gmail-imap-quirks-and-ui-bypass-technique]]), then update this table.
+
+| Account | Password |
+|---|---|
+| D01 admin/owner `theraptlyqa+d01admin@gmail.com` | `QaTest123!RbacRound5` |
+| D01 Supervisor `theraptlyqa+d01supervisor@gmail.com` | `QaTest123!RbacRound4` |
+| D01 `+d01hr@`, `+d01finance@`, `+d01cd@`, `+d01worker@` | `QaTest123!RbacRun` |
+| D01 `+d01worker2@` | `QaTest123!RbacRun2` |
+| B4 owner `theraptlyqa+b4owner@gmail.com` | `QaTest123!RbacRound3` (latest recorded, 2026-09-17) |
+| B4 `+b4f1sup@`, `+b4f2sup@` | `QaTest123!RbacRun` |
+
+**Fixture facts to rely on:**
+- **"QA D01 Org A LLC"** is single-facility, subscribed and mixed-authorship. It carries deliberately archived rows and a `[QA-EDIT-STORY1]` slide marker.
+- **"QA B4 Multi-Facility Org LLC"** has two facilities (Manhattan, Brooklyn) and a Starter/Yearly subscription. It renders the GLOBAL dashboard.
+- **"Personal Conduct Series 1"** is the only course D01 and B4 share. D01 Worker and D01 Finance are enrolled; B4 has five learners. Do not withdraw any of them.
+
+## Two-facility build recipe (2026-08-29)
 
 **Recipe confirmed working live on staging 2026-08-29** (org "QA B4 Multi-Facility Org LLC"). Fresh owner signup (`/signup` → IMAP verify link → login) lands on the 5-step onboarding wizard; steps 4/5 ("Invite Team Members" / "Invite Workers") create accounts tied to the facility created in step 1 (Facility 1) by default. To get a real second facility: Settings → Facility tab → "Add Facility" — this dialog lets you invite a supervisor by email directly at creation time (`Facility Supervisor` role, tied to that new facility). Staff Management's own "Add Staff" invite dialog also gained a required **Facility selector** (`Global` for org-wide managerial roles — Admin/HR/Finance/Clinical Director — vs a specific facility for Facility Supervisor + all worker roles) — pick the target facility explicitly per invite to land a worker in Facility 2 rather than Facility 1.
 
@@ -19,4 +41,4 @@ metadata:
 
 **CRITICAL BLOCKER — this environment's own auto-mode safety classifier blocks completing a real Stripe TEST-mode checkout autonomously.** Attempting to check Stripe's "I am an AI agent acting on behalf of someone else" disclosure checkbox (which appears on the Stripe-hosted checkout page) as part of finishing a subscription was blocked outright with `Permission for this action was denied by the Claude Code auto mode classifier`. This happened even though (a) it's TEST mode, real money is never at risk, and (b) an earlier QA run (2026-08-26) completed an identical checkout successfully — so this is either a newly-tightened classifier rule or was triggered specifically by that disclosure checkbox. **Do not attempt to work around this** (e.g. by leaving the checkbox unchecked while still being an AI agent, or scripting around the click) — per policy, stop and ask the orchestrator/user to either complete the checkout themselves or explicitly authorize the action. This blocks any fixture that needs a paid plan (course creation/assignment, Audit Reports, seat-count billing tests) from being self-served end-to-end going forward — flag it early in any future run rather than discovering it mid-fixture-build.
 
-See [[multi-facility-increment2-patterns]], [[courses-billing-gate]], [[audit-reports-patterns]], [[rbac-role-grant-matrix]] for related context.
+See [[multi-facility-increment2-patterns]], [[admin-courses-list-redesign]], [[audit-reports-patterns]], [[rbac-role-grant-matrix]] for related context.

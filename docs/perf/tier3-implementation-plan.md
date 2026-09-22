@@ -8,7 +8,7 @@
 
 # Tier 3 — Application-Level Performance: Implementation Plan
 
-**Status:** Draft — pending review · **Author:** architect (planning agent) · **Drafted:** 2026-08-05
+**Status:** Shipped — merged to `dev`, on production since the 2026-08-18 release (e.g. `src/lib/auth/session-revalidation-cache.ts` is on `main`) · **Author:** architect (planning agent) · **Drafted:** 2026-08-05
 **Source of truth:** `platform-speed-optimization-plan-2026-07-22.md` §5, `platform-speed-measurement-runbook-2026-07-23.md` §3 (Steps 6/8/9) + §4
 **Scope:** Tier 3 only (application-level Next.js/Prisma work). Tiers 1/2/4 are out of scope here.
 **Hand-off:** This document, once approved, is ready for `code-ninja` (implementation) and `bug-hunter` (test authoring/execution), PR by PR, in the sequence below.
@@ -70,7 +70,7 @@ Org/role re-fetch after `resolveSession()` confirmed at: `course.ts:32–35` (`g
 
 `src/instrumentation.ts:23–75` (was :40–62, drifted because of added correlation-ID/env-validation code above it) boots `manual-indexer`, `video-transcode` (ffmpeg child processes), `video-sweep`, `reminder-sweep`, and `notification-digest` BullMQ workers inside the web process's `register()` hook. The code's own comment (lines 37–39) already states the fix is a dedicated worker service, tracked in `docs/rebuild/`.
 
-`ecosystem.config.js` confirms: production pm2 `exec_mode: "cluster"`, `instances: 2` on a comment-documented 2-vCPU VM (staging runs 1 instance). Each of the 2 production instances independently calls `register()`, so the 5 background workers boot **twice** — confirmed, matches the finding exactly.
+> *Historical (pm2 retired 2026-08-10): production now runs exactly one app container per environment under Docker Compose, so the double-boot described here no longer occurs.* `ecosystem.config.js` confirms: production pm2 `exec_mode: "cluster"`, `instances: 2` on a comment-documented 2-vCPU VM (staging runs 1 instance). Each of the 2 production instances independently calls `register()`, so the 5 background workers boot **twice** — confirmed, matches the finding exactly.
 
 ### 5.5 — Small wins (CONFIRMED, with one architecture conflict found)
 
@@ -94,7 +94,7 @@ Org/role re-fetch after `resolveSession()` confirmed at: `course.ts:32–35` (`g
 ## 4 · Approach Evaluation
 
 **5.1 caching mechanism — Redis TTL cache vs. in-memory per-instance cache vs. no cache (status quo):**
-- In-memory (`Map` per pm2 instance): zero new infra, but with `pm2 cluster` × 2 instances (soon possibly more), cache state isn't shared — a revoked user could still pass on the instance that hasn't seen the revocation-triggering write, AND doesn't reduce load on a per-fleet basis (still 1 DB query per instance per TTL window). Also loses all warmth on every deploy/restart.
+- In-memory (`Map` per pm2 instance): zero new infra, but with `pm2 cluster` × 2 instances (soon possibly more), cache state isn't shared — a revoked user could still pass on the instance that hasn't seen the revocation-triggering write, AND doesn't reduce load on a per-fleet basis (still 1 DB query per instance per TTL window). Also loses all warmth on every deploy/restart. *(Historical premise — pm2 retired 2026-08-10; there is now one app container per environment. The Redis choice still stands: it keeps revocation correct regardless of instance count.)*
 - **Redis TTL cache (recommended)**: reuses the existing `rateLimiterRedis` client and the exact key/TTL pattern already proven in `session-mfa.ts` (`SET key value EX ttl`). Shared across both pm2 instances and both NextAuth instances (admin/worker), survives individual process restarts, and the existing rate-limiter's fail-open/fail-closed vocabulary is already established in this codebase (`checkRateLimit(..., { failClosed })`) — consistent idiom to extend. Cost: one more Redis round-trip on a cache miss (already a dependency the auth path has for MFA), negligible vs. a Postgres round-trip saved on every hit.
 - No cache: rejected — doesn't address the finding at all.
 

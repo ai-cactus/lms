@@ -7,9 +7,9 @@ metadata:
 
 ## Scripts test placement
 
-Tests for `scripts/*.mjs` workers live in `scripts/*.test.ts`. Vitest's default include glob picks them up without any config change (confirmed for `scripts/transcode-worker-*.test.ts`).
+Tests for `scripts/*.ts` workers live in `scripts/*.test.ts`. Vitest's default include glob picks them up without any config change (confirmed for `scripts/transcode-worker-*.test.ts`).
 
-## transcode-worker.mjs testing constraints
+## transcode-worker.ts testing constraints
 
 **Can't import the worker directly**: `main()` runs at module level — importing it fires the full async pipeline.
 

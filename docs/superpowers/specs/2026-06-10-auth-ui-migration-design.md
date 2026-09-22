@@ -1,7 +1,7 @@
 # Auth UI Migration — Design Spec
 
 **Date:** 2026-06-10
-**Status:** Approved (design), pending implementation plan
+**Status:** Implemented — the CSS-Modules → Tailwind/shadcn migration is complete (no `.module.css` remains in `src/`)
 **Branch:** `feature/auth-ui-migration`
 
 ## Context
