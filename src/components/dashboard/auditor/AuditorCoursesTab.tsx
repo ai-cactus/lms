@@ -1,8 +1,8 @@
 'use client';
 
-import Image from 'next/image';
 import { useState, useEffect, useMemo, useTransition } from 'react';
-import { Search, Upload, GraduationCap } from 'lucide-react';
+import { Search, Upload } from 'lucide-react';
+import CourseThumbnail from '@/components/dashboard/courses/CourseThumbnail';
 import AuditEmptyState from './AuditEmptyState';
 import {
   Table,
@@ -157,19 +157,11 @@ export default function AuditorCoursesTab({ totalCourses }: AuditorCoursesTabPro
                     {/* min-w-0: a flex item will not shrink below its content
                         width, so without it the title never ellipsizes. */}
                     <div className="flex min-w-0 items-center gap-[18px]">
-                      <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-[#1e293b]">
-                        {course.thumbnail ? (
-                          <Image
-                            src={course.thumbnail}
-                            alt=""
-                            width={40}
-                            height={40}
-                            className="size-full object-cover"
-                          />
-                        ) : (
-                          <GraduationCap className="size-5 text-white/70" />
-                        )}
-                      </div>
+                      <CourseThumbnail
+                        type={course.type}
+                        thumbnail={course.thumbnail}
+                        size="compact"
+                      />
                       <div className="min-w-0">
                         <div
                           className="truncate text-[15.5px] font-medium tracking-[0.31px] text-[#1e1e1e]"

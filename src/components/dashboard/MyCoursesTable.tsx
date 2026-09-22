@@ -5,6 +5,7 @@ import { Search, ChevronRight } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import EmptyTableState from '@/components/ui/EmptyTableState';
 import CourseTypeIcon from '@/components/dashboard/courses/CourseTypeIcon';
+import CourseThumbnail from '@/components/dashboard/courses/CourseThumbnail';
 import {
   Table,
   TableBody,
@@ -13,7 +14,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
@@ -90,15 +90,11 @@ export default function MyCoursesTable({ courses, maxItems = 5 }: MyCoursesTable
               >
                 <TableCell className={`${cellCls} px-[18px]`}>
                   <div className="flex items-center gap-[18px]">
-                    <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[#f1f5f9]">
-                      <Image
-                        src={course.thumbnail || '/images/icon-course-blue.svg'}
-                        alt={course.title}
-                        width={40}
-                        height={40}
-                        className="object-cover"
-                      />
-                    </div>
+                    <CourseThumbnail
+                      type={course.type}
+                      thumbnail={course.thumbnail}
+                      size="compact"
+                    />
                     <div className="flex min-w-0 flex-col">
                       <span className="truncate text-[17.5px] font-semibold tracking-[0.35px] text-[#0d0d12]">
                         {course.title}

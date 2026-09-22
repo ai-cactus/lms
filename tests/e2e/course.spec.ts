@@ -268,7 +268,7 @@ async function loginAs(page: Page, email: string, password: string): Promise<voi
   await page.waitForURL('**/dashboard**', { timeout: 15000 });
 }
 
-test.describe('Courses list — Video/Reading Course tabs and role-gated row actions', () => {
+test.describe('Courses list — Video/Reading Courses tabs and role-gated row actions', () => {
   test('owner sees both tabs with correct counts, filtered by the active tab', async ({ page }) => {
     const seeded = await seedCourseTabsFixture();
     try {
@@ -276,12 +276,12 @@ test.describe('Courses list — Video/Reading Course tabs and role-gated row act
       await page.goto('/dashboard/courses');
       await page.waitForLoadState('networkidle');
 
-      await expect(page.getByRole('tab', { name: 'Video 1' })).toBeVisible();
-      await expect(page.getByRole('tab', { name: 'Reading Course 1' })).toBeVisible();
+      await expect(page.getByRole('tab', { name: 'Video Courses 1' })).toBeVisible();
+      await expect(page.getByRole('tab', { name: 'Reading Courses 1' })).toBeVisible();
       await expect(page.getByText(seeded.videoCourseTitle)).toBeVisible();
       await expect(page.getByText(seeded.slidesCourseTitle)).not.toBeVisible();
 
-      await page.getByRole('tab', { name: 'Reading Course 1' }).click();
+      await page.getByRole('tab', { name: 'Reading Courses 1' }).click();
       await expect(page.getByText(seeded.slidesCourseTitle)).toBeVisible();
       await expect(page.getByText(seeded.videoCourseTitle)).not.toBeVisible();
     } finally {

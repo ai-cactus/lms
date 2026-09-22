@@ -259,6 +259,30 @@ describe('catalogue scope — adopted courses, drafts excluded', () => {
     expect(rows[0].status).toBe('inactive');
   });
 
+  // The course-list redesign draws the audit table's thumbnail from `type`
+  // (video frame vs. reading tile). It must be both requested from Prisma and
+  // carried through to the returned row, or the audit table falls back to
+  // treating every course as a reading course.
+  it('requests and surfaces each course type on the row', async () => {
+    mockAuth.mockResolvedValue(HR);
+    rawPrismaMock.course.findMany.mockResolvedValue([
+      {
+        id: 'c1',
+        title: 'Bloodborne Pathogens',
+        thumbnail: null,
+        type: 'video',
+        status: 'published',
+        createdAt: new Date('2026-01-01'),
+        enrollments: [],
+      },
+    ]);
+
+    const rows = await getAuditorCourses();
+
+    expect(rawPrismaMock.course.findMany.mock.calls[0][0].select).toMatchObject({ type: true });
+    expect(rows[0].type).toBe('video');
+  });
+
   it('still narrows the per-course enrollment stats to the caller org', async () => {
     mockAuth.mockResolvedValue(HR);
 

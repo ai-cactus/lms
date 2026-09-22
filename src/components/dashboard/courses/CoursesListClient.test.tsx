@@ -1,6 +1,6 @@
 /**
  * Tests for CoursesListClient's registry-driven row action gating and the
- * Video/Reading Course tab split. `RowActionsMenu` is a generic, untested-elsewhere
+ * Video/Reading Courses tab split. `RowActionsMenu` is a generic, untested-elsewhere
  * Radix dropdown; per the established pattern (DocumentListClient.test.tsx),
  * it's stubbed to render its `actions` prop as plain buttons so assertions
  * target this component's own `buildRowActions` gating logic, not Radix.
@@ -96,7 +96,7 @@ beforeEach(() => {
   localStorage.clear();
 });
 
-describe('CoursesListClient — Video/Reading Course tabs', () => {
+describe('CoursesListClient — Video/Reading Courses tabs', () => {
   it('shows both tabs with correct counts and filters rows by the active tab', async () => {
     const user = userEvent.setup();
     const courses = [
@@ -107,14 +107,14 @@ describe('CoursesListClient — Video/Reading Course tabs', () => {
 
     render(<CoursesListClient courses={courses} hasBilling viewerRole="owner" />);
 
-    expect(screen.getByRole('tab', { name: 'Video 1' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Reading Course 2' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Video Courses 1' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Reading Courses 2' })).toBeInTheDocument();
 
     // Video is the landing tab.
     expect(screen.getByText('Video Course')).toBeInTheDocument();
     expect(screen.queryByText('Slides Course')).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('tab', { name: 'Reading Course 2' }));
+    await user.click(screen.getByRole('tab', { name: 'Reading Courses 2' }));
 
     expect(screen.queryByText('Video Course')).not.toBeInTheDocument();
     expect(screen.getByText('Slides Course')).toBeInTheDocument();
@@ -124,7 +124,7 @@ describe('CoursesListClient — Video/Reading Course tabs', () => {
   // Video is the landing tab, EXCEPT for an org whose only content is reading
   // courses — landing them on an empty Video tab would hide everything they
   // have behind a click.
-  it('opens on Reading Course when the org has only reading courses', () => {
+  it('opens on Reading Courses when the org has only reading courses', () => {
     render(
       <CoursesListClient
         courses={[makeCourse({ id: 's1', title: 'Slides Only', type: 'text' })]}
@@ -134,7 +134,7 @@ describe('CoursesListClient — Video/Reading Course tabs', () => {
     );
 
     expect(
-      screen.getByRole('tab', { name: 'Reading Course 1', selected: true }),
+      screen.getByRole('tab', { name: 'Reading Courses 1', selected: true }),
     ).toBeInTheDocument();
     expect(screen.getByText('Slides Only')).toBeInTheDocument();
   });
@@ -151,7 +151,9 @@ describe('CoursesListClient — Video/Reading Course tabs', () => {
       />,
     );
 
-    expect(screen.getByRole('tab', { name: 'Video 1', selected: true })).toBeInTheDocument();
+    expect(
+      screen.getByRole('tab', { name: 'Video Courses 1', selected: true }),
+    ).toBeInTheDocument();
   });
 
   // The landing tab is computed ONCE via a lazy useState initialiser — recomputing
@@ -170,9 +172,9 @@ describe('CoursesListClient — Video/Reading Course tabs', () => {
       />,
     );
 
-    await user.click(screen.getByRole('tab', { name: 'Reading Course 1' }));
+    await user.click(screen.getByRole('tab', { name: 'Reading Courses 1' }));
     expect(
-      screen.getByRole('tab', { name: 'Reading Course 1', selected: true }),
+      screen.getByRole('tab', { name: 'Reading Courses 1', selected: true }),
     ).toBeInTheDocument();
 
     // Simulate a server refetch that now has only video courses — a fresh
@@ -187,23 +189,75 @@ describe('CoursesListClient — Video/Reading Course tabs', () => {
     );
 
     expect(
-      screen.getByRole('tab', { name: 'Reading Course 0', selected: true }),
+      screen.getByRole('tab', { name: 'Reading Courses 0', selected: true }),
     ).toBeInTheDocument();
   });
 });
 
 describe('CoursesListClient — table columns', () => {
-  it('renders only Course Name, Assigned Staff, Description and Action headers', () => {
+  function columnHeaders() {
+    return screen.getAllByRole('columnheader').map((header) => header.textContent);
+  }
+
+  it('renders Course Name, Assigned Staff, Description, Status and Action on the Video tab', () => {
     render(<CoursesListClient courses={[makeCourse()]} hasBilling viewerRole="owner" />);
 
-    expect(screen.getByRole('columnheader', { name: 'Course Name' })).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: 'Assigned Staff' })).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: 'Description' })).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: 'Action' })).toBeInTheDocument();
+    expect(columnHeaders()).toEqual([
+      'Course Name',
+      'Assigned Staff',
+      'Description',
+      'Status',
+      'Action',
+    ]);
+  });
 
-    expect(screen.queryByRole('columnheader', { name: 'Type' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('columnheader', { name: 'Role' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('columnheader', { name: 'Date Created' })).not.toBeInTheDocument();
+  it('swaps Description for Date Created on the Reading tab', () => {
+    render(
+      <CoursesListClient
+        courses={[makeCourse({ id: 's1', type: 'text' })]}
+        hasBilling
+        viewerRole="owner"
+      />,
+    );
+
+    expect(columnHeaders()).toEqual([
+      'Course Name',
+      'Assigned Staff',
+      'Date Created',
+      'Status',
+      'Action',
+    ]);
+  });
+
+  it('formats the creation date as "Apr 21, 2026" on the Reading tab', () => {
+    render(
+      <CoursesListClient
+        courses={[
+          makeCourse({
+            id: 's1',
+            title: 'Dated Reading',
+            type: 'text',
+            createdAt: new Date(2026, 3, 21, 12),
+          }),
+        ]}
+        hasBilling
+        viewerRole="owner"
+      />,
+    );
+
+    expect(
+      within(screen.getByText('Dated Reading').closest('tr')!).getByText('Apr 21, 2026'),
+    ).toBeInTheDocument();
+  });
+
+  it('spans the empty-search state across every column', async () => {
+    const user = userEvent.setup();
+    render(<CoursesListClient courses={[makeCourse()]} hasBilling viewerRole="owner" />);
+
+    await user.type(screen.getByLabelText('Search courses'), 'no such course');
+
+    const emptyCell = screen.getByText('No courses found.').closest('td')!;
+    expect(emptyCell).toHaveAttribute('colspan', String(columnHeaders().length));
   });
 
   it('shows the course description, and an em-dash when it is empty', () => {
@@ -222,6 +276,71 @@ describe('CoursesListClient — table columns', () => {
     expect(
       within(screen.getByText('Undescribed').closest('tr')!).getByText('—'),
     ).toBeInTheDocument();
+  });
+});
+
+describe('CoursesListClient — status badge', () => {
+  function rowStatuses(title: string) {
+    const row = screen.getByText(title).closest('tr')!;
+    return Array.from(row.querySelectorAll('[data-status]')).map((badge) => [
+      badge.getAttribute('data-status'),
+      badge.textContent,
+    ]);
+  }
+
+  it.each([
+    ['draft', 0, 'draft', 'Draft'],
+    ['published', 0, 'published', 'Published'],
+    ['published', 3, 'assigned', 'Assigned'],
+    ['inactive', 3, 'inactive', 'Inactive'],
+  ])(
+    'shows %s with %i enrollments as %s',
+    (status, enrollmentsCount, expectedKey, expectedLabel) => {
+      render(
+        <CoursesListClient
+          courses={[makeCourse({ title: 'Status Course', status, enrollmentsCount })]}
+          hasBilling
+          viewerRole="owner"
+        />,
+      );
+
+      // One badge for the Status column, one under the title for narrow screens
+      // where that column is hidden.
+      expect(rowStatuses('Status Course')).toEqual([
+        [expectedKey, expectedLabel],
+        [expectedKey, expectedLabel],
+      ]);
+    },
+  );
+
+  it('badges global-catalog rows too', () => {
+    render(
+      <CoursesListClient
+        courses={[
+          makeCourse({
+            title: 'Catalog Course',
+            isGlobalCatalog: true,
+            isOrgAuthored: false,
+            enrollmentsCount: 0,
+          }),
+        ]}
+        hasBilling
+        viewerRole="owner"
+      />,
+    );
+
+    expect(rowStatuses('Catalog Course')[0]).toEqual(['published', 'Published']);
+  });
+
+  it('keeps the status visible on mobile by repeating it under the title', () => {
+    render(<CoursesListClient courses={[makeCourse()]} hasBilling viewerRole="owner" />);
+
+    const [inlineBadge, columnBadge] = screen
+      .getByText('Infection Control')
+      .closest('tr')!
+      .querySelectorAll('[data-status]');
+    expect(inlineBadge).toHaveClass('sm:hidden');
+    expect(columnBadge.closest('td')).toHaveClass('hidden', 'sm:table-cell');
   });
 });
 
@@ -299,7 +418,7 @@ describe('CoursesListClient — search narrows within the active tab', () => {
     await user.type(screen.getByRole('textbox', { name: 'Search courses' }), 'Shared Name');
     expect(screen.getByText('Shared Name Video')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('tab', { name: 'Reading Course 1' }));
+    await user.click(screen.getByRole('tab', { name: 'Reading Courses 1' }));
 
     expect(screen.queryByText('Shared Name Video')).not.toBeInTheDocument();
     expect(screen.getByText('Shared Name Slides')).toBeInTheDocument();
@@ -726,11 +845,10 @@ describe('CoursesListClient — pending generation banner', () => {
 });
 
 /**
- * Design 15522:271922 — the row thumbnail is a 78x47 RECTANGULAR frame showing
- * the course's own artwork, replacing the old 40x40 square. The design also
- * washes the image in 40% teal so its 20%-white play badge reads; that wash is
- * deliberately not applied (it would tint every customer's artwork), so the
- * badge carries its own scrim instead.
+ * Design 15522:271922 — a video row's thumbnail is a 78x47 RECTANGULAR frame
+ * showing the course's own artwork under the design's 40% teal wash, with a
+ * frosted play badge. A reading row always shows the design's "Reading course
+ * thumbnail" tile (15964:48739), whatever artwork the course carries.
  */
 describe('CoursesListClient — row thumbnail', () => {
   function thumbFrame(container: HTMLElement) {
@@ -844,18 +962,30 @@ describe('CoursesListClient — row thumbnail', () => {
     expect(thumbFrame(container)!.querySelector('svg')).toBeTruthy();
   });
 
-  it('leaves a reading course unbadged', () => {
+  it('shows the reading-course tile, not the artwork, for a reading course', () => {
     // Rendered in its own tree: an org with only reading courses lands on the
     // Reading tab, so the row is actually on screen.
     const { container } = render(
       <CoursesListClient
-        courses={[makeCourse({ id: 's1', type: 'text', thumbnail: 'https://x/a.png' })]}
+        courses={[
+          makeCourse({
+            id: 's1',
+            title: 'Reading One',
+            type: 'text',
+            thumbnail: 'https://x/a.png',
+          }),
+        ]}
         hasBilling
         viewerRole={'owner' as Role}
       />,
     );
 
-    expect(thumbFrame(container)!.querySelector('svg')).toBeNull();
+    expect(container.querySelector('img[data-testid="course-thumb"]')).toBeNull();
+    const nameCell = screen.getByText('Reading One').closest('td')!;
+    const tile = nameCell.querySelector('.bg-\\[\\#1c213d\\]')!;
+    expect(tile).toHaveAttribute('aria-hidden', 'true');
+    expect(tile.className).toContain('size-10');
+    expect(tile.querySelector('svg')).toBeTruthy();
   });
 });
 

@@ -9,11 +9,13 @@ metadata:
 extracted `PendingGenerationBanner`, `CourseRenameModal`, `CoursesTableFooter` (exports pure
 `buildPaginationRange`), `CoursesEmptyState`). Key non-obvious points for future work here:
 
-**Tab accessible names changed shape, not just words.** The tab label and its count are now
-separate nodes (`Video{' '}<Badge>{count}</Badge>`), so the accessible name is `"Video 1"` /
-`"Reading Course 2"` — NOT the old `"Video (1)"` / `"Slides (2)"` parenthetical format. The
-persisted DB discriminant for reading courses is still `'text'` — only the label/tab id changed
-(`'reading'` tab maps to `type: 'text'`).
+**Tab accessible names changed shape, not just words — and have moved again.** The tab label and
+its count are separate nodes (`Video Courses{' '}<span>{count}</span>`), so the accessible name is
+now `"Video Courses 1"` / `"Reading Courses 2"` (as of the 2026-09-22 status/thumbnail pass —
+before that it was briefly `"Video 1"` / `"Reading Course 2"`). Check `tests/e2e/course.spec.ts`
+and the `TabsTrigger` text in `CoursesListClient.tsx` directly before trusting either historical
+label in a new spec — this has changed twice. The persisted DB discriminant for reading courses is
+still `'text'` — only the label/tab id changed (`'reading'`/`'slides'` tab maps to `type: 'text'`).
 
 **`sourceDocumentId` is a derived join, not a column** — `getCourses()` in
 `src/app/actions/course.ts` resolves it from `course.versions?.[0]?.documentVersion.documentId`

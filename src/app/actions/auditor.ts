@@ -24,6 +24,8 @@ export interface AuditorCourseRow {
   id: string;
   title: string;
   thumbnail: string | null;
+  /** `CourseType`: 'video' | 'text'. */
+  type: string;
   /** `CourseStatus`. Only `published` and `inactive` reach an auditor: a retired
    * course was in service and its records are evidence, a draft never was. */
   status: string;
@@ -204,6 +206,7 @@ export async function getAuditorCourses(
       id: true,
       title: true,
       thumbnail: true,
+      type: true,
       status: true,
       createdAt: true,
       enrollments: {
@@ -227,6 +230,7 @@ export async function getAuditorCourses(
       id: course.id,
       title: course.title,
       thumbnail: course.thumbnail,
+      type: course.type,
       status: course.status,
       assignedStaff: total,
       completionRate: total > 0 ? Math.round((completed / total) * 100) : 0,
