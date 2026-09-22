@@ -167,11 +167,11 @@ export async function generateArticleV46(
     parsed = JSON.parse(jsonStr);
   } catch {
     logger.error({
-      msg: '[v4.6] Failed to parse JSON from Vertex AI (ArticleMeta). Raw Response:',
-      rawResponse,
+      msg: '[v4.6] Failed to parse JSON from Vertex AI (ArticleMeta)',
+      responseChars: rawResponse.length,
     });
     throw new Error(
-      `Failed to parse ArticleMeta JSON from Vertex AI response. Raw Response: ${rawResponse.substring(0, 500)}...`,
+      `Failed to parse ArticleMeta JSON from Vertex AI response (${rawResponse.length}-char response withheld from logs)`,
     );
   }
 
@@ -183,7 +183,7 @@ export async function generateArticleV46(
       const gaps = meta.gaps ?? [];
       logger.info({
         msg: '[v4.6] ArticleMeta indicates insufficient source content (needs_sources)',
-        gaps,
+        gapCount: gaps.length,
       });
       throw new InsufficientSourceError(`Insufficient source material: ${gaps.join('; ')}`);
     }
@@ -192,7 +192,6 @@ export async function generateArticleV46(
       msg: '[v4.6] ArticleMeta validation failed:',
       data: JSON.stringify(result.error.format(), null, 2),
     });
-    logger.error({ msg: '[v4.6] ArticleMeta Raw Invalid JSON:', err: jsonStr });
     throw new Error(
       `ArticleMeta validation failed: ${result.error.issues.map((i) => i.message).join('; ')}`,
     );
@@ -232,11 +231,11 @@ export async function generateSlidesV46(
     parsed = JSON.parse(jsonStr);
   } catch {
     logger.error({
-      msg: '[v4.6] Failed to parse JSON from Vertex AI (Slides). Raw Response:',
-      rawResponse,
+      msg: '[v4.6] Failed to parse JSON from Vertex AI (Slides)',
+      responseChars: rawResponse.length,
     });
     throw new Error(
-      `Failed to parse Slides JSON from Vertex AI response. Raw Response: ${rawResponse.substring(0, 500)}...`,
+      `Failed to parse Slides JSON from Vertex AI response (${rawResponse.length}-char response withheld from logs)`,
     );
   }
 
@@ -246,7 +245,6 @@ export async function generateSlidesV46(
       msg: '[v4.6] Slides validation failed:',
       data: JSON.stringify(result.error.format(), null, 2),
     });
-    logger.error({ msg: '[v4.6] Slides Raw Invalid JSON:', err: jsonStr });
     throw new Error(
       `Slides validation failed: ${result.error.issues.map((i) => i.message).join('; ')}`,
     );
@@ -257,9 +255,10 @@ export async function generateSlidesV46(
 
 // ─── Stage C: Quiz Generation ────────────────────
 
-// Documented output ceiling for the Stage C model (gemini-2.5-flash-lite):
-// 65,536 output tokens per Vertex AI / Gemini model reference. The previous
-// fixed 16,384 cap was only ~25% of this and silently TRUNCATED large quizzes
+// Documented output ceiling for the Stage C model (the default generation model,
+// gemini-3.1-flash-lite — see src/lib/ai/vertex-config.ts): 65,536 output tokens
+// per the Vertex AI model reference, as for gemini-2.5-flash-lite before it. The
+// previous fixed 16,384 cap was only ~25% of this and silently TRUNCATED large quizzes
 // (finishReason=MAX_TOKENS → cut-off JSON → parse failure → 0 questions).
 const QUIZ_MODEL_MAX_OUTPUT_TOKENS = 65536;
 
@@ -358,12 +357,12 @@ async function generateQuizChunkV46(
     parsed = JSON.parse(jsonStr);
   } catch {
     logger.error({
-      msg: '[v4.6] Failed to parse JSON from Vertex AI (Quiz). Raw Response:',
-      err: rawResponse,
+      msg: '[v4.6] Failed to parse JSON from Vertex AI (Quiz)',
+      responseChars: rawResponse.length,
     });
     throw new QuizChunkError(
       'parse_error',
-      `Failed to parse Quiz JSON from Vertex AI response. Raw Response: ${rawResponse.substring(0, 500)}...`,
+      `Failed to parse Quiz JSON from Vertex AI response (${rawResponse.length}-char response withheld from logs)`,
     );
   }
 
@@ -373,7 +372,6 @@ async function generateQuizChunkV46(
       msg: '[v4.6] Quiz validation failed:',
       data: JSON.stringify(result.error.format(), null, 2),
     });
-    logger.error({ msg: '[v4.6] Quiz Raw Invalid JSON:', err: jsonStr });
     throw new QuizChunkError(
       'validation_error',
       `Quiz validation failed: ${result.error.issues.map((i) => i.message).join('; ')}`,
@@ -530,11 +528,11 @@ export async function judgeQuizV46(
     parsed = JSON.parse(jsonStr);
   } catch {
     logger.error({
-      msg: '[v4.6] Failed to parse JSON from Vertex AI (Judge). Raw Response:',
-      err: rawResponse,
+      msg: '[v4.6] Failed to parse JSON from Vertex AI (Judge)',
+      responseChars: rawResponse.length,
     });
     throw new Error(
-      `Failed to parse Judge JSON from Vertex AI response. Raw Response: ${rawResponse.substring(0, 500)}...`,
+      `Failed to parse Judge JSON from Vertex AI response (${rawResponse.length}-char response withheld from logs)`,
     );
   }
 
@@ -544,7 +542,6 @@ export async function judgeQuizV46(
       msg: '[v4.6] Judge validation failed:',
       data: JSON.stringify(result.error.format(), null, 2),
     });
-    logger.error({ msg: '[v4.6] Judge Raw Invalid JSON:', err: jsonStr });
     throw new Error(
       `Judge validation failed: ${result.error.issues.map((i) => i.message).join('; ')}`,
     );
@@ -588,11 +585,11 @@ export async function regenFlaggedV46(
     parsed = JSON.parse(jsonStr);
   } catch {
     logger.error({
-      msg: '[v4.6] Failed to parse JSON from Vertex AI (Regen). Raw Response:',
-      err: rawResponse,
+      msg: '[v4.6] Failed to parse JSON from Vertex AI (Regen)',
+      responseChars: rawResponse.length,
     });
     throw new Error(
-      `Failed to parse Regen JSON from Vertex AI response. Raw Response: ${rawResponse.substring(0, 500)}...`,
+      `Failed to parse Regen JSON from Vertex AI response (${rawResponse.length}-char response withheld from logs)`,
     );
   }
 
@@ -602,7 +599,6 @@ export async function regenFlaggedV46(
       msg: '[v4.6] Regen validation failed:',
       data: JSON.stringify(result.error.format(), null, 2),
     });
-    logger.error({ msg: '[v4.6] Regen Raw Invalid JSON:', err: jsonStr });
     throw new Error(
       `Regen validation failed: ${result.error.issues.map((i) => i.message).join('; ')}`,
     );

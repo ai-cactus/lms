@@ -5,6 +5,11 @@
  *   npx tsx scripts/test-embedding.ts
  */
 import { GoogleAuth } from 'google-auth-library';
+import {
+  buildVertexModelUrl,
+  resolveVertexEmbeddingLocation,
+  VERTEX_EMBEDDING_MODEL,
+} from '@/lib/ai/vertex-config';
 
 interface EmbeddingResponse {
   predictions?: Array<{ embeddings?: { values?: number[] } }>;
@@ -12,14 +17,20 @@ interface EmbeddingResponse {
 
 const auth = new GoogleAuth({ scopes: 'https://www.googleapis.com/auth/cloud-platform' });
 
-const projectId = process.env.GOOGLE_PROJECT_ID || 'theraptly-lms';
-const location = process.env.GOOGLE_LOCATION || 'us-central1';
-const model = 'text-embedding-004';
+const projectId = process.env.GOOGLE_PROJECT_ID;
+if (!projectId) {
+  console.error(
+    'GOOGLE_PROJECT_ID is not set — refusing to call Vertex AI (no production fallback).',
+  );
+  process.exit(1);
+}
+const location = resolveVertexEmbeddingLocation();
+const model = VERTEX_EMBEDDING_MODEL;
 
 console.log(`\nProject: ${projectId} | Location: ${location} | Model: ${model}`);
 
 const text = 'This is a test sentence for embedding generation.';
-const url = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${model}:predict`;
+const url = buildVertexModelUrl({ projectId, location, model, method: 'predict' });
 
 const body = JSON.stringify({
   instances: [{ task_type: 'RETRIEVAL_DOCUMENT', title: '', content: text }],
