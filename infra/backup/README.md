@@ -212,9 +212,9 @@ docker exec -u postgres lms-production-db \
 
 ## Open questions
 
-- **MinIO objects are not backed up.** Staging is MinIO-only and disposable, but
-  production uses MinIO as a fallback store. Worth deciding whether anything
-  lands there that is not also in GCS.
+- **MinIO objects are not backed up.** Staging's data is disposable, and both
+  environments use GCS as primary with MinIO as a fallback store. Worth
+  deciding whether anything lands there that is not also in GCS.
 - **`DocumentVersion.content`** is stored in the database, so it is captured
   here. If that column is later dropped in favour of object storage (an open
   decision in the runbook), backup coverage changes with it.
