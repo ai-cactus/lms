@@ -2,10 +2,11 @@
  * Google Cloud Storage provider.
  *
  * Authentication strategy:
- *   - Production / staging (non-GCP host): set GCS_KEY_BASE64 to a base64-encoded
- *     service-account JSON key. The credentials are decoded and passed in-memory to
- *     the Storage client (no key file touches disk), since ADC cannot auto-resolve
- *     off a GCP host.
+ *   - Production / staging: set GCS_KEY_BASE64 to a base64-encoded service-account
+ *     JSON key. The credentials are decoded and passed in-memory to the Storage
+ *     client (no key file touches disk). The VM is a GCE host and Vertex AI does use
+ *     its attached service account via ADC; storage deliberately uses this separate
+ *     key identity instead (OPEN-ISSUES Q-12, 2026-09-22).
  *   - Local dev: leave GCS_KEY_BASE64 unset and rely on Application Default
  *     Credentials (ADC), which resolve via `gcloud auth application-default login`,
  *     GOOGLE_APPLICATION_CREDENTIALS, or a GCP VM's service account.

@@ -177,7 +177,7 @@ export async function analyzeStoredDocument(documentId: string): Promise<Analyze
     const textPart = await callVertexAI(prompt, { retry: interactiveBudget() });
     let rawText = textPart;
 
-    logger.info({ msg: 'Raw AI Response:', data: rawText });
+    logger.info({ msg: '[course] AI analysis response received', responseChars: rawText.length });
 
     // Robust JSON extraction
     const firstOpenBrace = rawText.indexOf('{');

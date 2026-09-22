@@ -206,7 +206,7 @@ BAA eligibility remains the one open Cloudflare item, and only conditionally: TL
 
 ## 7. Split staging and production credentials (F-072)
 
-**Why:** both deploy workflows use one `SSH_PRIVATE_KEY`, `VM_HOST` and `VM_USER` (confirmed not split, 2026-08-14). Staging compromise equals production access. A split gives attribution and independent revocation, **not** lateral-movement containment — both environments share a host where `docker` is root. Separately, shared GCS credentials across environments caused two production video-deletion incidents. Staging now uses its own bucket in `theraptly-lms-staging` (verified 2026-09-22); which identity the VM itself authenticates as is still open (OPEN-ISSUES Q-12).
+**Why:** both deploy workflows use one `SSH_PRIVATE_KEY`, `VM_HOST` and `VM_USER` (confirmed not split, 2026-08-14). Staging compromise equals production access. A split gives attribution and independent revocation, **not** lateral-movement containment — both environments share a host where `docker` is root. Separately, shared GCS credentials across environments caused two production video-deletion incidents. Staging now uses its own bucket in `theraptly-lms-staging` (verified 2026-09-22); the VM authenticates to Vertex AI as its attached service account (ADC) and to GCS with the separate `GCS_KEY_BASE64` key — both intended (OPEN-ISSUES Q-12, ruled 2026-09-22).
 
 **Do:** generate a second keypair, add `STAGING_SSH_PRIVATE_KEY` / `STAGING_VM_USER`, point `deploy-staging.yml` at them, and give each environment its own OS user with access only to its own directories. Audit every `.env.*` for a credential that appears in more than one environment — especially `GCP_BUCKET_NAME` and `GCS_KEY_BASE64`.
 
@@ -228,7 +228,7 @@ BAA eligibility remains the one open Cloudflare item, and only conditionally: TL
 
 **Why:** production, staging, Postgres, Redis and MinIO share one host, one disk and one `cloudflared`. The app runs a single replica capped at 1 GB with background workers inside the web process. Any host event takes down both environments simultaneously — including the monitoring that would tell you, which is why §1's uptime checks run from Google's edge instead.
 
-**Decided 2026-08-11: staging and production stay on one VM.** A second VM was rejected; the risk it would have addressed is closed more cheaply by a **separate GCP project for staging** (`theraptly-lms-staging` — staging's Vertex calls, storage bucket and telemetry run there, verified 2026-09-22; whether the VM's own identity is shared is OPEN-ISSUES Q-12) plus staging resource ceilings so it cannot starve production. The reasoning is recorded in `docs/local/ops-actions-2026-08-10.md` §0. The Cloud SQL move (§4) takes the production database off the shared host.
+**Decided 2026-08-11: staging and production stay on one VM.** A second VM was rejected; the risk it would have addressed is closed more cheaply by a **separate GCP project for staging** (`theraptly-lms-staging` — staging's Vertex calls, storage bucket and telemetry run there, verified 2026-09-22; Vertex authenticates as the VM's attached service account and GCS with `GCS_KEY_BASE64`, per OPEN-ISSUES Q-12) plus staging resource ceilings so it cannot starve production. The reasoning is recorded in `docs/local/ops-actions-2026-08-10.md` §0. The Cloud SQL move (§4) takes the production database off the shared host.
 
 Full HA (Postgres standby, ≥2 app replicas, a load balancer, workers extracted to their own service) remains a larger programme and overlaps the planned frontend/backend split.
 
