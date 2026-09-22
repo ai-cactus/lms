@@ -77,6 +77,12 @@ function VideoThumbnail({
             alt=""
             fill
             sizes={size === 'row' ? '78px' : '40px'}
+            // The thumbnail route is access-checked and versioned with `?v=`.
+            // The optimizer fetches server-side without the viewer's cookies
+            // (so it would get a 401), and refuses a local src with a query
+            // string unless `images.localPatterns` allows it. The route already
+            // serves a ~640px JPEG, so there is nothing to gain from it anyway.
+            unoptimized={thumbnail.startsWith('/api/')}
             className="object-cover"
           />
           {/* The wash belongs to the artwork. Over the placeholder mark it would

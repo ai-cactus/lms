@@ -11,6 +11,7 @@ import type { CourseWithStats } from '@/types/course';
 import { hasActiveBilling } from '@/lib/billing';
 import { logger } from '@/lib/logger';
 import { getCourses } from './course';
+import { buildCourseThumbnailUrl } from '@/lib/video/thumbnail';
 
 // ---------------------------------------------------------------------------
 // Session helper — mirrors the pattern in course.ts
@@ -56,35 +57,34 @@ function resolveOrg(
 //   this read (see listGlobalVideoCatalogCourses) so the cached payload never
 //   carries a tenant id and one invalidation refreshes every org at once.
 //   Invalidate via revalidateTag('video-catalog') at every global-video
-//   create / edit / status-change site (see video-course.ts).
+//   create / edit / status-change / thumbnail site (see video-course.ts and
+//   src/lib/video/custom-thumbnail.ts).
 //
-//   `hasPoster` is the one field NOT written by a server action: the poster is
-//   produced by scripts/transcode-worker.ts, a detached child process with no
-//   access to the Next cache, so it cannot revalidate the tag when it lands.
-//   A course therefore stays `hasPoster: false` here for up to the 1h
-//   `revalidate` after its transcode finishes. That staleness was deliberate
-//   and safe while a card consumed the flag: a false reading only meant the
-//   gradient placeholder, exactly what a posterless course shows anyway.
-//   No caller reads `hasPoster` since the catalog grid was removed — see the
-//   note on the unread fields below.
+//   `thumbnail` is the one field a server action does NOT always refresh: a
+//   poster produced by scripts/transcode-worker.ts, a detached child process
+//   with no access to the Next cache, can't revalidate the tag when it lands.
+//   A course whose poster lands or changes after this read keeps its previous
+//   `thumbnail` — null (the placeholder), or a URL whose `v` predates the new
+//   still — for up to the 1h `revalidate`. Cosmetic and bounded: the route
+//   itself always resolves the current still, only the browser cache key lags.
 // ---------------------------------------------------------------------------
 interface GlobalVideoCatalogRow {
   id: string;
   title: string;
   description: string | null;
   // Currently unread by the sole consumer (listGlobalVideoCatalogCourses):
-  // these four served the removed catalog-grid card. Kept because dropping
+  // these three served the removed catalog-grid card. Kept because dropping
   // them also means narrowing this cached read's Prisma `select` (the
-  // `lessons` and `previewPosterStorageUri` branches), which is a separate,
-  // behaviour-affecting change rather than dead-code cleanup.
+  // `lessons` branch), which is a separate, behaviour-affecting change rather
+  // than dead-code cleanup.
   category: string | null;
   durationSeconds: number | null;
   questionCount: number;
-  hasPoster: boolean;
   // Course-table fields, so the consolidated Courses list can be served from
   // the same cached read. Timestamps are ISO strings, not Dates: this payload
   // round-trips through the cache's serializer, which does not preserve Date.
   status: string;
+  /** Same-origin thumbnail route URL, or null for the placeholder. */
   thumbnail: string | null;
   durationMinutes: number | null;
   lessonCount: number;
@@ -103,16 +103,22 @@ const getGlobalVideoCatalog = unstable_cache(
         title: true,
         description: true,
         category: true,
+        thumbnailStorageUri: true,
         previewPosterStorageUri: true,
         status: true,
-        thumbnail: true,
+        type: true,
         duration: true,
         createdAt: true,
         updatedAt: true,
         _count: { select: { lessons: true } },
+        // Only the course video — the first lesson by order — is read.
         lessons: {
+          orderBy: { order: 'asc' },
+          take: 1,
           select: {
             videoDurationSeconds: true,
+            videoPosterStorageUri: true,
+            updatedAt: true,
             quiz: { select: { _count: { select: { questions: true } } } },
           },
         },
@@ -128,9 +134,8 @@ const getGlobalVideoCatalog = unstable_cache(
         category: course.category,
         durationSeconds: firstLesson?.videoDurationSeconds ?? null,
         questionCount: firstLesson?.quiz?._count?.questions ?? 0,
-        hasPoster: Boolean(course.previewPosterStorageUri),
         status: course.status,
-        thumbnail: course.thumbnail,
+        thumbnail: buildCourseThumbnailUrl(course, firstLesson),
         durationMinutes: course.duration,
         lessonCount: course._count.lessons,
         createdAtIso: course.createdAt.toISOString(),

@@ -5,11 +5,12 @@ import { logger } from '@/lib/logger';
 /**
  * Streams a poster image back over same-origin HTTPS.
  *
- * Shared by /api/video/[lessonId]/poster and /api/courses/[id]/preview-poster,
- * which differ only in how they look up and authorize the storage URI — the
- * fetch, the header policy and the abort handling below are identical, and a
- * poster served with a different cache policy on one of the two routes would be
- * a silent regression on whichever page uses it.
+ * Shared by every poster/thumbnail route, which differ only in how they look up
+ * and authorize the storage URI — the fetch, the header policy and the abort
+ * handling below are identical, and a poster served with a different cache
+ * policy on one of them would be a silent regression on whichever page uses it.
+ * The one deliberate exception is `cache: 'no-store'`, for an editor preview
+ * that must show the write it just made.
  *
  * The browser can't use the storage signed URL directly for the same reason the
  * video proxies exist (MinIO presigns against the internal Docker host over
@@ -42,10 +43,24 @@ function forwardedRequestHeaders(request: Request): Record<string, string> {
   return forwarded;
 }
 
+export interface StreamPosterOptions {
+  /** `poster` (default) applies the shared poster policy; `no-store` disables caching. */
+  cache?: 'poster' | 'no-store';
+}
+
+function applyCacheHeaders(headers: Headers, cache: StreamPosterOptions['cache']): void {
+  if (cache === 'no-store') {
+    headers.set('cache-control', 'private, no-store');
+    return;
+  }
+  applyPosterCacheHeaders(headers);
+}
+
 export async function streamPoster(
   request: Request,
   storageUri: string,
   logContext: Record<string, string>,
+  { cache = 'poster' }: StreamPosterOptions = {},
 ): Promise<Response> {
   let signedUrl: string;
   try {
@@ -78,7 +93,7 @@ export async function streamPoster(
       const v = upstream.headers.get(h);
       if (v) notModifiedHeaders.set(h, v);
     }
-    applyPosterCacheHeaders(notModifiedHeaders);
+    applyCacheHeaders(notModifiedHeaders, cache);
     return new Response(null, { status: 304, headers: notModifiedHeaders });
   }
 
@@ -99,7 +114,7 @@ export async function streamPoster(
     if (v) headers.set(h, v);
   }
   if (!headers.has('content-type')) headers.set('content-type', 'image/jpeg');
-  applyPosterCacheHeaders(headers);
+  applyCacheHeaders(headers, cache);
 
   return new Response(upstream.body, { status: upstream.status, headers });
 }

@@ -122,14 +122,22 @@ function rawCourseRow(overrides: Partial<Record<string, unknown>> = {}) {
     title: 'Bloodborne Pathogens',
     description: 'Annual refresher',
     category: 'Compliance',
+    thumbnailStorageUri: null,
     previewPosterStorageUri: null,
     status: 'published',
-    thumbnail: '/thumb.png',
+    type: 'video',
     duration: 45,
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     updatedAt: new Date('2026-01-02T00:00:00.000Z'),
     _count: { lessons: 1 },
-    lessons: [{ videoDurationSeconds: 120, quiz: { _count: { questions: 3 } } }],
+    lessons: [
+      {
+        videoDurationSeconds: 120,
+        videoPosterStorageUri: 'gcs://lms/system/videos/posters/1.jpg',
+        updatedAt: new Date('2026-01-03T00:00:00.000Z'),
+        quiz: { _count: { questions: 3 } },
+      },
+    ],
     ...overrides,
   };
 }
@@ -228,6 +236,27 @@ describe('listGlobalVideoCatalogCourses', () => {
       sourceDocumentId: null,
       isGlobalCatalog: true,
     });
+  });
+
+  // BUG-17: the merged Courses list draws each catalog row from `thumbnail`.
+  it('carries the thumbnail route URL, never a storage URI, and null when nothing resolves', async () => {
+    setupAdminSession();
+    mockCourseFindMany.mockResolvedValue([
+      rawCourseRow({ id: 'video-1' }),
+      rawCourseRow({ id: 'video-2', lessons: [] }),
+    ]);
+    mockEnrollmentGroupBy.mockResolvedValue([]);
+
+    const rows = await listGlobalVideoCatalogCourses();
+
+    expect(rows[0].thumbnail).toBe(
+      `/api/courses/video-1/thumbnail?v=${Date.parse('2026-01-03T00:00:00.000Z')}`,
+    );
+    expect(rows[1].thumbnail).toBeNull();
+    // Only the course video — the first lesson by order — is read.
+    const select = mockCourseFindMany.mock.calls[0][0].select;
+    expect(select.lessons).toMatchObject({ orderBy: { order: 'asc' }, take: 1 });
+    expect(select).not.toHaveProperty('thumbnail');
   });
 
   it('a course with no enrollment rows gets a zero tally instead of throwing', async () => {

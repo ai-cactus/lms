@@ -3,9 +3,24 @@ import { describe, it, expect, vi } from 'vitest';
 import CourseThumbnail from './CourseThumbnail';
 
 vi.mock('next/image', () => ({
-  default: ({ alt, src, className }: { alt: string; src: string; className?: string }) => (
+  default: ({
+    alt,
+    src,
+    className,
+    unoptimized,
+  }: {
+    alt: string;
+    src: string;
+    className?: string;
+    unoptimized?: boolean;
+  }) => (
     // eslint-disable-next-line @next/next/no-img-element
-    <img alt={alt} src={src} className={className} />
+    <img
+      alt={alt}
+      src={src}
+      className={className}
+      data-unoptimized={String(Boolean(unoptimized))}
+    />
   ),
 }));
 
@@ -52,5 +67,22 @@ describe('CourseThumbnail', () => {
 
     expect(container.querySelector('img')).toHaveAttribute('src', '/images/icon-course-blue.svg');
     expect(container.firstElementChild!.innerHTML).not.toMatch(/2c8f88/i);
+  });
+
+  // The route is access-checked and versioned with `?v=`: the optimizer would
+  // fetch it without the viewer's cookies, and throws on a local src with a
+  // query string unless images.localPatterns allows it.
+  it('bypasses the image optimizer for the thumbnail route', () => {
+    const { container } = render(
+      <CourseThumbnail type="video" thumbnail="/api/courses/c1/thumbnail?v=1" />,
+    );
+
+    expect(container.querySelector('img')).toHaveAttribute('data-unoptimized', 'true');
+  });
+
+  it('keeps the optimizer for any other artwork', () => {
+    const { container } = render(<CourseThumbnail type="video" thumbnail="https://x/a.png" />);
+
+    expect(container.querySelector('img')).toHaveAttribute('data-unoptimized', 'false');
   });
 });

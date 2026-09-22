@@ -103,3 +103,6 @@
 - [Parallel contract PRs](project_parallel_contract_prs.md) — how to prove a branch that imports an unmerged Server Action: stub, typecheck, revert. vi.mock stays green while tsc is red.
 - [Next 16 cannot block Back](gotcha_next16_no_navigation_blocking.md) — onNavigate covers Link clicks only; the sentinel workaround, the 2 Next internals it relies on, and the re-push that traps users.
 - [CourseRail is quiz-views-only](gotcha_courserail_is_quiz_views_only.md) — it is never co-mounted with AdminSlideEditor; the lesson-view module nav is CourseArticle's ToC.
+- [Sweeper reference set columns](gotcha_sweeper_reference_set_columns.md) — any column storing under system/videos/ must join buildReferencedUriSet or the sweeper deletes its objects (posters were exposed until BUG-17).
+- [/system has no portal session](gotcha_system_backoffice_has_no_portal_session.md) — serve /system media from an /api/system/** route; a system-cookie fallback on a portal route is dead behind the proxy; next/image unoptimized.
+- [Server Action args are unchecked](gotcha_server_action_args_are_unchecked.md) — a closed TS param type doesn't bind the client; never spread caller data into prisma.update.

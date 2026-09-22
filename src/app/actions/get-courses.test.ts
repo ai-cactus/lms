@@ -57,13 +57,15 @@ describe('getCourses', () => {
         id: 'own-1',
         title: 'Own Course',
         description: null,
-        thumbnail: null,
+        thumbnailStorageUri: null,
+        previewPosterStorageUri: null,
         status: 'published',
         type: 'document',
         duration: 10,
         createdAt: new Date(),
         updatedAt: new Date(),
         _count: { lessons: 0 },
+        lessons: [],
       },
     ]);
     mockOfferingFindMany.mockResolvedValue([
@@ -72,13 +74,15 @@ describe('getCourses', () => {
           id: 'global-1',
           title: 'Adopted Video',
           description: null,
-          thumbnail: null,
+          thumbnailStorageUri: null,
+          previewPosterStorageUri: null,
           status: 'published',
           type: 'video',
           duration: 30,
           createdAt: new Date(),
           updatedAt: new Date(),
           _count: { lessons: 1 },
+          lessons: [],
           versions: [],
           // Cross-tenant publisher: lineage must resolve to null for this org.
           creator: { organizationId: 'other-org' },
@@ -236,5 +240,63 @@ describe('getCourses — facility-scoped enrollment tallies', () => {
 
     const where = mockEnrollmentGroupBy.mock.calls[0][0].where;
     expect(where.facilityId).toEqual({ in: [] });
+  });
+});
+
+/**
+ * BUG-17: the Courses list draws a video course from `thumbnail`, which must be
+ * the access-checked route URL (never a storage URI) resolved in the same query
+ * — one ordered lesson per course, no per-row lookups.
+ */
+describe('getCourses — video thumbnails', () => {
+  const updatedAt = new Date('2026-09-01T00:00:00.000Z');
+  const lessonUpdatedAt = new Date('2026-09-10T00:00:00.000Z');
+  const courseRow = (id: string, type: string, poster: string | null) => ({
+    id,
+    title: id,
+    description: null,
+    thumbnailStorageUri: null,
+    previewPosterStorageUri: null,
+    status: 'published',
+    type,
+    duration: 10,
+    createdAt: updatedAt,
+    updatedAt,
+    _count: { lessons: 1 },
+    lessons: [{ videoPosterStorageUri: poster, updatedAt: lessonUpdatedAt }],
+    versions: [],
+  });
+
+  it('returns the route URL for a video course with a poster and null otherwise', async () => {
+    mockCourseFindMany.mockResolvedValue([
+      courseRow('video-1', 'video', 'gcs://lms/system/videos/posters/1.jpg'),
+      courseRow('video-2', 'video', null),
+      courseRow('reading-1', 'text', 'gcs://lms/system/videos/posters/2.jpg'),
+    ]);
+    mockOfferingFindMany.mockResolvedValue([]);
+
+    const result = await getCourses();
+
+    const thumbnails = Object.fromEntries(result.map((c) => [c.id, c.thumbnail]));
+    expect(thumbnails).toEqual({
+      'video-1': `/api/courses/video-1/thumbnail?v=${lessonUpdatedAt.getTime()}`,
+      'video-2': null,
+      'reading-1': null,
+    });
+  });
+
+  it('selects one ordered lesson per course for both own and adopted courses', async () => {
+    mockCourseFindMany.mockResolvedValue([]);
+    mockOfferingFindMany.mockResolvedValue([]);
+
+    await getCourses();
+
+    const expected = {
+      orderBy: { order: 'asc' },
+      take: 1,
+      select: { videoPosterStorageUri: true, updatedAt: true },
+    };
+    expect(mockCourseFindMany.mock.calls[0][0].select.lessons).toEqual(expected);
+    expect(mockOfferingFindMany.mock.calls[0][0].select.course.select.lessons).toEqual(expected);
   });
 });

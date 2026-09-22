@@ -56,6 +56,11 @@ model Course {
   /// KB of MP4 before the viewer clicks anything. Null until the transcode (or
   /// scripts/backfill-video-posters.ts) has produced one.
   previewPosterStorageUri     String?                  @map("preview_poster_storage_uri")
+  /// Storage URI of an admin-chosen video-course thumbnail — an uploaded image
+  /// or a frame regenerated from the course video (src/lib/video/thumbnail.ts).
+  /// Null means the automatic chain applies: preview poster, then the first
+  /// lesson's poster. `thumbnail` is a legacy column nothing writes.
+  thumbnailStorageUri         String?                  @map("thumbnail_storage_uri")
   createdAt                   DateTime                 @default(now()) @map("created_at")
   updatedAt                   DateTime                 @updatedAt @map("updated_at")
   promptVersion               String?                  @map("prompt_version")

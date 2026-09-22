@@ -324,6 +324,27 @@ export function resolveCoursePosterMeta<T extends object>(
 }
 
 /**
+ * The course row the THUMBNAIL route needs. Same separate-key contract as
+ * {@link resolveLessonPosterMeta}; invalidate via
+ * {@link invalidateCourseThumbnailMeta} wherever any link of the thumbnail
+ * chain (custom thumbnail, preview poster, first lesson's poster) changes.
+ */
+export function resolveCourseThumbnailMeta<T extends object>(
+  courseId: string,
+  load: () => Promise<T | null>,
+): Promise<T | null> {
+  const key = `meta:course-thumbnail:${courseId}`;
+  return resolveCached(
+    metaCache,
+    key,
+    key,
+    getPlaybackCacheTtlSeconds(),
+    load,
+    (value) => value !== null,
+  );
+}
+
+/**
  * Whether this org user may play this course's media.
  *
  * Only a `true` verdict is cached — see the never-cache-the-deny note in the
@@ -376,6 +397,11 @@ export function invalidateLessonPlaybackMeta(lessonId: string): void {
 export function invalidateCoursePreviewMeta(courseId: string): void {
   metaCache.delete(`meta:course:${courseId}`);
   metaCache.delete(`meta:course-poster:${courseId}`);
+}
+
+/** Drop a course's cached thumbnail meta after any link of its thumbnail chain changed. */
+export function invalidateCourseThumbnailMeta(courseId: string): void {
+  metaCache.delete(`meta:course-thumbnail:${courseId}`);
 }
 
 /**

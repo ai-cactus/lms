@@ -34,6 +34,7 @@ import {
   resolvePassingScores,
 } from '@/lib/dashboard/metrics';
 import { COMPLETED_ENROLLMENT_STATUSES } from '@/lib/facility/metrics';
+import { buildCourseThumbnailUrl, firstLessonThumbnailSelect } from '@/lib/video/thumbnail';
 import { resolveOnCompletion } from '@/lib/reminders/sweep';
 import { combineDateAndTime, isPastDeadlineChange } from '@/lib/reminders/deadline';
 import { assignCourseToRoles, enrollUsers } from './enrollment';
@@ -122,13 +123,15 @@ export async function getCourses(): Promise<CourseWithStats[]> {
     id: true,
     title: true,
     description: true,
-    thumbnail: true,
+    thumbnailStorageUri: true,
+    previewPosterStorageUri: true,
     status: true,
     type: true,
     duration: true,
     createdAt: true,
     updatedAt: true,
     _count: { select: { lessons: true } },
+    lessons: firstLessonThumbnailSelect,
   } satisfies Prisma.CourseSelect;
 
   const [ownCourses, offerings] = await Promise.all([
@@ -249,13 +252,15 @@ export async function getCourses(): Promise<CourseWithStats[]> {
       id: string;
       title: string;
       description: string | null;
-      thumbnail: string | null;
+      thumbnailStorageUri: string | null;
+      previewPosterStorageUri: string | null;
       status: string;
       type: string;
       duration: number | null;
       createdAt: Date;
       updatedAt: Date;
       _count: { lessons: number };
+      lessons: { videoPosterStorageUri: string | null; updatedAt: Date }[];
       versions?: {
         documentVersion: { documentId: string; document: { archivedAt: Date | null } };
       }[];
@@ -265,7 +270,7 @@ export async function getCourses(): Promise<CourseWithStats[]> {
     id: course.id,
     title: course.title,
     description: course.description,
-    thumbnail: course.thumbnail,
+    thumbnail: buildCourseThumbnailUrl(course, course.lessons[0]),
     status: course.status,
     type: course.type,
     duration: course.duration,
@@ -574,7 +579,6 @@ export async function updateCourse(
   data: {
     title?: string;
     description?: string;
-    thumbnail?: string;
     duration?: number;
   },
 ) {
@@ -603,16 +607,23 @@ export async function updateCourse(
     throw new Error('Course not found');
   }
 
+  // Picked field by field: Server Action arguments arrive from the client
+  // unchecked, so spreading `data` would let a caller write any Course column.
+  const fields = {
+    ...(data.title !== undefined ? { title: data.title } : {}),
+    ...(data.description !== undefined ? { description: data.description } : {}),
+    ...(data.duration !== undefined ? { duration: data.duration } : {}),
+  };
   const course = await prisma.course.update({
     where: { id: courseId },
-    data,
+    data: fields,
   });
 
   logger.info({
     msg: '[course] Course updated',
     courseId,
     userId: session.user.id,
-    fields: Object.keys(data),
+    fields: Object.keys(fields),
   });
   revalidatePath('/dashboard/training');
   revalidatePath(`/dashboard/training/${courseId}`);
@@ -976,7 +987,8 @@ export async function getDashboardData(requestedFacilityIds?: string[] | null) {
             id: true,
             title: true,
             description: true,
-            thumbnail: true,
+            thumbnailStorageUri: true,
+            previewPosterStorageUri: true,
             status: true,
             type: true,
             duration: true,
@@ -986,7 +998,15 @@ export async function getDashboardData(requestedFacilityIds?: string[] | null) {
             // bar — taking the first lesson quiz made the same course pass here
             // and fail on the global dashboard.
             quiz: { select: { passingScore: true } },
-            lessons: { select: { quiz: { select: { passingScore: true } } } },
+            // Ordered so lessons[0] is the course video the thumbnail resolves.
+            lessons: {
+              orderBy: { order: 'asc' },
+              select: {
+                videoPosterStorageUri: true,
+                updatedAt: true,
+                quiz: { select: { passingScore: true } },
+              },
+            },
           },
           orderBy: { createdAt: 'desc' },
         })
@@ -1057,7 +1077,7 @@ export async function getDashboardData(requestedFacilityIds?: string[] | null) {
       id: course.id,
       title: course.title,
       description: course.description,
-      thumbnail: course.thumbnail,
+      thumbnail: buildCourseThumbnailUrl(course, course.lessons[0]),
       status: course.status,
       type: course.type,
       duration: course.duration,

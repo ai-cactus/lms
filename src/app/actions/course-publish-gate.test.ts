@@ -315,4 +315,26 @@ describe('updateCourse — never touches reviewer attribution', () => {
     expect(updateArgs.data).not.toHaveProperty('approvedByOrgUserId');
     expect(updateArgs.data).not.toHaveProperty('approvedAt');
   });
+
+  // The closed TYPE only binds TypeScript callers. A Server Action's arguments
+  // arrive from the client unchecked, so the runtime must pick its fields too.
+  it('drops any key outside title/description/duration sent over the wire', async () => {
+    mockCourseFindUnique.mockResolvedValue({
+      id: 'course-approve-6',
+      createdByOrgUserId: ORG_USER_ID,
+    });
+    mockCourseUpdate.mockResolvedValue({ id: 'course-approve-6' });
+    const payload = {
+      title: 'New title',
+      duration: 12,
+      approvedByOrgUserId: 'ou-attacker',
+      organizationId: 'org-other',
+      status: 'published',
+      thumbnail: 'https://evil.example/x.png',
+    } as unknown as Parameters<typeof updateCourse>[1];
+
+    await updateCourse('course-approve-6', payload);
+
+    expect(mockCourseUpdate.mock.calls[0][0].data).toEqual({ title: 'New title', duration: 12 });
+  });
 });

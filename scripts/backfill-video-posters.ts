@@ -27,26 +27,11 @@
  *   --limit=N   Process at most N lessons and N course previews.
  */
 
-import { execFile } from 'child_process';
-import { promisify } from 'util';
-import { randomUUID } from 'crypto';
-import { readFile, unlink } from 'fs/promises';
-import { join } from 'path';
-import { tmpdir } from 'os';
 import { prisma } from '@/db/index';
-import { getSignedUrl, uploadFile } from '@/lib/storage';
-import { buildPosterArgs } from '@/lib/video/encoding';
+import { extractAndUploadPoster } from '@/lib/video/poster-extraction';
 import { logger } from '@/lib/logger';
 
-const execFileP = promisify(execFile);
-
 const APPLY = process.argv.includes('--apply');
-
-/**
- * Signed-URL lifetime for the ffmpeg read. Generous because a large source over
- * a slow link still has to complete its Range reads within the window.
- */
-const SIGNED_URL_TTL_SECONDS = 900;
 
 /**
  * Pause between assets. This runs against the same storage backend and database
@@ -64,38 +49,6 @@ function parseLimit(): number | null {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function safeUnlink(path: string): Promise<void> {
-  try {
-    await unlink(path);
-  } catch {
-    /* ignore */
-  }
-}
-
-/**
- * Extracts a poster from `videoStorageUri` and uploads it, returning the new
- * storage URI. Throws on failure so the caller can count it and move on — one
- * unreadable asset must not end the run.
- */
-async function extractAndUploadPoster(
-  videoStorageUri: string,
-  durationSeconds: number | null,
-): Promise<string> {
-  const posterPath = join(tmpdir(), `backfill-poster-${randomUUID()}.jpg`);
-  try {
-    const signedUrl = await getSignedUrl(videoStorageUri, SIGNED_URL_TTL_SECONDS);
-    await execFileP('ffmpeg', buildPosterArgs(signedUrl, posterPath, durationSeconds), {
-      maxBuffer: 1024 * 1024 * 8,
-    });
-    const buffer = await readFile(posterPath);
-    const key = `system/videos/posters/${Date.now()}-${randomUUID()}.jpg`;
-    const uploaded = await uploadFile(key, buffer, 'image/jpeg');
-    return uploaded.storageUri;
-  } finally {
-    await safeUnlink(posterPath);
-  }
 }
 
 interface Counts {
