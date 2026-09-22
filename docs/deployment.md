@@ -84,13 +84,13 @@ The heavy `test` + `build` steps live in `.husky/pre-push` rather than `pre-comm
 > **See [`security-infra-runbook.md`](./security-infra-runbook.md)** for the executable version of this
 > checklist: ordering with dependency rationale (backups MUST precede any
 > encryption-at-rest migration; the `lms_app` role MUST precede RLS), concrete
-> commands, cost estimates, and a verification step per item. Whether backups and
-> monitoring are currently running on the VM is **unconfirmed — records conflict,
-> see OPEN-ISSUES RISK-08** (`docs/local/OPEN-ISSUES.md`).
+> commands, cost estimates, and a verification step per item. Production backups are
+> running (verified 2026-09-22); a recent restore and the monitoring configuration are
+> **unconfirmed — see OPEN-ISSUES RISK-08** (`docs/local/OPEN-ISSUES.md`).
 
 These are infrastructure/process work outside the codebase. Track them to closure:
 
-- [ ] **Backups (F-004)** — status unconfirmed: records conflict, see OPEN-ISSUES RISK-08. Built in `infra/backup/`; pgBackRest was cancelled 2026-08-14 in favour of Cloud SQL PITR. Requirement: automated, encrypted Postgres backups with PITR (WAL archiving) to off-host storage; **a tested restore runbook** (an untested backup is not a backup). MinIO/GCS object versioning + off-host replication. Redis off-host snapshot (AOF on the same disk is not a backup).
+- [ ] **Backups (F-004)** — nightly production dump to GCS running (verified 2026-09-22); restore drill unverified, see OPEN-ISSUES RISK-08. Built in `infra/backup/`; pgBackRest was cancelled 2026-08-14 in favour of Cloud SQL PITR. Requirement: automated, encrypted Postgres backups with PITR (WAL archiving) to off-host storage; **a tested restore runbook** (an untested backup is not a backup). MinIO/GCS object versioning + off-host replication. Redis off-host snapshot (AOF on the same disk is not a backup).
 - [ ] **Encryption at rest (F-025):** managed encrypted Postgres (or LUKS-encrypted volumes); MinIO SSE and/or GCS CMEK; encrypted backups. Decide on `DocumentVersion.content` (extracted document text currently stored in the DB): encrypt the column or drop it and re-derive from object storage on demand.
 - [ ] **Encryption in transit (internal):** the current localhost/bridge hops (app→MinIO `MINIO_USE_SSL:false`, app→Postgres/Redis) are acceptable on one host but become a §164.312(e) gap the moment services split across machines — plan mTLS/private-network TLS before that.
 - [ ] **Availability (SOC 2 A1.2):** remove the single-VM SPOF — at least one standby for Postgres and Redis; ≥2 app replicas behind a load balancer.
