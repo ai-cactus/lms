@@ -33,6 +33,7 @@ import { headers } from 'next/headers';
 import { invalidateRevalidationCache } from '@/lib/auth/session-revalidation-cache';
 import type { ActivityReportEnrollment } from '@/lib/pdf-reports';
 import { captureServer } from '@/lib/analytics/server';
+import { buildCourseThumbnailUrl } from '@/lib/video/thumbnail';
 
 // Caller-facing copy for each role-change denial. `target_not_reachable` and
 // `role_not_grantable` are only reachable when an owner is involved (owner is in
@@ -119,11 +120,20 @@ export async function getStaffDetails(organizationUserId: string) {
             dueAt: true,
             course: {
               select: {
+                id: true,
                 title: true,
-                thumbnail: true,
+                thumbnailStorageUri: true,
+                previewPosterStorageUri: true,
                 type: true,
+                updatedAt: true,
+                // Ordered so lessons[0] is the course video the thumbnail resolves.
                 lessons: {
-                  select: { quiz: { select: { passingScore: true, allowedAttempts: true } } },
+                  orderBy: { order: 'asc' },
+                  select: {
+                    videoPosterStorageUri: true,
+                    updatedAt: true,
+                    quiz: { select: { passingScore: true, allowedAttempts: true } },
+                  },
                 },
               },
             },
@@ -211,7 +221,7 @@ export async function getStaffDetails(organizationUserId: string) {
         id: e.id,
         courseId: e.courseId,
         courseName: e.course.title,
-        courseImage: e.course.thumbnail,
+        courseImage: buildCourseThumbnailUrl(e.course, e.course.lessons[0]),
         courseType: e.course.type,
         status: e.status,
         progress: e.progress,

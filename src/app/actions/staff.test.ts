@@ -1110,6 +1110,52 @@ describe('getStaffDetails — org isolation (F-009)', () => {
     expect(result?.user.jobTitle).toBe('Nurse');
   });
 
+  // BUG-17: the profile's course table draws a video course from this value, so
+  // it must be the access-checked route URL — never a raw storage URI — and
+  // null (the placeholder) when nothing resolves.
+  it('hands each enrollment the thumbnail route URL, or null when nothing resolves', async () => {
+    const lessonUpdatedAt = new Date('2026-09-10T00:00:00.000Z');
+    const enrollment = (courseId: string, type: string, poster: string | null) => ({
+      id: `e-${courseId}`,
+      courseId,
+      status: 'in_progress',
+      progress: 0,
+      score: null,
+      startedAt: new Date('2026-09-01T00:00:00.000Z'),
+      completedAt: null,
+      dueAt: null,
+      course: {
+        id: courseId,
+        title: courseId,
+        type,
+        thumbnailStorageUri: null,
+        previewPosterStorageUri: null,
+        updatedAt: new Date('2026-09-01T00:00:00.000Z'),
+        lessons: [{ videoPosterStorageUri: poster, updatedAt: lessonUpdatedAt, quiz: null }],
+      },
+    });
+    mockOrgUserFindUnique.mockResolvedValue({
+      ...makeTargetOrgUser('org-a'),
+      enrollments: [
+        enrollment('video-1', 'video', 'gcs://lms/system/videos/posters/1.jpg'),
+        enrollment('video-2', 'video', null),
+        enrollment('reading-1', 'text', 'gcs://lms/system/videos/posters/2.jpg'),
+      ],
+    });
+
+    const result = await getStaffDetails('target-1');
+
+    const images = Object.fromEntries(result!.enrollments.map((e) => [e.courseId, e.courseImage]));
+    expect(images).toEqual({
+      'video-1': `/api/courses/video-1/thumbnail?v=${lessonUpdatedAt.getTime()}`,
+      'video-2': null,
+      'reading-1': null,
+    });
+    const courseSelect =
+      mockOrgUserFindUnique.mock.calls[0][0].select.enrollments.select.course.select;
+    expect(courseSelect.lessons.orderBy).toEqual({ order: 'asc' });
+  });
+
   it('reports a blank job title as blank rather than substituting a placeholder', async () => {
     mockOrgUserFindUnique.mockResolvedValue({
       ...makeTargetOrgUser('org-a'),

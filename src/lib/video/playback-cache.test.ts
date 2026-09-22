@@ -157,6 +157,33 @@ describe('playback meta cache', () => {
     expect(lessonLoad).toHaveBeenCalledTimes(1);
     expect(courseLoad).toHaveBeenCalledTimes(2);
   });
+
+  it('keeps the course-thumbnail entry on its own key, evicted only by its own invalidator', async () => {
+    const {
+      resolveCoursePosterMeta,
+      resolveCourseThumbnailMeta,
+      invalidateCoursePreviewMeta,
+      invalidateCourseThumbnailMeta,
+    } = await loadPlaybackCache();
+    const posterLoad = vi.fn().mockResolvedValue({ previewPosterStorageUri: 'minio://b/p.jpg' });
+    const thumbLoad = vi.fn().mockResolvedValue({ thumbnailStorageUri: 'minio://b/t.jpg' });
+
+    await resolveCoursePosterMeta('course-1', posterLoad);
+    await resolveCourseThumbnailMeta('course-1', thumbLoad);
+    await resolveCourseThumbnailMeta('course-1', thumbLoad);
+    expect(thumbLoad).toHaveBeenCalledTimes(1);
+
+    invalidateCoursePreviewMeta('course-1');
+    await resolveCourseThumbnailMeta('course-1', thumbLoad);
+    expect(thumbLoad).toHaveBeenCalledTimes(1);
+
+    invalidateCourseThumbnailMeta('course-1');
+    await resolveCourseThumbnailMeta('course-1', thumbLoad);
+    await resolveCoursePosterMeta('course-1', posterLoad);
+    expect(thumbLoad).toHaveBeenCalledTimes(2);
+    // The poster entry was evicted by the preview invalidator, not this one.
+    expect(posterLoad).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('single-flight', () => {

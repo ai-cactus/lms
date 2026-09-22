@@ -1,7 +1,22 @@
 import { notFound } from 'next/navigation';
 import { verifySystemAdminCookie } from '@/lib/system-auth';
 import prisma from '@/lib/prisma';
+import { buildSystemCourseThumbnailUrl, resolveCourseThumbnailSource } from '@/lib/video/thumbnail';
+import { MAX_THUMBNAIL_UPLOAD_BYTES } from '@/lib/video/upload-config';
 import EditVideoCourseClient from './EditVideoCourseClient';
+
+function regenerateBlockedReason(
+  lesson: { videoStorageUri: string | null; mediaStatus: string } | undefined,
+): string | null {
+  if (!lesson?.videoStorageUri) return 'Upload a course video before generating a thumbnail.';
+  if (lesson.mediaStatus === 'processing') {
+    return 'Available once the course video has finished processing.';
+  }
+  if (lesson.mediaStatus !== 'ready') {
+    return 'The course video failed to process, so no frame can be taken from it.';
+  }
+  return null;
+}
 
 export const dynamic = 'force-dynamic';
 
@@ -42,5 +57,18 @@ export default async function EditVideoCoursePage({
     courseVideoDurationSeconds: primaryLesson?.videoDurationSeconds ?? null,
   };
 
-  return <EditVideoCourseClient initial={initial} />;
+  const thumbnail = {
+    courseId: course.id,
+    source: resolveCourseThumbnailSource({
+      type: course.type,
+      thumbnailStorageUri: course.thumbnailStorageUri,
+      previewPosterStorageUri: course.previewPosterStorageUri,
+      firstLessonPosterStorageUri: primaryLesson?.videoPosterStorageUri,
+    }),
+    imageUrl: buildSystemCourseThumbnailUrl(course, primaryLesson),
+    regenerateBlockedReason: regenerateBlockedReason(primaryLesson),
+    maxUploadBytes: MAX_THUMBNAIL_UPLOAD_BYTES,
+  };
+
+  return <EditVideoCourseClient initial={initial} thumbnail={thumbnail} />;
 }

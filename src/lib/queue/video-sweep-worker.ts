@@ -10,9 +10,9 @@
  *      merged cross-backend view.
  *   2. Drop anything still inside the grace window (createdAt within the last
  *      gracePeriodMs) — these may belong to an in-flight upload or transcode.
- *   3. Build the referenced-URI set from the three authoritative columns
- *      (Lesson.videoStorageUri, Course.previewVideoStorageUri,
- *      CourseArtifact.storageUri), mirroring scripts/delete-video-courses.ts.
+ *   3. Build the referenced-URI set from every column that can point under
+ *      the prefix — videos, their posters, custom thumbnails and
+ *      CourseArtifact.storageUri (see buildReferencedUriSet).
  *   4. Anything older than the grace window AND not in that set is orphaned.
  *   5. Delete the orphans in small batches (per-item failures are isolated).
  *
@@ -107,16 +107,21 @@ export interface VideoSweepSummary {
 /**
  * Build the set of storage URIs currently referenced by the database.
  *
- * Mirrors the authoritative model/field list in scripts/delete-video-courses.ts:
- * Lesson.videoStorageUri, Course.previewVideoStorageUri, CourseArtifact.storageUri.
- * Including CourseArtifact is cheap insurance against ever deleting a referenced
- * object even though artifacts are not (currently) stored under system/videos/.
+ * Every column that can hold an object under `system/videos/`: the videos
+ * (Lesson.videoStorageUri, Course.previewVideoStorageUri), their poster stills
+ * (Lesson.videoPosterStorageUri, Course.previewPosterStorageUri, written under
+ * `system/videos/posters/`) and custom thumbnails (Course.thumbnailStorageUri,
+ * under `system/videos/thumbnails/`), plus CourseArtifact.storageUri. Leaving a
+ * column out makes every object it references look orphaned. CourseArtifact is
+ * cheap insurance: artifacts are not (currently) stored under system/videos/.
  */
 async function buildReferencedUriSet(): Promise<Set<string>> {
   const [lessonVideos, previewVideos, artifacts] = await Promise.all([
     prisma.lesson.findMany({
-      where: { videoStorageUri: { not: null } },
-      select: { videoStorageUri: true },
+      where: {
+        OR: [{ videoStorageUri: { not: null } }, { videoPosterStorageUri: { not: null } }],
+      },
+      select: { videoStorageUri: true, videoPosterStorageUri: true },
     }),
     // ⛔ `rawPrisma`, deliberately: an ARCHIVED course still references its
     // preview video, and Q24 says that file must be retained. Through the
@@ -126,8 +131,18 @@ async function buildReferencedUriSet(): Promise<Set<string>> {
     // delete cap) defends against a misconfigured ENVIRONMENT; none of them
     // notices the query itself having silently excluded rows.
     rawPrisma.course.findMany({
-      where: { previewVideoStorageUri: { not: null } },
-      select: { previewVideoStorageUri: true },
+      where: {
+        OR: [
+          { previewVideoStorageUri: { not: null } },
+          { previewPosterStorageUri: { not: null } },
+          { thumbnailStorageUri: { not: null } },
+        ],
+      },
+      select: {
+        previewVideoStorageUri: true,
+        previewPosterStorageUri: true,
+        thumbnailStorageUri: true,
+      },
     }),
     prisma.courseArtifact.findMany({
       select: { storageUri: true },
@@ -137,9 +152,12 @@ async function buildReferencedUriSet(): Promise<Set<string>> {
   const referenced = new Set<string>();
   for (const l of lessonVideos) {
     if (l.videoStorageUri) referenced.add(l.videoStorageUri);
+    if (l.videoPosterStorageUri) referenced.add(l.videoPosterStorageUri);
   }
   for (const c of previewVideos) {
     if (c.previewVideoStorageUri) referenced.add(c.previewVideoStorageUri);
+    if (c.previewPosterStorageUri) referenced.add(c.previewPosterStorageUri);
+    if (c.thumbnailStorageUri) referenced.add(c.thumbnailStorageUri);
   }
   for (const a of artifacts) {
     if (a.storageUri) referenced.add(a.storageUri);

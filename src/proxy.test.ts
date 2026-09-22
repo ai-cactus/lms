@@ -395,6 +395,31 @@ describe('proxy — API default-deny (F-013)', () => {
       const res = await proxy(makeRequest('/api/health/secrets'));
       expect(res.status).toBe(401);
     });
+
+    /**
+     * BUG-17: the /system thumbnail preview has no portal session. It is served
+     * by the system route, which the prefix exemption passes through to its own
+     * system-admin check. The portal route must NOT honour the system cookie at
+     * this layer — widening the exemption to it was deliberately rejected.
+     */
+    it('401s a portal thumbnail request carrying only the system-admin cookie', async () => {
+      const req = makeRequest('/api/courses/course-1/thumbnail');
+      req.cookies.set('system_admin_auth', 'irrelevant-to-this-gate');
+
+      const res = await proxy(req);
+
+      expect(res.status).toBe(401);
+    });
+
+    it('passes the system thumbnail preview through to its own auth', async () => {
+      const req = makeRequest('/api/system/video-courses/course-1/thumbnail');
+      req.cookies.set('system_admin_auth', 'irrelevant-to-this-gate');
+
+      const res = await proxy(req);
+
+      expect(res.status).toBe(200);
+      expect(mockDecode).not.toHaveBeenCalled();
+    });
   });
 
   // Named like a public form, but authenticated: only the billing tab calls it
