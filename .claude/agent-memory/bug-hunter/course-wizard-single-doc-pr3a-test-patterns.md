@@ -1,6 +1,6 @@
 ---
 name: course-wizard-single-doc-pr3a-test-patterns
-description: PR-3a (course-creation-flow-redesign) test patterns — deterministic local-regex PHI bypass for live uploads, pdfkit/pdf-parse version incompatibility, a pre-existing false-positive assertion found in quiz-ai.test.ts, MIN_SCAN_LENGTH's dual role
+description: PR-3a (course-creation-flow-redesign) test patterns — deterministic local-regex PHI bypass for live uploads, pdfkit/pdf-parse version incompatibility, the vacuous-pass trap in quiz-ai prompt-inspection tests (fixed #605), MIN_SCAN_LENGTH's dual role
 metadata:
   type: project
 ---
@@ -63,21 +63,15 @@ script's top-level import triggers its internal debug harness (`ERR: ENOENT
 ./test/data/05-versions-space.pdf`) unless required from a non-entry module
 (the app never has this problem — it's only a standalone-repro-script trap).
 
-**Pre-existing false-positive test found (not touched, out of scope for
-PR-3a): `quiz-ai.test.ts` > "delimits client-supplied context too."** With a
-~55-char `options.context` and no `courseId`, `assertNoPhi` triggers BEFORE
-generation — `scanChunkWithAI` calls the shared `mockCallVertexAI`, gets back
-the single-question fixture (no `hasPHI` field), fails closed
-("AI response had unexpected structure" -> `PhiBlockedError`), and
-`generateSingleQuestion` returns `{success:false, error: "We could not
-verify..."}` WITHOUT ever calling its own question-generation prompt. The
-test's assertions (`prompt.indexOf('<<<BEGIN UNTRUSTED COURSE CONTENT>>>')`
-returns -1, and `injected > -1` is trivially true) pass vacuously — it is not
-actually exercising the prompt-injection delimiting it claims to. Confirmed
-by a forced-failure diagnostic showing `mockCallVertexAI` was called exactly
-once, with the PHI-scan prompt, not the question-generation prompt. Left
-unmodified per bug-hunter scope (pre-existing, unrelated to this PR's diff) —
-flag to `code-ninja`/user if ever asked to harden this suite.
+**Vacuous-pass trap in prompt-inspection tests (`quiz-ai.test.ts` > "delimits
+client-supplied context too", fixed in #605).** A `options.context` over 50
+chars with no `courseId` triggers `assertNoPhi` BEFORE generation.
+`scanChunkWithAI` consumes the shared `mockCallVertexAI`, gets a fixture with
+no `hasPHI` field and fails closed, so the question-generation prompt is never
+built. Any "prompt contains the delimiter" assertion then passes vacuously. The
+test now keeps the context under 50 chars (`skipped_short`) and regex-extracts
+the fenced region. Apply the same guard to any new prompt-inspection test:
+assert the mock was called with the generation prompt, not just once.
 
 **`regenerateQuiz`'s rate limit is a separate key/budget from
 `generateSingleQuestion`'s** (`quiz-regenerate:{userId}` 5/600s vs.
@@ -93,4 +87,4 @@ through to `options.context`, unlike a cross-org courseId which explicitly
 returns "Course not found." Pinned as a new test since it wasn't previously
 covered, to guard the shared extraction against drifting this behavior.
 
-See also [Course wizard 9-step redesign test patterns](course-wizard-9step-redesign-tests.md) for the prior AI-upload-bypass-via-deep-link technique this PR's Step2Upload also uses, and [full e2e suite serial flakiness](full-e2e-suite-serial-flakiness.md) for the stale-DB-row pollution pattern — reconfirmed here: re-running `course.spec.ts`'s ENG-022 test twice against the same unseeded DB produces a real "2 rows" strict-mode Playwright failure from the test's own prior side effect (an `assignRetake()` call), not a regression. Always reseed between repeated local e2e runs of the same spec.
+See also [full e2e suite serial flakiness](full-e2e-suite-serial-flakiness.md) for the stale-DB-row pollution pattern — reconfirmed here: re-running `course.spec.ts`'s ENG-022 test twice against the same unseeded DB produces a real "2 rows" strict-mode Playwright failure from the test's own prior side effect (an `assignRetake()` call), not a regression. Always reseed between repeated local e2e runs of the same spec.

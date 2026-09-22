@@ -310,6 +310,44 @@ describe('getDashboardData', () => {
     expect(mockOrgUserCount).not.toHaveBeenCalled();
   });
 
+  // BUG-17: the dashboard and Training tables draw a video course from
+  // `thumbnail` — the access-checked route URL off the FIRST lesson by order.
+  it('returns the thumbnail route URL for a video course and null otherwise', async () => {
+    const updatedAt = new Date('2026-09-01T00:00:00.000Z');
+    const lessonUpdatedAt = new Date('2026-09-10T00:00:00.000Z');
+    const row = (id: string, type: string, poster: string | null) => ({
+      id,
+      title: id,
+      description: null,
+      thumbnailStorageUri: null,
+      previewPosterStorageUri: null,
+      status: 'published',
+      type,
+      duration: 10,
+      createdAt: updatedAt,
+      updatedAt,
+      quiz: null,
+      lessons: [{ videoPosterStorageUri: poster, updatedAt: lessonUpdatedAt, quiz: null }],
+    });
+    mockCourseFindMany.mockResolvedValue([
+      row('video-1', 'video', 'gcs://lms/system/videos/posters/1.jpg'),
+      row('video-2', 'video', null),
+      row('reading-1', 'text', 'gcs://lms/system/videos/posters/2.jpg'),
+    ]);
+    wireGroupBy([], []);
+    mockEnrollmentFindMany.mockResolvedValue([]);
+    mockOrgUserCount.mockResolvedValue(0);
+
+    const result = await getDashboardData();
+
+    expect(Object.fromEntries(result.courses.map((c) => [c.id, c.thumbnail]))).toEqual({
+      'video-1': `/api/courses/video-1/thumbnail?v=${lessonUpdatedAt.getTime()}`,
+      'video-2': null,
+      'reading-1': null,
+    });
+    expect(mockCourseFindMany.mock.calls[0][0].select.lessons.orderBy).toEqual({ order: 'asc' });
+  });
+
   it('does NOT materialize every enrollment row (guards the F-028 perf regression)', async () => {
     mockCourseFindMany.mockResolvedValue([]);
     wireGroupBy([], []);

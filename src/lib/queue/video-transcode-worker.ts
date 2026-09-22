@@ -25,6 +25,7 @@ import prisma from '@/lib/prisma';
 import { logger } from '@/lib/logger';
 import {
   invalidateCoursePreviewMeta,
+  invalidateCourseThumbnailMeta,
   invalidateLessonPlaybackMeta,
 } from '@/lib/video/playback-cache';
 import { VIDEO_TRANSCODE_QUEUE_NAME, type VideoTranscodeJobData } from './video-transcode-queue';
@@ -135,8 +136,29 @@ export function getVideoTranscodeWorker(): Worker {
       // in-process, and the script runs in a separate process where evicting
       // would be a no-op. This job handler runs inside the web process, which
       // is the one serving the proxy.
-      if (targetType === 'lesson') invalidateLessonPlaybackMeta(targetId);
-      else invalidateCoursePreviewMeta(targetId);
+      // The transcode also wrote a new poster, which the course thumbnail route
+      // may resolve to.
+      if (targetType === 'lesson') {
+        invalidateLessonPlaybackMeta(targetId);
+        // Must not fail the job: a retry would re-run the whole encode, and the
+        // cache TTL already bounds how long a stale thumbnail entry survives.
+        try {
+          const lesson = await prisma.lesson.findUnique({
+            where: { id: targetId },
+            select: { courseId: true },
+          });
+          if (lesson) invalidateCourseThumbnailMeta(lesson.courseId);
+        } catch (err) {
+          logger.warn({
+            msg: '[VideoTranscodeWorker] Could not resolve course for thumbnail eviction',
+            err,
+            lessonId: targetId,
+          });
+        }
+      } else {
+        invalidateCoursePreviewMeta(targetId);
+        invalidateCourseThumbnailMeta(targetId);
+      }
 
       await job.updateProgress(100);
 

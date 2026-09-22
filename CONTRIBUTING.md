@@ -8,8 +8,8 @@ By participating in this project, you agree to abide by our Code of Conduct. We 
 
 ## 🛠 Development Workflow
 
-1.  **Fork the Repository**: Create a personal fork on GitHub.
-2.  **Clone Locally**: `git clone https://github.com/your-username/lms.git`
+1.  **Get access**: The repository is private (`ai-cactus/lms`); ask a maintainer for access.
+2.  **Clone Locally**: `git clone git@github.com:ai-cactus/lms.git`
 3.  **Create a Branch**: Use descriptive names like `feature/new-ai-pipeline` or `bugfix/auth-redirect`.
 4.  **Install Dependencies**: `npm install`
 5.  **Make Changes**: Ensure your code follows our style guidelines.
@@ -54,8 +54,9 @@ git push origin feature/auth-refactor
 
 ## ✅ Local Verification & CI Policy
 
-Heavy verification runs **locally**, not in CI. GitHub Actions minutes are a hard
-constraint, so CI keeps only what a local hook cannot honestly replace.
+Heavy verification runs **locally**, not in CI. CI time is kept short on purpose —
+Actions minutes are discounted on this plan, so the cost is wall-clock, not money —
+and CI keeps only what a local hook cannot honestly replace.
 
 | Event                          | Runs online                                            | Runs locally                                                    |
 | ------------------------------ | ------------------------------------------------------ | --------------------------------------------------------------- |
@@ -64,6 +65,7 @@ constraint, so CI keeps only what a local hook cannot honestly replace.
 | `git push dev\|staging\|main`  | —                                                        | the above **+ full vitest suite + `next build`** (~5–7 min)       |
 | PR → `dev`                     | Static Checks + Build Check (~5 min)                     | —                                                                 |
 | PR → `staging` / `main`        | + full unit suite + **E2E** + Semgrep/Trivy (~22 min)    | `npm run e2e:local` on demand                                     |
+| PR from `dependabot/**`        | the full tier, as for `staging` / `main` (~22 min)       | —                                                                 |
 | Weekly / on demand             | Semgrep, Trivy, gitleaks full history, SBOM              | —                                                                 |
 | Daily                          | `npm audit` (high+) → auto-issue                         | —                                                                 |
 
@@ -120,7 +122,7 @@ brew install gitleaks   # or: go install github.com/gitleaks/gitleaks/v8@latest
 
 - **TypeScript**: Use strict typing where possible. Avoid `any`.
 - **Next.js**: Follow App Router conventions.
-- **Prisma**: Ensure all schema changes are backed by migrations or documented push steps.
+- **Prisma**: Every schema change ships as a migration (`npm run prisma:migrate:dev`); never use `prisma db push`.
 - **Styling**: Use **Tailwind CSS v4 + shadcn/ui** components for all new pages, features, and UI. Do not add new CSS Modules (`.module.css`) or inline styles; use `lucide-react` for icons and the theme tokens in `src/app/globals.css`. Reuse the shared primitives in `src/components/ui/*`, keep every screen responsive, and follow `docs/ui-migration-pattern.md`.
 - **Logging**: Use the centralized logger in `src/lib/logger.ts`.
 

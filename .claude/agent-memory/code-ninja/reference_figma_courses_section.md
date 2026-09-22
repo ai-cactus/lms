@@ -32,3 +32,5 @@ Mobile 375 frames in this section are all named "web sign up"; `13362:33444` is 
 **Known Figma inconsistencies — do not chase them:** LMS-140 reports the table-header colour as `#2a3144` while LMS-61 and the DOCUMENT HUB frames use `#666d80` (use `#666d80`); button fills vary between `#394ce6` and `#4758e0` while the app token `--primary` is `#4730f7` (use the token); the 4th stat card in LMS-61 has a red border on a yellow fill (copy-paste slip).
 
 See [[reference-figma-lms-v2]] for the same warning applied to DOCUMENT HUB, and [[local-ui-verification]] for driving the running app.
+
+**2026-09-22 list refresh frames:** Video tab `15964:49039`, Reading tab `15964:48711`, "Reading course thumbnail" component `15964:48739` (built as `CourseThumbnail` + `CourseListStatusBadge`). Figma's Inactive pill looks live — product ruled it neutral grey; Reading tab swaps Description for Date Created.

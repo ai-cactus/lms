@@ -324,6 +324,27 @@ export function resolveCoursePosterMeta<T extends object>(
 }
 
 /**
+ * The course row the THUMBNAIL route needs. Same separate-key contract as
+ * {@link resolveLessonPosterMeta}; invalidate via
+ * {@link invalidateCourseThumbnailMeta} wherever any link of the thumbnail
+ * chain (custom thumbnail, preview poster, first lesson's poster) changes.
+ */
+export function resolveCourseThumbnailMeta<T extends object>(
+  courseId: string,
+  load: () => Promise<T | null>,
+): Promise<T | null> {
+  const key = `meta:course-thumbnail:${courseId}`;
+  return resolveCached(
+    metaCache,
+    key,
+    key,
+    getPlaybackCacheTtlSeconds(),
+    load,
+    (value) => value !== null,
+  );
+}
+
+/**
  * Whether this org user may play this course's media.
  *
  * Only a `true` verdict is cached — see the never-cache-the-deny note in the
@@ -378,6 +399,11 @@ export function invalidateCoursePreviewMeta(courseId: string): void {
   metaCache.delete(`meta:course-poster:${courseId}`);
 }
 
+/** Drop a course's cached thumbnail meta after any link of its thumbnail chain changed. */
+export function invalidateCourseThumbnailMeta(courseId: string): void {
+  metaCache.delete(`meta:course-thumbnail:${courseId}`);
+}
+
 /**
  * Drop a cached allow so a revoked enrollment stops playing on the next Range
  * request instead of lagging up to the authz TTL. Keyed on the course, so this
@@ -392,8 +418,8 @@ export function invalidatePlaybackAuthz(organizationUserId: string, courseId: st
  *
  * `private` is sufficient to keep these bytes out of shared caches: it permits
  * storage only in a cache dedicated to a single user. Verified for this
- * deployment — nginx has no `proxy_cache` configured, and Cloudflare sits in
- * front as a *tunnel* rather than a caching edge (and does not cache 206
+ * deployment — there is no reverse proxy between the tunnel and the app, and
+ * Cloudflare sits in front as a *tunnel* rather than a caching edge (and does not cache 206
  * responses by default in any case). `Vary: Cookie` closes the residual where
  * user A logs out and user B logs in on the same browser profile.
  *

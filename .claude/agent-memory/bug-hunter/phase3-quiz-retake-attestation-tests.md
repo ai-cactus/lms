@@ -33,13 +33,9 @@ counter logic in both `learn/[id]/page.tsx` and `WorkerCourseList.tsx`.
   the server silently bypass rate limiting while the test still runs for real
   and fails on "Too many code requests" never appearing. Always export identical
   env vars to both processes for local e2e runs, not just the server.
-- **`tests/e2e/billing-stripe-plan-prices.spec.ts`'s Starter-card price test is a
-  pre-existing, unrelated flake** — `locator('div.relative').filter({ has:
-  locator('#plan-btn-starter') })` is a strict-mode violation locally (matches
-  both the page wrapper div AND the plan card, both having class `relative`).
-  Confirmed unrelated to Phase 3 (no files in that feature area were touched);
-  don't waste time re-diagnosing it against future changes in this area unless
-  asked to fix billing tests specifically. See [[stripe-billing-prices-ssot-tests]].
+- **`billing-stripe-plan-prices.spec.ts`'s old `div.relative` strict-mode flake is
+  FIXED.** The spec now scopes to `div[aria-disabled]`. See
+  [[stripe-billing-prices-ssot-tests]].
 - **Adding a new e2e journey often needs a brand-new seed fixture, not reuse of
   an existing one.** `prisma/seed.ts` fixtures are purpose-built and mutate
   state (enrollment status, quiz attempts) during their own spec — reusing one

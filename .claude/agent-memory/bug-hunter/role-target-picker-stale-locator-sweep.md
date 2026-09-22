@@ -1,6 +1,6 @@
 ---
 name: role-target-picker-stale-locator-sweep
-description: PR #595's RoleTargetPicker broke reminders.spec.ts TC-016 (option→checkbox) undetected for 5 merges; full local suite runs on this box collapse to Postgres ECONNREFUSED past ~100 tests — trust targeted CI-parity slices instead. STALE RECIPE NOTE (2026-09-12): the toggle button text below is outdated — see [[assign-role-label-due-date-tests]]
+description: PR #595's RoleTargetPicker broke reminders.spec.ts TC-016 (option→checkbox) undetected for 5 merges; full local suite runs on this box collapse to Postgres ECONNREFUSED past ~100 tests — trust targeted CI-parity slices instead.
 metadata:
   type: project
 ---
@@ -18,20 +18,16 @@ the related fixture-staleness context this same describe block has produced
 before. `course-role-assignment.spec.ts` (added alongside #595) already had the
 correct interaction and was the reference pattern:
 ```
-await page.getByRole('button', { name: 'A whole role' }).click();
+await page.getByRole('button', { name: 'Roles', exact: true }).click();
 await page.getByRole('button', { name: 'Choose roles' }).click();
 await page.getByRole('checkbox', { name: 'Nurse' }).click();
 await page.getByRole('heading', { name: 'Assign', exact: true, level: 1 }).click(); // closes the overlay
 await expect(page.getByRole('group', { name: 'Assignable roles' })).toBeHidden();
 ```
 
-**⚠️ STALE as of 2026-09-12**: the toggle button text `'A whole role'` above was
-renamed to `'Roles'` (`AssignPublishClient.tsx`) as part of the fix that also
-made the Due Date field render in role mode (it had been wrongly hidden there —
-see [[assign-role-label-due-date-tests]]). Both e2e specs quoted above were
-updated to `page.getByRole('button', { name: 'Roles', exact: true })`. Do not
-reintroduce `'A whole role'` from this snippet — it will 60s-timeout exactly
-like the original TC-016 break this file documents.
+(The toggle was renamed from 'A whole role' to 'Roles' on 2026-09-12; see
+[[assign-role-label-due-date-tests]].)
+
 **A second, independent staleness in the same test wasn't in the original bug
 report**: the pre-submission "current holder" preview assertion
 (`getByText(/will be enrolled now/i)`) no longer matches anything — that phrase

@@ -131,7 +131,7 @@ jobs:
   # (prisma/seed.ts), then runs the e2e suite. BLOCKING: the specs and seed
   # have been hardened for CI, so a failure here fails the PR. The suite bypasses
   # auth rate limiting via E2E_TEST_BYPASS_RATE_LIMIT (double-guarded to non-prod).
-  # Deliberately NOT part of quality-gate.yml: at ~30 min it would stall
+  # Deliberately NOT part of quality-gate.yml: at ~10 min (30 min timeout) it would stall
   # direct-push deploys. It runs here on the PR path instead.
   # ──────────────────────────────────────────────
   e2e:

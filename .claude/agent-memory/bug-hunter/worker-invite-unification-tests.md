@@ -1,6 +1,6 @@
 ---
 name: worker-invite-unification-tests
-description: Test coverage and patterns for the fix/worker-invite unified-invite-flow bug fix (createEnrollmentForUser invite branch, enrollInviteCourses, seat-gated enrollUsers, removeStaff enrollment cleanup)
+description: Test coverage and patterns for the fix/worker-invite unified-invite-flow bug fix (createEnrollmentForUser invite branch, enrollInviteCourses, seat-gated enrollUsers; removeStaff enrollment cleanup since reversed to full retention)
 metadata:
   type: project
 ---
@@ -28,16 +28,11 @@ accept time". Full coverage added/rewritten 2026-07-24:
   `enrollUserForRoleTargets`, via `mock.invocationCallOrder`. The OAuth signIn
   callback's pendingInvite branches had ZERO prior test coverage — this is a
   brand-new describe block, not an update.
-- `src/app/actions/staff.test.ts` (`removeStaff`) — `$transaction` is now the
-  Prisma **array form** (`prisma.$transaction([...])`, not a callback), so the
-  test double is `vi.fn((ops) => Promise.all(ops))` — the individual delegate
-  calls (`enrollment.deleteMany`, `user.update`, `invite.updateMany`) are
-  already-invoked mock promises by the time the array reaches `$transaction`,
-  matching real Prisma array-transaction semantics closely enough for a unit
-  double. New tests cover: only active-status enrollments deleted (terminal
-  ones retained by omission from the filter, not by an explicit "keep" list),
-  pending invites expired (not deleted), and `droppedEnrollmentCount` on the
-  audit metadata.
+- `src/app/actions/staff.test.ts` (`removeStaff`): SUPERSEDED. `removeStaff()` no
+  longer deletes any enrollments. It retains all training records, including in-flight
+  ones, per founder Q23 (`243375f4`). The array-form `$transaction` double
+  (`vi.fn((ops) => Promise.all(ops))`) is still the right pattern for array
+  transactions.
 - `src/app/actions/enrollment.test.ts` / `enrollment.assignment.test.ts` — both
   needed a NEW `organization.findUnique` prisma-mock default (`null`), because
   `enrollUsers` now unconditionally calls `getSeatUsage(organizationId, ...)`
@@ -74,19 +69,10 @@ SPECIFIC branch/outcome each test exercises, not the "happy path" call count.
 
 Related: [[phase2-fix-round-test-patterns]], [[join-invite-critical-fix-regression]].
 
-## Environment: could not execute e2e specs or apply the new migration
+## E2E specs
 
-DB (`localhost:5433`) unreachable and Docker unusable from this WSL2 shell (no
-`docker.sock`, no `docker` binary on the Linux `$PATH` — only the Windows-side
-Docker Desktop binary is visible under `/mnt/c/...`, not invocable here). Two
-new specs were written and validated with `npx playwright test --list` (parses
-cleanly, both tests enumerate) but never actually run:
-`tests/e2e/assign-course-invite.spec.ts` (admin assigns a course to a brand-new
-email → pending invite visible on the assign page → accept via `/join/{token}`
-→ worker logs in → course appears in `/worker/trainings`) and
-`tests/e2e/remove-reinvite-clean-slate.spec.ts` (worker with one in-flight +
-one completed enrollment is removed → in-flight enrollment dropped, completed
-retained → re-invited → accepts → Trainings list shows the clean slate). The
-migration `20260724120000_add_invite_course_assignments` was also never
-applied to any DB in this session — whoever runs these next must
-`prisma migrate deploy` first.
+`tests/e2e/assign-course-invite.spec.ts` exists and runs: admin assigns a course to a
+brand-new email → pending invite → accept via `/join/{token}` → course appears in
+`/worker/trainings`. `remove-reinvite-clean-slate.spec.ts` was deleted in `243375f4`
+and replaced by `tests/e2e/remove-reinvite-retention.spec.ts`, whose behaviour is
+inverted: records are retained, not wiped.

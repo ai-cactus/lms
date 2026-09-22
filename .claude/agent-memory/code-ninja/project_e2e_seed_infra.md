@@ -15,7 +15,7 @@ The Playwright e2e suite runs in CI (`.github/workflows/ci.yml` job `e2e`) again
 
 **Load-bearing product facts the specs depend on:**
 - **Login landing is role-based:** admin → `/dashboard`, worker → `/worker`. A worker with no `organizationId` is bounced to `/onboarding-worker`, so all seeded users MUST have an org.
-- Worker quiz UI is inline in `src/app/learn/[id]/page.tsx`. Options are `string[]`; `correctAnswer` stores the option TEXT. Quiz attaches to the course via `courseId` (worker flow reads `course.quiz`). Option divs carry `data-quiz-option={i}` / `data-selected` (testability hooks added for ENG-020).
-- **Suspected product bug (not fixed):** `assignRetake` (src/app/actions/course.ts) throws `Enrollment is not locked` for any non-`locked` enrollment, yet the `TrainingDetails` kebab shows "Assign Retake" for every enrollment (incl. completed). Menu visibility vs server guard are mismatched.
+- Worker quiz UI lives in `src/app/learn/[id]/LearnClient.tsx`. Options are `string[]`; `correctAnswer` stores the option TEXT. Quiz attaches to the course via `courseId` (worker flow reads `course.quiz`). Option divs carry `data-quiz-option={i}` / `data-selected` (testability hooks added for ENG-020).
+- `assignRetake` (src/app/actions/course.ts) accepts only `locked` enrollments and RETURNS a `refusedReason` for any other status (it no longer throws — see [[gotcha_server_action_refusals_must_return]]). The locked-only rule is correct product behaviour, not a bug.
 
 To validate the seed offline, use the docker `lms-dev-db` (localhost:5433, pw 0951) with a scratch DB — see [[offline-migrations]].

@@ -9,7 +9,7 @@ Context: this batch replaced `isAdminRole` with registry `authorize()`/`can()` o
 routes + 4 document actions, added a worker-portal billing gate (`WorkerLayout` renders
 `WorkerBillingBlockedScreen` when `hasActiveBilling()` is false — missing subscription row
 counts as inactive) plus defense-in-depth on quiz start/submit, and added the org-less
-re-invite relink (`createInvites`/accept route). Full details: `.claude/plans/toasty-wandering-feigenbaum.md`.
+re-invite relink (`createInvites`/accept route).
 
 **The most important finding this session**: the new worker-portal billing gate is
 retroactive risk for EVERY existing e2e spec that seeds its own fresh org via raw `pg` and
@@ -70,11 +70,9 @@ setting `mfaEnabled: true, mfaVerified: false` on the session and asserting 401
 `MFA_REQUIRED` before any Prisma/Stripe call, on top of the per-role 403 matrix.
 
 **Documents RBAC matrix (regression-relevant)**: `document.*` grants are NOT uniform like
-billing — HR has `document.read` ONLY (no create/edit/delete, so HR is denied uploadDocument
-too, not just delete/rename); Finance has NO `document.*` permission at all (not even read —
-`getDocuments` returns `[]`); `clinical_director` has full CRUD. Don't assume "HR can upload
-since it's a manager role" — check `permissions.ts`'s literal per-role array before writing
-the test fixture.
+billing. HR has full `document.*` CRUD. `clinical_director` has create/read/edit but no delete.
+Finance has no `document.*` permission at all (`getDocuments` returns `[]`). Always read
+`permissions.ts`'s literal per-role array before writing the test fixture.
 
 **Fixture-pollution trap (vitest, distinct from the `mockResolvedValueOnce` one already in
 [[billing-phase4-defect-tests]])**: `vi.clearAllMocks()` does NOT clear a `mockRejectedValue`

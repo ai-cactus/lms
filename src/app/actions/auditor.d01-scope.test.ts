@@ -247,9 +247,12 @@ describe('catalogue scope — adopted courses, drafts excluded', () => {
       {
         id: 'c1',
         title: 'Bloodborne Pathogens',
-        thumbnail: null,
+        thumbnailStorageUri: null,
+        previewPosterStorageUri: null,
         status: 'inactive',
         createdAt: new Date('2026-01-01'),
+        updatedAt: new Date('2026-01-01'),
+        lessons: [],
         enrollments: [],
       },
     ]);
@@ -257,6 +260,70 @@ describe('catalogue scope — adopted courses, drafts excluded', () => {
     const rows = await getAuditorCourses();
 
     expect(rows[0].status).toBe('inactive');
+  });
+
+  // The course-list redesign draws the audit table's thumbnail from `type`
+  // (video frame vs. reading tile). It must be both requested from Prisma and
+  // carried through to the returned row, or the audit table falls back to
+  // treating every course as a reading course.
+  it('requests and surfaces each course type on the row', async () => {
+    mockAuth.mockResolvedValue(HR);
+    rawPrismaMock.course.findMany.mockResolvedValue([
+      {
+        id: 'c1',
+        title: 'Bloodborne Pathogens',
+        thumbnailStorageUri: null,
+        previewPosterStorageUri: null,
+        type: 'video',
+        status: 'published',
+        createdAt: new Date('2026-01-01'),
+        updatedAt: new Date('2026-01-01'),
+        lessons: [],
+        enrollments: [],
+      },
+    ]);
+
+    const rows = await getAuditorCourses();
+
+    expect(rawPrismaMock.course.findMany.mock.calls[0][0].select).toMatchObject({ type: true });
+    expect(rows[0].type).toBe('video');
+  });
+
+  // BUG-17: the audit table's video frame is drawn from `thumbnail`, which must
+  // be the access-checked route URL and null when nothing resolves.
+  it('returns the thumbnail route URL for a video course and null otherwise', async () => {
+    mockAuth.mockResolvedValue(HR);
+    const updatedAt = new Date('2026-09-01T00:00:00.000Z');
+    const row = (id: string, type: string, custom: string | null) => ({
+      id,
+      title: id,
+      thumbnailStorageUri: custom,
+      previewPosterStorageUri: null,
+      type,
+      status: 'published',
+      createdAt: updatedAt,
+      updatedAt,
+      lessons: [],
+      enrollments: [],
+    });
+    rawPrismaMock.course.findMany.mockResolvedValue([
+      row('video-1', 'video', 'gcs://lms/system/videos/thumbnails/video-1/1.jpg'),
+      row('video-2', 'video', null),
+      row('reading-1', 'text', null),
+    ]);
+
+    const rows = await getAuditorCourses();
+
+    expect(Object.fromEntries(rows.map((r) => [r.id, r.thumbnail]))).toEqual({
+      'video-1': `/api/courses/video-1/thumbnail?v=${updatedAt.getTime()}`,
+      'video-2': null,
+      'reading-1': null,
+    });
+    expect(rawPrismaMock.course.findMany.mock.calls[0][0].select.lessons).toEqual({
+      orderBy: { order: 'asc' },
+      take: 1,
+      select: { videoPosterStorageUri: true, updatedAt: true },
+    });
   });
 
   it('still narrows the per-course enrollment stats to the caller org', async () => {
@@ -287,9 +354,12 @@ describe('archived courses — the catalogue is read off the un-extended client'
   const ARCHIVED_ROW = {
     id: 'c-archived',
     title: 'Retired Bloodborne Pathogens',
-    thumbnail: null,
+    thumbnailStorageUri: null,
+    previewPosterStorageUri: null,
     status: 'published',
     createdAt: new Date('2026-01-01'),
+    updatedAt: new Date('2026-01-01'),
+    lessons: [],
     enrollments: [{ status: 'completed' }],
   };
 

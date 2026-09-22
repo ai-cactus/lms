@@ -1,25 +1,15 @@
 ---
 name: e2e-local-auth-url-env-trap
-description: ACTIVE (re-confirmed 2026-07-18) — running the e2e suite locally against lms_e2e requires exporting AUTH_URL (not just NEXTAUTH_URL), or NextAuth v5 redirects every successful login to the dead .env origin and every login-dependent test fails with ERR_CONNECTION_REFUSED
+description: Fixed by .env.e2e (AUTH_URL=http://localhost:3005); still bites a raw `npx playwright test` because .env pins AUTH_URL=:3000 — NextAuth v5 then redirects every login to the dead origin (ERR_CONNECTION_REFUSED)
 metadata:
   type: project
 ---
 
-**Update 2026-07-18 (fix/phase-02 branch):** `.env` sets `AUTH_URL=http://localhost:3000`
-again — re-confirmed by direct `cat .env` immediately before an e2e run. The 2026-07-09 note
-below claiming this was resolved/stale is itself now stale; whether `.env` carries `AUTH_URL`
-apparently varies by branch/session. **Always verify current `.env` content before trusting
-either direction of this note** — don't skip the export based on a past "it's fine now" memory.
-Exporting `AUTH_URL=http://localhost:3005` (+ `NEXTAUTH_URL`/`NEXT_PUBLIC_APP_URL`/`APP_URL`)
-inline on the `npm run dev -- -p 3005` command that starts the webServer continues to be the
-reliable fix. See also [[e2e-webserver-dev-lock-conflict]] for a separate, still-current
-local-run gotcha (a stray `:3000` dev server blocks the webServer from starting at all).
-
-**2026-07-09 note (do not treat as current without re-verifying):** `.env` and `.env.local` no
-longer set `AUTH_URL` or `NEXTAUTH_URL` at all (verified via grep on branch `rbac`). A full local
-`npx playwright test --workers=1` run passed with no extra env exported. This did not hold on
-`fix/phase-02` — see the 2026-07-18 update above.
-
+**How to apply (2026-09):** run e2e only through `npm run test:e2e` / `npm run e2e:local`. Both
+load `.env.e2e` (via `scripts/with-e2e-env.sh`), which sets `AUTH_URL=http://localhost:3005`.
+The trap below still bites a raw `npx playwright test`, because `.env` pins
+`AUTH_URL=http://localhost:3000`. See also [[e2e-webserver-dev-lock-conflict]] (a stray `:3000`
+dev server blocks the webServer from starting at all).
 
 Running `npx playwright test tests/e2e` locally (against a dedicated `lms_e2e` Postgres DB,
 `CI=true` forcing workers:1/retries:2) reliably failed the same 6 tests every time — every
@@ -52,8 +42,5 @@ a red herring / side observation from debugging the same symptom before AUTH_URL
 identified — it did not cause the connection-refused cascade (the erroring update transaction
 never committed; `lms` was confirmed untouched throughout via `updated_at` timestamps).
 
-**How to apply:** when running this suite locally, export the **full CI e2e env block from
-`.github/workflows/ci.yml` verbatim** rather than reconstructing it from `.env.example` or
-memory — it is the source of truth and now includes `AUTH_URL`. Do not stop at `NEXTAUTH_URL`
-alone. See also [wsl2-playwright-browser-install](wsl2-playwright-browser-install.md) for the
-separate Chromium-install workaround needed on this sandbox.
+**Original diagnosis context:** the local run above hand-rolled its env instead of using a
+checked-in env file. `.env.e2e` now carries the full block, including `AUTH_URL`.

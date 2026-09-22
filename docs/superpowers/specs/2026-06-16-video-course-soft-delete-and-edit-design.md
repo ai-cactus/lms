@@ -1,7 +1,7 @@
 # Video Course Soft-Delete & Edit — Design
 
 **Date:** 2026-06-16
-**Status:** Approved (pending spec review)
+**Status:** Implemented (`setVideoCourseStatus` in `src/app/actions/video-course.ts`)
 **Area:** System back-office — `/system/video-courses`
 
 ## Problem

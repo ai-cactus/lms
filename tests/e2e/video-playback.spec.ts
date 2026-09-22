@@ -679,4 +679,4 @@ test.describe('Video course playback — mobile viewport', () => {
 // now merged into the single Courses table. The property this section used to
 // guard — posters render as <img>, so a grid of N courses does not fire N
 // preview-video requests — still holds structurally: that table renders
-// thumbnails through next/image (CoursesListClient.tsx), which emits <img>.
+// video thumbnails through next/image (CourseThumbnail.tsx), which emits <img>.

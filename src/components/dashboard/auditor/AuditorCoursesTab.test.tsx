@@ -43,6 +43,7 @@ function makeCourses(count: number) {
     id: `course-${i + 1}`,
     title: `Course ${i + 1}`,
     thumbnail: null,
+    type: 'text',
     status: STATUSES[i % STATUSES.length],
     assignedStaff: 8,
     completionRate: 95,
@@ -150,6 +151,28 @@ describe('AuditorCoursesTab — course status', () => {
     await screen.findByText('Course 1');
 
     expect(screen.getByRole('columnheader', { name: 'Status' })).toBeInTheDocument();
+  });
+});
+
+describe('AuditorCoursesTab — thumbnail', () => {
+  it('renders the reading tile for a text course and the video frame for a video course', async () => {
+    mockGetAuditorCourses.mockResolvedValue([
+      { ...makeCourses(1)[0], id: 'course-reading', title: 'Reading Course', type: 'text' },
+      { ...makeCourses(1)[0], id: 'course-video', title: 'Video Course', type: 'video' },
+    ]);
+    render(<AuditorCoursesTab totalCourses={2} />);
+    await screen.findByText('Reading Course');
+
+    const readingRow = screen.getByText('Reading Course').closest('tr')!;
+    // The reading tile never renders an <img> at all (decorative alt="" images
+    // don't carry the img accessibility role, so querySelector is used rather
+    // than getByRole here).
+    expect(readingRow.querySelector('img')).toBeNull();
+
+    const videoRow = screen.getByText('Video Course').closest('tr')!;
+    // The video thumbnail renders a placeholder <img> (no artwork url) inside
+    // the frame.
+    expect(videoRow.querySelector('img')).not.toBeNull();
   });
 });
 

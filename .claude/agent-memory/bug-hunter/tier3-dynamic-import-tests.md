@@ -1,6 +1,6 @@
 ---
 name: tier3-dynamic-import-tests
-description: Test techniques for Tier 3 5.2 dynamic-import lazy-loading (AuthHeroSlider, staff-csv xlsx, certificate-export jspdf/html-to-image) — next/image SSR limitation, Suspense-fallback proof technique, CertificateModal viewport-overlap bug
+description: Test techniques for Tier 3 5.2 dynamic-import lazy-loading (AuthHeroSlider, staff-csv xlsx, certificate-export jspdf/html-to-image) — next/image SSR limitation, Suspense-fallback proof technique, CertificateModal viewport-overlap bug (since fixed)
 metadata:
   type: project
 ---
@@ -45,18 +45,11 @@ arguments/error-propagation contract in vitest; cover the real dynamic-import + 
 canvas rendering + real download only in a Playwright e2e spec (real Chromium has a real
 canvas).
 
-**Found product bug (pre-existing, NOT caused by Tier 3 5.2, not fixed by bug-hunter)**:
-`CertificateModal` (`src/components/dashboard/training/CertificateModal.tsx`) renders its
-certificate preview card centered via `items-center justify-center` inside a `py-20`
-dialog. At the project's standard e2e/default desktop viewport (1280x720), the scaled
-card (up to ~671px tall) exceeds the ~560px available height, so it renders taller than
-its box and gets pushed up over the fixed top-right "Export PDF"/Close button bar —
-making those buttons unclickable (Playwright reports "subtree intercepts pointer events"
-on click; reproduced with a screenshot showing the white card visually overlapping the
-buttons). `tests/e2e/certificate-export.spec.ts` works around this with
-`test.use({ viewport: { width: 1280, height: 1100 } })` — this is a **test
-accommodation, not a fix**; a real fix (e.g. cap the card's rendered height, or move the
-button bar outside the centered flex flow) should be routed through `code-ninja`.
+**CertificateModal overlap bug (found here) is FIXED.** The certificate preview card used to
+overflow the dialog at 1280x720 and cover the Export PDF/Close buttons. The old 1280x1100
+viewport workaround is gone: `tests/e2e/certificate-export.spec.ts` now asserts the buttons are
+clickable at 1280x720 (guard commit `557a263e`). See
+[[certificate-modal-overlap-fix-regression-test]].
 
 New test files: `src/app/(auth)/components/AuthHeroSlider.test.tsx`,
 `src/app/(auth)/components/AuthHeroSliderContent.test.tsx`,

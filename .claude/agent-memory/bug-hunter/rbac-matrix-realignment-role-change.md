@@ -14,7 +14,7 @@ stale "expected to fail" comment from that spec. Kept the paragraph below only
 as historical record of what the bug looked like pre-fix — do not re-report it.
 
 Tested the RBAC matrix realignment (Finance/Clinical Director → view-only on
-staff; HR/Owner/Supervisor keep full staff CRUD) and in-place role change
+staff; HR/Owner/Admin keep full staff CRUD — Supervisor has since been demoted to read-only) and in-place role change
 (`canChangeRole` in `src/lib/rbac/role-utils.ts`, wired into
 `updateStaffDetails` in `src/app/actions/staff.ts`) on branch `rbac`.
 
@@ -38,7 +38,7 @@ Fix is presumably adding `'user.delete'` to hr's permissions array — not done 
 
 **Gotchas hit while writing these:**
 - Two full false-failure detours (see [[hmr-interference-during-e2e-runs]]) — don't repeat that debugging path; the real bug is narrow (see above), everything else in the matrix works.
-- `EditStaffModal`'s post-save "Staff details updated successfully" text is only visible for ~1s before the modal auto-closes (`setTimeout(...1000)` in the component) — asserting on that transient text directly is racy under dev-server compile latency. Assert `dialog` becomes hidden instead (generous timeout), not the intermediate text.
+- `EditStaffModal` was deleted in `2193a5f5`. Role change is now `ChangeRoleModal.tsx`, and profile edit is `EditProfileModal.tsx`.
 - `authenticate()` (src/app/actions/auth.ts) looks up the role fresh from the DB on every login attempt and routes accordingly — plain `/login` (no `?worker=true`) correctly routes a freshly-demoted-to-worker or freshly-promoted-to-admin account to the right portal; no need for the `?worker=true` query param in role-change e2e re-login assertions.
 - `getStaffUsers()` excludes `role: 'owner'` from the staff list, but an owner CAN still view/edit their own profile via direct `/dashboard/staff/{id}` navigation (`getStaffDetails` has no self-exclusion) — used this for the self-role-change-blocked e2e test.
-- `EditStaffModal`'s Role `<Field>` wraps its content in a `<>` Fragment in both the editable and read-only branches, so `Field`'s `cloneElement`-based `htmlFor`/id wiring doesn't reach the actual Select/Input (same class of issue as [[onboarding-invite-settings-phase-tests]]'s Radix Select id-clone note) — don't use `getByLabel('Role')`; scope via `dialog.getByRole('combobox')` (present only when editable) or assert the read-only caption text instead.
+

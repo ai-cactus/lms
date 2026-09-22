@@ -29,8 +29,8 @@ minutes of study.
 
 There is already one place that gets this wrong: the `course_completed` PostHog
 capture in `src/app/actions/enrollment.ts` sends
-`total_minutes: (Date.now() - startedAt) / 60_000`, which is elapsed calendar
-time. Analytics only — do not copy the pattern into UI.
+`minutes_since_assigned` (renamed from `total_minutes`; see
+`src/lib/analytics/events.ts`), which is elapsed calendar time. Analytics only — do not copy the pattern into UI.
 
 **Why:** the 2026-09-17 course-detail redesign shipped a stat card the Figma
 frame labels "Average Duration". The maintainer ruled the label stands but the

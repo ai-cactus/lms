@@ -24,8 +24,9 @@ BillingPausedBanner.tsx` (rendered by the dashboard layout on every page while p
 `OverviewTab.tsx`'s own paused block use the EXACT SAME copy `"Your subscription is paused"`
 and both render a `"Continue Plan"` button — so `page.getByText(...)`/`getByRole('button',
 {name:'Continue Plan'})` match 2+ elements once paused-state UI is fully loaded. The banner
-is always first in DOM order (rendered before `{children}` in the layout), so `.last()`
-reliably targets the page's own element. For a final-state assertion after a mutation, don't
+is always first in DOM order (rendered before `{children}` in the layout), but prefer scoping by
+heading role or unique copy over `.first()`/`.last()`: on `?tab=subscription` the same text renders
+3× (see [[billing-cancel-resume-seats-e2e-fixes]]). For a final-state assertion after a mutation, don't
 assert on the shared banner text (it's driven by real unmocked server-rendered DB state and
 won't change from client-side route mocks) — assert on OverviewTab-only unique copy instead,
 e.g. `"All your data is safely stored until you continue your plan."` vs the banner's
@@ -38,7 +39,7 @@ event by default) times out even once the URL already matches. Use `expect(page)
 (polling assertion, no lifecycle wait) instead.
 
 **e2e seeding:** for billing-state variants beyond the stock seed (`prisma/seed.ts`'s
-`admin@test.com` has an active professional sub with a real `stripeSubscriptionId`, i.e.
+`admin@test.com` has an active growth sub with a real `stripeSubscriptionId`, i.e.
 `hasLiveSubscription=true`), seed fresh orgs via raw `pg` Client (same pattern as
 `rbac-role-change.spec.ts`) — `subscriptions` table needs `stripe_subscription_id` (unique,
 NOT NULL) and `stripe_price_id` (NOT NULL) even for a throwaway row; a paused subscription

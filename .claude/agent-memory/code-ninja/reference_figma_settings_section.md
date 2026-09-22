@@ -16,4 +16,4 @@ Every atomic value in these frames is `1.125 x` a clean integer (31.5→28, 20.2
 
 **Card kit:** these frames use kit 1 (the non-uppercase grey-head kit), but with its own hexes — card `rounded-[16px] border-[#eceef2]`, table head `bg-[#f9fafb]` with 14px medium `#667085` heads, **no row dividers and no row hover**. Not the newer uppercase 12px/`#e2e8f0` kit.
 
-**Designed but deliberately not built** (see [[figma_settings_deviations]] for the reasoning): the per-row empty 32px action button in the users table, the "Super Admin is a Theraptly-internal role…" footnote under the roles matrix, and the full 4-sided `#f0f2f5` box stroke on the tab strip.
+**Designed but deliberately not built:** the per-row empty 32px action button in the users table, the "Super Admin is a Theraptly-internal role…" footnote under the roles matrix, and the full 4-sided `#f0f2f5` box stroke on the tab strip.

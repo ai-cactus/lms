@@ -11,8 +11,8 @@
  * getCorrelationId() returns undefined and the logger simply omits the field.
  *
  * This module depends on `node:async_hooks` and therefore MUST only be imported
- * from the Node.js server runtime (never a client component or the Edge
- * middleware). It registers itself as the logger's correlation-ID provider on
+ * from the Node.js server runtime (never a client component or an Edge-runtime
+ * bundle). It registers itself as the logger's correlation-ID provider on
  * load, so importing it once on the server (see src/instrumentation.ts) is
  * enough for logs emitted within a runWithCorrelationId() scope to carry the ID.
  */

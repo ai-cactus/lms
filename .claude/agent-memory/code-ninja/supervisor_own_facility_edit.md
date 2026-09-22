@@ -11,9 +11,10 @@ role no `facility.edit` and the RBAC review document calls Supervisor read-only
 org-wide. The grant is narrowed to name/type/address and never allows
 reassigning the facility's supervisor.
 
-**Why:** PROF-002 in `multi_facility_notes.pdf` (the same source as the
-dashboard metric definitions — see [[dashboard-metrics-glossary]]) explicitly
-requires supervisors to maintain their own facility's details. The RBAC
+**Why:** PROF-002 (from the multi-facility product notes — the same source as
+the dashboard metric definitions, see [[dashboard-metrics-glossary]]; recorded in
+code at `updateFacility` in `src/app/actions/organization.ts` and
+`src/app/actions/facility.test.ts`) explicitly requires supervisors to maintain their own facility's details. The RBAC
 demotion was about ORG-wide scope; this exception is facility-scoped, which is
 the axis the registry cannot express (`facility.read` is held by every role —
 scope, not verbs, is what separates the tiers; see `src/lib/facility/scope.ts`).

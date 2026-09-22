@@ -6,8 +6,17 @@ import { getOrCreateSystemUser } from '@/lib/video/system-user';
 import { objectExists } from '@/lib/storage';
 import {
   invalidateCoursePreviewMeta,
+  invalidateCourseThumbnailMeta,
   invalidateLessonPlaybackMeta,
 } from '@/lib/video/playback-cache';
+import { extractAndUploadPoster } from '@/lib/video/poster-extraction';
+import { CUSTOM_THUMBNAIL_KEY_PREFIX } from '@/lib/video/thumbnail';
+import {
+  deleteReplacedCustomThumbnail,
+  findManagedVideoCourse,
+  refreshCourseThumbnailSurfaces,
+  writeCourseThumbnail,
+} from '@/lib/video/custom-thumbnail';
 import type { ParsedQuiz } from '@/lib/video/types';
 import { revalidatePath, revalidateTag } from 'next/cache';
 import { logger } from '@/lib/logger';
@@ -358,6 +367,7 @@ export async function updateVideoCourse(
     if (target.targetType === 'lesson') invalidateLessonPlaybackMeta(target.targetId);
     else invalidateCoursePreviewMeta(target.targetId);
   }
+  if (videoTargets.length) invalidateCourseThumbnailMeta(courseId);
 
   for (const target of videoTargets) {
     try {
@@ -492,4 +502,94 @@ export async function verifyGlobalVideoMedia(): Promise<VerifyMediaResult> {
   logger.info({ msg: '[video] verify media complete', checked, missing });
   revalidatePath('/system/video-courses');
   return { checked, missing };
+}
+
+export type VideoCourseThumbnailResult = { success: true } | { success: false; error: string };
+
+/**
+ * ffmpeg budget for a regenerate. It reads one keyframe over a signed URL, so
+ * this is generous; the cap keeps a stalled storage read from pinning a Server
+ * Action — and the Cloudflare gateway in front of it — indefinitely.
+ */
+const REGENERATE_TIMEOUT_MS = 45_000;
+
+/**
+ * Sets a video course's custom thumbnail to a fresh frame of its course video
+ * (the first lesson by order — the one the player opens).
+ */
+export async function regenerateVideoCourseThumbnail(
+  courseId: string,
+): Promise<VideoCourseThumbnailResult> {
+  if (!(await verifySystemAdminCookie())) return { success: false, error: 'Unauthorized' };
+
+  const course = await findManagedVideoCourse(courseId);
+  if (!course) return { success: false, error: 'Course not found' };
+
+  const lesson = await prisma.lesson.findFirst({
+    where: { courseId },
+    orderBy: { order: 'asc' },
+    select: { id: true, videoStorageUri: true, videoDurationSeconds: true, mediaStatus: true },
+  });
+  if (!lesson?.videoStorageUri) {
+    return { success: false, error: 'This course has no course video to take a frame from.' };
+  }
+  if (lesson.mediaStatus !== 'ready') {
+    return {
+      success: false,
+      error:
+        'The course video is still processing or failed to process. Try again once it is ready.',
+    };
+  }
+
+  let storageUri: string;
+  try {
+    storageUri = await extractAndUploadPoster(lesson.videoStorageUri, lesson.videoDurationSeconds, {
+      timeoutMs: REGENERATE_TIMEOUT_MS,
+      keyPrefix: `${CUSTOM_THUMBNAIL_KEY_PREFIX}${courseId}/`,
+    });
+  } catch (err) {
+    logger.error({
+      msg: '[video-thumbnail] Frame extraction failed',
+      err,
+      courseId,
+      lessonId: lesson.id,
+    });
+    return { success: false, error: 'Could not take a frame from the course video.' };
+  }
+
+  try {
+    await writeCourseThumbnail(courseId, storageUri);
+  } catch (err) {
+    logger.error({ msg: '[video-thumbnail] Failed to save regenerated thumbnail', err, courseId });
+    await deleteReplacedCustomThumbnail(storageUri, courseId);
+    return { success: false, error: 'Failed to save the thumbnail.' };
+  }
+
+  refreshCourseThumbnailSurfaces(courseId);
+  await deleteReplacedCustomThumbnail(course.thumbnailStorageUri, courseId);
+  logger.info({ msg: '[video-thumbnail] Thumbnail regenerated', courseId, lessonId: lesson.id });
+  return { success: true };
+}
+
+/** Drops a video course's custom thumbnail, restoring the automatic chain. */
+export async function removeCustomVideoCourseThumbnail(
+  courseId: string,
+): Promise<VideoCourseThumbnailResult> {
+  if (!(await verifySystemAdminCookie())) return { success: false, error: 'Unauthorized' };
+
+  const course = await findManagedVideoCourse(courseId);
+  if (!course) return { success: false, error: 'Course not found' };
+  if (!course.thumbnailStorageUri) return { success: true };
+
+  try {
+    await writeCourseThumbnail(courseId, null);
+  } catch (err) {
+    logger.error({ msg: '[video-thumbnail] Failed to remove custom thumbnail', err, courseId });
+    return { success: false, error: 'Failed to remove the thumbnail.' };
+  }
+
+  refreshCourseThumbnailSurfaces(courseId);
+  await deleteReplacedCustomThumbnail(course.thumbnailStorageUri, courseId);
+  logger.info({ msg: '[video-thumbnail] Custom thumbnail removed', courseId });
+  return { success: true };
 }

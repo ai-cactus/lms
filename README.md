@@ -34,14 +34,14 @@ LMS is built on a modern, scalable stack:
 ### 📋 Prerequisites
 
 - **Node.js**: v20 or later
-- **Postgres**: v14 or later
+- **Postgres**: v14 or later with the `pgvector` extension (the Docker stacks use `pgvector/pgvector:pg16`)
 - **Google Cloud Platform**: Active project with Vertex AI API enabled (for AI features).
 
 ### 📥 Installation
 
 ```bash
 # Clone the repository
-git clone https://github.com/theraptly/lms.git
+git clone git@github.com:ai-cactus/lms.git
 cd lms
 
 # Install dependencies
@@ -64,8 +64,8 @@ Refer to [.env.example](.env.example) for detailed descriptions of each required
 # Generate Prisma Client
 npx prisma generate
 
-# Synchronize schema (Development)
-npx prisma db push
+# Apply migrations (Development) — never use `prisma db push`
+npx prisma migrate dev
 
 # (Optional) Seed the database with sample courses
 set -a && source .env && source .env.local && set +a

@@ -1,6 +1,6 @@
 ---
 name: dashboard-single-facility-scope-tests
-description: Cross-branch dashboard parity test suite (fix/dashboard-single-facility-scope) — sabotage-proof pattern, e2e HR-authored-course fixture, AVG-vs-round finding, confirmed-still-open getCourses org-pin gap
+description: Cross-branch dashboard parity test suite (fix/dashboard-single-facility-scope) — sabotage-proof pattern, e2e HR-authored-course fixture, AVG-vs-round finding, getCourses org-pin gap (since fixed, c541c48c)
 metadata:
   type: project
 ---
@@ -58,12 +58,8 @@ worth remembering rather than re-investigating.
   via `page.getByText(label, {exact:true}).locator('xpath=following-sibling::p[1]')`
   — the admin dashboard's summary cards are `<p>{label}</p><p>{value}</p>` sibling
   pairs with Tailwind-bracket classes that are painful to target with CSS.
-- **Confirmed still open (per plan, do NOT fix):** `course.ts`'s `getCourses`
-  `ownCounts` groupBy (`where: { course: authoredWhere, ...facilityFilter }`,
-  around line 155) still has no `organizationUser: { organizationId }` pin,
-  unlike its sibling `adoptedCounts` query three lines below which does. Same
-  bug class as this PR fixed, deliberately out of scope (`getCourses` "just
-  consolidated across seven PRs, stable").
+- **Since fixed (`c541c48c`):** `getCourses`' `ownCounts` groupBy now pins the
+  learner with `organizationUser: { organizationId }`, the same as `adoptedCounts`.
 - An unrelated, unrequested product change appeared mid-session in
   `src/components/dashboard/training/TrainingDashboard.tsx` (heading `"My
   Courses"` → `"Courses"`, same D3 rename as `MyCoursesTable.tsx` but a

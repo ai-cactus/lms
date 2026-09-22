@@ -63,7 +63,7 @@ the two can disagree (Server Action says land on X, middleware then re-routes X 
 combination is exactly what triggers this class of crash. Either the Server Action should
 compute the FINAL correct destination itself (skip the middleware round-trip), or this needs
 a real Next.js-level fix; either way this is a `code-ninja` fix, not a test fix. See
-[[onboarding-invite-settings-phase-tests]] and [[project-rbac-proxy-bug]] for other
+[[onboarding-invite-settings-phase-tests]] for other
 proxy/RBAC-adjacent regressions found by this project's e2e suite.
 
 **This is not a brand-new failure mode — the WORKER side of the exact same gate already
@@ -92,7 +92,6 @@ Server Action POSTs (detected via the `next-action` header), deferring them to t
 GET/RSC navigation that follows — auth/role/MFA gates are deliberately NOT deferred, since
 those must still deny the action itself. Re-ran the FULL e2e suite from a clean slate
 (fresh prod build, reseed, Redis flush) after the fix: **137 passed, 1 flaky (self-recovered
-on retry, unrelated pre-existing signup-form locator ambiguity — see
-[[local-production-build-e2e-run]]), 3 skipped, 0 hard failures** out of 141 tests — both
+on retry, unrelated pre-existing signup-form locator ambiguity), 3 skipped, 0 hard failures** out of 141 tests — both
 previously-failing files (`onboarding-wizard.spec.ts`, `rbac-removed-staff-login.spec.ts`)
 fully green, confirming the fix and no new regressions from the proxy/auth-action changes.

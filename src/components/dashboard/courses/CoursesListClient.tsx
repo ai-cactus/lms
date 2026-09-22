@@ -47,6 +47,8 @@ import { checkCourseGenerationJobV46 } from '@/app/actions/course-ai-v4.6';
 import { clearPendingGeneration, readPendingGeneration } from '@/lib/course/pending-generation';
 import { deleteCourse, updateCourse } from '@/app/actions/course';
 import BillingGateModal from '@/components/dashboard/billing/BillingGateModal';
+import CourseListStatusBadge from '@/components/dashboard/courses/CourseListStatusBadge';
+import CourseThumbnail from '@/components/dashboard/courses/CourseThumbnail';
 import {
   Plus,
   Search,
@@ -60,7 +62,6 @@ import {
   X,
   UserPlus,
   FileText,
-  Play,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { logger } from '@/lib/logger';
@@ -337,13 +338,23 @@ interface CoursesListClientProps {
   viewerRole: Role;
 }
 
-/** Design maps the platform's two course types onto Video / Reading Course tabs. */
+/** Design maps the platform's two course types onto the Video / Reading Courses tabs. */
 type CourseTypeTab = 'video' | 'slides';
 
 const COURSE_TYPE_BY_TAB: Record<CourseTypeTab, string> = {
   video: 'video',
   slides: 'text',
 };
+
+const COURSE_TABLE_COLUMN_COUNT = 5;
+
+function formatCreatedDate(createdAt: Date | string): string {
+  return new Date(createdAt).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
 
 const TAB_TRIGGER_CLASS =
   '-mb-px flex-none rounded-none border-0 border-b-2 border-transparent bg-transparent px-0.5 pb-2.5 text-sm font-medium text-[#818898] shadow-none after:hidden hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:font-semibold data-[state=active]:text-primary data-[state=active]:shadow-none';
@@ -463,6 +474,8 @@ export default function CoursesListClient({
         course.type === COURSE_TYPE_BY_TAB[activeTab] && course.title.toLowerCase().includes(query),
     );
   }, [courseList, searchQuery, activeTab]);
+
+  const isVideoTab = activeTab === 'video';
 
   const totalPages = Math.ceil(filteredCourses.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
@@ -646,10 +659,10 @@ export default function CoursesListClient({
                 className="h-auto w-full justify-start gap-8 rounded-none border-b border-[#f0f2f5] bg-transparent p-0"
               >
                 <TabsTrigger value="video" className={TAB_TRIGGER_CLASS}>
-                  Video <span className={TAB_COUNT_CLASS}>{tabCounts.video}</span>
+                  Video Courses <span className={TAB_COUNT_CLASS}>{tabCounts.video}</span>
                 </TabsTrigger>
                 <TabsTrigger value="slides" className={TAB_TRIGGER_CLASS}>
-                  Reading Course <span className={TAB_COUNT_CLASS}>{tabCounts.slides}</span>
+                  Reading Courses <span className={TAB_COUNT_CLASS}>{tabCounts.slides}</span>
                 </TabsTrigger>
               </TabsList>
             </Tabs>
@@ -669,20 +682,30 @@ export default function CoursesListClient({
             </div>
           </div>
 
+          {/* Widths are fixed so long titles truncate instead of pushing the
+              card sideways. The third column only appears from xl: inside the
+              dashboard shell `lg` is narrower than `md`. */}
           <Table className="table-fixed">
             <TableHeader>
               <TableRow className="border-0 hover:bg-transparent">
-                <TableHead className={cn(headCls, 'rounded-l-[9px] md:w-[34%]')}>
-                  Course Name
-                </TableHead>
-                <TableHead className={cn(headCls, 'hidden md:table-cell md:w-[12%]')}>
+                <TableHead className={cn(headCls, 'rounded-l-[9px]')}>Course Name</TableHead>
+                <TableHead className={cn(headCls, 'hidden md:table-cell md:w-[148px]')}>
                   Assigned Staff
                 </TableHead>
-                <TableHead className={cn(headCls, 'hidden lg:table-cell lg:w-[42%]')}>
-                  Description
+                {isVideoTab ? (
+                  <TableHead className={cn(headCls, 'hidden xl:table-cell xl:w-[26%]')}>
+                    Description
+                  </TableHead>
+                ) : (
+                  <TableHead className={cn(headCls, 'hidden xl:table-cell xl:w-[160px]')}>
+                    Date Created
+                  </TableHead>
+                )}
+                <TableHead className={cn(headCls, 'hidden sm:table-cell sm:w-[136px]')}>
+                  Status
                 </TableHead>
                 <TableHead
-                  className={cn(headCls, 'w-[56px] rounded-r-[9px] text-right md:w-[12%]')}
+                  className={cn(headCls, 'w-[56px] rounded-r-[9px] text-right md:w-[88px]')}
                 >
                   Action
                 </TableHead>
@@ -700,84 +723,61 @@ export default function CoursesListClient({
                     >
                       <TableCell className={cn(cellCls, 'px-2 md:px-[18px]')}>
                         <div className="flex items-center gap-3 sm:gap-[18px]">
-                          {/* Design 15522:271922 — a 78x47 rectangular frame, not
-                              the old 40x40 square. The image fills it
-                              (Figma scaleMode=FILL) under the design's 40% teal
-                              wash. Narrower on small screens so the row stays
-                              compact. */}
-                          <div className="relative h-[34px] w-[56px] shrink-0 overflow-hidden bg-[#f1f5f9] sm:h-[47px] sm:w-[78px]">
-                            {course.thumbnail ? (
-                              <>
-                                <Image
-                                  src={course.thumbnail}
-                                  alt=""
-                                  fill
-                                  aria-hidden="true"
-                                  sizes="78px"
-                                  className="object-cover"
-                                />
-                                {/* The wash belongs to the artwork. Over the
-                                    placeholder mark it would tint an icon the
-                                    design never drew. */}
-                                <span
-                                  className="absolute inset-0 bg-[#2c8f88]/40"
-                                  aria-hidden="true"
-                                />
-                              </>
-                            ) : (
-                              // No artwork: centre the placeholder mark rather
-                              // than stretching it to the frame's aspect ratio.
-                              <span className="flex size-full items-center justify-center">
-                                <Image
-                                  src="/images/icon-course-blue.svg"
-                                  alt=""
-                                  width={24}
-                                  height={24}
-                                  aria-hidden="true"
-                                />
-                              </span>
-                            )}
-                            {course.type === 'video' && (
-                              <span
-                                className="absolute inset-0 flex items-center justify-center"
-                                aria-hidden="true"
-                              >
-                                <span className="flex size-[11px] items-center justify-center rounded-full border-[0.5px] border-white/40 bg-white/20 shadow-[0px_1px_6px_0px_rgba(13,13,18,0.25)] backdrop-blur-[5px] sm:size-[13px]">
-                                  <Play
-                                    className="size-[5px] fill-white text-white sm:size-[6px]"
-                                    strokeWidth={0}
-                                  />
-                                </span>
-                              </span>
-                            )}
+                          <CourseThumbnail type={course.type} thumbnail={course.thumbnail} />
+                          <div className="flex min-w-0 flex-col gap-1">
+                            {/* The thumbnail leaves the title little room, so it
+                                truncates — `title` gives the full name back on
+                                hover. */}
+                            <span
+                              title={course.title}
+                              className="truncate text-[15px] font-semibold tracking-[0.35px] text-[#0d0d12] sm:text-[17.5px]"
+                            >
+                              {course.title}
+                            </span>
+                            {/* The Status column is dropped below sm, so the
+                                badge moves under the title rather than
+                                disappearing. */}
+                            <CourseListStatusBadge
+                              status={course.status}
+                              enrollmentsCount={course.enrollmentsCount}
+                              className="sm:hidden"
+                            />
                           </div>
-                          {/* The 78px thumbnail leaves the title less room than
-                              the old 40px square did, so it truncates sooner —
-                              `title` gives the full name back on hover, as the
-                              Role and Facility columns already do. */}
-                          <span
-                            title={course.title}
-                            className="truncate text-[15px] font-semibold tracking-[0.35px] text-[#0d0d12] sm:text-[17.5px]"
-                          >
-                            {course.title}
-                          </span>
                         </div>
                       </TableCell>
                       <TableCell className={cn(cellCls, 'hidden md:table-cell')}>
                         {course.enrollmentsCount}
                       </TableCell>
-                      <TableCell
-                        className={cn(
-                          cellCls,
-                          'hidden px-[18px] text-text-secondary lg:table-cell',
-                        )}
-                      >
-                        <span
-                          className="block truncate"
-                          title={course.description?.trim() || undefined}
+                      {isVideoTab ? (
+                        <TableCell
+                          className={cn(
+                            cellCls,
+                            'hidden px-[18px] text-text-secondary xl:table-cell',
+                          )}
                         >
-                          {course.description?.trim() || '—'}
-                        </span>
+                          <span
+                            className="block truncate"
+                            title={course.description?.trim() || undefined}
+                          >
+                            {course.description?.trim() || '—'}
+                          </span>
+                        </TableCell>
+                      ) : (
+                        <TableCell
+                          className={cn(
+                            cellCls,
+                            'hidden px-[18px] whitespace-nowrap text-text-secondary xl:table-cell',
+                          )}
+                          suppressHydrationWarning
+                        >
+                          {formatCreatedDate(course.createdAt)}
+                        </TableCell>
+                      )}
+                      <TableCell className={cn(cellCls, 'hidden px-2 sm:table-cell md:px-[18px]')}>
+                        <CourseListStatusBadge
+                          status={course.status}
+                          enrollmentsCount={course.enrollmentsCount}
+                        />
                       </TableCell>
                       <TableCell
                         className={cn(cellCls, 'overflow-hidden px-1 md:px-2 md:pr-[18px]')}
@@ -799,7 +799,7 @@ export default function CoursesListClient({
                 <EmptyTableState
                   message="No courses found."
                   subMessage="Try adjusting your search or create a new course."
-                  colSpan={4}
+                  colSpan={COURSE_TABLE_COLUMN_COUNT}
                   asTableRow
                 />
               )}

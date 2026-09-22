@@ -1,11 +1,13 @@
 # Remediation Status — Audit Findings
 
-> **⚠ STALE as of 2026-08-10 — verify against code before acting on any row.**
+> **⚠ Verify against code before acting on any row.**
 > This document was accurate when written (2026-07-06) and drifted as later waves
 > landed. A re-verification during the August 2026 pass found **four** rows
 > reporting work as open or deferred that was in fact already done: **F-013**,
-> **F-024**, **F-034** and **F-058**. Corrections, with evidence, are in
+> **F-024**, **F-034** and **F-058**. Those rows, and the nginx-related F-019/F-043
+> rows, were corrected on 2026-09-21; the evidence is in
 > [`AUDIT-2026-08.md`](./AUDIT-2026-08.md) → "Corrections to the 2026-07 register".
+> Findings F-070 onward are tracked in `AUDIT-2026-08.md`, not here.
 >
 > The cost of this was concrete: it sent a later engineer toward re-implementing
 > finished features three times. If you are picking up an item below, confirm the
@@ -42,18 +44,18 @@ Legend: **✅ Fixed** · **📋 Ops checklist** (in [`../deployment.md`](../depl
 | F-010 | ✅ Fixed | `getEnrollmentQuizResult` org-scoped; answer-key leak closed; test added. |
 | F-011 | ✅ Fixed | `xlsx` pinned to patched SheetJS 0.20.3; high advisories → 0; untrusted-parse hardening. |
 | F-012 | ✅ Fixed | Shared `guardApiSession`/`requireActionSession` guard; applied to quiz + all billing routes. |
-| F-013 | ⏸ Deferred (partial) | The F-012 guard is the building block; a full default-deny wrapper across all 50 routes is a broad mechanical sweep — recommend as a follow-up now that the guard exists. |
+| F-013 | ✅ Fixed (corrected 2026-08) | Authentication moved into the proxy matcher (`/api/:path*` in `src/proxy.ts`) with two documented exemption lists, so a new route is closed by default. See `AUDIT-2026-08.md` → Corrections. |
 | F-014 | ✅ Fixed | Stripe webhook dedupes by `event.id` (new table) + returns 5xx on retryable failure. |
 | F-015 | 🏗 Rewrite | Separate worker service is a rewrite item. F-005 makes worker liveness reliable in the meantime. |
 | F-016 | 🏗 Rewrite | Moving all heavy work off the request path is the rewrite's core. Partial: upload caps + AI rate limits landed (F-017/F-018). |
 | F-017 | ✅ Fixed | Upload size caps on document + wizard paths. |
 | F-018 | ✅ Fixed | Per-user AI rate limits on generation + PHI scan. |
-| F-019 | ✅ Fixed | Security headers in `next.config.ts` and nginx (both blocks). |
+| F-019 | ✅ Fixed | Security headers in `next.config.ts` (the only place they are set — nginx is not in the request path; see `deployment.md` §2.3). |
 | F-020 | ✅ Fixed | `EmailMessage` delivery tracking; failed sends no longer marked delivered; sweep retry pre-pass. |
 | F-021 | ✅ Fixed | All non-reminder sends recorded on success/failure via `sendMailTracked`. |
 | F-022 | ✅ Fixed | Seat limits enforced at invite-create and race-safely at invite-accept. |
 | F-023 | ✅ Fixed | hCaptcha wired into public POSTs; inert until env keys set. |
-| F-024 | ⏸ Deferred (decision) | Making the rate-limiter fail-closed on Redis outage trades availability for security — needs a product call (recommend fail-closed for auth paths only). |
+| F-024 | ✅ Fixed (corrected 2026-08) | `failClosed` is implemented in `checkRateLimit` and `checkRateLimitOnly` and applied on the auth paths. See `AUDIT-2026-08.md` → Corrections. |
 | F-025 | 📋 Ops checklist | Encryption at rest — infra + a `DocumentVersion.content` encrypt-or-drop decision. |
 | F-026 | 🏗 Rewrite | Prisma singleton/pool rework is high-blast-radius and part of the data-layer rebuild; the pooled/direct-URL split is specified in the rebuild data spec. |
 | F-027 | ✅ Fixed | Missing FK indexes + RAG HNSW index added (migration). |
@@ -68,7 +70,7 @@ Legend: **✅ Fixed** · **📋 Ops checklist** (in [`../deployment.md`](../depl
 | ID | Status | Notes |
 |----|--------|-------|
 | F-033 | ✅ Fixed | Login throttle now inside the credentials `authorize()` (per-IP + per-account), not just the action. |
-| F-034 | 🔐 RBAC | Role checks on course/lesson mutators — owned by the RBAC effort. |
+| F-034 | ✅ Fixed (corrected 2026-08) | The RBAC registry (`can()` / `course.create|edit|delete`) guards the core course mutators. See `AUDIT-2026-08.md` → Corrections. |
 | F-035 | ✅ Fixed | Proxy decodes JWTs with the same secret the encoder uses. |
 | F-036 | ⏸ Deferred (decision) | JWT fail-open-on-DB-error is a deliberate availability tradeoff; changing it needs a grace-window/revocation-epoch decision. |
 | F-037 | ✅ Fixed | Rate limits added to both password-reset request and invite-accept. |
@@ -77,7 +79,7 @@ Legend: **✅ Fixed** · **📋 Ops checklist** (in [`../deployment.md`](../depl
 | F-040 | ✅ Fixed | Portal-originated pause now expires. |
 | F-041 | ✅ Fixed | Stripe client is a null-safe lazy proxy; billing routes use `getStripeClient()`. |
 | F-042 | ✅ Fixed | Fail-fast env validation at boot. |
-| F-043 | ✅ Fixed (files) | nginx/tunnel consistency + headers in-repo; **requires the documented ops apply step** (deployment.md §2.3). |
+| F-043 | ✅ Resolved by withdrawal | The tunnel routes straight to the app; nginx is not used and `lms2_nginx.conf` was deleted 2026-08-10. No ops step remains (`deployment.md` §2.3). |
 | F-044 | ✅ Fixed | MinIO image pinned (verify-digest note in deployment.md). |
 | F-045 | ✅ Fixed | Reminder sweep keeps the latest attempt per enrollment. |
 | F-046 | 🏗 Rewrite | Caching layer — no infra exists today; partial caching risks stale data. Rewrite Phase 2. |
@@ -97,7 +99,7 @@ Legend: **✅ Fixed** · **📋 Ops checklist** (in [`../deployment.md`](../depl
 |----|--------|-------|
 | F-056 | 🔐 RBAC | System-admin real accounts + MFA — RBAC effort. |
 | F-057 | ✅ Fixed | Forced reset derives email from session, not the URL. |
-| F-058 | ⏸ Deferred | bcrypt cost standardization needs a rehash-on-login migration strategy. |
+| F-058 | ✅ Mostly fixed (corrected 2026-08) | `src/lib/bcrypt-config.ts` centralises `BCRYPT_COST = 12`; `create-auth-instance.ts` re-hashes on successful login. See `AUDIT-2026-08.md` → Corrections. |
 | F-059 | ✅ Fixed | Password reset + change bump `sessionVersion`, invalidating other sessions (legacy-token guard prevents mass logout). |
 | F-060 | ✅ Fixed | Committed dev credentials/PII scrubbed from `.claude/agent-memory/**` (rotate dev DB password — deployment.md). |
 | F-061 | ⏸ Deferred | Job-poller consolidation — frontend cleanup; low risk, deferred. |
@@ -108,13 +110,13 @@ Legend: **✅ Fixed** · **📋 Ops checklist** (in [`../deployment.md`](../depl
 | F-066 | ✅ Fixed | Embeddings call has a timeout. |
 | F-067 | ✅ Fixed | Correlation IDs in logs; invite email masks address + drops tokenized link. |
 | F-068 | 🏗 Rewrite | God-file decomposition is pure refactor risk with no compliance benefit — do during the rebuild. |
-| F-069 | ✅ Fixed | Stale `phi-redactor.md` corrected; `system-architecture.md` flagged. |
+| F-069 | ✅ Fixed | Stale `phi-redactor.md` corrected; `system-architecture.md` flagged. Both were deleted on 2026-09-21 (current-state references: `DATA-CLASSIFICATION.md`, `SYSTEM-ANALYSIS-REPORT.md`, `../deployment.md`). |
 
 ## Tally (after wave 3)
 
 - **✅ Fixed: ~58** — everything actionable in the current codebase, each with tests and/or documented ops steps. (Wave 3 added F-001, F-024, F-026, F-028, F-036, F-052, F-053, F-054, F-055, F-058, F-061, F-063.)
 - **🏗 Rewrite (left for the split, by choice): 6** — F-007, F-015, F-016, F-046, F-047, F-068. (F-026, F-028, F-063 were pulled forward and fixed.)
-- **🔐 RBAC (in-flight effort): 3** — F-034, F-056, F-013.
+- **🔐 RBAC (in-flight effort): 3** — F-034, F-056, F-013. *(Corrected 2026-08: F-013 and F-034 are fixed; F-056, system-admin accounts, remains — see `../rebuild/09-PLATFORM-ADMIN-SPEC.md`.)*
 - **📋 Ops checklist: 2** — F-004, F-025 ([`../deployment.md`](../deployment.md) §4).
 - **⏸ Deferred by choice: 2** — F-065 (design tokens) and F-068 (god-files) kept incremental per CLAUDE.md.
 
@@ -122,8 +124,8 @@ Notes: F-055 is fixed for the security-relevant advisories (0 high; `npm audit f
 
 ## Recommended next efforts (in priority order)
 
-1. **Apply the infra ops steps** in `deployment.md` §2 (Gemini key rotation, nginx/tunnel apply, MinIO digest, dev-password rotation) — several fixes are inert until applied to the VM, and the wave-3 migrations must run via `prisma migrate deploy` (the F-052/F-053 one de-duplicates rows — review first).
+1. **Apply the infra ops steps** in `deployment.md` §2 (Gemini key rotation, MinIO digest, dev-password rotation — the nginx/tunnel step was withdrawn) — several fixes are inert until applied to the VM, and the wave-3 migrations must run via `prisma migrate deploy` (the F-052/F-053 one de-duplicates rows — review first).
 2. **F-004 / F-025 ops** (automated backups + encryption at rest) — the remaining compliance-blockers.
 3. **Flip the CI audit/e2e gates** from report-only to blocking once the remaining moderate deps are bumped and the e2e suite is CI-hardened.
-4. **RBAC effort** — F-034, F-056, F-013 (role model, system-admin accounts, default-deny wrapper).
+4. **RBAC effort** — F-056 (system-admin accounts). F-034 and F-013 were fixed (see the corrected rows).
 5. **The rewrite** — F-007 (tenant RLS), F-015 (worker service), F-016 (request-path offloading), F-046 (caching), F-047 (media CDN), F-068 (god-file decomposition).

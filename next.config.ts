@@ -6,9 +6,9 @@ import type { NextConfig } from 'next';
 //   1. COMPLIANCE. PostHog's own managed reverse proxy is documented as NOT
 //      HIPAA-compliant, so it cannot sit in front of a healthcare product. This
 //      one is ours and runs inside our trust boundary.
-//   2. CSP. Same-origin ingest means the strict `script-src 'self'` /
-//      `connect-src 'self'` policy below keeps working untouched — the naive
-//      integration would require whitelisting a third-party script origin.
+//   2. CSP. Same-origin ingest keeps the `script-src` origin list below free of
+//      a third-party script host — the naive integration would require
+//      whitelisting one.
 //   3. Requests are not lost to tracking blockers.
 //
 // The three rules must stay in THIS order: the two asset rules are more specific

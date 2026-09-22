@@ -9,6 +9,7 @@ import prisma from '@/lib/prisma';
 import { rawPrisma } from '@/db/index';
 import { logger } from '@/lib/logger';
 import { startedAtWhere, type AuditDateRangeInput } from '@/lib/audit-reports/date-range';
+import { buildCourseThumbnailUrl, firstLessonThumbnailSelect } from '@/lib/video/thumbnail';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -24,6 +25,8 @@ export interface AuditorCourseRow {
   id: string;
   title: string;
   thumbnail: string | null;
+  /** `CourseType`: 'video' | 'text'. */
+  type: string;
   /** `CourseStatus`. Only `published` and `inactive` reach an auditor: a retired
    * course was in service and its records are evidence, a draft never was. */
   status: string;
@@ -203,9 +206,13 @@ export async function getAuditorCourses(
     select: {
       id: true,
       title: true,
-      thumbnail: true,
+      thumbnailStorageUri: true,
+      previewPosterStorageUri: true,
+      type: true,
       status: true,
       createdAt: true,
+      updatedAt: true,
+      lessons: firstLessonThumbnailSelect,
       enrollments: {
         // Per-course stats reflect only enrollments started within the range,
         // scoped to this org (a global course may be enrolled by other orgs too)
@@ -226,7 +233,8 @@ export async function getAuditorCourses(
     return {
       id: course.id,
       title: course.title,
-      thumbnail: course.thumbnail,
+      thumbnail: buildCourseThumbnailUrl(course, course.lessons[0]),
+      type: course.type,
       status: course.status,
       assignedStaff: total,
       completionRate: total > 0 ? Math.round((completed / total) * 100) : 0,

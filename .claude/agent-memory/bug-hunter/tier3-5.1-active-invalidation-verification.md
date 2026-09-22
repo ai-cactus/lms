@@ -1,18 +1,47 @@
 ---
 name: tier3-5.1-active-invalidation-verification
-description: Follow-up round verifying commit 66aa961's invalidateRevalidationCache() fix — resolves the prior blocking finding, new TTL-fake-timer test technique, a fail-safe coupling observation, and a new local-e2e env gotcha
+description: Tier 3 5.1 auth revalidation Redis cache — the test suite (unit + cache-integration + session-org-scoping files), the 30s-TTL e2e regression and its 66aa961 invalidateRevalidationCache() fix, the TTL-fake-timer technique, fail-safe coupling and snapshot-allowlist gaps
 metadata:
   type: project
 ---
 
-Follow-up to [[tier3-5.1-session-revalidation-cache-tests]]. That round found a
-BLOCKING live-e2e regression: the Tier 3 5.1 cache made
+Tier 3 5.1/5.2 (`56a3eab`/`7c4a489`) added a short-TTL Redis cache in front of
+the JWT `jwt()` callback's DB revalidation (`src/lib/auth/session-revalidation-cache.ts`)
+and made several server actions read `organizationId`/`role` straight off the
+session. The first test round found a live-e2e regression: the cache made
 `tests/e2e/rbac-removed-staff-login.spec.ts`'s "killed on next navigation" test
 fail at the default 30s TTL. `code-ninja` fixed it in commit `66aa961` by adding
 `invalidateRevalidationCache(userId)`, called immediately after every
 `sessionVersion`-bumping write (`staff.ts` role-change + `removeStaff`,
 `auth.ts` both password-reset paths, `user.ts` `changePassword`). **This round
 re-verified the fix and closes out 5.1 — everything is green.**
+
+**Unit/integration files covering the cache (from the first round):**
+- `src/lib/auth/session-revalidation-cache.test.ts`: TTL env parsing, TTL=0 skips
+  Redis, corrupted-JSON entries fail safe, Redis errors swallowed and logged,
+  exact 8-field snapshot shape.
+- `src/lib/create-auth-instance.cache-integration.test.ts`: the REAL cache module
+  behind an in-memory fake Redis, wired into the real `jwt()`. It is the only file
+  that exercises a cache HIT. The plain `create-auth-instance.test.ts` mocks
+  `@/lib/rate-limit` down to `checkRateLimit`, so every cache read there throws
+  internally, is swallowed, and falls back to the DB.
+- `src/lib/create-auth-instance.test.ts`: explicit `getCachedRevalidation` /
+  `setCachedRevalidation` mocks (defaulting to always-miss), plus cache-hit-skips-DB
+  and snapshot-shape-at-the-real-call-site blocks.
+- `src/app/actions/{course,enrollment,user}.session-org-scoping.test.ts`: assert
+  every prisma `where` is scoped to the session's `organizationId`. They also
+  assert that an org-less session never issues an unscoped or
+  `organizationId: null` query, which would match other orgs' rows.
+- `course-publish-gate.test.ts`: its session mock needed `organizationId` once
+  the action stopped re-querying the user. That was a stale test double, not a
+  product bug.
+
+**Open hardening gap (not exploitable today):** the cache module does a bare
+`JSON.stringify(snapshot)` with no runtime field allowlist. It is safe only
+because the single call site passes an object literal built from a
+`prisma.select` that never fetches `password`. A future caller that passes a
+variable, such as a spread full user record, would bypass both protections
+silently.
 
 **E2E fix (the actual deliverable):** the old test used raw-SQL
 `simulateRemoveStaff()`, which bypasses every server action and so can never

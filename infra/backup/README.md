@@ -11,11 +11,14 @@ The VM reached 98% disk on 2026-08-11, so this was not theoretical.
 changes nothing about the running database, and needs no restart. RPO is _since
 last night_.
 
-**Phase 2 (not yet built): pgBackRest with continuous WAL archiving.** RPO drops
-to seconds and point-in-time recovery becomes possible. It requires a custom
-database image — `archive_command` is executed by the Postgres process itself,
-so pgBackRest must live inside the container — plus a restart to enable
-`archive_mode`. Planned for a maintenance window.
+**Phase 2 (cancelled 2026-08-14): pgBackRest with continuous WAL archiving.**
+It would have required a custom database image — `archive_command` is executed
+by the Postgres process itself, so pgBackRest must live inside the container —
+plus a restart to enable `archive_mode`. It was replaced by the decision to move
+the production database to Cloud SQL, whose managed PITR provides the same
+point-in-time recovery. Phase 1 stays after that move as an independent,
+off-project copy. If the Cloud SQL move is abandoned, Phase 2 comes back. See
+`docs/security-infra-runbook.md` §3–§4.
 
 Phase 1 was shipped first on purpose: every night spent designing Phase 2 was a
 night with no backup at all.
@@ -158,7 +161,7 @@ It restores the newest backup into a throwaway container, prints row counts for
 `users` / `enrollments` / `audit_logs` / `phi_decisions`, confirms password
 hashes survived, and prints the elapsed restore time.
 
-**Write that number down in `docs/local/RUNBOOK.md` item 9 with the date.** It is
+**Write that number down in `docs/security-infra-runbook.md` §3 with the date.** It is
 your RTO, and it is the only defensible answer to "how long would recovery
 take". Re-run quarterly — diarise it. A backup regime nobody has restored from
 is indistinguishable from no backups until the day it matters.

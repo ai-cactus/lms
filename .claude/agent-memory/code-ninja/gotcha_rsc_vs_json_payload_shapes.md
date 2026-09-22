@@ -37,6 +37,6 @@ Server-page conventions for this kind of port: unauthenticated → `redirect('/l
 (dominant; a couple of `/worker/**` pages use `/`), access denied or missing →
 `notFound()` (see `dashboard/(main)/training/courses/[id]/page.tsx`), and a 500 from
 the payload builder should fall through to rendering the client **without**
-`initialData` so the existing fetch path still degrades the way it used to. There is
-no `middleware.ts` in this repo despite CLAUDE.md's reference to one — every route
-enforces its own access.
+`initialData` so the existing fetch path still degrades the way it used to. Next 16's
+middleware is `src/proxy.ts` (see CLAUDE.md), but it only does coarse routing/role
+gates — every page still enforces its own access.

@@ -57,10 +57,6 @@ longer open a global course's detail page; Clinical Director holds
 `getCourseForOrgView`.
 
 **Left undone:** no new Playwright e2e spec for the facility-switcher UI flow
-— e2e cannot run in this sandbox (no `@next/swc` bindings) and the unit/action
-layer already covers every fail-closed path exhaustively; a live
-`tests/e2e/facility-scope-switching.spec.ts` would still be worth writing in a
-sandbox where e2e is runnable. See [WSL2 Playwright browser
-install](wsl2-playwright-browser-install.md) and [Local production-build e2e
-run recipe](local-production-build-e2e-run.md) for how to get e2e running
-locally if picked up later.
+— still unwritten. The unit/action layer covers every fail-closed path, but e2e now runs
+locally via `npm run e2e:local`, so `tests/e2e/facility-scope-switching.spec.ts` is a genuine
+open gap.

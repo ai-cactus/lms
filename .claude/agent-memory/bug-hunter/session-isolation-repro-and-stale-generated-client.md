@@ -1,25 +1,25 @@
 ---
 name: session-isolation-repro-and-stale-generated-client
-description: New spec proving the shared-cookie-jar view-bleed/eviction-render bug at the render level; a distinct "generated/prisma stale relative to schema.prisma" trap that breaks ALL logins, not the AUTH_URL trap
+description: session-isolation-repro.spec.ts — render-level regression locks for the shared-cookie-jar view-bleed bug (fixed 95fe604b); a distinct "generated/prisma stale relative to schema.prisma" trap that breaks ALL logins, not the AUTH_URL trap
 metadata:
   type: project
 ---
 
-`tests/e2e/session-isolation-repro.spec.ts` — REPRODUCTION-ONLY spec (2 tests) proving the
+`tests/e2e/session-isolation-repro.spec.ts` — 2 tests covering the
 render-level symptom of the admin/worker shared-cookie-jar design, on top of the cookie-clearing
 behavior already covered (and already fixed) by `rbac-dual-cookie-login.spec.ts`'s ISSUE 4 tests.
-Both tests assert the DESIRED isolated behavior and FAIL on the current build — that failure is
-the intended reproduction evidence, not a spec bug. Do not "fix" the assertions.
+Both tests assert the DESIRED isolated behavior and now PASS (fix `95fe604b`, SessionIdentityGuard).
+They are regression locks: never weaken them.
 
 - **REPRO A (same-portal view bleed)**: two admin accounts (different orgs, `owner` + `finance`
   roles) in one browser context/two tabs. Tab 2 logging in as B silently overwrites tab 1's
   rendered identity on reload — tab 1 goes from showing A to showing B with zero action of its
-  own. Confirmed reproducing: tab 1's header goes from "Alice Anderson" to "Bob Baxter" after B's
+  own. Before the fix, tab 1's header went from "Alice Anderson" to "Bob Baxter" after B's
   tab-2 login + tab-1 reload.
 - **REPRO B (cross-portal render)**: admin A in tab 1, worker B logs in via tab 2 (which — per
   the already-fixed ISSUE 4 behavior — clears A's `admin.session-token`). Tab 1 then navigates to
   `/worker` (a portal it was never in) and silently renders B's identity ("Dave Dalton") instead
-  of any evicted-session state. Confirmed reproducing.
+  of any evicted-session state. The fixed build now shows `[data-testid="session-evicted"]`.
 
 Identity is captured by reading `<header>` text — both `src/app/dashboard/(main)/layout.tsx` and
 `src/app/worker/layout.tsx` resolve the session server-side and pass `fullName`/role down into a
@@ -54,7 +54,7 @@ current schema depending on which branch's migrations were last applied against 
 run `prisma migrate status` against whichever DB you're about to point the server at, not just
 `lms_e2e` by convention.
 
-Also reconfirmed [[local-main-line-preview-recipe]]'s note that `.env` lacks `GOOGLE_PROJECT_ID`
+Also reconfirmed the user-level memory note local-main-line-preview-recipe's finding that `.env` lacks `GOOGLE_PROJECT_ID`
 and `SMTP_USER`/`SMTP_PASSWORD` (both commented out), which makes `src/lib/env.ts`'s
 `validateEnv()` throw at instrumentation-hook load and crash the dev server before it ever binds
 the port. Dummy values (`GOOGLE_PROJECT_ID=theraptly-lms-e2e-dummy`,

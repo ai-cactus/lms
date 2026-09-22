@@ -318,6 +318,53 @@ describe('runVideoSweep', () => {
       expect(mockDeleteFile).not.toHaveBeenCalledWith('gcs://b/system/videos/artifact.mp4');
     });
 
+    // Posters (system/videos/posters/) and custom thumbnails
+    // (system/videos/thumbnails/) live under the swept prefix too. Without their
+    // columns in the reference set every one of them looks orphaned.
+    it('protects poster stills and custom thumbnails referenced by lessons and courses', async () => {
+      const lessonPoster = 'gcs://b/system/videos/posters/1-lesson.jpg';
+      const previewPoster = 'gcs://b/system/videos/posters/2-preview.jpg';
+      const customThumb = 'gcs://b/system/videos/thumbnails/c1/3-custom.jpg';
+      const orphanThumb = 'gcs://b/system/videos/thumbnails/c1/0-replaced.jpg';
+      mockListFilesForActiveBackend.mockResolvedValue([
+        { storageUri: 'gcs://b/system/videos/lesson.mp4', createdAt: OLD },
+        { storageUri: lessonPoster, createdAt: OLD },
+        { storageUri: previewPoster, createdAt: OLD },
+        { storageUri: customThumb, createdAt: OLD },
+        { storageUri: orphanThumb, createdAt: OLD },
+      ]);
+      mockLessonFindMany.mockResolvedValue([
+        {
+          videoStorageUri: 'gcs://b/system/videos/lesson.mp4',
+          videoPosterStorageUri: lessonPoster,
+        },
+      ]);
+      mockCourseFindMany.mockResolvedValue([
+        {
+          previewVideoStorageUri: null,
+          previewPosterStorageUri: previewPoster,
+          thumbnailStorageUri: customThumb,
+        },
+      ]);
+      mockCourseArtifactFindMany.mockResolvedValue([]);
+
+      const summary = await runVideoSweep({ gracePeriodMs: GRACE_MS, dryRun: false });
+
+      expect(summary.referenced).toBe(4);
+      expect(mockDeleteFile).toHaveBeenCalledTimes(1);
+      expect(mockDeleteFile).toHaveBeenCalledWith(orphanThumb);
+      // Both reference queries widen to rows that only carry a still.
+      expect(mockLessonFindMany.mock.calls[0][0].where.OR).toContainEqual({
+        videoPosterStorageUri: { not: null },
+      });
+      expect(mockCourseFindMany.mock.calls[0][0].where.OR).toEqual(
+        expect.arrayContaining([
+          { previewPosterStorageUri: { not: null } },
+          { thumbnailStorageUri: { not: null } },
+        ]),
+      );
+    });
+
     it("protects an ARCHIVED course's preview video — the reference set is read off the un-extended client", async () => {
       mockListFilesForActiveBackend.mockResolvedValue([
         { storageUri: 'gcs://b/system/videos/archived-course-preview.mp4', createdAt: OLD },

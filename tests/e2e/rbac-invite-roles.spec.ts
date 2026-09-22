@@ -2,7 +2,7 @@
  * E2E spec: Invite modal — role selector shows correct grantable roles per inviter.
  *
  * Acceptance criteria:
- *   - An 'owner' or 'supervisor' sees the full grantable set in the role selector:
+ *   - An 'owner' sees the full grantable set in the role selector:
  *       supervisor, hr, clinical_director, finance, + all 8 job-specific worker
  *       roles (e.g. Nurse, Case Manager, ...)
  *     but NOT 'owner' (non-grantable).

@@ -9,6 +9,7 @@ import { parseQuizFile } from '@/lib/video/quiz-import';
 import { QuizImportError } from '@/lib/video/types';
 import { logger } from '@/lib/logger';
 import { isEmptyHtml } from '@/lib/html';
+import ThumbnailPanel, { type ThumbnailPanelProps } from './ThumbnailPanel';
 
 interface Props {
   initial: {
@@ -27,9 +28,10 @@ interface Props {
     courseVideoExistingUri: string | null;
     courseVideoDurationSeconds: number | null;
   };
+  thumbnail: ThumbnailPanelProps;
 }
 
-export default function EditVideoCourseClient({ initial }: Props) {
+export default function EditVideoCourseClient({ initial, thumbnail }: Props) {
   const router = useRouter();
   const [alert, setAlert] = useState<{
     variant: 'success' | 'error';
@@ -112,6 +114,7 @@ export default function EditVideoCourseClient({ initial }: Props) {
           {alert.message}
         </Alert>
       )}
+      <ThumbnailPanel {...thumbnail} />
       <VideoCourseForm
         mode="edit"
         showQuizPicker

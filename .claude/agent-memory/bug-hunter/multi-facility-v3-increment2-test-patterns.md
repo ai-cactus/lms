@@ -36,19 +36,16 @@ diff dev` that each was a deliberate product change, not a bug):
    confirmed no other spec references them, so this is a complete fix, not a
    partial patch.
 
-**`getCourses()` (src/app/actions/course.ts) is per-creator, not org-wide.**
-It returns `createdByOrgUserId === session.user.organizationUserId` courses
-PLUS anything in `org_course_offerings` for the org. A course seeded under
-owner A is invisible to a different org member (e.g. supervisor) on
-`/dashboard/courses` unless you also insert an `org_course_offerings` row
-(`organization_id, course_id, added_by_admin_id`). Bit any future courses-list
-e2e fixture with more than one viewing role.
+**`getCourses()` (src/app/actions/course.ts) is org-wide for managers.** For
+`isAdminRole` + `course.read` it filters `creator: { organizationId }`. It is
+creator-scoped (`createdByOrgUserId`) only for non-managers. Both paths add
+anything in `org_course_offerings` for the org.
 
-**Both Global View tables render one row per facility with different link
-text** — `PriorityRisksTable` says `"View facility dashboard"`,
-`FacilitiesOverviewTable` says `"View dashboard"`. An unscoped
+**Both Global View tables render one row per facility with the same
+drill-down label**, `View dashboard for <name>` (`PriorityRisksTable`,
+`FacilitiesOverviewTable`). An unscoped
 `getByRole('row', {name: facilityName})` is a strict-mode violation across
-both tables; scope to a `section` filtered by
+both tables, and so is the link. Scope to a `section` filtered by
 `getByRole('heading', {name: 'Facilities Overview'})` (or `'Priority Risks...'`)
 first.
 

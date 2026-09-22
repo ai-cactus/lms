@@ -15,6 +15,7 @@ import EmptyTableState from '@/components/ui/EmptyTableState';
 import { RowActionsMenu } from '@/components/ui';
 import Link from 'next/link';
 import Image from 'next/image';
+import CourseThumbnail from '@/components/dashboard/courses/CourseThumbnail';
 import AssignCoursesModal from './AssignCoursesModal';
 import ChangeFacilityModal from './ChangeFacilityModal';
 import ChangeRoleModal from './ChangeRoleModal';
@@ -85,6 +86,7 @@ interface StaffProfileClientProps {
       courseId: string;
       courseName: string;
       courseType?: string;
+      courseImage?: string | null;
       progress: number;
       status: string;
       score: number;
@@ -546,16 +548,11 @@ export default function StaffProfileClient({
                 >
                   <TableCell className={cn(cellCls, 'px-3 md:px-[18px]')}>
                     <div className="flex items-center gap-3 md:gap-[18px]">
-                      <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[#f1f5f9]">
-                        <Image
-                          src="/images/icon-course-blue.svg"
-                          alt=""
-                          width={40}
-                          height={40}
-                          aria-hidden="true"
-                          className="object-cover"
-                        />
-                      </div>
+                      <CourseThumbnail
+                        type={enrollment.courseType}
+                        thumbnail={enrollment.courseImage}
+                        size="compact"
+                      />
                       <div className="flex min-w-0 flex-col">
                         <span className="truncate text-[15.5px] font-semibold tracking-[0.35px] text-[#0d0d12] md:text-[17.5px]">
                           {enrollment.courseName}
