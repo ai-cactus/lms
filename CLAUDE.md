@@ -15,7 +15,7 @@ You (the main agent) are the **orchestrator**. You own the conversation, hold th
 
 **The fix loop** (applies to the build phases; `qa-mafia` is **not** part of it).
 
-- **Automated-test failures (from `bug-hunter`):** route the failure to `code-ninja` to fix → re-launch `bug-hunter` to re-run. Repeat until unit + e2e are green. A change is not "done" while any of its automated tests fail.
+- **Automated-test failures (from `bug-hunter`):** route the failure to `code-ninja` to fix → re-launch `bug-hunter` to re-run. Repeat until unit + e2e are green. A change is not "done" while any of its automated tests fail — and passing tests alone don't make it done: see Core Operating Rule 21.
 - **`qa-mafia` findings:** `qa-mafia` reports and stops — it does not route findings anywhere. After it reports, present its verdict and criteria results to the user and let **the user** decide what to do next; if they want failures addressed, you (the orchestrator) start a fresh `code-ninja` → `bug-hunter` cycle, and re-launch `qa-mafia` afterward only to re-validate. `qa-mafia` itself never triggers or waits on a fix.
 
 **Retest on change.** When a new feature or change affects an existing user story, that story should be retested: re-launch `qa-mafia` for it so it regenerates the acceptance criteria, re-runs the journey, and overwrites its report with the fresh result. Treat a prior PASS as stale the moment the underlying behavior changes.
@@ -355,6 +355,39 @@ When designing:
 ## 20. Explicit Tradeoff Declaration
 
 If making a tradeoff (speed vs abstraction, performance vs readability, etc.), explicitly state it.
+
+## 21. Done Means the Whole Product Is Production-Worthy
+
+A change is **done only when it leaves the entire product production-worthy**. If the change breaks anything — in the area it touched or anywhere else — or leaves production less safe, correct or usable than before, **it is not done**. Do not call it done, merge-ready or shippable, and do not ship it.
+
+Production-worthy means, with evidence rather than assumption:
+
+- Typecheck, lint and formatting are clean.
+- The full unit suite passes, and e2e specs for every affected flow pass — including specs that drive a control the change replaced or removed.
+- The production build succeeds.
+- Migrations are included, safe to apply, and don't strand existing data.
+- No regression in security, tenancy isolation or RBAC; no secrets or PII in logs or responses.
+- No problem the change introduced is left behind, and nothing it depends on is left broken.
+- Docs, comments and notes the change affects are current (see Rule 23).
+
+A fix that repairs one thing and breaks another is not a fix. Report honestly what was and wasn't verified; if something could not be verified, say so — that is not "done".
+
+## 22. Attend to Issues as Soon as They Are Found
+
+Never leave a discovered issue unaddressed or unrecorded — not in an agent's report, a code comment, a memory note, or chat alone.
+
+- **Fix it now** when it is within reach, needs no product decision, and is not destructive or outward-facing.
+- **Otherwise, record it immediately** in the open-issues tracker (`docs/local/OPEN-ISSUES.md`) with its evidence, and raise it with the user straight away. Anything needing a product ruling, touching production data or infrastructure, or going beyond the current task is raised, not silently acted on.
+- Do not work around a known issue without recording it, and do not describe a known issue as resolved until it is verified fixed.
+- When an issue is fixed, move it out of the tracker's open list in the same change.
+
+## 23. Remove Stale Information
+
+Stale information is a defect. Whenever a change makes a doc, comment, note, agent-memory entry, runbook or tracker entry untrue, **update or delete it in the same change**.
+
+- **Delete** what is superseded or describes something that no longer exists; don't annotate it with "previously…" or "(outdated)". Keep history only where the history is the point (dated reports, audit trails).
+- Verify claims against the code before keeping them. Remove references to files, functions, routes, env vars or line numbers that no longer exist; prefer naming a symbol to citing a line number.
+- When two records conflict, resolve the conflict with evidence. If it cannot be verified, mark it unconfirmed and track it (Rule 22) — never pick a side without evidence.
 
 ## Strict Mode Add-On
 
