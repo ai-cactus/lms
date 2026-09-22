@@ -36,6 +36,7 @@ vi.mock('@/lib/logger', () => ({
 }));
 
 import { generateQuizV46 } from '@/lib/ai/course-pipeline-v46';
+import { logger } from '@/lib/logger';
 
 /** A minimal valid QuizV46 raw-JSON response for `count` questions. */
 function makeQuizResponse(count: number, opts: { startId?: number; questionPrefix?: string } = {}) {
@@ -213,5 +214,26 @@ describe('generateQuizV46 — partial results on sub-batch failure', () => {
     mockCallVertexAI.mockResolvedValue('not json at all {{{');
 
     await expect(generateQuizV46('article md', '{}', 5, 'medium')).rejects.toThrow(/parse_error/);
+  });
+
+  // Model output echoes source-document text, so neither the logs nor the
+  // thrown message (which the orchestrator logs again) may carry it.
+  it('keeps the unparseable response out of logs and error messages', async () => {
+    const secret = 'Patient Jane Roe MRN 00482913 {{{';
+    mockCallVertexAI.mockResolvedValue(secret);
+
+    const error = await generateQuizV46('article md', '{}', 5, 'medium').catch((e: Error) => e);
+
+    expect((error as Error).message).not.toContain('Jane Roe');
+    const logged = JSON.stringify([
+      vi.mocked(logger.error).mock.calls,
+      vi.mocked(logger.warn).mock.calls,
+      vi.mocked(logger.info).mock.calls,
+    ]);
+    expect(logged).not.toContain('Jane Roe');
+    expect(logged).not.toContain('00482913');
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ responseChars: secret.length }),
+    );
   });
 });

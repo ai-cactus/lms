@@ -26,6 +26,11 @@ import { tmpdir } from 'os';
 import { Client as MinioClient } from 'minio';
 import { GoogleAuth } from 'google-auth-library';
 import { prisma } from '@/db/index';
+import {
+  buildVertexModelUrl,
+  resolveVertexEmbeddingLocation,
+  VERTEX_EMBEDDING_MODEL,
+} from '@/lib/ai/vertex-config';
 
 const execFileP = promisify(execFile);
 
@@ -66,10 +71,21 @@ const MIN_CHUNK_LEN = 50;
 const EMBED_BATCH_SIZE = 40;
 const LOG_INTERVAL = 3;
 
-const PROJECT_ID = process.env.GOOGLE_PROJECT_ID || 'theraptly-lms';
-const LOCATION = process.env.GOOGLE_LOCATION || 'us-central1';
-const MODEL = 'text-embedding-004';
-const EMBED_URL = `https://${LOCATION}-aiplatform.googleapis.com/v1/projects/${PROJECT_ID}/locations/${LOCATION}/publishers/google/models/${MODEL}:predict`;
+// No production-project fallback, for the reason given in ai-client.ts's
+// requireProjectId(): a default naming production is invisibly wrong everywhere else.
+const PROJECT_ID = process.env.GOOGLE_PROJECT_ID;
+if (!PROJECT_ID) {
+  log('error', '[index-worker] GOOGLE_PROJECT_ID is not set — refusing to call Vertex AI');
+  process.exit(1);
+}
+// Embeddings stay regional (GOOGLE_LOCATION), independent of VERTEX_LOCATION —
+// see src/lib/ai/vertex-config.ts.
+const EMBED_URL = buildVertexModelUrl({
+  projectId: PROJECT_ID,
+  location: resolveVertexEmbeddingLocation(),
+  model: VERTEX_EMBEDDING_MODEL,
+  method: 'predict',
+});
 
 // ── GC helper ─────────────────────────────────────────────────────────────────
 function maybeGc() {

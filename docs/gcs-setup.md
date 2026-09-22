@@ -65,7 +65,7 @@ gcloud storage buckets update "gs://${BUCKET_NAME}" \
 | **Application Default Credentials (ADC)** | `GCS_KEY_BASE64` is **unset** — the provider constructs a bare `Storage()` | Whatever ADC resolves on the host: an attached service account on a GCP VM, or `gcloud auth application-default login` locally (stored in `~/.config/gcloud/application_default_credentials.json`) |
 | **In-memory service-account key** | `GCS_KEY_BASE64` is **set** — the provider decodes it and constructs `Storage({ projectId, credentials })` | A base64-encoded service-account JSON key (`base64 -w0 key.json`) and `GOOGLE_PROJECT_ID`. A malformed value makes the provider refuse to construct rather than fall back |
 
-Which path staging and production should use is **pending a decision — see OPEN-ISSUES Q-12** (`docs/local/OPEN-ISSUES.md`). This guide does not recommend one.
+**Staging and production use the in-memory key path** (`GCS_KEY_BASE64`), decided 2026-09-22 (OPEN-ISSUES Q-12). This is storage only: Vertex AI calls (`src/lib/ai-client.ts`) always authenticate through ADC, which on the GCE VM resolves to the VM's attached service account. The two identities are separate by design. Local development normally uses ADC for both.
 
 Whichever identity is used, grant it access **on the bucket only**, never at project level, and never let one environment's identity reach another environment's bucket:
 

@@ -1,6 +1,15 @@
 import { GoogleAuth } from 'google-auth-library';
 import { logger } from '@/lib/logger';
 import { captureGeneration, type AiTelemetry } from '@/lib/analytics/llm';
+import {
+  assertVertexModelId,
+  buildVertexModelUrl,
+  resolveVertexEmbeddingLocation,
+  resolveVertexGenerationTarget,
+  VERTEX_EMBEDDING_MODEL,
+  vertexAcceptsCustomTemperature,
+  vertexThinkingLevelFor,
+} from '@/lib/ai/vertex-config';
 
 const DEFAULT_MAX_RETRIES = 5;
 const BASE_DELAY_MS = 1000;
@@ -190,7 +199,114 @@ async function withRetry<T>(
   throw lastError || new Error(`${label} failed after all retries.`);
 }
 
+interface VertexResponsePart {
+  text?: unknown;
+  thought?: unknown;
+}
+
+/**
+ * The answer text of the first candidate, or '' when it has none.
+ *
+ * Gemini 3 models are thinking models: a candidate can carry thought-summary
+ * parts (`thought: true`) and parts that hold only a `thoughtSignature`. Neither
+ * is answer text, and reading `parts[0]` alone — as this client once did —
+ * would hand callers a reasoning summary, or nothing, instead of the JSON they
+ * asked for. Answer text split across several parts is joined in order.
+ */
+export function extractCandidateText(response: unknown): string {
+  const parts = (
+    response as { candidates?: Array<{ content?: { parts?: VertexResponsePart[] } }> } | null
+  )?.candidates?.[0]?.content?.parts;
+  if (!Array.isArray(parts)) return '';
+  return parts
+    .filter((part) => part?.thought !== true && typeof part?.text === 'string')
+    .map((part) => part.text as string)
+    .join('');
+}
+
+export type VertexPartKind = 'text' | 'thought' | 'thoughtSignature' | 'other';
+
+/** Value-free shape of a generateContent response — see `describeVertexResponse`. */
+export interface VertexResponseSummary {
+  candidateCount: number;
+  finishReason: string | null;
+  blockReason: string | null;
+  blockedSafetyCategories: string[];
+  partKinds: VertexPartKind[];
+  promptTokenCount: number | null;
+  candidatesTokenCount: number | null;
+  thoughtsTokenCount: number | null;
+}
+
+interface VertexSafetyRating {
+  category?: unknown;
+  blocked?: unknown;
+}
+
+function blockedCategories(ratings: unknown): string[] {
+  if (!Array.isArray(ratings)) return [];
+  return (ratings as VertexSafetyRating[])
+    .filter((r) => r?.blocked === true && typeof r.category === 'string')
+    .map((r) => r.category as string);
+}
+
+function tokenCount(value: unknown): number | null {
+  return typeof value === 'number' ? value : null;
+}
+
+/**
+ * What a response looked like, without anything the model wrote.
+ *
+ * A PHI-scan response quotes the PHI it found, and every other stage echoes
+ * source-document content, so the response body must never reach a log. This
+ * keeps only enums, counts and part kinds — deliberately not `finishMessage` or
+ * `blockReasonMessage`, which are free text.
+ */
+export function describeVertexResponse(response: unknown): VertexResponseSummary {
+  const r = (response ?? {}) as {
+    candidates?: Array<{
+      finishReason?: unknown;
+      safetyRatings?: unknown;
+      content?: { parts?: unknown };
+    }>;
+    promptFeedback?: { blockReason?: unknown; safetyRatings?: unknown };
+    usageMetadata?: {
+      promptTokenCount?: unknown;
+      candidatesTokenCount?: unknown;
+      thoughtsTokenCount?: unknown;
+    };
+  };
+  const candidates = Array.isArray(r.candidates) ? r.candidates : [];
+  const first = candidates[0];
+  const parts = Array.isArray(first?.content?.parts) ? (first.content.parts as unknown[]) : [];
+
+  return {
+    candidateCount: candidates.length,
+    finishReason: typeof first?.finishReason === 'string' ? first.finishReason : null,
+    blockReason:
+      typeof r.promptFeedback?.blockReason === 'string' ? r.promptFeedback.blockReason : null,
+    blockedSafetyCategories: [
+      ...blockedCategories(first?.safetyRatings),
+      ...blockedCategories(r.promptFeedback?.safetyRatings),
+    ],
+    partKinds: parts.map((part): VertexPartKind => {
+      const p = (part ?? {}) as { text?: unknown; thought?: unknown; thoughtSignature?: unknown };
+      if (p.thought === true) return 'thought';
+      if (typeof p.text === 'string') return 'text';
+      if (p.thoughtSignature !== undefined) return 'thoughtSignature';
+      return 'other';
+    }),
+    promptTokenCount: tokenCount(r.usageMetadata?.promptTokenCount),
+    candidatesTokenCount: tokenCount(r.usageMetadata?.candidatesTokenCount),
+    thoughtsTokenCount: tokenCount(r.usageMetadata?.thoughtsTokenCount),
+  };
+}
+
 export interface VertexAIConfig {
+  /**
+   * Ignored for Gemini 3 and later, which run at their default of 1.0 — see
+   * `vertexAcceptsCustomTemperature`.
+   */
   temperature?: number;
   maxOutputTokens?: number;
   model?: string;
@@ -217,21 +333,24 @@ export interface VertexAIConfig {
  */
 export async function callVertexAI(prompt: string, config?: VertexAIConfig): Promise<string> {
   const projectId = requireProjectId();
-  const location = process.env.GOOGLE_LOCATION || 'us-central1';
-  const model = config?.model || 'gemini-2.5-flash-lite';
+  const target = resolveVertexGenerationTarget();
+  const location = target.location;
+  const model = config?.model ? assertVertexModelId(config.model) : target.model;
 
   const token = await auth.getAccessToken();
   if (!token) {
     throw new Error('Failed to get an OAuth2 access token for Google Cloud Vertex AI.');
   }
 
-  const url = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${model}:generateContent`;
+  const url = buildVertexModelUrl({ projectId, location, model, method: 'generateContent' });
+  const thinkingLevel = vertexThinkingLevelFor(model);
 
   const body = JSON.stringify({
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
     generationConfig: {
-      temperature: config?.temperature ?? 0.7,
+      ...(vertexAcceptsCustomTemperature(model) ? { temperature: config?.temperature ?? 0.7 } : {}),
       maxOutputTokens: config?.maxOutputTokens ?? 8192,
+      ...(thinkingLevel ? { thinkingConfig: { thinkingLevel } } : {}),
     },
     // F-049: safety filters are intentionally set to BLOCK_NONE.
     //
@@ -326,6 +445,8 @@ export async function callVertexAI(prompt: string, config?: VertexAIConfig): Pro
         lastError = new Error(`Vertex AI ${response.status} ${response.statusText}: ${errorText}`);
         logger.warn({
           msg: `[ai-client] Retryable error (${response.status}):`,
+          location,
+          model,
           data: lastError.message,
         });
 
@@ -343,18 +464,31 @@ export async function callVertexAI(prompt: string, config?: VertexAIConfig): Pro
       }
 
       const json = await response.json();
-      const textPart = json.candidates?.[0]?.content?.parts?.[0]?.text;
+      const textPart = extractCandidateText(json);
       const finishReason: string | null = json.candidates?.[0]?.finishReason ?? null;
 
       // Vertex reports exact token counts here and this response was previously
       // discarded, leaving the pipeline's real cost unmeasurable. These are the
       // authoritative numbers — estimateTokens() above is only a pre-flight
       // guess for budgeting.
+      //
+      // Thinking tokens are billed at the output rate but reported apart from
+      // candidatesTokenCount, so they are folded into the output count here —
+      // otherwise cost derived from $ai_output_tokens undercounts every call
+      // that thinks.
       const inputTokens: number = json.usageMetadata?.promptTokenCount ?? 0;
-      const outputTokens: number = json.usageMetadata?.candidatesTokenCount ?? 0;
+      const outputTokens: number =
+        (json.usageMetadata?.candidatesTokenCount ?? 0) +
+        (json.usageMetadata?.thoughtsTokenCount ?? 0);
 
       if (!textPart) {
-        logger.error({ msg: '[ai-client] Vertex AI returned no content', data: json });
+        logger.error({
+          msg: '[ai-client] Vertex AI returned no content',
+          location,
+          model,
+          status: response.status,
+          ...describeVertexResponse(json),
+        });
         record({
           attempt,
           inputTokens,
@@ -378,7 +512,7 @@ export async function callVertexAI(prompt: string, config?: VertexAIConfig): Pro
         lastError = new Error(
           `Vertex AI request timed out after ${Math.round(Math.min(VERTEX_AI_TIMEOUT_MS, remaining) / 1000)}s (attempt ${attempt + 1})`,
         );
-        logger.warn({ msg: `[ai-client] ${lastError.message}` });
+        logger.warn({ msg: `[ai-client] ${lastError.message}`, location, model });
         if (!(await backoffWithinBudget(attempt, budget))) {
           budgetExceeded = true;
           break;
@@ -414,6 +548,7 @@ export async function callVertexAI(prompt: string, config?: VertexAIConfig): Pro
   if (budgetExceeded) {
     logger.warn({
       msg: '[ai-client] Vertex AI call abandoned — wall-clock budget exhausted',
+      location,
       model,
       elapsedMs: Date.now() - startedAt,
       lastError: lastError?.message,
@@ -456,15 +591,20 @@ export async function generateBatchEmbeddings(
   if (texts.length === 0) return [];
 
   const projectId = requireProjectId();
-  const location = process.env.GOOGLE_LOCATION || 'us-central1';
-  const model = 'text-embedding-004';
+  // Deliberately NOT the generation target: see src/lib/ai/vertex-config.ts.
+  const location = resolveVertexEmbeddingLocation();
 
   const token = await auth.getAccessToken();
   if (!token) {
     throw new Error('Failed to get an OAuth2 access token for Google Cloud Vertex AI.');
   }
 
-  const url = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${model}:predict`;
+  const url = buildVertexModelUrl({
+    projectId,
+    location,
+    model: VERTEX_EMBEDDING_MODEL,
+    method: 'predict',
+  });
 
   const body = JSON.stringify({
     instances: texts.map((text) => ({

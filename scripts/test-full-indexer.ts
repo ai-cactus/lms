@@ -18,6 +18,11 @@ import { promisify } from 'util';
 import { Client as MinioClient } from 'minio';
 import { GoogleAuth } from 'google-auth-library';
 import { prisma } from '@/db/index';
+import {
+  buildVertexModelUrl,
+  resolveVertexEmbeddingLocation,
+  VERTEX_EMBEDDING_MODEL,
+} from '@/lib/ai/vertex-config';
 
 const execFileAsync = promisify(execFile);
 
@@ -39,9 +44,19 @@ const CHUNK_SIZE = 1500;
 const CHUNK_OVERLAP = 200;
 const MIN_LEN = 50;
 const BATCH_SIZE = 100;
-const PROJECT_ID = process.env.GOOGLE_PROJECT_ID || 'theraptly-lms';
-const LOCATION = process.env.GOOGLE_LOCATION || 'us-central1';
-const MODEL = 'text-embedding-004';
+const PROJECT_ID = process.env.GOOGLE_PROJECT_ID;
+if (!PROJECT_ID) {
+  console.error(
+    'GOOGLE_PROJECT_ID is not set — refusing to call Vertex AI (no production fallback).',
+  );
+  process.exit(1);
+}
+const EMBED_URL = buildVertexModelUrl({
+  projectId: PROJECT_ID,
+  location: resolveVertexEmbeddingLocation(),
+  model: VERTEX_EMBEDDING_MODEL,
+  method: 'predict',
+});
 const TEST_ALL = process.env.TEST_ALL === '1';
 const TEST_BATCHES = 3;
 
@@ -88,8 +103,7 @@ async function extractText(buf: Buffer): Promise<string> {
 
 async function batchEmbed(texts: string[]): Promise<number[][]> {
   const token = await auth.getAccessToken();
-  const url = `https://${LOCATION}-aiplatform.googleapis.com/v1/projects/${PROJECT_ID}/locations/${LOCATION}/publishers/google/models/${MODEL}:predict`;
-  const res = await fetch(url, {
+  const res = await fetch(EMBED_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify({

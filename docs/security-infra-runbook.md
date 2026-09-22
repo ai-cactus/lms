@@ -1,10 +1,10 @@
 # Security Infrastructure Runbook
 
-**Written:** 2026-08-10 · **Updated:** 2026-09-21 · Executable companion to [`deployment.md`](./deployment.md) §4 and [`analysis/AUDIT-2026-08.md`](./analysis/AUDIT-2026-08.md)
+**Written:** 2026-08-10 · **Updated:** 2026-09-22 · Executable companion to [`deployment.md`](./deployment.md) §4 and [`analysis/AUDIT-2026-08.md`](./analysis/AUDIT-2026-08.md)
 
 This is the **single ops procedure** for the infrastructure-hardening items. It absorbs what the local execution log (`docs/local/RUNBOOK.md` items 9–12) recorded. For what to do next on the release/ops track, start at `docs/local/OPEN-ISSUES.md` → REL-01.
 
-> **Backup and monitoring status is unconfirmed — records conflict, see OPEN-ISSUES RISK-08.** Nothing below asserts whether either is currently running on the VM.
+> **Production backups are running (verified 2026-09-22, §3). A recent restore and the monitoring configuration are unconfirmed — see OPEN-ISSUES RISK-08.** Nothing below asserts that monitoring is running on the VM.
 
 `deployment.md` §4 lists *what* is outstanding. This is *how*, in what order, and how to know each step worked. Everything here needs VM, cloud-console or GitHub-settings access, so none of it could be done in the code work — it is deliberately separated rather than left implied.
 
@@ -31,7 +31,7 @@ Two items on that checklist are now partly done, so start from here rather than 
 
 Two hard dependencies, both learned the hard way:
 
-**Backups before encryption-at-rest.** Encrypting a volume or migrating to a managed database moves every byte you own. Doing that with no restore path is how a hardening project becomes an outage. Whether backups are currently running is unconfirmed — records conflict, see OPEN-ISSUES RISK-08 (F-004).
+**Backups before encryption-at-rest.** Encrypting a volume or migrating to a managed database moves every byte you own. Doing that with no restore path is how a hardening project becomes an outage. Nightly production backups are running (verified 2026-09-22), but a recent dump has not been restore-tested — see OPEN-ISSUES RISK-08 (F-004).
 
 **`lms_app` role before RLS.** Postgres RLS is bypassed by superusers and table owners. The app connects as `postgres` (F-093), so adding RLS policies first produces something that *looks* like a tenant-isolation backstop and enforces nothing — the exact false assurance this programme has been removing.
 
@@ -122,7 +122,7 @@ Then run one full user journey (login → course → quiz → certificate) again
 
 **Why:** every byte lives on one VM's bind mounts. Without an off-host copy, a disk-full event, a corrupting `docker compose down -v`, or a failed disk is unrecoverable, including the six-year audit trail.
 
-**Status:** unconfirmed — records conflict, see OPEN-ISSUES RISK-08.
+**Status (verified 2026-09-22):** production backups are running — `lms-backup@production.timer` is active and fires nightly (~02:37 UTC); `gs://theraptly-lms-backups-production/` holds Postgres dumps and Redis RDBs from 2026-08-18 onward, and `_last_success` read `20260922T023717Z`. Staging has no backup timer. **Not yet verified:** a restore of a recent dump (the Verify steps below) and an alert on a stale `_last_success` — see OPEN-ISSUES RISK-08.
 
 **Decisions (2026-08-14):**
 
@@ -206,7 +206,7 @@ BAA eligibility remains the one open Cloudflare item, and only conditionally: TL
 
 ## 7. Split staging and production credentials (F-072)
 
-**Why:** both deploy workflows use one `SSH_PRIVATE_KEY`, `VM_HOST` and `VM_USER` (confirmed not split, 2026-08-14). Staging compromise equals production access. A split gives attribution and independent revocation, **not** lateral-movement containment — both environments share a host where `docker` is root. Separately, staging and production have historically shared GCS credentials, which is the unclosed root cause of two production video-deletion incidents.
+**Why:** both deploy workflows use one `SSH_PRIVATE_KEY`, `VM_HOST` and `VM_USER` (confirmed not split, 2026-08-14). Staging compromise equals production access. A split gives attribution and independent revocation, **not** lateral-movement containment — both environments share a host where `docker` is root. Separately, shared GCS credentials across environments caused two production video-deletion incidents. Staging now uses its own bucket in `theraptly-lms-staging` (verified 2026-09-22); the VM authenticates to Vertex AI as its attached service account (ADC) and to GCS with the separate `GCS_KEY_BASE64` key — both intended (OPEN-ISSUES Q-12, ruled 2026-09-22).
 
 **Do:** generate a second keypair, add `STAGING_SSH_PRIVATE_KEY` / `STAGING_VM_USER`, point `deploy-staging.yml` at them, and give each environment its own OS user with access only to its own directories. Audit every `.env.*` for a credential that appears in more than one environment — especially `GCP_BUCKET_NAME` and `GCS_KEY_BASE64`.
 
@@ -228,7 +228,7 @@ BAA eligibility remains the one open Cloudflare item, and only conditionally: TL
 
 **Why:** production, staging, Postgres, Redis and MinIO share one host, one disk and one `cloudflared`. The app runs a single replica capped at 1 GB with background workers inside the web process. Any host event takes down both environments simultaneously — including the monitoring that would tell you, which is why §1's uptime checks run from Google's edge instead.
 
-**Decided 2026-08-11: staging and production stay on one VM.** A second VM was rejected; the risk it would have addressed is closed more cheaply by a **separate GCP project for staging** (`theraptly-lms-staging`, created — staging no longer shares production's cloud identity for Vertex or telemetry) plus staging resource ceilings so it cannot starve production. The reasoning is recorded in `docs/local/ops-actions-2026-08-10.md` §0. The Cloud SQL move (§4) takes the production database off the shared host.
+**Decided 2026-08-11: staging and production stay on one VM.** A second VM was rejected; the risk it would have addressed is closed more cheaply by a **separate GCP project for staging** (`theraptly-lms-staging` — staging's Vertex calls, storage bucket and telemetry run there, verified 2026-09-22; Vertex authenticates as the VM's attached service account and GCS with `GCS_KEY_BASE64`, per OPEN-ISSUES Q-12) plus staging resource ceilings so it cannot starve production. The reasoning is recorded in `docs/local/ops-actions-2026-08-10.md` §0. The Cloud SQL move (§4) takes the production database off the shared host.
 
 Full HA (Postgres standby, ≥2 app replicas, a load balancer, workers extracted to their own service) remains a larger programme and overlaps the planned frontend/backend split.
 
@@ -255,8 +255,8 @@ The first run (2026-08-14, `31764747102`) was **inconclusive** — the history s
 
 If bandwidth is the constraint, this order buys the most safety per hour:
 
-1. **Resolve RISK-08** — confirm on the VM whether §1 (monitoring) and §3 (backups) are actually running, and record the answer here.
-2. **§3** — if backups are not running, install them and do one tested restore. This is the only item where the failure mode is *unrecoverable data loss*.
+1. **Finish RISK-08** — confirm on the VM whether §1 (monitoring) is applied, including an alert on a stale backup heartbeat, and record the answer here.
+2. **§3** — backups are running (2026-09-22); do one tested restore of a recent dump and record the RTO. This is the only item where the failure mode is *unrecoverable data loss*.
 3. **§2 / §4** — the least-privilege role split, via the Cloud SQL cutover or on the VM. It is the hard prerequisite for tenant-isolation RLS (F-007).
 
 Everything else can wait a sprint. Those three cannot.

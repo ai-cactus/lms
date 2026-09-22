@@ -16,6 +16,11 @@
  */
 import { z } from 'zod';
 import { logger } from '@/lib/logger';
+import {
+  resolveVertexEmbeddingLocation,
+  resolveVertexGenerationTarget,
+  VertexConfigError,
+} from '@/lib/ai/vertex-config';
 
 const requiredString = (name: string) => z.string().min(1, `${name} is required`);
 
@@ -49,6 +54,22 @@ function validateEmailTransport(env: NodeJS.ProcessEnv): string | null {
 }
 
 /**
+ * VERTEX_LOCATION / VERTEX_MODEL / GOOGLE_LOCATION are optional, but a value
+ * that is set must be well-formed — a typo would otherwise surface only as
+ * failed AI calls long after boot.
+ */
+function validateVertexConfig(env: NodeJS.ProcessEnv): string | null {
+  try {
+    resolveVertexGenerationTarget(env);
+    resolveVertexEmbeddingLocation(env);
+    return null;
+  } catch (err) {
+    if (err instanceof VertexConfigError) return `vertex: ${err.message}`;
+    throw err;
+  }
+}
+
+/**
  * Validates process.env against the required schema. Throws (aborting boot) if
  * any required variable is missing. No-op in test/CI/build environments.
  */
@@ -71,6 +92,9 @@ export function validateEnv(): void {
 
   const emailIssue = validateEmailTransport(process.env);
   if (emailIssue) issues.push(emailIssue);
+
+  const vertexIssue = validateVertexConfig(process.env);
+  if (vertexIssue) issues.push(vertexIssue);
 
   if (issues.length > 0) {
     logger.error({ msg: '[env] Environment validation failed', issues });

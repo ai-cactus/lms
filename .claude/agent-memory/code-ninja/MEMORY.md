@@ -52,7 +52,7 @@
 - [`admin` is un-retired](gotcha_admin_role_unretired.md) — drop dev's retired-admin JWT guard; gate roster PII on `user.read`, not `isAdminRole`.
 - [Admin auth instance is the tier check](gotcha_admin_auth_instance_is_the_tier_check.md) — `@/auth` sessions carry an implicit admin-tier fence; `resolveSession()`/`getPortalSessions()` do not — audit those exports first when hunting RBAC holes.
 - [Deploy topology](deploy_topology.md) — Docker Compose, ONE app container per env, tunnel straight to the app port; pm2 + nginx files were deleted from the repo.
-- [Video sweeper env interlock](gotcha_video_sweep_env_interlock.md) — env-file flags can't gate a sweeper because envs get copied; key destructive gates on APP_URL (staging bucket shown MinIO-only; Vertex = RISK-07).
+- [Video sweeper env interlock](gotcha_video_sweep_env_interlock.md) — env-file flags can't gate a sweeper because envs get copied; key destructive gates on APP_URL (staging has its own bucket + project since 2026-09-22; sweeper off on staging and prod).
 - [Bare `auth()` drops Set-Cookie](gotcha_bare_auth_drops_set_cookie.md) — no-args next-auth v5 `auth()` never rotates the session cookie, which is what makes `Vary: Cookie` usable.
 - [Playback cache is in-process](gotcha_video_playback_cache_is_in_process.md) — one container, no Redis; spawned scripts/ can't evict it, so invalidate from the BullMQ handler.
 - [RSC vs JSON payload shapes](gotcha_rsc_vs_json_payload_shapes.md) — one builder for a route + a server page: normalise Dates to ISO, plus the wall-clock hydration trap and server-page auth conventions.
@@ -106,3 +106,4 @@
 - [Sweeper reference set columns](gotcha_sweeper_reference_set_columns.md) — any column storing under system/videos/ must join buildReferencedUriSet or the sweeper deletes its objects (posters were exposed until BUG-17).
 - [/system has no portal session](gotcha_system_backoffice_has_no_portal_session.md) — serve /system media from an /api/system/** route; a system-cookie fallback on a portal route is dead behind the proxy; next/image unoptimized.
 - [Server Action args are unchecked](gotcha_server_action_args_are_unchecked.md) — a closed TS param type doesn't bind the client; never spread caller data into prisma.update.
+- [Vertex endpoint + Gemini 3 traps](project_vertex_endpoint_and_gemini3.md) — generation on us multi-region (VERTEX_*), embeddings regional; thinkingLevel/temperature/parts traps; live-smoke recipe
