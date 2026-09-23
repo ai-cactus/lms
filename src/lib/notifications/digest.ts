@@ -13,7 +13,7 @@ import { resolveRoleRecipients } from './recipients';
  *
  * One pass per cron tick: every organization holding `pending` notification
  * events whose cadence is due this run gets exactly one digest per period. The
- * `NotificationDigestRun` row is claimed BEFORE any sending, so a concurrent run
+ * `CycleSummaryRun` row is claimed BEFORE any sending, so a concurrent run
  * (or a retried job) loses the race on the unique constraint and sends nothing.
  *
  * Recipients are resolved at *send* time, not emit time: someone hired into the
@@ -93,7 +93,7 @@ export interface DigestRunSummary {
   errors: number;
 }
 
-interface PendingEvent {
+export interface PendingEvent {
   id: string;
   facilityId: string | null;
   type: string;
@@ -102,7 +102,7 @@ interface PendingEvent {
   createdAt: Date;
 }
 
-interface EventRouting {
+export interface EventRouting {
   roles: Role[];
   fallbackToOwner: boolean;
 }
@@ -134,12 +134,12 @@ export function periodKeyFor(frequency: DigestFrequency, now: Date): string {
 }
 
 /** Daily digests go out every run; weekly digests only on Mondays (UTC). */
-function isDue(frequency: DigestFrequency, now: Date): boolean {
+export function isDue(frequency: DigestFrequency, now: Date): boolean {
   return frequency === 'weekly' ? now.getUTCDay() === 1 : true;
 }
 
 /** Read the routing pinned at emit time, defaulting to the catalog's actorless route. */
-function readRouting(event: PendingEvent): EventRouting {
+export function readRouting(event: PendingEvent): EventRouting {
   const payload = event.payload as { routing?: { roles?: unknown; fallbackToOwner?: unknown } };
   const roles = payload?.routing?.roles;
   if (Array.isArray(roles) && roles.length > 0) {
@@ -166,7 +166,7 @@ function eventLabel(type: string): string {
 }
 
 /** Group one recipient's events into facility → type → chronological sections. */
-function buildSections(
+export function buildSections(
   events: PendingEvent[],
   facilityNames: Map<string, string>,
 ): DigestSection[] {
@@ -209,7 +209,7 @@ function buildSections(
  * They still get marked dispatched by the caller — the in-app row was already
  * written at emit time, so re-digesting them later would only duplicate it.
  */
-async function emailableEvents(
+export async function emailableEvents(
   organizationId: string,
   events: PendingEvent[],
 ): Promise<PendingEvent[]> {
@@ -296,7 +296,7 @@ async function digestOrganization(
   if (!dryRun) {
     // Claim first: a concurrent run loses the race on @@unique and sends nothing.
     try {
-      const run = await prisma.notificationDigestRun.create({
+      const run = await prisma.cycleSummaryRun.create({
         data: { organizationId: organization.id, periodKey },
         select: { id: true },
       });
@@ -331,7 +331,7 @@ async function digestOrganization(
 
     if (events.length === 0) {
       if (runId) {
-        await prisma.notificationDigestRun.update({
+        await prisma.cycleSummaryRun.update({
           where: { id: runId },
           data: { status: 'sent', eventCount: 0, sentAt: now },
         });
@@ -428,7 +428,7 @@ async function digestOrganization(
     });
 
     if (runId) {
-      await prisma.notificationDigestRun.update({
+      await prisma.cycleSummaryRun.update({
         where: { id: runId },
         data: { status: 'sent', eventCount: events.length, sentAt: now },
       });
@@ -440,7 +440,7 @@ async function digestOrganization(
     if (runId) {
       // Leave the events pending so the next period can pick them up once the
       // underlying failure is resolved.
-      await prisma.notificationDigestRun
+      await prisma.cycleSummaryRun
         .update({ where: { id: runId }, data: { status: 'failed' } })
         .catch((updateErr) => {
           logger.error({

@@ -83,6 +83,7 @@ const ENROLLMENT = { id: 'enroll-1', organizationUserId: 'user-1', courseId: 'co
 const ESCALATION_RECIPIENTS = {
   organizationUserIds: ['admin-1'],
   emails: [{ email: 'admin@test.com', name: 'Admin Name' }],
+  members: [{ organizationUserId: 'admin-1', email: 'admin@test.com', name: 'Admin Name' }],
 };
 
 /** Base input for dispatchLadderStage — easy to spread-override per test. */
@@ -402,7 +403,7 @@ describe('dispatchNudge', () => {
     courseId: 'course-1',
     courseTitle: 'Safety Training',
     worker: WORKER,
-    recipients: { organizationUserIds: [], emails: [] },
+    recipients: { organizationUserIds: [], emails: [], members: [] },
     nudgeIntervalDays: 3,
     attemptsRemaining: 2,
     now: NOW,
@@ -489,10 +490,7 @@ describe('dispatchNudge', () => {
     it('notifies escalation recipients and sends escalation email (not the worker)', async () => {
       prismaMock.reminderNudge.findUnique.mockResolvedValue(null);
       const sendEmail = vi.fn().mockResolvedValue({ ok: true });
-      const recipients = {
-        organizationUserIds: ['admin-1'],
-        emails: [{ email: 'admin@test.com', name: 'Admin Name' }],
-      };
+      const recipients = ESCALATION_RECIPIENTS;
 
       const result = await dispatchNudge(
         baseNudgeInput({

@@ -16,7 +16,7 @@ const { prismaMock, MockPrismaKnownRequestError, mockResolveRoleRecipients, mock
       notificationEvent: { groupBy: vi.fn(), findMany: vi.fn(), updateMany: vi.fn() },
       organization: { findMany: vi.fn() },
       facility: { findMany: vi.fn() },
-      notificationDigestRun: { create: vi.fn(), update: vi.fn() },
+      cycleSummaryRun: { create: vi.fn(), update: vi.fn() },
     };
 
     // Same technique as src/lib/reminders/dispatch.test.ts: a fake class that
@@ -77,8 +77,8 @@ beforeEach(() => {
   prismaMock.notificationEvent.updateMany.mockResolvedValue({ count: 0 });
   prismaMock.organization.findMany.mockResolvedValue([]);
   prismaMock.facility.findMany.mockResolvedValue([]);
-  prismaMock.notificationDigestRun.create.mockResolvedValue({ id: 'run-1' });
-  prismaMock.notificationDigestRun.update.mockResolvedValue({});
+  prismaMock.cycleSummaryRun.create.mockResolvedValue({ id: 'run-1' });
+  prismaMock.cycleSummaryRun.update.mockResolvedValue({});
   mockResolveRoleRecipients.mockResolvedValue({
     userIds: ['hr-1'],
     emails: [{ userId: 'hr-1', email: 'hr-1@acme.com', name: null }],
@@ -148,7 +148,7 @@ describe('runNotificationDigest — weekly cadence gating', () => {
 
     expect(summary.organizationsScanned).toBe(1);
     expect(summary.organizationsDue).toBe(0);
-    expect(prismaMock.notificationDigestRun.create).not.toHaveBeenCalled();
+    expect(prismaMock.cycleSummaryRun.create).not.toHaveBeenCalled();
   });
 
   it('processes a weekly org when now IS a Monday UTC', async () => {
@@ -164,7 +164,7 @@ describe('runNotificationDigest — weekly cadence gating', () => {
     });
 
     expect(summary.organizationsDue).toBe(1);
-    expect(prismaMock.notificationDigestRun.create).toHaveBeenCalledOnce();
+    expect(prismaMock.cycleSummaryRun.create).toHaveBeenCalledOnce();
   });
 
   it('a daily org is due on every run regardless of weekday', async () => {
@@ -188,7 +188,7 @@ describe('runNotificationDigest — claim idempotency (P2002)', () => {
     prismaMock.organization.findMany.mockResolvedValue([
       { id: 'org-1', name: 'Acme', notificationDigestFrequency: 'daily' },
     ]);
-    prismaMock.notificationDigestRun.create.mockRejectedValueOnce(
+    prismaMock.cycleSummaryRun.create.mockRejectedValueOnce(
       new MockPrismaKnownRequestError('Unique constraint failed', 'P2002'),
     );
 
@@ -204,7 +204,7 @@ describe('runNotificationDigest — claim idempotency (P2002)', () => {
     prismaMock.organization.findMany.mockResolvedValue([
       { id: 'org-1', name: 'Acme', notificationDigestFrequency: 'daily' },
     ]);
-    prismaMock.notificationDigestRun.create.mockRejectedValueOnce(new Error('DB connection lost'));
+    prismaMock.cycleSummaryRun.create.mockRejectedValueOnce(new Error('DB connection lost'));
 
     const summary = await runNotificationDigest({ now: new Date(), dryRun: false });
 
@@ -221,7 +221,7 @@ describe('runNotificationDigest — claim idempotency (P2002)', () => {
 
     await runNotificationDigest({ now: new Date(), dryRun: true });
 
-    expect(prismaMock.notificationDigestRun.create).not.toHaveBeenCalled();
+    expect(prismaMock.cycleSummaryRun.create).not.toHaveBeenCalled();
   });
 });
 
@@ -238,8 +238,8 @@ describe('runNotificationDigest — dry-run purity', () => {
     expect(summary.wouldSend).toBe(1);
     expect(summary.emailsSent).toBe(0);
     expect(prismaMock.notificationEvent.updateMany).not.toHaveBeenCalled();
-    expect(prismaMock.notificationDigestRun.update).not.toHaveBeenCalled();
-    expect(prismaMock.notificationDigestRun.create).not.toHaveBeenCalled();
+    expect(prismaMock.cycleSummaryRun.update).not.toHaveBeenCalled();
+    expect(prismaMock.cycleSummaryRun.create).not.toHaveBeenCalled();
   });
 });
 
@@ -282,7 +282,7 @@ describe('runNotificationDigest — sending, grouping, and dispatch bookkeeping'
       where: { id: { in: ['event-1'] } },
       data: { status: 'dispatched', dispatchedAt: expect.any(Date), digestRunId: 'run-1' },
     });
-    expect(prismaMock.notificationDigestRun.update).toHaveBeenCalledWith({
+    expect(prismaMock.cycleSummaryRun.update).toHaveBeenCalledWith({
       where: { id: 'run-1' },
       data: { status: 'sent', eventCount: 1, sentAt: expect.any(Date) },
     });
@@ -406,7 +406,7 @@ describe('runNotificationDigest — org failure isolation', () => {
       { id: 'org-fail', name: 'Failing Co', notificationDigestFrequency: 'daily' },
       { id: 'org-ok', name: 'Fine Co', notificationDigestFrequency: 'daily' },
     ]);
-    prismaMock.notificationDigestRun.create
+    prismaMock.cycleSummaryRun.create
       .mockResolvedValueOnce({ id: 'run-fail' })
       .mockResolvedValueOnce({ id: 'run-ok' });
     prismaMock.notificationEvent.findMany
@@ -421,13 +421,13 @@ describe('runNotificationDigest — org failure isolation', () => {
 
     expect(summary.errors).toBe(1);
     expect(summary.digestsSent).toBe(1); // org-ok still completed
-    expect(prismaMock.notificationDigestRun.update).toHaveBeenCalledWith({
+    expect(prismaMock.cycleSummaryRun.update).toHaveBeenCalledWith({
       where: { id: 'run-fail' },
       data: { status: 'failed' },
     });
     // The failed org's events are untouched — no updateMany with its ids, and
     // no 'sent' status ever written for run-fail.
-    expect(prismaMock.notificationDigestRun.update).not.toHaveBeenCalledWith(
+    expect(prismaMock.cycleSummaryRun.update).not.toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'run-fail' },
         data: expect.objectContaining({ status: 'sent' }),
@@ -444,7 +444,7 @@ describe('runNotificationDigest — org failure isolation', () => {
 
     await runNotificationDigest({ now: new Date(), dryRun: false });
 
-    expect(prismaMock.notificationDigestRun.update).toHaveBeenCalledWith({
+    expect(prismaMock.cycleSummaryRun.update).toHaveBeenCalledWith({
       where: { id: 'run-1' },
       data: { status: 'sent', eventCount: 0, sentAt: expect.any(Date) },
     });
