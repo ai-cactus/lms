@@ -672,8 +672,10 @@ export async function setStaffFacilities(
  * Courses-module assignment, which is gated on enrollment rights. Finance and
  * Clinical Director therefore cannot assign from a staff profile even though a
  * Clinical Director retains course-assignment rights elsewhere. Resolves the
- * target's email and delegates to the unchanged `enrollUsers`, which owns the
- * enrollment/invite/notification mechanics.
+ * target's email and delegates to `enrollUsers`, which owns the
+ * enrollment/invite/notification mechanics — under the same per-person
+ * `deadlineScope` as its successor, so reverting to it cannot reintroduce the
+ * org-wide deadline overwrite.
  */
 export async function assignCourseToStaffMember(
   courseId: string,
@@ -725,7 +727,14 @@ export async function assignCourseToStaffMember(
   // into this action's return shape so the calling modal surfaces the specific
   // message instead of falling back to a generic failed state.
   try {
-    const outcome = await enrollUsers(courseId, [{ email: target.user.email }], assignmentSettings);
+    const outcome = await enrollUsers(
+      courseId,
+      [{ email: target.user.email }],
+      assignmentSettings,
+      {
+        deadlineScope: 'enrollment',
+      },
+    );
     if (outcome.refusedReason) {
       return {
         success: [],
@@ -772,6 +781,10 @@ export interface AssignCoursesToStaffResult {
  * Partial failure is expected and reported, never fatal: already-enrolled and
  * unassignable courses are bucketed and skipped, and only the newly assigned
  * ones are announced. Nothing newly assigned ⇒ no email and no notification.
+ *
+ * The deadline this modal offers is for THIS staff member, so it is submitted
+ * under `deadlineScope: 'enrollment'` — it must not move the org-wide deadline
+ * (or the reminder ladder anchored on it) for everyone else on the course.
  */
 export async function assignCoursesToStaffMember(
   staffOrgUserId: string,
@@ -866,7 +879,7 @@ export async function assignCoursesToStaffMember(
         courseId,
         [{ email: target.user.email }],
         assignmentSettings,
-        { deferWorkerNotification: true },
+        { deferWorkerNotification: true, deadlineScope: 'enrollment' },
       );
 
       if (outcome.refusedReason) {

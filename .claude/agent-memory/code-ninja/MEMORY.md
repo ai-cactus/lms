@@ -108,3 +108,4 @@
 - [/system has no portal session](gotcha_system_backoffice_has_no_portal_session.md) — serve /system media from an /api/system/** route; a system-cookie fallback on a portal route is dead behind the proxy; next/image unoptimized.
 - [Server Action args are unchecked](gotcha_server_action_args_are_unchecked.md) — a closed TS param type doesn't bind the client; never spread caller data into prisma.update.
 - [Vertex endpoint + Gemini 3 traps](project_vertex_endpoint_and_gemini3.md) — generation on us multi-region (VERTEX_*), embeddings regional; thinkingLevel/temperature/parts traps; live-smoke recipe
+- [enrollUsers dueAt is org-wide by default](gotcha_enrolluser_deadline_scope_defaults_org_wide.md) — a per-person deadline needs `deadlineScope: 'enrollment'`; the past-deadline guard means different things per scope

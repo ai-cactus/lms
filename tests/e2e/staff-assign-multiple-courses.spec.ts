@@ -30,20 +30,12 @@
  *   - App running on http://localhost:3005 (Playwright webServer).
  *   - DATABASE_URL reachable for direct DB seeding/mutation.
  *
- * TODO(back-merge #502-follow-up): SKIPPED on this line for ONE remaining
- * reason — `seed()` inserts `users (role, organization_id, facility_id)`, and
- * those columns do not exist here: a person in an organization is an
- * `organization_users` row, so the seed must be rewritten against the
- * membership tables before a single assertion can execute.
- *
- * The second blocker is gone: `AssignCoursesModal` now posts to
- * `assignCoursesToStaffMember`, so the batched notice this spec asserts is the
- * one the wired action actually emits. Un-skip once the seed is ported.
- *
- * A further deviation to expect when porting: the modal on this line takes no
- * `enrolledCourseIds` prop, so it renders no disabled "Assigned" checkboxes —
- * an already-enrolled course can be selected directly, without the reopen trick
- * described above.
+ * Seeding note: role, organization and facility live on the
+ * `organization_users` membership row, not on `users` — a `users` row is
+ * credentials plus display name. Every domain table here (enrollments,
+ * notifications, courses.created_by_org_user_id) and the
+ * /dashboard/staff/[id] route itself address the membership id, so the seed
+ * creates both and the assertions use `workerOrgUserId`.
  */
 
 import { test, expect, type Page } from '@playwright/test';
@@ -63,10 +55,14 @@ async function db(): Promise<Client> {
 interface Seeded {
   orgId: string;
   facilityId: string;
-  ownerId: string;
+  /** `users` row. Authentication only — never a foreign key on domain tables. */
+  ownerUserId: string;
+  /** `organization_users` row: the id every domain table and route addresses. */
+  ownerOrgUserId: string;
   ownerEmail: string;
   ownerPassword: string;
-  workerId: string;
+  workerUserId: string;
+  workerOrgUserId: string;
   workerEmail: string;
   courseA: string; // video — Scenario 1 batch
   courseB: string; // video — Scenario 1 batch
@@ -93,8 +89,10 @@ async function seed(): Promise<Seeded> {
 
     const orgId = crypto.randomUUID();
     const facilityId = crypto.randomUUID();
-    const ownerId = crypto.randomUUID();
-    const workerId = crypto.randomUUID();
+    const ownerUserId = crypto.randomUUID();
+    const ownerOrgUserId = crypto.randomUUID();
+    const workerUserId = crypto.randomUUID();
+    const workerOrgUserId = crypto.randomUUID();
     const courseA = crypto.randomUUID();
     const courseB = crypto.randomUUID();
     const courseC = crypto.randomUUID();
@@ -114,27 +112,54 @@ async function seed(): Promise<Seeded> {
       [facilityId, orgId, `MC Assign E2E Facility ${slug}`],
     );
 
-    await client.query(
-      `INSERT INTO users (id, email, password, role, email_verified, organization_id, facility_id, created_at, updated_at)
-       VALUES ($1, $2, $3, 'owner'::"UserRole", true, $4, $5, NOW(), NOW())`,
-      [ownerId, ownerEmail, ownerHashed, orgId, facilityId],
-    );
-    await client.query(
-      `INSERT INTO profiles (id, email, first_name, last_name, full_name, created_at, updated_at)
-       VALUES ($1, $2, 'MC', 'Owner', 'MC Owner', NOW(), NOW())`,
-      [ownerId, ownerEmail],
-    );
-
-    await client.query(
-      `INSERT INTO users (id, email, password, role, email_verified, organization_id, facility_id, created_at, updated_at)
-       VALUES ($1, $2, $3, 'nurse'::"UserRole", true, $4, $5, NOW(), NOW())`,
-      [workerId, workerEmail, workerHashed, orgId, facilityId],
-    );
-    await client.query(
-      `INSERT INTO profiles (id, email, first_name, last_name, full_name, job_title, created_at, updated_at)
-       VALUES ($1, $2, 'MC', 'Worker', 'MC Worker', 'Staff Nurse', NOW(), NOW())`,
-      [workerId, workerEmail],
-    );
+    // Membership, not the user row, carries role/org/facility: a `users` row is
+    // only credentials + display name, and every domain table keys off the
+    // `organization_users` id.
+    for (const person of [
+      {
+        userId: ownerUserId,
+        orgUserId: ownerOrgUserId,
+        email: ownerEmail,
+        hashed: ownerHashed,
+        role: 'owner',
+        first: 'MC',
+        last: 'Owner',
+        jobTitle: null,
+      },
+      {
+        userId: workerUserId,
+        orgUserId: workerOrgUserId,
+        email: workerEmail,
+        hashed: workerHashed,
+        role: 'nurse',
+        first: 'MC',
+        last: 'Worker',
+        jobTitle: 'Staff Nurse',
+      },
+    ]) {
+      await client.query(
+        `INSERT INTO users (id, email, password, email_verified, auth_provider, first_name, last_name, full_name, created_at, updated_at)
+         VALUES ($1, $2, $3, true, 'credentials', $4, $5, $6, NOW(), NOW())`,
+        [
+          person.userId,
+          person.email,
+          person.hashed,
+          person.first,
+          person.last,
+          `${person.first} ${person.last}`,
+        ],
+      );
+      await client.query(
+        `INSERT INTO organization_users (id, user_id, organization_id, role, job_title, active, joined_at, role_assigned_at, created_at, updated_at)
+         VALUES ($1, $2, $3, $4::"UserRole", $5, true, NOW(), NOW(), NOW(), NOW())`,
+        [person.orgUserId, person.userId, orgId, person.role, person.jobTitle],
+      );
+      await client.query(
+        `INSERT INTO organization_user_facilities (id, organization_user_id, facility_id, active, joined_at)
+         VALUES ($1, $2, $3, true, NOW())`,
+        [crypto.randomUUID(), person.orgUserId, facilityId],
+      );
+    }
 
     // Active subscription: enrollUsers' billing gate requires it.
     const subNow = new Date();
@@ -167,9 +192,9 @@ async function seed(): Promise<Seeded> {
     ];
     for (const [id, title, type] of courses) {
       await client.query(
-        `INSERT INTO courses (id, title, status, created_by, organization_id, type, is_global, created_at, updated_at)
+        `INSERT INTO courses (id, title, status, created_by_org_user_id, organization_id, type, is_global, created_at, updated_at)
          VALUES ($1, $2, 'published'::"CourseStatus", $3, $4, $5::"CourseType", false, NOW(), NOW())`,
-        [id, title, ownerId, orgId, type],
+        [id, title, ownerOrgUserId, orgId, type],
       );
     }
 
@@ -177,9 +202,9 @@ async function seed(): Promise<Seeded> {
     // assigned to it before the test ever opens the modal.
     const preEnrolledEnrollmentId = crypto.randomUUID();
     await client.query(
-      `INSERT INTO enrollments (id, user_id, course_id, status, started_at)
-       VALUES ($1, $2, $3, 'enrolled'::"EnrollmentStatus", NOW())`,
-      [preEnrolledEnrollmentId, workerId, coursePreEnrolled],
+      `INSERT INTO enrollments (id, organization_user_id, course_id, facility_id, status, started_at)
+       VALUES ($1, $2, $3, $4, 'enrolled'::"EnrollmentStatus", NOW())`,
+      [preEnrolledEnrollmentId, workerOrgUserId, coursePreEnrolled, facilityId],
     );
 
     // Pre-existing CourseAssignment (with distinctive settings) for
@@ -195,7 +220,7 @@ async function seed(): Promise<Seeded> {
         preserveAssignmentId,
         orgId,
         coursePreserve,
-        ownerId,
+        ownerOrgUserId,
         new Date('2099-01-01T00:00:00Z'), // sentinel — must be untouched by the assign
       ],
     );
@@ -208,10 +233,12 @@ async function seed(): Promise<Seeded> {
     return {
       orgId,
       facilityId,
-      ownerId,
+      ownerUserId,
+      ownerOrgUserId,
       ownerEmail,
       ownerPassword,
-      workerId,
+      workerUserId,
+      workerOrgUserId,
       workerEmail,
       courseA,
       courseB,
@@ -243,8 +270,8 @@ async function cleanup(s: Seeded): Promise<void> {
        )`,
       [courseIds],
     );
-    await client.query(`DELETE FROM notifications WHERE user_id = ANY($1)`, [
-      [s.ownerId, s.workerId],
+    await client.query(`DELETE FROM notifications WHERE organization_user_id = ANY($1)`, [
+      [s.ownerOrgUserId, s.workerOrgUserId],
     ]);
     await client.query(`DELETE FROM email_messages WHERE to_email = $1`, [s.workerEmail]);
     await client.query(`DELETE FROM enrollments WHERE course_id = ANY($1)`, [courseIds]);
@@ -257,11 +284,14 @@ async function cleanup(s: Seeded): Promise<void> {
     await client.query(`DELETE FROM course_assignments WHERE course_id = ANY($1)`, [courseIds]);
     await client.query(`DELETE FROM org_course_offerings WHERE course_id = ANY($1)`, [courseIds]);
     await client.query(`DELETE FROM courses WHERE id = ANY($1)`, [courseIds]);
-    await client.query(`DELETE FROM profiles WHERE email IN ($1, $2)`, [
-      s.ownerEmail,
-      s.workerEmail,
+    await client.query(
+      `DELETE FROM organization_user_facilities WHERE organization_user_id = ANY($1)`,
+      [[s.ownerOrgUserId, s.workerOrgUserId]],
+    );
+    await client.query(`DELETE FROM organization_users WHERE id = ANY($1)`, [
+      [s.ownerOrgUserId, s.workerOrgUserId],
     ]);
-    await client.query(`DELETE FROM users WHERE id = ANY($1)`, [[s.ownerId, s.workerId]]);
+    await client.query(`DELETE FROM users WHERE id = ANY($1)`, [[s.ownerUserId, s.workerUserId]]);
     await client.query(`DELETE FROM subscriptions WHERE organization_id = $1`, [s.orgId]);
     await client.query(`DELETE FROM facilities WHERE id = $1`, [s.facilityId]);
     await client.query(`DELETE FROM organizations WHERE id = $1`, [s.orgId]);
@@ -305,16 +335,16 @@ async function emailCount(workerEmail: string, since: Date): Promise<number> {
 }
 
 async function latestNotification(
-  workerId: string,
+  workerOrgUserId: string,
   since: Date,
 ): Promise<{ message: string; metadata: Record<string, unknown> } | null> {
   const client = await db();
   try {
     const res = await client.query(
       `SELECT message, metadata FROM notifications
-       WHERE user_id = $1 AND type = 'COURSE_ASSIGNED' AND created_at >= $2
+       WHERE organization_user_id = $1 AND type = 'COURSE_ASSIGNED' AND created_at >= $2
        ORDER BY created_at DESC LIMIT 1`,
-      [workerId, sinceParam(since)],
+      [workerOrgUserId, sinceParam(since)],
     );
     return res.rows[0] ?? null;
   } finally {
@@ -322,13 +352,13 @@ async function latestNotification(
   }
 }
 
-async function notificationCount(workerId: string, since: Date): Promise<number> {
+async function notificationCount(workerOrgUserId: string, since: Date): Promise<number> {
   const client = await db();
   try {
     const res = await client.query(
       `SELECT COUNT(*)::int AS n FROM notifications
-       WHERE user_id = $1 AND type = 'COURSE_ASSIGNED' AND created_at >= $2`,
-      [workerId, sinceParam(since)],
+       WHERE organization_user_id = $1 AND type = 'COURSE_ASSIGNED' AND created_at >= $2`,
+      [workerOrgUserId, sinceParam(since)],
     );
     return res.rows[0].n;
   } finally {
@@ -336,7 +366,7 @@ async function notificationCount(workerId: string, since: Date): Promise<number>
   }
 }
 
-test.describe.skip('Staff profile — assign multiple courses in one action', () => {
+test.describe('Staff profile — assign multiple courses in one action', () => {
   test('N courses collapse into one email/notification, zero-newly-assigned sends nothing, single-course keeps the same path, and preserve mode leaves the shared assignment untouched', async ({
     page,
   }) => {
@@ -346,7 +376,7 @@ test.describe.skip('Staff profile — assign multiple courses in one action', ()
 
     try {
       await login(page, seeded.ownerEmail, seeded.ownerPassword);
-      await page.goto(`/dashboard/staff/${seeded.workerId}`);
+      await page.goto(`/dashboard/staff/${seeded.workerOrgUserId}`);
       await page.waitForLoadState('networkidle');
 
       // A second tab in the SAME authenticated session (same BrowserContext,
@@ -359,7 +389,7 @@ test.describe.skip('Staff profile — assign multiple courses in one action', ()
       // assignment, the other's already-open tab still shows the course as
       // selectable and submits the exact same course afterward.
       const stalePage = await page.context().newPage();
-      await stalePage.goto(`/dashboard/staff/${seeded.workerId}`);
+      await stalePage.goto(`/dashboard/staff/${seeded.workerOrgUserId}`);
       await stalePage.waitForLoadState('networkidle');
 
       // ── Scenario 1: 3 courses ⇒ exactly ONE email, ONE notification ────────
@@ -381,8 +411,10 @@ test.describe.skip('Staff profile — assign multiple courses in one action', ()
       });
 
       await expect.poll(() => emailCount(seeded.workerEmail, t0), { timeout: 15000 }).toBe(1);
-      await expect.poll(() => notificationCount(seeded.workerId, t0), { timeout: 15000 }).toBe(1);
-      const batchNotification = await latestNotification(seeded.workerId, t0);
+      await expect
+        .poll(() => notificationCount(seeded.workerOrgUserId, t0), { timeout: 15000 })
+        .toBe(1);
+      const batchNotification = await latestNotification(seeded.workerOrgUserId, t0);
       expect(batchNotification).not.toBeNull();
       expect(batchNotification!.metadata.courseIds).toHaveLength(3);
       expect(batchNotification!.metadata.count).toBe(3);
@@ -391,8 +423,8 @@ test.describe.skip('Staff profile — assign multiple courses in one action', ()
       try {
         const enrollmentRes = await dbAfterBatch.query(
           `SELECT id, course_id, due_at FROM enrollments
-           WHERE user_id = $1 AND course_id = ANY($2)`,
-          [seeded.workerId, [seeded.courseA, seeded.courseB, seeded.courseC]],
+           WHERE organization_user_id = $1 AND course_id = ANY($2)`,
+          [seeded.workerOrgUserId, [seeded.courseA, seeded.courseB, seeded.courseC]],
         );
         expect(enrollmentRes.rows).toHaveLength(3);
         for (const row of enrollmentRes.rows) {
@@ -427,13 +459,16 @@ test.describe.skip('Staff profile — assign multiple courses in one action', ()
       await expect(staleDialog.getByText('Set Completion Deadline')).toBeVisible();
       await staleDialog.getByRole('button', { name: 'Assign Course' }).click();
 
-      await expect(staleDialog.getByText('No new courses were assigned')).toBeVisible({
+      // The modal reports the refusal as an error on the deadline step and
+      // never advances to the success step — `assigned.length === 0` is the
+      // branch under test, whatever wording it carries.
+      await expect(staleDialog.getByText(/already assigned to the selected course/i)).toBeVisible({
         timeout: 15000,
       });
       await expect(staleDialog.getByText('Courses Assigned Successfully')).not.toBeVisible();
 
       await expect.poll(() => emailCount(seeded.workerEmail, t1), { timeout: 10000 }).toBe(0);
-      expect(await notificationCount(seeded.workerId, t1)).toBe(0);
+      expect(await notificationCount(seeded.workerOrgUserId, t1)).toBe(0);
 
       await stalePage.close();
 
@@ -457,7 +492,7 @@ test.describe.skip('Staff profile — assign multiple courses in one action', ()
       });
 
       await expect.poll(() => emailCount(seeded.workerEmail, t2), { timeout: 15000 }).toBe(1);
-      const singleNotification = await latestNotification(seeded.workerId, t2);
+      const singleNotification = await latestNotification(seeded.workerOrgUserId, t2);
       expect(singleNotification).not.toBeNull();
       expect(singleNotification!.metadata.count).toBe(1);
 
@@ -507,8 +542,8 @@ test.describe.skip('Staff profile — assign multiple courses in one action', ()
         // The worker's own enrollment still gets the deadline chosen in the UI —
         // preserve mode only shields the SHARED org-wide assignment settings.
         const enrollmentRes = await dbAfterPreserve.query(
-          `SELECT due_at FROM enrollments WHERE user_id = $1 AND course_id = $2`,
-          [seeded.workerId, seeded.coursePreserve],
+          `SELECT due_at FROM enrollments WHERE organization_user_id = $1 AND course_id = $2`,
+          [seeded.workerOrgUserId, seeded.coursePreserve],
         );
         expect(enrollmentRes.rows).toHaveLength(1);
         expect(enrollmentRes.rows[0].due_at).not.toBeNull();

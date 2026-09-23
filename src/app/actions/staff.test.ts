@@ -747,8 +747,9 @@ describe('setStaffManager() — permission matrix (user.edit gate)', () => {
  * deliberately distinct gate from the Courses-module assignment path, which
  * remains reachable via `enrollment.create`/`enrollment.edit` (Clinical
  * Director keeps that path). It resolves the target's email within the
- * caller's org, then delegates the actual enrollment mechanics to the
- * UNCHANGED `enrollUsers`.
+ * caller's org, then delegates the actual enrollment mechanics to
+ * `enrollUsers` — under the per-person `deadlineScope` its successor uses, so
+ * the revert path cannot reintroduce BUG-20.
  */
 describe('assignCourseToStaffMember() — permission gate, org scope, delegation', () => {
   it.each(['finance', 'clinical_director', 'supervisor'] as const)(
@@ -801,9 +802,12 @@ describe('assignCourseToStaffMember() — permission gate, org scope, delegation
       renewalCycle: 'annual',
     });
 
-    expect(mockEnrollUsers).toHaveBeenCalledWith('course-1', [{ email: 'target@acme.com' }], {
-      renewalCycle: 'annual',
-    });
+    expect(mockEnrollUsers).toHaveBeenCalledWith(
+      'course-1',
+      [{ email: 'target@acme.com' }],
+      { renewalCycle: 'annual' },
+      { deadlineScope: 'enrollment' },
+    );
     expect(result).toEqual({
       success: ['target@acme.com'],
       alreadyEnrolled: [],
