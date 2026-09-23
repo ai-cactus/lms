@@ -16,6 +16,13 @@
  *   - Started at server boot from `src/instrumentation.ts`.
  *   - registerRepeatableJob() installs the cron Job Scheduler (idempotent).
  *   - A no-op when NOTIFICATION_DIGEST_ENABLED=false.
+ *
+ * SUPERSEDED by cycle-summary-worker.ts. While CYCLE_SUMMARY_ENABLED is on this
+ * worker does not start: the unified summary carries the same NotificationEvents
+ * (as its "Organization updates" section) and both claim the same
+ * `CycleSummaryRun (organizationId, periodKey)` row, so running them together
+ * would mean whichever won the claim sent a partial picture and the other sent
+ * nothing. This module becomes dead once the flag is permanently on.
  */
 
 import { Worker } from 'bullmq';
@@ -23,6 +30,7 @@ import { redis } from './redis';
 import { logger } from '@/lib/logger';
 import { runNotificationDigest, type DigestRunSummary } from '@/lib/notifications/digest';
 import { notificationDigestSender } from '@/lib/notifications/email-sender';
+import { isCycleSummaryEnabled } from '@/lib/cycle-summary/flag';
 import {
   NOTIFICATION_DIGEST_QUEUE_NAME,
   notificationDigestQueue,
@@ -90,12 +98,23 @@ async function registerRepeatableJob(cron: string): Promise<void> {
 
 /**
  * Returns the singleton digest worker, creating it on first call. Returns null
- * (and starts nothing) when NOTIFICATION_DIGEST_ENABLED is explicitly "false" —
- * the flag defaults to enabled. Safe to call repeatedly.
+ * (and starts nothing) when the cycle summary has taken over, or when
+ * NOTIFICATION_DIGEST_ENABLED is explicitly "false" — that flag defaults to
+ * enabled. Safe to call repeatedly.
+ *
+ * The cycle-summary check lives HERE rather than only at the call site so the
+ * two workers cannot disagree however they are started.
  */
 export function getNotificationDigestWorker(): Worker | null {
   if (globalThis.__notificationDigestWorker) {
     return globalThis.__notificationDigestWorker;
+  }
+
+  if (isCycleSummaryEnabled()) {
+    logger.info({
+      msg: '[notifications] Superseded by the cycle summary — digest worker not started',
+    });
+    return null;
   }
 
   if (process.env.NOTIFICATION_DIGEST_ENABLED === 'false') {

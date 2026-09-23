@@ -5,6 +5,7 @@ import { runRetentionPurge, type RetentionPurgeSummary } from '@/lib/retention';
 import { createEnrollmentForUser, type CreateEnrollmentContext } from '@/lib/enrollment/create';
 import { assignmentAdmitsHolder } from '@/lib/enrollment/assignment-facility-scope';
 import { resolveMemberFacilityIds } from '@/lib/facility/member-facility';
+import { isCycleSummaryEnabled } from '@/lib/cycle-summary/flag';
 import type { UserRole, RenewalCycle } from '@/generated/prisma/enums';
 import { SWEEP_LADDER_STAGES, REMINDER_STAGE_DEFAULTS } from './stages';
 import { DEFAULT_TZ, startOfDayInTz, addDays, diffInDaysInTz } from './time';
@@ -13,6 +14,7 @@ import {
   dispatchNudge,
   noopEmailSender,
   retryReminderEmail,
+  LEGACY_REMINDER_EMAIL_KINDS,
   type DispatchResult,
   type ReminderEmailSender,
 } from './dispatch';
@@ -143,6 +145,17 @@ export async function runReminderSweep(opts: ReminderSweepOptions): Promise<Remi
  * `reminderLogId`, so they alone are reconstructable from the claimed
  * ReminderLog + enrollment context; each is rebuilt and re-sent via the injected
  * sender. A no-op under `dryRun` (it would otherwise mutate delivery state).
+ *
+ * Narrowed, not stood down, while CYCLE_SUMMARY_ENABLED is on. The flag stops
+ * NEW per-stage email at the dispatch site, so from the flip onward this pass
+ * can only ever see the backlog the flip stranded: rows that were already
+ * written and already `failed` when it happened. `runCycleSummaryRetry`
+ * (src/lib/cycle-summary/retry.ts) cannot cover them — it selects
+ * `cycle_summary` rows only — so without this drain they would sit `failed`
+ * forever. Restricting the query to {@link LEGACY_REMINDER_EMAIL_KINDS} keeps
+ * the two retry passes off each other's rows, and the unchanged attempt cap and
+ * backoff floor bound the drain: every candidate ends `sent` or exhausted, after
+ * which this costs one indexed query per sweep that returns nothing.
  */
 async function runRetryPrePass(
   opts: ReminderSweepOptions,
@@ -153,11 +166,16 @@ async function runRetryPrePass(
 
   const sendEmail = opts.sendEmail ?? noopEmailSender;
   const backoffFloor = new Date(now.getTime() - RETRY_BACKOFF_MS);
+  const drainingLegacyBacklog = isCycleSummaryEnabled();
 
   // Column-to-column comparison (attempts < maxAttempts) isn't expressible in a
   // Prisma filter, so gate on status/backoff in SQL and cap in JS.
   const candidates = await prisma.emailMessage.findMany({
-    where: { status: 'failed', updatedAt: { lt: backoffFloor } },
+    where: {
+      status: 'failed',
+      updatedAt: { lt: backoffFloor },
+      ...(drainingLegacyBacklog ? { kind: { in: [...LEGACY_REMINDER_EMAIL_KINDS] } } : {}),
+    },
     select: { id: true, toEmail: true, attempts: true, maxAttempts: true, reminderLogId: true },
   });
 
@@ -592,6 +610,9 @@ async function runRenewalRetriggerPrePass(
               stage: 'INITIAL_LAUNCH',
               channels: ['email', 'in_app'],
               targetDate: now,
+              // See createEnrollmentForUser: the launch notification for a
+              // renewal is sent here, so this marker is never for a summary.
+              summarizedAt: now,
             },
           });
         } catch (logErr) {
