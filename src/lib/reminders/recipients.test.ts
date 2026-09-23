@@ -61,6 +61,9 @@ describe('resolveEscalationRecipients', () => {
 
     expect(result.organizationUserIds).toEqual(['mgr-1']);
     expect(result.emails).toEqual([{ email: 'manager@test.com', name: 'Alice Manager' }]);
+    expect(result.members).toEqual([
+      { organizationUserId: 'mgr-1', email: 'manager@test.com', name: 'Alice Manager' },
+    ]);
     // No fallback query — the org-admin findMany should not have run
     expect(prismaMock.organizationUser.findMany).not.toHaveBeenCalled();
   });
@@ -75,6 +78,9 @@ describe('resolveEscalationRecipients', () => {
 
     expect(result.organizationUserIds).toEqual(['admin-1']);
     expect(result.emails).toEqual([{ email: 'admin@test.com', name: 'Bob Admin' }]);
+    expect(result.members).toEqual([
+      { organizationUserId: 'admin-1', email: 'admin@test.com', name: 'Bob Admin' },
+    ]);
   });
 
   it('falls back to org admins when the manager exists but is not an admin role', async () => {
@@ -121,6 +127,7 @@ describe('resolveEscalationRecipients', () => {
     const result = await resolveEscalationRecipients({ organizationUserId: 'orgUser-1' });
 
     expect(result.organizationUserIds).toHaveLength(0);
+    expect(result.members).toHaveLength(0);
     expect(result.emails).toHaveLength(0);
     expect(mockLoggerWarn).toHaveBeenCalledWith(
       expect.objectContaining({ msg: expect.stringContaining('membership not found') }),

@@ -96,6 +96,7 @@ vi.mock('@/lib/reminders/dispatch', () => ({
 
 vi.mock('@/lib/reminders/recipients', () => ({
   resolveEscalationRecipients: mockResolveEscalationRecipients,
+  NO_ESCALATION_RECIPIENTS: { organizationUserIds: [], emails: [], members: [] },
 }));
 
 vi.mock('@/lib/retention', () => ({

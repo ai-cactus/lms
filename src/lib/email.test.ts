@@ -39,6 +39,7 @@ import {
   sendMfaOtpEmail,
   sendCoursesAssignedEmail,
   sendCourseLaunchEmail,
+  sendCycleSummaryEmail,
 } from './email';
 import { OTP_EXPIRY_MINUTES } from './mfa';
 
@@ -377,5 +378,88 @@ describe('sendPartnerApplicationEmail', () => {
     });
 
     expect(result).toEqual(expect.objectContaining({ success: false }));
+  });
+});
+
+describe('sendCycleSummaryEmail', () => {
+  const summary = {
+    organizationName: 'Acme Care',
+    dateLabel: 'September 23, 2026',
+    sections: [
+      {
+        kind: 'training' as const,
+        title: 'Your training — overdue and due today',
+        items: [{ courseTitle: 'Bloodborne Pathogens', detail: 'Due today' }],
+      },
+      {
+        kind: 'team' as const,
+        title: 'Team & compliance',
+        groups: [
+          {
+            workerName: 'Sam Report',
+            items: [{ courseTitle: 'HIPAA', detail: '7 days overdue' }],
+          },
+        ],
+      },
+    ],
+  };
+
+  it('uses the fixed subject, independent of how much the email carries', async () => {
+    mockSendMail.mockResolvedValue({ messageId: 'mid-cs' });
+
+    await sendCycleSummaryEmail('worker@test.com', 'Dana', summary);
+
+    expect(mockSendMail).toHaveBeenCalledWith(
+      expect.objectContaining({ subject: 'Your Theraptly summary — September 23, 2026' }),
+    );
+  });
+
+  it('sends a plain-text alternative alongside the HTML body', async () => {
+    mockSendMail.mockResolvedValue({ messageId: 'mid-cs' });
+
+    await sendCycleSummaryEmail('worker@test.com', 'Dana', summary);
+
+    const [options] = mockSendMail.mock.calls[0];
+    expect(options.html).toContain('Bloodborne Pathogens');
+    expect(options.text).toContain('- Bloodborne Pathogens: Due today');
+    expect(options.text).toContain('Sam Report:');
+  });
+
+  it('does NOT record its own EmailMessage row — the compose pass owns that', async () => {
+    mockSendMail.mockResolvedValue({ messageId: 'mid-cs' });
+
+    await sendCycleSummaryEmail('worker@test.com', 'Dana', summary);
+
+    expect(prismaMock.emailMessage.create).not.toHaveBeenCalled();
+  });
+
+  it('escapes recipient-supplied values in the HTML body', async () => {
+    mockSendMail.mockResolvedValue({ messageId: 'mid-cs' });
+
+    await sendCycleSummaryEmail('worker@test.com', 'Dana', {
+      ...summary,
+      organizationName: '<script>alert(1)</script>',
+    });
+
+    const [options] = mockSendMail.mock.calls[0];
+    expect(options.html).not.toContain('<script>');
+    expect(options.html).toContain('&lt;script&gt;');
+  });
+
+  it('refuses a send with no recipient rather than throwing', async () => {
+    await expect(sendCycleSummaryEmail('', 'Dana', summary)).resolves.toEqual({
+      success: false,
+      error: 'Missing recipient email',
+    });
+    expect(mockSendMail).not.toHaveBeenCalled();
+  });
+
+  it('returns a structured failure when the transport throws', async () => {
+    mockSendMail.mockRejectedValue(new Error('SMTP down'));
+
+    const result = await sendCycleSummaryEmail('worker@test.com', 'Dana', summary);
+
+    expect(result.success).toBe(false);
+    expect(prismaMock.emailMessage.create).not.toHaveBeenCalled();
   });
 });

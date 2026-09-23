@@ -31,7 +31,7 @@ import { logger } from '@/lib/logger';
  */
 async function clearCurrentPeriodClaims(now: Date): Promise<number> {
   const periodKeys = [periodKeyFor('daily', now), periodKeyFor('weekly', now)];
-  const { count } = await prisma.notificationDigestRun.deleteMany({
+  const { count } = await prisma.cycleSummaryRun.deleteMany({
     where: { periodKey: { in: periodKeys }, status: { in: ['claimed', 'failed'] } },
   });
   return count;

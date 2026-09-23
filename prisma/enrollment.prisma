@@ -108,6 +108,11 @@ model ReminderLog {
   channels     String[]      @default([])
   targetDate   DateTime      @map("target_date")
   sentAt       DateTime      @default(now()) @map("sent_at")
+  /// When the cycle-summary compose pass captured this row into a recipient's
+  /// daily email. Null = still eligible for the next pass. Scanned via a partial
+  /// index (`WHERE summarized_at IS NULL`) that Prisma's DSL cannot express, so
+  /// it is hand-maintained in SQL — see the add_cycle_summary migration.
+  summarizedAt DateTime?     @map("summarized_at")
   enrollment   Enrollment    @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
 
   @@unique([enrollmentId, stage])
@@ -121,6 +126,10 @@ model ReminderNudge {
   kind         ReminderNudgeKind
   lastSentAt   DateTime          @default(now()) @map("last_sent_at")
   count        Int               @default(1)
+  /// See ReminderLog.summarizedAt. A nudge row is upserted rather than inserted,
+  /// so every re-nudge must reset this to null — otherwise the second and later
+  /// nudges for an enrollment would never reach a summary.
+  summarizedAt DateTime?         @map("summarized_at")
   enrollment   Enrollment        @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
 
   @@unique([enrollmentId, kind])

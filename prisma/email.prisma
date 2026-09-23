@@ -2,21 +2,55 @@
 
 /// Delivery-tracking record for a single outbound email. Written when an email
 /// is queued and updated as delivery is attempted (status/attempts/lastError).
-/// `reminderLogId` is a plain, unconstrained reference to a ReminderLog — kept
-/// decoupled (no relation/FK) so email delivery is independent of reminder data.
+/// `reminderLogId` and `organizationId` are plain, unconstrained references —
+/// kept decoupled (no relation/FK) so email delivery is independent of the
+/// reminder and tenancy data it describes, and the delivery trail survives
+/// deletion of the rows it points at.
+///
+/// `reminderLogId` stays null for the `cycle_summary` kind: a summary email
+/// covers many reminder rows at once, so the single-ReminderLog pointer cannot
+/// express its contents. The rows it captured are enumerated by
+/// {@link CycleSummaryItem} instead.
 model EmailMessage {
-  id            String    @id @default(uuid())
-  toEmail       String    @map("to_email")
-  kind          String
-  reminderLogId String?   @map("reminder_log_id")
-  status        String    @default("queued")
-  attempts      Int       @default(0)
-  maxAttempts   Int       @default(3) @map("max_attempts")
-  lastError     String?   @map("last_error")
-  sentAt        DateTime? @map("sent_at")
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
+  id             String             @id @default(uuid())
+  toEmail        String             @map("to_email")
+  /// Recipient display name, when the sender knew one.
+  toName         String?            @map("to_name")
+  kind           String
+  /// Owning organization, for per-tenant delivery reporting. Unconstrained.
+  organizationId String?            @map("organization_id")
+  reminderLogId  String?            @map("reminder_log_id")
+  status         String             @default("queued")
+  attempts       Int                @default(0)
+  maxAttempts    Int                @default(3) @map("max_attempts")
+  lastError      String?            @map("last_error")
+  sentAt         DateTime?          @map("sent_at")
+  createdAt      DateTime           @default(now()) @map("created_at")
+  updatedAt      DateTime           @updatedAt @map("updated_at")
+  cycleSummary   CycleSummaryItem[]
 
   @@index([status, attempts])
   @@map("email_messages")
+}
+
+/// One source row captured into a cycle-summary email. Makes a summary's
+/// contents auditable ("which reminders did this email actually carry?") and,
+/// with the unique constraint, makes the compose pass idempotent: a retried
+/// transaction re-inserts the same rows and `skipDuplicates` absorbs them.
+///
+/// `itemType` is one of `reminder_log` | `reminder_nudge` | `notification_event`
+/// and `itemId` is that row's id — deliberately unconstrained (the source row
+/// may be purged independently), while the EmailMessage side is a real FK so
+/// retention purging an email takes its item rows with it.
+model CycleSummaryItem {
+  id             String       @id @default(uuid())
+  emailMessageId String       @map("email_message_id")
+  itemType       String       @map("item_type")
+  itemId         String       @map("item_id")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  emailMessage   EmailMessage @relation(fields: [emailMessageId], references: [id], onDelete: Cascade)
+
+  @@unique([emailMessageId, itemType, itemId])
+  @@index([emailMessageId])
+  @@map("cycle_summary_items")
 }

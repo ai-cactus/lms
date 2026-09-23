@@ -21,8 +21,9 @@
 - [Build type-checks everything](build_typecheck_scope.md) — `next build` type-checks scripts/ and tests; `npm run lint` only covers src/; deleting a page fails typecheck on a stale `.next/` and `rm` is often blocked.
 - [RBAC role model](rbac_role_model.md) — 14 category-aware DB roles (6 manager incl. admin + 8 worker, uniform worker perms); supervisor read-only; grants; seat counting unresolved (BUG-07).
 - [Org/Facility split](org_facility_split.md) — location/compliance fields moved to Facility; genuinely multi-facility (OrganizationUserFacility); facility CRUD = owner/admin/hr.
+- [Full vitest run OOMs here](gotcha_full_vitest_run_ooms_here.md) — bare `vitest run` dies with a bare exit 137; shard it `--shard=N/4 --maxWorkers=1` (≈8 min) to really verify the suite
 - [Offline migrations](project_offline_migrations.md) — dev DB (localhost:5433) often unreachable; scaffold Prisma migrations offline via `migrate diff --from-schema/--to-schema`.
-- [migrate dev destructive diff](project_migrate_dev_destructive_diff.md) — autogen drops the raw-SQL pgvector col, its HNSW index and facility defaults, AND `migrate dev` hangs on a prompt; hand-author, strip the drift, checksum-recovery recipe.
+- [migrate dev destructive diff](project_migrate_dev_destructive_diff.md) — autogen drops the pgvector col/HNSW index/facility defaults and `migrate dev` hangs; a table RENAME comes out as DROP+CREATE; partial indexes are NOT drift.
 - [prisma format runs in pre-commit](gotcha_prisma_format_churn.md) — lint-staged formats staged .prisma now, so schemas ARE canonical; hand-align your model and validate.
 - [MinIO dev port mismatch](gotcha_minio_dev_port_mismatch.md) — compose publishes MinIO on 9005 but .env.example still says 9000; set MINIO_PORT=9005 for storage/video flows to work locally.
 - [Vitest @/generated alias](project_vitest_generated_alias.md) — vitest.config.mts must alias @/generated & @/db (most-specific first) or value-imports of generated Prisma fail in tests.

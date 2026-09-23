@@ -124,6 +124,11 @@ export async function runRetentionPurge(now: Date): Promise<RetentionPurgeSummar
   // Age by `sentAt` (the precise terminal timestamp); the `lt` filter naturally
   // excludes any row whose `sentAt` is unset. Non-terminal rows (queued/failed)
   // are left for the sweep's retry pre-pass to handle.
+  //
+  // This also disposes of the purged emails' CycleSummaryItem rows, via a
+  // DB-level ON DELETE CASCADE. That is intended: an item row is an audit of
+  // what one email carried, so it has no meaning once the delivery record it
+  // points at is gone.
   const emailMessages = await purgeStep('email messages', () => {
     const emailDays = resolveWindowDays(process.env.RETENTION_EMAIL_DAYS, DEFAULT_EMAIL_DAYS);
     return prisma.emailMessage.deleteMany({

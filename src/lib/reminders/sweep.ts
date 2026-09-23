@@ -16,7 +16,7 @@ import {
   type DispatchResult,
   type ReminderEmailSender,
 } from './dispatch';
-import { resolveEscalationRecipients } from './recipients';
+import { resolveEscalationRecipients, NO_ESCALATION_RECIPIENTS } from './recipients';
 
 /**
  * Reminder sweep — pure, unit-testable orchestration (mirrors `runVideoSweep`).
@@ -896,7 +896,7 @@ async function runTrackB(
           courseId: enrollment.courseId,
           courseTitle: enrollment.course.title,
           worker,
-          recipients: { organizationUserIds: [], emails: [] },
+          recipients: NO_ESCALATION_RECIPIENTS,
           nudgeIntervalDays,
           attemptsRemaining,
           now,

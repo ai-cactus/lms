@@ -104,12 +104,18 @@ model NotificationEvent {
   @@map("notification_events")
 }
 
-/// Claim row for one organization's digest period. Created BEFORE any sending so
-/// a concurrent run loses the race on the unique constraint (P2002 = already
-/// digested), mirroring the ReminderLog claim-first pattern.
-/// `periodKey` is `"daily:2026-08-03"` / `"weekly:2026-W32"`.
+/// Claim row for one organization's summary period. Created BEFORE any sending
+/// so a concurrent run loses the race on the unique constraint (P2002 = already
+/// summarized), mirroring the ReminderLog claim-first pattern.
 /// `status` is one of `claimed` | `sent` | `failed`.
-model NotificationDigestRun {
+///
+/// `periodKey` is `"daily:2026-08-03"` or, for a weekly organization,
+/// `"weekly:2026-W32"`. Once the unified cycle summary is live
+/// (CYCLE_SUMMARY_ENABLED, PR 2) every run is daily and an org's
+/// `notificationDigestFrequency` gates only whether the notification *section*
+/// is included; until then the notification digest still claims weekly rows
+/// here, and those rows stay in the table afterwards.
+model CycleSummaryRun {
   id             String    @id @default(uuid())
   organizationId String    @map("organization_id")
   periodKey      String    @map("period_key")
@@ -119,5 +125,5 @@ model NotificationDigestRun {
   sentAt         DateTime? @map("sent_at")
 
   @@unique([organizationId, periodKey])
-  @@map("notification_digest_runs")
+  @@map("cycle_summary_runs")
 }

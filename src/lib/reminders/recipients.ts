@@ -15,14 +15,42 @@ import { isAdminRole, ADMIN_ROLES } from '@/lib/rbac/role-utils';
  * which owns the owner-fallback escalation pathway.
  */
 
+/** One resolved escalation target, membership id paired with its contact details. */
+export interface EscalationMember {
+  /** `OrganizationUser.id` — createNotification's key. */
+  organizationUserId: string;
+  email: string;
+  name: string | null;
+}
+
 export interface EscalationRecipients {
   /** In-app notification targets — `OrganizationUser.id` (createNotification's key). */
   organizationUserIds: string[];
   /** Email targets, with display name when available. */
   emails: { email: string; name: string | null }[];
+  /**
+   * The same targets with the membership id and the address kept together.
+   * `organizationUserIds` and `emails` are positionally aligned but nothing in
+   * their types says so, so callers that must group per-person (the cycle
+   * summary, which keys one email per recipient) read this instead.
+   */
+  members: EscalationMember[];
 }
 
-const EMPTY: EscalationRecipients = { organizationUserIds: [], emails: [] };
+/** Nobody to escalate to. Frozen: callers share this instance. */
+export const NO_ESCALATION_RECIPIENTS: EscalationRecipients = Object.freeze({
+  organizationUserIds: [],
+  emails: [],
+  members: [],
+});
+
+function toEscalationRecipients(members: EscalationMember[]): EscalationRecipients {
+  return {
+    organizationUserIds: members.map((m) => m.organizationUserId),
+    emails: members.map((m) => ({ email: m.email, name: m.name })),
+    members,
+  };
+}
 
 export async function resolveEscalationRecipients(enrollment: {
   organizationUserId: string;
@@ -37,7 +65,7 @@ export async function resolveEscalationRecipients(enrollment: {
       msg: '[reminders] Cannot resolve escalation recipients — membership not found',
       organizationUserId: enrollment.organizationUserId,
     });
-    return EMPTY;
+    return NO_ESCALATION_RECIPIENTS;
   }
 
   // Prefer a directly-assigned manager, but only if they are an active same-org admin.
@@ -59,10 +87,13 @@ export async function resolveEscalationRecipients(enrollment: {
       manager.organizationId === worker.organizationId &&
       isAdminRole(manager.role)
     ) {
-      return {
-        organizationUserIds: [manager.id],
-        emails: [{ email: manager.user.email, name: manager.user.fullName }],
-      };
+      return toEscalationRecipients([
+        {
+          organizationUserId: manager.id,
+          email: manager.user.email,
+          name: manager.user.fullName,
+        },
+      ]);
     }
   }
 
@@ -77,11 +108,14 @@ export async function resolveEscalationRecipients(enrollment: {
       organizationUserId: enrollment.organizationUserId,
       orgId: worker.organizationId,
     });
-    return EMPTY;
+    return NO_ESCALATION_RECIPIENTS;
   }
 
-  return {
-    organizationUserIds: admins.map((a) => a.id),
-    emails: admins.map((a) => ({ email: a.user.email, name: a.user.fullName })),
-  };
+  return toEscalationRecipients(
+    admins.map((a) => ({
+      organizationUserId: a.id,
+      email: a.user.email,
+      name: a.user.fullName,
+    })),
+  );
 }

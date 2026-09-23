@@ -1415,8 +1415,9 @@ export async function sendAuditorPackPdfEmail(
 
 /**
  * Shared HTML shell for the notification-engine emails (instant alerts and
- * digests). Only the two senders below use it — the existing templates predate
- * it and are deliberately left alone rather than churned.
+ * digests) and the unified cycle summary. Only the senders below use it — the
+ * existing templates predate it and are deliberately left alone rather than
+ * churned.
  */
 function renderEmailLayout(title: string, bodyHtml: string): string {
   const appName = 'Theraptly';
@@ -1643,6 +1644,209 @@ export async function sendNotificationDigestEmail(
   } catch (error) {
     logger.error({
       msg: '[email] Failed to send notification digest email',
+      err: error,
+      to: maskEmail(to),
+    });
+    return { success: false, error };
+  }
+}
+
+// ── Unified cycle summary ────────────────────────────────────────────────────
+
+/** One training line inside a cycle-summary section. */
+export interface CycleSummaryEmailItem {
+  courseTitle: string;
+  /** Short status line, e.g. "3 days overdue (due March 1, 2026)". */
+  detail: string;
+}
+
+/** Section-3 grouping — the learner a run of items is about. */
+export interface CycleSummaryEmailGroup {
+  workerName: string;
+  items: CycleSummaryEmailItem[];
+}
+
+/**
+ * One rendered section. Kept structurally separate from
+ * `@/lib/cycle-summary/sections` for the same reason the digest types are:
+ * templates own presentation, the compose layer owns the domain, and neither
+ * imports the other.
+ */
+export type CycleSummaryEmailSection =
+  | { kind: 'training'; title: string; items: CycleSummaryEmailItem[] }
+  | { kind: 'team'; title: string; groups: CycleSummaryEmailGroup[] }
+  | { kind: 'updates'; title: string; sections: NotificationDigestEmailSection[] };
+
+export interface CycleSummaryEmailContent {
+  organizationName: string;
+  /** Friendly date of the summary period, e.g. "September 23, 2026". */
+  dateLabel: string;
+  /** Ordered, already non-empty sections. */
+  sections: CycleSummaryEmailSection[];
+  actionLabel?: string;
+  actionLink?: string;
+}
+
+const CYCLE_SUMMARY_SECTION_HEADING_STYLE =
+  'margin: 0 0 10px 0; color: #4C6EF5; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;';
+const CYCLE_SUMMARY_CARD_STYLE =
+  'border: 1px solid #e2e8f0; border-radius: 10px; padding: 18px 20px; margin: 20px 0;';
+
+function renderCycleSummaryItems(items: CycleSummaryEmailItem[]): string {
+  return `<ul style="margin: 0; padding-left: 18px;">${items
+    .map(
+      (item) => `
+                <li style="margin: 0 0 10px 0; color: #2d3748; font-size: 14px; line-height: 1.5;">
+                  <strong>${escapeHtml(item.courseTitle)}</strong><br />
+                  <span style="color: #4a5568;">${escapeHtml(item.detail)}</span>
+                </li>`,
+    )
+    .join('')}</ul>`;
+}
+
+function renderCycleSummarySection(section: CycleSummaryEmailSection): string {
+  const heading = `<p style="${CYCLE_SUMMARY_SECTION_HEADING_STYLE}">${escapeHtml(section.title)}</p>`;
+
+  if (section.kind === 'training') {
+    return `<div style="${CYCLE_SUMMARY_CARD_STYLE}">${heading}${renderCycleSummaryItems(section.items)}</div>`;
+  }
+
+  if (section.kind === 'team') {
+    const groupsHtml = section.groups
+      .map(
+        (group) => `
+            <p style="margin: 16px 0 6px 0; color: #2d3748; font-size: 14px; font-weight: 700;">${escapeHtml(group.workerName)}</p>
+            ${renderCycleSummaryItems(group.items)}`,
+      )
+      .join('');
+    return `<div style="${CYCLE_SUMMARY_CARD_STYLE}">${heading}${groupsHtml}</div>`;
+  }
+
+  const updatesHtml = section.sections
+    .map((facility) => {
+      const groupsHtml = facility.groups
+        .map((group) => {
+          const itemsHtml = group.items
+            .map((item) => {
+              const timestamp = formatEventTimestamp(item.occurredAt);
+              return `
+                <li style="margin: 0 0 10px 0; color: #2d3748; font-size: 14px; line-height: 1.5;">
+                  <strong>${escapeHtml(item.title)}</strong><br />
+                  <span style="color: #4a5568;">${escapeHtml(item.message)}</span>
+                  ${timestamp ? `<br /><span style="color: #a0aec0; font-size: 12px;">${escapeHtml(timestamp)}</span>` : ''}
+                </li>`;
+            })
+            .join('');
+          return `
+            <p style="margin: 14px 0 6px 0; color: #4a5568; font-size: 13px; font-weight: 700;">${escapeHtml(group.label)}</p>
+            <ul style="margin: 0; padding-left: 18px;">${itemsHtml}</ul>`;
+        })
+        .join('');
+      return `
+        <p style="margin: 16px 0 0 0; color: #2d3748; font-size: 14px; font-weight: 700;">${escapeHtml(facility.facilityName)}</p>
+        ${groupsHtml}`;
+    })
+    .join('');
+
+  return `<div style="${CYCLE_SUMMARY_CARD_STYLE}">${heading}${updatesHtml}</div>`;
+}
+
+/** Plain-text alternative, for clients that refuse HTML. */
+function renderCycleSummaryText(
+  greetingName: string,
+  summary: CycleSummaryEmailContent,
+  actionLink: string | null,
+): string {
+  const lines: string[] = [
+    `Hi ${greetingName},`,
+    '',
+    `Your ${summary.organizationName} summary for ${summary.dateLabel}.`,
+  ];
+
+  for (const section of summary.sections) {
+    lines.push('', section.title.toUpperCase());
+    if (section.kind === 'training') {
+      for (const item of section.items) lines.push(`- ${item.courseTitle}: ${item.detail}`);
+    } else if (section.kind === 'team') {
+      for (const group of section.groups) {
+        lines.push(`${group.workerName}:`);
+        for (const item of group.items) lines.push(`- ${item.courseTitle}: ${item.detail}`);
+      }
+    } else {
+      for (const facility of section.sections) {
+        lines.push(`${facility.facilityName}:`);
+        for (const group of facility.groups) {
+          for (const item of group.items) lines.push(`- ${item.title}: ${item.message}`);
+        }
+      }
+    }
+  }
+
+  if (actionLink) lines.push('', `${summary.actionLabel || 'Open Theraptly'}: ${actionLink}`);
+  lines.push('', 'This is an automated summary from Theraptly.');
+  return lines.join('\n');
+}
+
+/**
+ * The unified daily summary — one email per recipient per day, replacing the
+ * separate reminder, nudge and notification-digest streams.
+ *
+ * Like the reminder-ladder senders, this deliberately calls the raw transport
+ * rather than `sendMailTracked`: the compose pass already creates the
+ * EmailMessage row (so it can attach the CycleSummaryItem rows to it) and stamps
+ * the terminal delivery state itself. Routing this through `sendMailTracked`
+ * would record a second row per send.
+ */
+export async function sendCycleSummaryEmail(
+  to: string,
+  recipientName: string | null,
+  summary: CycleSummaryEmailContent,
+): Promise<{ success: boolean; messageId?: string; error?: unknown }> {
+  if (!to) {
+    logger.warn({ msg: '[email] Cycle summary email skipped — missing recipient' });
+    return { success: false, error: 'Missing recipient email' };
+  }
+
+  const appName = 'Theraptly';
+  const greetingName = recipientName?.trim() || 'there';
+  const resolvedActionLink = summary.actionLink ? resolveAppLink(summary.actionLink) : null;
+
+  const bodyHtml = `
+        <p style="color: #333; font-size: 15px; line-height: 1.6; margin-top: 0;">
+          Hi <strong>${escapeHtml(greetingName)}</strong>,
+        </p>
+        <p style="color: #333; font-size: 15px; line-height: 1.6;">
+          Your <strong>${escapeHtml(summary.organizationName)}</strong> summary for
+          ${escapeHtml(summary.dateLabel)}.
+        </p>
+        ${summary.sections.map(renderCycleSummarySection).join('')}
+        ${
+          resolvedActionLink
+            ? `<div style="text-align: center; margin: 28px 0 8px 0;">
+                 <a href="${resolvedActionLink}" style="display: inline-block; background-color: #4C6EF5; color: white; padding: 12px 28px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 15px;">${escapeHtml(summary.actionLabel || 'Open Theraptly')}</a>
+               </div>`
+            : ''
+        }
+  `;
+
+  try {
+    const info = await transporter.sendMail({
+      from: `"${appName}" <${user}>`,
+      to,
+      subject: `Your ${appName} summary — ${summary.dateLabel}`,
+      html: renderEmailLayout('Your daily summary', bodyHtml),
+      text: renderCycleSummaryText(greetingName, summary, resolvedActionLink),
+    });
+    logger.info({
+      msg: '[cycle-summary] Summary email sent',
+      messageId: info.messageId,
+      to: maskEmail(to),
+      sectionCount: summary.sections.length,
+    });
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    logger.error({
+      msg: '[cycle-summary] Failed to send summary email',
       err: error,
       to: maskEmail(to),
     });

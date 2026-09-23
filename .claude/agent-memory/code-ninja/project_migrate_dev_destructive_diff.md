@@ -29,4 +29,16 @@ metadata:
 3. Reconcile the stored checksum, else `migrate dev`/`deploy` errors "modified after applied". Either `DELETE FROM _prisma_migrations WHERE migration_name=...` then `prisma migrate resolve --applied <name>`, or set it directly: the checksum is `sha256hex(migration.sql file bytes)` — `UPDATE _prisma_migrations SET checksum = <sha> WHERE migration_name = '<name>'`.
 4. `npx prisma migrate status` should report "up to date".
 
+**A TABLE RENAME comes out as DROP + CREATE — always hand-edit it.** Schema→schema `migrate diff` has NO rename detection, so renaming a model/`@@map` emits `DROP TABLE "<old>";` plus a fresh `CREATE TABLE "<new>"` — silent total data loss. Replace with the three-statement rename (verified 2026-09-23 renaming `notification_digest_runs` → `cycle_summary_runs`, rows preserved):
+```sql
+ALTER TABLE "<old>" RENAME TO "<new>";
+ALTER TABLE "<new>" RENAME CONSTRAINT "<old>_pkey" TO "<new>_pkey";
+ALTER INDEX "<old>_<cols>_key" RENAME TO "<new>_<cols>_key";
+```
+The constraint/index renames are not optional — Prisma derives the expected object names from the table name, so skipping them leaves permanent drift.
+
+**PARTIAL indexes do NOT become drift — unlike the HNSW index.** Verified 2026-09-23 after adding `CREATE INDEX ... WHERE "summarized_at" IS NULL` on `reminder_logs`/`reminder_nudges`: `migrate diff --from-config-datasource --to-schema prisma --script` output was byte-identical to before (still only the three known drift statements). Prisma's diff engine ignores filtered indexes. This **contradicts** the comment in `20260916165726_add_course_document_archive_columns`, which claims a filtered index "would need the same hand-maintenance as the raw-SQL HNSW one" — that was an untested assumption. So a partial index is a cheap, safe tool here; just re-verify after a Prisma major upgrade.
+
+**Edit the SQL BEFORE `migrate deploy` and you never need the checksum dance.** The checksum is recorded at apply time, so finalise the file (comments included) first. If you do edit afterwards: `UPDATE _prisma_migrations SET checksum='<sha256sum of the file>' WHERE migration_name='<name>'`, then `migrate status`.
+
 DB is at `DATABASE_URL` (localhost:5433); load it in node scripts with `require('dotenv').config()` first. See also [[offline-migrations]].
