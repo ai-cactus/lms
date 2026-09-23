@@ -120,8 +120,10 @@ export function sectionForReminderItem(
 /** The status line under a course title. */
 function detailFor(item: ReminderSummaryItem): string {
   if (item.kind === 'WORKER_RETAKE') {
-    // The attempt count is not stored on ReminderNudge, so the compose pass
-    // cannot recover it; fall back to copy that does not assert a number.
+    // `ReminderNudge.attemptsRemaining` is pinned when the nudge is claimed, so
+    // the count is normally available. It is still nullable — a row claimed
+    // before the cutover migration has none — and copy that promises an exact
+    // number must never guess one, so those degrade to the countless line.
     if (item.attemptsRemaining === undefined) return 'Quiz retake available';
     const remaining = item.attemptsRemaining;
     return `Quiz retake available — ${remaining} attempt${remaining === 1 ? '' : 's'} remaining`;

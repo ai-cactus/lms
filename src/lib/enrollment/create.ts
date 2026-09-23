@@ -375,6 +375,10 @@ export async function createEnrollmentForUser(
         stage: 'INITIAL_LAUNCH',
         channels: ['email', 'in_app'],
         targetDate: new Date(),
+        // Stamped, not null: this stage's email is the course-launch email sent
+        // just below, not a cycle summary. Leaving it null would park the row in
+        // the composer's work queue (and its partial index) forever.
+        summarizedAt: new Date(),
       },
     });
   } catch (logErr) {

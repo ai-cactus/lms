@@ -326,13 +326,16 @@ describe('buildCycleSummarySections — detail copy', () => {
     );
   });
 
-  it('does not assert an attempt count a nudge row cannot supply', () => {
+  // The count comes from ReminderNudge.attemptsRemaining, pinned when the nudge
+  // was claimed. It is nullable (rows claimed before the cutover have none), and
+  // copy promising an exact number must never invent one.
+  it('does not assert an attempt count when the nudge row has none', () => {
     expect(
       detailOf(reminder({ itemType: 'reminder_nudge', stage: undefined, kind: 'WORKER_RETAKE' })),
     ).toBe('Quiz retake available');
   });
 
-  it('reports the remaining attempts when the caller knows them', () => {
+  it('reports the remaining attempts the nudge row pinned', () => {
     expect(
       detailOf(
         reminder({
@@ -343,6 +346,19 @@ describe('buildCycleSummarySections — detail copy', () => {
         }),
       ),
     ).toBe('Quiz retake available — 1 attempt remaining');
+  });
+
+  it('pluralises a multi-attempt count, matching the standalone nudge email', () => {
+    expect(
+      detailOf(
+        reminder({
+          itemType: 'reminder_nudge',
+          stage: undefined,
+          kind: 'WORKER_RETAKE',
+          attemptsRemaining: 2,
+        }),
+      ),
+    ).toBe('Quiz retake available — 2 attempts remaining');
   });
 
   it('explains an exhausted-attempts escalation', () => {

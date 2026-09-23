@@ -132,6 +132,7 @@ describe('FLAG_DEFAULTS', () => {
     expect(keys).not.toContain('sweep');
     expect(keys).not.toContain('digest');
     expect(keys).not.toContain('reminder');
+    expect(keys).not.toContain('cycle');
   });
 });
 

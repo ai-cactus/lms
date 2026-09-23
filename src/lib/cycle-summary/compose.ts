@@ -43,12 +43,14 @@ import {
  * does not. It also makes the per-recipient grouping possible at all, since the
  * ladder never recorded *who* a given ReminderLog was mailed to.
  *
- * Declared tradeoff: a summary email that fails to send is not re-summarized —
- * its source rows are still stamped (`summarizedAt` / `dispatched`), which keeps
- * the run idempotent. The failed EmailMessage row carries the error.
+ * A summary email that fails to send is not re-summarized — its source rows are
+ * still stamped (`summarizedAt` / `dispatched`), which keeps the run idempotent.
+ * The failed EmailMessage row carries the error and the `CycleSummaryItem` rows
+ * it recorded, which is what `retry.ts` re-sends from; that retry is the ONLY
+ * second chance those rows get, so it runs ahead of every compose pass.
  *
- * NOT WIRED IN PR 1. Nothing imports this module from a production code path;
- * PR 2 adds the queue/worker behind `CYCLE_SUMMARY_ENABLED`.
+ * Reached from `src/lib/queue/cycle-summary-worker.ts` (daily cron) and from
+ * `POST /api/system/notifications/run`, both gated on `CYCLE_SUMMARY_ENABLED`.
  */
 
 /** `EmailMessage.kind` for a unified summary send. */
@@ -113,7 +115,7 @@ export function periodKeyForDay(now: Date): string {
 }
 
 /** A reminder row gathered for summarizing, with everything the copy needs. */
-interface ReminderSourceRow {
+export interface ReminderSourceRow {
   id: string;
   itemType: 'reminder_log' | 'reminder_nudge';
   stage?: ReminderStage;
@@ -129,6 +131,8 @@ interface ReminderSourceRow {
   courseTitle: string;
   dueAt: Date | null;
   timezone: string;
+  /** Pinned on the nudge row at claim time — `WORKER_RETAKE` only. */
+  attemptsRemaining?: number;
 }
 
 /** One recipient's slice of an organization's summary. */
@@ -140,7 +144,12 @@ interface RecipientBucket {
   events: PendingEvent[];
 }
 
-const ENROLLMENT_CONTEXT_SELECT = {
+/**
+ * Everything a summary line needs about the enrollment behind a reminder row.
+ * Exported so the retry pass reconstructs a failed email from exactly the same
+ * shape the original compose used.
+ */
+export const ENROLLMENT_CONTEXT_SELECT = {
   dueAt: true,
   organizationUserId: true,
   course: { select: { title: true } },
@@ -157,7 +166,7 @@ const ENROLLMENT_CONTEXT_SELECT = {
   },
 } as const;
 
-type EnrollmentContext = {
+export type EnrollmentContext = {
   dueAt: Date | null;
   organizationUserId: string;
   course: { title: string };
@@ -168,11 +177,11 @@ type EnrollmentContext = {
   };
 };
 
-function toSourceRow(
+export function toSourceRow(
   id: string,
   itemType: 'reminder_log' | 'reminder_nudge',
   enrollment: EnrollmentContext,
-  stageOrKind: { stage?: ReminderStage; kind?: ReminderNudgeKind },
+  stageOrKind: { stage?: ReminderStage; kind?: ReminderNudgeKind; attemptsRemaining?: number },
 ): ReminderSourceRow {
   const membership = enrollment.organizationUser;
   return {
@@ -200,23 +209,38 @@ function toSourceRow(
  *
  * Ladder rows are filtered to the ones that asked for email; nudges have no
  * channel column and are always emailed.
+ *
+ * `INITIAL_LAUNCH` is excluded. Unlike every other stage it is not dispatched —
+ * it is a dedup marker written directly by the assignment and renewal paths
+ * (`createEnrollmentForUser`, the sweep's renewal pre-pass), whose email is the
+ * course-launch email those paths send themselves. That email is NOT part of
+ * this cutover, so summarizing the marker would re-announce an assignment the
+ * learner was already emailed about.
  */
 async function gatherReminderRows(): Promise<ReminderSourceRow[]> {
   const [logs, nudges] = await Promise.all([
     prisma.reminderLog.findMany({
-      where: { summarizedAt: null, channels: { has: 'email' } },
+      where: { summarizedAt: null, channels: { has: 'email' }, stage: { not: 'INITIAL_LAUNCH' } },
       select: { id: true, stage: true, enrollment: { select: ENROLLMENT_CONTEXT_SELECT } },
     }),
     prisma.reminderNudge.findMany({
       where: { summarizedAt: null },
-      select: { id: true, kind: true, enrollment: { select: ENROLLMENT_CONTEXT_SELECT } },
+      select: {
+        id: true,
+        kind: true,
+        attemptsRemaining: true,
+        enrollment: { select: ENROLLMENT_CONTEXT_SELECT },
+      },
     }),
   ]);
 
   return [
     ...logs.map((log) => toSourceRow(log.id, 'reminder_log', log.enrollment, { stage: log.stage })),
     ...nudges.map((nudge) =>
-      toSourceRow(nudge.id, 'reminder_nudge', nudge.enrollment, { kind: nudge.kind }),
+      toSourceRow(nudge.id, 'reminder_nudge', nudge.enrollment, {
+        kind: nudge.kind,
+        attemptsRemaining: nudge.attemptsRemaining ?? undefined,
+      }),
     ),
   ];
 }
@@ -227,7 +251,11 @@ function daysOverdueFor(row: ReminderSourceRow, now: Date): number {
   return Math.max(0, diffInDaysInTz(now, row.dueAt, row.timezone));
 }
 
-function toSummaryItem(
+/**
+ * One gathered row as one recipient's summary line. Exported for the retry pass,
+ * which rebuilds a failed email's lines from the rows it recorded.
+ */
+export function toSummaryItem(
   row: ReminderSourceRow,
   recipientRole: 'worker' | 'escalation',
   now: Date,
@@ -242,6 +270,7 @@ function toSummaryItem(
     dueAt: row.dueAt,
     workerName: row.workerName,
     daysOverdue: daysOverdueFor(row, now),
+    attemptsRemaining: row.attemptsRemaining,
   };
 }
 

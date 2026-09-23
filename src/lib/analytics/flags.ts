@@ -4,10 +4,11 @@ import 'server-only';
  * Server-evaluated feature flags.
  *
  * ⛔ WHAT THIS IS NOT FOR: infrastructure kill-switches. `VIDEO_SWEEP_ENABLED`,
- * `REMINDER_SWEEP_ENABLED` and `NOTIFICATION_DIGEST_ENABLED` stay environment
- * variables and must not migrate here. They are read at boot in
- * src/instrumentation.ts and have to work when PostHog is unreachable — a
- * kill-switch that depends on a third party being up is not a kill-switch.
+ * `REMINDER_SWEEP_ENABLED`, `NOTIFICATION_DIGEST_ENABLED` and
+ * `CYCLE_SUMMARY_ENABLED` stay environment variables and must not migrate here.
+ * They are read at boot in src/instrumentation.ts and have to work when PostHog
+ * is unreachable — a kill-switch that depends on a third party being up is not
+ * a kill-switch.
  *
  * This is for PRODUCT rollouts: gradual releases, and experiments where PostHog
  * needs to attribute a conversion to a variant.

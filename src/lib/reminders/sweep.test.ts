@@ -29,7 +29,7 @@
  * Enrollment dueAt = 2024-06-29T12:00:00Z (14 days later) so FRIENDLY_REMINDER
  * offset -14 lands exactly on 2024-06-15 → fires; all other stages: skip.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { ReminderStage } from '@/generated/prisma/enums';
 
 /** Shape of a single AssignmentReminderStage row as selected by the sweep query. */
@@ -92,6 +92,9 @@ vi.mock('@/lib/reminders/dispatch', () => ({
   dispatchNudge: mockDispatchNudge,
   retryReminderEmail: mockRetryReminderEmail,
   noopEmailSender: vi.fn().mockResolvedValue({ ok: true }),
+  // Mirrors the real constant — the retry pre-pass filters on it, so the values
+  // are asserted (not just referenced) by the cycle-summary drain tests below.
+  LEGACY_REMINDER_EMAIL_KINDS: ['reminder_stage', 'reminder_nudge'],
 }));
 
 vi.mock('@/lib/reminders/recipients', () => ({
@@ -648,6 +651,9 @@ describe('runReminderSweep — email retry pre-pass', () => {
       }),
     );
     expect(summary.retriesSent).toBe(1);
+    // Pre-cutover the pass owns the whole failed-email table; the `kind`
+    // narrowing below belongs to the flag-on drain and must not leak here.
+    expect(prismaMock.emailMessage.findMany.mock.calls[0][0].where).not.toHaveProperty('kind');
   });
 
   it('does NOT re-send a row that has reached maxAttempts (cap)', async () => {
@@ -682,6 +688,64 @@ describe('runReminderSweep — email retry pre-pass', () => {
 
     expect(prismaMock.emailMessage.findMany).not.toHaveBeenCalled();
     expect(mockRetryReminderEmail).not.toHaveBeenCalled();
+  });
+
+  // With CYCLE_SUMMARY_ENABLED on the ladder claims no NEW per-stage email
+  // (proved in dispatch.test.ts — no EmailMessage row is written at all), but
+  // per-stage rows that had already failed when the flag flipped still need a
+  // path home: runCycleSummaryRetry selects `cycle_summary` rows only, so
+  // without this drain they would sit `failed` forever.
+  describe('once the cycle summary owns delivery', () => {
+    beforeEach(() => {
+      process.env.CYCLE_SUMMARY_ENABLED = 'true';
+    });
+
+    afterEach(() => {
+      delete process.env.CYCLE_SUMMARY_ENABLED;
+    });
+
+    it('still drains a pre-existing failed per-stage email, narrowed to the legacy kinds', async () => {
+      prismaMock.emailMessage.findMany.mockResolvedValue([makeFailedEmail()]);
+      prismaMock.reminderLog.findMany.mockResolvedValue([makeReminderLog()]);
+      prismaMock.enrollment.findMany.mockResolvedValue([]);
+      mockRetryReminderEmail.mockResolvedValue(true);
+
+      const summary = await runReminderSweep(BASE_OPTS);
+
+      expect(prismaMock.emailMessage.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            status: 'failed',
+            kind: { in: ['reminder_stage', 'reminder_nudge'] },
+          }),
+        }),
+      );
+      expect(mockRetryReminderEmail).toHaveBeenCalledTimes(1);
+      expect(summary.retriesSent).toBe(1);
+    });
+
+    it('does NOT re-send a backlog row that has reached maxAttempts (cap)', async () => {
+      prismaMock.emailMessage.findMany.mockResolvedValue([
+        makeFailedEmail({ attempts: 3, maxAttempts: 3 }),
+      ]);
+      prismaMock.enrollment.findMany.mockResolvedValue([]);
+
+      const summary = await runReminderSweep(BASE_OPTS);
+
+      expect(mockRetryReminderEmail).not.toHaveBeenCalled();
+      expect(summary.retriesSent).toBe(0);
+    });
+
+    it('is a no-op once the backlog has drained', async () => {
+      prismaMock.emailMessage.findMany.mockResolvedValue([]);
+      prismaMock.enrollment.findMany.mockResolvedValue([]);
+
+      const summary = await runReminderSweep(BASE_OPTS);
+
+      expect(mockRetryReminderEmail).not.toHaveBeenCalled();
+      expect(prismaMock.reminderLog.findMany).not.toHaveBeenCalled();
+      expect(summary.retriesSent).toBe(0);
+    });
   });
 });
 

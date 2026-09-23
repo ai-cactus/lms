@@ -233,15 +233,61 @@ describe('runCycleSummary — gather contract', () => {
 
     expect(prismaMock.reminderLog.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { summarizedAt: null, channels: { has: 'email' } },
+        where: {
+          summarizedAt: null,
+          channels: { has: 'email' },
+          // INITIAL_LAUNCH is a dedup marker written by the assignment and
+          // renewal paths, whose email is the course-launch email they send
+          // themselves. Summarizing it would re-announce an assignment the
+          // learner was already emailed about.
+          stage: { not: 'INITIAL_LAUNCH' },
+        },
       }),
     );
     // A nudge is an upsert row with no channel column: a re-nudge resets
-    // summarizedAt to null (PR 2, dispatch side) and this query must pick the
-    // row up again on the strength of that alone.
+    // summarizedAt to null (dispatch side) and this query must pick the row up
+    // again on the strength of that alone.
     expect(prismaMock.reminderNudge.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { summarizedAt: null } }),
     );
+  });
+
+  it('carries the attempt count pinned on a retake nudge into the summary copy', async () => {
+    prismaMock.reminderNudge.findMany.mockResolvedValue([
+      {
+        id: 'nudge-1',
+        kind: 'WORKER_RETAKE',
+        attemptsRemaining: 2,
+        enrollment: enrollmentContext(),
+      },
+    ]);
+    prismaMock.organization.findMany.mockResolvedValue([ORG]);
+    const sendEmail = vi.fn().mockResolvedValue({ ok: true });
+
+    await runCycleSummary({ now: WEDNESDAY, dryRun: false, sendEmail });
+
+    const [message] = sendEmail.mock.calls[0];
+    expect(message.sections[0].items[0].detail).toBe(
+      'Quiz retake available — 2 attempts remaining',
+    );
+  });
+
+  it('degrades to countless retake copy when the nudge row pinned no count', async () => {
+    prismaMock.reminderNudge.findMany.mockResolvedValue([
+      {
+        id: 'nudge-1',
+        kind: 'WORKER_RETAKE',
+        attemptsRemaining: null,
+        enrollment: enrollmentContext(),
+      },
+    ]);
+    prismaMock.organization.findMany.mockResolvedValue([ORG]);
+    const sendEmail = vi.fn().mockResolvedValue({ ok: true });
+
+    await runCycleSummary({ now: WEDNESDAY, dryRun: false, sendEmail });
+
+    const [message] = sendEmail.mock.calls[0];
+    expect(message.sections[0].items[0].detail).toBe('Quiz retake available');
   });
 });
 
@@ -745,5 +791,55 @@ describe('runCycleSummary — isolation', () => {
     expect(summary.errors).toBe(1);
     expect(summary.emailsSent).toBe(1);
     expect(sendEmail.mock.calls[0][0].organizationName).toBe('Beta Health');
+  });
+
+  it('does not re-mail a recipient already delivered before a later recipient crashes the same org', async () => {
+    // Two distinct recipients in ONE organization. The first bucket's
+    // transaction commits and its email sends; the second bucket's transaction
+    // throws (e.g. a DB blip), which must fail the whole org run WITHOUT
+    // re-sending to the first recipient and WITHOUT stamping the second
+    // recipient's row (so it is picked up fresh, not lost, on a later run).
+    prismaMock.reminderLog.findMany.mockResolvedValue([
+      reminderLogRow({ id: 'log-a', enrollment: enrollmentContext() }),
+      reminderLogRow({
+        id: 'log-b',
+        enrollment: enrollmentContext({
+          organizationUserId: 'worker-ou-2',
+          email: 'second@acme.com',
+          fullName: 'Sam Second',
+        }),
+      }),
+    ]);
+    prismaMock.organization.findMany.mockResolvedValue([ORG]);
+    const sendEmail = vi.fn().mockResolvedValue({ ok: true });
+    prismaMock.$transaction
+      .mockImplementationOnce(passthroughTransaction)
+      .mockRejectedValueOnce(new Error('tx exploded'));
+
+    const summary = await runCycleSummary({ now: WEDNESDAY, dryRun: false, sendEmail });
+
+    // Only the first recipient was actually mailed before the crash — no
+    // double-send once the run is retried on a later period.
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+    expect(sendEmail.mock.calls[0][0].to).toBe('worker@acme.com');
+
+    expect(summary.errors).toBe(1);
+    expect(prismaMock.cycleSummaryRun.update).toHaveBeenCalledWith({
+      where: { id: 'run-1' },
+      data: { status: 'failed' },
+    });
+
+    // The first recipient's row WAS stamped inside its own committed
+    // transaction — it will never be re-gathered.
+    expect(prismaMock.reminderLog.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['log-a'] }, summarizedAt: null },
+      data: { summarizedAt: WEDNESDAY },
+    });
+    // The second recipient's row was never stamped — the crashed transaction
+    // rolled back before recording it, so it remains eligible to be gathered
+    // (and mailed) on a future run instead of being silently lost.
+    expect(prismaMock.reminderLog.updateMany).not.toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ id: { in: ['log-b'] } }) }),
+    );
   });
 });
