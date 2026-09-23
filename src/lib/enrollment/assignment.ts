@@ -125,7 +125,14 @@ export interface UpsertCourseAssignmentParams {
    * it rather than restate a default over everyone already enrolled.
    */
   scheduleAt?: Date | null;
-  /** Absolute deadline for every enrollee. `undefined` leaves it alone; `null` clears it. */
+  /**
+   * Absolute deadline for every enrollee. `undefined` leaves it alone; `null`
+   * clears it.
+   *
+   * A surface whose deadline control is per-person rather than per-course must
+   * omit it — that is what `EnrollUsersOptions.deadlineScope: 'enrollment'`
+   * does, so the picked date reaches only the enrollments it created.
+   */
   dueAt?: Date | null;
   /** Deadline window in days, used when there is no {@link dueAt}. `undefined` leaves it alone. */
   dueWindowDays?: number | null;

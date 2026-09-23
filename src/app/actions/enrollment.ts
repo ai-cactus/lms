@@ -252,6 +252,23 @@ export interface EnrollUsersOptions {
    * them, so a multi-course caller can send ONE batched notice per worker.
    */
   deferWorkerNotification?: boolean;
+  /**
+   * Which row a submitted `dueAt` belongs to.
+   *
+   * `'assignment'` (the default, and what every surface did before this option
+   * existed) writes it to the organisation-wide `CourseAssignment`, so it
+   * becomes the deadline for everyone enrolled on that course and the anchor of
+   * the shared reminder ladder. That is right for a surface whose deadline
+   * control speaks for the whole course — the assign page and the wizard.
+   *
+   * `'enrollment'` keeps it on the people this call enrols: the shared row's
+   * `dueAt` is left `undefined` (the tri-state "no opinion" documented on
+   * `UpsertCourseAssignmentParams`) and the submitted date is used only to
+   * compute each new enrollee's own `Enrollment.dueAt`. A surface whose
+   * deadline is per-person — the staff-profile assign modal — must use this,
+   * or picking a deadline for one worker moves it for the whole organisation.
+   */
+  deadlineScope?: 'assignment' | 'enrollment';
 }
 
 export interface EnrollUsersResult {
@@ -430,12 +447,20 @@ export async function enrollUsers(
   const submittedScheduleAt = optionalSettingsDate(assignmentSettings?.scheduleAt);
   const submittedDueAt = optionalSettingsDate(assignmentSettings?.dueAt);
   const scheduleAt = submittedScheduleAt ?? null;
+  const deadlineScope = options?.deadlineScope ?? 'assignment';
 
   // D-F: refuse a past deadline only when it would CHANGE the stored one, and
   // refuse by return — a thrown message is redacted in production builds.
   // Fail-closed: the first write below this point is the offering upsert.
+  //
+  // In `'enrollment'` scope the deadline being changed is the enrollee's own,
+  // not the shared row's, and everyone this call enrols is new to the course —
+  // so there is no prior value to match and every past date is a change. The
+  // late-joiner exemption (re-stating the deadline already in force) only makes
+  // sense for the org-wide row, so it is deliberately not extended here.
   if (submittedDueAt && organizationId) {
-    const storedDueAt = await findAssignmentDueAt(organizationId, courseId);
+    const storedDueAt =
+      deadlineScope === 'assignment' ? await findAssignmentDueAt(organizationId, courseId) : null;
     if (isPastDeadlineChange(submittedDueAt, storedDueAt)) {
       logger.warn({
         msg: '[enrollment] Course assignment blocked — deadline is in the past',
@@ -508,7 +533,10 @@ export async function enrollUsers(
       courseId,
       assignedByAdminId: session.user.id,
       scheduleAt: submittedScheduleAt,
-      dueAt: submittedDueAt,
+      // BUG-20: a per-enrollment deadline has no opinion on the shared row, so
+      // it stays `undefined` here rather than overwriting the deadline (and the
+      // ladder anchored on it) for everyone already enrolled.
+      dueAt: deadlineScope === 'assignment' ? submittedDueAt : undefined,
       dueWindowDays: assignmentSettings?.dueWindowDays,
       remindersEnabled: assignmentSettings?.remindersEnabled,
       renewalCycle: assignmentSettings?.renewalCycle,
@@ -517,7 +545,14 @@ export async function enrollUsers(
       stageRows: resolveStageRows(assignmentSettings ?? {}),
     });
     assignmentId = assignment.id;
-    assignmentDueAt = assignment.dueAt;
+    // In `'enrollment'` scope the submitted deadline never reached the row, so
+    // take it from the caller instead; silence still inherits the row's. The
+    // window always comes from the row — a per-person deadline must not cost
+    // this enrollee the org-wide window it falls back to when no date is set.
+    assignmentDueAt =
+      deadlineScope === 'enrollment' && submittedDueAt !== undefined
+        ? submittedDueAt
+        : assignment.dueAt;
     assignmentWindowDays = assignment.dueWindowDays;
   }
 
