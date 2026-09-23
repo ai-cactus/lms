@@ -21,8 +21,9 @@
 - [Build type-checks everything](build_typecheck_scope.md) — `next build` type-checks scripts/ and tests; `npm run lint` only covers src/; deleting a page fails typecheck on a stale `.next/` and `rm` is often blocked.
 - [RBAC role model](rbac_role_model.md) — 14 category-aware DB roles (6 manager incl. admin + 8 worker, uniform worker perms); supervisor read-only; grants; seat counting unresolved (BUG-07).
 - [Org/Facility split](org_facility_split.md) — location/compliance fields moved to Facility; genuinely multi-facility (OrganizationUserFacility); facility CRUD = owner/admin/hr.
+- [Full vitest run OOMs here](gotcha_full_vitest_run_ooms_here.md) — bare `vitest run` dies with a bare exit 137; shard it `--shard=N/4 --maxWorkers=1` (≈8 min) to really verify the suite
 - [Offline migrations](project_offline_migrations.md) — dev DB (localhost:5433) often unreachable; scaffold Prisma migrations offline via `migrate diff --from-schema/--to-schema`.
-- [migrate dev destructive diff](project_migrate_dev_destructive_diff.md) — autogen drops the raw-SQL pgvector col, its HNSW index and facility defaults, AND `migrate dev` hangs on a prompt; hand-author, strip the drift, checksum-recovery recipe.
+- [migrate dev destructive diff](project_migrate_dev_destructive_diff.md) — autogen drops the pgvector col/HNSW index/facility defaults and `migrate dev` hangs; a table RENAME comes out as DROP+CREATE; partial indexes are NOT drift.
 - [prisma format runs in pre-commit](gotcha_prisma_format_churn.md) — lint-staged formats staged .prisma now, so schemas ARE canonical; hand-align your model and validate.
 - [MinIO dev port mismatch](gotcha_minio_dev_port_mismatch.md) — compose publishes MinIO on 9005 but .env.example still says 9000; set MINIO_PORT=9005 for storage/video flows to work locally.
 - [Vitest @/generated alias](project_vitest_generated_alias.md) — vitest.config.mts must alias @/generated & @/db (most-specific first) or value-imports of generated Prisma fail in tests.
@@ -99,7 +100,7 @@
 - [Prop-seeded modals mount on demand](gotcha_modal_prop_seeded_state_needs_on_demand_mount.md) — React Compiler bans the resync effect and reset-in-close() re-reads pre-refresh props.
 - [.rich-slide wrapper nests the heading](gotcha_rich_slide_wrapper_nests_the_heading.md) — the slide unit is the div, NOT the h2/h3; heading splits tear the wrapper and drop slide-heading's class.
 - [Two quiz explanation shapes](gotcha_two_quiz_explanation_shapes.md) — flat string (quiz-ai actions, AdminQuizEditor) vs object (v4.6, Step 6); only correctExplanation is persisted.
-- [sanitizeHtml drops editing attrs](gotcha_sanitize_allowed_attr_strips_editing_attrs.md) — contenteditable/role/spellcheck are stripped silently; data-*/aria-* survive. Add a second config, never widen the reader's.
+- [sanitizeHtml drops editing attrs](gotcha_sanitize_allowed_attr_strips_editing_attrs.md) — contenteditable/role/spellcheck are stripped silently; data-_/aria-_ survive. Add a second config, never widen the reader's.
 - [Parallel contract PRs](project_parallel_contract_prs.md) — how to prove a branch that imports an unmerged Server Action: stub, typecheck, revert. vi.mock stays green while tsc is red.
 - [Next 16 cannot block Back](gotcha_next16_no_navigation_blocking.md) — onNavigate covers Link clicks only; the sentinel workaround, the 2 Next internals it relies on, and the re-push that traps users.
 - [CourseRail is quiz-views-only](gotcha_courserail_is_quiz_views_only.md) — it is never co-mounted with AdminSlideEditor; the lesson-view module nav is CourseArticle's ToC.
@@ -107,3 +108,6 @@
 - [/system has no portal session](gotcha_system_backoffice_has_no_portal_session.md) — serve /system media from an /api/system/** route; a system-cookie fallback on a portal route is dead behind the proxy; next/image unoptimized.
 - [Server Action args are unchecked](gotcha_server_action_args_are_unchecked.md) — a closed TS param type doesn't bind the client; never spread caller data into prisma.update.
 - [Vertex endpoint + Gemini 3 traps](project_vertex_endpoint_and_gemini3.md) — generation on us multi-region (VERTEX_*), embeddings regional; thinkingLevel/temperature/parts traps; live-smoke recipe
+- [enrollUsers dueAt is org-wide by default](gotcha_enrolluser_deadline_scope_defaults_org_wide.md) — a per-person deadline needs `deadlineScope: 'enrollment'`; the past-deadline guard means different things per scope
+- [summarizedAt means "not eligible"](gotcha_summarized_at_means_not_eligible.md) — 4 writers must agree; the nudge upsert needs it on BOTH branches; INITIAL_LAUNCH is never a summary item
+- [Cycle-summary cutover flag](project_cycle-summary-cutover-flag.md) — ONE flag over dispatch+worker; shared claim row (flip outside 08:00–13:00 UTC); the sweep's email retry NARROWS, never stands down

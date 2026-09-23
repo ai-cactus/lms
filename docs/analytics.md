@@ -167,7 +167,7 @@ Add a key to `FLAG_DEFAULTS` in `flags.ts` — a key not listed cannot be reques
 
 Evaluation falls back on any failure — throw, timeout (1.5s), a variant string from a multivariate flag, a flag that does not exist, or analytics being disabled. A flag lookup may degrade; a page may not.
 
-> ⛔ Infrastructure kill-switches (`VIDEO_SWEEP_ENABLED`, `REMINDER_SWEEP_ENABLED`, `NOTIFICATION_DIGEST_ENABLED`) stay environment variables. They are read at boot in `src/instrumentation.ts` and must work when PostHog is down — a kill-switch that depends on a third party is not a kill-switch. `flags.test.ts` asserts they never appear.
+> ⛔ Infrastructure kill-switches (`VIDEO_SWEEP_ENABLED`, `REMINDER_SWEEP_ENABLED`, `NOTIFICATION_DIGEST_ENABLED`, `CYCLE_SUMMARY_ENABLED`) stay environment variables. They are read at boot in `src/instrumentation.ts` and must work when PostHog is down — a kill-switch that depends on a third party is not a kill-switch. `flags.test.ts` asserts they never appear.
 
 ## Error tracking
 

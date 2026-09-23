@@ -84,6 +84,7 @@ export async function register() {
         { getVideoSweepWorker },
         { getReminderSweepWorker },
         { getNotificationDigestWorker },
+        { getCycleSummaryWorker },
         { getBillingPauseSweepWorker },
       ] = await Promise.all([
         import('@/lib/queue/manual-indexer-worker'),
@@ -91,6 +92,7 @@ export async function register() {
         import('@/lib/queue/video-sweep-worker'),
         import('@/lib/queue/reminder-sweep-worker'),
         import('@/lib/queue/notification-digest-worker'),
+        import('@/lib/queue/cycle-summary-worker'),
         import('@/lib/queue/billing-pause-sweep-worker'),
       ]);
 
@@ -99,7 +101,10 @@ export async function register() {
         getVideoTranscodeWorker(),
         getVideoSweepWorker(),
         getReminderSweepWorker(),
+        // Exactly one of these two starts: CYCLE_SUMMARY_ENABLED decides which,
+        // and each getter checks it, so listing both cannot run both.
         getNotificationDigestWorker(),
+        getCycleSummaryWorker(),
         getBillingPauseSweepWorker(),
       ]) {
         // Sweep getters return null when disabled via their enable flag.

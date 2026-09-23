@@ -108,6 +108,16 @@ model ReminderLog {
   channels     String[]      @default([])
   targetDate   DateTime      @map("target_date")
   sentAt       DateTime      @default(now()) @map("sent_at")
+  /// When this row stopped being eligible for a cycle summary — either because
+  /// the compose pass captured it into a recipient's daily email, or because
+  /// dispatch already delivered it as its own per-stage email (the pre-cutover
+  /// path, still live while CYCLE_SUMMARY_ENABLED is off). Null = still awaiting
+  /// a summary. Stamping the flag-off path is what stops a later flag flip from
+  /// re-sending, inside a summary, reminders that were already emailed.
+  /// Scanned via a partial index (`WHERE summarized_at IS NULL`) that Prisma's
+  /// DSL cannot express, so it is hand-maintained in SQL — see the
+  /// add_cycle_summary migration.
+  summarizedAt DateTime?     @map("summarized_at")
   enrollment   Enrollment    @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
 
   @@unique([enrollmentId, stage])
@@ -116,12 +126,24 @@ model ReminderLog {
 }
 
 model ReminderNudge {
-  id           String            @id @default(uuid())
-  enrollmentId String            @map("enrollment_id")
-  kind         ReminderNudgeKind
-  lastSentAt   DateTime          @default(now()) @map("last_sent_at")
-  count        Int               @default(1)
-  enrollment   Enrollment        @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  id                String            @id @default(uuid())
+  enrollmentId      String            @map("enrollment_id")
+  kind              ReminderNudgeKind
+  lastSentAt        DateTime          @default(now()) @map("last_sent_at")
+  count             Int               @default(1)
+  /// See ReminderLog.summarizedAt. A nudge row is upserted rather than inserted,
+  /// so every re-nudge must REWRITE this on both upsert branches — null while
+  /// CYCLE_SUMMARY_ENABLED is on, stamped while it is off. A value left over
+  /// from a previous cycle would hide the second and later nudges for an
+  /// enrollment from every future summary.
+  summarizedAt      DateTime?         @map("summarized_at")
+  /// Quiz attempts the worker had left when this nudge was claimed
+  /// (`WORKER_RETAKE` only; null for `ADMIN_REASSIGN`, which fires once they are
+  /// exhausted). The count is computed by the sweep from the latest attempt, and
+  /// the cycle summary composes hours later — so it is pinned here rather than
+  /// recomputed, and re-pinned on every re-nudge alongside `summarizedAt`.
+  attemptsRemaining Int?              @map("attempts_remaining")
+  enrollment        Enrollment        @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
 
   @@unique([enrollmentId, kind])
   @@index([enrollmentId])

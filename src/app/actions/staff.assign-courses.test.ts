@@ -358,19 +358,20 @@ describe('assignCoursesToStaffMember — per-course outcomes and the batched not
     ]);
   });
 
-  it('calls enrollUsers with a future dueAt, deferring the worker notification', async () => {
+  it('calls enrollUsers with a future dueAt scoped to the enrollment, deferring the worker notification', async () => {
     mockEnrollUsers.mockResolvedValue(enrollResult({ success: ['target@acme.com'] }));
 
     await assignCoursesToStaffMember('staff-1', ['course-1'], { dueAt: FUTURE_DUE });
 
-    // No `assignmentSettingsMode` any more — the sink itself now leaves every
-    // settings field this surface didn't supply untouched (Phase 1), so there is
-    // nothing left for this action to opt into preserving.
+    // The sink leaves every settings field this surface didn't supply untouched,
+    // but `dueAt` IS supplied — and this modal's deadline is for one staff
+    // member, so it must travel under `deadlineScope: 'enrollment'` or it
+    // overwrites the org-wide deadline for everyone else (BUG-20).
     expect(mockEnrollUsers).toHaveBeenCalledWith(
       'course-1',
       [{ email: 'target@acme.com' }],
       { dueAt: new Date(FUTURE_DUE) },
-      { deferWorkerNotification: true },
+      { deferWorkerNotification: true, deadlineScope: 'enrollment' },
     );
   });
 });

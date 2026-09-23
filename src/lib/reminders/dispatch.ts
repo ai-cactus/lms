@@ -3,6 +3,7 @@ import { Prisma } from '@/generated/prisma/client';
 import type { ReminderStage, ReminderNudgeKind } from '@/generated/prisma/enums';
 import { logger, maskEmail } from '@/lib/logger';
 import { createNotification } from '@/lib/notifications/create';
+import { isCycleSummaryEnabled } from '@/lib/cycle-summary/flag';
 import { REMINDER_STAGE_DEFAULTS } from './stages';
 import { resolveEscalationRecipients, type EscalationRecipients } from './recipients';
 import { diffInDaysInTz } from './time';
@@ -14,6 +15,20 @@ import { diffInDaysInTz } from './time';
  * email. Designed to NEVER throw — every public entry point returns a structured
  * result and logs failures with the `[reminders]` prefix (mirroring the
  * non-throwing `createNotification`).
+ *
+ * ## Cycle-summary cutover (CYCLE_SUMMARY_ENABLED)
+ *
+ * With the flag ON this module stops being an email sender. Both entry points
+ * still claim their dedup row and still write their in-app notifications — the
+ * only change is that no email leaves here and the dedup row is left
+ * `summarizedAt: null`, which is the composer's queue (see
+ * `src/lib/cycle-summary/compose.ts`). One daily email per recipient then covers
+ * every stage and nudge that concerns them, instead of one email per stage.
+ *
+ * With the flag OFF the behaviour is exactly as before, with one addition: the
+ * dedup row is stamped `summarizedAt` at claim time. That row's content has
+ * already reached its recipient as a standalone email, so stamping it keeps a
+ * later flag flip from re-delivering it inside a summary.
  */
 
 /**
@@ -81,6 +96,13 @@ const EMAIL_KIND_STAGE = 'reminder_stage';
 /** EmailMessage `kind` for recurring nudge sends (Track B). */
 const EMAIL_KIND_NUDGE = 'reminder_nudge';
 
+/**
+ * Every EmailMessage `kind` this module writes. Exported so the sweep's retry
+ * pre-pass can narrow itself to exactly this backlog once the cycle summary owns
+ * new sends — nothing else in the table is its business from that point on.
+ */
+export const LEGACY_REMINDER_EMAIL_KINDS = [EMAIL_KIND_STAGE, EMAIL_KIND_NUDGE] as const;
+
 /** Trim an unknown transport error down to a persistable message string. */
 function describeError(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -100,6 +122,13 @@ function describeError(error: unknown): string {
  *
  * Never throws: tracking and transport failures are isolated so one bad send
  * can neither abort the dispatch nor re-fire the already-sent notification.
+ *
+ * @deprecated Superseded by the cycle summary. Unreachable while
+ * CYCLE_SUMMARY_ENABLED is on (both callers skip it): the flag suppresses new
+ * per-stage sends outright, so no `reminder_stage`/`reminder_nudge` row is ever
+ * created once it is on. Kept because the flag-off path is still the shipped
+ * default and a rollback has to land on working code. Retrying the rows this
+ * function already wrote is {@link retryReminderEmail}'s job and outlives it.
  */
 async function deliverReminderEmail(params: {
   sendEmail: ReminderEmailSender;
@@ -177,6 +206,14 @@ export interface ReminderEmailRetryInput {
  * the terminal state on the EmailMessage row. Returns whether the resend
  * succeeded. Never throws — a failed resend leaves the row `failed` with an
  * incremented `attempts` so the cap eventually stops it.
+ *
+ * @deprecated Superseded for NEW sends by `runCycleSummaryRetry`
+ * (`src/lib/cycle-summary/retry.ts`), which retries the one summary email
+ * instead of the N per-stage emails it replaced. Still reachable with
+ * CYCLE_SUMMARY_ENABLED on, though: the sweep's retry pre-pass keeps calling
+ * this to drain per-stage emails that failed BEFORE the flip, which the summary
+ * retry cannot see (it only selects `cycle_summary` rows). Dead only once that
+ * backlog has drained and the flag is permanently on.
  */
 export async function retryReminderEmail(input: ReminderEmailRetryInput): Promise<boolean> {
   const { sendEmail, emailMessage, stage, targetDate, courseTitle, dueAt, timezone, worker } =
@@ -359,7 +396,10 @@ export async function dispatchLadderStage(input: LadderStageInput): Promise<Disp
   // overdue count for the escalation/overdue stages and 0 for pre-deadline ones.
   const daysOverdue = dueAt ? Math.max(0, diffInDaysInTz(targetDate, dueAt, timezone)) : 0;
   const audience = REMINDER_STAGE_DEFAULTS[stage].audience;
-  const wantsEmail = channels.includes('email');
+  // With the cutover on, this stage's email is the composer's job: claim the
+  // stage, notify in-app, and leave the row un-summarized for the daily run.
+  const deferEmailToSummary = isCycleSummaryEnabled();
+  const wantsEmail = channels.includes('email') && !deferEmailToSummary;
   const wantsInApp = channels.includes('in_app');
 
   if (dryRun) {
@@ -369,18 +409,29 @@ export async function dispatchLadderStage(input: LadderStageInput): Promise<Disp
       stage,
       audience,
       channels,
+      deferEmailToSummary,
     });
     return { sent: false, reason: 'dry-run' };
   }
 
   try {
     // Dedup: create the log row FIRST; a concurrent run loses the race via P2002.
-    // The log means "stage claimed"; delivery is tracked separately per-email on
-    // EmailMessage (keyed by this log id) so a failed send doesn't suppress retry.
+    // The log only ever means "stage claimed" — delivery is proved elsewhere, so
+    // a failed send never suppresses a retry: per-email on EmailMessage (keyed by
+    // this log id) before the cutover, and on the summary that carries this row
+    // after it.
     let reminderLog: { id: string };
     try {
       reminderLog = await prisma.reminderLog.create({
-        data: { enrollmentId: enrollment.id, stage, channels, targetDate },
+        data: {
+          enrollmentId: enrollment.id,
+          stage,
+          channels,
+          targetDate,
+          // Null hands the row to the composer; stamped means "already
+          // delivered as its own email, never summarize it".
+          summarizedAt: deferEmailToSummary ? null : new Date(),
+        },
       });
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
@@ -472,6 +523,7 @@ export async function dispatchLadderStage(input: LadderStageInput): Promise<Disp
       enrollmentId: enrollment.id,
       stage,
       audience,
+      deferEmailToSummary,
     });
     return { sent: true, reason: 'sent' };
   } catch (err) {
@@ -495,7 +547,10 @@ export interface NudgeInput {
   recipients: EscalationRecipients;
   /** Minimum days between nudges of this kind for this enrollment. */
   nudgeIntervalDays: number;
-  /** Remaining quiz attempts — surfaced in the `WORKER_RETAKE` email copy. */
+  /**
+   * Remaining quiz attempts. Surfaced in the `WORKER_RETAKE` copy and pinned on
+   * the nudge row, so the cycle summary can state the same number hours later.
+   */
   attemptsRemaining?: number;
   now: Date;
   dryRun: boolean;
@@ -521,6 +576,7 @@ export async function dispatchNudge(input: NudgeInput): Promise<DispatchResult> 
     dryRun,
   } = input;
   const sendEmail = input.sendEmail ?? noopEmailSender;
+  const deferEmailToSummary = isCycleSummaryEnabled();
 
   try {
     const existing = await prisma.reminderNudge.findUnique({
@@ -537,7 +593,12 @@ export async function dispatchNudge(input: NudgeInput): Promise<DispatchResult> 
     }
 
     if (dryRun) {
-      logger.info({ msg: '[reminders] DRY RUN — would dispatch nudge', enrollmentId, kind });
+      logger.info({
+        msg: '[reminders] DRY RUN — would dispatch nudge',
+        enrollmentId,
+        kind,
+        deferEmailToSummary,
+      });
       return { sent: false, reason: 'dry-run' };
     }
 
@@ -552,20 +613,22 @@ export async function dispatchNudge(input: NudgeInput): Promise<DispatchResult> 
         linkUrl: '/worker/trainings',
         metadata,
       });
-      await deliverReminderEmail({
-        sendEmail,
-        kind: EMAIL_KIND_NUDGE,
-        reminderLogId: null,
-        message: {
-          to: worker.email,
-          toName: worker.name,
-          kind,
-          recipientRole: 'worker',
-          courseTitle,
-          dueAt: null,
-          attemptsRemaining: input.attemptsRemaining,
-        },
-      });
+      if (!deferEmailToSummary) {
+        await deliverReminderEmail({
+          sendEmail,
+          kind: EMAIL_KIND_NUDGE,
+          reminderLogId: null,
+          message: {
+            to: worker.email,
+            toName: worker.name,
+            kind,
+            recipientRole: 'worker',
+            courseTitle,
+            dueAt: null,
+            attemptsRemaining: input.attemptsRemaining,
+          },
+        });
+      }
     } else {
       const workerName = worker.name ?? worker.email;
       for (const organizationUserId of recipients.organizationUserIds) {
@@ -578,31 +641,46 @@ export async function dispatchNudge(input: NudgeInput): Promise<DispatchResult> 
           metadata,
         });
       }
-      for (const recipient of recipients.emails) {
-        await deliverReminderEmail({
-          sendEmail,
-          kind: EMAIL_KIND_NUDGE,
-          reminderLogId: null,
-          message: {
-            to: recipient.email,
-            toName: recipient.name,
-            kind,
-            recipientRole: 'escalation',
-            courseTitle,
-            dueAt: null,
-            workerName,
-          },
-        });
+      if (!deferEmailToSummary) {
+        for (const recipient of recipients.emails) {
+          await deliverReminderEmail({
+            sendEmail,
+            kind: EMAIL_KIND_NUDGE,
+            reminderLogId: null,
+            message: {
+              to: recipient.email,
+              toName: recipient.name,
+              kind,
+              recipientRole: 'escalation',
+              courseTitle,
+              dueAt: null,
+              workerName,
+            },
+          });
+        }
       }
     }
 
+    // A nudge row PERSISTS across sends (one row per enrollment+kind, upserted),
+    // so both branches must write the same two fields: a stamped `summarizedAt`
+    // left over from a previous cycle would hide every later nudge from the
+    // composer, and a stale `attemptsRemaining` would understate the count in
+    // copy that promises an exact number.
+    const summarizedAt = deferEmailToSummary ? null : now;
+    const attemptsRemaining = input.attemptsRemaining ?? null;
+
     await prisma.reminderNudge.upsert({
       where: { enrollmentId_kind: { enrollmentId, kind } },
-      create: { enrollmentId, kind, lastSentAt: now, count: 1 },
-      update: { lastSentAt: now, count: { increment: 1 } },
+      create: { enrollmentId, kind, lastSentAt: now, count: 1, summarizedAt, attemptsRemaining },
+      update: {
+        lastSentAt: now,
+        count: { increment: 1 },
+        summarizedAt,
+        attemptsRemaining,
+      },
     });
 
-    logger.info({ msg: '[reminders] Dispatched nudge', enrollmentId, kind });
+    logger.info({ msg: '[reminders] Dispatched nudge', enrollmentId, kind, deferEmailToSummary });
     return { sent: true, reason: 'sent' };
   } catch (err) {
     logger.error({ msg: '[reminders] Failed to dispatch nudge', enrollmentId, kind, err });

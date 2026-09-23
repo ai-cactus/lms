@@ -33,17 +33,17 @@ const FREQUENCY_OPTIONS: { value: DigestFrequency; label: string; description: s
   {
     value: 'realtime',
     label: 'Real-time',
-    description: 'Summary sent as activity happens.',
+    description: 'Organization updates sent as activity happens.',
   },
   {
     value: 'daily',
     label: 'Daily',
-    description: 'Summary sent at the end of each day',
+    description: 'Organization updates sent at the end of each day.',
   },
   {
     value: 'weekly',
     label: 'Weekly',
-    description: 'Summary sent every Monday morning.',
+    description: 'Organization updates sent every Monday morning.',
   },
 ];
 
@@ -113,7 +113,8 @@ export default function NotificationSettingsTab({
           <h2 className="text-lg font-semibold text-foreground">Summary Reports</h2>
           <p className="text-sm text-text-secondary">
             Choose how often your managers receive summaries of routine activity across the
-            organization.
+            organization. Training reminders aren&rsquo;t affected — they are always sent on the day
+            they are due.
           </p>
         </div>
 

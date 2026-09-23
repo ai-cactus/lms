@@ -7,8 +7,12 @@
  * dispatchNudge: no-existing sends, throttle suppresses, elapsed-interval
  *   sends, dry-run no-writes, WORKER_RETAKE targets worker, ADMIN_REASSIGN
  *   targets recipients.
+ *
+ * Cycle-summary cutover: both entry points under both flag states — claims and
+ *   in-app notifications survive, email does not, and `summarizedAt` /
+ *   `attemptsRemaining` are written on BOTH branches of the nudge upsert.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const {
   prismaMock,
@@ -83,6 +87,7 @@ const ENROLLMENT = { id: 'enroll-1', organizationUserId: 'user-1', courseId: 'co
 const ESCALATION_RECIPIENTS = {
   organizationUserIds: ['admin-1'],
   emails: [{ email: 'admin@test.com', name: 'Admin Name' }],
+  members: [{ organizationUserId: 'admin-1', email: 'admin@test.com', name: 'Admin Name' }],
 };
 
 /** Base input for dispatchLadderStage — easy to spread-override per test. */
@@ -402,7 +407,7 @@ describe('dispatchNudge', () => {
     courseId: 'course-1',
     courseTitle: 'Safety Training',
     worker: WORKER,
-    recipients: { organizationUserIds: [], emails: [] },
+    recipients: { organizationUserIds: [], emails: [], members: [] },
     nudgeIntervalDays: 3,
     attemptsRemaining: 2,
     now: NOW,
@@ -489,10 +494,7 @@ describe('dispatchNudge', () => {
     it('notifies escalation recipients and sends escalation email (not the worker)', async () => {
       prismaMock.reminderNudge.findUnique.mockResolvedValue(null);
       const sendEmail = vi.fn().mockResolvedValue({ ok: true });
-      const recipients = {
-        organizationUserIds: ['admin-1'],
-        emails: [{ email: 'admin@test.com', name: 'Admin Name' }],
-      };
+      const recipients = ESCALATION_RECIPIENTS;
 
       const result = await dispatchNudge(
         baseNudgeInput({
@@ -545,6 +547,164 @@ describe('dispatchNudge', () => {
       const result = await dispatchNudge(baseNudgeInput());
 
       expect(result).toEqual({ sent: false, reason: 'error' });
+    });
+  });
+});
+
+/**
+ * The cutover: with CYCLE_SUMMARY_ENABLED on, dispatch keeps claiming rows and
+ * writing in-app notifications but stops emailing, and hands the claimed row to
+ * the composer by leaving `summarizedAt` null. The flag is read from the real
+ * env at call time (isCycleSummaryEnabled has no I/O), so these drive it
+ * directly rather than mocking the module.
+ */
+describe('cycle-summary cutover (CYCLE_SUMMARY_ENABLED)', () => {
+  const NOW = new Date('2024-06-15T12:00:00Z');
+
+  const nudgeInput = (overrides: Partial<Parameters<typeof dispatchNudge>[0]> = {}) => ({
+    kind: 'WORKER_RETAKE' as const,
+    enrollmentId: 'enroll-1',
+    courseId: 'course-1',
+    courseTitle: 'Safety Training',
+    worker: WORKER,
+    recipients: ESCALATION_RECIPIENTS,
+    nudgeIntervalDays: 3,
+    attemptsRemaining: 2,
+    now: NOW,
+    dryRun: false,
+    ...overrides,
+  });
+
+  afterEach(() => {
+    delete process.env.CYCLE_SUMMARY_ENABLED;
+  });
+
+  describe('flag on', () => {
+    beforeEach(() => {
+      process.env.CYCLE_SUMMARY_ENABLED = 'true';
+    });
+
+    it('dispatchLadderStage still claims and notifies, but sends no email', async () => {
+      const sendEmail = vi.fn().mockResolvedValue({ ok: true });
+
+      const result = await dispatchLadderStage({ ...baseLadderInput(), sendEmail });
+
+      expect(result).toEqual({ sent: true, reason: 'sent' });
+      expect(mockCreateNotification).toHaveBeenCalledWith(
+        expect.objectContaining({ organizationUserId: 'user-1' }),
+      );
+      expect(sendEmail).not.toHaveBeenCalled();
+      // No EmailMessage row either — nothing was queued to deliver.
+      expect(prismaMock.emailMessage.create).not.toHaveBeenCalled();
+    });
+
+    it('leaves the claimed ReminderLog un-summarized for the composer', async () => {
+      await dispatchLadderStage({ ...baseLadderInput(), sendEmail: vi.fn() });
+
+      expect(prismaMock.reminderLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ summarizedAt: null }),
+      });
+    });
+
+    it('suppresses the escalation emails of a worker_and_escalation stage', async () => {
+      const sendEmail = vi.fn().mockResolvedValue({ ok: true });
+
+      await dispatchLadderStage({
+        ...baseLadderInput(),
+        stage: 'GRACE_SOFT_ESCALATION',
+        sendEmail,
+      });
+
+      expect(sendEmail).not.toHaveBeenCalled();
+      // The escalation recipients are still resolved and still notified in-app.
+      expect(mockCreateNotification).toHaveBeenCalledWith(
+        expect.objectContaining({ organizationUserId: 'admin-1' }),
+      );
+    });
+
+    it('dispatchNudge notifies without emailing and resets summarizedAt on BOTH upsert branches', async () => {
+      prismaMock.reminderNudge.findUnique.mockResolvedValue(null);
+      const sendEmail = vi.fn().mockResolvedValue({ ok: true });
+
+      const result = await dispatchNudge(nudgeInput({ sendEmail }));
+
+      expect(result).toEqual({ sent: true, reason: 'sent' });
+      expect(mockCreateNotification).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'COURSE_RETAKE_REMINDER' }),
+      );
+      expect(sendEmail).not.toHaveBeenCalled();
+
+      // A nudge row persists across sends, so an `update` that failed to reset
+      // summarizedAt would hide every nudge after the first from the composer.
+      const upsertArg = prismaMock.reminderNudge.upsert.mock.calls[0][0];
+      expect(upsertArg.create).toEqual(expect.objectContaining({ summarizedAt: null }));
+      expect(upsertArg.update).toEqual(expect.objectContaining({ summarizedAt: null }));
+    });
+
+    it('pins attemptsRemaining on the nudge row so the summary can state it', async () => {
+      prismaMock.reminderNudge.findUnique.mockResolvedValue(null);
+
+      await dispatchNudge(nudgeInput({ attemptsRemaining: 2, sendEmail: vi.fn() }));
+
+      const upsertArg = prismaMock.reminderNudge.upsert.mock.calls[0][0];
+      expect(upsertArg.create).toEqual(expect.objectContaining({ attemptsRemaining: 2 }));
+      expect(upsertArg.update).toEqual(expect.objectContaining({ attemptsRemaining: 2 }));
+    });
+
+    it('clears a stale attemptsRemaining when the kind carries no count', async () => {
+      prismaMock.reminderNudge.findUnique.mockResolvedValue(null);
+
+      await dispatchNudge(
+        nudgeInput({ kind: 'ADMIN_REASSIGN', attemptsRemaining: undefined, sendEmail: vi.fn() }),
+      );
+
+      const upsertArg = prismaMock.reminderNudge.upsert.mock.calls[0][0];
+      expect(upsertArg.update).toEqual(expect.objectContaining({ attemptsRemaining: null }));
+    });
+
+    it('still honours the throttle — a throttled nudge writes nothing', async () => {
+      prismaMock.reminderNudge.findUnique.mockResolvedValue({ lastSentAt: NOW });
+
+      const result = await dispatchNudge(nudgeInput({ sendEmail: vi.fn() }));
+
+      expect(result).toEqual({ sent: false, reason: 'throttled' });
+      expect(prismaMock.reminderNudge.upsert).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('flag off — unchanged behaviour', () => {
+    it('dispatchLadderStage still emails and stamps the row as already delivered', async () => {
+      const sendEmail = vi.fn().mockResolvedValue({ ok: true });
+
+      await dispatchLadderStage({ ...baseLadderInput(), sendEmail });
+
+      expect(sendEmail).toHaveBeenCalledTimes(1);
+      // Stamped, not null: this row's content already reached its recipient, so a
+      // later flag flip must not re-deliver it inside a summary.
+      expect(prismaMock.reminderLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ summarizedAt: expect.any(Date) }),
+      });
+    });
+
+    it('dispatchNudge still emails and stamps the nudge row on both branches', async () => {
+      prismaMock.reminderNudge.findUnique.mockResolvedValue(null);
+      const sendEmail = vi.fn().mockResolvedValue({ ok: true });
+
+      await dispatchNudge(nudgeInput({ sendEmail }));
+
+      expect(sendEmail).toHaveBeenCalledTimes(1);
+      const upsertArg = prismaMock.reminderNudge.upsert.mock.calls[0][0];
+      expect(upsertArg.create).toEqual(expect.objectContaining({ summarizedAt: NOW }));
+      expect(upsertArg.update).toEqual(expect.objectContaining({ summarizedAt: NOW }));
+    });
+
+    it('treats any value other than "true" as off', async () => {
+      process.env.CYCLE_SUMMARY_ENABLED = '1';
+      const sendEmail = vi.fn().mockResolvedValue({ ok: true });
+
+      await dispatchLadderStage({ ...baseLadderInput(), sendEmail });
+
+      expect(sendEmail).toHaveBeenCalledTimes(1);
     });
   });
 });
