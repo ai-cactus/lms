@@ -76,9 +76,8 @@ export async function getStaffUsers() {
         where: {
           organizationId,
           active: true,
-          // Every active member including the owner — the owner doesn't consume
-          // a plan seat (seat counts query separately) but must appear in the
-          // roster. Their row is immutable: no facility change, no removal.
+          // Every active member including the owner, whose row is immutable:
+          // no facility change, no removal.
           ...staffFacilityWhere(dataFacilityIds),
         },
         include: {

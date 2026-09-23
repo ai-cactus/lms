@@ -3,7 +3,7 @@
 **Created:** 2026-06-11 · **Branch:** `feat/video-course` · **Status:** Implemented, then partly reversed (see banner)
 **Companion:** `docs/ui-migration-pattern.md` (UI conventions)
 
-> **Adoption retired 2026-08-10.** Org adoption of global video courses — `OrgCourseOffering` as a user-facing "offer/adopt" step, `offerCourseToOrg`, and the "Available" / "Choose a Prebuilt Course" surfaces — was removed by the 2026-08-10 video-course ruling. Global video courses are assigned directly; `OrgCourseOffering` is no longer populated by the app. The parts of this spec that still hold: `Course.type`, `isGlobal`, `Lesson.video*`, `Enrollment.videoPositionSeconds`, and the system back-office upload. See OPEN-ISSUES Q-09 and BUG-01 (`docs/local/OPEN-ISSUES.md`).
+> **Adoption retired 2026-08-10.** Org adoption of global video courses — `OrgCourseOffering` as a user-facing "offer/adopt" step, `offerCourseToOrg`, and the "Available" / "Choose a Prebuilt Course" surfaces — was removed by the 2026-08-10 video-course ruling. Global video courses are assigned directly; `OrgCourseOffering` is no longer populated by the app. The parts of this spec that still hold: `Course.type`, `isGlobal`, `Lesson.video*`, `Enrollment.videoPositionSeconds`, and the system back-office upload. The `offerCourseToOrg` / `updateOffering` / `withdrawOffering` server actions listed in §"Server actions" were deleted on 2026-09-23 (founder ruling on Q-09). See BUG-01 (`docs/local/OPEN-ISSUES.md`).
 
 ---
 

@@ -19,7 +19,7 @@
 - [Server Action redirectTo must render](gotcha_server_action_redirectto_must_render.md) — any redirect ON the target (proxy gate or a `redirect()` stub page) crashes the client with E394.
 - [Auth revalidation cache TTL](auth_revalidation_cache_ttl.md) — JWT decode DB revalidation is Redis-cached (AUTH_REVALIDATE_TTL_SECONDS, def 30); sessionVersion bumps actively busted via invalidateRevalidationCache, TTL backstops the rest.
 - [Build type-checks everything](build_typecheck_scope.md) — `next build` type-checks scripts/ and tests; `npm run lint` only covers src/; deleting a page fails typecheck on a stale `.next/` and `rm` is often blocked.
-- [RBAC role model](rbac_role_model.md) — 14 category-aware DB roles (6 manager incl. admin + 8 worker, uniform worker perms); supervisor read-only; grants; seat counting unresolved (BUG-07).
+- [RBAC role model](rbac_role_model.md) — 14 category-aware DB roles (6 manager incl. admin + 8 worker, uniform worker perms); supervisor read-only; grants; every role incl. owner consumes a seat.
 - [Org/Facility split](org_facility_split.md) — location/compliance fields moved to Facility; genuinely multi-facility (OrganizationUserFacility); facility CRUD = owner/admin/hr.
 - [Full vitest run OOMs here](gotcha_full_vitest_run_ooms_here.md) — bare `vitest run` dies with a bare exit 137; shard it `--shard=N/4 --maxWorkers=1` (≈8 min) to really verify the suite
 - [Offline migrations](project_offline_migrations.md) — dev DB (localhost:5433) often unreachable; scaffold Prisma migrations offline via `migrate diff --from-schema/--to-schema`.
@@ -60,7 +60,8 @@
 - [Next 16 revalidateTag + Prisma schema traps](gotcha_next16_revalidatetag_and_prisma_validator.md) — revalidateTag needs a 2nd arg (`'max'`); no Prisma.validator (use `satisfies`); `String[]?` is rejected — nullable arrays need a boolean+list pair.
 - [Billing decisions 2026-08-27](project_billing_2026_08_27_decisions.md) — upgrades now prorate immediately (reverses 2026-07-17); pauses defer to period end via a sweep
 - [pauseStartsAt must not gate access](gotcha_billing_pause_sweep_invariant.md) — never read it in hasActiveBilling/getPauseState; the separation IS the mechanism
-- [Billing schedule deferred scope](project_billing_schedule_deferred_scope.md) — pause's kept 409 is deliberate; checkout pause check/#27/#28 closed; seat counting is two definitions in code (BUG-07).
+- [Billing schedule deferred scope](project_billing_schedule_deferred_scope.md) — pause's kept 409 on a pending schedule is deliberate; checkout pause check/#27/#28 closed.
+- [Owner consumes a seat](gotcha_seat_counting_is_owner_inclusive.md) — BUG-07/Q-11 ruled 2026-09-23; countBillableSeats/countBillableStaff are the ONLY definition; an at-cap org now reads cap+1 and cannot re-select its own plan.
 - [CourseRail unlockedIndex gates the quiz too](gotcha_courserail_unlockedindex_conflates_quiz.md) — module nav is free, but railUnlockedIndex must stay at lessons.length-1 or the quiz gate opens.
 - [CourseArticle hasFullLayout gates the quiz](gotcha_coursearticle_hasfulllayout_gates_quiz.md) — one flag covers ToC + top bar + Prev/Next; hiding chrome via onSelectModule deadlocks the quiz gate.
 - [Quiz route error body shapes](gotcha_quiz_route_error_body_shapes.md) — start returns a CODE in `error` + human text in `message`; submit is human-in-`error`; read `message ?? error`.

@@ -400,7 +400,7 @@ export const roles = {
     category: 'manager',
     displayName: 'Finance',
     description:
-      'Billing, subscription & financial reporting manager. Manages billing settings, payment methods and invoices, and tracks their own personal course progress. Blocked from Staff Management, from the audit trail, from certificates, from building courses, from assigning compliance paths and from viewing any worker test metrics.',
+      'Billing, subscription & financial reporting manager. Manages billing settings, payment methods and invoices, and tracks their own personal course progress. Blocked from Staff Management, from the audit trail, from certificates, from building courses and from assigning compliance paths. Sees organisation-level training aggregates such as average grade, but never the results of an individual worker.',
     permissions: [
       'billing.create',
       'billing.read',
@@ -420,9 +420,12 @@ export const roles = {
       // `certificate.read` REMOVED 2026-09-16 — founder answer to Q7
       // (docs/local/RBAC-founder-answers-2026-09-15.md, round 2): "Finance
       // should not be able to see certificates." A certificate carries staff
-      // name, email, course and score, which is the same worker-metrics surface
-      // Finance is already blocked from. `enrollment.read` is deliberately
-      // untouched — it is what keeps Finance's OWN learner progress visible.
+      // name, email, course and score — employee-level detail, which is the line
+      // Finance sits on the wrong side of. Aggregates are not: founder answer to
+      // Q-01 (2026-09-23) confirms Finance MAY see Average Grade, because an
+      // aggregate carries no employee-level detail. `enrollment.read` is
+      // deliberately untouched — it is what keeps Finance's OWN learner progress
+      // visible.
       'enrollment.read',
       'notification.create',
       'notification.read',
