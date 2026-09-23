@@ -38,6 +38,7 @@ vi.mock('@/lib/logger', () => ({
 // Import under test AFTER all vi.mock() declarations.
 // ---------------------------------------------------------------------------
 import { POST } from './route';
+import { ARCHIVED_COURSE_ERROR_CODE, ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -54,6 +55,8 @@ const ENROLLMENT = {
   organizationUserId: 'ou-1',
   courseId: 'course-1',
   status: 'in_progress',
+  // A live course, so the Q-04 archive gate lets the attempt through.
+  course: { archivedAt: null },
   // Active billing so the defense-in-depth gate lets the attempt through.
   organizationUser: { organization: { subscription: { status: 'active', pausedAt: null } } },
 };
@@ -123,6 +126,42 @@ describe('POST /api/quiz/[id]/start — enrollment guards', () => {
 
     expect(res.status).toBe(403);
     expect(body.error).toBe('QUIZ_LOCKED_MAX_ATTEMPTS');
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Founder Q-04 (2026-09-23): every learner action stops when the course is
+// archived. This route is the one that OPENS an attempt, so it is where a
+// cancelled course has to stop being startable — and it must refuse resuming
+// an existing draft just as firmly as creating a new one.
+// ---------------------------------------------------------------------------
+describe('POST /api/quiz/[id]/start — archived course (Q-04)', () => {
+  it('403s with COURSE_ARCHIVED and never opens a transaction', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue({
+      ...ENROLLMENT,
+      course: { archivedAt: new Date('2026-09-20') },
+    });
+
+    const res = await POST(makeReq({ enrollmentId: 'enr-1' }), { params });
+    const body = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(body.error).toBe(ARCHIVED_COURSE_ERROR_CODE);
+    expect(body.message).toBe(ARCHIVED_COURSE_LEARNER_MESSAGE);
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('refuses even when an in-progress draft exists — the draft is not resumed', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue({
+      ...ENROLLMENT,
+      course: { archivedAt: new Date('2026-09-20') },
+    });
+    txMock.quizAttempt.findFirst.mockResolvedValue({ id: 'attempt-draft', timeTaken: null });
+
+    const res = await POST(makeReq({ enrollmentId: 'enr-1' }), { params });
+
+    expect(res.status).toBe(403);
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 });

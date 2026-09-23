@@ -40,6 +40,7 @@ vi.mock('@/lib/notifications/create', () => ({
 }));
 
 import { assignRetake } from './course';
+import { ARCHIVED_COURSE_ADMIN_MESSAGE } from '@/lib/course/archived';
 
 const ADMIN_ID = 'admin-1';
 const ENROLLMENT_ID = 'enrollment-locked-1';
@@ -228,5 +229,58 @@ describe('assignRetake — retake enrollment shape', () => {
         }),
       }),
     );
+  });
+});
+
+/**
+ * Founder Q-04 (2026-09-23): an archived course cannot be retaken.
+ *
+ * `assignRetake` is the only surviving path that would mint a BRAND-NEW
+ * enrollment on retired training. The assignment paths reach the Course row
+ * through a top-level read that the archive query extension filters; here the
+ * course arrives on a nested include, which the extension cannot touch, so the
+ * refusal has to be stated in the action.
+ */
+describe('assignRetake — archived course', () => {
+  it('refuses, and creates no retake enrollment and no notification', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue(
+      makeLockedEnrollment({
+        course: { title: 'Infection Control', archivedAt: new Date('2026-09-20') },
+      }),
+    );
+
+    const result = await assignRetake(ENROLLMENT_ID);
+
+    expect(result).toEqual({
+      success: false,
+      refusedReason: ARCHIVED_COURSE_ADMIN_MESSAGE,
+    });
+    expect(prismaMock.enrollment.create).not.toHaveBeenCalled();
+    expect(mockCreateNotification).not.toHaveBeenCalled();
+  });
+
+  it('refuses even though the enrollment is locked — being locked is not an exemption', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue(
+      makeLockedEnrollment({
+        status: 'locked',
+        course: { title: 'Infection Control', archivedAt: new Date('2026-09-20') },
+      }),
+    );
+
+    const result = await assignRetake(ENROLLMENT_ID, 'Manager override');
+
+    expect(result.refusedReason).toBe(ARCHIVED_COURSE_ADMIN_MESSAGE);
+    expect(prismaMock.enrollment.create).not.toHaveBeenCalled();
+  });
+
+  it('CONTROL: the same retake is assigned while the course is live', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue(
+      makeLockedEnrollment({ course: { title: 'Infection Control', archivedAt: null } }),
+    );
+
+    await expect(assignRetake(ENROLLMENT_ID)).resolves.toEqual({
+      success: true,
+      retakeEnrollmentId: 'retake-enrollment-1',
+    });
   });
 });

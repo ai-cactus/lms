@@ -129,7 +129,15 @@ function WorkerStartButton({
         setLoading(false);
         return;
       }
-      await startCourse(courseId);
+      const started = await startCourse(courseId);
+      if (!started.success) {
+        // Refused — the course was archived under the learner (Q-04). Re-render
+        // instead of navigating: this page refuses an archived course too, so a
+        // push would only land on the player's own refusal a step later.
+        router.refresh();
+        setLoading(false);
+        return;
+      }
       router.push(`/learn/${courseId}`);
     } catch (error) {
       logger.error({ msg: 'Failed to start/retry course:', err: error });

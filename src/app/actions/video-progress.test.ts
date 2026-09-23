@@ -38,6 +38,7 @@ vi.mock('@/lib/prisma', () => {
 // returns the same-origin proxy path.
 
 import { getVideoPlaybackUrl, saveVideoProgress } from './video-progress';
+import { ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -45,7 +46,11 @@ import { getVideoPlaybackUrl, saveVideoProgress } from './video-progress';
 const makeAdminSession = (organizationUserId = 'ou-1') => ({
   user: { id: 'user-1', organizationUserId, organizationId: 'org-1' },
 });
-const makeLesson = (opts?: { createdBy?: string; enrollments?: { id: string }[] }) => ({
+const makeLesson = (opts?: {
+  createdBy?: string;
+  enrollments?: { id: string }[];
+  archivedAt?: Date | null;
+}) => ({
   id: 'lesson-1',
   videoProvider: 'self',
   videoStorageUri: 'gcs://bucket/video.mp4',
@@ -56,6 +61,7 @@ const makeLesson = (opts?: { createdBy?: string; enrollments?: { id: string }[] 
     isGlobal: false,
     status: 'published',
     type: 'video',
+    archivedAt: opts?.archivedAt ?? null,
     enrollments: opts?.enrollments ?? [],
   },
 });
@@ -137,9 +143,14 @@ describe('getVideoPlaybackUrl', () => {
 // saveVideoProgress
 // ---------------------------------------------------------------------------
 describe('saveVideoProgress', () => {
-  const makeEnrollment = (organizationUserId = 'ou-1', status = 'enrolled') => ({
+  const makeEnrollment = (
+    organizationUserId = 'ou-1',
+    status = 'enrolled',
+    archivedAt: Date | null = null,
+  ) => ({
     organizationUserId,
     status,
+    course: { archivedAt },
   });
 
   it('updates videoPositionSeconds and progress', async () => {
@@ -250,5 +261,38 @@ describe('saveVideoProgress', () => {
     // both auths return null (default)
     await expect(saveVideoProgress('enr-1', 100, 50)).rejects.toThrow('Unauthorized');
     expect(mockEnrollmentFindUnique).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Founder Q-04 (2026-09-23): watching on is the learner advancing through the
+   * course, so it stops at the archive. Refused by RETURN rather than thrown —
+   * unlike the ownership failures above, this is a policy decision the learner
+   * can be told about, and a thrown Server Action message is redacted in
+   * production.
+   */
+  it('refuses an archived course by return, writing no position and no status bump', async () => {
+    mockAdminAuth.mockResolvedValue(makeAdminSession('ou-1'));
+    mockEnrollmentFindUnique.mockResolvedValue(
+      makeEnrollment('ou-1', 'enrolled', new Date('2026-09-20')),
+    );
+
+    const result = await saveVideoProgress('enr-1', 900, 99);
+
+    expect(result).toEqual({
+      unlocked: false,
+      refusedReason: ARCHIVED_COURSE_LEARNER_MESSAGE,
+    });
+    expect(mockEnrollmentUpdate).not.toHaveBeenCalled();
+  });
+});
+
+describe('getVideoPlaybackUrl — archived course (Q-04)', () => {
+  it('refuses playback even to the enrolled learner', async () => {
+    mockAdminAuth.mockResolvedValue(makeAdminSession('ou-worker'));
+    mockLessonFindUnique.mockResolvedValue(
+      makeLesson({ archivedAt: new Date('2026-09-20'), enrollments: [{ id: 'enr-1' }] }),
+    );
+
+    await expect(getVideoPlaybackUrl('lesson-1')).rejects.toThrow('Forbidden');
   });
 });

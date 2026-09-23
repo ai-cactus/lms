@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { logger } from '@/lib/logger';
 import { guardApiSession } from '@/lib/auth-guard';
 import { hasActiveBilling } from '@/lib/billing';
+import { ARCHIVED_COURSE_ERROR_CODE, ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
 
 const startQuizSchema = z.object({
   enrollmentId: z.string().min(1, 'Enrollment ID is required'),
@@ -37,6 +38,9 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     const enrollment = await prisma.enrollment.findUnique({
       where: { id: enrollmentId },
       include: {
+        // Nested, so the Q24 archive query extension does not filter it away —
+        // the archived row is exactly what the Q-04 gate below needs to see.
+        course: { select: { archivedAt: true } },
         organizationUser: {
           select: {
             organization: {
@@ -73,6 +77,22 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
           error:
             'Your organization’s training access is paused. Please contact your administrator.',
         },
+        { status: 403 },
+      );
+    }
+
+    // Q-04: every learner action stops when the course is archived, so no new
+    // attempt may be opened and no draft may be resumed. Checked ahead of the
+    // lockout and attempt-limit guards because it is a fact about the COURSE,
+    // not about how far this learner got.
+    if (enrollment.course.archivedAt) {
+      logger.warn({
+        msg: '[quiz] Start blocked — course is archived',
+        enrollmentId,
+        courseId: enrollment.courseId,
+      });
+      return NextResponse.json(
+        { error: ARCHIVED_COURSE_ERROR_CODE, message: ARCHIVED_COURSE_LEARNER_MESSAGE },
         { status: 403 },
       );
     }

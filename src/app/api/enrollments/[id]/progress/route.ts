@@ -4,6 +4,7 @@ import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { z } from 'zod';
 import { logger } from '@/lib/logger';
+import { ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
 
 const progressSchema = z.object({
   progress: z.number().min(0).max(100),
@@ -30,6 +31,9 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
 
     const enrollment = await prisma.enrollment.findUnique({
       where: { id: enrollmentId },
+      // Nested, so the archive query extension leaves it alone — an archived
+      // course must still be readable here in order to be refused.
+      include: { course: { select: { archivedAt: true } } },
     });
 
     if (!enrollment) {
@@ -44,6 +48,17 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
         { error: 'Enrollment does not belong to active sessions' },
         { status: 403 },
       );
+    }
+
+    // Q-04: progress is the learner advancing through the course, which stops
+    // at the archive.
+    if (enrollment.course.archivedAt) {
+      logger.warn({
+        msg: '[enrollment] Progress update blocked — course is archived',
+        enrollmentId,
+        courseId: enrollment.courseId,
+      });
+      return NextResponse.json({ error: ARCHIVED_COURSE_LEARNER_MESSAGE }, { status: 403 });
     }
 
     // Only allow forward progress (never decrease)

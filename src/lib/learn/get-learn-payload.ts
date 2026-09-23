@@ -4,6 +4,7 @@ import prisma from '@/lib/prisma';
 import { rawPrisma } from '@/db/index';
 import { getPortalSessions } from '@/lib/auth/portal-sessions';
 import { logger } from '@/lib/logger';
+import { ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
 import type { Role } from '@/types/next-auth';
 
 /**
@@ -258,12 +259,12 @@ export async function getLearnPayload(courseId: string): Promise<LearnPayload | 
     // including the AI-pipeline artifacts (rawCourseJson, rawQuizJson,
     // rawSlidesJson, …) that this handler never reads.
     //
-    // ⛔ `rawPrisma`, deliberately: archiving a course RETIRES it for new
-    // assignment, it does not erase what a learner already did. A worker who
-    // was enrolled before the archive must still be able to open it, and their
-    // certificate must still resolve. Access is decided below — an enrollment,
-    // or a manager's review right — so reading the row unfiltered widens
-    // nothing: the gate is downstream of the lookup, not the archive filter.
+    // ⛔ `rawPrisma`, deliberately: the archived row has to be READ in order to
+    // be refused with the right answer. Founder Q-04/Q-05 (2026-09-23) narrowed
+    // the earlier Q24 ruling — archiving now CANCELS the course for learners, so
+    // an enrollment no longer keeps the player open. Reading unfiltered widens
+    // nothing: the refusal is stated explicitly below, immediately after the
+    // lookup, for every caller.
     const course = await rawPrisma.course.findUnique({
       where: { id: courseId },
       select: {
@@ -273,6 +274,7 @@ export async function getLearnPayload(courseId: string): Promise<LearnPayload | 
         duration: true,
         isGlobal: true,
         status: true,
+        archivedAt: true,
         // A COUNT over the already-indexed course_modules.course_id, on a query
         // that is streaming every lesson body anyway — cheaper than the extra
         // round trip a separate query would cost.
@@ -302,6 +304,22 @@ export async function getLearnPayload(courseId: string): Promise<LearnPayload | 
 
     if (!course) {
       return { error: 'Course not found', status: 404 };
+    }
+
+    // Q-04/Q-05: an archived course is cancelled. Nobody continues it — not the
+    // learner who was part-way through, not a manager exercising the review
+    // right below — which keeps this in step with `getCourseById`, the entry
+    // point that fronts this player. Refused ahead of the access gate because
+    // the answer no longer depends on WHY the caller would have been let in.
+    //
+    // Certificates are untouched: they are served from the Certificate table by
+    // `getWorkerCertificates`/`getCertificateDetails`, never from this payload.
+    if (course.archivedAt) {
+      logger.warn({
+        msg: '[course] Learn payload refused — course is archived',
+        courseId,
+      });
+      return { error: ARCHIVED_COURSE_LEARNER_MESSAGE, status: 403 };
     }
 
     // Check both potential sessions for an enrollment to resolve cookie collision.
