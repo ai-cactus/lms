@@ -48,6 +48,7 @@ vi.mock('@/lib/logger', () => ({
 }));
 
 import { VertexBudgetExceededError } from '@/lib/ai-client';
+import { quizOutputTokenBudget } from '@/lib/ai/course-pipeline-v46';
 import { generateSingleQuestion, regenerateQuiz } from './quiz-ai';
 
 const OWN_ORG = 'ou-mine';
@@ -58,12 +59,29 @@ const session = { user: { id: 'user-1', organizationUserId: OWN_ORG } };
 const RAW_VERTEX_ERROR =
   'Vertex AI 404 Not Found: <!DOCTYPE html><html><body>Not Found</body></html>';
 
-const VALID_AI_RESPONSE = JSON.stringify({
-  question: 'What is the escalation window?',
-  options: ['24h', '48h', '72h', '96h'],
-  answer: 2,
-  explanation: 'Policy states 72 hours.',
-});
+/**
+ * The per-option shape both actions ask for since Q-13 — a rationale on the
+ * correct option AND on every distractor, matching the v4.6 pipeline.
+ */
+function aiQuestion(overrides: Record<string, unknown> = {}) {
+  return {
+    question: 'What is the escalation window?',
+    options: [
+      { text: '24h', isCorrect: false, distractorType: 'D3', explanation: 'Too short (D3).' },
+      { text: '48h', isCorrect: false, distractorType: 'D1', explanation: 'Halves it (D1).' },
+      {
+        text: '72h',
+        isCorrect: true,
+        distractorType: null,
+        explanation: 'Policy states 72 hours.',
+      },
+      { text: '96h', isCorrect: false, distractorType: 'D4', explanation: 'Overshoots (D4).' },
+    ],
+    ...overrides,
+  };
+}
+
+const VALID_AI_RESPONSE = JSON.stringify(aiQuestion());
 
 function courseOwnedBy(orgUserId: string) {
   return {
@@ -111,7 +129,7 @@ describe('generateSingleQuestion — access control', () => {
     const result = await generateSingleQuestion({ courseId: 'course-1' });
 
     expect(result.success).toBe(true);
-    expect(result.question?.answer).toBe(2);
+    expect(result.question?.options[result.question.answer]).toBe('72h');
     expect(mockCallVertexAI).toHaveBeenCalledTimes(1);
   });
 
@@ -222,28 +240,82 @@ describe('generateSingleQuestion — prompt injection hardening', () => {
  * question the v4.6 pipeline generates. An explanation is the pedagogical point
  * of a quiz answer, so its absence must fail the call and let the author retry
  * rather than ship a blank.
+ *
+ * Founder ruling Q-13 extended that parity to the WRONG options: an AI-added
+ * question must carry a rationale per distractor, exactly as a bulk-generated
+ * one does. A distractor rationale is NOT mandatory though — a response that
+ * omits one still yields a usable question, so it degrades rather than failing.
  */
 describe('generateSingleQuestion — explanation is required', () => {
   beforeEach(() => {
     prismaMock.course.findUnique.mockResolvedValue(courseOwnedBy(OWN_ORG));
   });
 
-  it('returns the explanation on the happy path', async () => {
+  it('returns a rationale for the correct answer AND for every wrong option', async () => {
     mockCallVertexAI.mockResolvedValue(VALID_AI_RESPONSE);
 
     const result = await generateSingleQuestion({ courseId: 'course-1' });
 
     expect(result.success).toBe(true);
-    expect(result.question?.explanation).toBe('Policy states 72 hours.');
+    const question = result.question!;
+    expect(question.explanation.correctExplanation).toBe('Policy states 72 hours.');
+    // Options are shuffled server-side, so assert on the mapping rather than on
+    // a fixed position: the correct index must point at the correct option, and
+    // every other index must carry that option's own rationale.
+    expect(question.options[question.answer]).toBe('72h');
+    const rationaleByText = Object.fromEntries(
+      Object.entries(question.explanation.incorrectOptions).map(([index, text]) => [
+        question.options[Number(index)],
+        text,
+      ]),
+    );
+    expect(rationaleByText).toEqual({
+      '24h': 'Too short (D3).',
+      '48h': 'Halves it (D1).',
+      '96h': 'Overshoots (D4).',
+    });
+  });
+
+  it('still returns a question when the model omits the distractor rationales', async () => {
+    mockCallVertexAI.mockResolvedValue(
+      JSON.stringify(
+        aiQuestion({
+          options: [
+            { text: '24h', isCorrect: false, distractorType: 'D3' },
+            { text: '48h', isCorrect: false, distractorType: 'D1', explanation: '  ' },
+            {
+              text: '72h',
+              isCorrect: true,
+              distractorType: null,
+              explanation: 'Policy states 72 hours.',
+            },
+            { text: '96h', isCorrect: false, distractorType: 'D4', explanation: '' },
+          ],
+        }),
+      ),
+    );
+
+    const result = await generateSingleQuestion({ courseId: 'course-1' });
+
+    expect(result.success).toBe(true);
+    expect(result.question?.explanation.correctExplanation).toBe('Policy states 72 hours.');
+    // Blank rationales are left out of the map entirely rather than rendering
+    // as a bare "Option B:" with nothing after it.
+    expect(result.question?.explanation.incorrectOptions).toEqual({});
   });
 
   it('rejects a response with no explanation instead of returning a blank one', async () => {
     mockCallVertexAI.mockResolvedValue(
-      JSON.stringify({
-        question: 'What is the escalation window?',
-        options: ['24h', '48h', '72h', '96h'],
-        answer: 2,
-      }),
+      JSON.stringify(
+        aiQuestion({
+          options: [
+            { text: '24h', isCorrect: false, distractorType: 'D3' },
+            { text: '48h', isCorrect: false, distractorType: 'D1' },
+            { text: '72h', isCorrect: true, distractorType: null },
+            { text: '96h', isCorrect: false, distractorType: 'D4' },
+          ],
+        }),
+      ),
     );
 
     const result = await generateSingleQuestion({ courseId: 'course-1' });
@@ -253,14 +325,18 @@ describe('generateSingleQuestion — explanation is required', () => {
     expect(result.error).toBe('AI generated invalid question format.');
   });
 
-  it('rejects a whitespace-only explanation', async () => {
+  it('rejects a whitespace-only explanation on the correct option', async () => {
     mockCallVertexAI.mockResolvedValue(
-      JSON.stringify({
-        question: 'What is the escalation window?',
-        options: ['24h', '48h', '72h', '96h'],
-        answer: 2,
-        explanation: '   ',
-      }),
+      JSON.stringify(
+        aiQuestion({
+          options: [
+            { text: '24h', isCorrect: false, distractorType: 'D3', explanation: 'Too short.' },
+            { text: '48h', isCorrect: false, distractorType: 'D1', explanation: 'Halves it.' },
+            { text: '72h', isCorrect: true, distractorType: null, explanation: '   ' },
+            { text: '96h', isCorrect: false, distractorType: 'D4', explanation: 'Overshoots.' },
+          ],
+        }),
+      ),
     );
 
     const result = await generateSingleQuestion({ courseId: 'course-1' });
@@ -269,31 +345,51 @@ describe('generateSingleQuestion — explanation is required', () => {
     expect(result.question).toBeUndefined();
   });
 
-  it('instructs the model that the explanation is required', async () => {
+  it('rejects a response that marks no single option correct', async () => {
+    mockCallVertexAI.mockResolvedValue(
+      JSON.stringify(
+        aiQuestion({
+          options: [
+            { text: '24h', isCorrect: true, distractorType: null, explanation: 'One.' },
+            { text: '48h', isCorrect: true, distractorType: null, explanation: 'Two.' },
+            { text: '72h', isCorrect: false, distractorType: 'D1', explanation: 'Three.' },
+            { text: '96h', isCorrect: false, distractorType: 'D4', explanation: 'Four.' },
+          ],
+        }),
+      ),
+    );
+
+    const result = await generateSingleQuestion({ courseId: 'course-1' });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('AI generated invalid question format.');
+  });
+
+  it('instructs the model that every option needs its own explanation', async () => {
     mockCallVertexAI.mockResolvedValue(VALID_AI_RESPONSE);
 
     await generateSingleQuestion({ courseId: 'course-1' });
 
-    expect(mockCallVertexAI.mock.calls[0][0] as string).toMatch(
-      /REQUIRED: "explanation" must be a non-empty sentence/,
-    );
+    const prompt = mockCallVertexAI.mock.calls[0][0] as string;
+    expect(prompt).toMatch(/Every option must carry its own "explanation"/);
+    expect(prompt).toContain('EXPLANATION RULES:');
+    expect(prompt).toContain('Distractor explanations: 12–30 words');
   });
 
   it('rejects a regenerated quiz when any question is missing its explanation', async () => {
     mockCallVertexAI.mockResolvedValue(
       JSON.stringify({
         questions: [
-          {
-            question: 'What is the escalation window?',
-            options: ['24h', '48h', '72h', '96h'],
-            answer: 2,
-            explanation: 'Policy states 72 hours.',
-          },
-          {
+          aiQuestion(),
+          aiQuestion({
             question: 'Who owns the escalation runbook?',
-            options: ['A', 'B', 'C', 'D'],
-            answer: 1,
-          },
+            options: [
+              { text: 'A', isCorrect: false, distractorType: 'D1', explanation: 'No.' },
+              { text: 'B', isCorrect: true, distractorType: null },
+              { text: 'C', isCorrect: false, distractorType: 'D3', explanation: 'No.' },
+              { text: 'D', isCorrect: false, distractorType: 'D4', explanation: 'No.' },
+            ],
+          }),
         ],
       }),
     );
@@ -303,22 +399,22 @@ describe('generateSingleQuestion — explanation is required', () => {
     expect(result.success).toBe(false);
     expect(result.error).toBe('AI generated an invalid quiz format.');
   });
+
+  it('asks the regenerate path for per-option rationale too', async () => {
+    mockCallVertexAI.mockResolvedValue(VALID_REGENERATED_QUIZ_RESPONSE);
+
+    await regenerateQuiz({ courseId: 'course-1', questionCount: 2 });
+
+    const prompt = mockCallVertexAI.mock.calls[0][0] as string;
+    expect(prompt).toMatch(/Every option of every question must carry its own "explanation"/);
+    expect(prompt).toContain('DISTRACTOR MECHANICS');
+  });
 });
 
 // ── regenerateQuiz ───────────────────────────────────────────────────────────
 
-function question(overrides: Partial<Record<string, unknown>> = {}) {
-  return {
-    question: 'What is the escalation window?',
-    options: ['24h', '48h', '72h', '96h'],
-    answer: 2,
-    explanation: 'Policy states 72 hours.',
-    ...overrides,
-  };
-}
-
 const VALID_REGENERATED_QUIZ_RESPONSE = JSON.stringify({
-  questions: [question(), question({ question: 'Who owns the escalation runbook?' })],
+  questions: [aiQuestion(), aiQuestion({ question: 'Who owns the escalation runbook?' })],
 });
 
 // SSN pattern (123-45-6789) is a HIGH-confidence structural identifier: the
@@ -405,7 +501,12 @@ describe('regenerateQuiz — happy path', () => {
 
     expect(result.success).toBe(true);
     expect(result.questions).toHaveLength(2);
-    expect(result.questions?.[0]).toMatchObject({ answer: 2 });
+    // Options are shuffled server-side, so `answer` is positional and cannot be
+    // asserted directly — what must hold is that it points at the option the
+    // model flagged correct.
+    const first = result.questions![0];
+    expect(first.options).toHaveLength(4);
+    expect(first.options[first.answer]).toBe('72h');
   });
 });
 
@@ -554,7 +655,8 @@ describe('regenerateQuiz — questionCount clamping', () => {
     const prompt = mockCallVertexAI.mock.calls[0][0] as string;
     const options = mockCallVertexAI.mock.calls[0][1] as { maxOutputTokens: number };
     expect(prompt).toContain('generate a complete set of 25');
-    expect(options.maxOutputTokens).toBe(8192);
+    // The bulk pipeline's budget, reused: 2048 + 900/question.
+    expect(options.maxOutputTokens).toBe(quizOutputTokenBudget(25));
   });
 
   it('clamps a non-positive questionCount up to the 1-question floor', async () => {
@@ -566,6 +668,6 @@ describe('regenerateQuiz — questionCount clamping', () => {
     const prompt = mockCallVertexAI.mock.calls[0][0] as string;
     const options = mockCallVertexAI.mock.calls[0][1] as { maxOutputTokens: number };
     expect(prompt).toContain('generate a complete set of 1');
-    expect(options.maxOutputTokens).toBe(600);
+    expect(options.maxOutputTokens).toBe(quizOutputTokenBudget(1));
   });
 });

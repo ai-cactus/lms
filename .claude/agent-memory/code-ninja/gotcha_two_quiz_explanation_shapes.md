@@ -1,38 +1,37 @@
 ---
 name: gotcha-two-quiz-explanation-shapes
-description: Quiz `explanation` has two incompatible shapes (flat string from the quiz AI actions, object from v4.6) and only correctExplanation is ever persisted
+description: Every AI quiz path now returns the rich {correctExplanation, incorrectOptions} object, but only correctExplanation is ever persisted — per-option rationale is author-preview-only
 metadata:
   type: project
 ---
 
-`explanation` on a quiz question exists in **two incompatible shapes**, and the
-consumer decides which one it wants. Check the consumer before wiring a new
-producer.
+Since Q-13 (2026-09-23) **all three AI quiz producers return the same object**,
+`QuizExplanation` from `src/types/quiz.ts`:
 
-- **Flat `string`** — what `generateSingleQuestion` / `regenerateQuiz`
-  (`src/app/actions/quiz-ai.ts`) return, and what `AdminQuizEditor` (the legacy
-  course editor) stores and edits in a textarea.
-- **Object `{ correctExplanation, incorrectOptions }`** (`QuizQuestion` in
-  `src/types/quiz.ts`) — what the v4.6 pipeline produces (built in
-  `GenerationController.tsx`, where `incorrectOptions` is keyed by the
-  **post-shuffle** option index) and what the wizard's Step 6 card renders.
+- `generateSingleQuestion` / `regenerateQuiz` (`src/app/actions/quiz-ai.ts`)
+- the v4.6 pipeline (adapted in `GenerationController.tsx`)
 
-**Why:** the wizard step and the legacy editor were built against different
-generators and never converged. Nothing in the type system connects them —
-`QuizQuestion` is not what the server action returns — so a flat string assigned
-where the object is expected renders as a blank "Correct: " rather than failing.
+They share `adaptQuizOptions` (`src/lib/quiz/options.ts`), which shuffles the
+options and keys `incorrectOptions` by the **post-shuffle** index. So `answer`
+is positional and cannot be asserted against a fixed number in a test — assert
+`options[answer] === '<the correct text>'` instead.
 
-**How to apply:**
-- Feeding a quiz-AI action result into Step 6 requires widening the string into
-  the object (`toQuestionExplanation` in `Step6QuizReview.tsx`). Feeding it into
-  `AdminQuizEditor` requires the raw string. Do not "unify" one into the other
-  without touching both consumers.
-- **Only `correctExplanation` is persisted.** `createFullCourse`
-  (`src/app/actions/course.ts`) writes `q.explanation?.correctExplanation` into
-  `Question.explanation`, which is a `String?`. `incorrectOptions` is
-  wizard-preview-only and never reaches the database — so per-distractor
-  rationales are cosmetic, and a fix that leaves that map empty still achieves
-  full DB parity.
+The one surviving flat-`string` consumer is **`AdminQuizEditor`** (the legacy
+post-publication editor): it stores what `Question.explanation` holds, so it
+reads `res.question.explanation.correctExplanation` and drops the rest.
+
+**Only `correctExplanation` is persisted — still.** `Question.explanation` is a
+single `String?` (`prisma/quiz.prisma`); `createFullCourse` writes
+`q.explanation?.correctExplanation`, `updateQuizQuestions` writes the flat
+string, and the learner's `/api/quiz/[id]/submit` serves one explanation per
+question. `incorrectOptions` reaches the wizard's Step 6 card and nothing else,
+by design — the author reviewing before publish is its reader. Tracked as an
+open follow-up on Q-13; making it learner-visible needs a `Question` column AND
+a product ruling, and would have to cover the bulk path too.
+
+**How to apply:** a change that "adds" per-option rationale to a producer is
+cosmetic unless it also adds a column and a learner surface — say so rather
+than implying learners will see it.
 
 See also [[gotcha_rsc_vs_json_payload_shapes]] for the same class of
 one-field-two-shapes trap.
