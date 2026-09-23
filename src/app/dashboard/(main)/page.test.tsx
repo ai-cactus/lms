@@ -520,3 +520,42 @@ describe('DashboardPage — facility scope wiring', () => {
     });
   });
 });
+
+// Founder ruling Q2 (2026-09-23): every create-course affordance follows
+// `course.create`. Finance and Supervisor reach this page on other verbs and
+// must not be offered an action their first click would refuse. Gated on the
+// permission registry, never a role list — a new role inherits the rule.
+describe('DashboardPage — create-course affordances follow course.create', () => {
+  const ONE_FACILITY = { id: 'fac-a', name: 'Alpha Site', type: 'clinic', city: 'Austin' };
+
+  function sessionFor(role: string) {
+    return {
+      user: { id: `u-${role}`, organizationUserId: `ou-${role}`, organizationId: 'org-42', role },
+    };
+  }
+
+  beforeEach(() => {
+    // One facility keeps every role on the single-org branch, which is the only
+    // one that renders these two controls.
+    mockGetGlobalDashboardData.mockResolvedValue({ facilities: [ONE_FACILITY] });
+    mockListAccessibleFacilities.mockResolvedValue([ONE_FACILITY]);
+  });
+
+  it.each(['owner', 'admin', 'hr', 'clinical_director'])('shows both for %s', async (role) => {
+    mockAuth.mockResolvedValue(sessionFor(role));
+
+    render(await DashboardPage(noSearchParams()));
+
+    expect(screen.getByRole('button', { name: 'Create course' })).toBeInTheDocument();
+    expect(screen.getByTestId('empty-state')).toBeInTheDocument();
+  });
+
+  it.each(['supervisor', 'finance'])('hides both for %s', async (role) => {
+    mockAuth.mockResolvedValue(sessionFor(role));
+
+    render(await DashboardPage(noSearchParams()));
+
+    expect(screen.queryByRole('button', { name: 'Create course' })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('empty-state')).not.toBeInTheDocument();
+  });
+});

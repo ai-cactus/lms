@@ -80,7 +80,6 @@ function memberEntry(id: string, name: string, role = 'hr') {
     email: `${id}@acme.test`,
     avatarUrl: null,
     role,
-    jobTitle: 'Coordinator',
     dateInvited: new Date('2026-01-01'),
     isPending: false,
     isExpired: false,

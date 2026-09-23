@@ -89,7 +89,6 @@ export async function getStaffDetails(organizationUserId: string) {
       select: {
         id: true,
         role: true,
-        jobTitle: true,
         organizationId: true,
         managerId: true,
         user: {
@@ -197,14 +196,12 @@ export async function getStaffDetails(organizationUserId: string) {
         email: orgUser.user.email,
         avatarUrl: orgUser.user.avatarUrl ?? null,
         role: orgUser.role,
-        // The three fields below are the EDITABLE record, reported verbatim —
-        // never a display fallback. `updateStaffDetails` takes all four fields
-        // together, so each profile affordance echoes back the ones it does not
-        // edit; substituting a placeholder here would make the Change Role modal
-        // silently overwrite a blank job title with "Staff Member".
+        // The two name fields are the EDITABLE record, reported verbatim —
+        // never a display fallback. `updateStaffDetails` takes name and role
+        // together, so the Change Role modal echoes the names back untouched;
+        // substituting a placeholder here would have it overwrite a blank name.
         firstName: orgUser.user.firstName ?? '',
         lastName: orgUser.user.lastName ?? '',
-        jobTitle: orgUser.jobTitle ?? '',
         facilityName: orgUser.facilities[0]?.facility.name ?? null,
         managerId: orgUser.managerId ?? null,
         managerName: orgUser.manager
@@ -245,7 +242,6 @@ export async function updateStaffDetails(
     firstName: string;
     lastName: string;
     role: UserRole;
-    jobTitle: string;
   },
 ) {
   const session = await auth();
@@ -289,7 +285,7 @@ export async function updateStaffDetails(
     return { success: false, error: 'Forbidden' };
   }
 
-  // A role change is a privileged, narrower operation than a name/job-title edit:
+  // A role change is a privileged, narrower operation than a name edit:
   // only an Owner/Admin/HR may re-role a reachable target, never themselves, and
   // never to/from owner. Unchanged role (e.g. a plain profile edit) skips it.
   // This is also what keeps a supervisor — who reaches this action for profile
@@ -321,7 +317,6 @@ export async function updateStaffDetails(
       where: { id: organizationUserId },
       data: {
         role: data.role,
-        jobTitle: data.jobTitle,
         // Stamp the role-join date so late-joiner deadline windows count from the
         // change.
         ...(roleChanged ? { roleAssignedAt: new Date() } : {}),

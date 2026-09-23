@@ -165,7 +165,6 @@ export interface CreateMembershipInput {
   /** The facility this membership is assigned to on joining. */
   facilityId: string;
   role: Role;
-  jobTitle?: string | null;
 }
 
 /**
@@ -178,19 +177,18 @@ export interface CreateMembershipInput {
  * `(userId, organizationId)` unique constraint would reject anyway.
  */
 export async function createMembership(input: CreateMembershipInput): Promise<MembershipSummary> {
-  const { userId, organizationId, facilityId, role, jobTitle } = input;
+  const { userId, organizationId, facilityId, role } = input;
 
   return prisma.$transaction(async (tx) => {
     const membership = await tx.organizationUser.upsert({
       where: { userId_organizationId: { userId, organizationId } },
-      create: { userId, organizationId, role, jobTitle: jobTitle ?? null },
+      create: { userId, organizationId, role },
       update: {
         role,
         active: true,
         deactivatedAt: null,
         // Re-joining restarts the deadline window for role-target assignments.
         roleAssignedAt: new Date(),
-        ...(jobTitle === undefined ? {} : { jobTitle }),
       },
       select: MEMBERSHIP_SELECT,
     });

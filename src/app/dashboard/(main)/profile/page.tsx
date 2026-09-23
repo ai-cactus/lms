@@ -30,7 +30,6 @@ export default async function ProfilePage() {
       ? prisma.organizationUser.findUnique({
           where: { id: organizationUserId },
           select: {
-            jobTitle: true,
             organization: true,
             facilities: {
               where: { active: true },
@@ -63,7 +62,6 @@ export default async function ProfilePage() {
     email: user?.email || session.user.email || '',
     role,
     roleDisplayName: getRoleDisplayName(role),
-    jobTitle: membership?.jobTitle || '',
     avatarUrl: user?.avatarUrl || null,
     avatarDisplayUrl,
     authProvider: user?.authProvider || 'credentials',

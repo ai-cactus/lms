@@ -211,7 +211,6 @@ export interface LearnPayload {
     canEditContent: boolean;
     organizationName?: string;
     email: string;
-    jobTitle: string;
   };
 }
 
@@ -454,7 +453,6 @@ export async function getLearnPayload(courseId: string): Promise<LearnPayload | 
           // password hash into a handler that only needs a display name.
           select: {
             role: true,
-            jobTitle: true,
             user: { select: { fullName: true, email: true } },
             organization: { select: { name: true } },
           },
@@ -584,7 +582,6 @@ export async function getLearnPayload(courseId: string): Promise<LearnPayload | 
         canEditContent,
         organizationName: activeMembership?.organization.name || undefined,
         email: activeMembership?.user.email || '',
-        jobTitle: activeMembership?.jobTitle || '',
       },
     };
   } catch (error) {

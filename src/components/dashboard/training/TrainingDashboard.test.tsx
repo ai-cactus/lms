@@ -40,7 +40,14 @@ describe('TrainingDashboard — courses table thumbnail per type', () => {
       { ...BASE_COURSE, id: 'c2', title: 'Video Course', type: 'video' },
     ];
 
-    render(<TrainingDashboard onCreateCourse={vi.fn()} stats={STATS} courses={courses} />);
+    render(
+      <TrainingDashboard
+        onCreateCourse={vi.fn()}
+        stats={STATS}
+        courses={courses}
+        canCreateCourses
+      />,
+    );
 
     const readingRow = screen.getByText('Reading Course').closest('tr')!;
     expect(readingRow.querySelector('[class*="bg-[#1c213d]"]')).not.toBeNull();

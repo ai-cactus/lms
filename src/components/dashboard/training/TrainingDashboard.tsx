@@ -42,6 +42,8 @@ interface TrainingDashboardProps {
   onCreateCourse: () => void;
   stats: DashboardStats;
   courses: CourseWithStats[];
+  /** Founder ruling Q2 — the wizard is offered only to `course.create` holders. */
+  canCreateCourses: boolean;
 }
 
 // Interactive Donut Chart with hover tooltips
@@ -263,6 +265,7 @@ export default function TrainingDashboard({
   onCreateCourse,
   stats,
   courses,
+  canCreateCourses,
 }: TrainingDashboardProps) {
   const router = useRouter();
   const coverage = stats.trainingCoverage;
@@ -289,10 +292,12 @@ export default function TrainingDashboard({
           <h1 className="text-2xl font-bold text-[#1a202c]">Training Dashboard</h1>
           <p className="text-base text-[#718096]">Here is an overview of your courses</p>
         </div>
-        <Button onClick={onCreateCourse}>
-          <Plus className="size-5" />
-          Create Course
-        </Button>
+        {canCreateCourses && (
+          <Button onClick={onCreateCourse}>
+            <Plus className="size-5" />
+            Create Course
+          </Button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-6">

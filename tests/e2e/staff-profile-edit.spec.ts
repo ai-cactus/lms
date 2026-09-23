@@ -8,9 +8,10 @@
  *
  * Acceptance criteria:
  *   - A facility supervisor opens a staff member in THEIR OWN facility, edits
- *     the name and job title, and the change persists (founder Q2 — the
- *     supervisor's "U" on Staff Management covers basic profile editing) AND is
- *     visible on the reloaded profile.
+ *     the name, and the change persists (founder Q2 — the supervisor's "U" on
+ *     Staff Management covers basic profile editing) AND is visible on the
+ *     reloaded profile. No job-title field is offered: founder ruling Q3/Q17
+ *     (2026-09-23) made the system-assigned role the person's title.
  *   - That supervisor never sees "Change Role": they are in
  *     STAFF_PROFILE_ACTOR_ROLES but not ROLE_CHANGE_ACTOR_ROLES.
  *   - HR re-roles a worker, and Owner/Admin are ABSENT from the role list rather
@@ -182,29 +183,27 @@ test.describe('Staff profile — Edit Profile (founder Q2)', () => {
 
       // Prefilled from the stored record, not from a display fallback.
       await expect(dialog.getByLabel(/First name/)).toHaveValue('Dana');
-      await expect(dialog.getByLabel(/Job title/)).toHaveValue('Staff Nurse');
+      // Founder ruling Q3/Q17 (2026-09-23): the system-assigned role IS the
+      // title, so no job-title field is offered anywhere in the product.
+      await expect(dialog.getByLabel(/Job title/i)).toHaveCount(0);
 
       await dialog.getByLabel(/First name/).fill('Danielle');
       await dialog.getByLabel(/Last name/).fill('Okafor');
-      await dialog.getByLabel(/Job title/).fill('Charge Nurse');
       await dialog.getByRole('button', { name: 'Save changes' }).click();
 
       await expect(dialog).toBeHidden();
       await expect(page.getByRole('heading', { name: 'Danielle Okafor' })).toBeVisible();
 
-      // QA reported the job title as "never persisting". It was written and read
-      // back correctly all along — the profile header rendered it behind
-      // `getRoleDisplayName(role) || user.jobTitle`, a branch that never falls
-      // through, so the saved value appeared NOWHERE on the page. Assert on a
-      // RELOADED page, not the post-save render, so this covers the store as
-      // well as the display.
+      // Assert on a RELOADED page, not the post-save render, so this covers the
+      // store as well as the display.
       await page.reload();
       await page.waitForLoadState('networkidle');
-      await expect(page.getByText('Charge Nurse')).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Danielle Okafor' })).toBeVisible();
+      await expect(page.getByText('Staff Nurse')).toHaveCount(0);
 
       await page.getByRole('button', { name: 'Edit Profile' }).click();
       const reopened = page.getByRole('dialog');
-      await expect(reopened.getByLabel(/Job title/)).toHaveValue('Charge Nurse');
+      await expect(reopened.getByLabel(/First name/)).toHaveValue('Danielle');
       await reopened.getByRole('button', { name: 'Cancel' }).click();
 
       const client = await db();
@@ -220,12 +219,14 @@ test.describe('Staff profile — Edit Profile (founder Q2)', () => {
         });
 
         // The role must be untouched: the modal echoes it back unchanged, so
-        // the action's role-change branch never runs for a profile edit.
+        // the action's role-change branch never runs for a profile edit. The
+        // seeded `job_title` must also survive verbatim — the column is retired
+        // from the UI but not yet dropped, and nothing may blank it on save.
         const membership = await client.query(
           `SELECT role::text AS role, job_title FROM organization_users WHERE id = $1`,
           [seeded.staffOrgUserId],
         );
-        expect(membership.rows[0]).toMatchObject({ role: 'nurse', job_title: 'Charge Nurse' });
+        expect(membership.rows[0]).toMatchObject({ role: 'nurse', job_title: 'Staff Nurse' });
       } finally {
         await client.end();
       }
@@ -289,7 +290,8 @@ test.describe('Staff profile — Change Role (founder Q11)', () => {
           `SELECT role::text AS role, job_title FROM organization_users WHERE id = $1`,
           [seeded.staffOrgUserId],
         );
-        // Job title echoed back untouched — this affordance only re-roles.
+        // A role change writes the role and nothing else — the retired
+        // `job_title` column must come through verbatim.
         expect(membership.rows[0]).toMatchObject({
           role: 'case_manager',
           job_title: 'Staff Nurse',

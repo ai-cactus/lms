@@ -2,10 +2,10 @@
  * Tests for the staff-profile "Edit Profile" modal — the UI caller founder
  * answer Q2 required and `updateStaffDetails` never had.
  *
- * The load-bearing assertion is the payload: the action takes name, job title
- * AND role together, so this modal must echo the member's CURRENT role back
- * unchanged. Sending anything else would route a supervisor's name correction
- * through the action's role-change branch.
+ * The load-bearing assertion is the payload: the action takes name AND role
+ * together, so this modal must echo the member's CURRENT role back unchanged.
+ * Sending anything else would route a supervisor's name correction through the
+ * action's role-change branch.
  */
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -26,7 +26,6 @@ const MEMBER: EditableStaffMember = {
   email: 'target@example.com',
   firstName: 'Target',
   lastName: 'User',
-  jobTitle: 'Staff Nurse',
   role: 'nurse',
 };
 
@@ -42,29 +41,34 @@ beforeEach(() => {
 });
 
 describe('EditProfileModal', () => {
-  it('prefills the member’s current name and job title', () => {
+  it('prefills the member’s current name', () => {
     renderModal();
 
     expect(screen.getByLabelText(/First name/)).toHaveValue('Target');
     expect(screen.getByLabelText(/Last name/)).toHaveValue('User');
-    expect(screen.getByLabelText(/Job title/)).toHaveValue('Staff Nurse');
   });
 
-  it('saves the edited name and job title, sending the current role UNCHANGED', async () => {
+  // Founder ruling Q3/Q17 (2026-09-23) retired job titles product-wide: the
+  // system-assigned role IS the title, so this modal offers no such field and
+  // the payload must not carry one.
+  it('offers no job-title field', () => {
+    renderModal();
+
+    expect(screen.queryByLabelText(/Job title/i)).not.toBeInTheDocument();
+  });
+
+  it('saves the edited name, sending the current role UNCHANGED', async () => {
     const user = userEvent.setup();
     const { onClose } = renderModal();
 
     await user.clear(screen.getByLabelText(/First name/));
     await user.type(screen.getByLabelText(/First name/), 'Tola');
-    await user.clear(screen.getByLabelText(/Job title/));
-    await user.type(screen.getByLabelText(/Job title/), 'Charge Nurse');
     await user.click(screen.getByRole('button', { name: 'Save changes' }));
 
     await waitFor(() => expect(updateStaffDetails).toHaveBeenCalledTimes(1));
     expect(updateStaffDetails).toHaveBeenCalledWith('ou-1', {
       firstName: 'Tola',
       lastName: 'User',
-      jobTitle: 'Charge Nurse',
       // ⛔ The member's existing role. A supervisor reaches this action under Q2
       // but is not a role-change actor — sending any other value here would hit
       // `canChangeRole` and be refused with `actor_not_permitted`.
@@ -111,9 +115,10 @@ describe('EditProfileModal', () => {
     expect(refresh).not.toHaveBeenCalled();
   });
 
-  it('prefills empty fields for a member with no recorded name or job title', () => {
-    renderModal({ ...MEMBER, firstName: '', lastName: '', jobTitle: '' });
+  it('prefills empty fields for a member with no recorded name', () => {
+    renderModal({ ...MEMBER, firstName: '', lastName: '' });
 
-    expect(screen.getByLabelText(/Job title/)).toHaveValue('');
+    expect(screen.getByLabelText(/First name/)).toHaveValue('');
+    expect(screen.getByLabelText(/Last name/)).toHaveValue('');
   });
 });

@@ -88,7 +88,6 @@ const makePayload = (overrides: Partial<LearnPayload> = {}): LearnPayload => ({
     canEditContent: false,
     organizationName: 'Acme Health',
     email: 'jane@example.com',
-    jobTitle: 'RN',
   },
   ...overrides,
 });

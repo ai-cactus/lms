@@ -1,6 +1,6 @@
 'use client';
 
-import { CheckCircle2, FileText, Info, Loader2, RefreshCw } from 'lucide-react';
+import { CheckCircle2, Download, Info, Loader2, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useExportJobs, type ExportEntity } from './ExportJobsProvider';
 
@@ -63,7 +63,7 @@ export default function AuditExportBanner() {
   if (!completedJob) return null;
 
   // A report that flattens to no rows serialises to a zero-byte CSV. Offering
-  // "View Report" for it hands the user an empty file and reads as success, so
+  // the download for it hands the user an empty file and reads as success, so
   // the empty outcome gets its own terminal state and no download action.
   // `undefined` (a job finished before the count existed) is NOT treated as
   // empty — those jobs still get the download.
@@ -116,8 +116,12 @@ export default function AuditExportBanner() {
         className="h-10 shrink-0 gap-2 self-stretch rounded-[8px] bg-success px-4 text-sm font-semibold text-white hover:bg-success/90 sm:self-auto"
         onClick={() => downloadJob(completedJob.id)}
       >
-        <FileText className="size-4" aria-hidden="true" />
-        View Report
+        {/* Founder ruling Q7 (2026-09-23): "Download", not Figma 13121:37586's
+            "View Report" with a document icon. The control streams a CSV to disk
+            and never opens a viewer, and that mismatch is what a QA run read as a
+            broken export. Do not restore the Figma label on a design sweep. */}
+        <Download className="size-4" aria-hidden="true" />
+        Download
       </Button>
     </div>
   );

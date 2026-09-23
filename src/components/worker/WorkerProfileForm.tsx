@@ -13,6 +13,8 @@ import {
 } from '@/components/ui/dialog';
 import { Alert } from '@/components/ui/alert';
 import { updateProfile, uploadAvatar } from '@/app/actions/user';
+import { getRoleDisplayName } from '@/lib/rbac/role-utils';
+import type { Role } from '@/types/next-auth';
 import { useRouter } from 'next/navigation';
 import ProfileSettingsShell from '../dashboard/profile/ProfileSettingsShell';
 import { ChangePasswordTab } from '../dashboard/ChangePasswordTab';
@@ -24,8 +26,7 @@ interface WorkerProfileProps {
     first_name: string;
     last_name: string;
     email: string;
-    role: string;
-    jobTitle?: string | null;
+    role: Role;
     avatarUrl?: string | null;
     avatarDisplayUrl?: string | null;
     authProvider?: string;
@@ -50,12 +51,10 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
   const [formData, setFormData] = useState({
     first_name: user.first_name,
     last_name: user.last_name,
-    jobTitle: user.jobTitle || '',
   });
   const [baseData, setBaseData] = useState({
     first_name: user.first_name,
     last_name: user.last_name,
-    jobTitle: user.jobTitle || '',
   });
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -65,12 +64,10 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
     setFormData({
       first_name: user.first_name,
       last_name: user.last_name,
-      jobTitle: user.jobTitle || '',
     });
     setBaseData({
       first_name: user.first_name,
       last_name: user.last_name,
-      jobTitle: user.jobTitle || '',
     });
     setAvatarUrl(user.avatarUrl || null);
     setAvatarDisplayUrl(user.avatarDisplayUrl || null);
@@ -88,7 +85,6 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
   const isDirty =
     formData.first_name !== baseData.first_name ||
     formData.last_name !== baseData.last_name ||
-    formData.jobTitle !== baseData.jobTitle ||
     avatarUrl !== baseAvatarUrl;
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -161,9 +157,6 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
       const result = await updateProfile({
         first_name: formData.first_name,
         last_name: formData.last_name,
-        // `null`, not `undefined`: an emptied field must clear the stored title,
-        // and the action reads `undefined` as "leave unchanged".
-        jobTitle: formData.jobTitle.trim() || null,
         avatarUrl: avatarUrl || undefined,
       });
 
@@ -287,13 +280,11 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
               </div>
 
               <div className="mb-6">
-                <label className={labelCls}>Job Title</label>
+                <label className={labelCls}>Role</label>
                 <input
-                  name="jobTitle"
-                  className={inputCls}
-                  value={formData.jobTitle || ''}
-                  onChange={handleChange}
-                  placeholder="e.g. Caregiver"
+                  className={`${inputCls} ${readOnlyCls}`}
+                  value={getRoleDisplayName(user.role)}
+                  disabled
                 />
               </div>
 

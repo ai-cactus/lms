@@ -127,7 +127,6 @@ interface UserData {
   canEditContent: boolean;
   organizationName?: string;
   email: string;
-  jobTitle: string;
 }
 
 type QuizStep = 'intro' | 'active' | 'results' | 'review';
@@ -927,7 +926,6 @@ export default function LearnClient({ initialData }: LearnClientProps) {
                   allowedAttempts: quizResults.allowedAttempts,
                   userName: userData?.name,
                   userEmail: userData?.email,
-                  jobTitle: userData?.jobTitle,
                 }}
                 hideActions={enrollmentIsSigned}
                 passed={quizResults.passed}

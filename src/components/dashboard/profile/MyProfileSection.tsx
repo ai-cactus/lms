@@ -238,18 +238,12 @@ export default function MyProfileSection({ profile, organizationName }: MyProfil
             <Field label="Email address">
               <Input name="email" value={profile.email} disabled readOnly />
             </Field>
-            {/* Job title mirrors the assigned role — role changes are an admin
-                action, not a self-serve profile edit, so it stays locked here. */}
-            <Field label="Job Title">
-              <Input name="jobTitle" value={profile.roleDisplayName} disabled readOnly />
-            </Field>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
             <ReadField label="First Name" value={profile.first_name} />
             <ReadField label="Last Name" value={profile.last_name} />
             <ReadField label="Email address" value={profile.email} />
-            <ReadField label="Job Title" value={profile.roleDisplayName} />
           </div>
         )}
       </PanelCard>

@@ -1,6 +1,7 @@
 import React from 'react';
 import { getDashboardData } from '@/app/actions/course';
 import { requirePermissionWithFacilityScope } from '@/lib/rbac/require-permission';
+import { can } from '@/lib/rbac/permissions';
 import TrainingClient from './TrainingClient';
 
 // Ensure the page is dynamic so it fetches fresh data
@@ -14,11 +15,17 @@ export default async function TrainingPage() {
   //
   // Q26: denial is `notFound`, not a redirect — a bounce to /dashboard is itself
   // evidence that the Training module exists.
-  const { dataFacilityIds } = await requirePermissionWithFacilityScope('course.read', undefined, {
-    onDeny: 'notFound',
-  });
+  const { roleKey, dataFacilityIds } = await requirePermissionWithFacilityScope(
+    'course.read',
+    undefined,
+    { onDeny: 'notFound' },
+  );
 
   const { courses, stats } = await getDashboardData(dataFacilityIds);
 
-  return <TrainingClient courses={courses} stats={stats} />;
+  // Founder ruling Q2 (2026-09-23): `course.read` admits Supervisor here, but
+  // only `course.create` may be offered the wizard.
+  const canCreateCourses = can(roleKey, 'course.create');
+
+  return <TrainingClient courses={courses} stats={stats} canCreateCourses={canCreateCourses} />;
 }

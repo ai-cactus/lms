@@ -84,7 +84,6 @@ export default function ChangeRoleModal({
       // Unchanged by design — this affordance only re-roles.
       firstName: member.firstName,
       lastName: member.lastName,
-      jobTitle: member.jobTitle,
     });
 
     setIsSaving(false);

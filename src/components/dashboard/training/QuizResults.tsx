@@ -45,7 +45,6 @@ interface QuizResultsProps {
     }[];
     userName?: string;
     userEmail?: string;
-    jobTitle?: string;
   };
   userRole?: string | null;
   organizationName?: string;

@@ -23,7 +23,7 @@ const user = {
   email: 'nurse@acme.test',
   firstName: 'Nina',
   lastName: 'Nurse',
-  jobTitle: 'RN',
+  role: 'nurse',
   avatarUrl: null,
   authProvider: 'credentials',
 } as never;

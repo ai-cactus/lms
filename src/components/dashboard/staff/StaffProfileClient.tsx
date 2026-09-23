@@ -41,7 +41,6 @@ import { logger } from '@/lib/logger';
 import { cn } from '@/lib/utils';
 import {
   ArrowLeft,
-  Briefcase,
   Building2,
   Pencil,
   ShieldCheck,
@@ -72,7 +71,6 @@ interface StaffProfileClientProps {
       role: string;
       firstName: string;
       lastName: string;
-      jobTitle: string;
       facilityName: string | null;
     };
     stats: {
@@ -229,7 +227,6 @@ export default function StaffProfileClient({
     email: user.email,
     firstName: user.firstName,
     lastName: user.lastName,
-    jobTitle: user.jobTitle,
     role: user.role as Role,
   };
 
@@ -375,19 +372,6 @@ export default function StaffProfileClient({
                 <User className="size-[19px] shrink-0" aria-hidden="true" />
                 <span className="truncate">{user.email}</span>
               </div>
-              {/* Job title is free text and the ROLE is an authorization fact —
-                  two different things, so the job title gets its own line rather
-                  than sharing the role chip. It used to sit behind
-                  `getRoleDisplayName(role) || user.jobTitle`, which never falls
-                  through (getRoleDisplayName returns the raw enum value for an
-                  unknown role, never ''), so an edited job title was saved and
-                  then rendered nowhere on this page. */}
-              {user.jobTitle && (
-                <div className="flex items-center gap-2.5 text-[14px] leading-5 text-[#475467]">
-                  <Briefcase className="size-[19px] shrink-0" aria-hidden="true" />
-                  <span className="truncate">{user.jobTitle}</span>
-                </div>
-              )}
               <span className="w-fit rounded-[6px] bg-[#eafdf5] px-[12.4px] py-[5px] text-[12.4px] leading-[20.667px] font-semibold text-[#59904b]">
                 {[getRoleDisplayName(user.role as Role), user.facilityName]
                   .filter(Boolean)
