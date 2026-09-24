@@ -286,6 +286,32 @@ describe('Step6QuizReview', () => {
     expect(updated[2].moduleTitle).toBe('Security Rule');
   });
 
+  it('drops a distractor rationale when the author rewrites that option (Q-19)', async () => {
+    const user = userEvent.setup();
+    const explained = question({
+      question: 'Explained Q',
+      explanation: {
+        correctExplanation: 'Option 1 is correct.',
+        incorrectOptions: { '1': 'Option 2 halves it (D1).', '3': 'Option 4 overshoots (D4).' },
+      },
+    });
+    const { onQuizUpdate } = renderStep([explained]);
+
+    await user.click(within(questionCard('Explained Q')).getByRole('button', { name: 'Edit' }));
+    const optionInput = screen.getByDisplayValue('Option 2');
+    await user.clear(optionInput);
+    await user.type(optionInput, 'Something else entirely');
+    await user.click(screen.getByRole('button', { name: 'Save Changes' }));
+
+    const updated = onQuizUpdate.mock.calls[0][0] as QuizQuestion[];
+    expect(updated[0].options[1]).toBe('Something else entirely');
+    // The rationale for the option that was rewritten goes with it; the one for
+    // the untouched option stays keyed where it was.
+    expect(updated[0].explanation?.incorrectOptions).toEqual({
+      '3': 'Option 4 overshoots (D4).',
+    });
+  });
+
   it('warns when fewer questions were generated than requested', () => {
     renderStep(TAGGED_QUIZ, { quizQuestionCount: '10' });
 

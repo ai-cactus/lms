@@ -65,6 +65,7 @@ const QUESTION = {
   options: ['3', '4', '5'],
   correctAnswer: '4',
   explanation: 'Basic arithmetic.',
+  incorrectOptionExplanations: { '0': 'One short.', '2': 'One over.' },
 };
 
 const makeCourse = (opts?: {
@@ -251,6 +252,10 @@ describe('getLearnPayload — access matrix', () => {
     const question = payload.course.quiz!.questions[0];
     expect(question).not.toHaveProperty('correctAnswer');
     expect(question).not.toHaveProperty('explanation');
+    // Q-19: the per-option rationale names which options are WRONG, so it is
+    // answer key too — sending it with the quiz would hand a learner the answer
+    // before they sit it. The graded review screen is where they get it.
+    expect(question).not.toHaveProperty('incorrectOptionExplanations');
   });
 
   it.each([0, 1, 2, 7])('carries the real module count (%i) through to the payload', async (n) => {
@@ -408,6 +413,13 @@ describe('getLearnPayload — quiz attempts', () => {
     expect(payload.quizResultsData!.totalQuestions).toBe(1);
     // options = ['3', '4', '5']; correctAnswer '4' is index 1 → letter 'B'.
     expect(payload.quizResultsData!.questions[0].correctAnswer).toBe('B');
+    // Q-19: each wrong option carries its own rationale on the review screen;
+    // the correct answer's stays in the question-level explanation.
+    expect(payload.quizResultsData!.questions[0].options).toEqual([
+      { id: 'A', text: '3', explanation: 'One short.' },
+      { id: 'B', text: '4', explanation: undefined },
+      { id: 'C', text: '5', explanation: 'One over.' },
+    ]);
   });
 
   it('leaves quizResultsData null when there are no attempts', async () => {

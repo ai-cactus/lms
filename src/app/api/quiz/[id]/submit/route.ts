@@ -10,6 +10,7 @@ import { ADMIN_ROLES } from '@/lib/rbac/role-utils';
 import { guardApiSession } from '@/lib/auth-guard';
 import { hasActiveBilling } from '@/lib/billing';
 import { checkRateLimit } from '@/lib/rate-limit';
+import { parseStoredOptionExplanations } from '@/lib/quiz/options';
 const submitQuizSchema = z.object({
   enrollmentId: z.string().min(1, 'Enrollment ID is required'),
   answers: z.array(
@@ -416,12 +417,17 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
         const correctIdx = optionTexts.findIndex((t: string) => t === correctText);
         const correctLetter = correctIdx >= 0 ? String.fromCharCode(65 + correctIdx) : '';
 
+        // Only ever returned AFTER the attempt is graded, so naming the wrong
+        // options costs nothing — this response IS the review screen.
+        const optionExplanations = parseStoredOptionExplanations(q.incorrectOptionExplanations);
+
         return {
           id: q.id,
           text: q.text,
           options: optionsArray.map((opt: unknown, idx: number) => ({
             id: String.fromCharCode(65 + idx),
             text: typeof opt === 'string' ? opt : (opt as { text?: string })?.text || String(opt),
+            explanation: optionExplanations?.[String(idx)],
           })),
           selectedAnswer: selectedLetter,
           correctAnswer: correctLetter,

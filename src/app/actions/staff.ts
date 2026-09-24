@@ -34,6 +34,7 @@ import { invalidateRevalidationCache } from '@/lib/auth/session-revalidation-cac
 import type { ActivityReportEnrollment } from '@/lib/pdf-reports';
 import { captureServer } from '@/lib/analytics/server';
 import { buildCourseThumbnailUrl } from '@/lib/video/thumbnail';
+import { parseStoredOptionExplanations } from '@/lib/quiz/options';
 
 // Caller-facing copy for each role-change denial. `target_not_reachable` and
 // `role_not_grantable` are only reachable when an owner is involved (owner is in
@@ -1093,9 +1094,11 @@ export async function getEnrollmentQuizResult(enrollmentId: string) {
         typeof opt === 'string' ? opt : (opt as { text: string }).text || String(opt),
       );
 
+      const optionExplanations = parseStoredOptionExplanations(q.incorrectOptionExplanations);
       const formattedOptions = optionTexts.map((text, idx) => ({
         id: String.fromCharCode(65 + idx),
         text: text,
+        explanation: optionExplanations?.[String(idx)],
       }));
 
       const selectedText = userAnswerObj?.selectedAnswer || '';

@@ -19,17 +19,27 @@ model Quiz {
 }
 
 model Question {
-  id            String  @id @default(uuid())
-  quizId        String  @map("quiz_id")
-  text          String
-  type          String
-  options       Json?
-  correctAnswer String  @map("correct_answer")
-  order         Int
-  archetype     String?
-  evidence      Json?
-  explanation   String?
-  quiz          Quiz    @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  id                          String  @id @default(uuid())
+  quizId                      String  @map("quiz_id")
+  text                        String
+  type                        String
+  options                     Json?
+  correctAnswer               String  @map("correct_answer")
+  order                       Int
+  archetype                   String?
+  evidence                    Json?
+  explanation                 String?
+  /// Why each WRONG option is wrong: `Record<string, string>` keyed by that
+  /// option's index in THIS row's `options` array, as a decimal string ("0".."3").
+  /// Every writer persists it in the same statement as `options`, and any writer
+  /// that shuffles re-keys it through the same permutation, so a reshuffle can
+  /// never orphan an entry. The correct answer's rationale stays in `explanation`.
+  /// An option the model gave no rationale for is absent from the map rather than
+  /// mapped to an empty string; a question with no distractor rationale at all
+  /// stores NULL, never `{}`, so the reader never renders a bare option label.
+  incorrectOptionExplanations Json?   @map("incorrect_option_explanations")
+
+  quiz Quiz @relation(fields: [quizId], references: [id], onDelete: Cascade)
 
   @@index([quizId])
   @@map("questions")
