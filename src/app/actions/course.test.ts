@@ -376,7 +376,7 @@ describe('getDashboardData', () => {
 
     // The only row-level enrollment read must be the narrow scored projection.
     // Post dashboard-scope fix: the population is the ORGANISATION's courses
-    // (an admin is an org manager per `authoredCourseWhere`), pinned to the
+    // (`orgCourseWhere`), pinned to the
     // organisation's members — not the viewer's own `createdByOrgUserId`. That
     // literal was the single-facility dashboard bug (see dashboard-parity.test.ts).
     // `active: true` arrived with founder Q23: removeStaff now retains a departed
@@ -491,9 +491,9 @@ describe('getDashboardData', () => {
   });
 
   // Population scoping — the reported bug and the guard against reintroducing
-  // it. See `src/lib/dashboard/scope.ts` and `authoredCourseWhere`
+  // it. See `src/lib/dashboard/scope.ts` and `orgCourseWhere`
   // (`src/lib/course/org-scope.ts`), which these predicates are read from.
-  describe('population scoping (manager vs non-manager, cross-tenant guard)', () => {
+  describe('population scoping (one population per organisation, cross-tenant guard)', () => {
     beforeEach(() => {
       wireGroupBy([], []);
       mockEnrollmentFindMany.mockResolvedValue([]);
@@ -528,7 +528,13 @@ describe('getDashboardData', () => {
       );
     });
 
-    it('a non-manager (finance — no course.read) stays creator-scoped, never widened to the organisation', async () => {
+    // SUPERSEDED 2026-09-24 (BUG-01): this asserted the opposite — that finance
+    // stayed creator-scoped — which is the defect QA reported from staging on
+    // 2026-09-21, frozen as intent. A role that authors nothing then read 2
+    // courses where its Owner read 4. The population is the organisation's; what
+    // finance may SEE of it is withheld below, in the payload, not by counting
+    // fewer things.
+    it('a role without course.read (finance) reads the SAME organisation-wide population, and is still handed no course rows', async () => {
       mockAdminAuth.mockResolvedValue({
         user: {
           id: 'finance-1',
@@ -537,12 +543,30 @@ describe('getDashboardData', () => {
           organizationId: ORG_ID,
         },
       });
+      mockCourseFindMany.mockResolvedValue([
+        {
+          id: 'hr-authored-course',
+          title: "HR's course",
+          description: null,
+          thumbnail: null,
+          status: 'published',
+          type: 'document',
+          duration: 10,
+          createdAt: new Date(2026, 0, 1),
+          updatedAt: new Date(2026, 0, 1),
+          quiz: null,
+          lessons: [],
+        },
+      ]);
 
-      await getDashboardData();
+      const result = await getDashboardData();
 
       expect(mockCourseFindMany).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { createdByOrgUserId: ORG_USER_ID } }),
+        expect.objectContaining({ where: { organizationId: ORG_ID } }),
       );
+      expect(result.stats.totalCourses).toBe(1);
+      expect(result.courses).toEqual([]);
+      expect(result.stats.coursePerformance).toEqual([]);
     });
 
     // CROSS-TENANT GUARD: this course is authored in OUR org (so it correctly

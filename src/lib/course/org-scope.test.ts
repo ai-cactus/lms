@@ -17,7 +17,7 @@ const { prismaMock } = vi.hoisted(() => ({
 
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock, default: prismaMock }));
 
-import { authoredCourseWhere, listAdoptedCourseIds, orgCourseWhere } from './org-scope';
+import { listAdoptedCourseIds, orgCourseWhere } from './org-scope';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -59,58 +59,5 @@ describe('orgCourseWhere', () => {
 
     expect(JSON.stringify(where)).not.toContain('org-b');
     expect(where).toEqual({ organizationId: 'org-a' });
-  });
-});
-
-// Pure — no Prisma mocking needed. `getCourses`, `getDashboardData` and
-// `getGlobalDashboardData` each derive this separately; only `getCourses` was
-// ever widened (Team QA #15/C1), which is the bug this fixes for the other two.
-describe('authoredCourseWhere', () => {
-  it('widens a manager (holds course.read) to every course authored in the organisation', () => {
-    expect(
-      authoredCourseWhere({
-        role: 'owner',
-        organizationId: 'org-a',
-        organizationUserId: 'ou-1',
-      }),
-    ).toEqual({ organizationId: 'org-a' });
-  });
-
-  it('a facility-bound manager (supervisor, holds course.read) also gets the organisation-wide authored set — courses are global, not facility-scoped', () => {
-    expect(
-      authoredCourseWhere({
-        role: 'supervisor',
-        organizationId: 'org-a',
-        organizationUserId: 'ou-1',
-      }),
-    ).toEqual({ organizationId: 'org-a' });
-  });
-
-  it('keeps an admin-tier role WITHOUT course.read (finance) scoped to its own authored courses', () => {
-    expect(
-      authoredCourseWhere({
-        role: 'finance',
-        organizationId: 'org-a',
-        organizationUserId: 'ou-finance-1',
-      }),
-    ).toEqual({ createdByOrgUserId: 'ou-finance-1' });
-  });
-
-  it('keeps a worker role scoped to its own authored courses — `course.read` alone is not enough, only a manager widens', () => {
-    // Worker roles hold `course.read` too (to read their own enrolled courses);
-    // `isAdminRole` is what stops that from widening this to every worker.
-    expect(
-      authoredCourseWhere({
-        role: 'nurse',
-        organizationId: 'org-a',
-        organizationUserId: 'ou-nurse-1',
-      }),
-    ).toEqual({ createdByOrgUserId: 'ou-nurse-1' });
-  });
-
-  it('falls back to creator-scope for a manager with no organisation (mid-onboarding) — the caller must still narrow to something', () => {
-    expect(
-      authoredCourseWhere({ role: 'owner', organizationId: null, organizationUserId: 'ou-1' }),
-    ).toEqual({ createdByOrgUserId: 'ou-1' });
   });
 });
