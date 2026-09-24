@@ -70,6 +70,11 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   // screen too.
   const canSeeOrgCourses = canViewOrgCourses(role);
 
+  // Founder ruling Q2 (2026-09-23): every create-course affordance follows
+  // `course.create`, so Finance and Supervisor — who reach this page on other
+  // verbs — are not offered an action their first click would refuse.
+  const canCreateCourses = can(roleKey, 'course.create');
+
   const accessibleFacilities = await listAccessibleFacilities(session);
 
   // A comparison is the Global View narrowed to the selected facilities, so it
@@ -216,7 +221,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                 facilities={accessibleFacilities}
                 selectedFacilityIds={scopedFacility ? [scopedFacility.id] : []}
               />
-              <DashboardCreateCourseButton hasBilling={hasBilling} />
+              {canCreateCourses && <DashboardCreateCourseButton hasBilling={hasBilling} />}
             </div>
           </div>
           <p className="text-sm leading-[28px] text-[#525252] md:text-base xl:text-lg">
@@ -265,7 +270,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
       {canSeeRosterMetrics && <StatusTrackerOverview rows={statusTrackerRows} />}
 
-      <DashboardEmptyState totalCourses={totalCourses} />
+      {canCreateCourses && <DashboardEmptyState totalCourses={totalCourses} />}
     </div>
   );
 }

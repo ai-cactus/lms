@@ -8,6 +8,7 @@ import { Prisma } from '@/generated/prisma/browser';
 import { startedAtWhere, toReportPeriod } from '@/lib/audit-reports/date-range';
 import { auditorCatalogueWhere } from '@/lib/audit-reports/catalogue-scope';
 import { flattenAuditReport } from '@/lib/audit-reports/flatten';
+import { getRoleDisplayName } from '@/lib/rbac/role-utils';
 import type { OrgReportInput } from '@/lib/audit-reports/types';
 
 export function getExportWorker() {
@@ -248,7 +249,7 @@ export function getExportWorker() {
           period,
           staff: {
             name: staff.user.fullName || staff.user.email.split('@')[0],
-            roleLabel: staff.jobTitle || staff.role,
+            roleLabel: getRoleDisplayName(staff.role),
             email: staff.user.email,
           },
           enrollments: staff.enrollments.map((en) => ({
@@ -317,7 +318,6 @@ export function getExportWorker() {
             where: subjectMemberWhere,
             select: {
               role: true,
-              jobTitle: true,
               user: { select: { email: true, fullName: true } },
               enrollments: {
                 where: dateWhere,
@@ -349,7 +349,7 @@ export function getExportWorker() {
           summary: { totalCourses, totalStaff: members.length, completionRate },
           staff: members.map((m) => ({
             staffName: m.user.fullName || m.user.email.split('@')[0],
-            roleLabel: m.jobTitle || m.role,
+            roleLabel: getRoleDisplayName(m.role),
             email: m.user.email,
             coursesAssigned: m.enrollments.length,
             coursesCompleted: m.enrollments.filter((e) => isCompleted(e.status)).length,

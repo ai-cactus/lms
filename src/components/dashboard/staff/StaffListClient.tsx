@@ -50,7 +50,6 @@ interface StaffEntry {
   email: string;
   avatarUrl: string | null;
   role: string;
-  jobTitle: string;
   dateInvited: Date;
   isPending: boolean;
   isExpired: boolean;

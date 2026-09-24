@@ -120,7 +120,6 @@ beforeEach(() => {
   mockEnrollmentFindFirst.mockResolvedValue(null);
   mockOrganizationUserFindUnique.mockResolvedValue({
     role: 'nurse',
-    jobTitle: 'RN',
     user: { fullName: 'Jane Worker', email: 'jane@example.com' },
     organization: { name: 'Acme Health' },
   });
@@ -459,7 +458,6 @@ describe('getLearnPayload — membership', () => {
       canEditContent: false,
       organizationName: 'Acme Health',
       email: 'jane@example.com',
-      jobTitle: 'RN',
     });
   });
 });
@@ -490,7 +488,6 @@ describe('getLearnPayload — learner view mode (D-16)', () => {
       role: 'hr',
       user: { fullName: 'Manager One', email: 'm@example.com' },
       organization: { name: 'Acme Health' },
-      jobTitle: 'HR Lead',
     });
   });
 
@@ -530,7 +527,6 @@ describe('getLearnPayload — learner view mode (D-16)', () => {
       role: 'owner',
       user: { fullName: 'Owner One', email: 'o@example.com' },
       organization: { name: 'Acme Health' },
-      jobTitle: 'Owner',
     });
     mockCourseFindUnique.mockResolvedValue(makeCourse());
     mockEnrollmentFindFirst.mockResolvedValue(null);
@@ -549,7 +545,6 @@ describe('getLearnPayload — learner view mode (D-16)', () => {
       role: 'nurse',
       user: { fullName: 'Jane Worker', email: 'jane@example.com' },
       organization: { name: 'Acme Health' },
-      jobTitle: 'RN',
     });
     mockCourseFindUnique.mockResolvedValue(makeCourse());
     mockEnrollmentFindFirst.mockResolvedValue({
@@ -593,7 +588,6 @@ describe('getLearnPayload — canEditContent', () => {
       role: 'owner',
       user: { fullName: 'Admin One', email: 'a@example.com' },
       organization: { name: 'Acme Health' },
-      jobTitle: 'Owner',
     });
   });
 
@@ -728,7 +722,6 @@ describe('getLearnPayload — attestEligible', () => {
     async (role) => {
       mockOrganizationUserFindUnique.mockResolvedValue({
         role,
-        jobTitle: 'Manager',
         user: { fullName: 'Manager One', email: 'm@example.com' },
         organization: { name: 'Acme Health' },
       });
@@ -743,7 +736,6 @@ describe('getLearnPayload — attestEligible', () => {
   it('is false once a manager-category viewer has already attested', async () => {
     mockOrganizationUserFindUnique.mockResolvedValue({
       role: 'hr',
-      jobTitle: 'HR Lead',
       user: { fullName: 'Manager One', email: 'm@example.com' },
       organization: { name: 'Acme Health' },
     });
@@ -777,7 +769,6 @@ describe('getLearnPayload — attestEligible', () => {
     });
     mockOrganizationUserFindUnique.mockResolvedValue({
       role: 'admin',
-      jobTitle: 'Admin',
       user: { fullName: 'Admin One', email: 'a@example.com' },
       organization: { name: 'Acme Health' },
     });

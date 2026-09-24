@@ -337,7 +337,6 @@ export interface SystemUserDetail {
     fullName: string | null;
     firstName: string | null;
     lastName: string | null;
-    jobTitle: string | null;
     avatarUrl: string | null;
   } | null;
   courses: Array<{
@@ -401,7 +400,6 @@ export async function getUserDetail(userId: string): Promise<SystemUserDetail | 
     where: { userId },
     select: {
       role: true,
-      jobTitle: true,
       organization: { select: { id: true, name: true, slug: true } },
       createdCourses: {
         select: {
@@ -460,7 +458,6 @@ export async function getUserDetail(userId: string): Promise<SystemUserDetail | 
       fullName: user.fullName,
       firstName: user.firstName,
       lastName: user.lastName,
-      jobTitle: membership?.jobTitle ?? null,
       avatarUrl: user.avatarUrl,
     },
     courses: membership?.createdCourses ?? [],

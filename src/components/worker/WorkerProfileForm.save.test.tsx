@@ -1,8 +1,7 @@
 /**
- * The save payload. An emptied Job Title used to be sent as `undefined`
- * (`formData.jobTitle || undefined`), which updateProfile reads as "leave
- * unchanged" — so a worker could never clear their title, and the form still
- * reported success.
+ * The save payload. Founder ruling Q3/Q17 (2026-09-23) retired job titles: the
+ * system-assigned role IS the title, so this form must not offer one and must
+ * not send one — `updateProfile` no longer accepts the key at all.
  */
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -20,54 +19,41 @@ import WorkerProfileForm from './WorkerProfileForm';
 const user = {
   id: 'user-1',
   first_name: 'Nina',
-  last_name: 'Nurse',
+  last_name: 'Adeyemi',
   email: 'nurse@acme.test',
-  role: 'worker',
-  jobTitle: 'RN',
+  role: 'nurse' as const,
   avatarUrl: null,
   avatarDisplayUrl: null,
   authProvider: 'credentials',
 };
-
-async function saveWithJobTitle(value: string) {
-  const u = userEvent.setup();
-  render(<WorkerProfileForm user={user} organization={null} />);
-
-  const jobTitle = screen.getByPlaceholderText('e.g. Caregiver');
-  await u.clear(jobTitle);
-  if (value) await u.type(jobTitle, value);
-
-  await u.click(screen.getByRole('button', { name: 'Save Changes' }));
-  await u.click(await screen.findByRole('button', { name: 'Confirm' }));
-}
 
 beforeEach(() => {
   vi.clearAllMocks();
   mockUpdateProfile.mockResolvedValue({ success: true });
 });
 
-describe('WorkerProfileForm — job title save payload', () => {
-  it('sends an explicit null when the job title is cleared', async () => {
-    await saveWithJobTitle('');
+describe('WorkerProfileForm — profile save payload', () => {
+  it('offers no job-title field and shows the assigned role read-only instead', () => {
+    render(<WorkerProfileForm user={user} organization={null} />);
 
-    expect(mockUpdateProfile).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ jobTitle: null }),
-    );
+    expect(screen.queryByPlaceholderText('e.g. Caregiver')).not.toBeInTheDocument();
+    expect(screen.queryByText('Job Title')).not.toBeInTheDocument();
+    expect(screen.getByDisplayValue('Nurse')).toBeDisabled();
   });
 
-  it('sends a whitespace-only job title as a clear too', async () => {
-    await saveWithJobTitle('   ');
+  it('sends only the name and avatar, never a job title', async () => {
+    const u = userEvent.setup();
+    render(<WorkerProfileForm user={user} organization={null} />);
 
-    expect(mockUpdateProfile).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ jobTitle: null }),
-    );
-  });
+    await u.clear(screen.getByPlaceholderText('First Name'));
+    await u.type(screen.getByPlaceholderText('First Name'), 'Nina-Rose');
+    await u.click(screen.getByRole('button', { name: 'Save Changes' }));
+    await u.click(await screen.findByRole('button', { name: 'Confirm' }));
 
-  it('sends the edited title, trimmed', async () => {
-    await saveWithJobTitle('  Charge Nurse ');
-
-    expect(mockUpdateProfile).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ jobTitle: 'Charge Nurse' }),
-    );
+    expect(mockUpdateProfile).toHaveBeenCalledExactlyOnceWith({
+      first_name: 'Nina-Rose',
+      last_name: 'Adeyemi',
+      avatarUrl: undefined,
+    });
   });
 });

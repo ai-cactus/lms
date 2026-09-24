@@ -27,7 +27,6 @@ export interface EditableStaffMember {
   email: string;
   firstName: string;
   lastName: string;
-  jobTitle: string;
   role: Role;
 }
 
@@ -38,13 +37,13 @@ interface EditProfileModalProps {
 }
 
 /**
- * Edits a staff member's name and job title — the "basic profile editing" a
- * facility supervisor gained under founder answer Q2.
+ * Edits a staff member's name — the "basic profile editing" a facility
+ * supervisor gained under founder answer Q2.
  *
- * `updateStaffDetails` takes name, job title and role together, so this sends
- * the member's CURRENT role back untouched. That is what keeps a supervisor —
- * who reaches the action for profile edits but is not a role-change actor —
- * from tripping its role-change branch at all.
+ * `updateStaffDetails` takes name and role together, so this sends the member's
+ * CURRENT role back untouched. That is what keeps a supervisor — who reaches the
+ * action for profile edits but is not a role-change actor — from tripping its
+ * role-change branch at all.
  *
  * ⛔ MOUNT THIS ON DEMAND (`{isOpen && <EditProfileModal … />}`). The fields seed
  * from `member` through `useState` initialisers, so a fresh mount is what
@@ -56,7 +55,6 @@ export default function EditProfileModal({ isOpen, onClose, member }: EditProfil
   const router = useRouter();
   const [firstName, setFirstName] = useState(member.firstName);
   const [lastName, setLastName] = useState(member.lastName);
-  const [jobTitle, setJobTitle] = useState(member.jobTitle);
   const [fieldErrors, setFieldErrors] = useState<{ firstName?: string; lastName?: string }>({});
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -83,7 +81,6 @@ export default function EditProfileModal({ isOpen, onClose, member }: EditProfil
     const result = await updateStaffDetails(member.id, {
       firstName: trimmedFirst,
       lastName: trimmedLast,
-      jobTitle: jobTitle.trim(),
       // Unchanged by design — this affordance never re-roles anyone.
       role: member.role,
     });
@@ -108,7 +105,7 @@ export default function EditProfileModal({ isOpen, onClose, member }: EditProfil
         <DialogHeader>
           <DialogTitle>Edit profile</DialogTitle>
           <DialogDescription>
-            Update the name and job title on {member.name || member.email}&rsquo;s record.
+            Update the name on {member.name || member.email}&rsquo;s record.
           </DialogDescription>
         </DialogHeader>
 
@@ -131,19 +128,6 @@ export default function EditProfileModal({ isOpen, onClose, member }: EditProfil
               />
             </Field>
           </div>
-
-          <Field
-            label="Job title"
-            helperText="How this person's position is described on their profile and reports."
-          >
-            <Input
-              id="edit-profile-job-title"
-              value={jobTitle}
-              onChange={(e) => setJobTitle(e.target.value)}
-              placeholder="e.g. Staff Nurse"
-              autoComplete="off"
-            />
-          </Field>
         </div>
 
         {error && <Alert variant="error">{error}</Alert>}

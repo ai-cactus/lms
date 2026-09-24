@@ -5,8 +5,8 @@
  * Two things carry the ruling and must not regress:
  *   - the options come from `GRANTABLE_ROLES[viewerRole]`, so Owner and Admin
  *     are STRUCTURALLY ABSENT from an HR's list rather than offered and refused;
- *   - the payload echoes the member's current name and job title back unchanged,
- *     because `updateStaffDetails` takes all four fields together.
+ *   - the payload echoes the member's current name back unchanged, because
+ *     `updateStaffDetails` takes name and role together and writes both.
  *
  * Radix `Select` needs `hasPointerCapture` / `scrollIntoView` / `ResizeObserver`,
  * none of which jsdom provides — they are stubbed below.
@@ -43,7 +43,6 @@ const MEMBER: EditableStaffMember = {
   email: 'target@example.com',
   firstName: 'Target',
   lastName: 'User',
-  jobTitle: 'Staff Nurse',
   role: 'nurse',
 };
 
@@ -122,7 +121,7 @@ describe('ChangeRoleModal — confirm step', () => {
     await waitFor(() => expect(updateStaffDetails).toHaveBeenCalledTimes(1));
   });
 
-  it('sends the new role with the member’s current name and job title UNCHANGED', async () => {
+  it('sends the new role with the member’s current name UNCHANGED, and nothing else', async () => {
     const user = userEvent.setup();
     const { onClose } = renderModal('owner');
 
@@ -132,11 +131,14 @@ describe('ChangeRoleModal — confirm step', () => {
     await user.click(screen.getByRole('button', { name: 'Change role' }));
 
     await waitFor(() => expect(updateStaffDetails).toHaveBeenCalled());
+    // Exact equality, not `toMatchObject`: `updateStaffDetails` writes every key
+    // it is handed, so a field dropped from this payload is a field blanked on
+    // save. A Server Action's parameter type does not bind the client, so only
+    // this assertion catches it.
     expect(updateStaffDetails).toHaveBeenCalledWith('ou-1', {
       role: 'case_manager',
       firstName: 'Target',
       lastName: 'User',
-      jobTitle: 'Staff Nurse',
     });
     await waitFor(() => expect(onClose).toHaveBeenCalled());
     expect(refresh).toHaveBeenCalled();

@@ -112,3 +112,5 @@
 - [enrollUsers dueAt is org-wide by default](gotcha_enrolluser_deadline_scope_defaults_org_wide.md) — a per-person deadline needs `deadlineScope: 'enrollment'`; the past-deadline guard means different things per scope
 - [summarizedAt means "not eligible"](gotcha_summarized_at_means_not_eligible.md) — 4 writers must agree; the nudge upsert needs it on BOTH branches; INITIAL_LAUNCH is never a summary item
 - [Cycle-summary cutover flag](project_cycle-summary-cutover-flag.md) — ONE flag over dispatch+worker; shared claim row (flip outside 08:00–13:00 UTC); the sweep's email retry NARROWS, never stands down
+- [Job titles retired 2026-09-23](project_job_title_retired_2026_09_23.md) — role IS the title; column kept; 3 surfaces deliberately still say "Job Title"
+- [Worktree `generated` symlink breaks next build](gotcha_worktree_generated_symlink_breaks_build.md) — vitest needs it, Turbopack rejects it; run prisma generate + the Bash forms this harness refuses
