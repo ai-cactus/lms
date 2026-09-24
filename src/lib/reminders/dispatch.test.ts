@@ -82,7 +82,12 @@ vi.mock('@/lib/logger', () => ({
 
 import { dispatchLadderStage, dispatchNudge } from './dispatch';
 
-const WORKER = { id: 'user-1', email: 'worker@test.com', name: 'Test Worker' };
+const WORKER = {
+  id: 'user-1',
+  email: 'worker@test.com',
+  name: 'Test Worker',
+  role: 'nurse' as const,
+};
 const ENROLLMENT = { id: 'enroll-1', organizationUserId: 'user-1', courseId: 'course-1' };
 const ESCALATION_RECIPIENTS = {
   organizationUserIds: ['admin-1'],
@@ -166,6 +171,21 @@ describe('dispatchLadderStage', () => {
 
       // No escalation recipients queried for a worker-only stage
       expect(mockResolveEscalationRecipients).not.toHaveBeenCalled();
+    });
+
+    // BUG-02: a manager holds an enrollment like anyone else, and
+    // `/worker/trainings` is served only against a worker-portal cookie.
+    it('links a manager-category enrollee to the course itself, not to the worker portal', async () => {
+      await dispatchLadderStage({
+        ...baseLadderInput(),
+        stage: 'FRIENDLY_REMINDER',
+        worker: { ...WORKER, role: 'clinical_director' },
+        sendEmail: vi.fn().mockResolvedValue({ ok: true }),
+      });
+
+      expect(mockCreateNotification).toHaveBeenCalledWith(
+        expect.objectContaining({ linkUrl: '/learn/course-1' }),
+      );
     });
   });
 
@@ -443,6 +463,27 @@ describe('dispatchNudge', () => {
             count: 1,
           }),
         }),
+      );
+    });
+
+    it('links a worker-role enrollee to the worker portal', async () => {
+      prismaMock.reminderNudge.findUnique.mockResolvedValue(null);
+
+      await dispatchNudge(baseNudgeInput());
+
+      expect(mockCreateNotification).toHaveBeenCalledWith(
+        expect.objectContaining({ linkUrl: '/worker/trainings' }),
+      );
+    });
+
+    // BUG-02: the retake nudge addresses the ENROLLEE, who may be a manager.
+    it('links a manager-category enrollee to the course itself', async () => {
+      prismaMock.reminderNudge.findUnique.mockResolvedValue(null);
+
+      await dispatchNudge(baseNudgeInput({ worker: { ...WORKER, role: 'clinical_director' } }));
+
+      expect(mockCreateNotification).toHaveBeenCalledWith(
+        expect.objectContaining({ linkUrl: '/learn/course-1' }),
       );
     });
   });
