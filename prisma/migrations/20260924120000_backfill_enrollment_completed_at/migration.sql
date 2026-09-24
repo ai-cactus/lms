@@ -35,22 +35,35 @@
 -- Only NULL values on terminal statuses are touched: no recorded timestamp is
 -- overwritten, and no non-terminal row is given a completion date.
 UPDATE "enrollments" e
-SET "completed_at" = COALESCE(
-  e."attested_at",
-  (
-    SELECT MAX(qa."completed_at")
-    FROM "quiz_attempts" qa
-    JOIN "quizzes" q ON q."id" = qa."quiz_id"
-    WHERE qa."enrollment_id" = e."id"
-      AND qa."time_taken" IS NOT NULL
-      AND qa."score" >= q."passing_score"
-  ),
-  (
-    SELECT MAX(qa."completed_at")
-    FROM "quiz_attempts" qa
-    WHERE qa."enrollment_id" = e."id"
-      AND qa."time_taken" IS NOT NULL
-  )
-)
-WHERE e."completed_at" IS NULL
-  AND e."status" IN ('completed', 'attested');
+SET "completed_at" = d."derived"
+FROM (
+  SELECT
+    e2."id",
+    COALESCE(
+      e2."attested_at",
+      (
+        SELECT MAX(qa."completed_at")
+        FROM "quiz_attempts" qa
+        JOIN "quizzes" q ON q."id" = qa."quiz_id"
+        WHERE qa."enrollment_id" = e2."id"
+          AND qa."time_taken" IS NOT NULL
+          AND qa."score" >= q."passing_score"
+      ),
+      (
+        SELECT MAX(qa."completed_at")
+        FROM "quiz_attempts" qa
+        WHERE qa."enrollment_id" = e2."id"
+          AND qa."time_taken" IS NOT NULL
+      )
+    ) AS "derived"
+  FROM "enrollments" e2
+  WHERE e2."completed_at" IS NULL
+    AND e2."status" IN ('completed', 'attested')
+) d
+WHERE d."id" = e."id"
+  -- Only rows a date can actually be derived for. Without this the statement
+  -- re-matches every evidence-less row on each run and writes NULL over NULL:
+  -- harmless to the data, but it rewrites those rows every time and makes the
+  -- migration's "re-running changes nothing" promise false. Verified: the
+  -- unguarded form reported UPDATE 1 on a second run against the same fixtures.
+  AND d."derived" IS NOT NULL;
