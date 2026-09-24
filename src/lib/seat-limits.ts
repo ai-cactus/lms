@@ -27,7 +27,7 @@ export interface SeatUsage {
   staffMax: number | null;
   /** Human-readable plan name, when a plan is resolved. */
   planName: string | null;
-  /** Seats currently consumed: active workers (+ pending invites when requested). */
+  /** Seats currently consumed: active members (+ pending invites when requested). */
   current: number;
 }
 
@@ -35,7 +35,7 @@ export interface SeatUsageOptions {
   /**
    * Count non-expired pending invites toward usage. Enable at issuance time so
    * outstanding invites reserve seats; leave off for acceptance, where only
-   * materialised workers consume a seat. Default `false`.
+   * materialised memberships consume a seat. Default `false`.
    */
   includePendingInvites?: boolean;
   /** Prisma client or transaction client to run counts against. Default: shared client. */
@@ -94,15 +94,32 @@ export async function getSeatUsage(
   };
 }
 
+/** The seats an organization consumes, split by where they come from. */
+export interface BillableSeatCounts {
+  /** Active memberships. */
+  activeMembers: number;
+  /** Non-expired pending invites; `0` unless `includePendingInvites` is set. */
+  pendingInvites: number;
+}
+
 /**
- * How many seats the organization currently consumes, ORG-WIDE.
+ * The seats the organization currently consumes, ORG-WIDE, split by source.
  *
  * The authoritative answer to "how big is this organization" for every billing
- * decision. Split out of {@link getSeatUsage} because plan SELECTION needs the
- * headcount measured against a *target* plan, whereas `getSeatUsage` resolves
- * `staffMax` from the plan the org is already on — and returns `current: 0`
- * outright when there is no subscription yet, which is exactly the case a first
- * checkout is in.
+ * decision, and the only place that decides who consumes a seat — every surface
+ * that shows or enforces seat usage goes through this or {@link countBillableStaff}
+ * so the gauge and the gate can never disagree.
+ *
+ * Product ruling (2026-09-23): EVERY role consumes a seat, the owner included —
+ * they use the learning features like anyone else. Hence no role filter on
+ * either count. Only an ACTIVE membership counts: `removeStaff` deactivates
+ * rather than deletes, precisely so the training record survives, and a removed
+ * member must free their seat.
+ *
+ * Split out of {@link getSeatUsage} because plan SELECTION needs the headcount
+ * measured against a *target* plan, whereas `getSeatUsage` resolves `staffMax`
+ * from the plan the org is already on — and returns `current: 0` outright when
+ * there is no subscription yet, which is exactly the case a first checkout is in.
  *
  * Why it must not be derived from `Facility.staffCount`: that column is a
  * self-declared string captured at onboarding for ONE facility. Any facility
@@ -112,22 +129,18 @@ export async function getSeatUsage(
  * membership rows cannot be under-declared and does not care how many
  * facilities exist.
  */
-export async function countBillableStaff(
+export async function countBillableSeats(
   organizationId: string,
   options: SeatUsageOptions = {},
-): Promise<number> {
+): Promise<BillableSeatCounts> {
   const { includePendingInvites = false, client = prisma } = options;
 
-  // D2: every role EXCEPT `owner` consumes a plan seat.
-  const [workerCount, pendingInviteCount] = await Promise.all([
-    client.organizationUser.count({
-      where: { organizationId, role: { not: 'owner' }, active: true },
-    }),
+  const [activeMembers, pendingInvites] = await Promise.all([
+    client.organizationUser.count({ where: { organizationId, active: true } }),
     includePendingInvites
       ? client.invite.count({
           where: {
             organizationId,
-            role: { not: 'owner' },
             status: 'pending',
             expiresAt: { gt: new Date() },
           },
@@ -135,7 +148,20 @@ export async function countBillableStaff(
       : Promise.resolve(0),
   ]);
 
-  return workerCount + pendingInviteCount;
+  return { activeMembers, pendingInvites };
+}
+
+/**
+ * Total seats consumed — {@link countBillableSeats} summed. What every caller
+ * that enforces or displays a single "used" figure should call; take the split
+ * only when the two figures are shown separately.
+ */
+export async function countBillableStaff(
+  organizationId: string,
+  options: SeatUsageOptions = {},
+): Promise<number> {
+  const { activeMembers, pendingInvites } = await countBillableSeats(organizationId, options);
+  return activeMembers + pendingInvites;
 }
 
 export interface AssertSeatOptions extends SeatUsageOptions {
