@@ -114,3 +114,4 @@
 - [Cycle-summary cutover flag](project_cycle-summary-cutover-flag.md) — ONE flag over dispatch+worker; shared claim row (flip outside 08:00–13:00 UTC); the sweep's email retry NARROWS, never stands down
 - [Job titles retired 2026-09-23](project_job_title_retired_2026_09_23.md) — role IS the title; column kept; 3 surfaces deliberately still say "Job Title"
 - [Worktree `generated` symlink breaks next build](gotcha_worktree_generated_symlink_breaks_build.md) — vitest needs it, Turbopack rejects it; run prisma generate + the Bash forms this harness refuses
+- [User delete = asset custody transfer](gotcha_user_delete_asset_custody.md) — courses/documents are REASSIGNED, never deleted; the Course-Restrict vs Document-Cascade asymmetry, and what still vanishes
