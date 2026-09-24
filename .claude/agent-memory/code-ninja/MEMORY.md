@@ -1,116 +1,116 @@
 # Memory Index
 
-- [Dashboard metrics glossary](dashboard-metrics-glossary.md) — the Dashboard Metrics Glossary is canonical for metric names/formulas (source PDF no longer in repo; code record in lib/facility/metrics.ts); two open product decisions
-- [Supervisor own-facility edit](supervisor_own_facility_edit.md) — PROF-002 deliberately lets supervisors edit their own facility despite the read-only RBAC ruling; don't "fix" it back
-- [Figma STAFF section](reference_figma_staff_section.md) — list/profile/mobile frames; profile omits real Passed/Locked states and its Retry row is unbuildable literally; roster's 5 columns don't fit at lg, % widths from xl (measure 1280 AND 1440)
-- [Local UI verification](project_local_ui_verification.md) — Playwright recipe for the dev app: docker start + prisma db seed + redis login-lockout reset; port 3005 may be a decoy build; newPage() ignores viewport
-- [Course wizard ladder + D1](project_course-wizard-9-step.md) — current 7 step keys/filenames after the single-document reshape; what looks like an oversight but is not
-- [Draft-key bumps orphan generations](gotcha_wizard_draft_key_bump_orphans_generation.md) — the sessionStorage draft is half the resume handoff; migrate it whenever pending jobs exist
-- [Course wizard restyle (PR-3b)](project_course-wizard-restyle-pr3b.md) — 3 deliberate divergences from Figma (PHI checkbox, Quality Notice, Sources tab) + the cmdk dep
-- [Wizard PHI attestation](project_course-wizard-phi-attestation.md) — step 2's attestation checkbox isn't in the mock but is required: uploadDocument rejects FormData without phiAttested
-- [Document Hub scope](project_document-hub-scope.md) — rename dropped from the UI (action kept); list hover card cut, but the viewer's thumbnail rail was ruled back IN
-- [Step-7 review honest gaps](project_wizard-step7-review-honest-gaps.md) — no citation chips, "Key Points" not "Tip!", Edit button inert: deliberate, don't invent the missing data
-- [Assign-action authorization split](gotcha_assignment_action_authorization_split.md) — RESOLVED: enrollUsers and assignCourseToRoleTargets both gate on org ownership; enrollUsers course mocks must include `creator`
-- [npm install --allow-remote=all](gotcha_npm_install_allow_remote.md) — npmmirror lockfile URLs are gone; the xlsx CDN tarball likely still trips npm 12's EALLOWREMOTE.
-- [npm swallows --dry-run](gotcha_npm_swallows_dry_run.md) — scripts/ now execute by default; a dropped `--dry-run` is destructive, hence run.ts's rescue block.
-- [npm audit high gate](project_npm_audit_gate.md) — cleared via overrides; the load-bearing `minimatch@10` pin breaks ~12 currently-disabled react/import/jsx-a11y rules.
-- [Auth instance-selector vs DB role](auth_instance_vs_role.md) — the `'admin'|'worker'` cookie/routing selector is NOT the DB role; don't conflate them.
-- [Proxy cookie lags membership](gotcha_proxy_cookie_lags_membership.md) — proxy gates read the raw cookie (no callbacks); pair any organizationId gate with a client `update()`.
-- [Server Action redirectTo must render](gotcha_server_action_redirectto_must_render.md) — any redirect ON the target (proxy gate or a `redirect()` stub page) crashes the client with E394.
-- [Auth revalidation cache TTL](auth_revalidation_cache_ttl.md) — JWT decode DB revalidation is Redis-cached (AUTH_REVALIDATE_TTL_SECONDS, def 30); sessionVersion bumps actively busted via invalidateRevalidationCache, TTL backstops the rest.
-- [Build type-checks everything](build_typecheck_scope.md) — `next build` type-checks scripts/ and tests; `npm run lint` only covers src/; deleting a page fails typecheck on a stale `.next/` and `rm` is often blocked.
-- [RBAC role model](rbac_role_model.md) — 14 category-aware DB roles (6 manager incl. admin + 8 worker, uniform worker perms); supervisor read-only; grants; every role incl. owner consumes a seat.
-- [Org/Facility split](org_facility_split.md) — location/compliance fields moved to Facility; genuinely multi-facility (OrganizationUserFacility); facility CRUD = owner/admin/hr.
-- [Full vitest run OOMs here](gotcha_full_vitest_run_ooms_here.md) — bare `vitest run` dies with a bare exit 137; shard it `--shard=N/4 --maxWorkers=1` (≈8 min) to really verify the suite
-- [Offline migrations](project_offline_migrations.md) — dev DB (localhost:5433) often unreachable; scaffold Prisma migrations offline via `migrate diff --from-schema/--to-schema`.
-- [migrate dev destructive diff](project_migrate_dev_destructive_diff.md) — autogen drops the pgvector col/HNSW index/facility defaults and `migrate dev` hangs; a table RENAME comes out as DROP+CREATE; partial indexes are NOT drift.
-- [prisma format runs in pre-commit](gotcha_prisma_format_churn.md) — lint-staged formats staged .prisma now, so schemas ARE canonical; hand-align your model and validate.
-- [MinIO dev port mismatch](gotcha_minio_dev_port_mismatch.md) — compose publishes MinIO on 9005 but .env.example still says 9000; set MINIO_PORT=9005 for storage/video flows to work locally.
-- [Vitest @/generated alias](project_vitest_generated_alias.md) — vitest.config.mts must alias @/generated & @/db (most-specific first) or value-imports of generated Prisma fail in tests.
-- [vi.mock of node builtins needs `default`](gotcha_vitest_node_builtin_mock_default.md) — fs/promises & child_process mocks must also export default; plus how to test a script whose main() runs at import.
-- [Email delivery tracking](project_email_delivery_tracking.md) — EmailMessage has two disjoint recording paths (dispatch vs sendMailTracked); reminder senders bypass sendMailTracked to avoid double-record.
-- [E2E seed infra](project_e2e_seed_infra.md) — prisma/seed.ts (tsx, self-contained client), E2E rate-limit bypass, role-based login landings, quiz shape; assignRetake is locked-only by design (returns refusedReason).
-- [Secure-cookie delete + prod e2e gotchas](gotcha_secure_cookie_delete_and_prod_e2e.md) — cookies().delete omits Secure so __Secure- deletions fail in prod (next dev masks it); CI/local e2e = next start, so rebuild (with NEXT_PUBLIC_APP_URL=3005) before trusting any e2e verdict.
-- [Repro v4.6 AI pipeline locally](repro_v46_ai_pipeline_locally.md) — ADC unavailable in sandbox; drive gemini-flash-lite-latest via AI-Studio Express key in .env; model/token facts.
-- [Phase 2 batch-quiz truncation](phase2_batch_quiz_truncation.md) — Stage C 0-questions root cause = 16384 output cap truncation; hybrid single-call/chunk fix; keep meta.requestedQuestionCount = original.
-- [Figma LMS v2 source](reference_figma_lms_v2.md) — file/section ids; highest "LMS - n" frame is often an unbuilt concept — identify frames by content, not name.
-- [Figma COURSES section map](reference_figma_courses_section.md) — frame→page map for COURSES + the shared LMS-v2 card/table/pagination token set and Figma's own inconsistencies.
-- [Figma→CSS scale](project_figma_to_css_scale.md) — LMS v2 frames are ~1.12x oversized vertically/typographically; horizontal geometry is 1:1. Reuse existing class constants.
-- [Figma STATUS TRACKER section map](reference_figma_status_tracker_section.md) — LMS-203 == LMS-201 (identical); merged single-table design; pill colours; no mobile frame.
-- [Figma AUDIT REPORTS section map](reference_figma_audit_reports.md) — 4 sections, frame→tab/state map, and the SECOND card/table kit (12px/#e2e8f0/uppercase heads) these pages use.
-- [Dashboard responsive traps](gotcha_dashboard_responsive_breakpoints.md) — the 280px sidebar makes `lg` narrower than `md`, so gate wide tables at `xl`; SelectTrigger has no `size` prop, use a plain h-* class.
-- [Figma SETTINGS section map](reference_figma_settings_section.md) — 3 frames → 3 tabs; scale is exactly 1.125x on type AND padding; kit-1 card hexes; designed-but-omitted bits.
-- [shadcn Table/Select specificity traps](gotcha_shadcn_table_row_border.md) — header divider needs `border-none` (not `border-0`); SelectTrigger takes a plain height class; SelectValue drops className.
-- [Figma ERROR SCREENS section](reference_figma_error_screens.md) — "Link Expired" frames are really the 404 page; no /timeout route; error boundary is undesigned.
-- [Figma Course Wizard frames](reference_figma_course_wizard.md) — there is no COURSE CREATION section; frame→step map + the wizard's 1:1 chrome geometry.
-- [Figma learn-player frames](reference_figma_learn_player.md) — LMS-166 is the slides view with the left rail (120×76.2, 16:10); the frame has NO slide number and NO selected state.
-- [Figma WORKER CERTIFICATES + cert modal](reference_figma_worker_certificates.md) — they live in a second "WORKERS" section (14044:73449), not WORKER USERTYPE; grep the page metadata dump by text.
-- [Full-bleed dialog + fixed-px artwork](gotcha_fullbleed_dialog_scaling.md) — grid min-content breaks %-width scale measurement; viewport-corner close needs viewport-spanning content.
-- [EnrollmentStatus.failed is never written](gotcha_enrollment_failed_status_unused.md) — quiz failures stay `in_progress`; derive pass/fail from score vs Quiz.passingScore, never from status.
-- [RHF watch() breaks React Compiler](gotcha_rhf_watch_react_compiler.md) — lint warns on `watch()`; use `useWatch({control,name})` in client forms.
-- [Radix Select in a form echoes ""](gotcha_radix_select_in_form_echoes_empty.md) — programmatic value set gets wiped by the hidden native select; guard `onValueChange`.
-- [Revalidation cache is identity-only](gotcha_revalidation_cache_is_identity_only.md) — never cache role/organizationId; membership is re-read live every decode.
-- [`admin` is un-retired](gotcha_admin_role_unretired.md) — drop dev's retired-admin JWT guard; gate roster PII on `user.read`, not `isAdminRole`.
-- [Admin auth instance is the tier check](gotcha_admin_auth_instance_is_the_tier_check.md) — `@/auth` sessions carry an implicit admin-tier fence; `resolveSession()`/`getPortalSessions()` do not — audit those exports first when hunting RBAC holes.
-- [Deploy topology](deploy_topology.md) — Docker Compose, ONE app container per env, tunnel straight to the app port; pm2 + nginx files were deleted from the repo.
-- [Video sweeper env interlock](gotcha_video_sweep_env_interlock.md) — env-file flags can't gate a sweeper because envs get copied; key destructive gates on APP_URL (staging has its own bucket + project since 2026-09-22; sweeper off on staging and prod).
-- [Bare `auth()` drops Set-Cookie](gotcha_bare_auth_drops_set_cookie.md) — no-args next-auth v5 `auth()` never rotates the session cookie, which is what makes `Vary: Cookie` usable.
-- [Playback cache is in-process](gotcha_video_playback_cache_is_in_process.md) — one container, no Redis; spawned scripts/ can't evict it, so invalidate from the BullMQ handler.
-- [RSC vs JSON payload shapes](gotcha_rsc_vs_json_payload_shapes.md) — one builder for a route + a server page: normalise Dates to ISO, plus the wall-clock hydration trap and server-page auth conventions.
-- [Next 16 revalidateTag + Prisma schema traps](gotcha_next16_revalidatetag_and_prisma_validator.md) — revalidateTag needs a 2nd arg (`'max'`); no Prisma.validator (use `satisfies`); `String[]?` is rejected — nullable arrays need a boolean+list pair.
-- [Billing decisions 2026-08-27](project_billing_2026_08_27_decisions.md) — upgrades now prorate immediately (reverses 2026-07-17); pauses defer to period end via a sweep
-- [pauseStartsAt must not gate access](gotcha_billing_pause_sweep_invariant.md) — never read it in hasActiveBilling/getPauseState; the separation IS the mechanism
-- [Billing schedule deferred scope](project_billing_schedule_deferred_scope.md) — pause's kept 409 on a pending schedule is deliberate; checkout pause check/#27/#28 closed.
-- [Owner consumes a seat](gotcha_seat_counting_is_owner_inclusive.md) — BUG-07/Q-11 ruled 2026-09-23; countBillableSeats/countBillableStaff are the ONLY definition; an at-cap org now reads cap+1 and cannot re-select its own plan.
-- [CourseRail unlockedIndex gates the quiz too](gotcha_courserail_unlockedindex_conflates_quiz.md) — module nav is free, but railUnlockedIndex must stay at lessons.length-1 or the quiz gate opens.
-- [CourseArticle hasFullLayout gates the quiz](gotcha_coursearticle_hasfulllayout_gates_quiz.md) — one flag covers ToC + top bar + Prev/Next; hiding chrome via onSelectModule deadlocks the quiz gate.
-- [Quiz route error body shapes](gotcha_quiz_route_error_body_shapes.md) — start returns a CODE in `error` + human text in `message`; submit is human-in-`error`; read `message ?? error`.
-- [Courses video/reading consolidation](project_courses_video_reading_consolidation.md) — outer tabs deleted, catalog merged into the Video tab; Video is the landing tab unless the org's courses are all reading.
-- [Facility scope = one condition](project_facility_scope_one_condition.md) — view/switch/reassign all gate on "viewer sees >1 accessible facility"; ORG_WIDE_FACILITY_ROLES is already correct, do not edit.
-- [Role-assign count vs reach](gotcha_role_assign_count_vs_reach.md) — count + mutation are BOTH facility-scoped and must stay coupled; CourseAssignment facilityScoped/facilityIds now scope future role holders too.
-- [Server Action refusals must return](gotcha_server_action_refusals_must_return.md) — prod redacts thrown messages to React #441; return `refusedReason` on the existing result type, keep the gate fail-closed.
-- [Dashboard banner slot bleeds](gotcha_dashboard_banner_slot_bleeds.md) — site-wide banners sit INSIDE the padded scroll container; negative-margin heroes paint over them (gate on `first:`).
-- [Document identity is org-wide](gotcha_document_identity_is_org_wide.md) — never re-find an upload by filename via getDocuments(); uploadDocument returns the stored Document record.
-- [Certificate export render pipeline](gotcha_certificate_export_render_pipeline.md) — PDFs rasterise a live CertificateDocument; off-screen not hidden, jsPDF page-1 trap, card list has no student name.
-- [Assignment rows carry no role-target scope](gotcha_assignment_row_has_no_role_target_scope.md) — an individual assignment leaves facilityScoped=false, so a later in-place widen must be refused, not inherited.
-- [Course publish has three paths](gotcha_course_publish_has_three_paths.md) — assignment silently publishes drafts; only 2 of 3 paths record the D8 reviewer, and D8 needed no migration.
-- [`course.read` is not admin-only](gotcha_course_read_is_not_admin_only.md) — 13 of 14 roles hold it; swapping isAdminRole for it admits every worker. Keep the conjunction.
-- [sweep.test.ts mock-queue coupling](gotcha_sweep_test_mock_queue_coupling.md) — one early-aborting pre-pass shifts every later `mockResolvedValueOnce` and reddens 13 unrelated tests.
-- [targetRoles backfill is provable](gotcha_targetroles_backfill_is_provable.md) — backfilled in the same migration that added it; but keep the sweep's OR anyway.
-- [DatePicker name = its placeholder](gotcha_datepicker_accessible_name_is_placeholder.md) — adding `label`/aria-label breaks reminders.spec.ts locators, and feature-PR CI skips e2e.
-- [Client import of a prisma-bearing lib](gotcha_client_import_of_prisma_bearing_lib.md) — no server-only marker stops it and tsc is happy; split the pure half out and re-export (facility/scope precedent).
-- [Dashboard: two actions, one population](gotcha_dashboard_two_actions_one_population.md) — lib/dashboard/scope.ts shares the POPULATION not the queries; the member org pin is mandatory or you get cross-tenant inflation.
-- [Partial prisma mocks break on a new query](gotcha_partial_prisma_mocks_break_on_new_query.md) — "undefined (reading 'findMany')" blames the lib, but it's a missing key in the test's hand-written vi.mock.
-- [Course roster spans tenants](gotcha_course_roster_spans_tenants.md) — video-course enrollments are cross-tenant; org filter lives in the query with an own-row exemption, and there is deliberately NO creator exemption.
-- [Shared worktree + agent auto-stash](gotcha_shared_worktree_agents_autostash.md) — agents in one checkout auto-stash each other's work; use a worktree per agent, else commit early and stage by hunk.
-- [Worktree needs node_modules + generated](gotcha_worktree_needs_node_modules_and_generated.md) — a fresh worktree fails 26 suites with a misleading vi.mock error; the real cause is the missing `generated` symlink.
-- [RBAC actor lists vs permissions](gotcha_rbac_actor_lists_vs_permissions.md) — a ruling finer than a verb ships as a role-utils list, not a grant; 2 conjunctions that must not be simplified + why a new grant needs a grep of every gate site.
-- [Self-service verbs pollute the matrix](gotcha_self_service_verbs_pollute_the_matrix.md) — a matrix `R` cell reads as `CR`; quiz authoring is gated on `course.edit`, and the new `open()` cell for unresolved rows.
-- [NOT NULL column needs its writer in the same PR](gotcha_required_column_needs_its_writer_same_pr.md) — a required column with no writer kills every create path AND reddens tsc; vitest never catches it. Land it nullable.
-- [Archive filter + rawPrisma](project_archive_filter_and_raw_prisma.md) — client-extension filter; 7 files MUST use rawPrisma; NO nested position is covered, and a restated `course:` key SHADOWS the bundle's predicate.
-- [Authorship is not ownership](gotcha_authorship_is_not_ownership.md) — a `createdBy… === me` gate silently revoked HR's granted `assessment.read`; siblings serving one payload must share one gate
-- [$extends breaks TransactionClient](gotcha_prisma_extension_breaks_transactionclient_type.md) — extending the client invalidates every `Prisma.TransactionClient` annotation; plus 2 Prisma-7 behaviours the docs don't state.
-- [e2e specs raw-SQL-insert courses](gotcha_e2e_specs_raw_sql_insert_courses.md) — 13 specs bypass Prisma, so a new NOT NULL column breaks them and CI won't tell you.
-- [Q26 deny-shape traps](gotcha_q26_deny_shape_traps.md) — maskEmail crashes email-less mocks; "card absent" assertions go vacuous; deny needs the notFound+no-redirect PAIR.
-- [Wizard never assigns a draft](gotcha_wizard_never_assigns_a_draft.md) — step 7 publishes-or-parks; the flow that DOES submit a draft is the separate /assign page.
-- [Auditor catalogue lockstep](gotcha_auditor_catalogue_lockstep.md) — one shared predicate for screen+export; draft vs inactive vs archived are three different exclusions.
-- [Billing-state redirect is not RBAC](gotcha_billing_state_redirect_is_not_rbac.md) — 3 pages carry both gates; only the RBAC branch 404s, e2e pins the billing redirects.
-- [No time-on-task data exists](gotcha_no_time_on_task_data.md) — Course.duration is an AI estimate, Enrollment.startedAt is the ASSIGNMENT date; no "average duration" is computable.
-- [CoursePreview is shared with the worker route](gotcha_coursepreview_is_shared_with_worker.md) — editing the hero for an admin frame rewrites /worker/courses/[id] and its e2e journey.
-- [An e2e spec can freeze a gap as intent](gotcha_e2e_spec_can_freeze_a_gap_as_intent.md) — rbac-role-change.spec.ts guarded the QA defect; grep e2e for ABSENCE assertions, rewrite with a dated SUPERSEDED block.
-- [Prop-seeded modals mount on demand](gotcha_modal_prop_seeded_state_needs_on_demand_mount.md) — React Compiler bans the resync effect and reset-in-close() re-reads pre-refresh props.
-- [.rich-slide wrapper nests the heading](gotcha_rich_slide_wrapper_nests_the_heading.md) — the slide unit is the div, NOT the h2/h3; heading splits tear the wrapper and drop slide-heading's class.
-- [Quiz explanation shape](gotcha_two_quiz_explanation_shapes.md) — all AI paths now share adaptQuizOptions + the rich object; `answer` is post-shuffle; only correctExplanation is persisted.
-- [sanitizeHtml drops editing attrs](gotcha_sanitize_allowed_attr_strips_editing_attrs.md) — contenteditable/role/spellcheck are stripped silently; data-_/aria-_ survive. Add a second config, never widen the reader's.
-- [Parallel contract PRs](project_parallel_contract_prs.md) — how to prove a branch that imports an unmerged Server Action: stub, typecheck, revert. vi.mock stays green while tsc is red.
-- [Next 16 cannot block Back](gotcha_next16_no_navigation_blocking.md) — onNavigate covers Link clicks only; the sentinel workaround, the 2 Next internals it relies on, and the re-push that traps users.
-- [CourseRail is quiz-views-only](gotcha_courserail_is_quiz_views_only.md) — it is never co-mounted with AdminSlideEditor; the lesson-view module nav is CourseArticle's ToC.
-- [Sweeper reference set columns](gotcha_sweeper_reference_set_columns.md) — any column storing under system/videos/ must join buildReferencedUriSet or the sweeper deletes its objects (posters were exposed until BUG-17).
-- [/system has no portal session](gotcha_system_backoffice_has_no_portal_session.md) — serve /system media from an /api/system/** route; a system-cookie fallback on a portal route is dead behind the proxy; next/image unoptimized.
-- [Server Action args are unchecked](gotcha_server_action_args_are_unchecked.md) — a closed TS param type doesn't bind the client; never spread caller data into prisma.update.
-- [Vertex endpoint + Gemini 3 traps](project_vertex_endpoint_and_gemini3.md) — generation on us multi-region (VERTEX_*), embeddings regional; thinkingLevel/temperature/parts traps; live-smoke recipe
-- [enrollUsers dueAt is org-wide by default](gotcha_enrolluser_deadline_scope_defaults_org_wide.md) — a per-person deadline needs `deadlineScope: 'enrollment'`; the past-deadline guard means different things per scope
-- [summarizedAt means "not eligible"](gotcha_summarized_at_means_not_eligible.md) — 4 writers must agree; the nudge upsert needs it on BOTH branches; INITIAL_LAUNCH is never a summary item
-- [Cycle-summary cutover flag](project_cycle-summary-cutover-flag.md) — ONE flag over dispatch+worker; shared claim row (flip outside 08:00–13:00 UTC); the sweep's email retry NARROWS, never stands down
-- [Job titles retired 2026-09-23](project_job_title_retired_2026_09_23.md) — role IS the title; column kept; 3 surfaces deliberately still say "Job Title"
-- [Worktree `generated` symlink breaks next build](gotcha_worktree_generated_symlink_breaks_build.md) — vitest needs it, Turbopack rejects it; run prisma generate + the Bash forms this harness refuses
+- [Dashboard metrics glossary](dashboard-metrics-glossary.md) — canonical metric names/formulas; source PDF gone, code record in lib/facility/metrics.ts
+- [Supervisor own-facility edit](supervisor_own_facility_edit.md) — PROF-002 lets supervisors edit their own facility on purpose; don't "fix" it back
+- [Figma STAFF section](reference_figma_staff_section.md) — frame map; profile omits Passed/Locked, Retry row unbuildable; roster needs xl, measure 1280 AND 1440
+- [Local UI verification](project_local_ui_verification.md) — Playwright recipe for the dev app; port 3005 may be a decoy build; newPage() ignores viewport
+- [Course wizard ladder + D1](project_course-wizard-9-step.md) — the 7 step keys/filenames after the single-document reshape
+- [Draft-key bumps orphan generations](gotcha_wizard_draft_key_bump_orphans_generation.md) — the sessionStorage draft is half the resume handoff; migrate it
+- [Course wizard restyle (PR-3b)](project_course-wizard-restyle-pr3b.md) — 3 deliberate divergences from Figma + the cmdk dep
+- [Wizard PHI attestation](project_course-wizard-phi-attestation.md) — not in the mock but required: uploadDocument rejects FormData without phiAttested
+- [Document Hub scope](project_document-hub-scope.md) — rename dropped from the UI (action kept); the viewer's thumbnail rail was ruled back IN
+- [Step-7 review honest gaps](project_wizard-step7-review-honest-gaps.md) — no citation chips, Edit button inert: deliberate, don't invent the data
+- [Assign-action authorization split](gotcha_assignment_action_authorization_split.md) — both assign actions gate on org ownership; enrollUsers mocks need `creator`
+- [npm install --allow-remote=all](gotcha_npm_install_allow_remote.md) — npmmirror lockfile URLs are gone; the xlsx CDN tarball trips npm 12's EALLOWREMOTE
+- [npm swallows --dry-run](gotcha_npm_swallows_dry_run.md) — scripts/ execute by default; a dropped `--dry-run` is destructive
+- [npm audit high gate](project_npm_audit_gate.md) — cleared via overrides; the `minimatch@10` pin disables ~12 react/import/jsx-a11y rules
+- [Auth instance-selector vs DB role](auth_instance_vs_role.md) — the `'admin'|'worker'` cookie selector is NOT the DB role
+- [Proxy cookie lags membership](gotcha_proxy_cookie_lags_membership.md) — proxy reads the raw cookie; pair any organizationId gate with a client `update()`
+- [Server Action redirectTo must render](gotcha_server_action_redirectto_must_render.md) — a redirect ON the target crashes the client with E394
+- [Auth revalidation cache TTL](auth_revalidation_cache_ttl.md) — Redis-cached JWT revalidation (def 30s); sessionVersion bumps bust it actively
+- [Build type-checks everything](build_typecheck_scope.md) — `next build` covers scripts/ and tests; `npm run lint` only src/; stale `.next/` breaks it
+- [RBAC role model](rbac_role_model.md) — 14 roles (6 manager + 8 uniform worker); supervisor read-only; every role incl. owner consumes a seat
+- [Org/Facility split](org_facility_split.md) — location/compliance live on Facility; genuinely multi-facility; facility CRUD = owner/admin/hr
+- [Full vitest run OOMs here](gotcha_full_vitest_run_ooms_here.md) — bare `vitest run` exits 137; shard `--shard=N/4 --maxWorkers=1` (≈8 min)
+- [Offline migrations](project_offline_migrations.md) — dev DB often unreachable; scaffold via `migrate diff --from-schema/--to-schema`
+- [migrate dev destructive diff](project_migrate_dev_destructive_diff.md) — autogen drops pgvector/HNSW/defaults; a RENAME comes out as DROP+CREATE
+- [prisma format runs in pre-commit](gotcha_prisma_format_churn.md) — lint-staged formats staged .prisma, so schemas ARE canonical
+- [MinIO dev port mismatch](gotcha_minio_dev_port_mismatch.md) — compose publishes 9005, .env.example says 9000; set MINIO_PORT=9005
+- [Vitest @/generated alias](project_vitest_generated_alias.md) — vitest.config.mts must alias @/generated & @/db, most-specific first
+- [vi.mock of node builtins needs `default`](gotcha_vitest_node_builtin_mock_default.md) — fs/promises & child_process mocks must export default too
+- [Email delivery tracking](project_email_delivery_tracking.md) — two disjoint recording paths; reminder senders bypass sendMailTracked by design
+- [E2E seed infra](project_e2e_seed_infra.md) — prisma/seed.ts, rate-limit bypass, role-based landings; assignRetake is locked-only by design
+- [Secure-cookie delete + prod e2e gotchas](gotcha_secure_cookie_delete_and_prod_e2e.md) — cookies().delete omits Secure; e2e = next start, so rebuild first
+- [Repro v4.6 AI pipeline locally](repro_v46_ai_pipeline_locally.md) — no ADC in sandbox; drive gemini-flash-lite-latest via an AI-Studio key
+- [Phase 2 batch-quiz truncation](phase2_batch_quiz_truncation.md) — 0-question root cause = 16384 output cap; keep meta.requestedQuestionCount
+- [Figma LMS v2 source](reference_figma_lms_v2.md) — file/section ids; the highest "LMS - n" frame is often an unbuilt concept
+- [Figma COURSES section map](reference_figma_courses_section.md) — frame→page map + the shared card/table/pagination token set
+- [Figma→CSS scale](project_figma_to_css_scale.md) — LMS v2 frames are ~1.12x oversized vertically; horizontal geometry is 1:1
+- [Figma STATUS TRACKER section map](reference_figma_status_tracker_section.md) — LMS-203 == LMS-201; merged single-table design; no mobile frame
+- [Figma AUDIT REPORTS section map](reference_figma_audit_reports.md) — frame→tab/state map + the SECOND card/table kit these pages use
+- [Dashboard responsive traps](gotcha_dashboard_responsive_breakpoints.md) — the 280px sidebar makes `lg` narrower than `md`; gate wide tables at `xl`
+- [Figma SETTINGS section map](reference_figma_settings_section.md) — 3 frames → 3 tabs; scale is exactly 1.125x on type AND padding
+- [shadcn Table/Select specificity traps](gotcha_shadcn_table_row_border.md) — header divider needs `border-none`; SelectValue drops className
+- [Figma ERROR SCREENS section](reference_figma_error_screens.md) — "Link Expired" frames are really the 404 page; no /timeout route
+- [Figma Course Wizard frames](reference_figma_course_wizard.md) — there is no COURSE CREATION section; frame→step map, 1:1 chrome geometry
+- [Figma learn-player frames](reference_figma_learn_player.md) — LMS-166 is the slides view; the frame has NO slide number and NO selected state
+- [Figma WORKER CERTIFICATES + cert modal](reference_figma_worker_certificates.md) — in a SECOND "WORKERS" section; grep the metadata dump by text
+- [Full-bleed dialog + fixed-px artwork](gotcha_fullbleed_dialog_scaling.md) — grid min-content breaks %-width measurement; corner close needs full span
+- [EnrollmentStatus.failed is never written](gotcha_enrollment_failed_status_unused.md) — derive pass/fail from score vs passingScore, never from status
+- [RHF watch() breaks React Compiler](gotcha_rhf_watch_react_compiler.md) — use `useWatch({control,name})` in client forms
+- [Radix Select in a form echoes ""](gotcha_radix_select_in_form_echoes_empty.md) — the hidden native select wipes a programmatic set; guard `onValueChange`
+- [Revalidation cache is identity-only](gotcha_revalidation_cache_is_identity_only.md) — never cache role/organizationId; membership is re-read every decode
+- [`admin` is un-retired](gotcha_admin_role_unretired.md) — drop the retired-admin JWT guard; gate roster PII on `user.read`
+- [Admin auth instance is the tier check](gotcha_admin_auth_instance_is_the_tier_check.md) — `@/auth` fences admin tier; `resolveSession()` does not
+- [Deploy topology](deploy_topology.md) — Docker Compose, ONE app container per env, tunnel straight to the app port
+- [Video sweeper env interlock](gotcha_video_sweep_env_interlock.md) — env files get copied, so key destructive gates on APP_URL
+- [Bare `auth()` drops Set-Cookie](gotcha_bare_auth_drops_set_cookie.md) — no-args v5 `auth()` never rotates the cookie, which is what makes `Vary` usable
+- [Playback cache is in-process](gotcha_video_playback_cache_is_in_process.md) — spawned scripts/ can't evict it; invalidate from the BullMQ handler
+- [RSC vs JSON payload shapes](gotcha_rsc_vs_json_payload_shapes.md) — one builder for route + page: normalise Dates to ISO; wall-clock hydration trap
+- [Next 16 revalidateTag + Prisma traps](gotcha_next16_revalidatetag_and_prisma_validator.md) — needs `'max'`; no Prisma.validator; `String[]?` is rejected
+- [Billing decisions 2026-08-27](project_billing_2026_08_27_decisions.md) — upgrades prorate immediately; pauses defer to period end via a sweep
+- [pauseStartsAt must not gate access](gotcha_billing_pause_sweep_invariant.md) — never read it in hasActiveBilling/getPauseState
+- [Billing schedule deferred scope](project_billing_schedule_deferred_scope.md) — pause's 409 on a pending schedule is deliberate
+- [Owner consumes a seat](gotcha_seat_counting_is_owner_inclusive.md) — countBillableSeats/Staff are the ONLY definition; an at-cap org reads cap+1
+- [CourseRail unlockedIndex gates the quiz](gotcha_courserail_unlockedindex_conflates_quiz.md) — keep railUnlockedIndex at lessons.length-1
+- [CourseArticle hasFullLayout gates the quiz](gotcha_coursearticle_hasfulllayout_gates_quiz.md) — hiding chrome via onSelectModule deadlocks the gate
+- [Quiz route error body shapes](gotcha_quiz_route_error_body_shapes.md) — start puts a CODE in `error`, submit puts prose there; read `message ?? error`
+- [Courses video/reading consolidation](project_courses_video_reading_consolidation.md) — outer tabs deleted; Video is the landing tab unless all reading
+- [Facility scope = one condition](project_facility_scope_one_condition.md) — everything gates on "viewer sees >1 facility"; don't edit ORG_WIDE_FACILITY_ROLES
+- [Role-assign count vs reach](gotcha_role_assign_count_vs_reach.md) — count + mutation are BOTH facility-scoped and must stay coupled
+- [Server Action refusals must return](gotcha_server_action_refusals_must_return.md) — prod redacts throws to React #441; return `refusedReason`
+- [Dashboard banner slot bleeds](gotcha_dashboard_banner_slot_bleeds.md) — negative-margin heroes paint over site-wide banners; gate on `first:`
+- [Document identity is org-wide](gotcha_document_identity_is_org_wide.md) — never re-find an upload by filename; uploadDocument returns the record
+- [Certificate export render pipeline](gotcha_certificate_export_render_pipeline.md) — off-screen not hidden, jsPDF page-1 trap, card list has no name
+- [Assignment rows carry no role-target scope](gotcha_assignment_row_has_no_role_target_scope.md) — an in-place widen must be refused, not inherited
+- [Course publish has three paths](gotcha_course_publish_has_three_paths.md) — assignment silently publishes drafts; only 2 of 3 record the D8 reviewer
+- [`course.read` is not admin-only](gotcha_course_read_is_not_admin_only.md) — 13 of 14 roles hold it (all but finance); keep the isAdminRole conjunction
+- [sweep.test.ts mock-queue coupling](gotcha_sweep_test_mock_queue_coupling.md) — one early-aborting pre-pass shifts every later `mockResolvedValueOnce`
+- [targetRoles backfill is provable](gotcha_targetroles_backfill_is_provable.md) — backfilled in the migration that added it; keep the sweep's OR anyway
+- [DatePicker name = its placeholder](gotcha_datepicker_accessible_name_is_placeholder.md) — adding a label breaks reminders.spec.ts locators
+- [Client import of a prisma-bearing lib](gotcha_client_import_of_prisma_bearing_lib.md) — tsc is happy; split the pure half out and re-export
+- [Dashboard: two actions, one population](gotcha_dashboard_two_actions_one_population.md) — ROLE narrows nothing (BUG-01), facility only the enrolment half, member org pin mandatory
+- [Partial prisma mocks break on a new query](gotcha_partial_prisma_mocks_break_on_new_query.md) — "undefined (reading 'findMany')" is a missing vi.mock key
+- [Course roster spans tenants](gotcha_course_roster_spans_tenants.md) — org filter lives in the query with an own-row exemption and NO creator exemption
+- [Shared worktree + agent auto-stash](gotcha_shared_worktree_agents_autostash.md) — agents in one checkout auto-stash each other; use a worktree per agent
+- [Worktree needs node_modules + generated](gotcha_worktree_needs_node_modules_and_generated.md) — a misleading vi.mock error really means `generated` is missing
+- [RBAC actor lists vs permissions](gotcha_rbac_actor_lists_vs_permissions.md) — a ruling finer than a verb ships as a role-utils list, not a grant
+- [Self-service verbs pollute the matrix](gotcha_self_service_verbs_pollute_the_matrix.md) — a matrix `R` cell reads as `CR`; quiz authoring is `course.edit`
+- [NOT NULL column needs its writer in the same PR](gotcha_required_column_needs_its_writer_same_pr.md) — kills every create path and reddens tsc; land it nullable
+- [Archive filter + rawPrisma](project_archive_filter_and_raw_prisma.md) — 7 files MUST use rawPrisma; a restated `course:` key SHADOWS the predicate
+- [Authorship is not ownership](gotcha_authorship_is_not_ownership.md) — a `createdBy… === me` gate revoked HR's granted `assessment.read`
+- [$extends breaks TransactionClient](gotcha_prisma_extension_breaks_transactionclient_type.md) — extending invalidates every `Prisma.TransactionClient` annotation
+- [e2e specs raw-SQL-insert courses](gotcha_e2e_specs_raw_sql_insert_courses.md) — 13 specs bypass Prisma, so a new NOT NULL column breaks them silently
+- [Q26 deny-shape traps](gotcha_q26_deny_shape_traps.md) — maskEmail crashes email-less mocks; deny needs the notFound+no-redirect PAIR
+- [Wizard never assigns a draft](gotcha_wizard_never_assigns_a_draft.md) — step 7 publishes-or-parks; the /assign page is what submits a draft
+- [Auditor catalogue lockstep](gotcha_auditor_catalogue_lockstep.md) — one predicate for screen+export; draft/inactive/archived are 3 exclusions
+- [Billing-state redirect is not RBAC](gotcha_billing_state_redirect_is_not_rbac.md) — 3 pages carry both gates; only the RBAC branch 404s
+- [No time-on-task data exists](gotcha_no_time_on_task_data.md) — duration is an AI estimate, startedAt is the ASSIGNMENT date
+- [CoursePreview is shared with the worker route](gotcha_coursepreview_is_shared_with_worker.md) — an admin-frame hero edit rewrites /worker/courses/[id]
+- [A spec can freeze a gap as intent](gotcha_e2e_spec_can_freeze_a_gap_as_intent.md) — grep e2e for ABSENCE assertions; unit tests do it too; SUPERSEDED block
+- [Prop-seeded modals mount on demand](gotcha_modal_prop_seeded_state_needs_on_demand_mount.md) — React Compiler bans the resync effect
+- [.rich-slide wrapper nests the heading](gotcha_rich_slide_wrapper_nests_the_heading.md) — the slide unit is the div, NOT the h2/h3
+- [Quiz explanation shape](gotcha_two_quiz_explanation_shapes.md) — all AI paths share adaptQuizOptions; `answer` is post-shuffle
+- [sanitizeHtml drops editing attrs](gotcha_sanitize_allowed_attr_strips_editing_attrs.md) — add a second config, never widen the reader's
+- [Parallel contract PRs](project_parallel_contract_prs.md) — proving a branch on an unmerged action: stub, typecheck, revert
+- [Next 16 cannot block Back](gotcha_next16_no_navigation_blocking.md) — onNavigate covers Link clicks only; the sentinel workaround and its trap
+- [CourseRail is quiz-views-only](gotcha_courserail_is_quiz_views_only.md) — never co-mounted with AdminSlideEditor; lesson nav is CourseArticle's ToC
+- [Sweeper reference set columns](gotcha_sweeper_reference_set_columns.md) — any system/videos/ column must join buildReferencedUriSet
+- [/system has no portal session](gotcha_system_backoffice_has_no_portal_session.md) — serve /system media from /api/system/**; next/image unoptimized
+- [Server Action args are unchecked](gotcha_server_action_args_are_unchecked.md) — never spread caller data into prisma.update
+- [Vertex endpoint + Gemini 3 traps](project_vertex_endpoint_and_gemini3.md) — generation on us multi-region, embeddings regional; thinkingLevel traps
+- [enrollUsers dueAt is org-wide by default](gotcha_enrolluser_deadline_scope_defaults_org_wide.md) — a per-person deadline needs `deadlineScope: 'enrollment'`
+- [summarizedAt means "not eligible"](gotcha_summarized_at_means_not_eligible.md) — 4 writers must agree; the nudge upsert needs it on BOTH branches
+- [Cycle-summary cutover flag](project_cycle-summary-cutover-flag.md) — ONE flag over dispatch+worker; the sweep's email retry NARROWS
+- [Job titles retired 2026-09-23](project_job_title_retired_2026_09_23.md) — role IS the title; column kept; 3 surfaces still say "Job Title"
+- [Worktree `generated` symlink breaks next build](gotcha_worktree_generated_symlink_breaks_build.md) — vitest needs it, Turbopack rejects it; run prisma generate

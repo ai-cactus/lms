@@ -20,6 +20,12 @@
  * Tier 2 (numeric parity) is the user-visible form of the bug, reproduced
  * without a DB: one fixture dataset, run through both actions at one facility
  * and at two, asserting all four results agree.
+ *
+ * Tier 3 (role parity) is the same property across the other axis, added for
+ * BUG-01: one organisation must report one set of aggregates to every role that
+ * can ask. Facility scope may still narrow the enrolment-derived figures — that
+ * is what a facility-bound viewer is asking about — but the viewer's ROLE may
+ * not narrow anything.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -116,6 +122,24 @@ function supervisorSession() {
       role: 'supervisor',
       organizationId: ORG_ID,
       organizationUserId: ORG_USER_ID,
+    },
+  };
+}
+
+function hrSession() {
+  return {
+    user: { id: 'hr-1', role: 'hr', organizationId: ORG_ID, organizationUserId: 'ou-hr-1' },
+  };
+}
+
+/** Finance: the one manager role that holds no `course.read`. */
+function financeSession() {
+  return {
+    user: {
+      id: 'fin-1',
+      role: 'finance',
+      organizationId: ORG_ID,
+      organizationUserId: 'ou-finance-1',
     },
   };
 }
@@ -365,5 +389,228 @@ describe('dashboard-parity — Tier 2: numeric parity', () => {
     expect(twoFacilities.legacy.stats.averageGrade).toBe(
       twoFacilities.global.organisationTotals.averageGrade,
     );
+  });
+});
+
+/**
+ * BUG-01, reproduced: for one organisation at one moment, Finance's tiles read
+ * 2 Total Courses / 2 Total Staff Assigned where Owner's and HR's read 4 and 4.
+ *
+ * Finance is the only manager role without `course.read` (verified against the
+ * registry, not assumed), so it was the only caller whose course population
+ * collapsed to "courses I authored myself" — which, for a role that cannot
+ * author any, left nothing but the organisation's adopted courses. Hence 2 of 4.
+ *
+ * Unlike Tier 2, these Prisma mocks EVALUATE the predicate they are handed
+ * against a fixture catalogue, because the divergence is entirely in the `where`
+ * — mocks that answer the same rows whatever they are asked would report parity
+ * for a scope bug of any size.
+ */
+describe('dashboard-parity — Tier 3: role parity', () => {
+  const ORG_AUTHOR = 'ou-owner-1';
+
+  /**
+   * Four courses: two written in-house, two adopted from another tenant's
+   * catalogue. The split matters — the adopted pair is what Finance could still
+   * see, which is why the bug showed up as a wrong number rather than a zero.
+   */
+  const CATALOGUE = [
+    { id: 'c1', organizationId: ORG_ID, createdByOrgUserId: ORG_AUTHOR, archivedAt: null },
+    { id: 'c2', organizationId: ORG_ID, createdByOrgUserId: ORG_AUTHOR, archivedAt: null },
+    { id: 'c3', organizationId: 'org-other', createdByOrgUserId: 'ou-other', archivedAt: null },
+    { id: 'c4', organizationId: 'org-other', createdByOrgUserId: 'ou-other', archivedAt: null },
+  ];
+  const ADOPTED = [{ courseId: 'c3' }, { courseId: 'c4' }];
+
+  /** One learner and one score per course, so both tiles move together. */
+  const ENROLLMENTS = [
+    { courseId: 'c1', organizationUserId: 'u1', score: 80 },
+    { courseId: 'c2', organizationUserId: 'u2', score: 90 },
+    { courseId: 'c3', organizationUserId: 'u3', score: 60 },
+    { courseId: 'c4', organizationUserId: 'u4', score: 70 },
+  ];
+
+  type CourseRow = (typeof CATALOGUE)[number];
+
+  /**
+   * Evaluates the shapes `resolveDashboardScope` can produce. An unrecognised
+   * key throws rather than being ignored, so a future predicate cannot make this
+   * suite quietly vacuous.
+   */
+  function matchesCourse(course: CourseRow, where: Record<string, unknown>): boolean {
+    return Object.entries(where).every(([key, value]) => {
+      switch (key) {
+        case 'OR':
+          return (value as Record<string, unknown>[]).some((branch) =>
+            matchesCourse(course, branch),
+          );
+        case 'organizationId':
+          return course.organizationId === value;
+        case 'createdByOrgUserId':
+          return course.createdByOrgUserId === value;
+        case 'id':
+          return ((value as { in: string[] }).in ?? []).includes(course.id);
+        case 'archivedAt':
+          return value === null && course.archivedAt === null;
+        default:
+          throw new Error(`matchesCourse: unsupported course predicate key "${key}"`);
+      }
+    });
+  }
+
+  function visibleCourses(where: Record<string, unknown> | undefined): CourseRow[] {
+    if (!where) throw new Error('a course read reached the fixture with no predicate at all');
+    return CATALOGUE.filter((course) => matchesCourse(course, where));
+  }
+
+  function visibleEnrollments(where: { course?: Record<string, unknown> }) {
+    const visibleIds = new Set(visibleCourses(where.course).map((course) => course.id));
+    return ENROLLMENTS.filter((enrollment) => visibleIds.has(enrollment.courseId));
+  }
+
+  function courseCardRow(course: CourseRow) {
+    return {
+      id: course.id,
+      title: `Course ${course.id}`,
+      description: null,
+      thumbnail: null,
+      status: 'published',
+      type: 'document',
+      duration: 30,
+      createdAt: new Date('2026-01-01'),
+      updatedAt: new Date('2026-01-01'),
+      quiz: null,
+      lessons: [{ quiz: null }],
+    };
+  }
+
+  function wirePredicateAwarePrisma() {
+    mockOrgCourseOfferingFindMany.mockResolvedValue(ADOPTED);
+
+    mockCourseFindMany.mockImplementation((args: { where: Record<string, unknown> }) =>
+      Promise.resolve(visibleCourses(args.where).map(courseCardRow)),
+    );
+    mockCourseCount.mockImplementation((args: { where: Record<string, unknown> }) =>
+      Promise.resolve(visibleCourses(args.where).length),
+    );
+
+    mockEnrollmentGroupBy.mockImplementation(
+      (args: { by: string[]; where: { course?: Record<string, unknown> } }) => {
+        // The two staff-assigned tallies: `['organizationUserId', 'status']` on
+        // the legacy dashboard, `['organizationUserId']` on the Global view.
+        if (args.by[0] === 'organizationUserId') {
+          return Promise.resolve(
+            visibleEnrollments(args.where).map((enrollment) => ({
+              organizationUserId: enrollment.organizationUserId,
+              status: 'completed',
+              _count: { _all: 1 },
+            })),
+          );
+        }
+        // Every per-facility grouping in the Global view is irrelevant to the
+        // organisation totals under test.
+        return Promise.resolve([]);
+      },
+    );
+
+    mockEnrollmentFindMany.mockImplementation(
+      (args: { where: { course?: Record<string, unknown> } }) =>
+        Promise.resolve(
+          visibleEnrollments(args.where).map((enrollment) => ({
+            courseId: enrollment.courseId,
+            score: enrollment.score,
+            completedAt: new Date('2026-03-01'),
+          })),
+        ),
+    );
+    mockEnrollmentAggregate.mockImplementation(
+      (args: { where: { course?: Record<string, unknown> } }) => {
+        const scores = visibleEnrollments(args.where).map((enrollment) => enrollment.score);
+        return Promise.resolve({
+          _avg: {
+            score:
+              scores.length > 0
+                ? scores.reduce((sum, score) => sum + score, 0) / scores.length
+                : null,
+          },
+        });
+      },
+    );
+
+    mockOrgUserCount.mockResolvedValue(ENROLLMENTS.length);
+  }
+
+  async function tilesFor(session: ReturnType<typeof ownerSession>) {
+    mockAdminAuth.mockResolvedValue(session);
+    mockAuth.mockResolvedValue(session);
+    const legacy = await getDashboardData(null);
+    const global = await getGlobalDashboardData();
+    return { legacy, global };
+  }
+
+  beforeEach(() => {
+    wirePredicateAwarePrisma();
+    mockListAccessibleFacilities.mockResolvedValue([FACILITY_A]);
+  });
+
+  it('reports the same org aggregates to Finance as to Owner and HR — the reported 2-vs-4', async () => {
+    const owner = await tilesFor(ownerSession());
+    const hr = await tilesFor(hrSession());
+    const finance = await tilesFor(financeSession());
+
+    const expected = { totalCourses: 4, totalStaffAssigned: 4, averageGrade: 75 };
+
+    expect(owner.legacy.stats).toMatchObject(expected);
+    expect(hr.legacy.stats).toMatchObject(expected);
+    // Pre-fix this read { totalCourses: 2, totalStaffAssigned: 2, averageGrade: 65 }
+    // — the two adopted courses and their learners, everything authored in-house
+    // having dropped out of Finance own population.
+    expect(finance.legacy.stats).toMatchObject(expected);
+  });
+
+  it('agrees across roles on the Global view organisation totals too', async () => {
+    const owner = await tilesFor(ownerSession());
+    const finance = await tilesFor(financeSession());
+
+    const expected = { totalCourses: 4, staffAssigned: 4, averageGrade: 75 };
+
+    expect(owner.global.organisationTotals).toEqual(expected);
+    expect(finance.global.organisationTotals).toEqual(expected);
+  });
+
+  it('issues no creator-scoped course predicate for ANY role that reaches the dashboard', async () => {
+    for (const session of [ownerSession(), hrSession(), supervisorSession(), financeSession()]) {
+      mockCourseFindMany.mockClear();
+      mockCourseCount.mockClear();
+      mockEnrollmentGroupBy.mockClear();
+      mockEnrollmentFindMany.mockClear();
+
+      await tilesFor(session);
+
+      const wheres = [
+        ...mockCourseFindMany.mock.calls.map((call) => call[0].where),
+        ...mockCourseCount.mock.calls.map((call) => call[0].where),
+        ...mockEnrollmentGroupBy.mock.calls.map((call) => call[0].where),
+        ...mockEnrollmentFindMany.mock.calls.map((call) => call[0].where),
+      ];
+      expect(wheres.length).toBeGreaterThan(0);
+      for (const where of wheres) {
+        expect(containsKeyDeep(where, 'createdByOrgUserId')).toBe(false);
+      }
+    }
+  });
+
+  // Q-01 (2026-09-23): Finance may see the aggregates precisely because they
+  // carry no employee-level detail. Widening the POPULATION must not widen what
+  // Finance is handed — the course rows and the per-course chart stay withheld,
+  // and that withholding is the caller decision, not a smaller tile.
+  it('still withholds the course rows and the per-course chart from Finance', async () => {
+    const owner = await tilesFor(ownerSession());
+    const finance = await tilesFor(financeSession());
+
+    expect(owner.legacy.courses).toHaveLength(4);
+    expect(owner.legacy.stats.coursePerformance).toHaveLength(4);
+    expect(finance.legacy.courses).toEqual([]);
+    expect(finance.legacy.stats.coursePerformance).toEqual([]);
   });
 });

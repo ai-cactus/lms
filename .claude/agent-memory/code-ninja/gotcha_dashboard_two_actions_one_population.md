@@ -1,6 +1,6 @@
 ---
 name: dashboard-two-actions-one-population
-description: getDashboardData and getGlobalDashboardData must share a POPULATION (lib/dashboard/scope.ts) but not queries; widening a course predicate there without the member org pin causes cross-tenant inflation
+description: getDashboardData and getGlobalDashboardData must share a POPULATION (lib/dashboard/scope.ts) but not queries; ROLE narrows nothing in that bundle (facility narrows only the enrolment half), and widening a course predicate there without the member org pin causes cross-tenant inflation
 metadata:
   type: project
 ---
@@ -18,6 +18,21 @@ both times), which is why the fix is a predicate bundle —
 aggregates would be wrong; sharing what they count OVER is not optional. Bake
 `courseWhere` into the shared `enrollmentWhere` and the global dashboard collapses
 to one author's courses for any non-manager caller — keep it per-aggregate.
+
+**The second axis (BUG-01, fixed 2026-09-24):** the bundle's `courseWhere` was
+built from `authoredCourseWhere`, so the one manager role without `course.read`
+— **finance** — got `{ createdByOrgUserId }` and read 2 courses where its Owner
+read 4, with every enrolment-derived tile disagreeing too. `authoredCourseWhere`
+is gone (the dashboard was its last caller); `courseWhere` is now
+`orgCourseWhere(organizationId)` for everyone. The line to hold: **role narrows
+nothing in this bundle, facility narrows only `enrollmentWhere`/`staffWhere`**
+(courses are org-global, so facility never touches `courseWhere`). What a role
+may SEE is the CALLER's decision — `getDashboardData` strips `courses` and
+`coursePerformance` on `canViewOrgCourses`, which is the SAME predicate the old
+population branch used, so widening the population exposed nothing new.
+Verify a claim like "only finance is affected" by enumerating `ALL_ROLES` in a
+throwaway `npx tsx` script; only 6 roles pass the action's
+`assignment.read || billing.read` gate at all.
 
 **How to apply:**
 - Every enrollment predicate on either dashboard MUST carry
