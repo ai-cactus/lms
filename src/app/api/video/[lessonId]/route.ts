@@ -123,6 +123,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ less
             status: true,
             type: true,
             createdByOrgUserId: true,
+            archivedAt: true,
           },
         },
       },
@@ -134,6 +135,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ less
   // Global published video courses are a shared catalog any signed-in user may
   // watch (e.g. an org admin previewing before assigning).
   const c = lesson.course;
+
+  // Q-04: an archived course is cancelled — nobody keeps watching it, whatever
+  // would otherwise have granted access. Evaluated on the cached meta, so an
+  // archive that lands mid-playback takes effect within the meta TTL (60s by
+  // default) rather than instantly; that is the same revocation-latency trade
+  // this route already accepts for unenrollment, and it is documented in
+  // `playback-cache.ts`.
+  if (c.archivedAt) return new Response('Forbidden', { status: 403 });
+
   const isGlobalCatalog = c.isGlobal && c.status === 'published' && c.type === 'video';
   const isCreator = current.organizationUserId
     ? c.createdByOrgUserId === current.organizationUserId

@@ -3,6 +3,8 @@
 import prisma from '@/lib/prisma';
 import { getPortalSessions } from '@/lib/auth/portal-sessions';
 import { isQuizUnlocked } from '@/lib/video/gating';
+import { logger } from '@/lib/logger';
+import { ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
 
 /**
  * Resolves the current session's ACTIVE membership id from either the admin or
@@ -51,9 +53,16 @@ export async function getVideoPlaybackUrl(lessonId: string): Promise<string> {
 
   if (!lesson) throw new Error('Lesson not found');
 
+  const c = lesson.course;
+
+  // Q-04: an archived course is cancelled, so nobody continues watching it —
+  // not the enrolled learner, not the author. Thrown rather than returned to
+  // match this action's existing refusal contract ('Unauthorized'/'Forbidden');
+  // `/api/video/[lessonId]` refuses the same request independently.
+  if (c.archivedAt) throw new Error('Forbidden');
+
   // Global published video courses are a shared catalog any signed-in user may
   // watch (e.g. an org admin previewing before assigning).
-  const c = lesson.course;
   const isGlobalCatalog = c.isGlobal && c.status === 'published' && c.type === 'video';
   const allowed =
     c.createdByOrgUserId === organizationUserId || c.enrollments.length > 0 || isGlobalCatalog;
@@ -75,22 +84,41 @@ export async function getVideoPlaybackUrl(lessonId: string): Promise<string> {
  * Throws 'Unauthorized'        when no session is present.
  * Throws 'Enrollment not found' when the enrollment doesn't exist or belongs
  *                               to a different user.
+ *
+ * An archived course is refused by RETURN (`refusedReason`), not thrown: it is
+ * a policy decision the learner can be told about, and Next.js redacts thrown
+ * Server Action messages in production.
  */
 export async function saveVideoProgress(
   enrollmentId: string,
   positionSeconds: number,
   watchedPct: number,
-): Promise<{ unlocked: boolean }> {
+): Promise<{ unlocked: boolean; refusedReason?: string }> {
   const organizationUserId = await currentOrganizationUserId();
   if (!organizationUserId) throw new Error('Unauthorized');
 
   const enr = await prisma.enrollment.findUnique({
     where: { id: enrollmentId },
-    select: { organizationUserId: true, status: true },
+    select: {
+      organizationUserId: true,
+      status: true,
+      // Nested, so the archive query extension does not hide the row.
+      course: { select: { archivedAt: true } },
+    },
   });
 
   if (!enr || enr.organizationUserId !== organizationUserId) {
     throw new Error('Enrollment not found');
+  }
+
+  // Q-04: watching on is the learner advancing through the course. Fail closed —
+  // neither the position nor the watch-gate status bump below has run.
+  if (enr.course.archivedAt) {
+    logger.warn({
+      msg: '[enrollment] Video progress blocked — course is archived',
+      enrollmentId,
+    });
+    return { unlocked: false, refusedReason: ARCHIVED_COURSE_LEARNER_MESSAGE };
   }
 
   const pct = Math.max(0, Math.min(100, Math.round(watchedPct)));

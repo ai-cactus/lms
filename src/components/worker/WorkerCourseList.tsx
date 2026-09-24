@@ -17,7 +17,9 @@ import {
 import EmptyTableState from '@/components/ui/EmptyTableState';
 import { Alert } from '@/components/ui/alert';
 import { RowActionsMenu, type RowAction } from '@/components/ui/RowActionsMenu';
+import CancelledCourseBadge from '@/components/worker/CancelledCourseBadge';
 import { logger } from '@/lib/logger';
+import { ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
 import type { LearnerCourseAttempt, LearnerCourseRow } from '@/types/enrollment';
 
 interface WorkerCourseListProps {
@@ -114,6 +116,11 @@ export default function WorkerCourseList({ courses, showHeading = true }: Worker
   };
 
   const getStatusBadge = (course: LearnerCourseRow, rowState: RowState) => {
+    // Cancellation outranks every enrollment state, including a terminal one: a
+    // completed enrollment in an archived course can no longer be reviewed.
+    if (course.courseArchived) {
+      return <CancelledCourseBadge />;
+    }
     if (course.status === 'attested') {
       return (
         <span className={`${badgeBase} bg-[#d1fae5] text-[#065f46]`}>
@@ -216,6 +223,13 @@ export default function WorkerCourseList({ courses, showHeading = true }: Worker
       onSelect: () => handleRetakeQuiz(course),
     };
 
+    // Every course-bound action is refused server-side once the course is
+    // archived. The certificate is not: it was earned before the archive and is
+    // read from the Certificate table, so it stays downloadable.
+    if (course.courseArchived) {
+      return downloadCertificate ? [downloadCertificate] : [];
+    }
+
     switch (rowState) {
       case 'done':
         return downloadCertificate ? [viewResult, downloadCertificate] : [viewResult];
@@ -291,6 +305,8 @@ export default function WorkerCourseList({ courses, showHeading = true }: Worker
                 const rowState = deriveRowState(course);
                 const isLocked = rowState === 'locked';
                 const isDone = rowState === 'done';
+                const isCancelled = course.courseArchived === true;
+                const isInert = isLocked || isCancelled;
                 const actions = getRowActions(course, rowState);
 
                 const actionLabel =
@@ -311,7 +327,7 @@ export default function WorkerCourseList({ courses, showHeading = true }: Worker
                   <tr
                     key={course.id + '-' + course.enrollmentId}
                     onClick={() => {
-                      if (isLocked) return;
+                      if (isInert) return;
                       if (isDone) {
                         handleViewResultClick(course.id);
                       } else {
@@ -320,7 +336,7 @@ export default function WorkerCourseList({ courses, showHeading = true }: Worker
                     }}
                     className={[
                       'border-b border-[#f1f5f9] last:border-b-0 max-md:block max-md:p-4',
-                      isLocked ? 'cursor-not-allowed opacity-70' : 'cursor-pointer',
+                      isInert ? 'cursor-not-allowed opacity-70' : 'cursor-pointer',
                     ].join(' ')}
                   >
                     <td className="px-6 py-4 align-middle text-[#1a202c] max-md:block max-md:border-none max-md:px-0 max-md:py-1 max-md:first:mb-2">
@@ -363,9 +379,15 @@ export default function WorkerCourseList({ courses, showHeading = true }: Worker
                         {actionLabel && (
                           <button
                             type="button"
+                            // Disabled rather than hidden: the row must read as
+                            // cancelled, not as broken or half-rendered.
+                            disabled={isCancelled}
+                            title={isCancelled ? ARCHIVED_COURSE_LEARNER_MESSAGE : undefined}
                             className={[
-                              'rounded-md px-1 text-sm font-semibold underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
-                              actionIsUrgent ? 'text-error' : 'text-primary',
+                              'rounded-md px-1 text-sm font-semibold underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
+                              isCancelled
+                                ? 'cursor-not-allowed text-text-secondary'
+                                : `hover:underline ${actionIsUrgent ? 'text-error' : 'text-primary'}`,
                             ].join(' ')}
                             onClick={() =>
                               isDone

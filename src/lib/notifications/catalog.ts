@@ -111,6 +111,13 @@ export const NOTIFICATION_TYPES: NotificationTypeMeta[] = [
     category: 'training',
   },
   {
+    key: 'COURSE_CANCELLED',
+    label: 'Cancelled',
+    description: 'When a course you were assigned is cancelled',
+    audience: 'worker',
+    category: 'training',
+  },
+  {
     key: 'RETAKE_ASSIGNED',
     label: 'Retakes',
     description: 'When an admin assigns you a quiz retake',

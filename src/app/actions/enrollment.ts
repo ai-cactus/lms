@@ -14,6 +14,7 @@ import { invalidatePlaybackAuthz } from '@/lib/video/playback-cache';
 import type { StaffEntry } from '@/types/enrollment';
 import { resolveDataFacilityIds, staffFacilityWhere } from '@/lib/facility/staff-where';
 import { publishCourseOnAssignment } from '@/lib/course/publish-on-assign';
+import { ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
 import {
   partitionEmailsByFacility,
   partitionOrgUsersByFacility,
@@ -1373,7 +1374,7 @@ export async function submitQuizAttempt(
   quizId: string,
   answers: { questionId: string; selectedAnswer: string }[],
   timeTaken?: number,
-): Promise<QuizAttemptResult> {
+): Promise<QuizAttemptResult & { refusedReason?: string }> {
   const [admin, worker] = await Promise.all([
     (await import('@/auth')).auth(),
     (await import('@/auth.worker')).auth(),
@@ -1399,6 +1400,24 @@ export async function submitQuizAttempt(
       enrollment.organizationUserId !== workerOrgUserId)
   ) {
     throw new Error('Enrollment not found');
+  }
+
+  // Q-04: no submission is graded once the course is archived. The course
+  // arrives through a nested include, which the archive query extension cannot
+  // filter, so the rule is stated here. Fail-closed — nothing has been written.
+  if (enrollment.course.archivedAt) {
+    logger.warn({
+      msg: '[enrollment] Quiz submission refused — course is archived',
+      enrollmentId,
+      courseId: enrollment.courseId,
+    });
+    return {
+      score: 0,
+      passed: false,
+      correctCount: 0,
+      totalQuestions: 0,
+      refusedReason: ARCHIVED_COURSE_LEARNER_MESSAGE,
+    };
   }
 
   const quiz = await prisma.quiz.findUnique({
@@ -1542,7 +1561,9 @@ export async function submitQuizAttempt(
 /**
  * Worker requests a retry on a failed course quiz.
  */
-export async function requestCourseRetry(enrollmentId: string) {
+export async function requestCourseRetry(
+  enrollmentId: string,
+): Promise<{ success: boolean; refusedReason?: string }> {
   const [admin, worker] = await Promise.all([
     (await import('@/auth')).auth(),
     (await import('@/auth.worker')).auth(),
@@ -1568,6 +1589,17 @@ export async function requestCourseRetry(enrollmentId: string) {
       enrollment.organizationUserId !== workerOrgUserId)
   ) {
     throw new Error('Enrollment not found');
+  }
+
+  // Q-04: a cancelled course cannot be retried. Fail-closed — the reset below,
+  // which would drop the learner's score, has not run.
+  if (enrollment.course.archivedAt) {
+    logger.warn({
+      msg: '[enrollment] Course retry refused — course is archived',
+      enrollmentId,
+      courseId: enrollment.courseId,
+    });
+    return { success: false, refusedReason: ARCHIVED_COURSE_LEARNER_MESSAGE };
   }
 
   await prisma.enrollment.update({

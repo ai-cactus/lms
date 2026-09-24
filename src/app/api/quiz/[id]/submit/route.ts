@@ -10,6 +10,7 @@ import { ADMIN_ROLES } from '@/lib/rbac/role-utils';
 import { guardApiSession } from '@/lib/auth-guard';
 import { hasActiveBilling } from '@/lib/billing';
 import { checkRateLimit } from '@/lib/rate-limit';
+import { ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
 const submitQuizSchema = z.object({
   enrollmentId: z.string().min(1, 'Enrollment ID is required'),
   answers: z.array(
@@ -201,6 +202,18 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
         },
         { status: 403 },
       );
+    }
+
+    // Q-04: no submission is graded once the course is archived. `course` comes
+    // back through a nested include, which the archive query extension does not
+    // filter, so `archivedAt` is readable here without an extra query.
+    if (enrollment.course.archivedAt) {
+      logger.warn({
+        msg: '[quiz] Submit blocked — course is archived',
+        enrollmentId,
+        courseId: enrollment.courseId,
+      });
+      return NextResponse.json({ error: ARCHIVED_COURSE_LEARNER_MESSAGE }, { status: 403 });
     }
 
     const quiz = await prisma.quiz.findUnique({

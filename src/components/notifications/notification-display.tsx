@@ -1,5 +1,6 @@
 import {
   AlertTriangle,
+  Ban,
   Bell,
   BookOpen,
   CheckCircle2,
@@ -71,6 +72,8 @@ export function getNotificationVisual(type?: string | null): NotificationVisual 
       return { Icon: RefreshCw, iconClass: 'text-amber-600', ringClass: 'bg-amber-50' };
     case 'QUIZ_RETRY_LIMIT_REACHED':
       return { Icon: AlertTriangle, iconClass: 'text-amber-600', ringClass: 'bg-amber-50' };
+    case 'COURSE_CANCELLED':
+      return { Icon: Ban, iconClass: 'text-slate-600', ringClass: 'bg-slate-100' };
     case 'RETAKE_ASSIGNED':
       return { Icon: RotateCcw, iconClass: 'text-indigo-600', ringClass: 'bg-indigo-50' };
     case 'COURSE_DEADLINE_REMINDER':
