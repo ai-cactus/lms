@@ -232,10 +232,14 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
 
                     {/* .formGroup */}
                     <div className="mb-5">
-                      <label className="mb-2 block text-sm font-semibold text-text-secondary">
+                      <label
+                        className="mb-2 block text-sm font-semibold text-text-secondary"
+                        htmlFor={`editQuestionText-${index}`}
+                      >
                         Question Text
                       </label>
                       <input
+                        id={`editQuestionText-${index}`}
                         type="text"
                         className={formInputClass}
                         value={editingQuestion.question}
@@ -258,12 +262,14 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
                             <input
                               type="radio"
                               name={`editCorrectAnswer-${index}`}
+                              aria-label={`Mark option ${i + 1} correct`}
                               checked={editingQuestion.answer === i}
                               onChange={() => setEditingQuestion({ ...editingQuestion, answer: i })}
                             />
                             <input
                               type="text"
                               className={formInputClass}
+                              aria-label={`Option ${i + 1}`}
                               value={opt}
                               onChange={(e) => {
                                 const newOptions = [...editingQuestion.options];
@@ -279,10 +285,14 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
 
                     {/* .formGroup — dynamic marginTop preserved inline */}
                     <div className="mb-5" style={{ marginTop: '16px' }}>
-                      <label className="mb-2 block text-sm font-semibold text-text-secondary">
+                      <label
+                        className="mb-2 block text-sm font-semibold text-text-secondary"
+                        htmlFor={`editExplanation-${index}`}
+                      >
                         Detailed Explanation / Reference
                       </label>
                       <textarea
+                        id={`editExplanation-${index}`}
                         className={formInputClass}
                         style={{ minHeight: '80px', resize: 'vertical' }}
                         value={editingQuestion.explanation || ''}
@@ -422,10 +432,14 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
 
             {/* .formGroup */}
             <div className="mb-5">
-              <label className="mb-2 block text-sm font-semibold text-text-secondary">
+              <label
+                className="mb-2 block text-sm font-semibold text-text-secondary"
+                htmlFor="newQuestionText"
+              >
                 Question Text
               </label>
               <input
+                id="newQuestionText"
                 type="text"
                 className={formInputClass}
                 placeholder="Enter your question here..."
@@ -447,12 +461,14 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
                     <input
                       type="radio"
                       name="correctAnswer"
+                      aria-label={`Mark option ${i + 1} correct`}
                       checked={newQuestion.answer === i}
                       onChange={() => setNewQuestion({ ...newQuestion, answer: i })}
                     />
                     <input
                       type="text"
                       className={formInputClass}
+                      aria-label={`Option ${i + 1}`}
                       value={opt}
                       onChange={(e) => updateOption(i, e.target.value)}
                       placeholder={`Option ${i + 1}`}
@@ -465,10 +481,14 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
 
             {/* .formGroup — dynamic marginTop preserved inline */}
             <div className="mb-5" style={{ marginTop: '16px' }}>
-              <label className="mb-2 block text-sm font-semibold text-text-secondary">
+              <label
+                className="mb-2 block text-sm font-semibold text-text-secondary"
+                htmlFor="newQuestionExplanation"
+              >
                 Detailed Explanation / Reference
               </label>
               <textarea
+                id="newQuestionExplanation"
                 className={formInputClass}
                 style={{ minHeight: '80px', resize: 'vertical' }}
                 value={newQuestion.explanation || ''}
