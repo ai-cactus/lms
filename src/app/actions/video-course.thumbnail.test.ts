@@ -94,7 +94,7 @@ function expectRefreshed() {
   expect(mockInvalidateThumbnail).toHaveBeenCalledWith(COURSE_ID);
   expect(mockRevalidatePath).toHaveBeenCalledWith('/system/video-courses');
   expect(mockRevalidatePath).toHaveBeenCalledWith(`/system/video-courses/${COURSE_ID}/edit`);
-  expect(mockRevalidateTag).toHaveBeenCalledWith('video-catalog', 'max');
+  expect(mockRevalidateTag).toHaveBeenCalledWith('video-catalog', { expire: 0 });
 }
 
 describe('regenerateVideoCourseThumbnail', () => {
