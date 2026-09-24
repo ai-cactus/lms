@@ -353,7 +353,15 @@ export function getExportWorker() {
             email: m.user.email,
             coursesAssigned: m.enrollments.length,
             coursesCompleted: m.enrollments.filter((e) => isCompleted(e.status)).length,
-            lastActivity: m.enrollments.find((e) => e.completedAt)?.completedAt ?? null,
+            // Enrollments are ordered by START date, so the first row carrying
+            // a `completedAt` is not the newest completion — take the maximum,
+            // exactly as the on-screen Auditor roster does. The two disagreed
+            // silently while `completedAt` was never written at all.
+            lastActivity: m.enrollments.reduce<Date | null>(
+              (latest, e) =>
+                e.completedAt && (!latest || e.completedAt > latest) ? e.completedAt : latest,
+              null,
+            ),
           })),
         });
       } else {
@@ -393,7 +401,7 @@ export function getExportWorker() {
           if (batch.length === 0) break;
 
           for (const en of batch) {
-            if (['completed', 'attested'].includes(en.status)) completed++;
+            if (isCompleted(en.status)) completed++;
             orgEnrollments.push({
               staffName: en.organizationUser.user.fullName || en.organizationUser.user.email,
               courseTitle: en.course.title,
