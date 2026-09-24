@@ -2,7 +2,7 @@
 
 - [Dashboard metrics glossary](dashboard-metrics-glossary.md) — the Dashboard Metrics Glossary is canonical for metric names/formulas (source PDF no longer in repo; code record in lib/facility/metrics.ts); two open product decisions
 - [Supervisor own-facility edit](supervisor_own_facility_edit.md) — PROF-002 deliberately lets supervisors edit their own facility despite the read-only RBAC ruling; don't "fix" it back
-- [Figma STAFF section](reference_figma_staff_section.md) — list/profile/mobile frames; profile omits real Passed/Locked states and its Retry row is unbuildable literally; roster's 5 columns don't fit at lg, % widths from xl (measure 1280 AND 1440)
+- [Figma STAFF section](reference_figma_staff_section.md) — profile omits real Passed/Locked states; roster's 5 columns don't fit at lg (measure 1280 AND 1440)
 - [Local UI verification](project_local_ui_verification.md) — Playwright recipe for the dev app: docker start + prisma db seed + redis login-lockout reset; port 3005 may be a decoy build; newPage() ignores viewport
 - [Course wizard ladder + D1](project_course-wizard-9-step.md) — current 7 step keys/filenames after the single-document reshape; what looks like an oversight but is not
 - [Draft-key bumps orphan generations](gotcha_wizard_draft_key_bump_orphans_generation.md) — the sessionStorage draft is half the resume handoff; migrate it whenever pending jobs exist
@@ -30,7 +30,7 @@
 - [vi.mock of node builtins needs `default`](gotcha_vitest_node_builtin_mock_default.md) — fs/promises & child_process mocks must also export default; plus how to test a script whose main() runs at import.
 - [Email delivery tracking](project_email_delivery_tracking.md) — EmailMessage has two disjoint recording paths (dispatch vs sendMailTracked); reminder senders bypass sendMailTracked to avoid double-record.
 - [E2E seed infra](project_e2e_seed_infra.md) — prisma/seed.ts (tsx, self-contained client), E2E rate-limit bypass, role-based login landings, quiz shape; assignRetake is locked-only by design (returns refusedReason).
-- [Secure-cookie delete + prod e2e gotchas](gotcha_secure_cookie_delete_and_prod_e2e.md) — cookies().delete omits Secure so __Secure- deletions fail in prod (next dev masks it); CI/local e2e = next start, so rebuild (with NEXT_PUBLIC_APP_URL=3005) before trusting any e2e verdict.
+- [Secure-cookie delete + prod e2e gotchas](gotcha_secure_cookie_delete_and_prod_e2e.md) — __Secure- deletions fail in prod (next dev masks it); e2e = next start, so rebuild before trusting a verdict
 - [Repro v4.6 AI pipeline locally](repro_v46_ai_pipeline_locally.md) — ADC unavailable in sandbox; drive gemini-flash-lite-latest via AI-Studio Express key in .env; model/token facts.
 - [Phase 2 batch-quiz truncation](phase2_batch_quiz_truncation.md) — Stage C 0-questions root cause = 16384 output cap truncation; hybrid single-call/chunk fix; keep meta.requestedQuestionCount = original.
 - [Figma LMS v2 source](reference_figma_lms_v2.md) — file/section ids; highest "LMS - n" frame is often an unbuilt concept — identify frames by content, not name.
@@ -51,13 +51,13 @@
 - [Radix Select in a form echoes ""](gotcha_radix_select_in_form_echoes_empty.md) — programmatic value set gets wiped by the hidden native select; guard `onValueChange`.
 - [Revalidation cache is identity-only](gotcha_revalidation_cache_is_identity_only.md) — never cache role/organizationId; membership is re-read live every decode.
 - [`admin` is un-retired](gotcha_admin_role_unretired.md) — drop dev's retired-admin JWT guard; gate roster PII on `user.read`, not `isAdminRole`.
-- [Admin auth instance is the tier check](gotcha_admin_auth_instance_is_the_tier_check.md) — `@/auth` sessions carry an implicit admin-tier fence; `resolveSession()`/`getPortalSessions()` do not — audit those exports first when hunting RBAC holes.
+- [Admin auth instance is the tier check](gotcha_admin_auth_instance_is_the_tier_check.md) — `@/auth` carries an implicit admin-tier fence; `resolveSession()`/`getPortalSessions()` do not
 - [Deploy topology](deploy_topology.md) — Docker Compose, ONE app container per env, tunnel straight to the app port; pm2 + nginx files were deleted from the repo.
-- [Video sweeper env interlock](gotcha_video_sweep_env_interlock.md) — env-file flags can't gate a sweeper because envs get copied; key destructive gates on APP_URL (staging has its own bucket + project since 2026-09-22; sweeper off on staging and prod).
+- [Video sweeper env interlock](gotcha_video_sweep_env_interlock.md) — env-file flags can't gate a sweeper (envs get copied); key destructive gates on APP_URL
 - [Bare `auth()` drops Set-Cookie](gotcha_bare_auth_drops_set_cookie.md) — no-args next-auth v5 `auth()` never rotates the session cookie, which is what makes `Vary: Cookie` usable.
 - [Playback cache is in-process](gotcha_video_playback_cache_is_in_process.md) — one container, no Redis; spawned scripts/ can't evict it, so invalidate from the BullMQ handler.
 - [RSC vs JSON payload shapes](gotcha_rsc_vs_json_payload_shapes.md) — one builder for a route + a server page: normalise Dates to ISO, plus the wall-clock hydration trap and server-page auth conventions.
-- [Next 16 revalidateTag + Prisma schema traps](gotcha_next16_revalidatetag_and_prisma_validator.md) — revalidateTag needs a 2nd arg (`'max'`); no Prisma.validator (use `satisfies`); `String[]?` is rejected — nullable arrays need a boolean+list pair.
+- [Next 16 revalidateTag + Prisma schema traps](gotcha_next16_revalidatetag_and_prisma_validator.md) — revalidateTag needs `'max'`; no Prisma.validator (use `satisfies`); `String[]?` is rejected
 - [Billing decisions 2026-08-27](project_billing_2026_08_27_decisions.md) — upgrades now prorate immediately (reverses 2026-07-17); pauses defer to period end via a sweep
 - [pauseStartsAt must not gate access](gotcha_billing_pause_sweep_invariant.md) — never read it in hasActiveBilling/getPauseState; the separation IS the mechanism
 - [Billing schedule deferred scope](project_billing_schedule_deferred_scope.md) — pause's kept 409 on a pending schedule is deliberate; checkout pause check/#27/#28 closed.
@@ -113,4 +113,5 @@
 - [summarizedAt means "not eligible"](gotcha_summarized_at_means_not_eligible.md) — 4 writers must agree; the nudge upsert needs it on BOTH branches; INITIAL_LAUNCH is never a summary item
 - [Cycle-summary cutover flag](project_cycle-summary-cutover-flag.md) — ONE flag over dispatch+worker; shared claim row (flip outside 08:00–13:00 UTC); the sweep's email retry NARROWS, never stands down
 - [Job titles retired 2026-09-23](project_job_title_retired_2026_09_23.md) — role IS the title; column kept; 3 surfaces deliberately still say "Job Title"
-- [Worktree `generated` symlink breaks next build](gotcha_worktree_generated_symlink_breaks_build.md) — vitest needs it, Turbopack rejects it; run prisma generate + the Bash forms this harness refuses
+- [Worktree `generated` symlink breaks next build](gotcha_worktree_generated_symlink_breaks_build.md) — vitest needs it, Turbopack rejects it; run prisma generate; plus the next/font/google build error that is environmental
+- [Notification linkUrl is portal-bound](gotcha_notification_linkurl_is_portal_bound.md) — the recipient of a training notice is the ASSIGNEE and may be a manager; /learn/[id] is the only both-realm route; no /dashboard subroute suits all 6 admin roles

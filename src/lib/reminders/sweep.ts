@@ -1,6 +1,7 @@
 import prisma from '@/lib/prisma';
 import { logger } from '@/lib/logger';
 import { createNotification } from '@/lib/notifications/create';
+import { trainingNoticeLink } from '@/lib/notifications/portal-link';
 import { runRetentionPurge, type RetentionPurgeSummary } from '@/lib/retention';
 import { createEnrollmentForUser, type CreateEnrollmentContext } from '@/lib/enrollment/create';
 import { assignmentAdmitsHolder } from '@/lib/enrollment/assignment-facility-scope';
@@ -531,7 +532,9 @@ async function runRenewalRetriggerPrePass(
         courseId: true,
         completedAt: true,
         assignmentId: true,
-        organizationUser: { select: { user: { select: { email: true, fullName: true } } } },
+        organizationUser: {
+          select: { role: true, user: { select: { email: true, fullName: true } } },
+        },
       },
     });
     if (candidates.length === 0) return;
@@ -628,7 +631,7 @@ async function runRenewalRetriggerPrePass(
           type: 'COURSE_ASSIGNED',
           title: 'Training due for renewal',
           message: `Your training "${assignment.course.title}" is due for renewal. Please complete it again before the deadline.`,
-          linkUrl: '/worker/trainings',
+          linkUrl: trainingNoticeLink(candidate.organizationUser.role, [candidate.courseId]),
           metadata: { courseId: candidate.courseId, enrollmentId: renewal.id },
         });
 
@@ -721,6 +724,7 @@ async function runTrackA(
       organizationUser: {
         select: {
           id: true,
+          role: true,
           user: { select: { email: true, fullName: true } },
           facilities: {
             where: { active: true },
@@ -754,6 +758,7 @@ async function runTrackA(
         id: enrollment.organizationUser.id,
         email: enrollment.organizationUser.user.email,
         name: enrollment.organizationUser.user.fullName,
+        role: enrollment.organizationUser.role,
       };
 
       for (const stage of SWEEP_LADDER_STAGES) {
@@ -844,6 +849,7 @@ async function runTrackB(
       organizationUser: {
         select: {
           id: true,
+          role: true,
           user: { select: { email: true, fullName: true } },
         },
       },
@@ -888,6 +894,7 @@ async function runTrackB(
         id: enrollment.organizationUser.id,
         email: enrollment.organizationUser.user.email,
         name: enrollment.organizationUser.user.fullName,
+        role: enrollment.organizationUser.role,
       };
 
       if (enrollment.status === 'in_progress') {
