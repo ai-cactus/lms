@@ -100,7 +100,7 @@
 - [An e2e spec can freeze a gap as intent](gotcha_e2e_spec_can_freeze_a_gap_as_intent.md) — rbac-role-change.spec.ts guarded the QA defect; grep e2e for ABSENCE assertions, rewrite with a dated SUPERSEDED block.
 - [Prop-seeded modals mount on demand](gotcha_modal_prop_seeded_state_needs_on_demand_mount.md) — React Compiler bans the resync effect and reset-in-close() re-reads pre-refresh props.
 - [.rich-slide wrapper nests the heading](gotcha_rich_slide_wrapper_nests_the_heading.md) — the slide unit is the div, NOT the h2/h3; heading splits tear the wrapper and drop slide-heading's class.
-- [Quiz explanation shape](gotcha_two_quiz_explanation_shapes.md) — all AI paths now share adaptQuizOptions + the rich object; `answer` is post-shuffle; only correctExplanation is persisted.
+- [Quiz explanation shape](gotcha_two_quiz_explanation_shapes.md) — one object, TWO columns; the index-keyed map is answer key (admin-only pre-attempt) and must be re-keyed on any reshuffle.
 - [sanitizeHtml drops editing attrs](gotcha_sanitize_allowed_attr_strips_editing_attrs.md) — contenteditable/role/spellcheck are stripped silently; data-_/aria-_ survive. Add a second config, never widen the reader's.
 - [Parallel contract PRs](project_parallel_contract_prs.md) — how to prove a branch that imports an unmerged Server Action: stub, typecheck, revert. vi.mock stays green while tsc is red.
 - [Next 16 cannot block Back](gotcha_next16_no_navigation_blocking.md) — onNavigate covers Link clicks only; the sentinel workaround, the 2 Next internals it relies on, and the re-push that traps users.

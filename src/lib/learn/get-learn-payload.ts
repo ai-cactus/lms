@@ -4,6 +4,7 @@ import prisma from '@/lib/prisma';
 import { rawPrisma } from '@/db/index';
 import { getPortalSessions } from '@/lib/auth/portal-sessions';
 import { logger } from '@/lib/logger';
+import { parseStoredOptionExplanations } from '@/lib/quiz/options';
 import type { Role } from '@/types/next-auth';
 
 /**
@@ -57,8 +58,11 @@ const QUIZ_SELECT = {
   timeLimit: true,
   questions: {
     orderBy: { order: 'asc' },
-    // correctAnswer/explanation are fetched but only surfaced to admins
-    // (the read-only answer-key review); never sent to workers.
+    // correctAnswer/explanation/incorrectOptionExplanations are fetched but
+    // only surfaced to admins (the read-only answer-key review); never sent to
+    // workers. The per-option rationale is answer key too — it names which
+    // options are WRONG, which would hand a learner the answer before they sit
+    // the quiz.
     select: {
       id: true,
       text: true,
@@ -66,6 +70,7 @@ const QUIZ_SELECT = {
       options: true,
       correctAnswer: true,
       explanation: true,
+      incorrectOptionExplanations: true,
     },
   },
 } as const;
@@ -97,6 +102,8 @@ export interface LearnPayloadQuestion {
   /** Answer key — present only for admin viewers (read-only review). */
   correctAnswer?: string;
   explanation?: string;
+  /** Why each wrong option is wrong, keyed by its index in `options`. */
+  incorrectOptionExplanations?: Record<string, string>;
 }
 
 export interface LearnPayloadQuiz {
@@ -133,7 +140,11 @@ export interface LearnPayloadQuizAttempt {
 export interface LearnPayloadQuizResultQuestion {
   id: string;
   text: string;
-  options: { id: string; text: string }[];
+  /**
+   * `explanation` is why THIS option is wrong — absent for the correct answer
+   * and for any option the author or model gave no rationale for.
+   */
+  options: { id: string; text: string; explanation?: string }[];
   selectedAnswer: string;
   correctAnswer: string;
   explanation: string;
@@ -439,7 +450,12 @@ export async function getLearnPayload(courseId: string): Promise<LearnPayload | 
             options: Array.isArray(q.options) ? ([...q.options] as string[]) : [],
             // Answer key is exposed only to admins (read-only review).
             ...(isAdmin
-              ? { correctAnswer: q.correctAnswer ?? '', explanation: q.explanation ?? '' }
+              ? {
+                  correctAnswer: q.correctAnswer ?? '',
+                  explanation: q.explanation ?? '',
+                  incorrectOptionExplanations:
+                    parseStoredOptionExplanations(q.incorrectOptionExplanations) ?? undefined,
+                }
               : {}),
           })),
         }
@@ -513,6 +529,8 @@ export async function getLearnPayload(courseId: string): Promise<LearnPayload | 
           const correctIdx = optionTexts.findIndex((t: string) => t === correctText);
           const correctLetter = correctIdx >= 0 ? String.fromCharCode(65 + correctIdx) : '';
 
+          const optionExplanations = parseStoredOptionExplanations(q.incorrectOptionExplanations);
+
           return {
             id: q.id,
             text: q.text,
@@ -522,6 +540,7 @@ export async function getLearnPayload(courseId: string): Promise<LearnPayload | 
                 typeof opt === 'string'
                   ? opt
                   : (opt as { text?: string }).text || (opt as { text?: string }).toString(),
+              explanation: optionExplanations?.[String(idx)],
             })),
             selectedAnswer: selectedLetter,
             correctAnswer: correctLetter,

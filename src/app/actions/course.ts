@@ -18,6 +18,11 @@ import { revalidatePath } from 'next/cache';
 import { createNotification, notifyOrganizationAdmins } from '@/lib/notifications/create';
 import { CourseWithStats, CourseWithRelations, courseDetailSelect } from '@/types/course';
 import { QuizQuestion } from '@/types/quiz';
+import {
+  remapOptionExplanations,
+  shuffleArray,
+  toStoredOptionExplanations,
+} from '@/lib/quiz/options';
 import type { StaffEntry } from '@/types/enrollment';
 import { logger } from '@/lib/logger';
 import { resolveMemberFacilityId } from '@/lib/facility/member-facility';
@@ -1616,6 +1621,11 @@ export async function createFullCourse(data: {
                         order: qIndex,
                         // v3.1 embedded fields
                         explanation: q.explanation?.correctExplanation || undefined,
+                        // `adaptQuizOptions` already keyed this by the shuffled
+                        // index, and `options` above is that same shuffled array.
+                        incorrectOptionExplanations: toStoredOptionExplanations(
+                          q.explanation?.incorrectOptions,
+                        ),
                         archetype: q.archetype || undefined,
                         // The module is tagged by position rather than id: the
                         // CourseModule rows do not exist until the course does.
@@ -1887,6 +1897,8 @@ export async function updateQuizQuestions(
     answer: number;
     type?: string;
     explanation?: string;
+    /** Keyed by the option's index in `options` as the caller sent it. */
+    incorrectOptionExplanations?: Record<string, string>;
   }[],
 ) {
   const session = await resolveSession();
@@ -1938,19 +1950,19 @@ export async function updateQuizQuestions(
   }
   const quizId = lessonWithQuiz.quiz.id;
 
-  // Shuffle options for each question so correct answers are scattered across A-D
+  // Shuffle options for each question so correct answers are scattered across
+  // A-D. The shuffle carries each option's ORIGINAL index so the per-option
+  // rationale can be re-keyed onto the new order — an index-keyed map that is
+  // stored beside a reordered `options` array points at the wrong answers.
   const shuffleOptions = (
     options: string[],
     correctIdx: number,
-  ): { options: string[]; correctIdx: number } => {
-    const tagged = options.map((text, i) => ({ text, isCorrect: i === correctIdx }));
-    for (let i = tagged.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [tagged[i], tagged[j]] = [tagged[j], tagged[i]];
-    }
+  ): { options: string[]; correctIdx: number; originalIndexes: number[] } => {
+    const shuffled = shuffleArray(options.map((text, index) => ({ text, index })));
     return {
-      options: tagged.map((o) => o.text),
-      correctIdx: tagged.findIndex((o) => o.isCorrect),
+      options: shuffled.map((o) => o.text),
+      correctIdx: shuffled.findIndex((o) => o.index === correctIdx),
+      originalIndexes: shuffled.map((o) => o.index),
     };
   };
 
@@ -1967,6 +1979,10 @@ export async function updateQuizQuestions(
             options: shuffled.options,
             correctAnswer: shuffled.options[shuffled.correctIdx],
             explanation: q.explanation,
+            incorrectOptionExplanations: remapOptionExplanations(
+              q.incorrectOptionExplanations,
+              shuffled.originalIndexes,
+            ),
             order: index,
           };
         }),

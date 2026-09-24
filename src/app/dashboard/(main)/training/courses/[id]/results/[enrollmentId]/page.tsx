@@ -4,6 +4,7 @@ import { getEnrollmentWithResults } from '@/app/actions/enrollment';
 import { notFound, redirect } from 'next/navigation';
 import { requirePermission } from '@/lib/rbac/require-permission';
 import { logger } from '@/lib/logger';
+import { parseStoredOptionExplanations } from '@/lib/quiz/options';
 
 export default async function QuizResultsPage({
   params,
@@ -77,12 +78,15 @@ export default async function QuizResultsPage({
         const correctIdx = optionTexts.findIndex((t) => t === correctText);
         const correctLetter = correctIdx >= 0 ? String.fromCharCode(65 + correctIdx) : '';
 
+        const optionExplanations = parseStoredOptionExplanations(q.incorrectOptionExplanations);
+
         return {
           id: q.id,
           text: q.text,
           options: optionTexts.map((text, idx) => ({
             id: String.fromCharCode(65 + idx),
             text,
+            explanation: optionExplanations?.[String(idx)],
           })),
           selectedAnswer: selectedLetter,
           correctAnswer: correctLetter,

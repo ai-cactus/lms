@@ -8,7 +8,14 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { adaptQuizOptions, type GeneratedQuizOption } from './options';
+import {
+  adaptQuizOptions,
+  dropOptionExplanation,
+  parseStoredOptionExplanations,
+  remapOptionExplanations,
+  toStoredOptionExplanations,
+  type GeneratedQuizOption,
+} from './options';
 
 const OPTIONS: GeneratedQuizOption[] = [
   { text: '24h', isCorrect: false, distractorType: 'D3', explanation: 'Too short (D3).' },
@@ -85,5 +92,92 @@ describe('adaptQuizOptions', () => {
     adaptQuizOptions(input);
 
     expect(JSON.stringify(input)).toBe(snapshot);
+  });
+});
+
+describe('toStoredOptionExplanations', () => {
+  it('returns undefined for an empty map so the column stores NULL, never {}', () => {
+    expect(toStoredOptionExplanations({})).toBeUndefined();
+    expect(toStoredOptionExplanations(null)).toBeUndefined();
+    expect(toStoredOptionExplanations(undefined)).toBeUndefined();
+  });
+
+  it('drops blank rationales and trims the rest', () => {
+    expect(toStoredOptionExplanations({ '0': '  Halves it (D1).  ', '1': '   ', '2': '' })).toEqual(
+      {
+        '0': 'Halves it (D1).',
+      },
+    );
+  });
+
+  it('returns undefined when every rationale is blank', () => {
+    expect(toStoredOptionExplanations({ '0': '   ', '1': '' })).toBeUndefined();
+  });
+});
+
+describe('parseStoredOptionExplanations', () => {
+  it('reads back a stored map', () => {
+    expect(parseStoredOptionExplanations({ '0': 'Halves it (D1).' })).toEqual({
+      '0': 'Halves it (D1).',
+    });
+  });
+
+  it('refuses anything that is not an object of strings', () => {
+    expect(parseStoredOptionExplanations(null)).toBeNull();
+    expect(parseStoredOptionExplanations(undefined)).toBeNull();
+    expect(parseStoredOptionExplanations('Halves it (D1).')).toBeNull();
+    expect(parseStoredOptionExplanations(['Halves it (D1).'])).toBeNull();
+    expect(parseStoredOptionExplanations({})).toBeNull();
+  });
+
+  it('skips non-string values rather than handing an object to the renderer', () => {
+    expect(
+      parseStoredOptionExplanations({ '0': { nested: true }, '1': 'Halves it (D1).' }),
+    ).toEqual({ '1': 'Halves it (D1).' });
+  });
+});
+
+describe('dropOptionExplanation', () => {
+  it('removes only the rewritten option’s rationale', () => {
+    expect(dropOptionExplanation({ '0': 'was A', '3': 'was D' }, 0)).toEqual({ '3': 'was D' });
+  });
+
+  it('leaves an untouched map alone', () => {
+    expect(dropOptionExplanation({ '0': 'was A' }, 2)).toEqual({ '0': 'was A' });
+  });
+
+  it('collapses to undefined once the last rationale goes', () => {
+    expect(dropOptionExplanation({ '0': 'was A' }, 0)).toBeUndefined();
+    expect(dropOptionExplanation(undefined, 0)).toBeUndefined();
+  });
+
+  it('does not mutate the map it was given', () => {
+    const map = { '0': 'was A', '3': 'was D' };
+
+    dropOptionExplanation(map, 0);
+
+    expect(map).toEqual({ '0': 'was A', '3': 'was D' });
+  });
+});
+
+describe('remapOptionExplanations', () => {
+  it('follows the options to their new positions', () => {
+    // The shuffled array is [old 2, old 0, old 3, old 1].
+    expect(
+      remapOptionExplanations({ '0': 'was A', '1': 'was B', '3': 'was D' }, [2, 0, 3, 1]),
+    ).toEqual({ '1': 'was A', '2': 'was D', '3': 'was B' });
+  });
+
+  it('is a no-op under the identity permutation', () => {
+    expect(remapOptionExplanations({ '0': 'was A', '3': 'was D' }, [0, 1, 2, 3])).toEqual({
+      '0': 'was A',
+      '3': 'was D',
+    });
+  });
+
+  it('returns undefined when there is nothing to carry over', () => {
+    expect(remapOptionExplanations(undefined, [1, 0])).toBeUndefined();
+    expect(remapOptionExplanations({}, [1, 0])).toBeUndefined();
+    expect(remapOptionExplanations({ '0': '  ' }, [1, 0])).toBeUndefined();
   });
 });
