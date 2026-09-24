@@ -1,6 +1,6 @@
 ---
 name: project_archived_course_cancels_learner_actions
-description: Founder Q-04/Q-05/Q-06 (2026-09-23) made archiving a CANCELLATION — 11 learner write paths refuse, 2 reminder tracks skip, certificates deliberately do NOT; plus the one seam left open
+description: Founder Q-04/Q-05/Q-06 (2026-09-23) made archiving a CANCELLATION — 11 learner write paths refuse, 2 reminder tracks skip, certificates deliberately do NOT; the learner lists keep the row and mark it Cancelled
 metadata:
   type: project
 ---
@@ -61,13 +61,29 @@ worker already enrolled in it") and `course.archive-visibility.test.ts`
 ("ISSUE-3: an enrolled worker still opens a course that was archived under
 them"). Both were deliberate, both are now the opposite.
 
-**The seam left OPEN (raised, not fixed):** `/worker/trainings` and `/worker`
-list the learner's enrolments with a nested `course` include, so an archived
-course still appears there with a Start/Continue button that now dead-ends on the
-404 `getCourseById` returns. The one-line fix is `course: { archivedAt: null }`
-on both `prisma.enrollment.findMany` calls, but it would also remove the
-learner's archived COMPLETED rows from their own list, which is a product ruling
-the founder has not made. Do not apply it without one.
+**The list seam, ruled 2026-09-24 — option (b): KEEP the row, mark it
+"Cancelled", disable the action.** Filtering archived courses out of
+`prisma.enrollment.findMany` on `/worker` and `/worker/trainings` was rejected:
+it would also erase the learner's archived COMPLETED rows from their own history.
+Instead both pages carry `courseArchived: picked.course.archivedAt !== null` on
+`LearnerCourseRow`, and the two learner lists render it:
+`WorkerCourseList` swaps the status badge for `CancelledCourseBadge`, disables
+the primary action, makes the row unclickable and withdraws every kebab action
+except "Download certificate"; `WorkerTrainingList`'s Completed-tab cards do the
+same to "View Result".
+
+Two consequences worth keeping in mind:
+
+- **Disabled, never hidden.** A missing button reads as a rendering bug; a
+  disabled one next to a "Cancelled" badge reads as a decision. The shared
+  `ARCHIVED_COURSE_LEARNER_MESSAGE` is the disabled control's `title`.
+- **`WorkerWelcomeModal` had the same dead end** and is fed from the same page:
+  its "Start your first course" pushes straight to `/learn/<id>`, so `/worker`
+  now passes it only the non-archived courses — with every course cancelled the
+  modal stays shut rather than offering a 404.
+
+The learner dashboard's metric tiles still COUNT a cancelled course in "Total
+courses" / "Completed"; no ruling was made on that, so it was left alone.
 
 **Video playback revocation is not instant:** `/api/video/[lessonId]` evaluates
 `archivedAt` off the in-process meta cache (60 s TTL), so an archive landing
