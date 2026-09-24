@@ -8,7 +8,6 @@ import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
 import { notifyOrganizationAdmins } from '@/lib/notifications/create';
-import { QuizAttemptResult } from '@/types/quiz';
 import { logger } from '@/lib/logger';
 import { invalidatePlaybackAuthz } from '@/lib/video/playback-cache';
 import type { StaffEntry } from '@/types/enrollment';
@@ -1366,180 +1365,6 @@ export async function getEnrollmentWithResults(enrollmentId: string) {
 }
 
 /**
- * Submit a quiz attempt with answers.
- */
-export async function submitQuizAttempt(
-  enrollmentId: string,
-  quizId: string,
-  answers: { questionId: string; selectedAnswer: string }[],
-  timeTaken?: number,
-): Promise<QuizAttemptResult> {
-  const [admin, worker] = await Promise.all([
-    (await import('@/auth')).auth(),
-    (await import('@/auth.worker')).auth(),
-  ]);
-  // The enrollment must belong to whichever session (admin or worker) is
-  // active, matched by membership — not by identity — so one identity's
-  // enrollment in org A is never mistaken for its enrollment in org B.
-  const adminOrgUserId = admin?.user?.organizationUserId ?? null;
-  const workerOrgUserId = worker?.user?.organizationUserId ?? null;
-
-  if (!admin?.user?.id && !worker?.user?.id) {
-    throw new Error('Unauthorized');
-  }
-
-  const enrollment = await prisma.enrollment.findUnique({
-    where: { id: enrollmentId },
-    include: { course: true, organizationUser: { include: { user: true } } },
-  });
-
-  if (
-    !enrollment ||
-    (enrollment.organizationUserId !== adminOrgUserId &&
-      enrollment.organizationUserId !== workerOrgUserId)
-  ) {
-    throw new Error('Enrollment not found');
-  }
-
-  const quiz = await prisma.quiz.findUnique({
-    where: { id: quizId },
-    include: { questions: true },
-  });
-
-  if (!quiz) {
-    throw new Error('Quiz not found');
-  }
-
-  let correctCount = 0;
-  for (const answer of answers) {
-    const question = quiz.questions.find((q) => q.id === answer.questionId);
-    if (question && question.correctAnswer === answer.selectedAnswer) {
-      correctCount++;
-    }
-  }
-
-  const totalQuestions = quiz.questions.length;
-  const score = totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 100) : 0;
-  const passed = score >= quiz.passingScore;
-
-  // Append-history: read the latest attempt for this enrollment+quiz.
-  const existingAttempt = await prisma.quizAttempt.findFirst({
-    where: { enrollmentId, quizId },
-    orderBy: { completedAt: 'desc' },
-  });
-
-  if (existingAttempt) {
-    await prisma.quizAttempt.update({
-      where: { id: existingAttempt.id },
-      data: {
-        answers,
-        score,
-        timeTaken,
-        completedAt: new Date(),
-      },
-    });
-  } else {
-    await prisma.quizAttempt.create({
-      data: {
-        enrollmentId,
-        quizId,
-        answers,
-        score,
-        timeTaken,
-      },
-    });
-  }
-
-  if (!passed) {
-    const { organizationUser } = enrollment;
-    await notifyOrganizationAdmins(organizationUser.organizationId, {
-      type: 'COURSE_FAILED',
-      title: 'Quiz Failed',
-      message: `${organizationUser.user.fullName || organizationUser.user.email} has failed the quiz for course: ${enrollment.course?.title || 'Unknown Course'}.`,
-      linkUrl: `/dashboard/staff/${organizationUser.id}`,
-      metadata: {
-        organizationUserId: organizationUser.id,
-        courseId: enrollment.courseId,
-        score,
-      },
-    });
-  }
-
-  await prisma.enrollment.update({
-    where: { id: enrollmentId },
-    data: {
-      status: 'in_progress',
-      score,
-    },
-  });
-
-  logger.info({
-    msg: '[enrollment] Quiz attempt submitted',
-    enrollmentId,
-    quizId,
-    score,
-    passed,
-    correctCount,
-    totalQuestions,
-  });
-
-  // Score and pass/fail only. The answers, the questions, and anything derived
-  // from the clinical source material stay out — see docs/analytics.md.
-  //
-  // Attribution follows the session that OWNED the enrollment, matched above by
-  // membership: an admin bridged into learner mode holds both cookies, and
-  // picking the wrong one would file a learner's result under the wrong person.
-  const quizActor = enrollment.organizationUserId === workerOrgUserId ? worker : admin;
-  const quizAnalytics = analyticsContextFrom(quizActor);
-  if (quizAnalytics) {
-    captureServer(
-      'quiz_submitted',
-      () => ({
-        course_id: enrollment.courseId,
-        score_percent: score ?? 0,
-        passed,
-        // Reuses the row already fetched above rather than issuing a count.
-        // Retakes create a NEW enrollment (linked by retakeOf), so this counts
-        // attempts within the current one.
-        attempt_number: existingAttempt?.attemptCount ?? 1,
-        duration_seconds: timeTaken ?? null,
-      }),
-      quizAnalytics,
-    );
-
-    // Passing the quiz is when the LEARNING is finished. Attestation is a
-    // separate compliance act with its own event, so the two are not
-    // duplicates fired at the same moment.
-    if (passed) {
-      captureServer(
-        'course_completed',
-        () => ({
-          course_id: enrollment.courseId,
-          // `startedAt` is stamped at ENROLLMENT creation (the assignment), not
-          // when the learner first opened the course, and no time-on-task is
-          // recorded anywhere — so this is calendar time since assignment, not
-          // study duration.
-          minutes_since_assigned: enrollment.startedAt
-            ? Math.round((Date.now() - enrollment.startedAt.getTime()) / 60_000)
-            : null,
-          is_retake: Boolean(enrollment.retakeOf),
-        }),
-        quizAnalytics,
-      );
-    }
-  }
-
-  revalidatePath(`/dashboard/training`);
-
-  return {
-    score,
-    passed,
-    correctCount,
-    totalQuestions,
-  };
-}
-
-/**
  * Worker requests a retry on a failed course quiz.
  */
 export async function requestCourseRetry(enrollmentId: string) {
@@ -1585,8 +1410,8 @@ export async function requestCourseRetry(enrollmentId: string) {
     organizationUserId: enrollment.organizationUserId,
   });
 
-  // Same dual-session rule as submitQuizAttempt: attribute to whichever session
-  // owns the enrollment, not to whichever cookie happens to exist.
+  // Attribute to whichever session owns the enrollment, not to whichever cookie
+  // happens to exist: an admin bridged into learner mode holds both.
   const retakeAnalytics = analyticsContextFrom(
     enrollment.organizationUserId === workerOrgUserId ? worker : admin,
   );

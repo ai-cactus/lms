@@ -5,10 +5,10 @@ metadata:
   type: project
 ---
 
-`EnrollmentStatus.failed` exists in the schema but no runtime path writes it: `submitQuizAttempt`
-(`src/app/actions/enrollment.ts`) sets `status: 'in_progress'` + `score` whether or not the learner
-passed. Attestation (`attestCourse` in `src/app/actions/course.ts`) sets `attested` without checking
-the score either.
+`EnrollmentStatus.failed` exists in the schema but no runtime path writes it: the quiz submit route
+(`POST /api/quiz/[id]/submit`) sets `status: 'in_progress'` — or `'locked'` once attempts run out —
+plus `score`, whether or not the learner passed. Attestation (`attestCourse` in
+`src/app/actions/course.ts`) sets `attested` without checking the score either.
 
 **Why:** any pass-rate / pass-fail metric written as `status IN ('completed','attested')` vs
 `'failed'` silently reports a 100% pass rate. The only truthful signal is
