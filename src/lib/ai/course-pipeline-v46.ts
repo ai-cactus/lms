@@ -292,7 +292,12 @@ class QuizChunkError extends Error {
   }
 }
 
-function quizOutputTokenBudget(count: number): number {
+/**
+ * Output-token budget for one quiz call of `count` questions. Exported so the
+ * wizard's quiz actions size their own calls the same way, now that they ask
+ * for a rationale per option too.
+ */
+export function quizOutputTokenBudget(count: number): number {
   return Math.min(
     QUIZ_MODEL_MAX_OUTPUT_TOKENS,
     QUIZ_BASE_OUTPUT_TOKENS + count * QUIZ_OUTPUT_TOKENS_PER_QUESTION,

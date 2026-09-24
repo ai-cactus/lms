@@ -12,6 +12,15 @@ import { auth } from '@/auth';
 import { logger } from '@/lib/logger';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { assertNoPhi, PhiBlockedError } from '@/lib/documents/phiGate';
+import { quizOutputTokenBudget } from '@/lib/ai/course-pipeline-v46';
+import { QuizOptionV46Schema } from '@/lib/prompt-schemas-v4.6';
+import {
+  QUIZ_DISTRACTOR_MECHANICS,
+  QUIZ_OPTION_OUTPUT_SHAPE,
+  quizOptionExplanationRules,
+} from '@/lib/prompts-v4.6';
+import { adaptQuizOptions } from '@/lib/quiz/options';
+import type { QuizExplanation } from '@/types/quiz';
 
 // Single user-facing failure message. Raw internal error detail (Vertex AI
 // errors, stack traces) is logged server-side only and NEVER returned to the
@@ -40,24 +49,85 @@ const GENERATION_TIMED_OUT_USER_MESSAGE =
  */
 const MAX_REGENERATED_QUESTIONS = 25;
 
+/**
+ * The model answers with the same per-option shape the v4.6 pipeline uses —
+ * each option carrying its own rationale — so a question added here is
+ * indistinguishable from a bulk-generated one (founder ruling Q-13). The
+ * correct answer is identified by `isCorrect` rather than a self-reported
+ * index, which also removes the class of response where the index and the
+ * flagged option disagree.
+ *
+ * The correct option's explanation is required on purpose. It was once
+ * `.optional()`, so a response that omitted it validated cleanly and produced a
+ * question with no rationale — indistinguishable from a good one until an
+ * author noticed the gap. Distractor rationales are NOT required: a response
+ * missing them still yields a usable question, and `adaptQuizOptions` simply
+ * omits the ones that are blank.
+ */
 const SingleQuestionSchema = z.object({
-  question: z.string(),
-  options: z.array(z.string()).length(4),
-  answer: z.number().min(0).max(3),
+  question: z.string().trim().min(1),
   type: z.string().default('multiple_choice'),
-  // Required on purpose. This was `.optional()`, so a model response that
-  // omitted the explanation validated cleanly and produced a question with no
-  // rationale — indistinguishable from a good one until an author noticed the
-  // gap. The explanation is the pedagogical point of a quiz answer, so an
-  // absent one must fail loudly and let the author retry.
-  explanation: z.string().trim().min(1),
+  options: z
+    .array(QuizOptionV46Schema)
+    .length(4)
+    .superRefine((options, ctx) => {
+      const correct = options.filter((option) => option.isCorrect);
+      if (correct.length !== 1) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Exactly one option must be marked isCorrect.',
+        });
+        return;
+      }
+      if (!correct[0].explanation.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'The correct option must carry a non-empty explanation.',
+        });
+      }
+    }),
 });
 
-type GeneratedQuestion = z.infer<typeof SingleQuestionSchema>;
+interface GeneratedQuestion {
+  question: string;
+  options: string[];
+  answer: number;
+  type: string;
+  explanation: QuizExplanation;
+}
+
+function toGeneratedQuestion(parsed: z.infer<typeof SingleQuestionSchema>): GeneratedQuestion {
+  return {
+    question: parsed.question,
+    type: parsed.type,
+    ...adaptQuizOptions(parsed.options),
+  };
+}
 
 const RegeneratedQuizSchema = z.object({
   questions: z.array(SingleQuestionSchema).min(1),
 });
+
+/**
+ * Shared tail of both prompts: how to write the options and their rationales,
+ * lifted verbatim from the v4.6 quiz prompt so the two paths cannot drift.
+ */
+const QUIZ_OPTION_INSTRUCTIONS = `${QUIZ_DISTRACTOR_MECHANICS}
+
+OPTION RULES (strict):
+- Exactly 4 options.
+- Exactly 1 option must have isCorrect=true, and it must set distractorType to null.
+- Wrong options must set distractorType to one of "D1","D2","D3","D4","D5","D6".
+- Options must be grammatically parallel and concise.
+
+${quizOptionExplanationRules('the course content above')}`;
+
+/**
+ * `QUIZ_OPTION_OUTPUT_SHAPE` is indented for the pipeline's nested
+ * `questions[]` schema. The single-question schema has no such nesting, so drop
+ * two levels rather than show the model a ragged JSON example.
+ */
+const SINGLE_QUESTION_OPTION_SHAPE = QUIZ_OPTION_OUTPUT_SHAPE.replace(/^ {4}/gm, '');
 
 function extractJsonFromResponse(text: string): string {
   const clean = text.trim();
@@ -225,28 +295,25 @@ ${courseContext}
 <<<END UNTRUSTED COURSE CONTENT>>>
 
 Instructions:
-1. Provide exactly 4 options.
-2. Indicate the correct answer using a 0-based index (0, 1, 2, or 3).
-3. Ensure the question string is clear and grammatically correct.
-4. Keep the options concise.
-5. IMPORTANT: The correct answer MUST NOT always be at index 0. Randomly distribute the correct answer across ALL positions (0, 1, 2, 3). Each position should be equally likely to be correct.
-6. REQUIRED: "explanation" must be a non-empty sentence stating why the correct option is correct, grounded in the course content above. Never omit it, and never return it as an empty string.
+1. Ensure the question string is clear and grammatically correct.
+2. Every option must carry its own "explanation" — the correct one and each wrong one.
+
+${QUIZ_OPTION_INSTRUCTIONS}
 
 Return ONLY a valid JSON object matching this schema:
 {
   "question": "string",
-  "options": ["string", "string", "string", "string"],
-  "answer": number,
-  "explanation": "string"
+${SINGLE_QUESTION_OPTION_SHAPE}
 }
 `;
 
     // 3. Call AI
     const rawResponse = await callVertexAI(prompt, {
       temperature: 0.7, // Little bit of creativity for varied questions
-      // Headroom for the now-mandatory explanation. A truncated response is
-      // unparseable JSON, which fails the whole call rather than degrading.
-      maxOutputTokens: 1536,
+      // Sized the same way the bulk pipeline sizes a one-question call, now
+      // that four rationales ride along. A truncated response is unparseable
+      // JSON, which fails the whole call rather than degrading.
+      maxOutputTokens: quizOutputTokenBudget(1),
       retry: budget,
     });
 
@@ -260,7 +327,7 @@ Return ONLY a valid JSON object matching this schema:
       return { success: false, error: 'AI generated invalid question format.' };
     }
 
-    return { success: true, question: result.data };
+    return { success: true, question: toGeneratedQuestion(result.data) };
   } catch (err: unknown) {
     // A PHI rejection is actionable by the user ("remove the personal details"),
     // so it must survive the generic sanitiser below rather than becoming
@@ -363,21 +430,17 @@ ${courseContext}
 
 Instructions:
 1. Return exactly ${requestedCount} questions.
-2. Provide exactly 4 options for each question.
-3. Indicate the correct answer using a 0-based index (0, 1, 2, or 3).
-4. Ensure every question string is clear and grammatically correct.
-5. Keep the options concise.
-6. IMPORTANT: The correct answer MUST NOT always be at index 0. Randomly distribute the correct answer across ALL positions (0, 1, 2, 3). Each position should be equally likely to be correct.
-7. REQUIRED: every question's "explanation" must be a non-empty sentence stating why its correct option is correct, grounded in the course content above. Never omit it, and never return it as an empty string.
+2. Ensure every question string is clear and grammatically correct.
+3. Every option of every question must carry its own "explanation" — the correct one and each wrong one.
+
+${QUIZ_OPTION_INSTRUCTIONS}
 
 Return ONLY a valid JSON object matching this schema:
 {
   "questions": [
     {
       "question": "string",
-      "options": ["string", "string", "string", "string"],
-      "answer": number,
-      "explanation": "string"
+${QUIZ_OPTION_OUTPUT_SHAPE}
     }
   ]
 }
@@ -385,10 +448,11 @@ Return ONLY a valid JSON object matching this schema:
 
     const rawResponse = await callVertexAI(prompt, {
       temperature: 0.7,
-      // Budgeted per question, with headroom for explanations. A truncated
+      // The bulk pipeline's own per-question budget, reused so a set generated
+      // here gets the same headroom for four rationales apiece. A truncated
       // response is unparseable JSON, which is how Stage C used to lose a whole
       // batch of questions.
-      maxOutputTokens: Math.min(8192, 600 * requestedCount),
+      maxOutputTokens: quizOutputTokenBudget(requestedCount),
       retry: budget,
     });
 
@@ -411,7 +475,7 @@ Return ONLY a valid JSON object matching this schema:
       questionCount: result.data.questions.length,
     });
 
-    return { success: true, questions: result.data.questions };
+    return { success: true, questions: result.data.questions.map(toGeneratedQuestion) };
   } catch (err: unknown) {
     // A PHI rejection is actionable by the user, so it survives the sanitiser.
     if (err instanceof PhiBlockedError) {

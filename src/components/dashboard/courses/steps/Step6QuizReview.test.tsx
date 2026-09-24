@@ -173,8 +173,8 @@ describe('Step6QuizReview', () => {
     // Regression: `handleGenerateQuestion` used to copy only question/options/
     // answer/type out of the action result, so a question added with AI landed
     // with no explanation at all while every originally generated question had
-    // one. The flat string the action returns is widened to the per-option
-    // shape the card renders and `saveCourse` persists.
+    // one. Q-13 then made the action return a rationale for the WRONG options
+    // too, so the whole explanation object must survive the hand-off intact.
     const user = userEvent.setup();
     generateSingleQuestion.mockResolvedValue({
       success: true,
@@ -183,7 +183,14 @@ describe('Step6QuizReview', () => {
         options: ['24h', '48h', '72h', '96h'],
         answer: 2,
         type: 'multiple_choice',
-        explanation: 'Policy states 72 hours.',
+        explanation: {
+          correctExplanation: 'Policy states 72 hours.',
+          incorrectOptions: {
+            '0': 'Too short — the policy allows three days (D3).',
+            '1': 'Halves the stated window (D1).',
+            '3': 'Overshoots the stated window (D4).',
+          },
+        },
       },
     });
     const { onQuizUpdate } = renderStep(TAGGED_QUIZ);
@@ -198,7 +205,11 @@ describe('Step6QuizReview', () => {
       question: 'What is the escalation window?',
       explanation: {
         correctExplanation: 'Policy states 72 hours.',
-        incorrectOptions: {},
+        incorrectOptions: {
+          '0': 'Too short — the policy allows three days (D3).',
+          '1': 'Halves the stated window (D1).',
+          '3': 'Overshoots the stated window (D4).',
+        },
       },
     });
   });
@@ -214,6 +225,51 @@ describe('Step6QuizReview', () => {
     expect(
       within(questionCard('Privacy Q1')).getByText(/Correct: Policy states 72 hours\./),
     ).toBeInTheDocument();
+  });
+
+  // Q-13: the author reviewing in the wizard is the reader this rationale is
+  // for, so the card must list one line per wrong option, labelled A–D by the
+  // option's own position.
+  it('renders a rationale for each wrong option', () => {
+    renderStep([
+      question({
+        question: 'Privacy Q1',
+        options: ['24h', '48h', '72h', '96h'],
+        answer: 2,
+        explanation: {
+          correctExplanation: 'Policy states 72 hours.',
+          incorrectOptions: {
+            '0': 'Too short — the policy allows three days (D3).',
+            '3': 'Overshoots the stated window (D4).',
+          },
+        },
+      }),
+    ]);
+
+    const card = questionCard('Privacy Q1');
+    expect(
+      within(card).getByText(/Option A: Too short — the policy allows three days \(D3\)\./),
+    ).toBeInTheDocument();
+    expect(
+      within(card).getByText(/Option D: Overshoots the stated window \(D4\)\./),
+    ).toBeInTheDocument();
+  });
+
+  // A model that answers with the correct-answer rationale but no distractor
+  // ones must still produce a usable, renderable question.
+  it('renders a question whose wrong options carry no rationale', () => {
+    renderStep([
+      question({
+        question: 'Privacy Q1',
+        explanation: { correctExplanation: 'Policy states 72 hours.', incorrectOptions: {} },
+      }),
+    ]);
+
+    const card = questionCard('Privacy Q1');
+    expect(within(card).getByText(/Correct: Policy states 72 hours\./)).toBeInTheDocument();
+    // No distractor rows — the option list itself still renders "Option 1"…
+    // so match the rationale row's own "Option <letter>:" prefix.
+    expect(within(card).queryByText(/Option [A-D]:/)).not.toBeInTheDocument();
   });
 
   it('still edits a question in place', async () => {
@@ -275,14 +331,20 @@ describe('Step6QuizReview', () => {
             options: ['A', 'B', 'C', 'D'],
             answer: 1,
             type: 'multiple_choice',
-            explanation: 'B is correct because the policy says so.',
+            explanation: {
+              correctExplanation: 'B is correct because the policy says so.',
+              incorrectOptions: { '0': 'A swaps must for should (D1).' },
+            },
           },
           {
             question: 'Fresh Q2',
             options: ['A', 'B', 'C', 'D'],
             answer: 3,
             type: 'multiple_choice',
-            explanation: 'D is correct because the manual says so.',
+            explanation: {
+              correctExplanation: 'D is correct because the manual says so.',
+              incorrectOptions: { '2': 'C reverses the outcome (D3).' },
+            },
           },
         ],
       });
@@ -302,6 +364,10 @@ describe('Step6QuizReview', () => {
       expect(updated.map((q) => q.explanation?.correctExplanation)).toEqual([
         'B is correct because the policy says so.',
         'D is correct because the manual says so.',
+      ]);
+      expect(updated.map((q) => q.explanation?.incorrectOptions)).toEqual([
+        { '0': 'A swaps must for should (D1).' },
+        { '2': 'C reverses the outcome (D3).' },
       ]);
     });
 

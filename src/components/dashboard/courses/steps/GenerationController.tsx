@@ -310,10 +310,11 @@ const adaptModulesForRenderingV46 = (
 };
 
 import { QuizQuestion } from '@/types/quiz';
+import { adaptQuizOptions, type GeneratedQuizOption } from '@/lib/quiz/options';
 
 interface RawAIQuizQuestion {
   question: string;
-  options: { text: string; isCorrect: boolean; explanation?: string }[];
+  options: GeneratedQuizOption[];
   skill?: string;
   templateId?: string;
   difficulty?: string;
@@ -323,82 +324,32 @@ interface RawAIQuizQuestion {
 }
 
 /**
- * Fisher-Yates shuffle for an array. Returns a NEW shuffled array.
- * Used to randomise quiz option order so the correct answer is not always option A.
- */
-function shuffleArray<T>(arr: T[]): T[] {
-  const result = [...arr];
-  for (let i = result.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [result[i], result[j]] = [result[j], result[i]];
-  }
-  return result;
-}
-
-/**
  * Adapts v4.6 quiz questions into the format expected by Step6QuizReview
  * and createFullCourse: { question, options: string[], answer: number, ... }
- *
- * Options are SHUFFLED so the correct answer is randomly distributed across
- * positions A–D, preventing the LLM bias of always placing the correct answer first.
  */
 const adaptQuizForRenderingV46 = (
   quizJson: { questions: RawAIQuizQuestion[] } | null | undefined,
 ): QuizQuestion[] => {
   if (!quizJson?.questions) return [];
-  return quizJson.questions.map((q) => {
-    // Tag each raw option with its original index so we can track the correct one after shuffle
-    type TaggedOption = {
-      text: string;
-      isCorrect: boolean;
-      explanation?: string;
-      originalIndex: number;
-    };
-    const taggedOptions: TaggedOption[] = (
-      q.options as { text: string; isCorrect: boolean; explanation?: string }[]
-    ).map((o, idx) => ({ ...o, originalIndex: idx }));
-
-    // Shuffle so the correct answer lands at a random position
-    const shuffled = shuffleArray(taggedOptions);
-
-    // The new correct-answer index is wherever isCorrect ended up after the shuffle
-    const newCorrectIdx = shuffled.findIndex((o) => o.isCorrect);
-
-    const correctOption = shuffled.find((o) => o.isCorrect);
-
-    // Build incorrectOptions keyed by NEW (shuffled) index so explanations stay in sync
-    const incorrectOptions: Record<string, string> = {};
-    shuffled.forEach((o, idx) => {
-      if (!o.isCorrect) {
-        incorrectOptions[String(idx)] = o.explanation || '';
-      }
-    });
-
-    return {
-      // Legacy-compatible fields expected by Step6QuizReview
-      question: q.question,
-      options: shuffled.map((o) => o.text),
-      answer: newCorrectIdx >= 0 ? newCorrectIdx : 0,
-      type: 'multiple_choice',
-      // v4.6 rich data
-      archetype: q.skill || q.templateId,
-      difficulty: q.difficulty,
-      explanation: {
-        correctExplanation: correctOption?.explanation || '',
-        incorrectOptions,
-      },
-      evidence: q.evidence
-        ? {
-            moduleSectionId: q.evidence.sectionId || '',
-            moduleSectionHeading: q.sectionId || '',
-            sourceAnchors: [],
-          }
-        : undefined,
-      moduleTitle: q.sectionId,
-      stimulus: q.stimulus,
-      templateId: q.templateId,
-    };
-  });
+  return quizJson.questions.map((q) => ({
+    // Legacy-compatible fields expected by Step6QuizReview
+    question: q.question,
+    ...adaptQuizOptions(q.options),
+    type: 'multiple_choice',
+    // v4.6 rich data
+    archetype: q.skill || q.templateId,
+    difficulty: q.difficulty,
+    evidence: q.evidence
+      ? {
+          moduleSectionId: q.evidence.sectionId || '',
+          moduleSectionHeading: q.sectionId || '',
+          sourceAnchors: [],
+        }
+      : undefined,
+    moduleTitle: q.sectionId,
+    stimulus: q.stimulus,
+    templateId: q.templateId,
+  }));
 };
 
 /**

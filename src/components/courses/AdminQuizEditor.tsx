@@ -114,7 +114,10 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
           options: res.question.options,
           answer: res.question.answer,
           type: res.question.type,
-          explanation: res.question.explanation || '',
+          // This editor stores the flat string `Question.explanation` holds, so
+          // only the correct answer's rationale has anywhere to go here. The
+          // per-distractor rationales the action now also returns are dropped.
+          explanation: res.question.explanation.correctExplanation,
         });
       } else {
         setStatus({
