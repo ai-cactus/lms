@@ -21,22 +21,17 @@ interface GlobalDashboardViewProps {
   data: GlobalDashboardData;
   /** Display name for the greeting; falls back to a generic welcome when absent. */
   userName?: string | null;
-  /** Facilities to compare; fewer than two accessible ids keeps the full view. */
-  comparedFacilityIds?: string[];
 }
 
 /**
  * The all-facilities ("Global View") dashboard: enterprise footprint, training
  * velocity and risk KPIs above two facility-level tables. Purely presentational —
- * every figure arrives pre-aggregated from `getGlobalDashboardData`, and a
- * comparison is a projection of that same payload.
+ * every figure arrives pre-aggregated from `getGlobalDashboardData`, including
+ * the comparison headline, which is counted server-side from the compared
+ * facilities' data rather than summed here.
  */
-export default function GlobalDashboardView({
-  data,
-  userName,
-  comparedFacilityIds = [],
-}: GlobalDashboardViewProps) {
-  const comparison = buildFacilityComparison(data, comparedFacilityIds);
+export default function GlobalDashboardView({ data, userName }: GlobalDashboardViewProps) {
+  const comparison = buildFacilityComparison(data);
   const { enterpriseFootprint, trainingVelocity, riskCompliance } = comparison ?? data;
   const facilitiesOverview = comparison?.facilitiesOverview ?? data.facilitiesOverview;
   const priorityRisks = comparison?.priorityRisks ?? data.priorityRisks;
@@ -69,6 +64,7 @@ export default function GlobalDashboardView({
         metrics={[
           {
             label: 'Total Number of Facilities',
+            description: METRIC_DEFINITIONS.totalFacilities,
             value: String(enterpriseFootprint.totalFacilities.value),
             icon: ShieldCheck,
             iconSurface: 'bg-[#2563eb]',
@@ -77,6 +73,7 @@ export default function GlobalDashboardView({
           },
           {
             label: 'Total Staff Count',
+            description: METRIC_DEFINITIONS.totalStaff,
             value: String(enterpriseFootprint.totalStaff.value),
             icon: UserRound,
             iconSurface: 'bg-[#16a34a]',
@@ -100,6 +97,7 @@ export default function GlobalDashboardView({
           },
           {
             label: 'Ongoing Courses',
+            description: METRIC_DEFINITIONS.ongoingCourses,
             value: String(trainingVelocity.ongoingCourses.value),
             icon: BookOpen,
             iconSurface: 'bg-[#0d9488]',
@@ -108,6 +106,7 @@ export default function GlobalDashboardView({
           },
           {
             label: 'First-Time Pass Rate',
+            description: METRIC_DEFINITIONS.firstTimePassRate,
             value: `${trainingVelocity.firstTimePassRate.value}%`,
             icon: CircleCheckBig,
             iconSurface: 'bg-[#16a34a]',

@@ -41,10 +41,11 @@ model Enrollment {
   id                   String            @id @default(uuid())
   organizationUserId   String            @map("organization_user_id")
   courseId             String            @map("course_id")
-  /// Facility the learner belonged to when the enrollment was created. Denormalised
-  /// so facility-scoped dashboards can aggregate without walking the membership's
-  /// (mutable) facility assignments — a later transfer must not rewrite history.
-  /// Null when the member has no active facility row.
+  /// Facility the learner belonged to when the enrollment was created — write-time
+  /// history only, never rewritten by a later transfer. Null when the member had no
+  /// active facility row. The dashboards and Status Tracker do NOT read it: they
+  /// attribute by the member's CURRENT roster (`OrganizationUserFacility`), so a
+  /// transferred member counts at their new facility (see `@/lib/dashboard/scope`).
   facilityId           String?           @map("facility_id")
   status               EnrollmentStatus  @default(enrolled)
   progress             Int               @default(0)

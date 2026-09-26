@@ -1,6 +1,6 @@
 # Memory Index
 
-- [Dashboard metrics glossary](dashboard-metrics-glossary.md) — canonical metric names/formulas; source PDF gone, code record in lib/facility/metrics.ts
+- [Dashboard metrics glossary](dashboard-metrics-glossary.md) — glossary governs risk/readiness; founder 2026-09-26 defs govern tiles (lib/dashboard/definitions.ts)
 - [Supervisor own-facility edit](supervisor_own_facility_edit.md) — PROF-002 lets supervisors edit their own facility on purpose; don't "fix" it back
 - [Figma STAFF section](reference_figma_staff_section.md) — frame map; profile omits Passed/Locked, Retry row unbuildable; roster needs xl, measure 1280 AND 1440
 - [Local UI verification](project_local_ui_verification.md) — Playwright recipe for the dev app; port 3005 may be a decoy build; newPage() ignores viewport
@@ -79,7 +79,7 @@
 - [targetRoles backfill is provable](gotcha_targetroles_backfill_is_provable.md) — backfilled in the migration that added it; keep the sweep's OR anyway
 - [DatePicker name = its placeholder](gotcha_datepicker_accessible_name_is_placeholder.md) — adding a label breaks reminders.spec.ts locators
 - [Client import of a prisma-bearing lib](gotcha_client_import_of_prisma_bearing_lib.md) — tsc is happy; split the pure half out and re-export
-- [Dashboard: two actions, one population](gotcha_dashboard_two_actions_one_population.md) — ROLE narrows nothing (BUG-01), facility only the enrolment half, member org pin mandatory
+- [Dashboard: one population, one definition](gotcha_dashboard_two_actions_one_population.md) — role narrows nothing, facility = current roster, member org pin mandatory
 - [Partial prisma mocks break on a new query](gotcha_partial_prisma_mocks_break_on_new_query.md) — "undefined (reading 'findMany')" is a missing vi.mock key
 - [Course roster spans tenants](gotcha_course_roster_spans_tenants.md) — org filter lives in the query with an own-row exemption and NO creator exemption
 - [Shared worktree + agent auto-stash](gotcha_shared_worktree_agents_autostash.md) — agents in one checkout auto-stash each other; use a worktree per agent
@@ -115,7 +115,6 @@
 - [Job titles retired 2026-09-23](project_job_title_retired_2026_09_23.md) — role IS the title; column kept; 3 surfaces still say "Job Title"
 - [Worktree `generated` symlink breaks next build](gotcha_worktree_generated_symlink_breaks_build.md) — vitest needs it, Turbopack rejects it; run prisma generate
 - [completedAt = attestation time](gotcha_completedat_is_attestation_time.md) — one writer (attestCourse), `completed` status is dead, and backfilling the column arms a renewal-email wave
-- [Dashboard metrics glossary](dashboard-metrics-glossary.md) — the Dashboard Metrics Glossary is canonical for metric names/formulas (source PDF no longer in repo; code record in lib/facility/metrics.ts); two open product decisions
 - [Supervisor own-facility edit](supervisor_own_facility_edit.md) — PROF-002 deliberately lets supervisors edit their own facility despite the read-only RBAC ruling; don't "fix" it back
 - [Figma STAFF section](reference_figma_staff_section.md) — profile omits real Passed/Locked states; roster's 5 columns don't fit at lg (measure 1280 AND 1440)
 - [Local UI verification](project_local_ui_verification.md) — Playwright recipe for the dev app: docker start + prisma db seed + redis login-lockout reset; port 3005 may be a decoy build; newPage() ignores viewport
@@ -196,7 +195,6 @@
 - [targetRoles backfill is provable](gotcha_targetroles_backfill_is_provable.md) — backfilled in the same migration that added it; but keep the sweep's OR anyway.
 - [DatePicker name = its placeholder](gotcha_datepicker_accessible_name_is_placeholder.md) — adding `label`/aria-label breaks reminders.spec.ts locators, and feature-PR CI skips e2e.
 - [Client import of a prisma-bearing lib](gotcha_client_import_of_prisma_bearing_lib.md) — no server-only marker stops it and tsc is happy; split the pure half out and re-export (facility/scope precedent).
-- [Dashboard: two actions, one population](gotcha_dashboard_two_actions_one_population.md) — lib/dashboard/scope.ts shares the POPULATION not the queries; the member org pin is mandatory or you get cross-tenant inflation.
 - [Partial prisma mocks break on a new query](gotcha_partial_prisma_mocks_break_on_new_query.md) — "undefined (reading 'findMany')" blames the lib, but it's a missing key in the test's hand-written vi.mock.
 - [Course roster spans tenants](gotcha_course_roster_spans_tenants.md) — video-course enrollments are cross-tenant; org filter lives in the query with an own-row exemption, and there is deliberately NO creator exemption.
 - [Shared worktree + agent auto-stash](gotcha_shared_worktree_agents_autostash.md) — agents in one checkout auto-stash each other's work; use a worktree per agent, else commit early and stage by hunk.

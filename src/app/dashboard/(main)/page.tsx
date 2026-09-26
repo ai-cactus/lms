@@ -24,6 +24,7 @@ import { dataFacilityIdsFor } from '@/lib/facility/staff-where';
 import { getGlobalDashboardData } from '@/app/actions/dashboard-facility';
 import GlobalDashboardView from '@/components/dashboard/global/GlobalDashboardView';
 import FacilityScopeSwitcher from '@/components/dashboard/FacilityScopeSwitcher';
+import { METRIC_DEFINITIONS } from '@/lib/facility/metrics';
 
 interface DashboardPageProps {
   searchParams: Promise<{ facility?: string | string[] }>;
@@ -89,16 +90,11 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   // action's result is what stops ~17 aggregates being computed and discarded on
   // every single-facility load.
   if (canSeeGlobalDashboard && scope.mode !== 'single' && accessibleFacilities.length > 1) {
-    const globalData = await getGlobalDashboardData();
-    return (
-      <GlobalDashboardView
-        data={globalData}
-        userName={session.user.name}
-        comparedFacilityIds={
-          scope.mode === 'compare' ? scope.facilities.map((facility) => facility.id) : []
-        }
-      />
-    );
+    const globalData = await getGlobalDashboardData({
+      compareFacilityIds:
+        scope.mode === 'compare' ? scope.facilities.map((facility) => facility.id) : [],
+    });
+    return <GlobalDashboardView data={globalData} userName={session.user.name} />;
   }
 
   const scopedFacility = scope.mode === 'single' ? scope.facility : null;
@@ -119,8 +115,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const [{ courses, stats }, organization] = await Promise.all([
     // The same value every other read on this page uses, so the cards and the
     // Status Tracker below can never disagree about scope. Org-wide roles pass
-    // null, keeping the organisation-wide query shape (which counts enrollments
-    // with no facility stamp) byte-identical.
+    // null, which also counts members with no facility row.
     getDashboardData(dataFacilityIds),
     organizationId
       ? prisma.organization.findUnique({
@@ -136,11 +131,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   // finance (an admin-tier role) never sees worker-training metrics.
   const statusTracker =
     canSeeRosterMetrics && organizationId
-      ? await getStatusTrackerSummaryForOrg(
-          organizationId,
-          new Date(),
-          dataFacilityIds ?? undefined,
-        )
+      ? await getStatusTrackerSummaryForOrg({ organizationId, dataFacilityIds })
       : { overdueCount: 0, hardEscalationCount: 0, rows: [], nearDeadline: { count: 0, rows: [] } };
 
   // Merge overdue + due-soon rows (same order as the full Status Tracker page:
@@ -173,28 +164,27 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     })),
   ];
 
-  const totalCourses = stats?.totalCourses || 0;
-  const totalStaffAssigned = stats?.totalStaffAssigned || 0;
-  const averageGrade = stats?.averageGrade || 0;
-
   const summaryCards = [
     {
-      label: 'Total Courses',
-      value: String(totalCourses),
+      label: 'Total Active Courses',
+      description: METRIC_DEFINITIONS.totalActiveCourses,
+      value: String(stats.totalActiveCourses),
       icon: BookOpen,
       surface: 'border-[#9be3c2] bg-[#e9f9f2]',
       iconSurface: 'bg-[#16a34a]',
     },
     {
-      label: 'Total Staff Assigned',
-      value: String(totalStaffAssigned),
+      label: 'Total Assigned Learners',
+      description: METRIC_DEFINITIONS.totalAssignedLearners,
+      value: String(stats.totalAssignedLearners),
       icon: Users,
       surface: 'border-[#9ba7e3] bg-[#e9ecf9]',
       iconSurface: 'bg-[#162ea3]',
     },
     {
       label: 'Average Grade',
-      value: `${averageGrade}%`,
+      description: METRIC_DEFINITIONS.averageGrade,
+      value: `${stats.averageGrade}%`,
       icon: BadgeCheck,
       surface: 'border-[#e39b9b] bg-[#f9e9e9]',
       iconSurface: 'bg-[#cd1515]',
@@ -227,10 +217,10 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           <p className="text-sm leading-[28px] text-[#525252] md:text-base xl:text-lg">
             {/*
               Team QA #8: an org-wide role was being shown facility framing. The
-              DATA was never facility-scoped — getDashboardData(undefined)
-              resolves to an empty facilityFilter — but the copy said otherwise,
-              which is what the report describes as "showing facility view
-              dashboard, instead of global view".
+              DATA is organisation-wide for them — getDashboardData(null) applies
+              no roster narrowing — but the copy said otherwise, which is what
+              the report describes as "showing facility view dashboard, instead
+              of global view".
             */}
             {scopedFacility
               ? 'Here is an overview of your facility'
@@ -242,7 +232,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       </div>
 
       <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
-        {summaryCards.map(({ label, value, icon: Icon, surface, iconSurface }) => (
+        {summaryCards.map(({ label, description, value, icon: Icon, surface, iconSurface }) => (
           <div
             key={label}
             className={`flex flex-col gap-[18px] overflow-hidden rounded-[22px] border p-4 md:gap-[31px] md:p-6 ${surface}`}
@@ -253,7 +243,10 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
               <Icon className="size-[18px] md:size-[25px]" aria-hidden="true" />
             </div>
             <div className="flex flex-col gap-[7px]">
-              <p className="text-[13px] font-semibold leading-4 tracking-[-0.16px] text-[#6f767e] md:text-base">
+              <p
+                className="text-[13px] font-semibold leading-4 tracking-[-0.16px] text-[#6f767e] md:text-base"
+                title={description}
+              >
                 {label}
               </p>
               <p className="text-[22px] font-bold leading-[1.4] text-[#262626] md:text-[30.5px]">
@@ -270,7 +263,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
       {canSeeRosterMetrics && <StatusTrackerOverview rows={statusTrackerRows} />}
 
-      {canCreateCourses && <DashboardEmptyState totalCourses={totalCourses} />}
+      {canCreateCourses && <DashboardEmptyState totalCourses={stats.catalogCourseCount} />}
     </div>
   );
 }

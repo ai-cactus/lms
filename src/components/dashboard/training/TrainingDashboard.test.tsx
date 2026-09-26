@@ -1,12 +1,14 @@
 /**
  * The course-list redesign swapped TrainingDashboard's hand-rolled thumbnail
  * for the shared `CourseThumbnail`, keyed off `course.type`. This pins that
- * the courses table renders the reading tile vs. the video frame per row.
+ * the courses table renders the reading tile vs. the video frame per row, and
+ * that the tiles and donut carry the founder's metric names.
  */
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import TrainingDashboard, { type DashboardStats } from './TrainingDashboard';
 import type { CourseWithStats } from '@/types/course';
+import { METRIC_DEFINITIONS } from '@/lib/facility/metrics';
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock('next/image', () => ({
@@ -14,11 +16,11 @@ vi.mock('next/image', () => ({
 }));
 
 const STATS: DashboardStats = {
-  totalCourses: 2,
-  totalStaffAssigned: 5,
+  totalActiveCourses: 2,
+  totalAssignedLearners: 5,
   averageGrade: 88,
-  monthlyPerformance: [],
-  trainingCoverage: { completed: 40, inProgress: 30, notStarted: 30 },
+  catalogCourseCount: 4,
+  trainingCoverage: { completed: 40, inProgress: 30, notStarted: 30, totalAssignments: 10 },
 };
 
 const BASE_COURSE: Omit<CourseWithStats, 'id' | 'title' | 'type'> = {
@@ -56,5 +58,37 @@ describe('TrainingDashboard — courses table thumbnail per type', () => {
     const videoRow = screen.getByText('Video Course').closest('tr')!;
     expect(videoRow.querySelector('img')).not.toBeNull();
     expect(videoRow.querySelector('[class*="bg-[#1c213d]"]')).toBeNull();
+  });
+});
+
+describe('TrainingDashboard — metric tiles and coverage', () => {
+  it('labels the tiles with the founder definitions and their help text', () => {
+    render(
+      <TrainingDashboard onCreateCourse={vi.fn()} stats={STATS} courses={[]} canCreateCourses />,
+    );
+
+    expect(screen.getByText('Total Active Courses')).toHaveAttribute(
+      'title',
+      METRIC_DEFINITIONS.totalActiveCourses,
+    );
+    expect(screen.getByText('Total Assigned Learners')).toHaveAttribute(
+      'title',
+      METRIC_DEFINITIONS.totalAssignedLearners,
+    );
+    expect(screen.getByText('Average Grade')).toHaveAttribute(
+      'title',
+      METRIC_DEFINITIONS.averageGrade,
+    );
+    expect(screen.queryByText('Total Courses')).not.toBeInTheDocument();
+    expect(screen.queryByText('Total Staff Assigned')).not.toBeInTheDocument();
+  });
+
+  it('centres the donut on the assignment count it splits', () => {
+    render(
+      <TrainingDashboard onCreateCourse={vi.fn()} stats={STATS} courses={[]} canCreateCourses />,
+    );
+
+    expect(screen.getByText('Total Assignments')).toBeInTheDocument();
+    expect(screen.queryByText('Total Staff')).not.toBeInTheDocument();
   });
 });

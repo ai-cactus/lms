@@ -59,8 +59,8 @@ describe('passingScoreFor', () => {
 });
 
 describe('coveragePercentages', () => {
-  it('returns all zeros without dividing by zero when the base is zero', () => {
-    expect(coveragePercentages({ completed: 0, inProgress: 0, notStarted: 0 }, 0)).toEqual({
+  it('returns all zeros without dividing by zero when every bucket is empty', () => {
+    expect(coveragePercentages({ completed: 0, inProgress: 0, notStarted: 0 })).toEqual({
       completed: 0,
       inProgress: 0,
       notStarted: 0,
@@ -68,7 +68,7 @@ describe('coveragePercentages', () => {
   });
 
   it('sums to exactly 100 on an even split', () => {
-    const result = coveragePercentages({ completed: 5, inProgress: 3, notStarted: 2 }, 10);
+    const result = coveragePercentages({ completed: 5, inProgress: 3, notStarted: 2 });
 
     expect(result).toEqual({ completed: 50, inProgress: 30, notStarted: 20 });
   });
@@ -77,7 +77,7 @@ describe('coveragePercentages', () => {
     // 1/3 each of 10 -> 33.33 / 33.33 / 33.33 raw; three independent
     // Math.rounds would read 33/33/33 (=99) or 33/33/34 depending on rounding
     // mode. Largest-remainder distributes the leftover point deterministically.
-    const result = coveragePercentages({ completed: 10, inProgress: 10, notStarted: 10 }, 30);
+    const result = coveragePercentages({ completed: 10, inProgress: 10, notStarted: 10 });
 
     expect(result.completed + result.inProgress + result.notStarted).toBe(100);
     expect(result).toEqual({ completed: 34, inProgress: 33, notStarted: 33 });
@@ -85,8 +85,25 @@ describe('coveragePercentages', () => {
 
   it('always sums to 100 for an arbitrary uneven split (regression net for the rounding remainder)', () => {
     const counts = { completed: 7, inProgress: 4, notStarted: 3 };
-    const result = coveragePercentages(counts, 14);
+    const result = coveragePercentages(counts);
 
     expect(result.completed + result.inProgress + result.notStarted).toBe(100);
+  });
+
+  // The base used to be a separately counted roster, so buckets drawn from a
+  // different population read over 100% (BUG-33). It is now the buckets' sum.
+  it('never exceeds 100 however lopsided the buckets are', () => {
+    const result = coveragePercentages({ completed: 900, inProgress: 0, notStarted: 1 });
+
+    expect(result.completed + result.inProgress + result.notStarted).toBe(100);
+    expect(Math.max(result.completed, result.inProgress, result.notStarted)).toBeLessThanOrEqual(
+      100,
+    );
+  });
+
+  it('treats a negative bucket as zero instead of rendering a negative share', () => {
+    const result = coveragePercentages({ completed: 3, inProgress: -2, notStarted: 1 });
+
+    expect(result).toEqual({ completed: 75, inProgress: 0, notStarted: 25 });
   });
 });
