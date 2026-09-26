@@ -12,6 +12,7 @@ import { hasActiveBilling } from '@/lib/billing';
 import { logger } from '@/lib/logger';
 import { getCourses } from './course';
 import { buildCourseThumbnailUrl } from '@/lib/video/thumbnail';
+import { VIDEO_CATALOG_TAG } from '@/lib/video/catalog-cache';
 
 // ---------------------------------------------------------------------------
 // Session helper — mirrors the pattern in course.ts
@@ -55,8 +56,8 @@ function resolveOrg(
 //   tenant-specific — enrollment tallies, adoption state — is joined AFTER
 //   this read (see listGlobalVideoCatalogCourses) so the cached payload never
 //   carries a tenant id and one invalidation refreshes every org at once.
-//   Invalidate via revalidateTag('video-catalog') at every global-video
-//   create / edit / status-change / thumbnail site (see video-course.ts and
+//   Invalidate via expireVideoCatalog() at every global-video create / edit /
+//   status-change / thumbnail site (see video-course.ts and
 //   src/lib/video/custom-thumbnail.ts).
 //
 //   `thumbnail` is the one field a server action does NOT always refresh: a
@@ -143,7 +144,7 @@ const getGlobalVideoCatalog = unstable_cache(
     });
   },
   ['global-video-catalog'],
-  { revalidate: 3600, tags: ['video-catalog'] },
+  { revalidate: 3600, tags: [VIDEO_CATALOG_TAG] },
 );
 
 // ---------------------------------------------------------------------------

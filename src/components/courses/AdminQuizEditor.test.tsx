@@ -7,8 +7,13 @@
  * and recreates them from exactly what this component sends, so any field the
  * editor drops is erased from every question in the course — not just the one
  * being edited. Before Q-19 it dropped the per-distractor rationale outright.
+ *
+ * Its manual-entry inputs must also carry an accessible name, the way the
+ * wizard's Step6QuizReview ones do — a screen reader (and every test locator)
+ * otherwise has nothing to announce them by (BUG-03).
  */
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const { mockUpdateQuizQuestions, mockGenerateSingleQuestion, mockRefresh } = vi.hoisted(() => ({
@@ -117,5 +122,61 @@ describe('AdminQuizEditor — per-option rationale', () => {
     const [saved] = await saveQuiz();
     expect(saved.options[0]).toBe('12 hours');
     expect(saved.incorrectOptionExplanations).toEqual({ '3': 'Overshoots the window (D4).' });
+  });
+});
+
+const UNLABELLED_QUESTION = {
+  id: 'q1',
+  text: 'Which option is correct?',
+  options: ['One', 'Two', 'Three', 'Four'],
+  correctAnswer: 'Two',
+  type: 'multiple_choice',
+  order: 0,
+  explanation: 'Because two.',
+};
+
+function renderUnlabelledEditor() {
+  render(<AdminQuizEditor courseId="course-1" initialQuestions={[UNLABELLED_QUESTION]} />);
+  return userEvent.setup();
+}
+
+describe('AdminQuizEditor — accessible names', () => {
+  it('names every input of the add-question form', async () => {
+    const user = renderUnlabelledEditor();
+    await user.click(screen.getByRole('button', { name: '+ Add New Question' }));
+
+    expect(screen.getByLabelText('Question Text')).toBeInTheDocument();
+    expect(screen.getByLabelText('Detailed Explanation / Reference')).toBeInTheDocument();
+
+    for (const position of [1, 2, 3, 4]) {
+      expect(screen.getByRole('radio', { name: `Mark option ${position} correct` })).toBeVisible();
+      expect(screen.getByRole('textbox', { name: `Option ${position}` })).toBeVisible();
+    }
+  });
+
+  it('names every input of the edit-question form', async () => {
+    const user = renderUnlabelledEditor();
+    await user.click(screen.getByRole('button', { name: 'Edit' }));
+
+    expect(screen.getByLabelText('Question Text')).toHaveValue('Which option is correct?');
+    expect(screen.getByLabelText('Detailed Explanation / Reference')).toHaveValue('Because two.');
+
+    for (const [index, option] of UNLABELLED_QUESTION.options.entries()) {
+      expect(screen.getByRole('radio', { name: `Mark option ${index + 1} correct` })).toBeVisible();
+      expect(screen.getByRole('textbox', { name: `Option ${index + 1}` })).toHaveValue(option);
+    }
+  });
+
+  it('keeps the labelled controls wired to the state they edit', async () => {
+    const user = renderUnlabelledEditor();
+    await user.click(screen.getByRole('button', { name: '+ Add New Question' }));
+
+    await user.type(screen.getByLabelText('Question Text'), 'A new question');
+    await user.type(screen.getByRole('textbox', { name: 'Option 1' }), 'First');
+    await user.click(screen.getByRole('radio', { name: 'Mark option 3 correct' }));
+
+    expect(screen.getByLabelText('Question Text')).toHaveValue('A new question');
+    expect(screen.getByRole('textbox', { name: 'Option 1' })).toHaveValue('First');
+    expect(screen.getByRole('radio', { name: 'Mark option 3 correct' })).toBeChecked();
   });
 });

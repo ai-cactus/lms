@@ -17,8 +17,9 @@ import {
   refreshCourseThumbnailSurfaces,
   writeCourseThumbnail,
 } from '@/lib/video/custom-thumbnail';
+import { expireVideoCatalog } from '@/lib/video/catalog-cache';
 import type { ParsedQuiz } from '@/lib/video/types';
-import { revalidatePath, revalidateTag } from 'next/cache';
+import { revalidatePath } from 'next/cache';
 import { logger } from '@/lib/logger';
 
 export interface CreateVideoCourseInput {
@@ -195,7 +196,7 @@ export async function createVideoCourse(
   logger.info({ msg: '[video-course] created', courseId, transcodeJobs: videoTargets.length });
   revalidatePath('/system/video-courses');
   // A new published global course changes the org-facing catalog for every org.
-  revalidateTag('video-catalog', 'max');
+  expireVideoCatalog();
   return { courseId };
 }
 
@@ -398,7 +399,7 @@ export async function updateVideoCourse(
   revalidatePath(`/system/video-courses/${courseId}/edit`);
   // Title/description/category/duration/question-count edits are reflected in the
   // org-facing catalog.
-  revalidateTag('video-catalog', 'max');
+  expireVideoCatalog();
 }
 
 export async function listGlobalVideoCourses() {
@@ -434,7 +435,7 @@ export async function setVideoCourseStatus(courseId: string, status: 'inactive' 
   await prisma.course.update({ where: { id: courseId }, data: { status } });
   revalidatePath('/system/video-courses');
   // Publishing / deactivating adds or removes the course from the org catalog.
-  revalidateTag('video-catalog', 'max');
+  expireVideoCatalog();
 }
 
 export interface VerifyMediaResult {

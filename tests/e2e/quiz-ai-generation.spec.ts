@@ -296,16 +296,13 @@ test.describe('AdminQuizEditor — post-publication quiz editing (PR #647 / #657
       const questionText = `Manually added question ${crypto.randomBytes(3).toString('hex')}`;
       const explanationText = `Because option 2 is correct — ${crypto.randomBytes(3).toString('hex')}.`;
 
-      await page.getByPlaceholder('Enter your question here...').fill(questionText);
-      const optionInputs = page.getByPlaceholder(/^Option \d$/);
-      await optionInputs.nth(0).fill('One');
-      await optionInputs.nth(1).fill('Two');
-      await optionInputs.nth(2).fill('Three');
-      await optionInputs.nth(3).fill('Four');
-      await page.locator('input[type="radio"][name="correctAnswer"]').nth(1).check();
-      await page
-        .getByPlaceholder('Provide a detailed explanation or cite the Standard Manual here...')
-        .fill(explanationText);
+      await page.getByLabel('Question Text').fill(questionText);
+      await page.getByRole('textbox', { name: 'Option 1' }).fill('One');
+      await page.getByRole('textbox', { name: 'Option 2' }).fill('Two');
+      await page.getByRole('textbox', { name: 'Option 3' }).fill('Three');
+      await page.getByRole('textbox', { name: 'Option 4' }).fill('Four');
+      await page.getByRole('radio', { name: 'Mark option 2 correct' }).check();
+      await page.getByLabel('Detailed Explanation / Reference').fill(explanationText);
 
       await page.getByRole('button', { name: 'Save Question' }).click();
       await expect(page.getByText(questionText)).toBeVisible();
@@ -326,9 +323,9 @@ test.describe('AdminQuizEditor — post-publication quiz editing (PR #647 / #657
       // added question is appended after the seeded one, so it's the last
       // "Edit" button in the list.
       await page.getByRole('button', { name: 'Edit' }).last().click();
-      await expect(
-        page.getByPlaceholder('Provide a detailed explanation or cite the Standard Manual here...'),
-      ).toHaveValue(explanationText);
+      await expect(page.getByLabel('Detailed Explanation / Reference')).toHaveValue(
+        explanationText,
+      );
     } finally {
       await cleanupAdminEditorFixture(fixture);
     }
