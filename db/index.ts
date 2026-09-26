@@ -131,15 +131,14 @@ export type DbTransactionClient = Parameters<Parameters<DbClient['$transaction']
  *   4. `system-admin.ts` — the user-deletion impact preview must count what the
  *      hard delete will actually destroy, and the delete itself must resolve the
  *      same rows it is about to remove.
- *   5. `get-learn-payload.ts` — archiving retires a course for new assignment;
- *      it does not erase what a learner already did, so an enrolled worker must
- *      still be able to open it.
- *   6. `actions/course.ts::getCourseById` — the learner's ENTRY POINT to the
- *      same course, and the only reason (5) is reachable in the product. It
- *      reads unfiltered and then refuses an archived course to everyone who is
- *      not enrolled in it, because the answer depends on why access was granted
- *      and the access gate runs after the lookup. Nothing else in that file is
- *      widened; the course LISTS stay on the filtered client.
+ *   5. `get-learn-payload.ts` and 6. `actions/course.ts::getCourseById` — the
+ *      learn player and the entry point that fronts it. Both read unfiltered so
+ *      that an archived course can be REFUSED with the right answer: founder
+ *      Q-04/Q-05 (2026-09-23) made archiving a cancellation for learners, so
+ *      each states its own refusal immediately after the lookup, and the player
+ *      can say the course was cancelled rather than report it missing. Nothing
+ *      else in `course.ts` is widened; the course LISTS stay on the filtered
+ *      client.
  *
  * Anywhere else, use `prisma`.
  */

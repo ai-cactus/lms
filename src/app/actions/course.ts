@@ -27,6 +27,11 @@ import {
   type FacilityScopeSession,
 } from '@/lib/facility/staff-where';
 import { CourseAccessError } from '@/lib/course/access-error';
+import {
+  ARCHIVED_COURSE_ADMIN_MESSAGE,
+  ARCHIVED_COURSE_LEARNER_MESSAGE,
+} from '@/lib/course/archived';
+import { notifyLearnersCourseCancelled } from '@/lib/course/notify-archived';
 import { resolveDashboardScope } from '@/lib/dashboard/scope';
 import {
   coveragePercentages,
@@ -381,12 +386,11 @@ export async function getCourseById(courseId: string): Promise<CourseWithRelatio
     : { organizationUser: { userId: session.user.id } };
 
   // ⛔ `rawPrisma`, deliberately — paired with the archive rule below, which is
-  // the only thing that may act on `archivedAt` here. Reading through the
-  // filtered client would decide the question before the access gate has run,
-  // and the answer depends on WHY the caller is being let in: an already
-  // enrolled learner keeps their course (Q24 — archiving retires a course for
-  // new assignment, it does not erase what someone already did), every other
-  // viewer must see it disappear. `archivedAt` is selected alongside the shared
+  // the only thing that may act on `archivedAt` here. The filtered client would
+  // reach the same refusal by returning no row, but it would do so silently:
+  // keeping the read raw leaves the Q-04/Q-05 cancellation rule written out at
+  // the one surface that has to enforce it, where a future caller can see it
+  // rather than rediscover it. `archivedAt` is selected alongside the shared
   // detail projection rather than added to it, so it stays an input to this
   // decision and never becomes part of the UI's course contract.
   const course = await rawPrisma.course.findUnique({
@@ -419,17 +423,18 @@ export async function getCourseById(courseId: string): Promise<CourseWithRelatio
     throw new CourseAccessError('forbidden');
   }
 
-  // Q24, keyed on the reason access was granted rather than on the caller's
-  // identity or the call site. An archived course stays reachable through an
-  // ENROLLMENT and nothing else: the learner who was part-way through it keeps
-  // their entry point (`/worker/courses/[id]` → here → `/learn/[id]`, whose own
-  // payload already reads unfiltered for this reason), while authorship and a
-  // manager's org-wide review right both stop conferring access the moment the
-  // course is retired. Every catalogue and admin LIST is unaffected — those read
-  // through the filtered client and never see the row at all — so this is the
-  // one surface where the distinction has to be drawn, and drawing it here means
-  // no future caller of this action can get it wrong by passing a flag.
-  if (course.archivedAt && !isEnrolled) {
+  // Q-04/Q-05 (2026-09-23) narrowed Q24: archiving CANCELS the course for
+  // learners, so an enrollment no longer buys an entry point into it. An earlier
+  // ruling let the part-way-through learner keep opening the course; the founder
+  // has since decided that every learner action stops at the archive, and that
+  // the learner is told so by the cancellation notice `deleteCourse` emits.
+  //
+  // Refused for everyone, whatever granted access — enrollment, authorship or a
+  // manager's org-wide review right. Every catalogue and admin LIST is
+  // unaffected: those read through the filtered client and never see the row at
+  // all. Certificates are untouched; they are read from the Certificate table,
+  // not from this action.
+  if (course.archivedAt) {
     throw new CourseAccessError('notFound');
   }
 
@@ -840,6 +845,10 @@ export async function publishCourse(courseId: string, opts?: { acknowledgeWarnin
  * from every list. The user-facing verb stays "Delete", and so does the audit
  * action name, because nothing about the operator's intent has changed.
  *
+ * Q-05: live enrolments never block the archive, but the learners still
+ * mid-course are told it is cancelled ({@link notifyLearnersCourseCancelled}) —
+ * every action they had left is refused from this point on (Q-04).
+ *
  * Refusals are RETURNED, never thrown.
  *
  * Next.js redacts a thrown Server Action message in production: the client
@@ -875,6 +884,7 @@ export async function deleteCourse(
     where: { id: courseId },
     select: {
       id: true,
+      title: true,
       isGlobal: true,
       organizationId: true,
     },
@@ -912,6 +922,10 @@ export async function deleteCourse(
   // certificates and its stored video all survive — `archivedAt` is what hides
   // it from every list, so the user-facing effect is unchanged while the record
   // stays available for compliance.
+  //
+  // Q-05: live enrolments never block the archive. What they do earn is the
+  // cancellation notice emitted below, because from here on every learner
+  // action on this course is refused (see `src/lib/course/archived.ts`).
   await prisma.course.update({
     where: { id: courseId },
     data: {
@@ -921,6 +935,11 @@ export async function deleteCourse(
   });
 
   logger.info({ msg: '[course] Course archived', courseId, userId: session.user.id });
+
+  // After the archive, never inside a transaction with it: the notice is
+  // best-effort and must not be able to roll back a completed archive.
+  await notifyLearnersCourseCancelled({ id: existing.id, title: existing.title });
+
   revalidatePath('/dashboard/training');
   revalidatePath('/dashboard/courses');
   return { success: true };
@@ -1722,7 +1741,11 @@ export async function createFullCourse(data: {
   };
 }
 
-export async function attestCourse(enrollmentId: string, signature: string, role: string) {
+export async function attestCourse(
+  enrollmentId: string,
+  signature: string,
+  role: string,
+): Promise<{ success: boolean; refusedReason?: string }> {
   // Resolve BOTH sessions to handle cookie collision (admin + worker in same browser)
   const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
   const adminId = admin?.user?.id;
@@ -1754,6 +1777,19 @@ export async function attestCourse(enrollmentId: string, signature: string, role
 
   if (!signature.trim()) {
     throw new Error(`Signature is required.`);
+  }
+
+  // Q-04: attestation is a learner action, so it stops at the archive too — a
+  // cancelled course must not go on producing fresh compliance attestations.
+  // Refused by return, not thrown, and fail-closed: nothing below has run.
+  // Attestations already recorded are untouched, as are their certificates.
+  if (enrollment.course.archivedAt) {
+    logger.warn({
+      msg: '[course] Attestation refused — course is archived',
+      enrollmentId,
+      courseId: enrollment.courseId,
+    });
+    return { success: false, refusedReason: ARCHIVED_COURSE_LEARNER_MESSAGE };
   }
 
   await prisma.enrollment.update({
@@ -1804,7 +1840,9 @@ export async function attestCourse(enrollmentId: string, signature: string, role
   return { success: true };
 }
 
-export async function startCourse(courseId: string) {
+export async function startCourse(
+  courseId: string,
+): Promise<{ success: boolean; refusedReason?: string }> {
   // Resolve BOTH sessions to handle cookie collision
   const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
   const adminId = admin?.user?.id;
@@ -1819,21 +1857,37 @@ export async function startCourse(courseId: string) {
   // Which identity the enrollment was matched on — analytics must attribute the
   // start to the LEARNER, and an admin in learn mode holds both cookies.
   let learnerId: string | undefined;
+  // `course` is a nested include, which the archive query extension does not
+  // filter — the archived row has to be readable here in order to be refused.
   if (workerId) {
     enrollment = await prisma.enrollment.findFirst({
       where: { courseId, organizationUser: { userId: workerId } },
+      include: { course: { select: { archivedAt: true } } },
     });
     if (enrollment) learnerId = workerId;
   }
   if (!enrollment && adminId) {
     enrollment = await prisma.enrollment.findFirst({
       where: { courseId, organizationUser: { userId: adminId } },
+      include: { course: { select: { archivedAt: true } } },
     });
     if (enrollment) learnerId = adminId;
   }
 
   if (!enrollment) {
     throw new Error('Enrollment not found');
+  }
+
+  // Q-04: opening a cancelled course is the first learner action to stop.
+  // Refused by return, not thrown — production redacts thrown Server Action
+  // messages. Fail-closed: the status bump below has not run.
+  if (enrollment.course.archivedAt) {
+    logger.warn({
+      msg: '[course] Course start refused — course is archived',
+      courseId,
+      enrollmentId: enrollment.id,
+    });
+    return { success: false, refusedReason: ARCHIVED_COURSE_LEARNER_MESSAGE };
   }
 
   if (enrollment.status === 'enrolled' || enrollment.status === 'assigned') {
@@ -2218,6 +2272,19 @@ export async function retakeQuiz(
     throw new Error('Enrollment not found or unauthorized');
   }
 
+  // Q-04: an archived course cannot be retaken. Checked before the attempt
+  // limit because it is a fact about the COURSE, and before the enrollment
+  // reset below, which would otherwise wipe a score and an attestation on
+  // training that can never be re-earned. Fail-closed.
+  if (enrollment.course.archivedAt) {
+    logger.warn({
+      msg: '[course] Quiz retake refused — course is archived',
+      enrollmentId,
+      courseId: enrollment.courseId,
+    });
+    return { success: false, refusedReason: ARCHIVED_COURSE_LEARNER_MESSAGE };
+  }
+
   // Quiz lives on the last lesson (text courses) or on the course itself
   // (video courses). Prefer the lesson quiz, fall back to the course quiz.
   const lastLesson = enrollment.course.lessons[enrollment.course.lessons.length - 1];
@@ -2315,6 +2382,22 @@ export async function assignRetake(
 
   if (!lockedEnrollment) {
     throw new Error('Enrollment not found');
+  }
+
+  // Q-04: an archived course cannot be retaken. This is the one path that would
+  // otherwise mint a BRAND-NEW enrollment on retired training — the assignment
+  // paths (`enrollUsers`, role targets, invites, renewals) all refuse it
+  // already, and they reach the Course row through a top-level read the archive
+  // filter covers. Here the course arrives through a nested include, which the
+  // filter cannot reach, so the rule has to be stated.
+  if (lockedEnrollment.course.archivedAt) {
+    logger.warn({
+      msg: '[course] assignRetake refused — course is archived',
+      enrollmentId,
+      courseId: lockedEnrollment.courseId,
+      userId: session.user.id,
+    });
+    return { success: false, refusedReason: ARCHIVED_COURSE_ADMIN_MESSAGE };
   }
 
   // Refused by return, not thrown: the reason is guidance the admin acts on, and
