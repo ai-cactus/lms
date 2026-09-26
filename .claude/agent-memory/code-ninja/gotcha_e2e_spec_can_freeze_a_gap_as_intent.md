@@ -1,6 +1,6 @@
 ---
 name: gotcha-e2e-spec-can-freeze-a-gap-as-intent
-description: tests/e2e/rbac-role-change.spec.ts asserted "no in-place role UI exists" — that was a deleted-dead-code GAP, not a ruling; grep e2e for ABSENCE assertions before building any missing affordance
+description: tests/e2e/rbac-role-change.spec.ts asserted "no in-place role UI exists" — that was a deleted-dead-code GAP, not a ruling; grep e2e for ABSENCE assertions before building any missing affordance (and UNIT tests freeze defects the same way — BUG-01)
 metadata:
   type: project
 ---
@@ -33,5 +33,16 @@ spec was guarding the defect.
   `rbac-role-change.spec.ts` was the only one that broke and its name does not
   mention the profile page. CI skips e2e on feature PRs, so nothing else catches it.
 
+**Unit tests do it too, and they are harder to spot** because they read as
+specifications rather than observations. BUG-01 (Finance's dashboard tiles
+disagreeing with Owner's) was asserted as intent in TWO committed tests —
+`org-scope.test.ts` "keeps an admin-tier role WITHOUT course.read (finance)
+scoped to its own authored courses" and `course.test.ts` "a non-manager
+(finance — no course.read) stays creator-scoped". Both were written when the
+*course list* was being scoped and were then inherited, unexamined, by the
+aggregate population. When a fix goes red on a test whose name states the bug,
+rewrite it with a dated `SUPERSEDED <date>` block — do not soften the fix.
+
 Related: [[gotcha_rbac_actor_lists_vs_permissions]],
-[[gotcha_q26_deny_shape_traps]] (vacuous absence assertions).
+[[gotcha_q26_deny_shape_traps]] (vacuous absence assertions),
+[[gotcha_dashboard_two_actions_one_population]].

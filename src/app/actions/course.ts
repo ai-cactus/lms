@@ -1780,6 +1780,13 @@ export async function attestCourse(
     throw new Error(`Signature is required.`);
   }
 
+  // Attestation IS this product's completion act (see the schema note on
+  // Enrollment.completedAt), so the audit column and the attestation column
+  // share ONE Date: the auditor exports read `completedAt` while the compliance
+  // banner reads `attestedAt`, and two separate `new Date()` calls would let
+  // them disagree by milliseconds for no reason. Attesting is also the
+  // learner's last engagement, so `lastActivityAt` takes the same instant.
+  const completedAt = new Date();
   // Q-04: attestation is a learner action, so it stops at the archive too — a
   // cancelled course must not go on producing fresh compliance attestations.
   // Refused by return, not thrown, and fail-closed: nothing below has run.
@@ -1793,13 +1800,13 @@ export async function attestCourse(
     return { success: false, refusedReason: ARCHIVED_COURSE_LEARNER_MESSAGE };
   }
 
-  const attestedAt = new Date();
   await prisma.enrollment.update({
     where: { id: enrollmentId },
     data: {
       status: 'attested',
-      attestedAt,
-      lastActivityAt: attestedAt,
+      completedAt,
+      attestedAt: completedAt,
+      lastActivityAt: completedAt,
       attestationSignature: signature,
       attestationRole: role, // Now acts as job description
     },
