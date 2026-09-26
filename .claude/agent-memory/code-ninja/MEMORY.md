@@ -234,3 +234,4 @@
 - [Worktree `generated` symlink breaks next build](gotcha_worktree_generated_symlink_breaks_build.md) — vitest needs it, Turbopack rejects it; run prisma generate + the Bash forms this harness refuses
 - [origin/dev moves under a worktree](gotcha_worktree_bash_guard_and_shared_refs.md) — refs are shared; never revert a file from origin/dev; run multi-step shell as a scratchpad script
 - [User delete = asset custody transfer](gotcha_user_delete_asset_custody.md) — courses/documents are REASSIGNED, never deleted; the Course-Restrict vs Document-Cascade asymmetry, and what still vanishes
+- [Scratchpad shared across agents](gotcha_scratchpad_shared_across_agents.md) — parallel worktree agents share one scratchpad; use a unique log subdir
