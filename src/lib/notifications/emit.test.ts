@@ -165,6 +165,69 @@ describe('emitNotificationEvent — instant tier', () => {
     expect(result.status).toBe('dispatched');
     expect(result.recipientCount).toBe(1);
   });
+
+  /**
+   * BUG-04 — the email half of the #661 vector. The in-app click already runs
+   * the stored link through `toSafeAppPath`; the email button did not, so a row
+   * carrying an off-origin link would have shipped it inside a trusted email.
+   */
+  describe('email call-to-action same-origin guard', () => {
+    beforeEach(() => {
+      mockResolveRoleRecipients.mockResolvedValue(recipients(['owner-1']));
+    });
+
+    const actionLinkOf = () => mockSendInstantEmail.mock.calls[0][2].actionLink;
+
+    it('keeps a relative in-app path unchanged', async () => {
+      await emitNotificationEvent({
+        ...baseInput,
+        type: 'ROLE_FALLBACK_TRIGGERED',
+        linkUrl: '/dashboard/staff?facility=f-1#roster',
+      });
+
+      expect(actionLinkOf()).toBe('/dashboard/staff?facility=f-1#roster');
+    });
+
+    it('still defaults to the dashboard when the event carries no link at all', async () => {
+      await emitNotificationEvent({ ...baseInput, type: 'ROLE_FALLBACK_TRIGGERED' });
+
+      expect(actionLinkOf()).toBe('/dashboard');
+    });
+
+    it.each([
+      ['an absolute URL', 'https://evil.example/steal'],
+      ['a protocol-relative URL', '//evil.example/steal'],
+      ['a javascript: scheme', 'javascript:alert(1)'],
+      ['a backslash-escaped path', '/\\evil.example'],
+      ['a relative path with no leading slash', 'dashboard/staff'],
+    ])('drops the button for %s, and still sends the email', async (_label, linkUrl) => {
+      const result = await emitNotificationEvent({
+        ...baseInput,
+        type: 'ROLE_FALLBACK_TRIGGERED',
+        linkUrl,
+      });
+
+      expect(mockSendInstantEmail).toHaveBeenCalledTimes(1);
+      expect(actionLinkOf()).toBeUndefined();
+      expect(result.status).toBe('dispatched');
+    });
+
+    it('records the unsafe link on the outbox row unchanged — the guard is applied when the link is FOLLOWED, never by rewriting stored data', async () => {
+      await emitNotificationEvent({
+        ...baseInput,
+        type: 'ROLE_FALLBACK_TRIGGERED',
+        linkUrl: 'https://evil.example/steal',
+      });
+
+      expect(prismaMock.notificationEvent.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            payload: expect.objectContaining({ linkUrl: 'https://evil.example/steal' }),
+          }),
+        }),
+      );
+    });
+  });
 });
 
 /**

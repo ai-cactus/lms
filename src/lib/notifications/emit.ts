@@ -1,6 +1,7 @@
 import prisma from '@/lib/prisma';
 import { logger } from '@/lib/logger';
 import { createNotification } from '@/lib/notifications/create';
+import { toSafeAppPath } from '@/lib/notifications/safe-link';
 import { sendInstantNotificationEmail } from '@/lib/email';
 import { getRoleDisplayName } from '@/lib/rbac/role-utils';
 import type { Role } from '@/types/next-auth';
@@ -202,13 +203,29 @@ export async function emitNotificationEvent(
       );
 
       if (emailEnabled) {
+        // The CTA is built from the same stored link the in-app click follows,
+        // so it takes the same same-origin guard (#661) — a notification link is
+        // data, and an email button is the one place it would leave the app
+        // unchallenged. A link that fails the guard costs the BUTTON, never the
+        // email: the body already carries the whole message.
+        const actionLink = input.linkUrl ? toSafeAppPath(input.linkUrl) : '/dashboard';
+        if (input.linkUrl && actionLink === null) {
+          // The link itself is deliberately left out — it may carry tokens.
+          logger.warn({
+            msg: '[notifications] Suppressed unsafe email action link',
+            orgId: input.organizationId,
+            type: input.type,
+            eventId: event.id,
+          });
+        }
+
         for (const recipient of recipients.emails) {
           await sendInstantNotificationEmail(recipient.email, recipient.name, {
             subject: input.title,
             title: meta.label,
             bodyLines: [input.message],
             actionLabel: 'View in Theraptly',
-            actionLink: input.linkUrl ?? '/dashboard',
+            actionLink: actionLink ?? undefined,
           });
         }
       }

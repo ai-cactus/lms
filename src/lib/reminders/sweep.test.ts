@@ -169,6 +169,7 @@ function makeTrackAEnrollment(
     course: { title: `Course ${id}` },
     organizationUser: {
       id: `ou-${id}`,
+      role: 'nurse',
       user: { email: `worker-${id}@test.com`, fullName: `Worker ${id}` },
       // A facility row present but with a null timezone → falls back to DEFAULT_TZ
       // (America/New_York). See the dedicated "no facility at all" test for the
@@ -194,6 +195,7 @@ function makeTrackBEnrollment(
     course: { title: `Course ${id}`, quiz },
     organizationUser: {
       id: `ou-${id}`,
+      role: 'nurse',
       user: { email: `worker-${id}@test.com`, fullName: `Worker ${id}` },
     },
   };
@@ -1073,7 +1075,7 @@ function makeRenewalCandidate(overrides: Record<string, unknown> = {}) {
     courseId: 'course-renewal-1',
     completedAt: new Date('2023-01-01T12:00:00Z'), // well past a 365-day annual cycle by NOW
     assignmentId: 'assignment-renewal-1',
-    organizationUser: { user: { email: 'worker@test.com', fullName: 'Worker One' } },
+    organizationUser: { role: 'nurse', user: { email: 'worker@test.com', fullName: 'Worker One' } },
     ...overrides,
   };
 }
