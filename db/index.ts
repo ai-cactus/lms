@@ -128,9 +128,12 @@ export type DbTransactionClient = Parameters<Parameters<DbClient['$transaction']
  *      record they download undermines the artifact. These widen the Course row
  *      ONLY: the `auditPack.*` gates and the facility narrowing on every
  *      enrollment/staff query around them are untouched.
- *   4. `system-admin.ts` — the user-deletion impact preview must count what the
- *      hard delete will actually destroy, and the delete itself must resolve the
- *      same rows it is about to remove.
+ *   4. `system-admin.ts` — deleting a user REASSIGNS the courses and documents
+ *      they authored to a surviving member rather than destroying them, and
+ *      archived rows must move too. Filtered, an archived course would keep
+ *      pointing at the membership being deleted and `Course.creator`'s Restrict
+ *      would block the delete; the impact preview would under-report the same
+ *      rows on the screen that authorises it.
  *   5. `get-learn-payload.ts` — archiving retires a course for new assignment;
  *      it does not erase what a learner already did, so an enrolled worker must
  *      still be able to open it.

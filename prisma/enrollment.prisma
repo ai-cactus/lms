@@ -51,6 +51,21 @@ model Enrollment {
   videoPositionSeconds Int?              @map("video_position_seconds")
   score                Int?
   startedAt            DateTime          @default(now()) @map("started_at")
+  /// The instant this enrollment reached a terminal COMPLETED state — which in
+  /// this product is the moment the learner SIGNED THE ATTESTATION, not the
+  /// moment they passed the assessment. The two can be days apart, and they are
+  /// deliberately not conflated: passing the quiz leaves the enrollment
+  /// `in_progress` (see the quiz submit route), and only `completed | attested`
+  /// rows are counted as completed by the auditor exports, the facility
+  /// dashboards and the renewal sweep — so a date stamped at quiz-pass would
+  /// put a completion date on rows those same readers report as unfinished.
+  /// The assessment-pass moment is separately recorded on the passing
+  /// `QuizAttempt.completedAt`.
+  /// Written by `attestCourse` in lockstep with `attestedAt` (one Date, both
+  /// columns) and cleared in lockstep by `retakeQuiz`. Rows carrying the legacy
+  /// `completed` status predate attestation and have no `attestedAt`; their
+  /// value was reconstructed by the `backfill_enrollment_completed_at`
+  /// migration, which documents the sources it derived from.
   completedAt          DateTime?         @map("completed_at")
   attestedAt           DateTime?         @map("attested_at")
   attestationSignature String?           @map("attestation_signature")

@@ -38,7 +38,12 @@ interface QuizResultsProps {
     questions: {
       id: string;
       text: string;
-      options: { id: string; text: string }[];
+      /**
+       * `explanation` is why THIS option is wrong. Absent for the correct
+       * answer, for questions authored before per-option rationale existed, and
+       * for any option nobody wrote one for.
+       */
+      options: { id: string; text: string; explanation?: string }[];
       selectedAnswer: string;
       correctAnswer: string;
       explanation: string;
@@ -205,32 +210,39 @@ export default function QuizResults({
                     opt.id === q.selectedAnswer && q.selectedAnswer === q.correctAnswer;
 
                   let optionClass =
-                    'flex items-center gap-3 rounded-lg border border-border px-4 py-3 text-sm text-text-secondary';
+                    'rounded-lg border border-border px-4 py-3 text-sm text-text-secondary';
                   let icon = null;
 
                   if (isSelectedCorrect) {
                     // Worker selected the correct answer — highlight green
                     optionClass =
-                      'flex items-center gap-3 rounded-lg border border-success/30 bg-success/10 px-4 py-3 text-sm text-success';
+                      'rounded-lg border border-success/30 bg-success/10 px-4 py-3 text-sm text-success';
                     icon = <Check className="ml-auto size-5" />;
                   } else if (isSelectedWrong) {
                     // Worker selected the wrong answer — highlight red
                     optionClass =
-                      'flex items-center gap-3 rounded-lg border border-error/30 bg-error/10 px-4 py-3 text-sm text-error';
+                      'rounded-lg border border-error/30 bg-error/10 px-4 py-3 text-sm text-error';
                     icon = <X className="ml-auto size-5" />;
                   } else if (isCorrectAnswer) {
                     // This is the correct answer and the worker did NOT select it —
                     // highlight it green so they know the right answer during review.
                     optionClass =
-                      'flex items-center gap-3 rounded-lg border border-success/30 bg-success/10 px-4 py-3 text-sm text-success';
+                      'rounded-lg border border-success/30 bg-success/10 px-4 py-3 text-sm text-success';
                     icon = <Check className="ml-auto size-5" />;
                   }
 
                   return (
                     <div key={i} className={optionClass}>
-                      <span className="mr-2 font-semibold">{opt.id}.</span>
-                      {opt.text}
-                      {icon}
+                      <div className="flex items-center gap-3">
+                        <span className="mr-2 font-semibold">{opt.id}.</span>
+                        {opt.text}
+                        {icon}
+                      </div>
+                      {opt.explanation && (
+                        <p className="mt-2 pl-7 text-[13px] leading-relaxed opacity-80">
+                          {opt.explanation}
+                        </p>
+                      )}
                     </div>
                   );
                 })}

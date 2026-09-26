@@ -133,7 +133,7 @@ describe('resolveDashboardScope — no organisation (mid-onboarding)', () => {
 });
 
 describe('resolveDashboardScope — courseWhere', () => {
-  it('unions the authored set with adopted course ids when the org has adopted any', async () => {
+  it('unions the organisation own courses with adopted course ids when the org has adopted any', async () => {
     prismaMock.orgCourseOffering.findMany.mockResolvedValue([{ courseId: 'adopted-1' }]);
 
     const scope = await resolveDashboardScope(session({ role: 'owner' }));
@@ -143,10 +143,51 @@ describe('resolveDashboardScope — courseWhere', () => {
     });
   });
 
-  it('is the plain authored predicate when nothing is adopted', async () => {
+  it('is the plain organisation predicate when nothing is adopted', async () => {
     const scope = await resolveDashboardScope(session({ role: 'owner' }));
 
     expect(scope.courseWhere).toEqual({ organizationId: ORG_ID });
+  });
+
+  // BUG-01. Finance is the one manager role without `course.read`, so it used to
+  // fall to `createdByOrgUserId` — and, authoring no courses, read an
+  // organisation with four courses as an organisation with two. "Total Courses"
+  // is a fact about the organisation; what a role may SEE of the catalogue is
+  // the caller's decision, not a smaller number on the same tile.
+  it.each(['owner', 'admin', 'hr', 'clinical_director', 'supervisor', 'finance'] as const)(
+    'is the same organisation-wide predicate for %s — role narrows nothing',
+    async (role) => {
+      const scope = await resolveDashboardScope(session({ role }));
+
+      expect(scope.courseWhere).toEqual({ organizationId: ORG_ID });
+      expect(scope.liveCourseWhere).toEqual({ organizationId: ORG_ID, archivedAt: null });
+      expect(JSON.stringify(scope.courseWhere)).not.toContain('createdByOrgUserId');
+    },
+  );
+
+  it('unions the adopted ids for a role without course.read too, rather than narrowing to what it authored', async () => {
+    prismaMock.orgCourseOffering.findMany.mockResolvedValue([{ courseId: 'adopted-1' }]);
+
+    const finance = await resolveDashboardScope(session({ role: 'finance' }));
+    const owner = await resolveDashboardScope(session({ role: 'owner' }));
+
+    expect(finance.courseWhere).toEqual(owner.courseWhere);
+    expect(finance.courseWhere).toEqual({
+      OR: [{ organizationId: ORG_ID }, { id: { in: ['adopted-1'] } }],
+    });
+  });
+
+  // The other half of the line: facility scope is a legitimate narrowing, and it
+  // applies to the enrolment-derived figures ONLY. Courses are org-global (they
+  // carry no facility), so a facility-bound supervisor still counts the whole
+  // catalogue while their enrolment figures narrow to their own sites.
+  it('is never facility-narrowed, while the facility-bound caller enrolment predicate is', async () => {
+    mockListAccessibleFacilities.mockResolvedValue([{ id: 'fac-1' }]);
+
+    const scope = await resolveDashboardScope(session({ role: 'supervisor' }));
+
+    expect(scope.courseWhere).toEqual({ organizationId: ORG_ID });
+    expect(scope.enrollmentWhere.facilityId).toEqual({ in: ['fac-1'] });
   });
 
   // `courseWhere` stays archive-neutral because its callers are TOP-LEVEL
