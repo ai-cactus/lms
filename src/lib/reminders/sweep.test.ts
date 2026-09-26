@@ -1110,6 +1110,25 @@ describe('runReminderSweep — renewal re-trigger pre-pass', () => {
     expect(summary.renewalsCreated).toBe(1);
   });
 
+  // Regression guard for enrollments.last_activity_at (dormant-staff reporting):
+  // a renewal is a sweep-initiated administrative action, not the learner
+  // engaging, so it must be minted with no stamp. The `objectContaining`
+  // assertions above would silently accept one being added, so this checks
+  // the created data directly.
+  it('never stamps lastActivityAt on a renewal — the sweep is not learner engagement', async () => {
+    wireCourseAssignmentFindMany({ renewal: [makeRenewalAssignment()] });
+    prismaMock.enrollment.findMany
+      .mockResolvedValueOnce([makeRenewalCandidate()])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    await runReminderSweep(BASE_OPTS);
+
+    const { data } = prismaMock.enrollment.create.mock.calls[0][0];
+    expect(data).not.toHaveProperty('lastActivityAt');
+  });
+
   it("stamps the renewal with the member's CURRENT facility, not the completed enrollment's facility", async () => {
     // Batched via resolveMemberFacilityIds — this is the underlying
     // organizationUserFacility.findMany query, not a mock of the resolver.

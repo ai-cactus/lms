@@ -19,6 +19,7 @@ const { mockAdminAuth, mockWorkerAuth, prismaMock, txMock } = vi.hoisted(() => {
   const txMock = {
     quizAttempt: { findFirst: vi.fn(), count: vi.fn(), create: vi.fn() },
     quiz: { findUnique: vi.fn() },
+    enrollment: { updateMany: vi.fn() },
   };
   const prismaMock = {
     enrollment: { findUnique: vi.fn() },
@@ -72,6 +73,7 @@ beforeEach(() => {
   txMock.quiz.findUnique.mockResolvedValue({ id: 'quiz-1', allowedAttempts: 2 });
   txMock.quizAttempt.count.mockResolvedValue(0);
   txMock.quizAttempt.create.mockResolvedValue({ id: 'attempt-1', timeTaken: null });
+  txMock.enrollment.updateMany.mockResolvedValue({ count: 1 });
 });
 
 describe('POST /api/quiz/[id]/start — auth', () => {
@@ -223,6 +225,28 @@ describe('POST /api/quiz/[id]/start — draft resume vs. new attempt', () => {
     expect(txMock.quizAttempt.create).not.toHaveBeenCalled();
   });
 
+  it('stamps learner activity inside the transaction when resuming a draft', async () => {
+    txMock.quizAttempt.findFirst.mockResolvedValue({ id: 'draft-1', timeTaken: null });
+
+    await POST(makeReq({ enrollmentId: 'enr-1' }), { params });
+
+    expect(txMock.enrollment.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: 'enr-1' }),
+        data: { lastActivityAt: expect.any(Date) },
+      }),
+    );
+  });
+
+  it('stamps learner activity with the draft start time when creating a new attempt', async () => {
+    await POST(makeReq({ enrollmentId: 'enr-1' }), { params });
+
+    const startedAt = txMock.quizAttempt.create.mock.calls[0][0].data.completedAt;
+    expect(txMock.enrollment.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { lastActivityAt: startedAt } }),
+    );
+  });
+
   it('creates a new draft attempt when no draft exists and this is the first attempt', async () => {
     txMock.quizAttempt.findFirst.mockResolvedValue(null);
     txMock.quiz.findUnique.mockResolvedValue({ id: 'quiz-1', allowedAttempts: 3 });
@@ -269,5 +293,6 @@ describe('POST /api/quiz/[id]/start — draft resume vs. new attempt', () => {
     expect(res.status).toBe(403);
     expect(body.error).toBe('No attempts remaining');
     expect(txMock.quizAttempt.create).not.toHaveBeenCalled();
+    expect(txMock.enrollment.updateMany).not.toHaveBeenCalled();
   });
 });

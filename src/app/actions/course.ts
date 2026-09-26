@@ -54,6 +54,7 @@ import {
   type RoleAssignmentIntent,
 } from '@/lib/course/pending-assignment';
 import { findAssignmentDueAt } from '@/lib/enrollment/assignment';
+import { touchEnrollmentActivity } from '@/lib/enrollment/activity';
 import { captureServer } from '@/lib/analytics/server';
 import { analyticsContextFrom } from '@/lib/analytics/identity';
 
@@ -1793,7 +1794,8 @@ export async function attestCourse(
   // Enrollment.completedAt), so the audit column and the attestation column
   // share ONE Date: the auditor exports read `completedAt` while the compliance
   // banner reads `attestedAt`, and two separate `new Date()` calls would let
-  // them disagree by milliseconds for no reason.
+  // them disagree by milliseconds for no reason. Attesting is also the
+  // learner's last engagement, so `lastActivityAt` takes the same instant.
   const completedAt = new Date();
   // Q-04: attestation is a learner action, so it stops at the archive too — a
   // cancelled course must not go on producing fresh compliance attestations.
@@ -1814,6 +1816,7 @@ export async function attestCourse(
       status: 'attested',
       completedAt,
       attestedAt: completedAt,
+      lastActivityAt: completedAt,
       attestationSignature: signature,
       attestationRole: role, // Now acts as job description
     },
@@ -1907,13 +1910,15 @@ export async function startCourse(
     return { success: false, refusedReason: ARCHIVED_COURSE_LEARNER_MESSAGE };
   }
 
+  const now = new Date();
   if (enrollment.status === 'enrolled' || enrollment.status === 'assigned') {
     await prisma.enrollment.update({
       where: { id: enrollment.id },
       data: {
         status: 'in_progress',
         progress: enrollment.progress === 0 ? 1 : enrollment.progress, // Ensure at least 1%
-        startedAt: enrollment.startedAt || new Date(),
+        startedAt: enrollment.startedAt || now,
+        lastActivityAt: now,
       },
     });
 
@@ -1945,6 +1950,9 @@ export async function startCourse(
     }
     revalidatePath('/dashboard/worker');
     revalidatePath(`/worker/courses/${courseId}`);
+  } else {
+    // "Continue Course" routes through here too: re-opening a started course is engagement.
+    await touchEnrollmentActivity(prisma, enrollment.id, now);
   }
 
   return { success: true };
@@ -2347,6 +2355,7 @@ export async function retakeQuiz(
       completedAt: null,
       attestedAt: null,
       attestationSignature: null,
+      lastActivityAt: new Date(),
     },
   });
 

@@ -88,7 +88,7 @@ describe('requestCourseRetry — archived course (Q-04)', () => {
     await expect(requestCourseRetry(ENROLLMENT_ID)).resolves.toEqual({ success: true });
     expect(prismaMock.enrollment.update).toHaveBeenCalledWith({
       where: { id: ENROLLMENT_ID },
-      data: { status: 'enrolled', score: null },
+      data: { status: 'enrolled', score: null, lastActivityAt: expect.any(Date) },
     });
   });
 });

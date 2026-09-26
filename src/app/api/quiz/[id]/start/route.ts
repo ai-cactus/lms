@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { logger } from '@/lib/logger';
 import { guardApiSession } from '@/lib/auth-guard';
 import { hasActiveBilling } from '@/lib/billing';
+import { touchEnrollmentActivity } from '@/lib/enrollment/activity';
 import { ARCHIVED_COURSE_ERROR_CODE, ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
 
 const startQuizSchema = z.object({
@@ -121,6 +122,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       });
 
       if (activeAttempt) {
+        await touchEnrollmentActivity(tx, enrollmentId);
         return { status: 'resumed' as const, attempt: activeAttempt };
       }
 
@@ -138,6 +140,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
         return { status: 'blocked' as const };
       }
 
+      const now = new Date();
       const attempt = await tx.quizAttempt.create({
         data: {
           enrollmentId,
@@ -145,10 +148,11 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
           answers: [],
           score: 0,
           timeTaken: null, // Mark active (in-progress draft)
-          completedAt: new Date(), // Acts as StartedAt for active attempts
+          completedAt: now, // Acts as StartedAt for active attempts
           attemptCount: completedCount + 1,
         },
       });
+      await touchEnrollmentActivity(tx, enrollmentId, now);
       return {
         status: completedCount === 0 ? ('created' as const) : ('started' as const),
         attempt,

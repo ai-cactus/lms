@@ -360,6 +360,10 @@ describe('POST /api/quiz/[id]/submit — append-history + attempt limit', () => 
       }),
     );
     expect(txMock.quizAttempt.create).not.toHaveBeenCalled();
+    // No attempts remaining is refused before the enrollment update that would
+    // stamp lastActivityAt alongside score/status — this is a learner write
+    // that must not count as engagement.
+    expect(prismaMock.enrollment.update).not.toHaveBeenCalled();
   });
 
   it('CREATEs a new completed attempt with attemptCount = completedCount + 1 when under the limit', async () => {
@@ -413,6 +417,18 @@ describe('POST /api/quiz/[id]/submit — append-history + attempt limit', () => 
     expect(prismaMock.enrollment.update).toHaveBeenCalledWith({
       where: { id: 'enr-1' },
       data: expect.objectContaining({ status: 'locked', lockedAt: expect.any(Date) }),
+    });
+    const { data } = prismaMock.enrollment.update.mock.calls[0][0];
+    expect(data.lastActivityAt).toBe(data.lockedAt);
+  });
+
+  it('stamps learner activity in the same enrollment update that records the score', async () => {
+    await POST(makeReq({ enrollmentId: 'enr-1', answers: makeAnswers(2, 2) }), { params });
+
+    expect(prismaMock.enrollment.update).toHaveBeenCalledTimes(1);
+    expect(prismaMock.enrollment.update).toHaveBeenCalledWith({
+      where: { id: 'enr-1' },
+      data: expect.objectContaining({ status: 'in_progress', lastActivityAt: expect.any(Date) }),
     });
   });
 });

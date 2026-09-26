@@ -20,7 +20,7 @@
  *  - resolves a course-level quiz when lessons have no quiz (video course),
  *  - prefers the last lesson's quiz over the course-level quiz when both exist,
  *  - resets enrollment fields (status in_progress, score/completedAt/
- *    attestedAt/attestationSignature all null),
+ *    attestedAt/attestationSignature all null) and stamps lastActivityAt,
  *  - throws on a foreign/missing enrollment before touching quizAttempt.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -278,6 +278,7 @@ describe('retakeQuiz — enrollment reset', () => {
         completedAt: null,
         attestedAt: null,
         attestationSignature: null,
+        lastActivityAt: expect.any(Date),
       },
     });
   });

@@ -78,6 +78,13 @@ model Enrollment {
   assignmentId         String?           @map("assignment_id")
   accessAt             DateTime?         @map("access_at")
   dueAt                DateTime?         @map("due_at")
+  /// Last time the learner engaged with this enrolment. Written only by
+  /// learner-initiated events (lesson/video progress, quiz start/save/submit,
+  /// starting a course, attestation, learner retake/retry). Admin actions —
+  /// assigning, admin-initiated retakes, reminder/renewal sweeps — must never
+  /// write it, or dormancy reporting would read admin activity as engagement.
+  /// Unindexed on purpose: it is only evaluated in memory.
+  lastActivityAt       DateTime?         @map("last_activity_at")
   assignment           CourseAssignment? @relation(fields: [assignmentId], references: [id], onDelete: SetNull)
   course               Course            @relation(fields: [courseId], references: [id])
   organizationUser     OrganizationUser  @relation(fields: [organizationUserId], references: [id], onDelete: Cascade)

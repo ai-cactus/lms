@@ -21,6 +21,7 @@ const { mockAdminAuth, mockWorkerAuth, prismaMock } = vi.hoisted(() => ({
   mockWorkerAuth: vi.fn(),
   prismaMock: {
     quizAttempt: { findFirst: vi.fn(), update: vi.fn() },
+    enrollment: { updateMany: vi.fn() },
   },
 }));
 
@@ -68,6 +69,7 @@ beforeEach(() => {
 
   prismaMock.quizAttempt.findFirst.mockResolvedValue(makeAttempt());
   prismaMock.quizAttempt.update.mockResolvedValue({});
+  prismaMock.enrollment.updateMany.mockResolvedValue({ count: 1 });
 });
 
 describe('POST /api/quiz/[id]/save — auth', () => {
@@ -108,6 +110,7 @@ describe('POST /api/quiz/[id]/save — auth', () => {
     expect(res.status).toBe(403);
     expect(body.error).toBe('Enrollment does not belong to active sessions');
     expect(prismaMock.quizAttempt.update).not.toHaveBeenCalled();
+    expect(prismaMock.enrollment.updateMany).not.toHaveBeenCalled();
   });
 });
 
@@ -137,6 +140,17 @@ describe('POST /api/quiz/[id]/save', () => {
     });
   });
 
+  it('stamps (throttled) learner activity on the enrollment after an autosave', async () => {
+    await POST(makeReq({ enrollmentId: 'enr-1', answers: ANSWERS }), { params });
+
+    expect(prismaMock.enrollment.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: 'enr-1' }),
+        data: { lastActivityAt: expect.any(Date) },
+      }),
+    );
+  });
+
   it('409s and does not write when the latest attempt is already completed', async () => {
     prismaMock.quizAttempt.findFirst.mockResolvedValue(makeAttempt({ timeTaken: 60 }));
 
@@ -146,6 +160,7 @@ describe('POST /api/quiz/[id]/save', () => {
     expect(res.status).toBe(409);
     expect(body.error).toBe('Attempt is already completed');
     expect(prismaMock.quizAttempt.update).not.toHaveBeenCalled();
+    expect(prismaMock.enrollment.updateMany).not.toHaveBeenCalled();
   });
 
   it('queries the latest attempt ordered by completedAt desc (append-history: pick the current draft, not an old row)', async () => {
@@ -180,5 +195,6 @@ describe('POST /api/quiz/[id]/save — archived course (Q-04)', () => {
     expect(res.status).toBe(403);
     expect(body.error).toBe(ARCHIVED_COURSE_LEARNER_MESSAGE);
     expect(prismaMock.quizAttempt.update).not.toHaveBeenCalled();
+    expect(prismaMock.enrollment.updateMany).not.toHaveBeenCalled();
   });
 });

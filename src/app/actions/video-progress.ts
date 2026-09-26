@@ -131,6 +131,7 @@ export async function saveVideoProgress(
     data: {
       videoPositionSeconds: Math.round(positionSeconds),
       progress: pct,
+      lastActivityAt: new Date(),
       ...(bumpStatus ? { status: 'lessons_complete' } : {}),
     },
   });
