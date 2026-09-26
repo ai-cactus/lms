@@ -47,6 +47,11 @@ interface Question {
   options: string[];
   correctAnswer: string;
   explanation?: string;
+  /**
+   * Why each wrong option is wrong, keyed by its index in `options`. Answer key,
+   * so the payload only carries it for admin viewers.
+   */
+  incorrectOptionExplanations?: Record<string, string>;
 }
 
 interface Quiz {
@@ -89,7 +94,7 @@ interface EnrollmentData {
 interface QuizQuestionResult {
   id: string;
   text: string;
-  options: { id: string; text: string }[];
+  options: { id: string; text: string; explanation?: string }[];
   selectedAnswer: string;
   correctAnswer: string;
   explanation: string;
