@@ -35,6 +35,7 @@ vi.mock('@/lib/logger', () => ({
 // Import under test AFTER all vi.mock() declarations.
 // ---------------------------------------------------------------------------
 import { POST } from './route';
+import { ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -55,7 +56,7 @@ function makeAttempt(overrides: Record<string, unknown> = {}) {
     enrollmentId: 'enr-1',
     quizId: 'quiz-1',
     timeTaken: null,
-    enrollment: { id: 'enr-1', organizationUserId: 'ou-1' },
+    enrollment: { id: 'enr-1', organizationUserId: 'ou-1', course: { archivedAt: null } },
     ...overrides,
   };
 }
@@ -92,7 +93,13 @@ describe('POST /api/quiz/[id]/save — auth', () => {
 
   it('403s when the latest attempt belongs to a different enrollment/user', async () => {
     prismaMock.quizAttempt.findFirst.mockResolvedValue(
-      makeAttempt({ enrollment: { id: 'enr-1', organizationUserId: 'someone-else' } }),
+      makeAttempt({
+        enrollment: {
+          id: 'enr-1',
+          organizationUserId: 'someone-else',
+          course: { archivedAt: null },
+        },
+      }),
     );
 
     const res = await POST(makeReq({ enrollmentId: 'enr-1', answers: ANSWERS }), { params });
@@ -150,5 +157,28 @@ describe('POST /api/quiz/[id]/save', () => {
         orderBy: { completedAt: 'desc' },
       }),
     );
+  });
+});
+
+// Founder Q-04 (2026-09-23): an in-flight draft is still a learner write, so it
+// stops at the archive along with everything else.
+describe('POST /api/quiz/[id]/save — archived course (Q-04)', () => {
+  it('403s and does not write the answers', async () => {
+    prismaMock.quizAttempt.findFirst.mockResolvedValue(
+      makeAttempt({
+        enrollment: {
+          id: 'enr-1',
+          organizationUserId: 'ou-1',
+          course: { archivedAt: new Date('2026-09-20') },
+        },
+      }),
+    );
+
+    const res = await POST(makeReq({ enrollmentId: 'enr-1', answers: ANSWERS }), { params });
+    const body = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(body.error).toBe(ARCHIVED_COURSE_LEARNER_MESSAGE);
+    expect(prismaMock.quizAttempt.update).not.toHaveBeenCalled();
   });
 });

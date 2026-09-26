@@ -63,6 +63,7 @@ export default async function LearnerDashboard() {
     passingScore: picked.course.quiz?.passingScore ?? null,
     retakeOf: picked.retakeOf,
     certificateId: picked.certificate?.id ?? null,
+    courseArchived: picked.course.archivedAt !== null,
   }));
 
   const totalCourses = courses.length;
@@ -85,6 +86,11 @@ export default async function LearnerDashboard() {
           }, 0) / coursesWithScores.length,
         )
       : 0;
+
+  // A cancelled course is not an entry point — its player refuses the learner —
+  // so the welcome modal must neither count one nor offer it as "your first
+  // course". With every course cancelled the modal stays shut entirely.
+  const startableCourses = courses.filter((c) => !c.courseArchived);
 
   // Check if completely empty (onboarding state)
   const showWelcomeModal = courses.length === 0;
@@ -139,8 +145,8 @@ export default async function LearnerDashboard() {
       {showWelcomeModal && <WorkerEmptyState />}
 
       <WorkerWelcomeModal
-        courseCount={courses.length}
-        firstCourseId={courses[0]?.id}
+        courseCount={startableCourses.length}
+        firstCourseId={startableCourses[0]?.id}
         hasProgress={hasProgress}
       />
     </div>

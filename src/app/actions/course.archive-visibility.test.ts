@@ -1,15 +1,17 @@
 /**
- * Q24 archive visibility, per SURFACE.
+ * Archive visibility, per SURFACE.
  *
- * Archiving retires a course for new assignment; it does not erase what someone
- * already did. That splits the course reads in two, and both halves need
+ * Archiving retires a course from every list (Q24) and, since founder rulings
+ * Q-04/Q-05 (2026-09-23), CANCELS it for learners as well. Two halves need
  * proving:
  *
  *   • every catalogue/admin LIST — the courses page (and the search box that
  *     filters it client-side), the assign picker, the prebuilt video catalogue —
  *     must stop showing an archived course;
  *   • the learner's own entry point, `/worker/courses/[id]` → `getCourseById`,
- *     must keep showing it, because they hold an enrollment in it.
+ *     must refuse it too. An enrollment used to be an exemption here; it is not
+ *     any more. What survives archiving is the RECORD — the enrolment row, the
+ *     certificate and the compliance export — not the ability to carry on.
  *
  * The filter itself is a query extension on the shared client (`db/index.ts`),
  * which a unit test cannot observe through a plain `vi.fn()`. So the mocked
@@ -362,7 +364,13 @@ describe('ISSUE-2: "View Source Document" after the source document is archived'
 });
 
 describe("getCourseById — the learner's entry point to an archived course", () => {
-  it('ISSUE-3: an enrolled worker still opens a course that was archived under them', async () => {
+  // SUPERSEDED 2026-09-23. This case used to assert the opposite — that an
+  // enrolled worker still opened a course archived under them (staging QA
+  // ISSUE-3, under Q24). Founder rulings Q-04/Q-05 narrowed that: archiving
+  // CANCELS the course, every learner action stops, and the learner is told so
+  // by the COURSE_CANCELLED notice `deleteCourse` emits. An enrollment is
+  // therefore no longer an exemption, and the refusal is now uniform.
+  it('an enrolled worker is refused too — archiving cancels the course for them', async () => {
     courseTable.push(
       makeCourseRow('archived-1', 'Archived Course', new Date('2026-09-17'), {
         enrollments: [ownEnrollment()],
@@ -370,7 +378,7 @@ describe("getCourseById — the learner's entry point to an archived course", ()
     );
     setWorkerSession(LEARNER_USER_ID);
 
-    await expect(getCourseById('archived-1')).resolves.toMatchObject({ id: 'archived-1' });
+    await expect(getCourseById('archived-1')).rejects.toThrow('Course not found');
   });
 
   it('a same-org manager who is NOT enrolled is refused — archiving retires it from their surfaces', async () => {

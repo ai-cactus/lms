@@ -33,10 +33,11 @@ vi.mock('@/auth.worker', () => ({ auth: mockWorkerAuth }));
 vi.mock('next/headers', () => ({
   cookies: vi.fn().mockRejectedValue(new Error('no request scope')),
 }));
-// The course lookup comes off the UN-extended client: archiving retires a
-// course for new assignment, it does not erase a learner's own enrolment, so an
-// already-enrolled worker must still be able to open it. The two clients get
-// DIFFERENT spies so a regression that swaps them is visible.
+// The course lookup comes off the UN-extended client: an archived course has to
+// be READ before it can be refused with the cancellation message (Q-04/Q-05) —
+// through the filtered client it would come back null and the learner would see
+// a bare "not found". The two clients get DIFFERENT spies so a regression that
+// swaps them is visible.
 vi.mock('@/lib/prisma', () => {
   const prisma = {
     course: { findUnique: (...a: unknown[]) => mockFilteredCourseFindUnique(...a) },
@@ -57,6 +58,7 @@ import {
   type LearnPayload,
   type LearnPayloadError,
 } from './get-learn-payload';
+import { ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
 
 const QUESTION = {
   id: 'q1',
@@ -156,11 +158,13 @@ describe('getLearnPayload — access matrix', () => {
     expect(result).toEqual({ error: 'Not enrolled in this course', status: 403 });
   });
 
-  // Q24 maintainer ruling: archiving RETIRES a course for new assignment; it
-  // does not erase what a worker already did. The course row is therefore read
-  // off the un-extended client — through the archive-filtered one this 404s and
-  // the learner loses access to training they were already enrolled in.
-  it('still serves an ARCHIVED course to the worker already enrolled in it', async () => {
+  // SUPERSEDED 2026-09-23. This case used to assert that an archived course was
+  // still SERVED to the worker already enrolled in it (Q24). Founder rulings
+  // Q-04/Q-05 narrowed that: archiving cancels the course and every learner
+  // action stops, so the player refuses it. The read stays on the un-extended
+  // client — the archived row has to be readable in order to be refused with
+  // the cancellation message rather than a bare "not found".
+  it('refuses an ARCHIVED course even to the worker already enrolled in it', async () => {
     mockWorkerAuth.mockResolvedValue({
       user: { id: 'w1', organizationUserId: 'ou-worker', role: 'nurse' },
     });
@@ -179,10 +183,27 @@ describe('getLearnPayload — access matrix', () => {
     // The filtered client would return null for an archived row.
     mockFilteredCourseFindUnique.mockResolvedValue(null);
 
-    const payload = asPayload(await getLearnPayload('course-1'));
+    const result = await getLearnPayload('course-1');
 
-    expect(payload.course.id).toBe('course-1');
+    expect(result).toEqual({ error: ARCHIVED_COURSE_LEARNER_MESSAGE, status: 403 });
     expect(mockFilteredCourseFindUnique).not.toHaveBeenCalled();
+    // Refused before the enrollment lookup: the answer no longer depends on
+    // whether this caller holds one.
+    expect(mockEnrollmentFindFirst).not.toHaveBeenCalled();
+  });
+
+  it('refuses an ARCHIVED course to a manager exercising the review right', async () => {
+    mockAdminAuth.mockResolvedValue({
+      user: { id: 'a1', organizationUserId: 'ou-admin', organizationId: 'org-1', role: 'owner' },
+    });
+    mockCourseFindUnique.mockResolvedValue({
+      ...makeCourse(),
+      archivedAt: new Date('2026-09-01T00:00:00.000Z'),
+    });
+
+    const result = await getLearnPayload('course-1');
+
+    expect(result).toEqual({ error: ARCHIVED_COURSE_LEARNER_MESSAGE, status: 403 });
   });
 
   it('403s an authenticated worker whose session carries no membership', async () => {
