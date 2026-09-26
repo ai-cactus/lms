@@ -414,6 +414,18 @@ describe('POST /api/quiz/[id]/submit — append-history + attempt limit', () => 
       where: { id: 'enr-1' },
       data: expect.objectContaining({ status: 'locked', lockedAt: expect.any(Date) }),
     });
+    const { data } = prismaMock.enrollment.update.mock.calls[0][0];
+    expect(data.lastActivityAt).toBe(data.lockedAt);
+  });
+
+  it('stamps learner activity in the same enrollment update that records the score', async () => {
+    await POST(makeReq({ enrollmentId: 'enr-1', answers: makeAnswers(2, 2) }), { params });
+
+    expect(prismaMock.enrollment.update).toHaveBeenCalledTimes(1);
+    expect(prismaMock.enrollment.update).toHaveBeenCalledWith({
+      where: { id: 'enr-1' },
+      data: expect.objectContaining({ status: 'in_progress', lastActivityAt: expect.any(Date) }),
+    });
   });
 });
 

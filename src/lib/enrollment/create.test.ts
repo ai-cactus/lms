@@ -375,6 +375,22 @@ describe('createEnrollmentForUser — existing org member', () => {
     expect(mockSendCourseInviteEmail).not.toHaveBeenCalled();
   });
 
+  it('never stamps lastActivityAt — assigning is admin activity, not learner engagement', async () => {
+    prismaMock.user.findUnique.mockResolvedValue({
+      id: 'user-1',
+      email: 'staff@example.com',
+      firstName: null,
+      lastName: null,
+      fullName: 'Staff One',
+    });
+    prismaMock.organizationUser.findFirst.mockResolvedValue({ id: 'ou-1' });
+
+    await createEnrollmentForUser({ email: 'staff@example.com' }, BASE_CTX);
+
+    const { data } = prismaMock.enrollment.create.mock.calls[0][0];
+    expect(data).not.toHaveProperty('lastActivityAt');
+  });
+
   it("stamps the enrollment with the member's OWN active facility assignment, resolved fresh — not ctx.facilityId", async () => {
     prismaMock.user.findUnique.mockResolvedValue({
       id: 'user-1',

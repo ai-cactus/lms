@@ -1607,6 +1607,7 @@ export async function requestCourseRetry(
     data: {
       status: 'enrolled',
       score: null,
+      lastActivityAt: new Date(),
     },
   });
 

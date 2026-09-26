@@ -310,13 +310,15 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     // CORE LOGIC: Passing the quiz does NOT complete the course. Attestation required.
     const isLocked = !passed && quiz.allowedAttempts && currentAttemptCount >= quiz.allowedAttempts;
 
+    const now = new Date();
     await prisma.enrollment.update({
       where: { id: enrollmentId },
       data: {
         status: isLocked ? 'locked' : 'in_progress',
         score,
         progress: 100,
-        ...(isLocked ? { lockedAt: new Date() } : {}),
+        lastActivityAt: now,
+        ...(isLocked ? { lockedAt: now } : {}),
       },
     });
 

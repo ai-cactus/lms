@@ -49,6 +49,7 @@ import {
   type RoleAssignmentIntent,
 } from '@/lib/course/pending-assignment';
 import { findAssignmentDueAt } from '@/lib/enrollment/assignment';
+import { touchEnrollmentActivity } from '@/lib/enrollment/activity';
 import { captureServer } from '@/lib/analytics/server';
 import { analyticsContextFrom } from '@/lib/analytics/identity';
 
@@ -1792,11 +1793,13 @@ export async function attestCourse(
     return { success: false, refusedReason: ARCHIVED_COURSE_LEARNER_MESSAGE };
   }
 
+  const attestedAt = new Date();
   await prisma.enrollment.update({
     where: { id: enrollmentId },
     data: {
       status: 'attested',
-      attestedAt: new Date(),
+      attestedAt,
+      lastActivityAt: attestedAt,
       attestationSignature: signature,
       attestationRole: role, // Now acts as job description
     },
@@ -1890,13 +1893,15 @@ export async function startCourse(
     return { success: false, refusedReason: ARCHIVED_COURSE_LEARNER_MESSAGE };
   }
 
+  const now = new Date();
   if (enrollment.status === 'enrolled' || enrollment.status === 'assigned') {
     await prisma.enrollment.update({
       where: { id: enrollment.id },
       data: {
         status: 'in_progress',
         progress: enrollment.progress === 0 ? 1 : enrollment.progress, // Ensure at least 1%
-        startedAt: enrollment.startedAt || new Date(),
+        startedAt: enrollment.startedAt || now,
+        lastActivityAt: now,
       },
     });
 
@@ -1928,6 +1933,9 @@ export async function startCourse(
     }
     revalidatePath('/dashboard/worker');
     revalidatePath(`/worker/courses/${courseId}`);
+  } else {
+    // "Continue Course" routes through here too: re-opening a started course is engagement.
+    await touchEnrollmentActivity(prisma, enrollment.id, now);
   }
 
   return { success: true };
@@ -2324,6 +2332,7 @@ export async function retakeQuiz(
       completedAt: null,
       attestedAt: null,
       attestationSignature: null,
+      lastActivityAt: new Date(),
     },
   });
 

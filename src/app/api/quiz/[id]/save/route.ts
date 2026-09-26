@@ -5,6 +5,7 @@ import { auth as workerAuth } from '@/auth.worker';
 import { z } from 'zod';
 import { logger } from '@/lib/logger';
 import { guardApiSession } from '@/lib/auth-guard';
+import { touchEnrollmentActivity } from '@/lib/enrollment/activity';
 import { ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
 
 const saveQuizSchema = z.object({
@@ -84,6 +85,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
         answers: answers,
       },
     });
+    await touchEnrollmentActivity(prisma, enrollmentId);
 
     return NextResponse.json({ success: true });
   } catch (error) {

@@ -4,6 +4,7 @@ import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { z } from 'zod';
 import { logger } from '@/lib/logger';
+import { touchEnrollmentActivity } from '@/lib/enrollment/activity';
 import { ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
 
 const progressSchema = z.object({
@@ -61,9 +62,13 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       return NextResponse.json({ error: ARCHIVED_COURSE_LEARNER_MESSAGE }, { status: 403 });
     }
 
+    const now = new Date();
+
     // Only allow forward progress (never decrease)
     const newProgress = Math.min(progress, 100);
     if (newProgress <= enrollment.progress) {
+      // Revisiting earlier lessons is still engagement, even though progress holds.
+      await touchEnrollmentActivity(prisma, enrollmentId, now);
       return NextResponse.json({ success: true, message: 'Progress already ahead' });
     }
 
@@ -84,6 +89,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       data: {
         progress: newProgress,
         status: newStatus,
+        lastActivityAt: now,
       },
     });
 

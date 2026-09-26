@@ -165,6 +165,7 @@ describe('saveVideoProgress', () => {
         data: expect.objectContaining({
           videoPositionSeconds: 120,
           progress: 40,
+          lastActivityAt: expect.any(Date),
         }),
       }),
     );

@@ -15,7 +15,7 @@ import type { NextRequest } from 'next/server';
 
 const { prismaMock, mockAdminAuth, mockWorkerAuth } = vi.hoisted(() => ({
   prismaMock: {
-    enrollment: { findUnique: vi.fn(), update: vi.fn() },
+    enrollment: { findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
   },
   mockAdminAuth: vi.fn(),
   mockWorkerAuth: vi.fn(),
@@ -55,6 +55,7 @@ beforeEach(() => {
   mockWorkerAuth.mockResolvedValue({ user: { id: 'user-1', organizationUserId: 'ou-1' } });
   prismaMock.enrollment.findUnique.mockResolvedValue(makeEnrollment());
   prismaMock.enrollment.update.mockResolvedValue({});
+  prismaMock.enrollment.updateMany.mockResolvedValue({ count: 1 });
 });
 
 describe('POST /api/enrollments/[id]/progress — archived course (Q-04)', () => {
@@ -98,7 +99,7 @@ describe('POST /api/enrollments/[id]/progress — archived course (Q-04)', () =>
     expect(res.status).toBe(200);
     expect(prismaMock.enrollment.update).toHaveBeenCalledWith({
       where: { id: 'enr-1' },
-      data: { progress: 60, status: 'in_progress' },
+      data: { progress: 60, status: 'in_progress', lastActivityAt: expect.any(Date) },
     });
   });
 });
@@ -145,7 +146,47 @@ describe('POST /api/enrollments/[id]/progress — ownership and forward-only rul
 
     expect(prismaMock.enrollment.update).toHaveBeenCalledWith({
       where: { id: 'enr-1' },
-      data: { progress: 100, status: 'lessons_complete' },
+      data: { progress: 100, status: 'lessons_complete', lastActivityAt: expect.any(Date) },
     });
+  });
+});
+
+describe('POST /api/enrollments/[id]/progress — learner activity', () => {
+  it('stamps lastActivityAt in the same update that advances progress (no extra write)', async () => {
+    await POST(makeReq({ progress: 60 }), { params });
+
+    expect(prismaMock.enrollment.update).toHaveBeenCalledTimes(1);
+    expect(prismaMock.enrollment.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('still records (throttled) activity when progress is already ahead', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue(makeEnrollment({ progress: 80 }));
+
+    const res = await POST(makeReq({ progress: 40 }), { params });
+    const body = await res.json();
+
+    expect(body).toEqual({ success: true, message: 'Progress already ahead' });
+    expect(prismaMock.enrollment.update).not.toHaveBeenCalled();
+    expect(prismaMock.enrollment.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: 'enr-1' }),
+        data: { lastActivityAt: expect.any(Date) },
+      }),
+    );
+  });
+
+  it('records no activity on an archived course or a foreign enrollment', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValueOnce(
+      makeEnrollment({ course: { archivedAt: new Date('2026-09-20') } }),
+    );
+    await POST(makeReq({ progress: 60 }), { params });
+
+    prismaMock.enrollment.findUnique.mockResolvedValueOnce(
+      makeEnrollment({ organizationUserId: 'someone-else' }),
+    );
+    await POST(makeReq({ progress: 60 }), { params });
+
+    expect(prismaMock.enrollment.update).not.toHaveBeenCalled();
+    expect(prismaMock.enrollment.updateMany).not.toHaveBeenCalled();
   });
 });
