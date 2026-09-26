@@ -47,6 +47,7 @@ vi.mock('@/lib/logger', () => ({
 }));
 
 import { retakeQuiz } from './course';
+import { ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
 
 const WORKER_ID = 'worker-1';
 const ENROLLMENT_ID = 'enrollment-1';
@@ -289,5 +290,61 @@ describe('retakeQuiz — enrollment reset', () => {
 
     expect(mockRevalidatePath).toHaveBeenCalledWith(`/learn/${COURSE_ID}`);
     expect(result).toEqual({ success: true });
+  });
+});
+
+/**
+ * Founder Q-04 (2026-09-23): an archived course cannot be retaken. The refusal
+ * has to come BEFORE the enrollment reset — that reset nulls `score`,
+ * `completedAt`, `attestedAt` and `attestationSignature`, so a retake allowed
+ * on cancelled training would destroy a learner's completed record in exchange
+ * for an attempt they can never finish.
+ */
+describe('retakeQuiz — archived course', () => {
+  it('refuses with the cancellation message and writes nothing', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue(
+      makeEnrollment({ course: { archivedAt: new Date('2026-09-20'), lessons: [], quiz: null } }),
+    );
+
+    const result = await retakeQuiz(ENROLLMENT_ID);
+
+    expect(result).toEqual({
+      success: false,
+      refusedReason: ARCHIVED_COURSE_LEARNER_MESSAGE,
+    });
+    expect(prismaMock.enrollment.update).not.toHaveBeenCalled();
+    expect(prismaMock.quizAttempt.update).not.toHaveBeenCalled();
+  });
+
+  it('refuses before the attempt-limit check — archival outranks attempts remaining', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue(
+      makeEnrollment({
+        course: {
+          archivedAt: new Date('2026-09-20'),
+          lessons: [{ id: 'lesson-1', quiz: { id: LESSON_QUIZ_ID, allowedAttempts: 3 } }],
+          quiz: null,
+        },
+      }),
+    );
+
+    const result = await retakeQuiz(ENROLLMENT_ID);
+
+    expect(result.refusedReason).toBe(ARCHIVED_COURSE_LEARNER_MESSAGE);
+    expect(prismaMock.quizAttempt.count).not.toHaveBeenCalled();
+  });
+
+  it('CONTROL: the same retake succeeds while the course is live', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue(
+      makeEnrollment({
+        course: {
+          archivedAt: null,
+          lessons: [{ id: 'lesson-1', quiz: { id: LESSON_QUIZ_ID, allowedAttempts: 3 } }],
+          quiz: null,
+        },
+      }),
+    );
+
+    await expect(retakeQuiz(ENROLLMENT_ID)).resolves.toEqual({ success: true });
+    expect(prismaMock.enrollment.update).toHaveBeenCalledTimes(1);
   });
 });

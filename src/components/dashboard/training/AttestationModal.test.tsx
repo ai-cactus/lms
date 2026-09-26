@@ -50,7 +50,7 @@ const confirmButton = () => screen.getByRole('button', { name: 'Confirm' });
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockAttestCourse.mockResolvedValue(undefined);
+  mockAttestCourse.mockResolvedValue({ success: true });
 });
 
 describe('AttestationModal — issueCertificate ok:true', () => {
