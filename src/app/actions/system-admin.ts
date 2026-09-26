@@ -474,6 +474,70 @@ export async function getUserDetail(userId: string): Promise<SystemUserDetail | 
   };
 }
 
+// ── Asset Custody ────────────────────────────────────────────────────────────
+
+/**
+ * Seniority order used to pick the member who inherits a deleted account's
+ * authored courses and uploaded documents. A worker is only ever chosen when no
+ * manager-category member survives, because inheriting custody must not be
+ * allowed to fail and strand the organization's training.
+ */
+const CUSTODIAN_ROLE_PRECEDENCE: readonly UserRole[] = [
+  'owner',
+  'admin',
+  'hr',
+  'clinical_director',
+  'supervisor',
+  'finance',
+];
+
+/**
+ * The surviving member who takes custody of an account's authored records.
+ *
+ * Courses and documents belong to the ORGANIZATION (Q25);
+ * `Course.createdByOrgUserId` and `Document.organizationUserId` record who
+ * authored or uploaded them, nothing more. So deleting a person must not take
+ * the org's training with them — but the row still has to point at a membership
+ * that exists: `Course.creator` is `onDelete: Restrict` (the delete would be
+ * refused) and `Document.organizationUser` is `onDelete: Cascade` (the document
+ * would be destroyed, which is exactly what Q24 forbids). Custody therefore
+ * moves to another member of the SAME organization, which is also what keeps a
+ * platform-authored global course serving the other tenants using it.
+ *
+ * Active members outrank deactivated ones, then role seniority, then the
+ * longest-standing membership — so the choice is deterministic rather than
+ * dependent on row order. Returns null when the account is the organization's
+ * last member, which refuses the delete instead of destroying the assets — and
+ * that refusal is what protects the shared catalogue: the identity that authors
+ * every `isGlobal` course (`getOrCreateSystemUser`) exclusively occupies the
+ * internal System organization, so it can never be deleted out from under the
+ * tenants consuming those courses.
+ */
+async function findAssetCustodian(
+  client: Prisma.TransactionClient,
+  organizationId: string,
+  departingOrgUserIds: string[],
+): Promise<{ id: string; role: UserRole } | null> {
+  const candidates = await client.organizationUser.findMany({
+    where: { organizationId, id: { notIn: departingOrgUserIds } },
+    select: { id: true, role: true, active: true, joinedAt: true },
+  });
+
+  if (candidates.length === 0) return null;
+
+  const seniority = (role: UserRole) => {
+    const index = CUSTODIAN_ROLE_PRECEDENCE.indexOf(role);
+    return index === -1 ? CUSTODIAN_ROLE_PRECEDENCE.length : index;
+  };
+
+  return candidates.sort(
+    (a, b) =>
+      Number(b.active) - Number(a.active) ||
+      seniority(a.role) - seniority(b.role) ||
+      a.joinedAt.getTime() - b.joinedAt.getTime(),
+  )[0];
+}
+
 // ── Delete Preview ───────────────────────────────────────────────────────────
 
 export interface DeletePreview {
@@ -483,21 +547,31 @@ export interface DeletePreview {
     role: string;
     name: string;
   };
+  /** Records the hard delete destroys. */
   counts: {
-    courses: number;
     enrollments: number;
-    documents: number;
+    quizAttempts: number;
+    /** Compliance records, destroyed with the enrollments they hang off. */
+    certificates: number;
     notifications: number;
     jobs: number;
     invites: number;
     verificationTokens: number;
-    // Cascade counts (not directly on User but will be removed)
-    lessons: number;
-    quizzes: number;
-    quizAttempts: number;
   };
-  /** Other users enrolled in courses created by this user */
-  affectedEnrollments: number;
+  /** Records the delete leaves intact — organization assets and other members' history. */
+  retained: {
+    /** Authored courses, transferred to a surviving member rather than deleted. */
+    courses: number;
+    /** Uploaded documents, transferred to a surviving member rather than deleted. */
+    documents: number;
+    /** Enrollments other members hold in courses this user authored. */
+    otherEnrollments: number;
+    /**
+     * Organizations where this account holds assets but no other member
+     * survives to inherit them. Non-empty means the delete will be refused.
+     */
+    organizationsWithoutCustodian: string[];
+  };
 }
 
 export async function getUserDeletePreview(userId: string): Promise<DeletePreview | null> {
@@ -515,85 +589,104 @@ export async function getUserDeletePreview(userId: string): Promise<DeletePrevie
   // An identity's activity spans every organization it belongs to.
   const orgUsers = await prisma.organizationUser.findMany({
     where: { userId },
-    select: { id: true, role: true },
+    select: {
+      id: true,
+      role: true,
+      organizationId: true,
+      organization: { select: { name: true } },
+    },
   });
   const orgUserIds = orgUsers.map((ou) => ou.id);
 
   const name = user.fullName || user.email.split('@')[0];
 
-  // Count direct relations
   const [
-    courseCount,
     enrollmentCount,
-    documentCount,
+    certificateCount,
     notificationCount,
     jobCount,
     inviteCount,
     verificationTokenCount,
+    quizAttemptCount,
   ] = await Promise.all([
-    // ⛔ `rawPrisma` for the two archivable models: this preview tells the
-    // operator what a HARD delete is about to destroy, and the delete below
-    // destroys archived rows too. Counting through the filtered client
-    // under-reports the damage on the very screen that authorises it.
-    rawPrisma.course.count({ where: { createdByOrgUserId: { in: orgUserIds } } }),
     prisma.enrollment.count({ where: { organizationUserId: { in: orgUserIds } } }),
-    rawPrisma.document.count({ where: { organizationUserId: { in: orgUserIds } } }),
+    prisma.certificate.count({ where: { organizationUserId: { in: orgUserIds } } }),
     prisma.notification.count({ where: { organizationUserId: { in: orgUserIds } } }),
     prisma.job.count({ where: { userId } }),
     prisma.invite.count({ where: { email: user.email } }),
     prisma.verificationToken.count({ where: { identifier: user.email } }),
+    prisma.quizAttempt.count({
+      where: { enrollment: { organizationUserId: { in: orgUserIds } } },
+    }),
   ]);
 
-  // Count cascade relations through courses
-  const userCourses = await rawPrisma.course.findMany({
-    where: { createdByOrgUserId: { in: orgUserIds } },
-    select: { id: true },
-  });
-  const courseIds = userCourses.map((c) => c.id);
+  // ⛔ `rawPrisma` for the two archivable models: Q24 retains archived courses
+  // and documents, and the delete moves custody of those too. Counting through
+  // the filtered client would under-report what changes hands on the very
+  // screen whose job is to report exactly that.
+  const [authoredCourses, uploadedDocuments] = await Promise.all([
+    rawPrisma.course.findMany({
+      where: { createdByOrgUserId: { in: orgUserIds } },
+      select: { id: true, createdByOrgUserId: true },
+    }),
+    rawPrisma.document.findMany({
+      where: { organizationUserId: { in: orgUserIds } },
+      select: { organizationUserId: true },
+    }),
+  ]);
 
-  const [lessonCount, quizCount, quizAttemptCount, affectedEnrollments] = await Promise.all([
-    courseIds.length > 0 ? prisma.lesson.count({ where: { courseId: { in: courseIds } } }) : 0,
+  const courseIds = authoredCourses.map((c) => c.id);
+
+  const otherEnrollments =
     courseIds.length > 0
-      ? prisma.quiz.count({ where: { lesson: { courseId: { in: courseIds } } } })
-      : 0,
-    enrollmentCount > 0
-      ? prisma.quizAttempt.count({
-          where: { enrollment: { organizationUserId: { in: orgUserIds } } },
-        })
-      : 0,
-    courseIds.length > 0
-      ? prisma.enrollment.count({
+      ? await prisma.enrollment.count({
           where: {
             courseId: { in: courseIds },
             organizationUserId: { notIn: orgUserIds },
           },
         })
-      : 0,
+      : 0;
+
+  const membershipsHoldingAssets = new Set<string>([
+    ...authoredCourses.map((c) => c.createdByOrgUserId),
+    ...uploadedDocuments.map((d) => d.organizationUserId),
   ]);
+
+  const organizationsWithoutCustodian: string[] = [];
+  for (const orgUser of orgUsers) {
+    if (!membershipsHoldingAssets.has(orgUser.id)) continue;
+    const custodian = await findAssetCustodian(rawPrisma, orgUser.organizationId, orgUserIds);
+    if (!custodian) organizationsWithoutCustodian.push(orgUser.organization.name);
+  }
 
   return {
     user: { id: user.id, email: user.email, role: orgUsers[0]?.role ?? 'n/a', name },
     counts: {
-      courses: courseCount,
       enrollments: enrollmentCount,
-      documents: documentCount,
+      quizAttempts: quizAttemptCount,
+      certificates: certificateCount,
       notifications: notificationCount,
       jobs: jobCount,
       invites: inviteCount,
       verificationTokens: verificationTokenCount,
-      lessons: lessonCount,
-      quizzes: quizCount,
-      quizAttempts: quizAttemptCount,
     },
-    affectedEnrollments,
+    retained: {
+      courses: authoredCourses.length,
+      documents: uploadedDocuments.length,
+      otherEnrollments,
+      organizationsWithoutCustodian,
+    },
   };
 }
 
 // ── Delete User ──────────────────────────────────────────────────────────────
 
-export async function deleteUserWithRelations(
-  userId: string,
-): Promise<{ success: boolean; error?: string; deletedCounts?: Record<string, number> }> {
+export async function deleteUserWithRelations(userId: string): Promise<{
+  success: boolean;
+  error?: string;
+  deletedCounts?: Record<string, number>;
+  transferredCounts?: Record<string, number>;
+}> {
   if (!(await verifySystemAdminCookie())) {
     throw new Error('Unauthorized');
   }
@@ -614,99 +707,126 @@ export async function deleteUserWithRelations(
     // must not be awaited inside a transaction callback.
     const clientContext = await systemClientContext();
 
-    // ⛔ `rawPrisma.$transaction`, so every `tx.*` below is UN-filtered. This
-    // is a hard delete of an entire identity: `tx.course.deleteMany` and
-    // `tx.document.deleteMany` remove archived rows regardless (writes are
-    // never intercepted), so the `findMany` that derives `courseIds` for the
-    // cascade must see the same rows. Filtered, an archived course's
-    // enrollments and quiz attempts would survive the pass that is supposed to
-    // clear them and then block the delete on a foreign key.
+    // ⛔ `rawPrisma.$transaction`, so every `tx.*` below is UN-filtered. Q24
+    // retains archived courses and documents, and custody of those has to move
+    // as well: filtered, an archived course would keep pointing at the
+    // membership about to be deleted and `Course.creator`'s Restrict would
+    // block the delete, while an archived document's Cascade would destroy a
+    // row Q24 says must be kept.
     const result = await rawPrisma.$transaction(async (tx) => {
-      const counts: Record<string, number> = {};
+      const deleted: Record<string, number> = {};
+      const transferred: Record<string, number> = { courses: 0, documents: 0 };
 
       const orgUsers = await tx.organizationUser.findMany({
         where: { userId },
-        select: { id: true },
+        select: { id: true, organizationId: true },
       });
       const orgUserIds = orgUsers.map((ou) => ou.id);
 
-      // 1. Delete quiz attempts for the identity's enrollments (every org)
+      // 1. Hand the organization's assets to a surviving member BEFORE anything
+      // is destroyed. A course is never hard-deleted as a side effect of
+      // deleting its author, and never archived either: archiving withdraws it
+      // from every list, and losing the author is not a reason to stop offering
+      // the org's training. A platform-authored global course is being consumed
+      // by other tenants entirely, so it must survive untouched as well.
+      for (const orgUser of orgUsers) {
+        const authoredCourses = await tx.course.count({
+          where: { createdByOrgUserId: orgUser.id },
+        });
+        const uploadedDocuments = await tx.document.count({
+          where: { organizationUserId: orgUser.id },
+        });
+
+        if (authoredCourses === 0 && uploadedDocuments === 0) continue;
+
+        const custodian = await findAssetCustodian(tx, orgUser.organizationId, orgUserIds);
+
+        if (!custodian) {
+          logger.warn({
+            msg: '[system] User delete refused: no surviving member to inherit org assets',
+            userId,
+            orgId: orgUser.organizationId,
+            authoredCourses,
+            uploadedDocuments,
+          });
+          throw new Error(
+            'This user authored courses or uploaded documents in an organization with no other member to inherit them. Add a member, or delete the organization, before deleting this user.',
+          );
+        }
+
+        const movedCourses = await tx.course.updateMany({
+          where: { createdByOrgUserId: orgUser.id },
+          data: { createdByOrgUserId: custodian.id },
+        });
+        const movedDocuments = await tx.document.updateMany({
+          where: { organizationUserId: orgUser.id },
+          data: { organizationUserId: custodian.id },
+        });
+
+        transferred.courses += movedCourses.count;
+        transferred.documents += movedDocuments.count;
+
+        logger.info({
+          msg: '[system] Transferred authored records to a surviving member',
+          orgId: orgUser.organizationId,
+          custodianOrgUserId: custodian.id,
+          custodianRole: custodian.role,
+          courses: movedCourses.count,
+          documents: movedDocuments.count,
+        });
+      }
+
+      // 2. The identity's OWN learning history (every org). Certificates hang
+      // off the enrollment with `onDelete: Cascade`, so they go with it — a hard
+      // delete of the identity cannot keep a compliance record that is keyed to
+      // the membership being removed. Counted before the delete so the audit row
+      // records what went. Enrollments, attempts and certificates belonging to
+      // OTHER members — including in courses this user authored — are
+      // deliberately never touched: their compliance history is not this
+      // person's to destroy.
+      deleted.certificates = await tx.certificate.count({
+        where: { organizationUserId: { in: orgUserIds } },
+      });
+
       const quizAttempts = await tx.quizAttempt.deleteMany({
         where: { enrollment: { organizationUserId: { in: orgUserIds } } },
       });
-      counts.quizAttempts = quizAttempts.count;
+      deleted.quizAttempts = quizAttempts.count;
 
-      // 2. Delete enrollments for the identity (every org)
       const enrollments = await tx.enrollment.deleteMany({
         where: { organizationUserId: { in: orgUserIds } },
       });
-      counts.enrollments = enrollments.count;
+      deleted.enrollments = enrollments.count;
 
-      // 3. Find courses created by any of the identity's memberships and
-      // delete enrollments in those courses from other users
-      const userCourses = await tx.course.findMany({
-        where: { createdByOrgUserId: { in: orgUserIds } },
-        select: { id: true },
-      });
-      const courseIds = userCourses.map((c) => c.id);
-
-      if (courseIds.length > 0) {
-        // Delete quiz attempts for other users' enrollments in these courses
-        const otherQuizAttempts = await tx.quizAttempt.deleteMany({
-          where: {
-            enrollment: { courseId: { in: courseIds } },
-          },
-        });
-        counts.otherQuizAttempts = otherQuizAttempts.count;
-
-        // Delete other users' enrollments in these courses
-        const otherEnrollments = await tx.enrollment.deleteMany({
-          where: { courseId: { in: courseIds } },
-        });
-        counts.otherEnrollments = otherEnrollments.count;
-
-        // 4. Delete courses (cascades: CourseArtifact, CourseVersion, Lesson→Quiz→Question)
-        const courses = await tx.course.deleteMany({
-          where: { createdByOrgUserId: { in: orgUserIds } },
-        });
-        counts.courses = courses.count;
-      }
-
-      // 5. Delete documents (cascades: DocumentVersion→PhiReport, MappingEvidence, CourseVersion)
-      const documents = await tx.document.deleteMany({
-        where: { organizationUserId: { in: orgUserIds } },
-      });
-      counts.documents = documents.count;
-
-      // 6. Delete notifications
+      // 3. Delete notifications
       const notifications = await tx.notification.deleteMany({
         where: { organizationUserId: { in: orgUserIds } },
       });
-      counts.notifications = notifications.count;
+      deleted.notifications = notifications.count;
 
-      // 7. Delete jobs
+      // 4. Delete jobs
       const jobs = await tx.job.deleteMany({
         where: { userId },
       });
-      counts.jobs = jobs.count;
+      deleted.jobs = jobs.count;
 
-      // 8. Delete invites for user's email
+      // 5. Delete invites for user's email
       const invites = await tx.invite.deleteMany({
         where: { email: user.email },
       });
-      counts.invites = invites.count;
+      deleted.invites = invites.count;
 
-      // 9. Delete verification tokens
+      // 6. Delete verification tokens
       const tokens = await tx.verificationToken.deleteMany({
         where: { identifier: user.email },
       });
-      counts.verificationTokens = tokens.count;
+      deleted.verificationTokens = tokens.count;
 
-      // 10. Delete the user — cascades every OrganizationUser membership (now
-      // safe: their authored courses were removed above), MfaFactor and
-      // MfaRecoveryCode rows.
+      // 7. Delete the user — cascades every OrganizationUser membership (now
+      // safe: the courses and documents they authored point at a surviving
+      // member), MfaFactor and MfaRecoveryCode rows.
       await tx.user.delete({ where: { id: userId } });
-      counts.user = 1;
+      deleted.user = 1;
 
       // F-094: the most destructive action in the system — an irreversible
       // cross-organization hard delete of a person and all their enrollments,
@@ -721,21 +841,30 @@ export async function deleteUserWithRelations(
           targetId: userId,
           // Counts only — no email, no names. The logger redacts PII anyway,
           // but the audit row is long-lived so it carries even less.
-          metadata: { deletedCounts: counts },
+          metadata: { deletedCounts: deleted, transferredCounts: transferred },
           ...clientContext,
         },
         tx,
       );
 
-      return counts;
+      return { deleted, transferred };
     });
 
-    logger.info({ msg: 'System admin: user deleted', email: user.email, counts: result });
+    logger.info({
+      msg: 'System admin: user deleted',
+      email: user.email,
+      counts: result.deleted,
+      transferred: result.transferred,
+    });
 
     revalidatePath('/system');
     revalidatePath('/system/users');
 
-    return { success: true, deletedCounts: result };
+    return {
+      success: true,
+      deletedCounts: result.deleted,
+      transferredCounts: result.transferred,
+    };
   } catch (error) {
     logger.error({ msg: 'System admin: failed to delete user', userId, error });
     return {
@@ -744,7 +873,6 @@ export async function deleteUserWithRelations(
     };
   }
 }
-
 /**
  * Check if system admin is enabled (env var is set).
  * Used by the layout to decide whether to show 404.
