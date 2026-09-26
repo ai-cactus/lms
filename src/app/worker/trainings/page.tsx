@@ -40,6 +40,7 @@ export default async function WorkerTrainingsPage() {
     retakeOf: picked.retakeOf,
     quizAttempts: picked.quizAttempts,
     certificateId: picked.certificate?.id ?? null,
+    courseArchived: picked.course.archivedAt !== null,
   }));
 
   return (

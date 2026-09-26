@@ -5,6 +5,7 @@ import { auth as workerAuth } from '@/auth.worker';
 import { z } from 'zod';
 import { logger } from '@/lib/logger';
 import { guardApiSession } from '@/lib/auth-guard';
+import { ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
 
 const saveQuizSchema = z.object({
   enrollmentId: z.string().min(1, 'Enrollment ID is required'),
@@ -45,7 +46,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     const attempt = await prisma.quizAttempt.findFirst({
       where: { enrollmentId, quizId },
       orderBy: { completedAt: 'desc' },
-      include: { enrollment: true },
+      include: { enrollment: { include: { course: { select: { archivedAt: true } } } } },
     });
 
     if (!attempt) {
@@ -60,6 +61,17 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
         { error: 'Enrollment does not belong to active sessions' },
         { status: 403 },
       );
+    }
+
+    // Q-04: an archived course stops accepting learner writes, and an in-flight
+    // draft is still a learner write.
+    if (attempt.enrollment.course.archivedAt) {
+      logger.warn({
+        msg: '[quiz] Answer save blocked — course is archived',
+        enrollmentId,
+        courseId: attempt.enrollment.courseId,
+      });
+      return NextResponse.json({ error: ARCHIVED_COURSE_LEARNER_MESSAGE }, { status: 403 });
     }
 
     if (attempt.timeTaken !== null) {

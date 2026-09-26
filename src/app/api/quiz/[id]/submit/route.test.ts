@@ -80,6 +80,7 @@ vi.mock('@/lib/logger', () => ({
 // Import under test AFTER all vi.mock() declarations.
 // ---------------------------------------------------------------------------
 import { POST } from './route';
+import { ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -114,6 +115,8 @@ const ENROLLMENT = {
   id: 'enr-1',
   organizationUserId: 'ou-1',
   courseId: 'course-1',
+  // A live course, so the Q-04 archive gate lets the submission through.
+  course: { archivedAt: null },
   // Active billing so the defense-in-depth gate lets the attempt through.
   organizationUser: { organization: { subscription: { status: 'active', pausedAt: null } } },
 };
@@ -482,5 +485,31 @@ describe('POST /api/quiz/[id]/submit — legacy AI explanation fallback', () => 
     expect(res.status).toBe(200);
     expect(json.score).toBe(100);
     expect(txMock.quizAttempt.create).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Founder Q-04 (2026-09-23): no submission is graded once the course is
+// archived. Refused before the quiz is even loaded, so no attempt row is
+// written, no enrollment status moves, and no AI spend is incurred.
+// ---------------------------------------------------------------------------
+describe('POST /api/quiz/[id]/submit — archived course (Q-04)', () => {
+  it('403s with the cancellation message and persists nothing', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue({
+      ...ENROLLMENT,
+      course: { archivedAt: new Date('2026-09-20') },
+    });
+
+    const res = await POST(
+      makeReq({ enrollmentId: 'enr-1', answers: makeAnswers(2, 2), timeTaken: 30 }),
+      { params },
+    );
+    const json = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(json.error).toBe(ARCHIVED_COURSE_LEARNER_MESSAGE);
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(prismaMock.enrollment.update).not.toHaveBeenCalled();
+    expect(mockCallVertexAI).not.toHaveBeenCalled();
   });
 });

@@ -40,4 +40,14 @@ you never created.
    you must share the checkout, filter with `vitest -t '<describe name>'` to prove
    only your own tests.
 
+**Continuing another agent's branch is REFUSED by default.** Worktree isolation
+has a second edge: when you are told to add a commit to an existing feature
+branch, that branch is usually still checked out in the worktree of the agent
+that created it, and `git checkout <branch>` dies with
+`fatal: '<branch>' is already used by worktree at …`. `git worktree list` names
+the holder and the commit it sits on; when that matches the commit you were
+handed, the sibling is finished and
+`git checkout --ignore-other-worktrees <branch>` is the way in. Check the holder
+first — two live worktrees on one branch diverge silently.
+
 Related: [[build_typecheck_scope]], [[project_offline_migrations]].

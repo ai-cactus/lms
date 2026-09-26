@@ -1318,6 +1318,44 @@ describe('runReminderSweep — archived courses are excluded from both write pre
   });
 });
 
+/**
+ * Founder Q-06 (2026-09-23): no reminders for an archived course.
+ *
+ * The two pre-passes above already refused to WRITE on a retired course; the
+ * two dispatch tracks kept mailing about one. That is the visible half: an
+ * overdue notice naming a course the learner can no longer open (Q-04 refuses
+ * access, the quiz and the retake), which no action of theirs and no action of
+ * their manager's can clear.
+ *
+ * Asserted on the query, like the pre-passes: an archived enrolment is never
+ * fetched, so there is no per-row skip to observe.
+ */
+describe('runReminderSweep — archived courses produce no reminders (Q-06)', () => {
+  function enrollmentWhereFor(predicate: (where: Record<string, unknown>) => boolean) {
+    const where = prismaMock.enrollment.findMany.mock.calls
+      .map((args: unknown[]) => (args[0] as { where: Record<string, unknown> }).where)
+      .find(predicate);
+    expect(where).toBeDefined();
+    return where as Record<string, unknown>;
+  }
+
+  it('Track A — the deadline/overdue ladder skips enrolments on an archived course', async () => {
+    await runReminderSweep(BASE_OPTS);
+
+    const where = enrollmentWhereFor((w) => 'dueAt' in w);
+    expect(where.course).toEqual({ archivedAt: null });
+  });
+
+  it('Track B — the resume/retake nudges skip enrolments on an archived course', async () => {
+    await runReminderSweep(BASE_OPTS);
+
+    const where = enrollmentWhereFor(
+      (w) => !('dueAt' in w) && !('assignmentId' in w) && 'status' in w,
+    );
+    expect(where.course).toEqual({ archivedAt: null });
+  });
+});
+
 // ─── Dry-run accuracy (Issue #12): wouldSend vs skipped ───────────────────────
 
 describe('runReminderSweep — dry-run tally accuracy', () => {

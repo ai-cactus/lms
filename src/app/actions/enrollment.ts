@@ -13,6 +13,7 @@ import { invalidatePlaybackAuthz } from '@/lib/video/playback-cache';
 import type { StaffEntry } from '@/types/enrollment';
 import { resolveDataFacilityIds, staffFacilityWhere } from '@/lib/facility/staff-where';
 import { publishCourseOnAssignment } from '@/lib/course/publish-on-assign';
+import { ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
 import {
   partitionEmailsByFacility,
   partitionOrgUsersByFacility,
@@ -1367,7 +1368,9 @@ export async function getEnrollmentWithResults(enrollmentId: string) {
 /**
  * Worker requests a retry on a failed course quiz.
  */
-export async function requestCourseRetry(enrollmentId: string) {
+export async function requestCourseRetry(
+  enrollmentId: string,
+): Promise<{ success: boolean; refusedReason?: string }> {
   const [admin, worker] = await Promise.all([
     (await import('@/auth')).auth(),
     (await import('@/auth.worker')).auth(),
@@ -1393,6 +1396,17 @@ export async function requestCourseRetry(enrollmentId: string) {
       enrollment.organizationUserId !== workerOrgUserId)
   ) {
     throw new Error('Enrollment not found');
+  }
+
+  // Q-04: a cancelled course cannot be retried. Fail-closed — the reset below,
+  // which would drop the learner's score, has not run.
+  if (enrollment.course.archivedAt) {
+    logger.warn({
+      msg: '[enrollment] Course retry refused — course is archived',
+      enrollmentId,
+      courseId: enrollment.courseId,
+    });
+    return { success: false, refusedReason: ARCHIVED_COURSE_LEARNER_MESSAGE };
   }
 
   await prisma.enrollment.update({

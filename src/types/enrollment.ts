@@ -42,4 +42,15 @@ export interface LearnerCourseRow {
   enrollmentId?: string;
   /** Present once a certificate has been issued for this enrollment. */
   certificateId?: string | null;
+  /**
+   * The COURSE (not the enrollment) has been archived. Archiving cancels a
+   * course for its learners (Q-04/Q-05/Q-06), so every server-side learner
+   * action on this row is now refused; the list must therefore render it as
+   * cancelled with its action disabled rather than offering a dead end.
+   *
+   * The enrollment's `course` relation is reached through a nested include,
+   * which the archive query extension cannot filter, so the row survives and
+   * the flag has to be carried explicitly.
+   */
+  courseArchived?: boolean;
 }

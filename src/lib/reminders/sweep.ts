@@ -703,6 +703,13 @@ async function runTrackA(
       dueAt: { not: null },
       status: { notIn: [...TERMINAL_STATUSES] },
       organizationUser: { is: { active: true } },
+      // Founder Q-06: no reminders for an archived course. Without this the
+      // ladder keeps mailing "your training is overdue" about a course the
+      // learner can no longer open and no manager action can clear — the same
+      // dead-end the status-tracker page already avoids. Restated here because
+      // the Q24 archive filter is a query extension over top-level Course reads
+      // and cannot reach this nested relation.
+      course: { archivedAt: null },
       OR: [{ assignmentId: null }, { assignment: { is: { remindersEnabled: true } } }],
     },
     select: {
@@ -829,6 +836,10 @@ async function runTrackB(
     where: {
       status: { in: ['in_progress', 'locked'] },
       organizationUser: { is: { active: true } },
+      // Founder Q-06, same rule as Track A. Sharper here: every nudge this
+      // track sends asks the learner to resume or retake, and Q-04 refuses
+      // both on an archived course.
+      course: { archivedAt: null },
     },
     select: {
       id: true,

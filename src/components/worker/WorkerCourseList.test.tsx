@@ -10,9 +10,11 @@
  * hint, with attemptCount/attemptCount+1 semantics unchanged.
  */
 import { render, screen } from '@testing-library/react';
-import { describe, it, expect, vi } from 'vitest';
+import { fireEvent } from '@testing-library/dom';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
+const mockPush = vi.fn();
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: mockPush }) }));
 
 import WorkerCourseList from './WorkerCourseList';
 
@@ -202,5 +204,118 @@ describe('WorkerCourseList — Action column', () => {
     render(<WorkerCourseList courses={[baseCourse({ status: 'assigned', progress: 0 })]} />);
 
     expect(screen.queryByRole('button', { name: /Actions for/ })).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * Archiving a course CANCELS it for its learners (Q-04/Q-05/Q-06): every
+ * server-side learner action is refused from that moment. The enrollment reaches
+ * Course through a nested include, which the archive query extension cannot
+ * filter, so the row still arrives here — and used to arrive with a working-looking
+ * Start/Continue button that dead-ended. Founder ruling 2026-09-24: keep the row,
+ * mark it Cancelled, disable the action.
+ */
+describe('WorkerCourseList — an archived course reads as cancelled', () => {
+  beforeEach(() => {
+    mockPush.mockClear();
+  });
+
+  it('badges an archived row "Cancelled" and disables its Start action', () => {
+    render(
+      <WorkerCourseList
+        courses={[baseCourse({ status: 'assigned', progress: 0, courseArchived: true })]}
+      />,
+    );
+
+    expect(screen.getByText('Cancelled')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Start' })).toBeDisabled();
+  });
+
+  it('replaces the in-progress badge on an archived row rather than showing both', () => {
+    render(
+      <WorkerCourseList
+        courses={[baseCourse({ status: 'in_progress', progress: 40, courseArchived: true })]}
+      />,
+    );
+
+    expect(screen.getByText('Cancelled')).toBeInTheDocument();
+    expect(screen.queryByText('In progress')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
+  });
+
+  it('never navigates from an archived row, whether the action or the row is clicked', () => {
+    render(
+      <WorkerCourseList
+        courses={[baseCourse({ status: 'in_progress', progress: 40, courseArchived: true })]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    fireEvent.click(screen.getByText('Bloodborne Pathogens'));
+
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it('withdraws "View result" from an archived completed row — the player refuses it', () => {
+    render(
+      <WorkerCourseList
+        courses={[baseCourse({ status: 'attested', progress: 100, courseArchived: true })]}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'View' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: /Actions for/ })).not.toBeInTheDocument();
+  });
+
+  it('keeps the certificate an archived completed row already earned', () => {
+    render(
+      <WorkerCourseList
+        courses={[
+          baseCourse({
+            status: 'attested',
+            progress: 100,
+            courseArchived: true,
+            certificateId: 'cert-1',
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: /Actions for/ })).toBeInTheDocument();
+  });
+
+  it('withdraws the "Retake quiz" action from an archived failed row', () => {
+    render(
+      <WorkerCourseList
+        courses={[
+          baseCourse({
+            status: 'in_progress',
+            passingScore: 70,
+            quizAttempts: [{ id: 'a1', attemptCount: 1, timeTaken: 120, score: 40 }],
+            courseArchived: true,
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: /Actions for/ })).not.toBeInTheDocument();
+  });
+
+  it('leaves a live row untouched — no Cancelled badge, action enabled, navigation works', () => {
+    render(
+      <WorkerCourseList
+        courses={[baseCourse({ status: 'in_progress', progress: 40, courseArchived: false })]}
+      />,
+    );
+
+    expect(screen.queryByText('Cancelled')).not.toBeInTheDocument();
+    expect(screen.getByText('In progress')).toBeInTheDocument();
+
+    const action = screen.getByRole('button', { name: 'Continue' });
+    expect(action).toBeEnabled();
+    fireEvent.click(action);
+
+    expect(mockPush).toHaveBeenCalledWith('/worker/courses/course-1');
   });
 });
