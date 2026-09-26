@@ -10,6 +10,8 @@
 import { describe, it, expect } from 'vitest';
 import * as XLSX from 'xlsx';
 import { flattenAuditReport } from './flatten';
+import { buildCourseReport } from './report-data';
+import { formatDate } from './pdf-primitives';
 import type { AuditReportResult } from './types';
 
 function csvFor(result: AuditReportResult): string {
@@ -85,5 +87,82 @@ describe('flattenAuditReport', () => {
     } as unknown as AuditReportResult;
 
     expect(flattenAuditReport(result)).toHaveLength(2);
+  });
+});
+
+/**
+ * BUG-08. `Enrollment.completedAt` was never written, so every "Date Completed"
+ * cell in every export was blank and the PDF printed the em-dash placeholder.
+ * These walk the real chain — enrollment row → report builder → CSV cell / PDF
+ * cell — so a regression that stops persisting the column shows up as a missing
+ * DATE rather than a passing test over a hand-written string.
+ */
+describe('a completed enrollment renders a real date, not a blank', () => {
+  const COMPLETED_AT = new Date('2026-06-18T10:00:00.000Z');
+
+  it('puts the completion date in the course report CSV', () => {
+    const result = buildCourseReport({
+      orgName: BASE.orgName,
+      generatedAt: new Date(BASE.generatedAt),
+      course: {
+        title: 'Bloodborne Pathogens',
+        category: 'Compliance',
+        type: 'text',
+        skillLevel: 'beginner',
+        status: 'published',
+        objectives: [],
+        duration: 30,
+      },
+      quizRules: [],
+      documents: [],
+      enrollments: [
+        {
+          staffName: 'Dana Reed',
+          status: 'attested',
+          score: 95,
+          attempts: 1,
+          completedAt: COMPLETED_AT,
+        },
+      ],
+    });
+
+    const rows = flattenAuditReport(result);
+    expect(rows[0]['Date Completed']).toBe(COMPLETED_AT.toISOString());
+    expect(csvFor(result)).toContain(COMPLETED_AT.toISOString());
+  });
+
+  it('formats that date for the PDF instead of the missing-value placeholder', () => {
+    const result = buildCourseReport({
+      orgName: BASE.orgName,
+      generatedAt: new Date(BASE.generatedAt),
+      course: {
+        title: 'Bloodborne Pathogens',
+        category: 'Compliance',
+        type: 'text',
+        skillLevel: 'beginner',
+        status: 'published',
+        objectives: [],
+        duration: 30,
+      },
+      quizRules: [],
+      documents: [],
+      enrollments: [
+        {
+          staffName: 'Dana Reed',
+          status: 'attested',
+          score: 95,
+          attempts: 1,
+          completedAt: COMPLETED_AT,
+        },
+      ],
+    });
+
+    const rendered = formatDate(result.staffPerformance[0].completedAt);
+    expect(rendered).not.toBe('—');
+    expect(new Date(rendered).getTime()).not.toBeNaN();
+  });
+
+  it('still renders the placeholder for an enrollment that has not completed', () => {
+    expect(formatDate(null)).toBe('—');
   });
 });

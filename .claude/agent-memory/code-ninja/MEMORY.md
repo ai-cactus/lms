@@ -1,5 +1,6 @@
 # Memory Index
 
+- [completedAt = attestation time](gotcha_completedat_is_attestation_time.md) — one writer (attestCourse), `completed` status is dead, and backfilling the column arms a renewal-email wave
 - [Dashboard metrics glossary](dashboard-metrics-glossary.md) — the Dashboard Metrics Glossary is canonical for metric names/formulas (source PDF no longer in repo; code record in lib/facility/metrics.ts); two open product decisions
 - [Supervisor own-facility edit](supervisor_own_facility_edit.md) — PROF-002 deliberately lets supervisors edit their own facility despite the read-only RBAC ruling; don't "fix" it back
 - [Figma STAFF section](reference_figma_staff_section.md) — list/profile/mobile frames; profile omits real Passed/Locked states and its Retry row is unbuildable literally; roster's 5 columns don't fit at lg, % widths from xl (measure 1280 AND 1440)
