@@ -230,6 +230,17 @@ describe('assignRetake — retake enrollment shape', () => {
       }),
     );
   });
+
+  // Regression guard for enrollments.last_activity_at (dormant-staff reporting):
+  // an admin forcing a retake is not the learner engaging, so the new
+  // enrollment must be minted with no stamp at all — `objectContaining` in the
+  // tests above would silently accept one being added, so this checks directly.
+  it('never stamps lastActivityAt — an admin-assigned retake is not learner engagement', async () => {
+    await assignRetake(ENROLLMENT_ID, 'Failed prior attempt');
+
+    const { data } = prismaMock.enrollment.create.mock.calls[0][0];
+    expect(data).not.toHaveProperty('lastActivityAt');
+  });
 });
 
 /**

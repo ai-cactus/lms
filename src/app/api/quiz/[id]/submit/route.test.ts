@@ -360,6 +360,10 @@ describe('POST /api/quiz/[id]/submit — append-history + attempt limit', () => 
       }),
     );
     expect(txMock.quizAttempt.create).not.toHaveBeenCalled();
+    // No attempts remaining is refused before the enrollment update that would
+    // stamp lastActivityAt alongside score/status — this is a learner write
+    // that must not count as engagement.
+    expect(prismaMock.enrollment.update).not.toHaveBeenCalled();
   });
 
   it('CREATEs a new completed attempt with attemptCount = completedCount + 1 when under the limit', async () => {

@@ -110,6 +110,7 @@ describe('POST /api/quiz/[id]/save — auth', () => {
     expect(res.status).toBe(403);
     expect(body.error).toBe('Enrollment does not belong to active sessions');
     expect(prismaMock.quizAttempt.update).not.toHaveBeenCalled();
+    expect(prismaMock.enrollment.updateMany).not.toHaveBeenCalled();
   });
 });
 
@@ -194,5 +195,6 @@ describe('POST /api/quiz/[id]/save — archived course (Q-04)', () => {
     expect(res.status).toBe(403);
     expect(body.error).toBe(ARCHIVED_COURSE_LEARNER_MESSAGE);
     expect(prismaMock.quizAttempt.update).not.toHaveBeenCalled();
+    expect(prismaMock.enrollment.updateMany).not.toHaveBeenCalled();
   });
 });
