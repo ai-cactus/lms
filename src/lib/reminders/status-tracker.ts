@@ -168,9 +168,9 @@ export async function getStatusTrackerSummaryForOrg(
   // extension on Course's own reads (`db/index.ts`) and cannot reach a nested
   // relation, so without this the tracker lists an overdue row naming a course
   // the Courses page says does not exist — and no manager action can clear it.
-  // The learner's own view of that enrolment deliberately survives (Q24); this
-  // is the MANAGER's actionable picture, and it sits on the same screen as the
-  // dashboard totals, which now count the same population.
+  // The enrolment ROW itself is retained for compliance (Q24) — what stops is
+  // the obligation: Q-04 refuses every learner action on an archived course, so
+  // there is nothing here for a manager to chase.
   const liveCourse = { course: { archivedAt: null } };
 
   const [overdueEnrollments, nearDeadlineEnrollments] = await Promise.all([

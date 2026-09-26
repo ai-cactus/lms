@@ -35,6 +35,7 @@ function deferred(overrides: Partial<DeferredWorkerNotification> = {}): Deferred
     userId: 'user-1',
     email: 'staff@example.com',
     recipientName: 'Staff One',
+    recipientRole: 'nurse',
     courseId: 'course-1',
     courseTitle: 'Safety Training',
     organizationName: 'Acme Corp',
@@ -103,14 +104,31 @@ describe('collectDeferredNotices', () => {
   it('returns an empty array for an empty input', () => {
     expect(collectDeferredNotices([])).toEqual([]);
   });
+
+  it("carries each recipient's role through, so the notice can be linked into their own portal", () => {
+    const notices = collectDeferredNotices([
+      deferred({ organizationUserId: 'org-user-1', recipientRole: 'nurse' }),
+      deferred({
+        organizationUserId: 'org-user-2',
+        recipientRole: 'clinical_director',
+        courseId: 'course-2',
+      }),
+    ]);
+
+    expect(notices.map((n) => n.recipientRole)).toEqual(['nurse', 'clinical_director']);
+  });
 });
 
-function notice(courses: AssignedCourse[]): BatchedAssignmentNotice {
+function notice(
+  courses: AssignedCourse[],
+  recipientRole: BatchedAssignmentNotice['recipientRole'] = 'nurse',
+): BatchedAssignmentNotice {
   return {
     organizationUserId: 'org-user-1',
     userId: 'user-1',
     email: 'staff@example.com',
     recipientName: 'Staff One',
+    recipientRole,
     organizationName: 'Acme Corp',
     courses,
   };
@@ -146,6 +164,38 @@ describe('notifyCoursesAssigned', () => {
         count: 1,
       },
     });
+  });
+
+  // BUG-02: the recipient of a COURSE_ASSIGNED notice is the ASSIGNEE, and a
+  // manager is assigned courses like anyone else. `/worker/trainings` needs a
+  // worker-portal cookie, which an admin-portal session does not have.
+  it('1 course, manager recipient: links to the course itself rather than the worker portal', async () => {
+    await notifyCoursesAssigned(
+      notice(
+        [{ courseId: 'course-1', courseTitle: 'Safety Training', dueAt }],
+        'clinical_director',
+      ),
+    );
+
+    expect(mockCreateNotification).toHaveBeenCalledWith(
+      expect.objectContaining({ linkUrl: '/learn/course-1' }),
+    );
+  });
+
+  it('several courses, manager recipient: falls back to the dashboard — there is no admin-side training list every manager role can open', async () => {
+    await notifyCoursesAssigned(
+      notice(
+        [
+          { courseId: 'course-1', courseTitle: 'Safety Training', dueAt },
+          { courseId: 'course-2', courseTitle: 'HIPAA Basics', dueAt },
+        ],
+        'finance',
+      ),
+    );
+
+    expect(mockCreateNotification).toHaveBeenCalledWith(
+      expect.objectContaining({ linkUrl: '/dashboard' }),
+    );
   });
 
   it('3 courses: createNotification and the email are each called EXACTLY once, listing all 3', async () => {

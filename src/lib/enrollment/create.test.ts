@@ -109,7 +109,7 @@ describe('createEnrollmentForUser — membership-scoped tenancy guard', () => {
     expect(outcome).toEqual({ status: 'invited', email: 'staff@example.com' });
     expect(prismaMock.organizationUser.findFirst).toHaveBeenCalledWith({
       where: { userId: 'user-in-org-2', organizationId: 'org-1', active: true },
-      select: { id: true },
+      select: { id: true, role: true },
     });
     expect(prismaMock.enrollment.create).not.toHaveBeenCalled();
     expect(prismaMock.enrollment.findFirst).not.toHaveBeenCalled();
@@ -124,7 +124,7 @@ describe('createEnrollmentForUser — membership-scoped tenancy guard', () => {
       lastName: null,
       fullName: 'Staff One',
     });
-    prismaMock.organizationUser.findFirst.mockResolvedValue({ id: 'ou-1' });
+    prismaMock.organizationUser.findFirst.mockResolvedValue({ id: 'ou-1', role: 'nurse' });
 
     const outcome = await createEnrollmentForUser({ email: 'staff@example.com' }, BASE_CTX);
 
@@ -198,7 +198,7 @@ describe('createEnrollmentForUser — idempotency (existing org member)', () => 
       lastName: null,
       fullName: null,
     });
-    prismaMock.organizationUser.findFirst.mockResolvedValue({ id: 'ou-1' });
+    prismaMock.organizationUser.findFirst.mockResolvedValue({ id: 'ou-1', role: 'nurse' });
     prismaMock.enrollment.findFirst.mockResolvedValue({ id: 'existing-enrollment' });
 
     const outcome = await createEnrollmentForUser({ email: 'staff@example.com' }, BASE_CTX);
@@ -354,7 +354,7 @@ describe('createEnrollmentForUser — existing org member', () => {
       lastName: null,
       fullName: 'Staff One',
     });
-    prismaMock.organizationUser.findFirst.mockResolvedValue({ id: 'ou-1' });
+    prismaMock.organizationUser.findFirst.mockResolvedValue({ id: 'ou-1', role: 'nurse' });
 
     const outcome = await createEnrollmentForUser(
       { email: 'staff@example.com' },
@@ -383,7 +383,7 @@ describe('createEnrollmentForUser — existing org member', () => {
       lastName: null,
       fullName: 'Staff One',
     });
-    prismaMock.organizationUser.findFirst.mockResolvedValue({ id: 'ou-1' });
+    prismaMock.organizationUser.findFirst.mockResolvedValue({ id: 'ou-1', role: 'nurse' });
     prismaMock.organizationUserFacility.findFirst.mockResolvedValue({ facilityId: 'fac-own' });
 
     await createEnrollmentForUser(
@@ -404,7 +404,7 @@ describe('createEnrollmentForUser — existing org member', () => {
       lastName: null,
       fullName: 'Staff One',
     });
-    prismaMock.organizationUser.findFirst.mockResolvedValue({ id: 'ou-1' });
+    prismaMock.organizationUser.findFirst.mockResolvedValue({ id: 'ou-1', role: 'nurse' });
     prismaMock.organizationUserFacility.findFirst.mockResolvedValue(null);
 
     await createEnrollmentForUser({ email: 'staff@example.com' }, BASE_CTX);
@@ -424,7 +424,7 @@ describe('createEnrollmentForUser — deferWorkerNotification', () => {
       lastName: null,
       fullName: 'Staff One',
     });
-    prismaMock.organizationUser.findFirst.mockResolvedValue({ id: 'ou-1' });
+    prismaMock.organizationUser.findFirst.mockResolvedValue({ id: 'ou-1', role: 'nurse' });
 
     const outcome = await createEnrollmentForUser(
       { email: 'staff@example.com' },
@@ -444,6 +444,28 @@ describe('createEnrollmentForUser — deferWorkerNotification', () => {
     expect(outcome).not.toHaveProperty('deferred');
   });
 
+  // BUG-02: a manager is assigned courses like anyone else, and
+  // `/worker/trainings` is served only against a worker-portal cookie.
+  it('manager recipient: the inline notice links to the course, not to the worker portal', async () => {
+    prismaMock.user.findUnique.mockResolvedValue({
+      id: 'user-1',
+      email: 'staff@example.com',
+      firstName: null,
+      lastName: null,
+      fullName: 'Staff One',
+    });
+    prismaMock.organizationUser.findFirst.mockResolvedValue({
+      id: 'ou-1',
+      role: 'clinical_director',
+    });
+
+    await createEnrollmentForUser({ email: 'staff@example.com' }, BASE_CTX);
+
+    expect(mockCreateNotification).toHaveBeenCalledWith(
+      expect.objectContaining({ linkUrl: '/learn/course-1' }),
+    );
+  });
+
   it('flag set: skips the inline notification and email, still writes the enrollment and seeds INITIAL_LAUNCH, and returns a `deferred` payload with the persisted due date', async () => {
     prismaMock.user.findUnique.mockResolvedValue({
       id: 'user-1',
@@ -452,7 +474,7 @@ describe('createEnrollmentForUser — deferWorkerNotification', () => {
       lastName: null,
       fullName: 'Staff One',
     });
-    prismaMock.organizationUser.findFirst.mockResolvedValue({ id: 'ou-1' });
+    prismaMock.organizationUser.findFirst.mockResolvedValue({ id: 'ou-1', role: 'nurse' });
     const dueAt = new Date('2026-09-01T00:00:00Z');
 
     const outcome = await createEnrollmentForUser(
@@ -474,6 +496,7 @@ describe('createEnrollmentForUser — deferWorkerNotification', () => {
         userId: 'user-1',
         email: 'staff@example.com',
         recipientName: 'Staff One',
+        recipientRole: 'nurse',
         courseId: 'course-1',
         courseTitle: 'Safety Training',
         organizationName: 'Acme Corp',
@@ -490,7 +513,7 @@ describe('createEnrollmentForUser — deferWorkerNotification', () => {
       lastName: null,
       fullName: null,
     });
-    prismaMock.organizationUser.findFirst.mockResolvedValue({ id: 'ou-1' });
+    prismaMock.organizationUser.findFirst.mockResolvedValue({ id: 'ou-1', role: 'nurse' });
     prismaMock.enrollment.findFirst.mockResolvedValue({ id: 'existing-enrollment' });
 
     const outcome = await createEnrollmentForUser(

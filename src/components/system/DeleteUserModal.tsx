@@ -40,8 +40,15 @@ export default function DeleteUserModal({ preview, onClose, onSuccess }: DeleteU
 
   const emailMatches = confirmEmail === preview.user.email;
 
+  const { user, counts, retained } = preview;
+
+  // The account holds courses or documents in an organization with nobody left
+  // to inherit them, so the server will refuse rather than destroy them.
+  const blockedOrganizations = retained.organizationsWithoutCustodian;
+  const blocked = blockedOrganizations.length > 0;
+
   async function handleDelete() {
-    if (!emailMatches) return;
+    if (!emailMatches || blocked) return;
     setLoading(true);
     setError('');
 
@@ -63,20 +70,21 @@ export default function DeleteUserModal({ preview, onClose, onSuccess }: DeleteU
     }
   }
 
-  const { user, counts, affectedEnrollments } = preview;
-
   const impactRows = [
     { label: 'User Account', count: 1 },
-    { label: 'Courses Created', count: counts.courses },
-    { label: 'Lessons (in courses)', count: counts.lessons },
-    { label: 'Quizzes (in courses)', count: counts.quizzes },
     { label: 'Enrollments', count: counts.enrollments },
     { label: 'Quiz Attempts', count: counts.quizAttempts },
-    { label: 'Documents', count: counts.documents },
+    { label: 'Certificates', count: counts.certificates },
     { label: 'Notifications', count: counts.notifications },
     { label: 'Jobs', count: counts.jobs },
     { label: 'Invites', count: counts.invites },
     { label: 'Verification Tokens', count: counts.verificationTokens },
+  ].filter((row) => row.count > 0);
+
+  const retainedRows = [
+    { label: 'Courses authored (reassigned)', count: retained.courses },
+    { label: 'Documents uploaded (reassigned)', count: retained.documents },
+    { label: "Other members' enrollments (untouched)", count: retained.otherEnrollments },
   ].filter((row) => row.count > 0);
 
   if (success) {
@@ -85,8 +93,8 @@ export default function DeleteUserModal({ preview, onClose, onSuccess }: DeleteU
         <DialogContent showCloseButton={false} className="sm:max-w-md">
           <DialogTitle className="sr-only">User deleted</DialogTitle>
           <Alert variant="success" title="User deleted">
-            User <strong>{user.email}</strong> has been permanently deleted with all related
-            records. Redirecting...
+            User <strong>{user.email}</strong> has been permanently deleted. Courses and documents
+            they authored were reassigned to a surviving member. Redirecting...
           </Alert>
         </DialogContent>
       </Dialog>
@@ -107,7 +115,8 @@ export default function DeleteUserModal({ preview, onClose, onSuccess }: DeleteU
             Delete User Permanently
           </DialogTitle>
           <DialogDescription>
-            This action cannot be undone. All related data will be permanently removed.
+            This action cannot be undone. The account and its own learning history are permanently
+            removed; the organization&apos;s courses and documents are kept.
           </DialogDescription>
         </DialogHeader>
 
@@ -134,10 +143,18 @@ export default function DeleteUserModal({ preview, onClose, onSuccess }: DeleteU
             </div>
           </div>
 
-          {affectedEnrollments > 0 && (
+          {blocked && (
+            <Alert variant="error" className="w-full">
+              This user authored courses or uploaded documents that no one is left to inherit in{' '}
+              <strong>{blockedOrganizations.join(', ')}</strong>. Add a member there, or delete the
+              organization, before deleting this user.
+            </Alert>
+          )}
+
+          {counts.certificates > 0 && (
             <Alert variant="warning" className="w-full">
-              <strong>{affectedEnrollments}</strong> enrollment(s) from other users in courses
-              created by this user will also be deleted.
+              <strong>{counts.certificates}</strong> certificate(s) belonging to this user are
+              compliance records and cannot be recovered once deleted.
             </Alert>
           )}
 
@@ -169,6 +186,30 @@ export default function DeleteUserModal({ preview, onClose, onSuccess }: DeleteU
             </div>
           </div>
 
+          {retainedRows.length > 0 && (
+            <div>
+              <h4 className="mb-2 text-sm font-semibold text-foreground">Records kept:</h4>
+              <div className="rounded-[10px] border border-border">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead>Record Type</TableHead>
+                      <TableHead className="text-right">Count</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {retainedRows.map((row) => (
+                      <TableRow key={row.label}>
+                        <TableCell>{row.label}</TableCell>
+                        <TableCell className="text-right">{row.count}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          )}
+
           <Field label="To confirm deletion, type the email address below:" helperText={user.email}>
             <Input
               type="text"
@@ -188,7 +229,7 @@ export default function DeleteUserModal({ preview, onClose, onSuccess }: DeleteU
             variant="destructive"
             type="button"
             onClick={handleDelete}
-            disabled={!emailMatches || loading}
+            disabled={!emailMatches || loading || blocked}
             loading={loading}
           >
             Delete Permanently

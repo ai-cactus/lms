@@ -26,6 +26,7 @@ import { QuizQuestion } from '@/types/quiz';
 import { CourseWizardData } from '@/types/course';
 import { wizardSubtitleClass, wizardTitleClass } from './wizardFormClasses';
 import { logger } from '@/lib/logger';
+import { dropOptionExplanation } from '@/lib/quiz/options';
 
 interface Step6QuizReviewProps {
   data: CourseWizardData;
@@ -118,6 +119,33 @@ function groupQuestionsByModule(questions: QuizQuestion[], courseTitle: string):
   }));
 }
 
+/**
+ * Rewriting an option's text invalidates the rationale written about the option
+ * it used to be, so that entry goes with it. The per-option rationale is stored
+ * against the option's INDEX (`Question.incorrectOptionExplanations`), so
+ * leaving it behind would show the learner prose about an answer that no longer
+ * exists.
+ */
+function withOptionTextEdited(
+  question: QuizQuestion,
+  optionIndex: number,
+  text: string,
+): QuizQuestion {
+  const options = [...question.options];
+  options[optionIndex] = text;
+  return {
+    ...question,
+    options,
+    explanation: question.explanation
+      ? {
+          ...question.explanation,
+          incorrectOptions:
+            dropOptionExplanation(question.explanation.incorrectOptions, optionIndex) ?? {},
+        }
+      : undefined,
+  };
+}
+
 export default function Step6QuizReview({
   data,
   quiz,
@@ -169,9 +197,7 @@ export default function Step6QuizReview({
   };
 
   const updateOption = (index: number, value: string) => {
-    const newOptions = [...newQuestion.options];
-    newOptions[index] = value;
-    setNewQuestion({ ...newQuestion, options: newOptions });
+    setNewQuestion(withOptionTextEdited(newQuestion, index, value));
   };
 
   /**
@@ -390,11 +416,9 @@ export default function Step6QuizReview({
                     type="text"
                     className={formInputClass}
                     value={opt}
-                    onChange={(e) => {
-                      const newOptions = [...editingQuestion.options];
-                      newOptions[i] = e.target.value;
-                      setEditingQuestion({ ...editingQuestion, options: newOptions });
-                    }}
+                    onChange={(e) =>
+                      setEditingQuestion(withOptionTextEdited(editingQuestion, i, e.target.value))
+                    }
                     disabled={editingQuestion.type === 'true_false'}
                   />
                 </div>

@@ -2,6 +2,7 @@ import prisma from '@/lib/prisma';
 import { DEFAULT_SELF_SERVE_WORKER_ROLE } from '@/lib/rbac/role-utils';
 import { logger, maskEmail } from '@/lib/logger';
 import { createNotification } from '@/lib/notifications/create';
+import { trainingNoticeLink } from '@/lib/notifications/portal-link';
 import { computeDueAt, resolveStartDate } from '@/lib/reminders/deadline';
 import { resolveMemberFacilityId, resolveMemberFacilityIds } from '@/lib/facility/member-facility';
 import type { StaffEntry } from '@/types/enrollment';
@@ -59,6 +60,8 @@ export interface DeferredWorkerNotification {
   userId: string;
   email: string;
   recipientName: string;
+  /** The recipient's role in this org — it decides which portal the notice links into. */
+  recipientRole: UserRole;
   courseId: string;
   courseTitle: string;
   organizationName: string;
@@ -107,7 +110,7 @@ export interface EnrollmentPrefetch {
   /** The identity for this email, or null if none exists. */
   user: PrefetchedUser | null;
   /** The caller-org membership for that identity, or null when it has none. */
-  membership: { id: string } | null;
+  membership: { id: string; role: UserRole } | null;
   /** Whether an enrollment already exists for that membership on `ctx.courseId`. */
   alreadyEnrolled: boolean;
   /** The most recent outstanding pending invite for this email, or null. */
@@ -166,7 +169,7 @@ export async function createEnrollmentForUser(
     : user && ctx.organizationId
       ? await prisma.organizationUser.findFirst({
           where: { userId: user.id, organizationId: ctx.organizationId, active: true },
-          select: { id: true },
+          select: { id: true, role: true },
         })
       : null;
 
@@ -401,6 +404,7 @@ export async function createEnrollmentForUser(
       userId: user.id,
       email: normalizedEmail,
       recipientName,
+      recipientRole: membership.role,
       courseId: ctx.courseId,
       courseTitle: ctx.courseTitle,
       organizationName: ctx.organizationName,
@@ -412,7 +416,7 @@ export async function createEnrollmentForUser(
       type: 'COURSE_ASSIGNED',
       title: 'New Required Training Assigned',
       message: `You have been assigned a new course: ${ctx.courseTitle}`,
-      linkUrl: `/worker/trainings`,
+      linkUrl: trainingNoticeLink(membership.role, [ctx.courseId]),
       metadata: { courseId: ctx.courseId },
     });
 
@@ -517,10 +521,12 @@ export async function createEnrollmentsForUsers(
     ctx.organizationId && userIds.length > 0
       ? await prisma.organizationUser.findMany({
           where: { userId: { in: userIds }, organizationId: ctx.organizationId, active: true },
-          select: { id: true, userId: true },
+          select: { id: true, userId: true, role: true },
         })
       : [];
-  const membershipByUserId = new Map(memberships.map((m) => [m.userId, { id: m.id }]));
+  const membershipByUserId = new Map(
+    memberships.map((m) => [m.userId, { id: m.id, role: m.role }]),
+  );
   const membershipIds = memberships.map((m) => m.id);
 
   // Batch reads 3, 4 & 5: existing enrollments for those memberships on this

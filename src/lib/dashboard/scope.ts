@@ -12,6 +12,19 @@
  * another corrected query: a new aggregate has to spread one of these, so it
  * cannot be written unscoped.
  *
+ * ⚠️ The viewer's ROLE narrows nothing in this bundle; their FACILITY scope
+ * narrows the enrolment-derived half of it. That line is the whole contract:
+ * "Total Courses" and "Total Staff Assigned" are facts about an organisation, so
+ * Owner, HR and Finance must read the same figures — while a facility-bound
+ * supervisor legitimately reads their own facilities' figures, because the
+ * question they are asking is about those facilities. So facility scope lives on
+ * `enrollmentWhere` and `staffWhere`, and neither predicate here is ever
+ * conditioned on who is asking. What a role may SEE of a population is the
+ * CALLER's decision (`getDashboardData` withholds the course rows and the
+ * per-course chart from a role holding nothing on Courses); shrinking the
+ * population is how two screens come to describe the same organisation
+ * differently.
+ *
  * ⚠️ `enrollmentWhere` pins the organisation on the MEMBER, not only the course.
  * `OrgCourseOffering` links a course to ANY organisation, so a course predicate
  * alone counts another tenant's learners on an adopted (or adopted-from) course.
@@ -28,7 +41,7 @@
  * that must restate `course:` and would otherwise SHADOW it.
  */
 import type { Prisma } from '@/generated/prisma/client';
-import { authoredCourseWhere, listAdoptedCourseIds } from '@/lib/course/org-scope';
+import { orgCourseWhere } from '@/lib/course/org-scope';
 import {
   resolveDataFacilityIdsFor,
   staffFacilityWhere,
@@ -51,7 +64,15 @@ export interface DashboardScope {
   /** The `string[] | null` facility contract, unchanged — see `staff-where.ts`. */
   dataFacilityIds: string[] | null;
   /**
-   * Every course the organisation can use, at this caller's breadth.
+   * Every course the organisation can use — authored in-house or adopted.
+   *
+   * The SAME breadth for every caller. It was previously narrowed to the
+   * viewer's own authored courses for any role without `course.read` — in
+   * practice Finance, the one manager role that holds none — so one organisation
+   * reported 2 courses to Finance and 4 to its Owner at the same moment, and
+   * every enrolment-derived figure hanging off it disagreed too (BUG-01).
+   * Courses are org-global rather than facility-bound, so facility scope does
+   * not narrow this either.
    *
    * Archive-neutral, because its only callers are TOP-LEVEL Course reads
    * (`course.findMany`, `course.count`) where the query extension already
@@ -87,7 +108,7 @@ export async function resolveDashboardScope(
   session: FacilityScopeSession,
   requestedFacilityIds?: string[] | null,
 ): Promise<DashboardScope> {
-  const { organizationId, organizationUserId, role } = session.user;
+  const { organizationId, organizationUserId } = session.user;
 
   const dataFacilityIds = await resolveDataFacilityIdsFor(
     session,
@@ -109,10 +130,7 @@ export async function resolveDashboardScope(
     };
   }
 
-  const adoptedCourseIds = await listAdoptedCourseIds(organizationId);
-  const authored = authoredCourseWhere({ role, organizationId, organizationUserId });
-  const courseWhere: Prisma.CourseWhereInput =
-    adoptedCourseIds.length === 0 ? authored : { OR: [authored, { id: { in: adoptedCourseIds } }] };
+  const courseWhere = await orgCourseWhere(organizationId);
 
   return {
     organizationId,
