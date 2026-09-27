@@ -234,6 +234,71 @@ describe('dormancy', () => {
       [enrollment({ status: 'completed', lastActivityAt: daysBefore(NOW, 90) })],
       false,
     ],
+    [
+      'R1 boundary — last login exactly 14 days ago is still within grace',
+      member({ lastLoginAt: daysBefore(NOW, 14) }),
+      [] as DashboardEnrollment[],
+      false,
+    ],
+    [
+      'R1 boundary — last login 14 days and 1ms ago trips it',
+      member({ lastLoginAt: new Date(daysBefore(NOW, 14).getTime() - 1) }),
+      [] as DashboardEnrollment[],
+      true,
+    ],
+    [
+      'R1 boundary — joined exactly 14 days ago (with no login) is old enough to count',
+      member({ joinedAt: daysBefore(NOW, 14), lastLoginAt: null }),
+      [] as DashboardEnrollment[],
+      true,
+    ],
+    [
+      'R1 boundary — joined 13 days and 23 hours ago is still within grace',
+      member({ joinedAt: new Date(daysBefore(NOW, 14).getTime() + 1), lastLoginAt: null }),
+      [] as DashboardEnrollment[],
+      false,
+    ],
+    [
+      'R2 boundary — not started exactly 7 days ago trips it (inclusive)',
+      member(),
+      [
+        enrollment({
+          status: 'assigned',
+          startedAt: daysBefore(NOW, 7),
+          lastActivityAt: daysBefore(NOW, 7),
+        }),
+      ],
+      true,
+    ],
+    [
+      'R2 boundary — not started 7 days minus 1ms ago is still within grace',
+      member(),
+      [
+        enrollment({
+          status: 'assigned',
+          startedAt: new Date(daysBefore(NOW, 7).getTime() + 1),
+          lastActivityAt: new Date(daysBefore(NOW, 7).getTime() + 1),
+        }),
+      ],
+      false,
+    ],
+    [
+      'R3 boundary — stalled exactly 14 days is still within grace (exclusive)',
+      member(),
+      [enrollment({ status: 'in_progress', lastActivityAt: daysBefore(NOW, 14) })],
+      false,
+    ],
+    [
+      'R3 boundary — stalled 14 days and 1ms trips it',
+      member(),
+      [
+        enrollment({
+          status: 'in_progress',
+          lastActivityAt: new Date(daysBefore(NOW, 14).getTime() - 1),
+        }),
+      ],
+      true,
+    ],
   ])('%s', (_label, m, enrollments, expected) => {
     expect(isDormantMember(m, enrollments, NOW)).toBe(expected);
   });
@@ -310,6 +375,12 @@ describe('credentials', () => {
   it.each([
     ['expiring — issued 20 days ago, expires in 10', certificate(), [], 'expiring'],
     ['window edge — expires exactly 30 days out', certificate({ issuedAt: NOW }), [], 'expiring'],
+    [
+      'window edge — expires exactly now (the lower, inclusive bound)',
+      certificate({ issuedAt: daysBefore(NOW, 30) }),
+      [],
+      'expiring',
+    ],
     ['valid — expires 31 days out', certificate({ issuedAt: daysAfter(NOW, 1) }), [], 'valid'],
     ['expired — issued 40 days ago', certificate({ issuedAt: daysBefore(NOW, 40) }), [], 'expired'],
     [

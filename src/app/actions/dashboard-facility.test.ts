@@ -238,6 +238,51 @@ describe('getGlobalDashboardData — zero-facility exit', () => {
   });
 });
 
+describe('getGlobalDashboardData — query count independent of facility count', () => {
+  /** Total prisma calls across every mocked model this action can reach. */
+  function totalPrismaCalls(): number {
+    return [
+      mockFacilityCount,
+      mockOrgUserCount,
+      mockOrgUserFindMany,
+      mockEnrollmentFindMany,
+      mockQuizAttemptFindMany,
+      mockCertificateFindMany,
+      mockCourseFindMany,
+      mockQuizFindMany,
+      mockOrgCourseOfferingFindMany,
+    ].reduce((sum, mock) => sum + mock.mock.calls.length, 0);
+  }
+
+  it('issues the SAME fixed query set for a 1-facility org as for a 5-facility org — no N+1', async () => {
+    mockAuth.mockResolvedValue(baseSession({ role: 'owner' }));
+    mockListAccessibleFacilities.mockResolvedValue([FACILITY_A]);
+    await getGlobalDashboardData();
+    const callsWithOneFacility = totalPrismaCalls();
+
+    vi.clearAllMocks();
+    mockFacilityCount.mockResolvedValue(0);
+    mockOrgUserCount.mockResolvedValue(0);
+    mockOrgCourseOfferingFindMany.mockResolvedValue([]);
+    wireSnapshot();
+    mockAuth.mockResolvedValue(baseSession({ role: 'owner' }));
+    const fiveFacilities = ['a', 'b', 'c', 'd', 'e'].map((letter) => ({
+      id: `fac-${letter}`,
+      name: letter,
+      type: 'clinic',
+      city: 'X',
+    }));
+    mockListAccessibleFacilities.mockResolvedValue(fiveFacilities);
+
+    const result = await getGlobalDashboardData();
+
+    expect(result.facilitiesOverview).toHaveLength(5);
+    expect(totalPrismaCalls()).toBe(callsWithOneFacility);
+    // Confirms the count isn't trivially zero on both sides.
+    expect(callsWithOneFacility).toBeGreaterThan(0);
+  });
+});
+
 describe('getGlobalDashboardData — scope narrowing by current roster', () => {
   it('applies no roster narrowing for an org-wide role', async () => {
     mockAuth.mockResolvedValue(baseSession({ role: 'owner' }));
@@ -287,6 +332,15 @@ describe('getGlobalDashboardData — figures', () => {
   beforeEach(() => {
     mockAuth.mockResolvedValue(baseSession({ role: 'owner' }));
     mockListAccessibleFacilities.mockResolvedValue([FACILITY_A, FACILITY_B]);
+  });
+
+  it('excludes renewalCycle: none from the certificate read — a one-off course has no credential to expire', async () => {
+    await getGlobalDashboardData();
+
+    const where = mockCertificateFindMany.mock.calls[0][0].where as {
+      enrollment: { assignment: { renewalCycle: { not: string } } };
+    };
+    expect(where.enrollment.assignment).toEqual({ renewalCycle: { not: 'none' } });
   });
 
   it('sorts priorityRisks most-at-risk first from each facility’s overdue work', async () => {
