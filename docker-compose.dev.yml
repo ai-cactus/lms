@@ -96,7 +96,10 @@ services:
   # ── MinIO (GCS fallback / local object storage) ───────────────────────────────
   minio:
     container_name: lms-dev-minio
-    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+    # Private mirror in GHCR: MinIO withdrew its public images from Docker Hub and
+    # then from quay.io (TOOL-23). Layers are byte-identical to the upstream
+    # release; pulling needs `docker login ghcr.io` with a token holding read:packages.
+    image: ghcr.io/ai-cactus/minio:RELEASE.2025-04-22T22-12-26Z
     restart: unless-stopped
     logging: *default-logging
     command: server /data --console-address ":9001"

@@ -6,7 +6,7 @@ metadata:
 ---
 
 `docker-compose.dev.yml`'s `minio` service (image
-`quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z`) maps `9005:9000` (API) and
+`ghcr.io/ai-cactus/minio:RELEASE.2025-04-22T22-12-26Z`) maps `9005:9000` (API) and
 `9006:9001` (console). The inline comment next to the port mapping
 ("→ MINIO_PORT=9000") is misleading.
 
