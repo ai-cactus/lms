@@ -2,9 +2,10 @@
  * Unit tests for src/app/actions/dashboard-facility.ts — getGlobalDashboardData.
  *
  * Priorities: the RBAC gate (rosters OR billing), supervisor narrowing to their
- * accessible facilities (vs org-wide roles aggregating everything), the
- * zero-facility early exit, and that the fixed-size Promise.all result is wired
- * into the right output buckets without any facility-by-facility looping.
+ * accessible facilities by CURRENT ROSTER (never the `Enrollment.facilityId`
+ * stamp), the zero-facility early exit, per-facility rows sliced from one
+ * snapshot, trend chips only where history is honest, and a comparison headline
+ * counted from data rather than summed from rows.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
@@ -13,24 +14,24 @@ const {
   mockListAccessibleFacilities,
   mockFacilityCount,
   mockOrgUserCount,
-  mockOrgUserFacilityGroupBy,
-  mockEnrollmentGroupBy,
-  mockEnrollmentCount,
-  mockEnrollmentAggregate,
+  mockOrgUserFindMany,
+  mockEnrollmentFindMany,
+  mockQuizAttemptFindMany,
+  mockCertificateFindMany,
+  mockCourseFindMany,
   mockQuizFindMany,
-  mockCourseCount,
   mockOrgCourseOfferingFindMany,
 } = vi.hoisted(() => ({
   mockAuth: vi.fn(),
   mockListAccessibleFacilities: vi.fn(),
   mockFacilityCount: vi.fn(),
   mockOrgUserCount: vi.fn(),
-  mockOrgUserFacilityGroupBy: vi.fn(),
-  mockEnrollmentGroupBy: vi.fn(),
-  mockEnrollmentCount: vi.fn(),
-  mockEnrollmentAggregate: vi.fn(),
+  mockOrgUserFindMany: vi.fn(),
+  mockEnrollmentFindMany: vi.fn(),
+  mockQuizAttemptFindMany: vi.fn(),
+  mockCertificateFindMany: vi.fn(),
+  mockCourseFindMany: vi.fn(),
   mockQuizFindMany: vi.fn(),
-  mockCourseCount: vi.fn(),
   mockOrgCourseOfferingFindMany: vi.fn(),
 }));
 
@@ -50,18 +51,13 @@ vi.mock('@/lib/facility/scope', async () => {
 vi.mock('@/lib/prisma', () => {
   const prisma = {
     facility: { count: mockFacilityCount },
-    organizationUser: { count: mockOrgUserCount },
-    organizationUserFacility: { groupBy: mockOrgUserFacilityGroupBy },
-    enrollment: {
-      groupBy: mockEnrollmentGroupBy,
-      count: mockEnrollmentCount,
-      aggregate: mockEnrollmentAggregate,
-      fields: { dueAt: 'dueAt' },
-    },
+    organizationUser: { count: mockOrgUserCount, findMany: mockOrgUserFindMany },
+    enrollment: { findMany: mockEnrollmentFindMany },
+    quizAttempt: { findMany: mockQuizAttemptFindMany },
+    certificate: { findMany: mockCertificateFindMany },
+    course: { findMany: mockCourseFindMany },
     quiz: { findMany: mockQuizFindMany },
-    course: { count: mockCourseCount },
-    // resolveDashboardScope -> listAdoptedCourseIds; empty means "nothing
-    // adopted", exercised on its own in dashboard/scope.test.ts.
+    // resolveDashboardScope -> listAdoptedCourseIds; empty means "nothing adopted".
     orgCourseOffering: { findMany: mockOrgCourseOfferingFindMany },
   };
   return { prisma, default: prisma };
@@ -72,55 +68,82 @@ import { getGlobalDashboardData } from './dashboard-facility';
 const FACILITY_A = { id: 'fac-a', name: 'Alpha', type: 'clinic', city: 'Austin' };
 const FACILITY_B = { id: 'fac-b', name: 'Beta', type: 'clinic', city: 'Dallas' };
 
-/** Frozen clock so each query's date cutoffs are exact, identifiable values. */
+/** Frozen clock so each date cutoff is an exact, identifiable value. */
 const NOW = new Date('2026-06-15T12:00:00.000Z');
+const DAY = 24 * 60 * 60 * 1000;
+const daysAgo = (n: number) => new Date(NOW.getTime() - n * DAY);
+const daysAhead = (n: number) => new Date(NOW.getTime() + n * DAY);
 
-type GroupByArgs = {
-  by: string[];
-  where: {
-    dueAt?: { lt?: Date; gte?: Date; lte?: Date; not?: null };
-    assignment?: unknown;
-    completedAt?: unknown;
-    status?: unknown;
-  };
-};
-
-/**
- * Names the facility-grouped enrollment query behind a `groupBy` call from its
- * `where` shape. The module fires many groupBys in one Promise.all, so their
- * array position is an implementation detail — tests match on intent instead.
- */
-function facilityGroupByKind(args: GroupByArgs): string | null {
-  if (!(args.by.length === 1 && args.by[0] === 'facilityId')) return null;
-
-  const { dueAt, assignment, completedAt } = args.where;
-  if (dueAt?.not === null) return completedAt ? 'onTime' : 'withDeadline';
-  if (dueAt?.gte && dueAt?.lte) return assignment ? 'expiringCredentials' : 'approaching';
-  if (dueAt?.lt) {
-    if (assignment) return 'expiredCredentials';
-    return dueAt.lt.getTime() < NOW.getTime() ? 'overdueBeyondGrace' : 'overdue';
-  }
-  return null;
+interface MemberRow {
+  id: string;
+  role?: string;
+  joinedAt?: Date;
+  lastLoginAt?: Date | null;
+  facilityIds?: string[];
 }
 
-/**
- * Wires every enrollment.groupBy/count call by inspecting its `by`/`where`
- * shape rather than call order, since the module fires many groupBys in one
- * Promise.all and their array position is an implementation detail.
- */
-function wireEmptyEnrollmentQueries() {
-  mockEnrollmentGroupBy.mockResolvedValue([]);
-  mockEnrollmentCount.mockResolvedValue(0);
+interface EnrollmentRow {
+  id: string;
+  organizationUserId: string;
+  courseId?: string;
+  status?: string;
+  startedAt?: Date;
+  lastActivityAt?: Date | null;
+  dueAt?: Date | null;
+  completedAt?: Date | null;
+  retakeOf?: string | null;
 }
 
-/** Resolves each facility-grouped query from `rowsByKind`, everything else empty. */
-function wireFacilityGroupBys(
-  rowsByKind: Record<string, { facilityId: string | null; _count: { _all: number } }[]>,
-) {
-  mockEnrollmentGroupBy.mockImplementation((args: GroupByArgs) => {
-    const kind = facilityGroupByKind(args);
-    return Promise.resolve(kind ? (rowsByKind[kind] ?? []) : []);
-  });
+interface Fixture {
+  members?: MemberRow[];
+  enrollments?: EnrollmentRow[];
+  attempts?: { enrollmentId: string; quizId: string; score: number; completedAt: Date }[];
+  certificates?: {
+    id: string;
+    enrollmentId: string;
+    organizationUserId: string;
+    courseId: string;
+    issuedAt: Date;
+    renewalCycle: string;
+  }[];
+  quizzes?: { id: string; passingScore: number; courseId: string }[];
+  publishedCourseIds?: string[];
+}
+
+function wireSnapshot(fixture: Fixture = {}) {
+  mockOrgUserFindMany.mockResolvedValue(
+    (fixture.members ?? []).map(({ facilityIds = [], ...m }) => ({
+      role: 'nurse',
+      joinedAt: daysAgo(100),
+      lastLoginAt: daysAgo(1),
+      ...m,
+      facilities: facilityIds.map((facilityId) => ({ facilityId })),
+    })),
+  );
+  mockEnrollmentFindMany.mockResolvedValue(
+    (fixture.enrollments ?? []).map((e) => ({
+      courseId: 'course-1',
+      status: 'in_progress',
+      startedAt: daysAgo(2),
+      accessAt: null,
+      lastActivityAt: daysAgo(1),
+      dueAt: null,
+      completedAt: null,
+      retakeOf: null,
+      ...e,
+    })),
+  );
+  mockQuizAttemptFindMany.mockResolvedValue(fixture.attempts ?? []);
+  mockCertificateFindMany.mockResolvedValue(
+    (fixture.certificates ?? []).map(({ renewalCycle, ...c }) => ({
+      ...c,
+      enrollment: { assignment: { renewalCycle } },
+    })),
+  );
+  mockCourseFindMany.mockResolvedValue(
+    (fixture.publishedCourseIds ?? ['course-1']).map((id) => ({ id })),
+  );
+  mockQuizFindMany.mockResolvedValue((fixture.quizzes ?? []).map((q) => ({ ...q, lesson: null })));
 }
 
 function baseSession(overrides: Partial<Record<string, unknown>> = {}) {
@@ -141,12 +164,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockFacilityCount.mockResolvedValue(0);
   mockOrgUserCount.mockResolvedValue(0);
-  mockOrgUserFacilityGroupBy.mockResolvedValue([]);
-  mockQuizFindMany.mockResolvedValue([]);
-  mockCourseCount.mockResolvedValue(0);
   mockOrgCourseOfferingFindMany.mockResolvedValue([]);
-  mockEnrollmentAggregate.mockResolvedValue({ _avg: { score: null } });
-  wireEmptyEnrollmentQueries();
+  wireSnapshot();
 });
 
 afterEach(() => {
@@ -161,8 +180,7 @@ describe('getGlobalDashboardData — auth & RBAC gate', () => {
 
   // This payload is per-facility AGGREGATES — counts, percentages, risk levels.
   // No staff name or email appears in it, so overseeing the organisation's
-  // finances is reason enough to see it. Finance previously fell through to the
-  // single-facility dashboard because this gate was `assignment.read` alone.
+  // finances is reason enough to see it.
   it.each(['owner', 'admin', 'supervisor', 'hr', 'clinical_director', 'finance'] as const)(
     'allows role=%s (oversees rosters or oversees billing)',
     async (role) => {
@@ -194,7 +212,7 @@ describe('getGlobalDashboardData — auth & RBAC gate', () => {
 });
 
 describe('getGlobalDashboardData — zero-facility exit', () => {
-  it('returns an all-zero payload without issuing any enrollment/staff queries when the caller has zero facilities', async () => {
+  it('returns an all-zero payload without issuing any snapshot query when the caller has zero facilities', async () => {
     mockAuth.mockResolvedValue(baseSession({ role: 'owner' }));
     mockListAccessibleFacilities.mockResolvedValue([]);
 
@@ -204,8 +222,9 @@ describe('getGlobalDashboardData — zero-facility exit', () => {
     expect(result.enterpriseFootprint.totalFacilities.value).toBe(0);
     expect(result.priorityRisks).toEqual([]);
     expect(result.facilitiesOverview).toEqual([]);
-    expect(mockOrgUserCount).not.toHaveBeenCalled();
-    expect(mockEnrollmentGroupBy).not.toHaveBeenCalled();
+    expect(result.comparison).toBeNull();
+    expect(mockOrgUserFindMany).not.toHaveBeenCalled();
+    expect(mockEnrollmentFindMany).not.toHaveBeenCalled();
   });
 
   it('returns an all-zero payload when the session has no organizationId (mid-onboarding)', async () => {
@@ -219,109 +238,180 @@ describe('getGlobalDashboardData — zero-facility exit', () => {
   });
 });
 
-describe('getGlobalDashboardData — org-wide vs supervisor scope narrowing', () => {
-  it('scopes every base where-clause to the full facility id set for an org-wide role', async () => {
+describe('getGlobalDashboardData — query count independent of facility count', () => {
+  /** Total prisma calls across every mocked model this action can reach. */
+  function totalPrismaCalls(): number {
+    return [
+      mockFacilityCount,
+      mockOrgUserCount,
+      mockOrgUserFindMany,
+      mockEnrollmentFindMany,
+      mockQuizAttemptFindMany,
+      mockCertificateFindMany,
+      mockCourseFindMany,
+      mockQuizFindMany,
+      mockOrgCourseOfferingFindMany,
+    ].reduce((sum, mock) => sum + mock.mock.calls.length, 0);
+  }
+
+  it('issues the SAME fixed query set for a 1-facility org as for a 5-facility org — no N+1', async () => {
+    mockAuth.mockResolvedValue(baseSession({ role: 'owner' }));
+    mockListAccessibleFacilities.mockResolvedValue([FACILITY_A]);
+    await getGlobalDashboardData();
+    const callsWithOneFacility = totalPrismaCalls();
+
+    vi.clearAllMocks();
+    mockFacilityCount.mockResolvedValue(0);
+    mockOrgUserCount.mockResolvedValue(0);
+    mockOrgCourseOfferingFindMany.mockResolvedValue([]);
+    wireSnapshot();
+    mockAuth.mockResolvedValue(baseSession({ role: 'owner' }));
+    const fiveFacilities = ['a', 'b', 'c', 'd', 'e'].map((letter) => ({
+      id: `fac-${letter}`,
+      name: letter,
+      type: 'clinic',
+      city: 'X',
+    }));
+    mockListAccessibleFacilities.mockResolvedValue(fiveFacilities);
+
+    const result = await getGlobalDashboardData();
+
+    expect(result.facilitiesOverview).toHaveLength(5);
+    expect(totalPrismaCalls()).toBe(callsWithOneFacility);
+    // Confirms the count isn't trivially zero on both sides.
+    expect(callsWithOneFacility).toBeGreaterThan(0);
+  });
+});
+
+describe('getGlobalDashboardData — scope narrowing by current roster', () => {
+  it('applies no roster narrowing for an org-wide role', async () => {
     mockAuth.mockResolvedValue(baseSession({ role: 'owner' }));
     mockListAccessibleFacilities.mockResolvedValue([FACILITY_A, FACILITY_B]);
 
     await getGlobalDashboardData();
 
-    const staffCountCall = mockOrgUserCount.mock.calls[0][0];
-    // Org-wide role: staff count is NOT narrowed by a facilities filter.
-    expect(staffCountCall.where).not.toHaveProperty('facilities');
-    expect(staffCountCall.where.organizationId).toBe('org-1');
+    const populationWhere = mockOrgUserFindMany.mock.calls[0][0].where;
+    expect(populationWhere).not.toHaveProperty('facilities');
+    expect(populationWhere).toMatchObject({ organizationId: 'org-1', active: true });
   });
 
-  it("narrows staff + enrollment queries to the supervisor's accessible facility set only", async () => {
+  it("narrows the population and every enrolment read to the supervisor's facilities, never by the stamp", async () => {
     mockAuth.mockResolvedValue(baseSession({ role: 'supervisor' }));
     mockListAccessibleFacilities.mockResolvedValue([FACILITY_A]);
 
     await getGlobalDashboardData();
 
-    const staffCountCall = mockOrgUserCount.mock.calls[0][0];
-    expect(staffCountCall.where.facilities).toEqual({
-      some: { facilityId: { in: ['fac-a'] }, active: true },
-    });
-
-    // Every enrollment groupBy/count call must be narrowed to facilityId in [fac-a].
-    for (const call of mockEnrollmentGroupBy.mock.calls) {
-      expect(call[0].where.facilityId).toEqual({ in: ['fac-a'] });
-    }
+    const roster = { facilities: { some: { facilityId: { in: ['fac-a'] }, active: true } } };
+    expect(mockOrgUserFindMany.mock.calls[0][0].where).toMatchObject(roster);
+    const enrollmentWhere = mockEnrollmentFindMany.mock.calls[0][0].where;
+    expect(enrollmentWhere).not.toHaveProperty('facilityId');
+    expect(enrollmentWhere.organizationUser).toMatchObject(roster);
+    expect(mockOrgUserCount.mock.calls[0][0].where).toMatchObject(roster);
   });
 
-  it('never lets a supervisor with facility A see facility B rows even if present in the raw query result', async () => {
+  it('never lets a supervisor with facility A see a facility B row or B-only member', async () => {
     mockAuth.mockResolvedValue(baseSession({ role: 'supervisor' }));
     mockListAccessibleFacilities.mockResolvedValue([FACILITY_A]);
-    mockOrgUserFacilityGroupBy.mockResolvedValue([
-      { facilityId: 'fac-a', _count: { _all: 3 } },
-      { facilityId: 'fac-b', _count: { _all: 99 } }, // should never surface — not in `facilities`
-    ]);
+    wireSnapshot({
+      members: [
+        { id: 'at-a', facilityIds: ['fac-a'] },
+        // A superset row the DB narrowing would have excluded.
+        { id: 'at-b', facilityIds: ['fac-b'] },
+      ],
+    });
 
     const result = await getGlobalDashboardData();
 
-    expect(result.priorityRisks).toHaveLength(1);
-    expect(result.priorityRisks[0].facilityId).toBe('fac-a');
     expect(result.facilitiesOverview.map((f) => f.facilityId)).toEqual(['fac-a']);
+    expect(result.priorityRisks.map((f) => f.facilityId)).toEqual(['fac-a']);
+    expect(result.enterpriseFootprint.totalStaff.value).toBe(1);
   });
 });
 
-describe('getGlobalDashboardData — aggregation wiring', () => {
+describe('getGlobalDashboardData — figures', () => {
   beforeEach(() => {
     mockAuth.mockResolvedValue(baseSession({ role: 'owner' }));
     mockListAccessibleFacilities.mockResolvedValue([FACILITY_A, FACILITY_B]);
   });
 
-  it('computes priorityRisks sorted most-at-risk-first from the overdue groupBys', async () => {
-    wireFacilityGroupBys({
-      overdue: [
-        { facilityId: 'fac-a', _count: { _all: 2 } },
-        { facilityId: 'fac-b', _count: { _all: 12 } },
-      ],
-      // Only Beta's overdue work has aged past the grace period.
-      overdueBeyondGrace: [{ facilityId: 'fac-b', _count: { _all: 3 } }],
-    });
-
-    const result = await getGlobalDashboardData();
-
-    expect(result.priorityRisks[0].facilityId).toBe('fac-b');
-    expect(result.priorityRisks[0].riskLevel).toBe('high');
-    expect(result.priorityRisks[1].facilityId).toBe('fac-a');
-    expect(result.priorityRisks[1].riskLevel).toBe('medium');
-  });
-
-  it('reports approaching deadlines per facility from its own 14-day-window groupBy', async () => {
-    wireFacilityGroupBys({
-      approaching: [{ facilityId: 'fac-b', _count: { _all: 7 } }],
-      overdue: [{ facilityId: 'fac-b', _count: { _all: 1 } }],
-    });
-
-    const result = await getGlobalDashboardData();
-    const beta = result.priorityRisks.find((row) => row.facilityId === 'fac-b');
-    const alpha = result.priorityRisks.find((row) => row.facilityId === 'fac-a');
-
-    expect(beta?.approachingDeadlines).toBe(7);
-    expect(beta?.overdueTrainings).toBe(1);
-    expect(alpha?.approachingDeadlines).toBe(0);
-  });
-
-  it('queries approaching deadlines over the next 14 days, excluding completed enrollments', async () => {
+  it('excludes renewalCycle: none from the certificate read — a one-off course has no credential to expire', async () => {
     await getGlobalDashboardData();
 
-    const approachingCall = mockEnrollmentGroupBy.mock.calls.find(
-      (call) => facilityGroupByKind(call[0]) === 'approaching',
-    );
-
-    expect(approachingCall?.[0].where.dueAt).toEqual({
-      gte: NOW,
-      lte: new Date('2026-06-29T12:00:00.000Z'),
-    });
-    expect(approachingCall?.[0].where.status).toEqual({ notIn: ['completed', 'attested'] });
+    const where = mockCertificateFindMany.mock.calls[0][0].where as {
+      enrollment: { assignment: { renewalCycle: { not: string } } };
+    };
+    expect(where.enrollment.assignment).toEqual({ renewalCycle: { not: 'none' } });
   });
 
-  it('raises risk to high on an expired credential alone, with no overdue training past grace', async () => {
-    wireFacilityGroupBys({
-      overdue: [{ facilityId: 'fac-a', _count: { _all: 1 } }],
-      expiredCredentials: [{ facilityId: 'fac-a', _count: { _all: 1 } }],
+  it('sorts priorityRisks most-at-risk first from each facility’s overdue work', async () => {
+    wireSnapshot({
+      members: [
+        { id: 'a1', facilityIds: ['fac-a'] },
+        { id: 'b1', facilityIds: ['fac-b'] },
+      ],
+      enrollments: [
+        // Alpha: overdue within grace at 80% completion -> medium.
+        { id: 'e1', organizationUserId: 'a1', dueAt: daysAgo(2) },
+        ...[2, 3, 4, 5].map((n) => ({
+          id: `done-${n}`,
+          organizationUserId: 'a1',
+          status: 'attested',
+          completedAt: daysAgo(n),
+        })),
+        // Beta: overdue past the 14-day grace -> high.
+        { id: 'e2', organizationUserId: 'b1', dueAt: daysAgo(20) },
+      ],
+    });
+
+    const result = await getGlobalDashboardData();
+
+    expect(result.priorityRisks.map((r) => [r.facilityId, r.riskLevel])).toEqual([
+      ['fac-b', 'high'],
+      ['fac-a', 'medium'],
+    ]);
+  });
+
+  it('counts approaching deadlines over the shared 14-day window, per facility', async () => {
+    wireSnapshot({
+      members: [{ id: 'b1', facilityIds: ['fac-b'] }],
+      enrollments: [
+        { id: 'e1', organizationUserId: 'b1', dueAt: daysAhead(14) },
+        { id: 'e2', organizationUserId: 'b1', dueAt: daysAhead(15) },
+        { id: 'e3', organizationUserId: 'b1', dueAt: daysAhead(3), status: 'attested' },
+      ],
+    });
+
+    const result = await getGlobalDashboardData();
+
+    expect(result.priorityRisks.find((r) => r.facilityId === 'fac-b')?.approachingDeadlines).toBe(
+      1,
+    );
+    expect(result.priorityRisks.find((r) => r.facilityId === 'fac-a')?.approachingDeadlines).toBe(
+      0,
+    );
+  });
+
+  it('raises risk to high on an expired certificate alone', async () => {
+    wireSnapshot({
+      members: [{ id: 'a1', facilityIds: ['fac-a'] }],
+      enrollments: [
+        {
+          id: 'e1',
+          organizationUserId: 'a1',
+          status: 'attested',
+          completedAt: daysAgo(40),
+        },
+      ],
+      certificates: [
+        {
+          id: 'cert-1',
+          enrollmentId: 'e1',
+          organizationUserId: 'a1',
+          courseId: 'course-1',
+          issuedAt: daysAgo(40),
+          renewalCycle: 'monthly',
+        },
+      ],
     });
 
     const result = await getGlobalDashboardData();
@@ -329,6 +419,35 @@ describe('getGlobalDashboardData — aggregation wiring', () => {
 
     expect(alpha?.riskLevel).toBe('high');
     expect(alpha?.auditReadiness).toBe('critical');
+    // Expired is not expiring: the headline counts the next 30 days only.
+    expect(result.riskCompliance.expiringCredentials.value).toBe(0);
+  });
+
+  it('counts a certificate expiring within 30 days, unless a later completion renewed it', async () => {
+    const cert = (id: string, member: string) => ({
+      id: `cert-${id}`,
+      enrollmentId: id,
+      organizationUserId: member,
+      courseId: 'course-1',
+      issuedAt: daysAgo(20),
+      renewalCycle: 'monthly',
+    });
+    wireSnapshot({
+      members: [
+        { id: 'a1', facilityIds: ['fac-a'] },
+        { id: 'a2', facilityIds: ['fac-a'] },
+      ],
+      enrollments: [
+        { id: 'e1', organizationUserId: 'a1', status: 'attested', completedAt: daysAgo(20) },
+        { id: 'e2', organizationUserId: 'a2', status: 'attested', completedAt: daysAgo(20) },
+        { id: 'e3', organizationUserId: 'a2', status: 'attested', completedAt: daysAgo(1) },
+      ],
+      certificates: [cert('e1', 'a1'), cert('e2', 'a2')],
+    });
+
+    const result = await getGlobalDashboardData();
+
+    expect(result.riskCompliance.expiringCredentials).toEqual({ value: 1, trendPercent: null });
   });
 
   it('leaves a facility with nothing assigned at low risk and audit ready', async () => {
@@ -338,31 +457,42 @@ describe('getGlobalDashboardData — aggregation wiring', () => {
     expect(result.facilitiesOverview[0].auditReadiness).toBe('audit_ready');
   });
 
-  it('reports staff count per facility on the overview rows', async () => {
-    mockOrgUserFacilityGroupBy.mockResolvedValue([{ facilityId: 'fac-b', _count: { _all: 11 } }]);
+  it('attributes staff by current roster: a two-facility member counts in both rows, once in the headline', async () => {
+    wireSnapshot({
+      members: [
+        { id: 'both', facilityIds: ['fac-a', 'fac-b'] },
+        { id: 'b-only', facilityIds: ['fac-b'] },
+        { id: 'nowhere', facilityIds: [] },
+      ],
+    });
 
     const result = await getGlobalDashboardData();
-
-    expect(result.facilitiesOverview.find((row) => row.facilityId === 'fac-b')?.staffCount).toBe(
-      11,
+    const staff = Object.fromEntries(
+      result.facilitiesOverview.map((row) => [row.facilityId, row.staffCount]),
     );
-    expect(result.facilitiesOverview.find((row) => row.facilityId === 'fac-a')?.staffCount).toBe(0);
+
+    expect(staff).toEqual({ 'fac-a': 1, 'fac-b': 2 });
+    // The no-facility member counts in the organisation total only.
+    expect(result.enterpriseFootprint.totalStaff.value).toBe(3);
   });
 
-  it('totals overdue trainings org-wide, including the null-facility bucket', async () => {
-    wireFacilityGroupBys({
-      overdue: [
-        { facilityId: 'fac-a', _count: { _all: 2 } },
-        { facilityId: null, _count: { _all: 5 } },
+  it('totals overdue org-wide, including a member with no facility row', async () => {
+    wireSnapshot({
+      members: [
+        { id: 'a1', facilityIds: ['fac-a'] },
+        { id: 'nowhere', facilityIds: [] },
+      ],
+      enrollments: [
+        { id: 'e1', organizationUserId: 'a1', dueAt: daysAgo(1) },
+        { id: 'e2', organizationUserId: 'a1', dueAt: daysAgo(1), status: 'locked' },
+        { id: 'e3', organizationUserId: 'nowhere', dueAt: daysAgo(1) },
       ],
     });
 
     const result = await getGlobalDashboardData();
 
-    expect(result.riskCompliance.overdueTrainings.value).toBe(7);
-    expect(result.priorityRisks.find((row) => row.facilityId === 'fac-a')?.overdueTrainings).toBe(
-      2,
-    );
+    expect(result.riskCompliance.overdueTrainings.value).toBe(3);
+    expect(result.priorityRisks.find((r) => r.facilityId === 'fac-a')?.overdueTrainings).toBe(2);
   });
 
   it('sorts facilitiesOverview alphabetically by name', async () => {
@@ -371,45 +501,136 @@ describe('getGlobalDashboardData — aggregation wiring', () => {
     expect(result.facilitiesOverview.map((f) => f.name)).toEqual(['Alpha', 'Beta']);
   });
 
-  it("applies the strictest passing score across a course's quizzes to the first-time pass rate", async () => {
-    mockEnrollmentGroupBy.mockImplementation((args: { by: string[] }) => {
-      if (args.by.includes('courseId') && args.by.includes('score')) {
-        return Promise.resolve([
-          { courseId: 'course-1', score: 75, _count: { _all: 1 } }, // passes 70, fails 80
-        ]);
-      }
-      return Promise.resolve([]);
+  it("judges the FIRST submitted attempt against that quiz's passing score", async () => {
+    wireSnapshot({
+      members: [{ id: 'a1', facilityIds: ['fac-a'] }],
+      enrollments: [{ id: 'e1', organizationUserId: 'a1' }],
+      attempts: [
+        { enrollmentId: 'e1', quizId: 'q-1', score: 60, completedAt: daysAgo(3) },
+        { enrollmentId: 'e1', quizId: 'q-1', score: 95, completedAt: daysAgo(2) },
+      ],
+      quizzes: [{ id: 'q-1', passingScore: 70, courseId: 'course-1' }],
     });
-    mockQuizFindMany.mockResolvedValue([
-      { passingScore: 70, courseId: 'course-1', lesson: null },
-      { passingScore: 80, courseId: null, lesson: { courseId: 'course-1' } },
-    ]);
 
     const result = await getGlobalDashboardData();
 
-    // Strictest bar (80) applies -> score 75 fails -> 0% first-time pass rate.
+    // Enrollment.score would hold the LATEST (95) and read as a pass.
     expect(result.trainingVelocity.firstTimePassRate.value).toBe(0);
   });
 
-  it('falls back to the default passing score (70) for a course with no quiz', async () => {
-    mockEnrollmentGroupBy.mockImplementation((args: { by: string[] }) => {
-      if (args.by.includes('courseId') && args.by.includes('score')) {
-        return Promise.resolve([{ courseId: 'course-2', score: 70, _count: { _all: 1 } }]);
-      }
-      return Promise.resolve([]);
+  it('counts Ongoing Courses as published courses with an unfinished enrolment', async () => {
+    wireSnapshot({
+      members: [{ id: 'a1', facilityIds: ['fac-a'] }],
+      enrollments: [
+        { id: 'e1', organizationUserId: 'a1', courseId: 'course-1' },
+        { id: 'e2', organizationUserId: 'a1', courseId: 'course-draft' },
+        { id: 'e3', organizationUserId: 'a1', courseId: 'course-done', status: 'completed' },
+      ],
+      publishedCourseIds: ['course-1', 'course-done'],
     });
-    mockQuizFindMany.mockResolvedValue([]);
 
     const result = await getGlobalDashboardData();
 
-    expect(result.trainingVelocity.firstTimePassRate.value).toBe(100);
+    expect(result.trainingVelocity.ongoingCourses.value).toBe(1);
+    expect(result.trainingVelocity.activeLearners.value).toBe(1);
+  });
+});
+
+describe('getGlobalDashboardData — trend chips', () => {
+  beforeEach(() => {
+    mockAuth.mockResolvedValue(baseSession({ role: 'owner' }));
+    mockListAccessibleFacilities.mockResolvedValue([FACILITY_A, FACILITY_B]);
   });
 
-  it('returns null trendPercent (not a computed 0 or Infinity) when the previous window baseline was zero', async () => {
-    mockFacilityCount.mockResolvedValue(0); // previousFacilityCount
+  it('computes a trend only for Total Facilities and Total Staff', async () => {
+    mockFacilityCount.mockResolvedValue(1);
+    mockOrgUserCount.mockResolvedValue(4);
+    wireSnapshot({
+      members: [1, 2, 3, 4, 5].map((n) => ({ id: `m${n}`, facilityIds: ['fac-a'] })),
+    });
+
+    const result = await getGlobalDashboardData();
+
+    expect(result.enterpriseFootprint.totalFacilities).toEqual({ value: 2, trendPercent: 100 });
+    expect(result.enterpriseFootprint.totalStaff).toEqual({ value: 5, trendPercent: 25 });
+    for (const metric of [
+      ...Object.values(result.trainingVelocity),
+      ...Object.values(result.riskCompliance),
+    ]) {
+      expect(metric.trendPercent).toBeNull();
+    }
+  });
+
+  it('reconstructs the previous staff population from joinedAt / deactivatedAt a window ago', async () => {
+    await getGlobalDashboardData();
+
+    const where = mockOrgUserCount.mock.calls[0][0].where;
+    expect(where.joinedAt).toEqual({ lt: new Date('2026-05-16T12:00:00.000Z') });
+    expect(where.AND[0]).toEqual({
+      OR: [{ active: true }, { deactivatedAt: { gte: new Date('2026-05-16T12:00:00.000Z') } }],
+    });
+  });
+
+  it('returns null trendPercent (not 0 or Infinity) when the previous baseline was zero', async () => {
+    mockFacilityCount.mockResolvedValue(0);
 
     const result = await getGlobalDashboardData();
 
     expect(result.enterpriseFootprint.totalFacilities.trendPercent).toBeNull();
+  });
+});
+
+describe('getGlobalDashboardData — comparison', () => {
+  beforeEach(() => {
+    mockAuth.mockResolvedValue(baseSession({ role: 'owner' }));
+    mockListAccessibleFacilities.mockResolvedValue([
+      FACILITY_A,
+      FACILITY_B,
+      { id: 'fac-c', name: 'Gamma', type: 'clinic', city: 'Houston' },
+    ]);
+  });
+
+  it('counts the compared headline from data — a member on both facilities counts ONCE', async () => {
+    wireSnapshot({
+      members: [
+        { id: 'both', facilityIds: ['fac-a', 'fac-b'] },
+        { id: 'a-only', facilityIds: ['fac-a'] },
+        { id: 'c-only', facilityIds: ['fac-c'] },
+      ],
+      enrollments: [
+        { id: 'e1', organizationUserId: 'both' },
+        { id: 'e2', organizationUserId: 'a-only' },
+      ],
+    });
+
+    const result = await getGlobalDashboardData({ compareFacilityIds: ['fac-a', 'fac-b'] });
+
+    // Summing the rows would read 2 + 1 = 3 staff and 2 + 1 = 3 learners.
+    expect(result.comparison?.facilityIds).toEqual(['fac-a', 'fac-b']);
+    expect(result.comparison?.enterpriseFootprint.totalFacilities).toEqual({
+      value: 2,
+      trendPercent: null,
+    });
+    expect(result.comparison?.enterpriseFootprint.totalStaff).toEqual({
+      value: 2,
+      trendPercent: null,
+    });
+    expect(result.comparison?.trainingVelocity.activeLearners.value).toBe(2);
+    // The unfiltered headline is unaffected.
+    expect(result.enterpriseFootprint.totalStaff.value).toBe(3);
+  });
+
+  it('drops inaccessible ids and returns no comparison below two survivors', async () => {
+    const result = await getGlobalDashboardData({
+      compareFacilityIds: ['fac-a', 'other-tenant'],
+    });
+
+    expect(result.comparison).toBeNull();
+  });
+
+  it('returns no comparison when none is requested', async () => {
+    const result = await getGlobalDashboardData();
+
+    expect(result.comparison).toBeNull();
   });
 });

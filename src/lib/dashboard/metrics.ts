@@ -47,7 +47,7 @@ export function passingScoreFor(
   return passingScores.get(courseId) ?? DEFAULT_PASSING_SCORE;
 }
 
-/** Staff counts making up a training-coverage split. */
+/** Assignment counts making up a training-coverage split. */
 export interface CoverageCounts {
   completed: number;
   inProgress: number;
@@ -61,13 +61,21 @@ export interface CoverageCounts {
  *
  * Ties go to `completed`, then `inProgress`: the sort is stable and the entries
  * are built in that order.
+ *
+ * The base is the sum of the three buckets, never a separately counted total:
+ * dividing by a different population is how the donut once read over 100%. A
+ * negative bucket is a caller bug and is treated as zero rather than rendered.
  */
-export function coveragePercentages(counts: CoverageCounts, base: number): CoverageCounts {
+export function coveragePercentages(counts: CoverageCounts): CoverageCounts {
+  const completed = Math.max(0, counts.completed);
+  const inProgress = Math.max(0, counts.inProgress);
+  const notStarted = Math.max(0, counts.notStarted);
+  const base = completed + inProgress + notStarted;
   if (base <= 0) return { completed: 0, inProgress: 0, notStarted: 0 };
 
-  const rawCompleted = (counts.completed / base) * 100;
-  const rawInProgress = (counts.inProgress / base) * 100;
-  const rawNotStarted = (counts.notStarted / base) * 100;
+  const rawCompleted = (completed / base) * 100;
+  const rawInProgress = (inProgress / base) * 100;
+  const rawNotStarted = (notStarted / base) * 100;
 
   const percentages: CoverageCounts = {
     completed: Math.floor(rawCompleted),

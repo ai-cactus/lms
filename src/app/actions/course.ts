@@ -3,12 +3,7 @@
 import prisma from '@/lib/prisma';
 import { rawPrisma } from '@/db/index';
 import { Prisma } from '@/generated/prisma/client';
-import {
-  canViewOrgCourses,
-  dbRoleToRoleKey,
-  isAdminRole,
-  WORKER_ROLES,
-} from '@/lib/rbac/role-utils';
+import { canViewOrgCourses, dbRoleToRoleKey, isAdminRole } from '@/lib/rbac/role-utils';
 import { assertNoPhi, PhiBlockedError } from '@/lib/documents/phiGate';
 import { interactiveBudget } from '@/lib/ai-client';
 import { can } from '@/lib/rbac/permissions';
@@ -38,12 +33,10 @@ import {
 } from '@/lib/course/archived';
 import { notifyLearnersCourseCancelled } from '@/lib/course/notify-archived';
 import { resolveDashboardScope } from '@/lib/dashboard/scope';
-import {
-  coveragePercentages,
-  passingScoreFor,
-  resolvePassingScores,
-} from '@/lib/dashboard/metrics';
-import { COMPLETED_ENROLLMENT_STATUSES } from '@/lib/facility/metrics';
+import { coveragePercentages, passingScoreFor } from '@/lib/dashboard/metrics';
+import { computeFacilityView, sliceSnapshot } from '@/lib/dashboard/definitions';
+import { loadDashboardSnapshot } from '@/lib/dashboard/snapshot';
+import { computeCompletionPercent } from '@/lib/facility/metrics';
 import { buildCourseThumbnailUrl, firstLessonThumbnailSelect } from '@/lib/video/thumbnail';
 import { resolveOnCompletion } from '@/lib/reminders/sweep';
 import { combineDateAndTime, isPastDeadlineChange } from '@/lib/reminders/deadline';
@@ -951,12 +944,16 @@ export async function deleteCourse(
   return { success: true };
 }
 
-// Get dashboard data (combines courses list and stats to prevent duplicate queries)
 /**
- * @param requestedFacilityIds Narrows every enrollment-derived figure (staff
- *   assigned, average grade, per-course pass/fail, training coverage) to these
- *   facilities. Omit (or pass null) for "the caller's own scope", which is the
- *   whole organisation only for an org-wide role. See
+ * The single-facility dashboard (also `/dashboard/training`).
+ *
+ * Counted by `@/lib/dashboard/definitions` over the same snapshot and the same
+ * CURRENT-roster slice as the Global View's facility rows, so
+ * `getDashboardData([id])` and that facility's Global row cannot disagree.
+ *
+ * @param requestedFacilityIds Narrows every figure to the members on these
+ *   facilities' current roster. Omit (or pass null) for "the caller's own
+ *   scope", which is the whole organisation only for an org-wide role. See
  *   {@link resolveDashboardScope} — the value is re-validated, never trusted.
  */
 export async function getDashboardData(requestedFacilityIds?: string[] | null) {
@@ -965,17 +962,12 @@ export async function getDashboardData(requestedFacilityIds?: string[] | null) {
     throw new Error('Unauthorized');
   }
 
-  // This action had NO permission gate, only a session check — and it resolves a
-  // WORKER session too, so any learner could POST to it and read their facility's
-  // roster-wide training figures (headcount, colleagues' scores, pass/fail).
-  // The page in front of it gates on `course.read`, which is not a boundary twice
-  // over: every worker role holds that verb, and a `'use server'` export is
-  // reachable without visiting the page at all.
-  //
-  // The gate is `getGlobalDashboardData`'s (dashboard-facility.ts), deliberately
-  // verbatim: the two actions are maintained in parity (dashboard-parity.test.ts)
-  // and must not disagree about who may ask. Aggregates only — no staff name or
-  // email — so finance qualifies via `billing.read`.
+  // This action resolves a WORKER session too, and a `'use server'` export is
+  // reachable without visiting the page, so it carries its own gate. It is
+  // `getGlobalDashboardData`'s, deliberately verbatim: the two actions are
+  // maintained in parity (dashboard-parity.test.ts) and must not disagree about
+  // who may ask. Aggregates only — no staff name or email — so finance
+  // qualifies via `billing.read`.
   const roleKey = dbRoleToRoleKey(session.user.role);
   if (!can(roleKey, 'assignment.read') && !can(roleKey, 'billing.read')) {
     logger.warn({
@@ -986,26 +978,13 @@ export async function getDashboardData(requestedFacilityIds?: string[] | null) {
     throw new Error('Forbidden');
   }
 
-  // Every figure below counts over the ORGANISATION's courses and members, not
-  // the viewer's own. Reading the population from the shared seam is what stops
-  // this action and `getGlobalDashboardData` describing the same organisation
-  // differently — see `@/lib/dashboard/scope`.
+  // `organizationId` is null only for a prospective founder mid-onboarding —
+  // the scope then matches nothing and the dashboard renders empty; the
+  // client-side OrganizationActivationModal handles that state.
   const scope = await resolveDashboardScope(session, requestedFacilityIds);
 
-  // F-028: avoid the unbounded `enrollments: true` materialization that pulled
-  // every enrollment row (all columns) for every course on each dashboard load.
-  // Counts and per-user coverage are now computed with grouped aggregation
-  // queries, and only the score-bearing enrollments are read — as a narrow
-  // { courseId, score, completedAt } projection — for the average / monthly /
-  // pass-fail stats that genuinely need row-level scores.
-  //
-  // `organizationId` is null only for a prospective founder mid-onboarding (no
-  // organization yet) — tolerate it with an empty dashboard rather than throwing;
-  // the client-side OrganizationActivationModal handles that state.
-  const { organizationId } = scope;
-
-  const [coursesRaw, courseStatusCounts, userStatusCounts, scoredEnrollments] = await Promise.all([
-    organizationId
+  const [coursesRaw, snapshot] = await Promise.all([
+    scope.organizationId
       ? prisma.course.findMany({
           where: scope.courseWhere,
           select: {
@@ -1019,85 +998,22 @@ export async function getDashboardData(requestedFacilityIds?: string[] | null) {
             duration: true,
             createdAt: true,
             updatedAt: true,
-            // Both attachment points, because a course passes at its STRICTEST
-            // bar — taking the first lesson quiz made the same course pass here
-            // and fail on the global dashboard.
-            quiz: { select: { passingScore: true } },
             // Ordered so lessons[0] is the course video the thumbnail resolves.
             lessons: {
               orderBy: { order: 'asc' },
-              select: {
-                videoPosterStorageUri: true,
-                updatedAt: true,
-                quiz: { select: { passingScore: true } },
-              },
+              select: { videoPosterStorageUri: true, updatedAt: true },
             },
           },
           orderBy: { createdAt: 'desc' },
         })
       : Promise.resolve([]),
-    // Per-course enrollment totals + completed/attested tallies.
-    organizationId
-      ? prisma.enrollment.groupBy({
-          by: ['courseId', 'status'],
-          // `liveCourseWhere`, not `courseWhere`: this `course` key replaces the
-          // archive predicate `enrollmentWhere` carries, and the "Total Courses"
-          // read above is archive-filtered by the query extension. A bare
-          // `courseWhere` here therefore counts enrolments on courses the same
-          // dashboard says do not exist.
-          where: { ...scope.enrollmentWhere, course: scope.liveCourseWhere },
-          _count: { _all: true },
-        })
-      : Promise.resolve([]),
-    // Per-membership status tallies for training coverage + distinct staff assigned.
-    organizationId
-      ? prisma.enrollment.groupBy({
-          by: ['organizationUserId', 'status'],
-          where: {
-            ...scope.enrollmentWhere,
-            course: scope.liveCourseWhere,
-            // Numerator and denominator must be the same population: the coverage
-            // base below is the active worker roster, so without this an admin's
-            // own enrollment — or a deactivated worker's — landed in the split but
-            // not in the base it is divided by.
-            organizationUser: scope.staffWhere({ roles: WORKER_ROLES }),
-          },
-          _count: { _all: true },
-        })
-      : Promise.resolve([]),
-    // Only scored enrollments, narrow projection — used for average grade,
-    // monthly performance and per-course pass/fail distribution.
-    organizationId
-      ? prisma.enrollment.findMany({
-          where: { ...scope.enrollmentWhere, course: scope.liveCourseWhere, score: { not: null } },
-          select: { courseId: true, score: true, completedAt: true },
-        })
-      : Promise.resolve([]),
+    loadDashboardSnapshot(scope, new Date()),
   ]);
 
-  // Get total staff (workers) in organization to ensure accurate coverage base.
-  // Under facility scope this is those sites' roster, so a worker at another
-  // facility never dilutes their completion percentages.
-  let totalOrgStaff = 0;
-  if (organizationId) {
-    totalOrgStaff = await prisma.organizationUser.count({
-      where: scope.staffWhere({ roles: WORKER_ROLES }),
-    });
-  }
-
-  // Per-course enrollment totals and completed/attested tallies (from groupBy).
-  const perCourseCounts = new Map<string, { total: number; completed: number }>();
-  for (const row of courseStatusCounts) {
-    const entry = perCourseCounts.get(row.courseId) ?? { total: 0, completed: 0 };
-    entry.total += row._count._all;
-    if (COMPLETED_ENROLLMENT_STATUSES.includes(row.status)) {
-      entry.completed += row._count._all;
-    }
-    perCourseCounts.set(row.courseId, entry);
-  }
+  const view = computeFacilityView(sliceSnapshot(snapshot, scope.dataFacilityIds));
 
   const courses: CourseWithStats[] = coursesRaw.map((course) => {
-    const counts = perCourseCounts.get(course.id) ?? { total: 0, completed: 0 };
+    const figures = view.byCourse.get(course.id);
     return {
       id: course.id,
       title: course.title,
@@ -1109,165 +1025,47 @@ export async function getDashboardData(requestedFacilityIds?: string[] | null) {
       createdAt: course.createdAt,
       updatedAt: course.updatedAt,
       lessonsCount: course.lessons.length,
-      enrollmentsCount: counts.total,
-      completionRate: counts.total > 0 ? Math.round((counts.completed / counts.total) * 100) : 0,
+      enrollmentsCount: figures?.total ?? 0,
+      completionRate: figures ? computeCompletionPercent(figures.finished, figures.total) : 0,
     };
   });
 
-  // Group scored enrollments by course for the per-course performance stats.
-  const scoresByCourse = new Map<string, number[]>();
-  for (const e of scoredEnrollments) {
-    const arr = scoresByCourse.get(e.courseId) ?? [];
-    arr.push(e.score ?? 0);
-    scoresByCourse.set(e.courseId, arr);
-  }
-
-  const totalCourses = coursesRaw.length;
-  const averageScore =
-    scoredEnrollments.length > 0
-      ? Math.round(
-          scoredEnrollments.reduce((sum, e) => sum + (e.score || 0), 0) / scoredEnrollments.length,
-        )
-      : 0;
-
-  // Calculate monthly performance (average score per month for last 12 months)
-  const monthlyPerformance = Array.from({ length: 12 }, (_, i) => {
-    const d = new Date();
-    d.setMonth(d.getMonth() - (11 - i));
-    return {
-      month: d.toLocaleString('default', { month: 'short' }),
-      monthIdx: d.getMonth(),
-      year: d.getFullYear(),
-    };
-  }).map(({ month, monthIdx, year }) => {
-    const inMonth = scoredEnrollments.filter((e) => {
-      if (!e.completedAt) return false;
-      const c = new Date(e.completedAt);
-      return c.getMonth() === monthIdx && c.getFullYear() === year;
-    });
-
-    const avg =
-      inMonth.length > 0
-        ? Math.round(inMonth.reduce((sum, e) => sum + (e.score || 0), 0) / inMonth.length)
-        : 0;
-
-    return { month, value: avg };
-  });
-
-  const passingScores = resolvePassingScores(
-    coursesRaw.flatMap((course) => [
-      ...(course.quiz ? [{ courseId: course.id, passingScore: course.quiz.passingScore }] : []),
-      ...course.lessons.flatMap((lesson) =>
-        lesson.quiz ? [{ courseId: course.id, passingScore: lesson.quiz.passingScore }] : [],
-      ),
-    ]),
-  );
-
-  // Calculate Course Performance (Scores vs Courses)
   const coursePerformance = coursesRaw.map((course) => {
-    const passingScore = passingScoreFor(passingScores, course.id);
-
-    // Scores of enrollments that have been graded for this course.
-    const validScores = scoresByCourse.get(course.id) ?? [];
-
-    const passCount = validScores.filter((score) => score >= passingScore).length;
-    const failCount = validScores.filter((score) => score < passingScore).length;
-
-    const avgScore =
-      validScores.length > 0
-        ? Math.round(validScores.reduce((sum, score) => sum + score, 0) / validScores.length)
-        : 0;
-
+    const figures = view.byCourse.get(course.id);
     return {
       name: course.title,
-      score: avgScore,
-      passingScore,
-      passCount,
-      failCount,
+      score: figures?.meanGrade ?? 0,
+      passingScore: passingScoreFor(snapshot.coursePassingScores, course.id),
+      passCount: figures?.passCount ?? 0,
+      failCount: figures?.failCount ?? 0,
     };
   });
 
-  // --- Training Coverage ---
-  // Classify each unique staff member by their aggregate status across ALL their enrollments.
-  // Classification priority (highest wins): in_progress > not_started (enrolled) > completed.
-  // A user who has finished some courses but has others still "enrolled" is shown as in_progress
-  // because they have outstanding training — this gives the most actionable signal for admins.
-  const enrollmentsByUser = new Map<
-    string,
-    { hasCompleted: boolean; hasInProgress: boolean; hasNotStarted: boolean }
-  >();
-  for (const row of userStatusCounts) {
-    const entry = enrollmentsByUser.get(row.organizationUserId) ?? {
-      hasCompleted: false,
-      hasInProgress: false,
-      hasNotStarted: false,
-    };
-    if (COMPLETED_ENROLLMENT_STATUSES.includes(row.status)) {
-      entry.hasCompleted = true;
-    } else if (row.status === 'in_progress') {
-      entry.hasInProgress = true;
-    } else {
-      // 'enrolled' / 'assigned' — course has been assigned but not yet started
-      entry.hasNotStarted = true;
-    }
-    enrollmentsByUser.set(row.organizationUserId, entry);
-  }
+  const coverage = coveragePercentages(view.coverage);
 
-  // Distinct staff with at least one enrollment across this admin's courses.
-  const totalStaffAssigned = enrollmentsByUser.size;
-
-  let staffCompleted = 0;
-  let staffInProgress = 0;
-  let staffNotStarted = 0;
-  for (const record of enrollmentsByUser.values()) {
-    if (record.hasInProgress || record.hasNotStarted) {
-      // Any outstanding (in_progress or unstarted) enrollment means the user is not fully done.
-      // Distinguish the two for more granular UI display.
-      if (record.hasInProgress) {
-        staffInProgress++;
-      } else {
-        staffNotStarted++;
-      }
-    } else {
-      // All enrollments are completed/attested.
-      staffCompleted++;
-    }
-  }
-
-  // Users who were never enrolled at all are added to the 'not started' figure.
-  // This ensures the total base reflects the entire organization staff.
-  const staffWithNoEnrollments = Math.max(0, totalOrgStaff - enrollmentsByUser.size);
-  staffNotStarted += staffWithNoEnrollments;
-
-  const coverageBase = totalOrgStaff > 0 ? totalOrgStaff : enrollmentsByUser.size;
-
-  const coverage = coveragePercentages(
-    { completed: staffCompleted, inProgress: staffInProgress, notStarted: staffNotStarted },
-    coverageBase,
-  );
-
-  // Finance reaches this action through `billing.read` for the AGGREGATES
-  // (counts, coverage, averages — the same family the Global View shows it).
-  // The course list and the per-course chart name individual courses, which a
-  // role holding nothing on Courses must not receive. Stripped here rather than
-  // at the page because a `'use server'` export is callable without the page.
-  // The rows are still read: `totalCourses` and the parity-tested totals are
-  // derived from them, and the tile must not change with the viewer's role.
+  // Finance reaches this action through `billing.read` for the AGGREGATES. The
+  // course list and the per-course chart name individual courses, which a role
+  // holding nothing on Courses must not receive. Stripped here rather than at
+  // the page because a `'use server'` export is callable without the page. The
+  // tiles are unaffected: they must not change with the viewer's role.
   const mayViewCourses = canViewOrgCourses(session.user.role);
 
   return {
     courses: mayViewCourses ? courses : [],
     stats: {
-      totalCourses,
-      totalStaffAssigned,
-      averageGrade: averageScore,
-      monthlyPerformance,
+      totalActiveCourses: view.totalActiveCourses,
+      totalAssignedLearners: view.totalAssignedLearners,
+      averageGrade: view.averageGrade,
+      // The ORG catalogue size, not a figure of this scope: the "create your
+      // first course" prompt must not fire for an organisation whose courses
+      // simply have no unfinished enrolments here.
+      catalogCourseCount: coursesRaw.length,
       coursePerformance: mayViewCourses ? coursePerformance : [],
       trainingCoverage: {
         completed: coverage.completed,
         inProgress: coverage.inProgress,
         notStarted: coverage.notStarted,
-        totalStaff: totalStaffAssigned,
+        totalAssignments: view.totalAssignments,
       },
     },
   };

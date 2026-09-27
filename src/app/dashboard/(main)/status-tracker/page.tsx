@@ -22,7 +22,7 @@ export default async function StatusTrackerPage({ searchParams }: StatusTrackerP
   // D-01, fourth surface (unreported by the defect register). This page derived
   // its facility ids from the `?facility=` parameter alone. For a supervisor who
   // had not picked one, `scope.mode` is 'all' -> `[]` -> it passed `undefined`,
-  // which getStatusTrackerSummaryForOrg maps to NO facility predicate. A
+  // which getStatusTrackerSummaryForOrg then mapped to NO facility predicate. A
   // facility-bound supervisor therefore saw org-wide overdue enrollments,
   // including the names and emails of workers at facilities they do not manage.
   //
@@ -39,12 +39,11 @@ export default async function StatusTrackerPage({ searchParams }: StatusTrackerP
   const facilities = ctx.accessibleFacilities;
 
   const summary = organizationId
-    ? await getStatusTrackerSummaryForOrg(
+    ? await getStatusTrackerSummaryForOrg({
         organizationId,
-        undefined,
         // The security boundary — NOT `scopedFacilityIds`, which is view state.
-        dataFacilityIds ?? undefined,
-      )
+        dataFacilityIds,
+      })
     : {
         overdueCount: 0,
         hardEscalationCount: 0,

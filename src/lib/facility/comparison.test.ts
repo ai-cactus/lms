@@ -1,13 +1,16 @@
 /**
- * Unit tests for the facility comparison projection: which rows survive, which
- * KPIs are re-aggregated over the selection, and which keep their organisation
- * value because the payload carries no per-facility breakdown for them.
+ * Unit tests for the facility comparison projection. The comparison HEADLINE is
+ * counted server-side from the compared facilities' data
+ * (`GlobalDashboardData.comparison`); this module must pass it through verbatim
+ * and never re-derive it by summing rows, which double-counts a member who
+ * works at two compared facilities.
  */
 import { describe, it, expect } from 'vitest';
 import { buildFacilityComparison } from './comparison';
 import type {
   FacilityOverviewRow,
   GlobalDashboardData,
+  GlobalHeadline,
   PriorityRiskRow,
 } from '@/app/actions/dashboard-facility';
 
@@ -22,6 +25,9 @@ function overviewRow(overrides: Partial<FacilityOverviewRow> = {}): FacilityOver
     auditReadinessPercent: 95,
     auditReadiness: 'audit_ready',
     riskLevel: 'low',
+    activeLearners: 5,
+    activeCourses: 2,
+    averageGrade: 80,
     ...overrides,
   };
 }
@@ -39,103 +45,87 @@ function riskRow(overrides: Partial<PriorityRiskRow> = {}): PriorityRiskRow {
   };
 }
 
-const DATA: GlobalDashboardData = {
-  facilities: [
-    { id: 'fac-a', name: 'Alpha Site', type: 'clinic', city: 'Austin' },
-    { id: 'fac-b', name: 'Beta Site', type: 'clinic', city: 'Dallas' },
-    { id: 'fac-c', name: 'Gamma Site', type: 'clinic', city: 'Houston' },
-  ],
-  enterpriseFootprint: {
-    totalFacilities: { value: 3, trendPercent: 20 },
-    totalStaff: { value: 60, trendPercent: 5 },
-  },
-  trainingVelocity: {
-    activeLearners: { value: 30, trendPercent: null },
-    ongoingCourses: { value: 12, trendPercent: null },
-    firstTimePassRate: { value: 88, trendPercent: null },
-  },
-  riskCompliance: {
-    overdueTrainings: { value: 9, trendPercent: null },
-    dormantStaff: { value: 4, trendPercent: null },
-    expiringCredentials: { value: 7, trendPercent: -10 },
-  },
-  priorityRisks: [
-    riskRow({ facilityId: 'fac-c', name: 'Gamma Site', activeLearners: 7, overdueTrainings: 6 }),
-    riskRow({ facilityId: 'fac-a', activeLearners: 5, overdueTrainings: 2 }),
-    riskRow({ facilityId: 'fac-b', name: 'Beta Site', activeLearners: 3, overdueTrainings: 1 }),
-  ],
-  facilitiesOverview: [
-    overviewRow({ facilityId: 'fac-a', staffCount: 10 }),
-    overviewRow({ facilityId: 'fac-b', name: 'Beta Site', staffCount: 20 }),
-    overviewRow({ facilityId: 'fac-c', name: 'Gamma Site', staffCount: 30 }),
-  ],
-  organisationTotals: { totalCourses: 8, staffAssigned: 45, averageGrade: 82 },
-};
+function headline(staff: number, learners: number): GlobalHeadline {
+  return {
+    enterpriseFootprint: {
+      totalFacilities: { value: 2, trendPercent: null },
+      totalStaff: { value: staff, trendPercent: null },
+    },
+    trainingVelocity: {
+      activeLearners: { value: learners, trendPercent: null },
+      ongoingCourses: { value: 3, trendPercent: null },
+      firstTimePassRate: { value: 75, trendPercent: null },
+    },
+    riskCompliance: {
+      overdueTrainings: { value: 3, trendPercent: null },
+      dormantStaff: { value: 1, trendPercent: null },
+      expiringCredentials: { value: 0, trendPercent: null },
+    },
+  };
+}
+
+function data(comparison: GlobalDashboardData['comparison']): GlobalDashboardData {
+  return {
+    facilities: [
+      { id: 'fac-a', name: 'Alpha Site', type: 'clinic', city: 'Austin' },
+      { id: 'fac-b', name: 'Beta Site', type: 'clinic', city: 'Dallas' },
+      { id: 'fac-c', name: 'Gamma Site', type: 'clinic', city: 'Houston' },
+    ],
+    ...headline(60, 30),
+    priorityRisks: [
+      riskRow({ facilityId: 'fac-c', name: 'Gamma Site' }),
+      riskRow({ facilityId: 'fac-a' }),
+      riskRow({ facilityId: 'fac-b', name: 'Beta Site' }),
+    ],
+    facilitiesOverview: [
+      overviewRow({ facilityId: 'fac-a', staffCount: 10 }),
+      overviewRow({ facilityId: 'fac-b', name: 'Beta Site', staffCount: 20 }),
+      overviewRow({ facilityId: 'fac-c', name: 'Gamma Site', staffCount: 30 }),
+    ],
+    comparison,
+  };
+}
 
 describe('buildFacilityComparison', () => {
-  it.each([[[]], [['fac-a']], [['fac-a', 'fac-a']]])(
-    'returns null for %j — fewer than two facilities is not a comparison',
-    (requested) => {
-      expect(buildFacilityComparison(DATA, requested)).toBeNull();
-    },
-  );
-
-  it('returns null when only one requested id exists in the payload', () => {
-    expect(buildFacilityComparison(DATA, ['fac-a', 'not-in-payload'])).toBeNull();
+  it('returns null when the server computed no comparison', () => {
+    expect(buildFacilityComparison(data(null))).toBeNull();
   });
 
-  it('ignores ids absent from the payload — the payload is already the tenancy boundary', () => {
-    const comparison = buildFacilityComparison(DATA, ['fac-a', 'fac-b', 'other-tenant']);
+  it('passes the server-counted headline through instead of summing rows', () => {
+    // fac-a (10) + fac-c (30) would sum to 40; one member works at both, so the
+    // distinct count the server returns is 39.
+    const comparison = buildFacilityComparison(
+      data({ facilityIds: ['fac-c', 'fac-a'], ...headline(39, 12) }),
+    );
 
-    expect(comparison?.facilityIds).toEqual(['fac-a', 'fac-b']);
-    expect(comparison?.facilitiesOverview.map((row) => row.facilityId)).toEqual(['fac-a', 'fac-b']);
-    expect(comparison?.priorityRisks.map((row) => row.facilityId)).toEqual(['fac-a', 'fac-b']);
+    expect(comparison?.enterpriseFootprint.totalStaff).toEqual({ value: 39, trendPercent: null });
+    expect(comparison?.trainingVelocity.activeLearners).toEqual({ value: 12, trendPercent: null });
   });
 
-  it('orders the compared ids by the payload, not by the request', () => {
-    const comparison = buildFacilityComparison(DATA, ['fac-c', 'fac-a']);
+  it('narrows both tables to the compared rows, ordered by the payload', () => {
+    const comparison = buildFacilityComparison(
+      data({ facilityIds: ['fac-c', 'fac-a'], ...headline(39, 12) }),
+    );
 
     expect(comparison?.facilityIds).toEqual(['fac-a', 'fac-c']);
+    expect(comparison?.facilitiesOverview.map((row) => row.facilityId)).toEqual(['fac-a', 'fac-c']);
+    expect(comparison?.priorityRisks.map((row) => row.facilityId)).toEqual(['fac-c', 'fac-a']);
   });
 
   it('reports the accessible total as the "Comparing N of M" denominator', () => {
-    const comparison = buildFacilityComparison(DATA, ['fac-a', 'fac-b']);
+    const comparison = buildFacilityComparison(
+      data({ facilityIds: ['fac-a', 'fac-b'], ...headline(25, 8) }),
+    );
 
     expect(comparison?.totalFacilityCount).toBe(3);
   });
 
-  it('re-aggregates the per-facility KPIs over the selection, without a trend', () => {
-    const comparison = buildFacilityComparison(DATA, ['fac-a', 'fac-b']);
-
-    expect(comparison?.enterpriseFootprint.totalFacilities).toEqual({
-      value: 2,
-      trendPercent: null,
-    });
-    expect(comparison?.enterpriseFootprint.totalStaff).toEqual({ value: 30, trendPercent: null });
-    expect(comparison?.trainingVelocity.activeLearners).toEqual({ value: 8, trendPercent: null });
-    expect(comparison?.riskCompliance.overdueTrainings).toEqual({ value: 3, trendPercent: null });
-  });
-
-  it('keeps the organisation value for metrics with no per-facility breakdown', () => {
-    const comparison = buildFacilityComparison(DATA, ['fac-a', 'fac-b']);
-
-    expect(comparison?.trainingVelocity.ongoingCourses).toEqual(
-      DATA.trainingVelocity.ongoingCourses,
-    );
-    expect(comparison?.trainingVelocity.firstTimePassRate).toEqual(
-      DATA.trainingVelocity.firstTimePassRate,
-    );
-    expect(comparison?.riskCompliance.dormantStaff).toEqual(DATA.riskCompliance.dormantStaff);
-    expect(comparison?.riskCompliance.expiringCredentials).toEqual(
-      DATA.riskCompliance.expiringCredentials,
-    );
-  });
-
   it('leaves the source payload untouched', () => {
-    const snapshot = JSON.stringify(DATA);
+    const payload = data({ facilityIds: ['fac-a', 'fac-b'], ...headline(25, 8) });
+    const before = JSON.stringify(payload);
 
-    buildFacilityComparison(DATA, ['fac-a', 'fac-b']);
+    buildFacilityComparison(payload);
 
-    expect(JSON.stringify(DATA)).toBe(snapshot);
+    expect(JSON.stringify(payload)).toBe(before);
   });
 });

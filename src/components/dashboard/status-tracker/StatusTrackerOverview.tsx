@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { DUE_SOON_WINDOW_DAYS } from '@/lib/facility/metrics';
 // The full-page table is the canonical implementation of this chrome; the
 // widget reuses its row shape, badge, and header styling so they can't drift.
 import {
@@ -50,7 +51,7 @@ export default function StatusTrackerOverview({ rows }: Props) {
             Status Tracker
           </h3>
           <p className="text-[14px] leading-normal text-[#667085]">
-            Assignments due within 7 days or already overdue.
+            Assignments due within {DUE_SOON_WINDOW_DAYS} days or already overdue.
           </p>
         </div>
         {rows.length > 0 && (
@@ -142,7 +143,7 @@ export default function StatusTrackerOverview({ rows }: Props) {
           ) : (
             <EmptyTableState
               message="All caught up — no overdue training"
-              subMessage="No worker has training past its deadline or coming due in the next 7 days."
+              subMessage={`No worker has training past its deadline or coming due in the next ${DUE_SOON_WINDOW_DAYS} days.`}
               colSpan={4}
               asTableRow
             />

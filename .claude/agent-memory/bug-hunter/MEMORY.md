@@ -13,7 +13,7 @@
 - [Onboarding wizard/invite/settings tests](onboarding-invite-settings-phase-tests.md) — Radix Select id-clone breaks getByLabel; Docker can hang under disk pressure
 - [audit-fx regression patterns](audit-fx-regression-patterns.md) — F-009/F-010 org isolation, F-039 score fallback, F-048/F-038 leaks; revert-and-confirm technique
 - [Quiz attempt route tests (F-031)](quiz-attempt-route-tests.md) — append-history tx-mock pattern, boundary-score generation, allowedAttempts null handling (fixed a9e183fe)
-- [getDashboardData tests](get-dashboard-data-test-patterns.md) — dual groupBy branch mocking, "failed" status quirk, totalStaff vs totalOrgStaff
+- [Dashboard snapshot mocking](get-dashboard-data-test-patterns.md) — six findMany reads, two course.findMany told apart by the published filter, parity fake
 - [E2E local AUTH_URL env trap](e2e-local-auth-url-env-trap.md) — fixed by .env.e2e (AUTH_URL=:3005); bites only a raw `npx playwright test` because .env pins AUTH_URL=:3000
 - [Status Tracker rename + seed fixture](status-tracker-rename-e2e-seed-fixture.md) — Olivia Overdue fixture; email-substring collision; WSL2 cold-start flake
 - [E2E webServer dev-lock conflict](e2e-webserver-dev-lock-conflict.md) — stray :3000 `next dev` blocks :3005 webServer; kill it first

@@ -110,11 +110,10 @@ const DashboardLayout: FC<WithChildren> = async ({ children }) => {
   const hardEscalationCount =
     canSeeStatusTracker && organizationId
       ? (
-          await getStatusTrackerSummaryForOrg(
+          await getStatusTrackerSummaryForOrg({
             organizationId,
-            undefined,
-            bannerFacilityIds ?? undefined,
-          )
+            dataFacilityIds: bannerFacilityIds,
+          })
         ).hardEscalationCount
       : 0;
 

@@ -7,9 +7,10 @@ import { createEnrollmentForUser, type CreateEnrollmentContext } from '@/lib/enr
 import { assignmentAdmitsHolder } from '@/lib/enrollment/assignment-facility-scope';
 import { resolveMemberFacilityIds } from '@/lib/facility/member-facility';
 import { isCycleSummaryEnabled } from '@/lib/cycle-summary/flag';
-import type { UserRole, RenewalCycle } from '@/generated/prisma/enums';
+import type { UserRole } from '@/generated/prisma/enums';
 import { SWEEP_LADDER_STAGES, REMINDER_STAGE_DEFAULTS } from './stages';
 import { DEFAULT_TZ, startOfDayInTz, addDays, diffInDaysInTz } from './time';
+import { cycleLengthDays } from './renewal-cycle';
 import {
   dispatchLadderStage,
   dispatchNudge,
@@ -439,27 +440,6 @@ async function runRoleTargetReconcilePrePass(
  * renewal deadline itself stays `completedAt + cycleLengthDays` (unchanged).
  */
 const RENEWAL_LEAD_DAYS = 14;
-
-/**
- * Length of a renewal cycle in days. Approximate calendar spans (monthly ≈ 30,
- * quarterly ≈ 90, semiannual ≈ 180, annual ≈ 365) — only a consistent interval
- * from completion to the next deadline is required, not an exact anniversary.
- * `none` is 0 (the assignment never renews) and is filtered out before this runs.
- */
-function cycleLengthDays(cycle: RenewalCycle): number {
-  switch (cycle) {
-    case 'monthly':
-      return 30;
-    case 'quarterly':
-      return 90;
-    case 'semiannual':
-      return 180;
-    case 'annual':
-      return 365;
-    case 'none':
-      return 0;
-  }
-}
 
 /**
  * Re-trigger recurring training before the reminder tracks (Issue #6 / TC-019).

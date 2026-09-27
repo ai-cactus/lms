@@ -25,11 +25,11 @@ vi.mock('next/image', () => ({
 }));
 
 const STATS: DashboardStats = {
-  totalCourses: 0,
-  totalStaffAssigned: 0,
+  totalActiveCourses: 0,
+  totalAssignedLearners: 0,
   averageGrade: 0,
-  monthlyPerformance: [],
-  trainingCoverage: { completed: 0, inProgress: 0, notStarted: 0 },
+  catalogCourseCount: 0,
+  trainingCoverage: { completed: 0, inProgress: 0, notStarted: 0, totalAssignments: 0 },
 };
 
 const COURSE: CourseWithStats = {

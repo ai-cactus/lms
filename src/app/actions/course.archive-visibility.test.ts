@@ -56,7 +56,9 @@ interface EnrollmentTableRow {
   courseId: string;
   organizationUserId: string;
   status: string;
+  /** Materialised as one submitted quiz attempt for the dashboard snapshot. */
   score: number | null;
+  startedAt: Date;
   completedAt: Date | null;
   dueAt: Date | null;
   assignment: null;
@@ -112,18 +114,54 @@ vi.mock('@/lib/prisma', async () => {
     course: {
       findMany: (args: object) => {
         filteredFindManyCalls.push(args);
-        const where = (liveRowsOnly(args) as { where: { archivedAt: null } }).where;
-        // Only the archive predicate is simulated — the tenancy/catalogue
-        // predicates these actions also pass are proven by their own suites,
-        // and re-implementing them here would test the mock, not the filter.
-        return Promise.resolve(courseTable.filter((row) => row.archivedAt === where.archivedAt));
+        const where = (liveRowsOnly(args) as { where: { archivedAt: null; status?: string } })
+          .where;
+        // Only the archive (and, for the published-course read, status)
+        // predicates are simulated — the tenancy/catalogue predicates these
+        // actions also pass are proven by their own suites, and re-implementing
+        // them here would test the mock, not the filter.
+        return Promise.resolve(
+          courseTable.filter(
+            (row) =>
+              row.archivedAt === where.archivedAt &&
+              (where.status === undefined || row.status === where.status),
+          ),
+        );
       },
       // Present so a read that wrongly moves onto the filtered client is a
       // failed assertion rather than a TypeError.
       findUnique: vi.fn(),
     },
     orgCourseOffering: { findMany: (...a: unknown[]) => mockOfferingFindMany(...a) },
-    organizationUser: { count: (...a: unknown[]) => mockOrgUserCount(...a) },
+    organizationUser: {
+      count: (...a: unknown[]) => mockOrgUserCount(...a),
+      // The dashboard population: every learner the enrolment table names.
+      findMany: () =>
+        Promise.resolve(
+          [...new Set(enrollmentTable.map((row) => row.organizationUserId))].map((id) => ({
+            id,
+            role: 'nurse',
+            joinedAt: new Date('2026-01-01'),
+            lastLoginAt: new Date('2026-09-16'),
+            facilities: [],
+          })),
+        ),
+    },
+    quizAttempt: {
+      findMany: ({ where }: { where: { enrollment?: EnrollmentWhereShape } }) =>
+        Promise.resolve(
+          enrollmentTable
+            .filter((row) => row.score !== null && matchesEnrollment(where.enrollment, row))
+            .map((row) => ({
+              enrollmentId: row.id,
+              quizId: `quiz-${row.courseId}`,
+              score: row.score as number,
+              completedAt: row.startedAt,
+            })),
+        ),
+    },
+    certificate: { findMany: () => Promise.resolve([]) },
+    quiz: { findMany: () => Promise.resolve([]) },
     enrollment: {
       findMany: ({ where }: { where?: EnrollmentWhereShape }) =>
         Promise.resolve(enrollmentTable.filter((row) => matchesEnrollment(where, row))),
@@ -417,6 +455,7 @@ function makeEnrollmentRow(
     organizationUserId,
     status: 'in_progress',
     score: null,
+    startedAt: new Date('2026-09-01'),
     completedAt: null,
     dueAt: null,
     assignment: null,
@@ -458,15 +497,16 @@ describe('an archived course leaves the dashboard aggregates as well as the cata
     setAdminSession('user-owner', 'owner');
   });
 
-  it('counts Total Courses and Total Staff Assigned over the SAME population', async () => {
+  it('counts active courses, assigned learners and coverage over the SAME live population', async () => {
     const { stats } = await getDashboardData(null);
 
-    // One live course, enrolled by exactly two of the four staff. Before the fix
-    // this read 1 course / 4 staff — a course-derived figure and an
+    // One live course, enrolled by exactly two of the four staff. Before the
+    // archive fix this read 1 course / 4 staff — a course-derived figure and an
     // enrolment-derived one describing different catalogues on one screen.
-    expect(stats.totalCourses).toBe(1);
-    expect(stats.totalStaffAssigned).toBe(2);
-    expect(stats.trainingCoverage.totalStaff).toBe(2);
+    expect(stats.catalogCourseCount).toBe(1);
+    expect(stats.totalActiveCourses).toBe(1);
+    expect(stats.totalAssignedLearners).toBe(2);
+    expect(stats.trainingCoverage.totalAssignments).toBe(2);
   });
 
   it('averages the grade over live courses only', async () => {
@@ -515,14 +555,22 @@ describe('the Status Tracker stops naming a course the Courses page says does no
   });
 
   it('omits the archived course from the overdue rows and their count', async () => {
-    const summary = await getStatusTrackerSummaryForOrg(ORG_ID, NOW);
+    const summary = await getStatusTrackerSummaryForOrg({
+      organizationId: ORG_ID,
+      dataFacilityIds: null,
+      now: NOW,
+    });
 
     expect(summary.rows.map((row) => row.courseTitle)).toEqual(['Live Course']);
     expect(summary.overdueCount).toBe(1);
   });
 
   it('omits it from the at-risk rows too', async () => {
-    const summary = await getStatusTrackerSummaryForOrg(ORG_ID, NOW);
+    const summary = await getStatusTrackerSummaryForOrg({
+      organizationId: ORG_ID,
+      dataFacilityIds: null,
+      now: NOW,
+    });
 
     expect(summary.nearDeadline.rows.map((row) => row.courseTitle)).toEqual(['Live Course']);
     expect(summary.nearDeadline.count).toBe(1);

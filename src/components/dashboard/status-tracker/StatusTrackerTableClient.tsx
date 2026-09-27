@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
+import { DUE_SOON_WINDOW_DAYS } from '@/lib/facility/metrics';
 
 /**
  * A single assignment shown in the status tracker. `dueAt` is serialized to an
@@ -120,7 +121,7 @@ export default function StatusTrackerTableClient({ rows }: Props) {
   return (
     <div className="flex flex-col gap-6 rounded-[17px] border border-[#dfe1e6] bg-white p-4 shadow-[0px_1px_2px_0px_rgba(228,229,231,0.24)] sm:px-[21px] sm:pt-[21px] sm:pb-4">
       <p className="text-[14px] leading-normal text-[#667085]">
-        Assignments due within 7 days or already overdue.
+        Assignments due within {DUE_SOON_WINDOW_DAYS} days or already overdue.
       </p>
 
       <Table className="table-fixed">
@@ -218,7 +219,7 @@ export default function StatusTrackerTableClient({ rows }: Props) {
           ) : (
             <EmptyTableState
               message="No overdue or upcoming training"
-              subMessage="No worker has training past its deadline or coming due in the next 7 days."
+              subMessage={`No worker has training past its deadline or coming due in the next ${DUE_SOON_WINDOW_DAYS} days.`}
               colSpan={5}
               asTableRow
             />
