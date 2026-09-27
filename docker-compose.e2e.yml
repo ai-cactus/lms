@@ -62,7 +62,10 @@ services:
 
   minio:
     container_name: lms-e2e-minio
-    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+    # Private mirror in GHCR: MinIO withdrew its public images from Docker Hub and
+    # then from quay.io (TOOL-23). Layers are byte-identical to the upstream
+    # release; pulling needs `docker login ghcr.io` with a token holding read:packages.
+    image: ghcr.io/ai-cactus/minio:RELEASE.2025-04-22T22-12-26Z
     logging: *default-logging
     command: server /data --console-address ":9001"
     ports:
@@ -111,7 +114,7 @@ services:
   # Behind a profile so `up --wait` never sees a completed container — compose
   # treats an exited service as a failure under --wait.
   mc-init:
-    image: quay.io/minio/mc:latest
+    image: ghcr.io/ai-cactus/minio-mc:RELEASE.2025-08-13T08-35-41Z
     profiles: ['init']
     depends_on:
       minio:

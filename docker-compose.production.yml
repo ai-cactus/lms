@@ -191,9 +191,12 @@ services:
   # ── MinIO (GCS fallback / local object storage) ───────────────────────────────
   minio:
     container_name: lms-production-minio
-    # Served from quay.io: the minio/minio repository was withdrawn from Docker
-    # Hub, and every tag now 404s there — including this pinned one. quay.io
-    # carries the identical release.
+    # quay.io has since withdrawn the public image too (2026-09-27, TOOL-23): this
+    # reference now resolves ONLY from the copy cached on the VM, so an image prune
+    # or a rebuilt VM cannot start MinIO. The byte-identical private mirror is
+    # ghcr.io/ai-cactus/minio:RELEASE.2025-04-22T22-12-26Z — switch to it once the
+    # VM can `docker login ghcr.io`; changing the name before then makes the next
+    # deploy try (and fail) to pull it.
     # Pinned (was minio/minio:latest) so redeploys can't silently pull a newer,
     # breaking MinIO. This is a PIN, not an upgrade: before the first deploy that
     # picks this up, ops MUST confirm this tag matches the image already running
