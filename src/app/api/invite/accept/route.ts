@@ -123,8 +123,8 @@ export async function POST(req: Request) {
       // F-022: re-check seat availability INSIDE the transaction so a seat that
       // filled between invite issuance and acceptance (concurrent accepts, or
       // seats consumed since the invite was sent) is caught race-safely. Counts
-      // workers against the org's plan staffMax via the shared BILLING_PLANS
-      // source; a no-op for unlimited plans / no active subscription.
+      // active members against the org's plan staffMax via the shared
+      // BILLING_PLANS source; a no-op for unlimited plans / no active subscription.
       await assertSeatAvailable(invite.organizationId, { seatsNeeded: 1, client: tx });
 
       // Relink an existing identity (rejoining, or joining an additional org):

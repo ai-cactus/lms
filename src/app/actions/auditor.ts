@@ -41,9 +41,9 @@ export interface AuditorStaffRow {
   email: string;
   /**
    * Rendered under the "Department/Role" column. The data model has no
-   * department entity, so this pairs the membership's free-text job title with
-   * the RBAC role display name, falling back to the role alone when no job
-   * title is recorded.
+   * department entity, and founder ruling Q3/Q17 (2026-09-23) made the
+   * system-assigned role the person's title, so this is the RBAC role display
+   * name.
    */
   roleLabel: string;
   coursesAssigned: number;
@@ -273,7 +273,6 @@ export async function getAuditorStaff(
     select: {
       id: true,
       role: true,
-      jobTitle: true,
       user: { select: { email: true, fullName: true } },
       enrollments: {
         // Per-staff stats reflect only enrollments started within the range.
@@ -303,7 +302,7 @@ export async function getAuditorStaff(
       id: member.id,
       name: member.user.fullName ?? member.user.email.split('@')[0],
       email: member.user.email,
-      roleLabel: member.jobTitle ? `${member.jobTitle}/ ${roleDisplayName}` : roleDisplayName,
+      roleLabel: roleDisplayName,
       coursesAssigned: total,
       coursesCompleted: completed,
       lastCompletion,

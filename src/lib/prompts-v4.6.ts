@@ -19,6 +19,42 @@
  *   import { buildPromptA_v46, buildPromptB_v46, ... } from '@/lib/prompts-v4.6';
  */
 
+/**
+ * The distractor taxonomy every wrong option is labelled with. Exported so the
+ * wizard's single-question and regenerate prompts (`src/app/actions/quiz-ai.ts`)
+ * ask for the same rationale the bulk pipeline does, rather than drifting from
+ * it — founder ruling Q-13.
+ */
+export const QUIZ_DISTRACTOR_MECHANICS = `DISTRACTOR MECHANICS (must be logged per wrong option):
+For each wrong option, it must be wrong in exactly ONE way and you must label it:
+D1: Modality swap (must -> should, should -> must, may -> must, prohibited -> allowed)
+D2: Adds an unstated prerequisite/step not in the excerpt
+D3: Reverses the condition/outcome described
+D4: Overgeneralizes scope beyond the excerpt
+D5: Wrong order/sequence (ONLY if sequence is described)
+D6: Confuses two similar concepts that the article distinguishes (ONLY for T6 distinction questions)`;
+
+/**
+ * Per-option explanation rules. `sourceDescription` names what the correct
+ * option's rationale must cite, which is the only part that differs between the
+ * pipeline (article + RAG context) and the wizard's quiz actions (course
+ * content).
+ */
+export function quizOptionExplanationRules(sourceDescription: string): string {
+  return `EXPLANATION RULES:
+- Each option object must include its own explanation:
+  - Correct option explanation: 50–100 words. You MUST provide detailed rationales explicitly citing ${sourceDescription}.
+  - Distractor explanations: 12–30 words and must mention the distractorType logic (e.g., "This swaps must to should (D1)...").`;
+}
+
+/** The option array every quiz prompt's OUTPUT SCHEMA block shows the model. */
+export const QUIZ_OPTION_OUTPUT_SHAPE = `      "options": [
+        { "text": "", "isCorrect": true,  "distractorType": null, "explanation": "" },
+        { "text": "", "isCorrect": false, "distractorType": "D1", "explanation": "" },
+        { "text": "", "isCorrect": false, "distractorType": "D2", "explanation": "" },
+        { "text": "", "isCorrect": false, "distractorType": "D4", "explanation": "" }
+      ]`;
+
 const PROMPT_A_TEMPLATE = `
 ROLE:
 You are a senior instructional designer specializing in behavioral health and regulated
@@ -378,14 +414,7 @@ RISK WEIGHTING (80/20 rule):
 - 20% of questions may target "administrative" sections (forms, timelines, documentation procedures).
 - When selecting snippets for questions, prioritize those linked to must/prohibited norms over should/may norms.
 
-DISTRACTOR MECHANICS (must be logged per wrong option):
-For each wrong option, it must be wrong in exactly ONE way and you must label it:
-D1: Modality swap (must -> should, should -> must, may -> must, prohibited -> allowed)
-D2: Adds an unstated prerequisite/step not in the excerpt
-D3: Reverses the condition/outcome described
-D4: Overgeneralizes scope beyond the excerpt
-D5: Wrong order/sequence (ONLY if sequence is described)
-D6: Confuses two similar concepts that the article distinguishes (ONLY for T6 distinction questions)
+${QUIZ_DISTRACTOR_MECHANICS}
 
 OPTION RULES (strict):
 - Exactly 4 options per question.
@@ -395,10 +424,9 @@ OPTION RULES (strict):
 - Options must be grammatically parallel.
 - Ambiguity check: if 2 options are defensible from the excerpt, rewrite until only one is defensible.
 
-EXPLANATION RULES:
-- Each option object must include its own explanation:
-  - Correct option explanation: 50–100 words. You MUST provide detailed rationales explicitly citing the Standard Manual Context or the article (e.g., "According to Section X of the standard manual...").
-  - Distractor explanations: 12–30 words and must mention the distractorType logic (e.g., "This swaps must to should (D1)...").
+${quizOptionExplanationRules(
+  'the Standard Manual Context or the article (e.g., "According to Section X of the standard manual...")',
+)}
 
 OUTPUT SCHEMA:
 \`\`\`json
@@ -423,12 +451,7 @@ OUTPUT SCHEMA:
       "stimulus": "Exact excerpt <= 25 words",
       "question": "",
       "evidence": { "snippetId": "sn1", "sectionId": "s1" },
-      "options": [
-        { "text": "", "isCorrect": true,  "distractorType": null, "explanation": "" },
-        { "text": "", "isCorrect": false, "distractorType": "D1", "explanation": "" },
-        { "text": "", "isCorrect": false, "distractorType": "D2", "explanation": "" },
-        { "text": "", "isCorrect": false, "distractorType": "D4", "explanation": "" }
-      ]
+${QUIZ_OPTION_OUTPUT_SHAPE}
     }
   ]
 }
@@ -578,12 +601,7 @@ OUTPUT SCHEMA:
       "stimulus": "Exact excerpt <= 25 words",
       "question": "",
       "evidence": { "snippetId": "sn9", "sectionId": "s2" },
-      "options": [
-        { "text": "", "isCorrect": true,  "distractorType": null, "explanation": "" },
-        { "text": "", "isCorrect": false, "distractorType": "D1", "explanation": "" },
-        { "text": "", "isCorrect": false, "distractorType": "D2", "explanation": "" },
-        { "text": "", "isCorrect": false, "distractorType": "D4", "explanation": "" }
-      ]
+${QUIZ_OPTION_OUTPUT_SHAPE}
     }
   ]
 }

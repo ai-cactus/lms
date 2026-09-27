@@ -13,7 +13,7 @@
 - [Onboarding wizard/invite/settings tests](onboarding-invite-settings-phase-tests.md) — Radix Select id-clone breaks getByLabel; Docker can hang under disk pressure
 - [audit-fx regression patterns](audit-fx-regression-patterns.md) — F-009/F-010 org isolation, F-039 score fallback, F-048/F-038 leaks; revert-and-confirm technique
 - [Quiz attempt route tests (F-031)](quiz-attempt-route-tests.md) — append-history tx-mock pattern, boundary-score generation, allowedAttempts null handling (fixed a9e183fe)
-- [getDashboardData tests](get-dashboard-data-test-patterns.md) — dual groupBy branch mocking, "failed" status quirk, totalStaff vs totalOrgStaff
+- [Dashboard snapshot mocking](get-dashboard-data-test-patterns.md) — six findMany reads, two course.findMany told apart by the published filter, parity fake
 - [E2E local AUTH_URL env trap](e2e-local-auth-url-env-trap.md) — fixed by .env.e2e (AUTH_URL=:3005); bites only a raw `npx playwright test` because .env pins AUTH_URL=:3000
 - [Status Tracker rename + seed fixture](status-tracker-rename-e2e-seed-fixture.md) — Olivia Overdue fixture; email-substring collision; WSL2 cold-start flake
 - [E2E webServer dev-lock conflict](e2e-webserver-dev-lock-conflict.md) — stray :3000 `next dev` blocks :3005 webServer; kill it first
@@ -84,3 +84,4 @@
 - [BUG-17 video-thumbnail validation](bug17-video-thumbnail-validation.md) — proxy.ts made a route's system-cookie fallback dead (fixed: /system previews via the system route); toBeVisible() doesn't prove an img decoded; waitForURL race on same-URL login; SYSTEM_ADMIN_PASSWORD unset in .env.e2e blocks ALL /system/** e2e; isGlobal courses don't show in the org's own Courses table
 - [Cycle-summary PR1 foundation tests](cycle-summary-pr1-foundation-tests.md) — fan-out/leftover-stamping gaps closed + sabotage-proof; digest.ts/compose.ts share a claim table with colliding daily period-keys until PR2 cutover; WORKER_RETAKE→section1 confirmed correct
 - [Cycle-summary PR2 cutover validation](cycle-summary-pr2-cutover-validation.md) — self-escalation retry drops a section (CycleSummaryItem has no recipientRole); cutover permanently orphans pre-existing failed per-stage emails; mid-org crash proven safe; weekly-org copy now misleading
+- [Enrollment last-activity validation](enrollment-last-activity-validation.md) — objectContaining hides admin non-stamp regressions; qa'd migration+e2e; missing video fixture is pre-existing

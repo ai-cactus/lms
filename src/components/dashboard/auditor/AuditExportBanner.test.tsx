@@ -83,8 +83,18 @@ describe('AuditExportBanner', () => {
     expect(screen.getByText('Exported 48 Course Reports')).toBeInTheDocument();
     expect(screen.getByText('Your audit report is ready.')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /view report/i }));
+    await user.click(screen.getByRole('button', { name: /^download$/i }));
     expect(mockDownloadJob).toHaveBeenCalledExactlyOnceWith('job-1');
+  });
+
+  // Founder ruling Q7 (2026-09-23). The control streams a CSV to disk; the old
+  // "View Report" label promised a viewer, and a QA run read the mismatch as a
+  // broken export.
+  it('labels the completed action "Download", never "View Report"', () => {
+    mockJobs(null, job({ status: 'completed', progress: 100, rowCount: 48 }));
+    render(<AuditExportBanner />);
+
+    expect(screen.queryByRole('button', { name: /view report/i })).not.toBeInTheDocument();
   });
 
   // A report that flattens to no rows serialises to a zero-byte CSV. It used to
@@ -96,7 +106,7 @@ describe('AuditExportBanner', () => {
 
     expect(screen.getByText('No records matched this date range')).toBeInTheDocument();
     expect(screen.queryByText(/exported 48 course reports/i)).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /view report/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^download$/i })).not.toBeInTheDocument();
   });
 
   it('still offers the download when the job reported no count at all', () => {
@@ -104,7 +114,7 @@ describe('AuditExportBanner', () => {
     render(<AuditExportBanner />);
 
     // Jobs that predate the row count must not be mistaken for empty ones.
-    expect(screen.getByRole('button', { name: /view report/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^download$/i })).toBeInTheDocument();
     expect(screen.queryByText(/no records matched/i)).not.toBeInTheDocument();
   });
 

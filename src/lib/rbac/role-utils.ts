@@ -158,13 +158,15 @@ export const ROLE_CHANGE_ACTOR_ROLES: readonly Role[] = ['owner', 'admin', 'hr']
 export const FACILITY_CHANGE_ACTOR_ROLES: readonly Role[] = ['owner', 'admin', 'hr'];
 
 /**
- * Roles permitted to edit a staff member's basic profile — name, job title and
- * contact details.
+ * Roles permitted to edit a staff member's basic profile — name and contact
+ * details.
  *
  * Founder answer to Q2 (docs/local/RBAC-founder-answers-2026-09-15.md): the
  * supervisor's "U" on Staff Management covers "assigning courses and basic
- * profile editing", confirmed on follow-up as "name, job title, contact; own
- * facility only; facility/role/invite/remove stay Owner/Admin/HR".
+ * profile editing", confirmed on follow-up as "name, contact; own facility only;
+ * facility/role/invite/remove stay Owner/Admin/HR". Job title was part of that
+ * answer and was retired product-wide by the 2026-09-23 ruling (Q3/Q17) — the
+ * system-assigned role IS the title, so nothing sets one any more.
  *
  * Supervisor is therefore in THIS list and deliberately NOT in
  * {@link FACILITY_CHANGE_ACTOR_ROLES} or {@link ROLE_CHANGE_ACTOR_ROLES}: the

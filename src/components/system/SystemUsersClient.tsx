@@ -20,6 +20,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { logger } from '@/lib/logger';
+import { getUserDisplayName, getUserInitials } from '@/lib/user-display';
 
 interface SystemUsersClientProps {
   initialUsers: SystemUserRow[];
@@ -96,19 +97,11 @@ export default function SystemUsersClient({
   const workerCount = users.filter((u) => isWorkerRole(u.role)).length;
 
   function getInitials(user: SystemUserRow): string {
-    if (user.profile?.fullName) {
-      return user.profile.fullName
-        .split(' ')
-        .map((n) => n[0])
-        .join('')
-        .toUpperCase()
-        .slice(0, 2);
-    }
-    return user.email.slice(0, 2).toUpperCase();
+    return getUserInitials(user.profile, user.email);
   }
 
   function getDisplayName(user: SystemUserRow): string {
-    return user.profile?.fullName || user.email.split('@')[0];
+    return getUserDisplayName(user.profile, user.email);
   }
 
   function formatDate(date: Date): string {

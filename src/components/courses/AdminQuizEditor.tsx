@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { logger } from '@/lib/logger';
+import { dropOptionExplanation } from '@/lib/quiz/options';
 import { Sparkles } from 'lucide-react';
 
 // Client-side fallback only. The quiz AI action already returns a user-safe
@@ -31,6 +32,13 @@ interface QuizQuestion {
   answer: number;
   type?: string;
   explanation?: string;
+  /**
+   * Why each WRONG option is wrong, keyed by its index in `options`. Carried
+   * through edit and save so an author who touches one question does not strip
+   * the rationale off every other one — `updateQuizQuestions` recreates the
+   * whole question set from what this editor sends.
+   */
+  incorrectOptionExplanations?: Record<string, string>;
 }
 
 interface AdminQuizEditorProps {
@@ -43,6 +51,7 @@ interface AdminQuizEditorProps {
     type: string;
     order: number;
     explanation?: string | null;
+    incorrectOptionExplanations?: Record<string, string>;
   }[];
 }
 
@@ -57,6 +66,7 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
       answer: q.options.indexOf(q.correctAnswer) >= 0 ? q.options.indexOf(q.correctAnswer) : 0,
       type: q.type,
       explanation: q.explanation || '',
+      incorrectOptionExplanations: q.incorrectOptionExplanations,
     })),
   );
 
@@ -100,7 +110,14 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
   const updateOption = (index: number, value: string) => {
     const newOptions = [...newQuestion.options];
     newOptions[index] = value;
-    setNewQuestion({ ...newQuestion, options: newOptions });
+    setNewQuestion({
+      ...newQuestion,
+      options: newOptions,
+      incorrectOptionExplanations: dropOptionExplanation(
+        newQuestion.incorrectOptionExplanations,
+        index,
+      ),
+    });
   };
 
   const handleGenerateQuestion = async () => {
@@ -114,7 +131,8 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
           options: res.question.options,
           answer: res.question.answer,
           type: res.question.type,
-          explanation: res.question.explanation || '',
+          explanation: res.question.explanation.correctExplanation,
+          incorrectOptionExplanations: res.question.explanation.incorrectOptions,
         });
       } else {
         setStatus({
@@ -229,10 +247,14 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
 
                     {/* .formGroup */}
                     <div className="mb-5">
-                      <label className="mb-2 block text-sm font-semibold text-text-secondary">
+                      <label
+                        className="mb-2 block text-sm font-semibold text-text-secondary"
+                        htmlFor={`editQuestionText-${index}`}
+                      >
                         Question Text
                       </label>
                       <input
+                        id={`editQuestionText-${index}`}
                         type="text"
                         className={formInputClass}
                         value={editingQuestion.question}
@@ -255,17 +277,26 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
                             <input
                               type="radio"
                               name={`editCorrectAnswer-${index}`}
+                              aria-label={`Mark option ${i + 1} correct`}
                               checked={editingQuestion.answer === i}
                               onChange={() => setEditingQuestion({ ...editingQuestion, answer: i })}
                             />
                             <input
                               type="text"
                               className={formInputClass}
+                              aria-label={`Option ${i + 1}`}
                               value={opt}
                               onChange={(e) => {
                                 const newOptions = [...editingQuestion.options];
                                 newOptions[i] = e.target.value;
-                                setEditingQuestion({ ...editingQuestion, options: newOptions });
+                                setEditingQuestion({
+                                  ...editingQuestion,
+                                  options: newOptions,
+                                  incorrectOptionExplanations: dropOptionExplanation(
+                                    editingQuestion.incorrectOptionExplanations,
+                                    i,
+                                  ),
+                                });
                               }}
                               disabled={editingQuestion.type === 'true_false'}
                             />
@@ -276,10 +307,14 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
 
                     {/* .formGroup — dynamic marginTop preserved inline */}
                     <div className="mb-5" style={{ marginTop: '16px' }}>
-                      <label className="mb-2 block text-sm font-semibold text-text-secondary">
+                      <label
+                        className="mb-2 block text-sm font-semibold text-text-secondary"
+                        htmlFor={`editExplanation-${index}`}
+                      >
                         Detailed Explanation / Reference
                       </label>
                       <textarea
+                        id={`editExplanation-${index}`}
                         className={formInputClass}
                         style={{ minHeight: '80px', resize: 'vertical' }}
                         value={editingQuestion.explanation || ''}
@@ -374,26 +409,38 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
                   </div>
                   {/* .optionList */}
                   <div className="flex flex-col gap-2.5 pl-6">
-                    {q.options.map((opt, optIndex) => (
-                      // .optionItem
-                      <div
-                        key={optIndex}
-                        className="flex items-center rounded-lg border border-transparent px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-[#f7fafc]"
-                      >
-                        {/* .radioCircle + .radioSelected */}
+                    {q.options.map((opt, optIndex) => {
+                      const optionRationale = q.incorrectOptionExplanations?.[String(optIndex)];
+                      return (
+                        // .optionItem
                         <div
-                          className={`relative mr-3 h-[18px] w-[18px] flex-shrink-0 rounded-full border-2 ${
-                            q.answer === optIndex
-                              ? 'border-success bg-success shadow-[inset_0_0_0_3px_white]'
-                              : 'border-[#cbd5e0]'
-                          }`}
-                        />
-                        {opt}
-                        {q.answer === optIndex && (
-                          <span className="ml-2 text-xs font-semibold text-success">(Correct)</span>
-                        )}
-                      </div>
-                    ))}
+                          key={optIndex}
+                          className="rounded-lg border border-transparent px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-[#f7fafc]"
+                        >
+                          <div className="flex items-center">
+                            {/* .radioCircle + .radioSelected */}
+                            <div
+                              className={`relative mr-3 h-[18px] w-[18px] flex-shrink-0 rounded-full border-2 ${
+                                q.answer === optIndex
+                                  ? 'border-success bg-success shadow-[inset_0_0_0_3px_white]'
+                                  : 'border-[#cbd5e0]'
+                              }`}
+                            />
+                            {opt}
+                            {q.answer === optIndex && (
+                              <span className="ml-2 text-xs font-semibold text-success">
+                                (Correct)
+                              </span>
+                            )}
+                          </div>
+                          {optionRationale && (
+                            <p className="mt-1 pl-[30px] text-[13px] leading-relaxed text-text-tertiary">
+                              {optionRationale}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               );
@@ -419,10 +466,14 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
 
             {/* .formGroup */}
             <div className="mb-5">
-              <label className="mb-2 block text-sm font-semibold text-text-secondary">
+              <label
+                className="mb-2 block text-sm font-semibold text-text-secondary"
+                htmlFor="newQuestionText"
+              >
                 Question Text
               </label>
               <input
+                id="newQuestionText"
                 type="text"
                 className={formInputClass}
                 placeholder="Enter your question here..."
@@ -444,12 +495,14 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
                     <input
                       type="radio"
                       name="correctAnswer"
+                      aria-label={`Mark option ${i + 1} correct`}
                       checked={newQuestion.answer === i}
                       onChange={() => setNewQuestion({ ...newQuestion, answer: i })}
                     />
                     <input
                       type="text"
                       className={formInputClass}
+                      aria-label={`Option ${i + 1}`}
                       value={opt}
                       onChange={(e) => updateOption(i, e.target.value)}
                       placeholder={`Option ${i + 1}`}
@@ -462,10 +515,14 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
 
             {/* .formGroup — dynamic marginTop preserved inline */}
             <div className="mb-5" style={{ marginTop: '16px' }}>
-              <label className="mb-2 block text-sm font-semibold text-text-secondary">
+              <label
+                className="mb-2 block text-sm font-semibold text-text-secondary"
+                htmlFor="newQuestionExplanation"
+              >
                 Detailed Explanation / Reference
               </label>
               <textarea
+                id="newQuestionExplanation"
                 className={formInputClass}
                 style={{ minHeight: '80px', resize: 'vertical' }}
                 value={newQuestion.explanation || ''}

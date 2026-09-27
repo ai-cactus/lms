@@ -3,6 +3,7 @@ import { ShieldAlert } from 'lucide-react';
 import prisma from '@/lib/prisma';
 import { Button } from '@/components/ui/button';
 import { BILLING_PLANS } from '@/lib/billing-plans';
+import { countBillableSeats } from '@/lib/seat-limits';
 import { ADMIN_ROLES } from '@/lib/rbac/role-utils';
 import { requirePermission } from '@/lib/rbac/require-permission';
 import SettingsClient, {
@@ -57,8 +58,7 @@ export default async function SettingsPageRoute() {
     adminInvites,
     orgFacilities,
     subscription,
-    workerCount,
-    pendingInviteCount,
+    seats,
     allMembers,
     organization,
     categoryPreferences,
@@ -110,16 +110,11 @@ export default async function SettingsPageRoute() {
       where: { organizationId },
       select: { plan: true, status: true },
     }),
-    // Seat accounting for the invite modal — every role except owner consumes a seat.
-    prisma.organizationUser.count({ where: { organizationId, role: { not: 'owner' } } }),
-    prisma.invite.count({
-      where: {
-        organizationId,
-        role: { not: 'owner' },
-        status: 'pending',
-        expiresAt: { gt: now },
-      },
-    }),
+    // Seat accounting for the invite modal. Shared with the roster gauge and
+    // the gate that blocks an over-limit invite — this page used to hand-roll
+    // it and had lost the `active` filter, so removed staff kept consuming
+    // seats here long after the roster had freed them.
+    countBillableSeats(organizationId, { includePendingInvites: true }),
     // Emails already present (members + pending invites) — flags CSV dupes.
     prisma.organizationUser.findMany({
       where: { organizationId },
@@ -177,7 +172,9 @@ export default async function SettingsPageRoute() {
   }
 
   const remainingSeats =
-    planLimit !== null ? Math.max(0, planLimit - (workerCount + pendingInviteCount)) : null;
+    planLimit !== null
+      ? Math.max(0, planLimit - (seats.activeMembers + seats.pendingInvites))
+      : null;
 
   const pendingInviteEmails = adminInvites.map((invite) => invite.email);
   const existingEmails = [...allMembers.map((m) => m.user.email), ...pendingInviteEmails];

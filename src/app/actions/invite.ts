@@ -208,7 +208,7 @@ export async function createInvites(
     if (!org) return { success: false, results: [], error: 'Organization not found' };
 
     // F-022: block issuing more invites than remaining plan seats. getSeatUsage
-    // counts active workers + non-expired pending invites and resolves staffMax
+    // counts active members + non-expired pending invites and resolves staffMax
     // from the shared BILLING_PLANS source; staffMax is null (nothing to
     // enforce) for unlimited plans or when there's no active subscription.
     const usage = await getSeatUsage(organizationId, { includePendingInvites: true });

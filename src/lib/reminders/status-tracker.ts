@@ -1,13 +1,18 @@
 import type { Prisma } from '@/generated/prisma/client';
 import prisma from '@/lib/prisma';
+import { buildDashboardScope } from '@/lib/dashboard/scope';
+import { dueSoonEnrollmentWhere, overdueEnrollmentWhere } from '@/lib/dashboard/definitions';
 import { REMINDER_STAGE_DEFAULTS } from './stages';
-import { DEFAULT_TZ, addDays, diffInDaysInTz } from './time';
+import { DEFAULT_TZ, diffInDaysInTz } from './time';
 
 /**
  * Status tracker reporting for the admin status-tracker page and dashboard banner.
  *
- * "Overdue" means an enrollment whose deadline (`dueAt`) has passed and which has
- * not reached a terminal status (`completed`/`attested`). A "hard escalation" is
+ * "Overdue" and "at risk" are the dashboards' own predicates
+ * (`overdueEnrollmentWhere` / `dueSoonEnrollmentWhere` in
+ * `@/lib/dashboard/definitions`) over the dashboards' own population
+ * (`buildDashboardScope`), so the Global View's Overdue tile and this tracker
+ * count the same rows for the same scope. A "hard escalation" is
  * an overdue enrollment that has crossed its HARD_ESCALATION threshold. That
  * threshold is resolved per enrollment from its assignment's
  * `AssignmentReminderStage` override (falling back to
@@ -17,23 +22,21 @@ import { DEFAULT_TZ, addDays, diffInDaysInTz } from './time';
  * escalates, so such rows are never flagged.
  *
  * "At risk" means a not-yet-overdue enrollment whose deadline falls within the
- * next {@link AT_RISK_WINDOW_DAYS} days — surfaced so admins can intervene before
- * the deadline passes. The window is a fixed product constant, independent of any
- * per-assignment reminder offsets.
+ * next `DUE_SOON_WINDOW_DAYS` (`@/lib/facility/metrics`) days — the same window as the Global View's
+ * "Approaching Deadlines" (BUG-35), independent of any per-assignment reminder
+ * offsets.
+ *
+ * Facility is the member's CURRENT roster, never the `Enrollment.facilityId`
+ * stamp — a transferred worker is listed under, and visible to, their current
+ * facility (BUG-36).
  *
  * Day math is timezone-aware (worker facility's IANA zone, falling back to
  * `DEFAULT_TZ`) so "days overdue"/"days until due" agree with the sweep's notion
  * of a day.
  */
 
-/** Statuses that take an enrollment out of the overdue/at-risk population. */
-const TERMINAL_STATUSES = ['completed', 'attested'] as const;
-
 /** Fallback hard-escalation offset when an assignment has no explicit override. */
 const DEFAULT_HARD_ESCALATION_OFFSET_DAYS = REMINDER_STAGE_DEFAULTS.HARD_ESCALATION.offsetDays;
-
-/** Fixed look-ahead window (days) for the "At Risk" near-deadline view. */
-export const AT_RISK_WINDOW_DAYS = 7;
 
 /**
  * Shared select for both the overdue and near-deadline queries. Includes each
@@ -52,15 +55,14 @@ const enrollmentRowSelect = {
     },
   },
   course: { select: { title: true } },
-  facility: { select: { name: true } },
   organizationUser: {
     select: {
       user: { select: { email: true, fullName: true } },
       manager: { select: { user: { select: { fullName: true } } } },
       facilities: {
         where: { active: true },
-        take: 1,
-        select: { facility: { select: { timezone: true } } },
+        orderBy: { joinedAt: 'asc' },
+        select: { facilityId: true, facility: { select: { name: true, timezone: true } } },
       },
     },
   },
@@ -76,7 +78,7 @@ export interface StatusTrackerRow {
   workerEmail: string;
   courseId: string;
   courseTitle: string;
-  /** Facility stamped on the enrollment at assignment time; null when none. */
+  /** The member's current facility (in scope), comma-joined if several; null when none. */
   facilityName: string | null;
   dueAt: Date;
   daysOverdue: number;
@@ -94,7 +96,7 @@ export interface NearDeadlineRow {
   workerEmail: string;
   courseId: string;
   courseTitle: string;
-  /** Facility stamped on the enrollment at assignment time; null when none. */
+  /** The member's current facility (in scope), comma-joined if several; null when none. */
   facilityName: string | null;
   dueAt: Date;
   /** Whole days from now until the deadline (0 = due today, tz-aware). */
@@ -132,66 +134,58 @@ function displayName(enrollment: EnrollmentRow): string {
 }
 
 /**
+ * The member's roster facilities that fall inside the caller's scope — a
+ * supervisor of facility A is not told that a two-facility worker also works at
+ * facility C.
+ */
+function scopedRosterFacilities(enrollment: EnrollmentRow, dataFacilityIds: string[] | null) {
+  const rows = enrollment.organizationUser.facilities;
+  if (dataFacilityIds === null) return rows;
+  const inScope = new Set(dataFacilityIds);
+  return rows.filter((row) => inScope.has(row.facilityId));
+}
+
+function rosterFacilityName(rows: ReturnType<typeof scopedRosterFacilities>): string | null {
+  return rows.length > 0 ? rows.map((row) => row.facility.name).join(', ') : null;
+}
+
+export interface StatusTrackerQuery {
+  organizationId: string;
+  /**
+   * The `string[] | null` contract from `@/lib/facility/staff-where`: `null`
+   * for an org-wide caller (no narrowing, members with no facility included),
+   * an array — possibly EMPTY, meaning nothing — otherwise. Callers must have
+   * already authorised the ids.
+   */
+  dataFacilityIds: string[] | null;
+  /** Injectable clock for callers/tests; defaults to the current instant. */
+  now?: Date;
+}
+
+/**
  * Overdue + at-risk status-tracker picture for a single organization.
  *
- * Two bulk queries (no N+1): one for the overdue population, one for the
- * not-yet-overdue enrollments due within {@link AT_RISK_WINDOW_DAYS}. Each joins
- * the enrollment to its course, worker profile/email, manager name, facility
- * timezone, and assignment reminder-stage overrides. Overdue rows are sorted
- * most-overdue first; near-deadline rows soonest-due first.
- *
- * Enrolments on an ARCHIVED course are excluded — see the query below.
- *
- * `now` is injectable (defaulting to the current instant) so callers/tests can
- * pin the clock — mirroring `runReminderSweep`'s explicit `now`.
- *
- * `facilityId` narrows the picture to the enrollments stamped with those
- * facilities, for the facility-scoped dashboard. Callers must have already
- * authorised the ids (see `resolveFacilityScope`); omit it — do NOT pass an
- * empty array — for the organisation-wide view. An empty array narrows to
- * nothing, per the `resolveDataFacilityIds` contract in
- * `@/lib/facility/staff-where`: a facility-bound caller with no assignments
- * must see no rows, never every row.
+ * Two bulk queries (no N+1) plus the organisation's course predicate. Each row
+ * joins the enrollment to its course, worker profile/email, manager name,
+ * current roster facilities and assignment reminder-stage overrides. Overdue
+ * rows are sorted most-overdue first; near-deadline rows soonest-due first.
+ * Enrolments on an archived course, or of a deactivated member, are excluded —
+ * the same population the dashboards count.
  */
-export async function getStatusTrackerSummaryForOrg(
-  orgId: string,
-  now: Date = new Date(),
-  facilityId?: string | string[] | null,
-): Promise<StatusTrackerSummary> {
-  const facilityFilter = Array.isArray(facilityId)
-    ? { facilityId: { in: facilityId } }
-    : facilityId
-      ? { facilityId }
-      : {};
-
-  // Archived courses are excluded on BOTH reads. The archive filter is a query
-  // extension on Course's own reads (`db/index.ts`) and cannot reach a nested
-  // relation, so without this the tracker lists an overdue row naming a course
-  // the Courses page says does not exist — and no manager action can clear it.
-  // The learner's own view of that enrolment deliberately survives (Q24); this
-  // is the MANAGER's actionable picture, and it sits on the same screen as the
-  // dashboard totals, which now count the same population.
-  const liveCourse = { course: { archivedAt: null } };
+export async function getStatusTrackerSummaryForOrg({
+  organizationId,
+  dataFacilityIds,
+  now = new Date(),
+}: StatusTrackerQuery): Promise<StatusTrackerSummary> {
+  const { enrollmentWhere } = await buildDashboardScope({ organizationId, dataFacilityIds });
 
   const [overdueEnrollments, nearDeadlineEnrollments] = await Promise.all([
     prisma.enrollment.findMany({
-      where: {
-        dueAt: { not: null, lt: now },
-        status: { notIn: [...TERMINAL_STATUSES] },
-        organizationUser: { is: { organizationId: orgId, active: true } },
-        ...liveCourse,
-        ...facilityFilter,
-      },
+      where: { ...enrollmentWhere, ...overdueEnrollmentWhere(now) },
       select: enrollmentRowSelect,
     }),
     prisma.enrollment.findMany({
-      where: {
-        dueAt: { gte: now, lte: addDays(now, AT_RISK_WINDOW_DAYS) },
-        status: { notIn: [...TERMINAL_STATUSES] },
-        organizationUser: { is: { organizationId: orgId, active: true } },
-        ...liveCourse,
-        ...facilityFilter,
-      },
+      where: { ...enrollmentWhere, ...dueSoonEnrollmentWhere(now) },
       select: enrollmentRowSelect,
     }),
   ]);
@@ -199,7 +193,8 @@ export async function getStatusTrackerSummaryForOrg(
   const rows: StatusTrackerRow[] = overdueEnrollments.map((enrollment) => {
     // `dueAt` is guaranteed non-null by the query filter; assert for the type.
     const dueAt = enrollment.dueAt as Date;
-    const tz = enrollment.organizationUser.facilities[0]?.facility.timezone ?? DEFAULT_TZ;
+    const facilities = scopedRosterFacilities(enrollment, dataFacilityIds);
+    const tz = facilities[0]?.facility.timezone ?? DEFAULT_TZ;
     const daysOverdue = diffInDaysInTz(now, dueAt, tz);
     const threshold = resolveHardEscalationThreshold(enrollment);
 
@@ -210,7 +205,7 @@ export async function getStatusTrackerSummaryForOrg(
       workerEmail: enrollment.organizationUser.user.email,
       courseId: enrollment.courseId,
       courseTitle: enrollment.course.title,
-      facilityName: enrollment.facility?.name ?? null,
+      facilityName: rosterFacilityName(facilities),
       dueAt,
       daysOverdue,
       status: enrollment.status,
@@ -223,7 +218,8 @@ export async function getStatusTrackerSummaryForOrg(
 
   const nearDeadlineRows: NearDeadlineRow[] = nearDeadlineEnrollments.map((enrollment) => {
     const dueAt = enrollment.dueAt as Date;
-    const tz = enrollment.organizationUser.facilities[0]?.facility.timezone ?? DEFAULT_TZ;
+    const facilities = scopedRosterFacilities(enrollment, dataFacilityIds);
+    const tz = facilities[0]?.facility.timezone ?? DEFAULT_TZ;
 
     return {
       enrollmentId: enrollment.id,
@@ -232,7 +228,7 @@ export async function getStatusTrackerSummaryForOrg(
       workerEmail: enrollment.organizationUser.user.email,
       courseId: enrollment.courseId,
       courseTitle: enrollment.course.title,
-      facilityName: enrollment.facility?.name ?? null,
+      facilityName: rosterFacilityName(facilities),
       dueAt,
       daysUntilDue: diffInDaysInTz(dueAt, now, tz),
       status: enrollment.status,

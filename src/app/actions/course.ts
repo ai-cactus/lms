@@ -3,12 +3,7 @@
 import prisma from '@/lib/prisma';
 import { rawPrisma } from '@/db/index';
 import { Prisma } from '@/generated/prisma/client';
-import {
-  canViewOrgCourses,
-  dbRoleToRoleKey,
-  isAdminRole,
-  WORKER_ROLES,
-} from '@/lib/rbac/role-utils';
+import { canViewOrgCourses, dbRoleToRoleKey, isAdminRole } from '@/lib/rbac/role-utils';
 import { assertNoPhi, PhiBlockedError } from '@/lib/documents/phiGate';
 import { interactiveBudget } from '@/lib/ai-client';
 import { can } from '@/lib/rbac/permissions';
@@ -18,6 +13,11 @@ import { revalidatePath } from 'next/cache';
 import { createNotification, notifyOrganizationAdmins } from '@/lib/notifications/create';
 import { CourseWithStats, CourseWithRelations, courseDetailSelect } from '@/types/course';
 import { QuizQuestion } from '@/types/quiz';
+import {
+  remapOptionExplanations,
+  shuffleArray,
+  toStoredOptionExplanations,
+} from '@/lib/quiz/options';
 import type { StaffEntry } from '@/types/enrollment';
 import { logger } from '@/lib/logger';
 import { resolveMemberFacilityId } from '@/lib/facility/member-facility';
@@ -27,13 +27,16 @@ import {
   type FacilityScopeSession,
 } from '@/lib/facility/staff-where';
 import { CourseAccessError } from '@/lib/course/access-error';
-import { resolveDashboardScope } from '@/lib/dashboard/scope';
 import {
-  coveragePercentages,
-  passingScoreFor,
-  resolvePassingScores,
-} from '@/lib/dashboard/metrics';
-import { COMPLETED_ENROLLMENT_STATUSES } from '@/lib/facility/metrics';
+  ARCHIVED_COURSE_ADMIN_MESSAGE,
+  ARCHIVED_COURSE_LEARNER_MESSAGE,
+} from '@/lib/course/archived';
+import { notifyLearnersCourseCancelled } from '@/lib/course/notify-archived';
+import { resolveDashboardScope } from '@/lib/dashboard/scope';
+import { coveragePercentages, passingScoreFor } from '@/lib/dashboard/metrics';
+import { computeFacilityView, sliceSnapshot } from '@/lib/dashboard/definitions';
+import { loadDashboardSnapshot } from '@/lib/dashboard/snapshot';
+import { computeCompletionPercent } from '@/lib/facility/metrics';
 import { buildCourseThumbnailUrl, firstLessonThumbnailSelect } from '@/lib/video/thumbnail';
 import { resolveOnCompletion } from '@/lib/reminders/sweep';
 import { combineDateAndTime, isPastDeadlineChange } from '@/lib/reminders/deadline';
@@ -44,6 +47,7 @@ import {
   type RoleAssignmentIntent,
 } from '@/lib/course/pending-assignment';
 import { findAssignmentDueAt } from '@/lib/enrollment/assignment';
+import { touchEnrollmentActivity } from '@/lib/enrollment/activity';
 import { captureServer } from '@/lib/analytics/server';
 import { analyticsContextFrom } from '@/lib/analytics/identity';
 
@@ -381,12 +385,11 @@ export async function getCourseById(courseId: string): Promise<CourseWithRelatio
     : { organizationUser: { userId: session.user.id } };
 
   // ⛔ `rawPrisma`, deliberately — paired with the archive rule below, which is
-  // the only thing that may act on `archivedAt` here. Reading through the
-  // filtered client would decide the question before the access gate has run,
-  // and the answer depends on WHY the caller is being let in: an already
-  // enrolled learner keeps their course (Q24 — archiving retires a course for
-  // new assignment, it does not erase what someone already did), every other
-  // viewer must see it disappear. `archivedAt` is selected alongside the shared
+  // the only thing that may act on `archivedAt` here. The filtered client would
+  // reach the same refusal by returning no row, but it would do so silently:
+  // keeping the read raw leaves the Q-04/Q-05 cancellation rule written out at
+  // the one surface that has to enforce it, where a future caller can see it
+  // rather than rediscover it. `archivedAt` is selected alongside the shared
   // detail projection rather than added to it, so it stays an input to this
   // decision and never becomes part of the UI's course contract.
   const course = await rawPrisma.course.findUnique({
@@ -419,17 +422,18 @@ export async function getCourseById(courseId: string): Promise<CourseWithRelatio
     throw new CourseAccessError('forbidden');
   }
 
-  // Q24, keyed on the reason access was granted rather than on the caller's
-  // identity or the call site. An archived course stays reachable through an
-  // ENROLLMENT and nothing else: the learner who was part-way through it keeps
-  // their entry point (`/worker/courses/[id]` → here → `/learn/[id]`, whose own
-  // payload already reads unfiltered for this reason), while authorship and a
-  // manager's org-wide review right both stop conferring access the moment the
-  // course is retired. Every catalogue and admin LIST is unaffected — those read
-  // through the filtered client and never see the row at all — so this is the
-  // one surface where the distinction has to be drawn, and drawing it here means
-  // no future caller of this action can get it wrong by passing a flag.
-  if (course.archivedAt && !isEnrolled) {
+  // Q-04/Q-05 (2026-09-23) narrowed Q24: archiving CANCELS the course for
+  // learners, so an enrollment no longer buys an entry point into it. An earlier
+  // ruling let the part-way-through learner keep opening the course; the founder
+  // has since decided that every learner action stops at the archive, and that
+  // the learner is told so by the cancellation notice `deleteCourse` emits.
+  //
+  // Refused for everyone, whatever granted access — enrollment, authorship or a
+  // manager's org-wide review right. Every catalogue and admin LIST is
+  // unaffected: those read through the filtered client and never see the row at
+  // all. Certificates are untouched; they are read from the Certificate table,
+  // not from this action.
+  if (course.archivedAt) {
     throw new CourseAccessError('notFound');
   }
 
@@ -840,6 +844,10 @@ export async function publishCourse(courseId: string, opts?: { acknowledgeWarnin
  * from every list. The user-facing verb stays "Delete", and so does the audit
  * action name, because nothing about the operator's intent has changed.
  *
+ * Q-05: live enrolments never block the archive, but the learners still
+ * mid-course are told it is cancelled ({@link notifyLearnersCourseCancelled}) —
+ * every action they had left is refused from this point on (Q-04).
+ *
  * Refusals are RETURNED, never thrown.
  *
  * Next.js redacts a thrown Server Action message in production: the client
@@ -875,6 +883,7 @@ export async function deleteCourse(
     where: { id: courseId },
     select: {
       id: true,
+      title: true,
       isGlobal: true,
       organizationId: true,
     },
@@ -912,6 +921,10 @@ export async function deleteCourse(
   // certificates and its stored video all survive — `archivedAt` is what hides
   // it from every list, so the user-facing effect is unchanged while the record
   // stays available for compliance.
+  //
+  // Q-05: live enrolments never block the archive. What they do earn is the
+  // cancellation notice emitted below, because from here on every learner
+  // action on this course is refused (see `src/lib/course/archived.ts`).
   await prisma.course.update({
     where: { id: courseId },
     data: {
@@ -921,17 +934,26 @@ export async function deleteCourse(
   });
 
   logger.info({ msg: '[course] Course archived', courseId, userId: session.user.id });
+
+  // After the archive, never inside a transaction with it: the notice is
+  // best-effort and must not be able to roll back a completed archive.
+  await notifyLearnersCourseCancelled({ id: existing.id, title: existing.title });
+
   revalidatePath('/dashboard/training');
   revalidatePath('/dashboard/courses');
   return { success: true };
 }
 
-// Get dashboard data (combines courses list and stats to prevent duplicate queries)
 /**
- * @param requestedFacilityIds Narrows every enrollment-derived figure (staff
- *   assigned, average grade, per-course pass/fail, training coverage) to these
- *   facilities. Omit (or pass null) for "the caller's own scope", which is the
- *   whole organisation only for an org-wide role. See
+ * The single-facility dashboard (also `/dashboard/training`).
+ *
+ * Counted by `@/lib/dashboard/definitions` over the same snapshot and the same
+ * CURRENT-roster slice as the Global View's facility rows, so
+ * `getDashboardData([id])` and that facility's Global row cannot disagree.
+ *
+ * @param requestedFacilityIds Narrows every figure to the members on these
+ *   facilities' current roster. Omit (or pass null) for "the caller's own
+ *   scope", which is the whole organisation only for an org-wide role. See
  *   {@link resolveDashboardScope} — the value is re-validated, never trusted.
  */
 export async function getDashboardData(requestedFacilityIds?: string[] | null) {
@@ -940,17 +962,12 @@ export async function getDashboardData(requestedFacilityIds?: string[] | null) {
     throw new Error('Unauthorized');
   }
 
-  // This action had NO permission gate, only a session check — and it resolves a
-  // WORKER session too, so any learner could POST to it and read their facility's
-  // roster-wide training figures (headcount, colleagues' scores, pass/fail).
-  // The page in front of it gates on `course.read`, which is not a boundary twice
-  // over: every worker role holds that verb, and a `'use server'` export is
-  // reachable without visiting the page at all.
-  //
-  // The gate is `getGlobalDashboardData`'s (dashboard-facility.ts), deliberately
-  // verbatim: the two actions are maintained in parity (dashboard-parity.test.ts)
-  // and must not disagree about who may ask. Aggregates only — no staff name or
-  // email — so finance qualifies via `billing.read`.
+  // This action resolves a WORKER session too, and a `'use server'` export is
+  // reachable without visiting the page, so it carries its own gate. It is
+  // `getGlobalDashboardData`'s, deliberately verbatim: the two actions are
+  // maintained in parity (dashboard-parity.test.ts) and must not disagree about
+  // who may ask. Aggregates only — no staff name or email — so finance
+  // qualifies via `billing.read`.
   const roleKey = dbRoleToRoleKey(session.user.role);
   if (!can(roleKey, 'assignment.read') && !can(roleKey, 'billing.read')) {
     logger.warn({
@@ -961,26 +978,13 @@ export async function getDashboardData(requestedFacilityIds?: string[] | null) {
     throw new Error('Forbidden');
   }
 
-  // Every figure below counts over the ORGANISATION's courses and members, not
-  // the viewer's own. Reading the population from the shared seam is what stops
-  // this action and `getGlobalDashboardData` describing the same organisation
-  // differently — see `@/lib/dashboard/scope`.
+  // `organizationId` is null only for a prospective founder mid-onboarding —
+  // the scope then matches nothing and the dashboard renders empty; the
+  // client-side OrganizationActivationModal handles that state.
   const scope = await resolveDashboardScope(session, requestedFacilityIds);
 
-  // F-028: avoid the unbounded `enrollments: true` materialization that pulled
-  // every enrollment row (all columns) for every course on each dashboard load.
-  // Counts and per-user coverage are now computed with grouped aggregation
-  // queries, and only the score-bearing enrollments are read — as a narrow
-  // { courseId, score, completedAt } projection — for the average / monthly /
-  // pass-fail stats that genuinely need row-level scores.
-  //
-  // `organizationId` is null only for a prospective founder mid-onboarding (no
-  // organization yet) — tolerate it with an empty dashboard rather than throwing;
-  // the client-side OrganizationActivationModal handles that state.
-  const { organizationId } = scope;
-
-  const [coursesRaw, courseStatusCounts, userStatusCounts, scoredEnrollments] = await Promise.all([
-    organizationId
+  const [coursesRaw, snapshot] = await Promise.all([
+    scope.organizationId
       ? prisma.course.findMany({
           where: scope.courseWhere,
           select: {
@@ -994,85 +998,22 @@ export async function getDashboardData(requestedFacilityIds?: string[] | null) {
             duration: true,
             createdAt: true,
             updatedAt: true,
-            // Both attachment points, because a course passes at its STRICTEST
-            // bar — taking the first lesson quiz made the same course pass here
-            // and fail on the global dashboard.
-            quiz: { select: { passingScore: true } },
             // Ordered so lessons[0] is the course video the thumbnail resolves.
             lessons: {
               orderBy: { order: 'asc' },
-              select: {
-                videoPosterStorageUri: true,
-                updatedAt: true,
-                quiz: { select: { passingScore: true } },
-              },
+              select: { videoPosterStorageUri: true, updatedAt: true },
             },
           },
           orderBy: { createdAt: 'desc' },
         })
       : Promise.resolve([]),
-    // Per-course enrollment totals + completed/attested tallies.
-    organizationId
-      ? prisma.enrollment.groupBy({
-          by: ['courseId', 'status'],
-          // `liveCourseWhere`, not `courseWhere`: this `course` key replaces the
-          // archive predicate `enrollmentWhere` carries, and the "Total Courses"
-          // read above is archive-filtered by the query extension. A bare
-          // `courseWhere` here therefore counts enrolments on courses the same
-          // dashboard says do not exist.
-          where: { ...scope.enrollmentWhere, course: scope.liveCourseWhere },
-          _count: { _all: true },
-        })
-      : Promise.resolve([]),
-    // Per-membership status tallies for training coverage + distinct staff assigned.
-    organizationId
-      ? prisma.enrollment.groupBy({
-          by: ['organizationUserId', 'status'],
-          where: {
-            ...scope.enrollmentWhere,
-            course: scope.liveCourseWhere,
-            // Numerator and denominator must be the same population: the coverage
-            // base below is the active worker roster, so without this an admin's
-            // own enrollment — or a deactivated worker's — landed in the split but
-            // not in the base it is divided by.
-            organizationUser: scope.staffWhere({ roles: WORKER_ROLES }),
-          },
-          _count: { _all: true },
-        })
-      : Promise.resolve([]),
-    // Only scored enrollments, narrow projection — used for average grade,
-    // monthly performance and per-course pass/fail distribution.
-    organizationId
-      ? prisma.enrollment.findMany({
-          where: { ...scope.enrollmentWhere, course: scope.liveCourseWhere, score: { not: null } },
-          select: { courseId: true, score: true, completedAt: true },
-        })
-      : Promise.resolve([]),
+    loadDashboardSnapshot(scope, new Date()),
   ]);
 
-  // Get total staff (workers) in organization to ensure accurate coverage base.
-  // Under facility scope this is those sites' roster, so a worker at another
-  // facility never dilutes their completion percentages.
-  let totalOrgStaff = 0;
-  if (organizationId) {
-    totalOrgStaff = await prisma.organizationUser.count({
-      where: scope.staffWhere({ roles: WORKER_ROLES }),
-    });
-  }
-
-  // Per-course enrollment totals and completed/attested tallies (from groupBy).
-  const perCourseCounts = new Map<string, { total: number; completed: number }>();
-  for (const row of courseStatusCounts) {
-    const entry = perCourseCounts.get(row.courseId) ?? { total: 0, completed: 0 };
-    entry.total += row._count._all;
-    if (COMPLETED_ENROLLMENT_STATUSES.includes(row.status)) {
-      entry.completed += row._count._all;
-    }
-    perCourseCounts.set(row.courseId, entry);
-  }
+  const view = computeFacilityView(sliceSnapshot(snapshot, scope.dataFacilityIds));
 
   const courses: CourseWithStats[] = coursesRaw.map((course) => {
-    const counts = perCourseCounts.get(course.id) ?? { total: 0, completed: 0 };
+    const figures = view.byCourse.get(course.id);
     return {
       id: course.id,
       title: course.title,
@@ -1084,165 +1025,47 @@ export async function getDashboardData(requestedFacilityIds?: string[] | null) {
       createdAt: course.createdAt,
       updatedAt: course.updatedAt,
       lessonsCount: course.lessons.length,
-      enrollmentsCount: counts.total,
-      completionRate: counts.total > 0 ? Math.round((counts.completed / counts.total) * 100) : 0,
+      enrollmentsCount: figures?.total ?? 0,
+      completionRate: figures ? computeCompletionPercent(figures.finished, figures.total) : 0,
     };
   });
 
-  // Group scored enrollments by course for the per-course performance stats.
-  const scoresByCourse = new Map<string, number[]>();
-  for (const e of scoredEnrollments) {
-    const arr = scoresByCourse.get(e.courseId) ?? [];
-    arr.push(e.score ?? 0);
-    scoresByCourse.set(e.courseId, arr);
-  }
-
-  const totalCourses = coursesRaw.length;
-  const averageScore =
-    scoredEnrollments.length > 0
-      ? Math.round(
-          scoredEnrollments.reduce((sum, e) => sum + (e.score || 0), 0) / scoredEnrollments.length,
-        )
-      : 0;
-
-  // Calculate monthly performance (average score per month for last 12 months)
-  const monthlyPerformance = Array.from({ length: 12 }, (_, i) => {
-    const d = new Date();
-    d.setMonth(d.getMonth() - (11 - i));
-    return {
-      month: d.toLocaleString('default', { month: 'short' }),
-      monthIdx: d.getMonth(),
-      year: d.getFullYear(),
-    };
-  }).map(({ month, monthIdx, year }) => {
-    const inMonth = scoredEnrollments.filter((e) => {
-      if (!e.completedAt) return false;
-      const c = new Date(e.completedAt);
-      return c.getMonth() === monthIdx && c.getFullYear() === year;
-    });
-
-    const avg =
-      inMonth.length > 0
-        ? Math.round(inMonth.reduce((sum, e) => sum + (e.score || 0), 0) / inMonth.length)
-        : 0;
-
-    return { month, value: avg };
-  });
-
-  const passingScores = resolvePassingScores(
-    coursesRaw.flatMap((course) => [
-      ...(course.quiz ? [{ courseId: course.id, passingScore: course.quiz.passingScore }] : []),
-      ...course.lessons.flatMap((lesson) =>
-        lesson.quiz ? [{ courseId: course.id, passingScore: lesson.quiz.passingScore }] : [],
-      ),
-    ]),
-  );
-
-  // Calculate Course Performance (Scores vs Courses)
   const coursePerformance = coursesRaw.map((course) => {
-    const passingScore = passingScoreFor(passingScores, course.id);
-
-    // Scores of enrollments that have been graded for this course.
-    const validScores = scoresByCourse.get(course.id) ?? [];
-
-    const passCount = validScores.filter((score) => score >= passingScore).length;
-    const failCount = validScores.filter((score) => score < passingScore).length;
-
-    const avgScore =
-      validScores.length > 0
-        ? Math.round(validScores.reduce((sum, score) => sum + score, 0) / validScores.length)
-        : 0;
-
+    const figures = view.byCourse.get(course.id);
     return {
       name: course.title,
-      score: avgScore,
-      passingScore,
-      passCount,
-      failCount,
+      score: figures?.meanGrade ?? 0,
+      passingScore: passingScoreFor(snapshot.coursePassingScores, course.id),
+      passCount: figures?.passCount ?? 0,
+      failCount: figures?.failCount ?? 0,
     };
   });
 
-  // --- Training Coverage ---
-  // Classify each unique staff member by their aggregate status across ALL their enrollments.
-  // Classification priority (highest wins): in_progress > not_started (enrolled) > completed.
-  // A user who has finished some courses but has others still "enrolled" is shown as in_progress
-  // because they have outstanding training — this gives the most actionable signal for admins.
-  const enrollmentsByUser = new Map<
-    string,
-    { hasCompleted: boolean; hasInProgress: boolean; hasNotStarted: boolean }
-  >();
-  for (const row of userStatusCounts) {
-    const entry = enrollmentsByUser.get(row.organizationUserId) ?? {
-      hasCompleted: false,
-      hasInProgress: false,
-      hasNotStarted: false,
-    };
-    if (COMPLETED_ENROLLMENT_STATUSES.includes(row.status)) {
-      entry.hasCompleted = true;
-    } else if (row.status === 'in_progress') {
-      entry.hasInProgress = true;
-    } else {
-      // 'enrolled' / 'assigned' — course has been assigned but not yet started
-      entry.hasNotStarted = true;
-    }
-    enrollmentsByUser.set(row.organizationUserId, entry);
-  }
+  const coverage = coveragePercentages(view.coverage);
 
-  // Distinct staff with at least one enrollment across this admin's courses.
-  const totalStaffAssigned = enrollmentsByUser.size;
-
-  let staffCompleted = 0;
-  let staffInProgress = 0;
-  let staffNotStarted = 0;
-  for (const record of enrollmentsByUser.values()) {
-    if (record.hasInProgress || record.hasNotStarted) {
-      // Any outstanding (in_progress or unstarted) enrollment means the user is not fully done.
-      // Distinguish the two for more granular UI display.
-      if (record.hasInProgress) {
-        staffInProgress++;
-      } else {
-        staffNotStarted++;
-      }
-    } else {
-      // All enrollments are completed/attested.
-      staffCompleted++;
-    }
-  }
-
-  // Users who were never enrolled at all are added to the 'not started' figure.
-  // This ensures the total base reflects the entire organization staff.
-  const staffWithNoEnrollments = Math.max(0, totalOrgStaff - enrollmentsByUser.size);
-  staffNotStarted += staffWithNoEnrollments;
-
-  const coverageBase = totalOrgStaff > 0 ? totalOrgStaff : enrollmentsByUser.size;
-
-  const coverage = coveragePercentages(
-    { completed: staffCompleted, inProgress: staffInProgress, notStarted: staffNotStarted },
-    coverageBase,
-  );
-
-  // Finance reaches this action through `billing.read` for the AGGREGATES
-  // (counts, coverage, averages — the same family the Global View shows it).
-  // The course list and the per-course chart name individual courses, which a
-  // role holding nothing on Courses must not receive. Stripped here rather than
-  // at the page because a `'use server'` export is callable without the page.
-  // The rows are still read: `totalCourses` and the parity-tested totals are
-  // derived from them, and the tile must not change with the viewer's role.
+  // Finance reaches this action through `billing.read` for the AGGREGATES. The
+  // course list and the per-course chart name individual courses, which a role
+  // holding nothing on Courses must not receive. Stripped here rather than at
+  // the page because a `'use server'` export is callable without the page. The
+  // tiles are unaffected: they must not change with the viewer's role.
   const mayViewCourses = canViewOrgCourses(session.user.role);
 
   return {
     courses: mayViewCourses ? courses : [],
     stats: {
-      totalCourses,
-      totalStaffAssigned,
-      averageGrade: averageScore,
-      monthlyPerformance,
+      totalActiveCourses: view.totalActiveCourses,
+      totalAssignedLearners: view.totalAssignedLearners,
+      averageGrade: view.averageGrade,
+      // The ORG catalogue size, not a figure of this scope: the "create your
+      // first course" prompt must not fire for an organisation whose courses
+      // simply have no unfinished enrolments here.
+      catalogCourseCount: coursesRaw.length,
       coursePerformance: mayViewCourses ? coursePerformance : [],
       trainingCoverage: {
         completed: coverage.completed,
         inProgress: coverage.inProgress,
         notStarted: coverage.notStarted,
-        totalStaff: totalStaffAssigned,
+        totalAssignments: view.totalAssignments,
       },
     },
   };
@@ -1616,6 +1439,11 @@ export async function createFullCourse(data: {
                         order: qIndex,
                         // v3.1 embedded fields
                         explanation: q.explanation?.correctExplanation || undefined,
+                        // `adaptQuizOptions` already keyed this by the shuffled
+                        // index, and `options` above is that same shuffled array.
+                        incorrectOptionExplanations: toStoredOptionExplanations(
+                          q.explanation?.incorrectOptions,
+                        ),
                         archetype: q.archetype || undefined,
                         // The module is tagged by position rather than id: the
                         // CourseModule rows do not exist until the course does.
@@ -1722,7 +1550,11 @@ export async function createFullCourse(data: {
   };
 }
 
-export async function attestCourse(enrollmentId: string, signature: string, role: string) {
+export async function attestCourse(
+  enrollmentId: string,
+  signature: string,
+  role: string,
+): Promise<{ success: boolean; refusedReason?: string }> {
   // Resolve BOTH sessions to handle cookie collision (admin + worker in same browser)
   const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
   const adminId = admin?.user?.id;
@@ -1756,11 +1588,33 @@ export async function attestCourse(enrollmentId: string, signature: string, role
     throw new Error(`Signature is required.`);
   }
 
+  // Attestation IS this product's completion act (see the schema note on
+  // Enrollment.completedAt), so the audit column and the attestation column
+  // share ONE Date: the auditor exports read `completedAt` while the compliance
+  // banner reads `attestedAt`, and two separate `new Date()` calls would let
+  // them disagree by milliseconds for no reason. Attesting is also the
+  // learner's last engagement, so `lastActivityAt` takes the same instant.
+  const completedAt = new Date();
+  // Q-04: attestation is a learner action, so it stops at the archive too — a
+  // cancelled course must not go on producing fresh compliance attestations.
+  // Refused by return, not thrown, and fail-closed: nothing below has run.
+  // Attestations already recorded are untouched, as are their certificates.
+  if (enrollment.course.archivedAt) {
+    logger.warn({
+      msg: '[course] Attestation refused — course is archived',
+      enrollmentId,
+      courseId: enrollment.courseId,
+    });
+    return { success: false, refusedReason: ARCHIVED_COURSE_LEARNER_MESSAGE };
+  }
+
   await prisma.enrollment.update({
     where: { id: enrollmentId },
     data: {
       status: 'attested',
-      attestedAt: new Date(),
+      completedAt,
+      attestedAt: completedAt,
+      lastActivityAt: completedAt,
       attestationSignature: signature,
       attestationRole: role, // Now acts as job description
     },
@@ -1804,7 +1658,9 @@ export async function attestCourse(enrollmentId: string, signature: string, role
   return { success: true };
 }
 
-export async function startCourse(courseId: string) {
+export async function startCourse(
+  courseId: string,
+): Promise<{ success: boolean; refusedReason?: string }> {
   // Resolve BOTH sessions to handle cookie collision
   const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
   const adminId = admin?.user?.id;
@@ -1819,15 +1675,19 @@ export async function startCourse(courseId: string) {
   // Which identity the enrollment was matched on — analytics must attribute the
   // start to the LEARNER, and an admin in learn mode holds both cookies.
   let learnerId: string | undefined;
+  // `course` is a nested include, which the archive query extension does not
+  // filter — the archived row has to be readable here in order to be refused.
   if (workerId) {
     enrollment = await prisma.enrollment.findFirst({
       where: { courseId, organizationUser: { userId: workerId } },
+      include: { course: { select: { archivedAt: true } } },
     });
     if (enrollment) learnerId = workerId;
   }
   if (!enrollment && adminId) {
     enrollment = await prisma.enrollment.findFirst({
       where: { courseId, organizationUser: { userId: adminId } },
+      include: { course: { select: { archivedAt: true } } },
     });
     if (enrollment) learnerId = adminId;
   }
@@ -1836,13 +1696,27 @@ export async function startCourse(courseId: string) {
     throw new Error('Enrollment not found');
   }
 
+  // Q-04: opening a cancelled course is the first learner action to stop.
+  // Refused by return, not thrown — production redacts thrown Server Action
+  // messages. Fail-closed: the status bump below has not run.
+  if (enrollment.course.archivedAt) {
+    logger.warn({
+      msg: '[course] Course start refused — course is archived',
+      courseId,
+      enrollmentId: enrollment.id,
+    });
+    return { success: false, refusedReason: ARCHIVED_COURSE_LEARNER_MESSAGE };
+  }
+
+  const now = new Date();
   if (enrollment.status === 'enrolled' || enrollment.status === 'assigned') {
     await prisma.enrollment.update({
       where: { id: enrollment.id },
       data: {
         status: 'in_progress',
         progress: enrollment.progress === 0 ? 1 : enrollment.progress, // Ensure at least 1%
-        startedAt: enrollment.startedAt || new Date(),
+        startedAt: enrollment.startedAt || now,
+        lastActivityAt: now,
       },
     });
 
@@ -1874,6 +1748,9 @@ export async function startCourse(courseId: string) {
     }
     revalidatePath('/dashboard/worker');
     revalidatePath(`/worker/courses/${courseId}`);
+  } else {
+    // "Continue Course" routes through here too: re-opening a started course is engagement.
+    await touchEnrollmentActivity(prisma, enrollment.id, now);
   }
 
   return { success: true };
@@ -1887,6 +1764,8 @@ export async function updateQuizQuestions(
     answer: number;
     type?: string;
     explanation?: string;
+    /** Keyed by the option's index in `options` as the caller sent it. */
+    incorrectOptionExplanations?: Record<string, string>;
   }[],
 ) {
   const session = await resolveSession();
@@ -1938,19 +1817,19 @@ export async function updateQuizQuestions(
   }
   const quizId = lessonWithQuiz.quiz.id;
 
-  // Shuffle options for each question so correct answers are scattered across A-D
+  // Shuffle options for each question so correct answers are scattered across
+  // A-D. The shuffle carries each option's ORIGINAL index so the per-option
+  // rationale can be re-keyed onto the new order — an index-keyed map that is
+  // stored beside a reordered `options` array points at the wrong answers.
   const shuffleOptions = (
     options: string[],
     correctIdx: number,
-  ): { options: string[]; correctIdx: number } => {
-    const tagged = options.map((text, i) => ({ text, isCorrect: i === correctIdx }));
-    for (let i = tagged.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [tagged[i], tagged[j]] = [tagged[j], tagged[i]];
-    }
+  ): { options: string[]; correctIdx: number; originalIndexes: number[] } => {
+    const shuffled = shuffleArray(options.map((text, index) => ({ text, index })));
     return {
-      options: tagged.map((o) => o.text),
-      correctIdx: tagged.findIndex((o) => o.isCorrect),
+      options: shuffled.map((o) => o.text),
+      correctIdx: shuffled.findIndex((o) => o.index === correctIdx),
+      originalIndexes: shuffled.map((o) => o.index),
     };
   };
 
@@ -1967,6 +1846,10 @@ export async function updateQuizQuestions(
             options: shuffled.options,
             correctAnswer: shuffled.options[shuffled.correctIdx],
             explanation: q.explanation,
+            incorrectOptionExplanations: remapOptionExplanations(
+              q.incorrectOptionExplanations,
+              shuffled.originalIndexes,
+            ),
             order: index,
           };
         }),
@@ -2218,6 +2101,19 @@ export async function retakeQuiz(
     throw new Error('Enrollment not found or unauthorized');
   }
 
+  // Q-04: an archived course cannot be retaken. Checked before the attempt
+  // limit because it is a fact about the COURSE, and before the enrollment
+  // reset below, which would otherwise wipe a score and an attestation on
+  // training that can never be re-earned. Fail-closed.
+  if (enrollment.course.archivedAt) {
+    logger.warn({
+      msg: '[course] Quiz retake refused — course is archived',
+      enrollmentId,
+      courseId: enrollment.courseId,
+    });
+    return { success: false, refusedReason: ARCHIVED_COURSE_LEARNER_MESSAGE };
+  }
+
   // Quiz lives on the last lesson (text courses) or on the course itself
   // (video courses). Prefer the lesson quiz, fall back to the course quiz.
   const lastLesson = enrollment.course.lessons[enrollment.course.lessons.length - 1];
@@ -2257,6 +2153,7 @@ export async function retakeQuiz(
       completedAt: null,
       attestedAt: null,
       attestationSignature: null,
+      lastActivityAt: new Date(),
     },
   });
 
@@ -2315,6 +2212,22 @@ export async function assignRetake(
 
   if (!lockedEnrollment) {
     throw new Error('Enrollment not found');
+  }
+
+  // Q-04: an archived course cannot be retaken. This is the one path that would
+  // otherwise mint a BRAND-NEW enrollment on retired training — the assignment
+  // paths (`enrollUsers`, role targets, invites, renewals) all refuse it
+  // already, and they reach the Course row through a top-level read the archive
+  // filter covers. Here the course arrives through a nested include, which the
+  // filter cannot reach, so the rule has to be stated.
+  if (lockedEnrollment.course.archivedAt) {
+    logger.warn({
+      msg: '[course] assignRetake refused — course is archived',
+      enrollmentId,
+      courseId: lockedEnrollment.courseId,
+      userId: session.user.id,
+    });
+    return { success: false, refusedReason: ARCHIVED_COURSE_ADMIN_MESSAGE };
   }
 
   // Refused by return, not thrown: the reason is guidance the admin acts on, and

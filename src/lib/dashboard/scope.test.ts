@@ -1,8 +1,9 @@
 /**
  * `resolveDashboardScope` is the population both dashboard actions read from —
  * see the module doc-comment in `scope.ts`. These pin the `string[] | null`
- * facility contract, the mandatory org pin on `enrollmentWhere`, and the
- * fail-closed "no organisation" shape, independent of either action.
+ * facility contract (applied through the CURRENT roster, never the
+ * `Enrollment.facilityId` stamp), the mandatory org pin on `enrollmentWhere`,
+ * and the fail-closed "no organisation" shape, independent of either action.
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
@@ -47,6 +48,7 @@ describe('resolveDashboardScope — dataFacilityIds (string[] | null contract)',
 
     expect(scope.dataFacilityIds).toBeNull();
     expect(scope.enrollmentWhere).not.toHaveProperty('facilityId');
+    expect(scope.enrollmentWhere.organizationUser).not.toHaveProperty('facilities');
   });
 
   it('is [] — not the org-wide null — for a facility-bound role with no accessible assignments, and narrows to nothing rather than everything', async () => {
@@ -57,7 +59,12 @@ describe('resolveDashboardScope — dataFacilityIds (string[] | null contract)',
     expect(scope.dataFacilityIds).toEqual([]);
     // The fail-open this contract exists to prevent: an empty array must
     // produce `{ in: [] }` (matches nothing), never `{}` (matches everything).
-    expect(scope.enrollmentWhere.facilityId).toEqual({ in: [] });
+    expect(scope.enrollmentWhere.organizationUser).toMatchObject({
+      facilities: { some: { facilityId: { in: [] }, active: true } },
+    });
+    expect(scope.populationWhere).toMatchObject({
+      facilities: { some: { facilityId: { in: [] }, active: true } },
+    });
   });
 
   it('drops a requested id the caller cannot access rather than trusting it', async () => {
@@ -69,7 +76,18 @@ describe('resolveDashboardScope — dataFacilityIds (string[] | null contract)',
     ]);
 
     expect(scope.dataFacilityIds).toEqual(['fac-1']);
-    expect(scope.enrollmentWhere.facilityId).toEqual({ in: ['fac-1'] });
+    expect(scope.enrollmentWhere.organizationUser).toMatchObject({
+      facilities: { some: { facilityId: { in: ['fac-1'] }, active: true } },
+    });
+  });
+
+  // BUG-36: attribution is the roster, never the write-time stamp.
+  it('never narrows by the Enrollment.facilityId stamp', async () => {
+    mockListAccessibleFacilities.mockResolvedValue([{ id: 'fac-1' }]);
+
+    const scope = await resolveDashboardScope(session({ role: 'supervisor' }));
+
+    expect(scope.enrollmentWhere).not.toHaveProperty('facilityId');
   });
 
   it('narrows an org-wide role too when it explicitly requests a subset', async () => {
@@ -90,7 +108,7 @@ describe('resolveDashboardScope — the org pin', () => {
       organizationId: ORG_ID,
       active: true,
     });
-    expect(facilityBound.enrollmentWhere.organizationUser).toEqual({
+    expect(facilityBound.enrollmentWhere.organizationUser).toMatchObject({
       organizationId: ORG_ID,
       active: true,
     });
@@ -108,10 +126,10 @@ describe('resolveDashboardScope — the org pin', () => {
     expect(facilityBound.enrollmentWhere.organizationUser).toMatchObject({ active: true });
   });
 
-  it('is always present on staffWhere()', async () => {
+  it('is always present on populationWhere', async () => {
     const scope = await resolveDashboardScope(session({ role: 'owner' }));
 
-    expect(scope.staffWhere()).toMatchObject({ organizationId: ORG_ID, active: true });
+    expect(scope.populationWhere).toMatchObject({ organizationId: ORG_ID, active: true });
   });
 });
 
@@ -122,7 +140,7 @@ describe('resolveDashboardScope — no organisation (mid-onboarding)', () => {
     expect(scope.organizationId).toBeNull();
     expect(scope.courseWhere).toEqual({ id: { in: [] } });
     expect(scope.enrollmentWhere).toEqual({ id: { in: [] } });
-    expect(scope.staffWhere()).toEqual({ id: { in: [] } });
+    expect(scope.populationWhere).toEqual({ id: { in: [] } });
   });
 
   it('never issues the adopted-course lookup with no organisation to scope it to', async () => {
@@ -133,7 +151,7 @@ describe('resolveDashboardScope — no organisation (mid-onboarding)', () => {
 });
 
 describe('resolveDashboardScope — courseWhere', () => {
-  it('unions the authored set with adopted course ids when the org has adopted any', async () => {
+  it('unions the organisation own courses with adopted course ids when the org has adopted any', async () => {
     prismaMock.orgCourseOffering.findMany.mockResolvedValue([{ courseId: 'adopted-1' }]);
 
     const scope = await resolveDashboardScope(session({ role: 'owner' }));
@@ -143,10 +161,53 @@ describe('resolveDashboardScope — courseWhere', () => {
     });
   });
 
-  it('is the plain authored predicate when nothing is adopted', async () => {
+  it('is the plain organisation predicate when nothing is adopted', async () => {
     const scope = await resolveDashboardScope(session({ role: 'owner' }));
 
     expect(scope.courseWhere).toEqual({ organizationId: ORG_ID });
+  });
+
+  // BUG-01. Finance is the one manager role without `course.read`, so it used to
+  // fall to `createdByOrgUserId` — and, authoring no courses, read an
+  // organisation with four courses as an organisation with two. "Total Courses"
+  // is a fact about the organisation; what a role may SEE of the catalogue is
+  // the caller's decision, not a smaller number on the same tile.
+  it.each(['owner', 'admin', 'hr', 'clinical_director', 'supervisor', 'finance'] as const)(
+    'is the same organisation-wide predicate for %s — role narrows nothing',
+    async (role) => {
+      const scope = await resolveDashboardScope(session({ role }));
+
+      expect(scope.courseWhere).toEqual({ organizationId: ORG_ID });
+      expect(scope.liveCourseWhere).toEqual({ organizationId: ORG_ID, archivedAt: null });
+      expect(JSON.stringify(scope.courseWhere)).not.toContain('createdByOrgUserId');
+    },
+  );
+
+  it('unions the adopted ids for a role without course.read too, rather than narrowing to what it authored', async () => {
+    prismaMock.orgCourseOffering.findMany.mockResolvedValue([{ courseId: 'adopted-1' }]);
+
+    const finance = await resolveDashboardScope(session({ role: 'finance' }));
+    const owner = await resolveDashboardScope(session({ role: 'owner' }));
+
+    expect(finance.courseWhere).toEqual(owner.courseWhere);
+    expect(finance.courseWhere).toEqual({
+      OR: [{ organizationId: ORG_ID }, { id: { in: ['adopted-1'] } }],
+    });
+  });
+
+  // The other half of the line: facility scope is a legitimate narrowing, and it
+  // applies to the enrolment-derived figures ONLY. Courses are org-global (they
+  // carry no facility), so a facility-bound supervisor still counts the whole
+  // catalogue while their enrolment figures narrow to their own sites.
+  it('is never facility-narrowed, while the facility-bound caller enrolment predicate is', async () => {
+    mockListAccessibleFacilities.mockResolvedValue([{ id: 'fac-1' }]);
+
+    const scope = await resolveDashboardScope(session({ role: 'supervisor' }));
+
+    expect(scope.courseWhere).toEqual({ organizationId: ORG_ID });
+    expect(scope.enrollmentWhere.organizationUser).toMatchObject({
+      facilities: { some: { facilityId: { in: ['fac-1'] }, active: true } },
+    });
   });
 
   // `courseWhere` stays archive-neutral because its callers are TOP-LEVEL
@@ -181,7 +242,10 @@ describe('resolveDashboardScope — the archive predicate', () => {
     const orgWide = await resolveDashboardScope(session({ role: 'owner' }));
     const facilityBound = await resolveDashboardScope(session({ role: 'supervisor' }));
 
-    expect(orgWide.enrollmentWhere.course).toEqual({ archivedAt: null });
-    expect(facilityBound.enrollmentWhere.course).toEqual({ archivedAt: null });
+    expect(orgWide.enrollmentWhere.course).toEqual({ organizationId: ORG_ID, archivedAt: null });
+    expect(facilityBound.enrollmentWhere.course).toEqual({
+      organizationId: ORG_ID,
+      archivedAt: null,
+    });
   });
 });

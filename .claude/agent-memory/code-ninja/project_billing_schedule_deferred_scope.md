@@ -1,6 +1,6 @@
 ---
 name: billing-schedule-deferred-scope
-description: What is left of the deliberate non-fixes from the 2026-08-25 cancel/resume/seats work — pause keeps its hard 409; seat counting is inconsistent in code (BUG-07)
+description: What is left of the deliberate non-fixes from the 2026-08-25 cancel/resume/seats work — pause keeps its hard 409 on a pending schedule; everything else has since closed
 metadata:
   type: project
 ---
@@ -16,15 +16,9 @@ some billing behaviour alone. Status as of 2026-09-21:
   `stripeScheduleId` while cancel/resume/reactivate auto-release it. This
   asymmetry is a product decision, not an inconsistency to "clean up".
 
-**Seat counting — unresolved, do not pick a definition.** The code currently
-counts seats two ways: `countBillableStaff` in `src/lib/seat-limits.ts` (the
-limit check) excludes the owner, while `src/app/api/billing/overview/route.ts`
-(the billing page) counts every active `OrganizationUser`, owner included. This
-is tracked as **BUG-07** (ruling needed: **Q-11**) in `docs/local/OPEN-ISSUES.md`.
-Don't "fix" either call site until that ruling lands. Invited-but-unactivated
-members are not counted by the overview. Checkout's `orgStaffNum` now uses
-`countBillableStaff` (membership rows, not the manual `Facility.staffCount`
-onboarding figure), so it follows the seat-limits definition.
+**Seat counting — settled.** BUG-07 / Q-11 were ruled on 2026-09-23 (the owner
+DOES consume a seat) and every surface now shares one helper. See
+[[gotcha-seat-counting-is-owner-inclusive]].
 
 **Why:** these look like obvious bugs to a future reader and will be
 "helpfully" fixed unless the deliberate deferral is recorded.

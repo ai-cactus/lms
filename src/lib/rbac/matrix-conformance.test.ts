@@ -176,7 +176,7 @@ const MATRIX: Record<MatrixModule, Record<MatrixRole, Cell>> = {
       'RU',
       'R',
       'The "U" IS delivered — it is simply not this grant. Q2 narrows it to ' +
-        'assigning courses and basic profile editing (name, job title, contact, ' +
+        'assigning courses and basic profile editing (name, contact, ' +
         'own facility only), while `user.edit` also gates changing a staff ' +
         "member's facility and role, which the directive's own action rules " +
         'reserve for Owner/Admin/HR. So profile editing ships as ' +

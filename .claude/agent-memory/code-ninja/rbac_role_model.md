@@ -14,6 +14,6 @@ RBAC model (current as of 2026-09-21; originally rolled out on the `rbac` branch
 
 **Grants (`GRANTABLE_ROLES`):** `owner` is NON-grantable (absent from every list; established at org creation). Owner may grant admin, supervisor, hr, clinical_director, finance + all 8 worker roles. Admin may grant the same minus `admin` (only an Owner delegates Owner-equivalent access). HR may grant everything except `admin` and `owner` (founder Q10). Supervisor, clinical_director, finance and all worker roles grant nothing. New org founder (OAuth-no-invite, credentials onboarding, org creation) becomes `owner`. `InviteStaffModal` sources its role options from `GRANTABLE_ROLES[inviterRole]` + `getRoleDisplayName`.
 
-**Seats — unresolved:** the code currently counts plan seats two ways (`src/lib/seat-limits.ts` excludes the owner; the billing overview route includes everyone active). Tracked as **BUG-07** / **Q-11** in `docs/local/OPEN-ISSUES.md` — don't treat either as the rule. See [[billing-schedule-deferred-scope]].
+**Seats:** every role consumes a plan seat, the owner included (founder ruling 2026-09-23, BUG-07 / Q-11). One definition, in `src/lib/seat-limits.ts`. See [[gotcha-seat-counting-is-owner-inclusive]].
 
 The legacy `'admin'|'worker'` binary is a SEPARATE routing/portal concept, not an RBAC enum value — see [[auth-instance-vs-role]].

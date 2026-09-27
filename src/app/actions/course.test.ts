@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const {
   mockAdminAuth,
@@ -6,26 +6,28 @@ const {
   mockCourseFindMany,
   mockCourseFindFirst,
   mockCourseFindUnique,
-  mockEnrollmentGroupBy,
   mockEnrollmentFindMany,
-  mockOrgUserCount,
   mockListAccessibleFacilities,
   mockOrgUserFindMany,
   mockOrgCourseOfferingFindMany,
   mockRawCourseFindUnique,
+  mockQuizAttemptFindMany,
+  mockCertificateFindMany,
+  mockQuizFindMany,
 } = vi.hoisted(() => ({
   mockAdminAuth: vi.fn(),
   mockWorkerAuth: vi.fn(),
   mockCourseFindMany: vi.fn(),
   mockCourseFindFirst: vi.fn(),
   mockCourseFindUnique: vi.fn(),
-  mockEnrollmentGroupBy: vi.fn(),
   mockEnrollmentFindMany: vi.fn(),
-  mockOrgUserCount: vi.fn(),
   mockListAccessibleFacilities: vi.fn(),
   mockOrgUserFindMany: vi.fn(),
   mockOrgCourseOfferingFindMany: vi.fn(),
   mockRawCourseFindUnique: vi.fn(),
+  mockQuizAttemptFindMany: vi.fn(),
+  mockCertificateFindMany: vi.fn(),
+  mockQuizFindMany: vi.fn(),
 }));
 
 vi.mock('@/lib/prisma', () => {
@@ -35,10 +37,13 @@ vi.mock('@/lib/prisma', () => {
       findFirst: mockCourseFindFirst,
       findUnique: mockCourseFindUnique,
     },
-    enrollment: { groupBy: mockEnrollmentGroupBy, findMany: mockEnrollmentFindMany },
-    // Post refactor: total org staff is counted on OrganizationUser (scoped to
-    // WORKER_ROLES), not a raw `prisma.user.count`.
-    organizationUser: { count: mockOrgUserCount, findMany: mockOrgUserFindMany },
+    enrollment: { findMany: mockEnrollmentFindMany },
+    // The dashboard snapshot's population read, and getCourseForOrgView's
+    // roster narrowing.
+    organizationUser: { findMany: mockOrgUserFindMany },
+    quizAttempt: { findMany: mockQuizAttemptFindMany },
+    certificate: { findMany: mockCertificateFindMany },
+    quiz: { findMany: mockQuizFindMany },
     // resolveDashboardScope -> listAdoptedCourseIds; empty means "nothing
     // adopted", exercised on its own in dashboard/scope.test.ts.
     orgCourseOffering: { findMany: mockOrgCourseOfferingFindMany },
@@ -78,23 +83,99 @@ import { isOrgWideFacilityRole } from '@/lib/facility/scope';
 const ORG_USER_ID = 'ou-admin-1';
 const ORG_ID = 'org-1';
 
-// getDashboardData fires two enrollment.groupBy calls in the same Promise.all
-// (by [courseId,status] and by [organizationUserId,status]). Route each to its
-// fixture by inspecting `by` rather than call order, so the test doesn't
-// depend on the source's Promise.all array position.
-function wireGroupBy(courseStatusRows: unknown[], userStatusRows: unknown[]) {
-  mockEnrollmentGroupBy.mockImplementation((args: { by: string[] }) => {
-    if (args.by.includes('courseId')) return Promise.resolve(courseStatusRows);
-    if (args.by.includes('organizationUserId')) return Promise.resolve(userStatusRows);
-    throw new Error(`Unexpected groupBy args: ${JSON.stringify(args)}`);
-  });
+interface CatalogRow {
+  id: string;
+  title: string;
+  status?: string;
+  type?: string;
+}
+
+/** The catalogue row shape `getDashboardData` selects. */
+function catalogCourse({ id, title, status = 'published', type = 'document' }: CatalogRow) {
+  return {
+    id,
+    title,
+    description: null,
+    thumbnailStorageUri: null,
+    previewPosterStorageUri: null,
+    status,
+    type,
+    duration: 10,
+    createdAt: new Date(2026, 0, 1),
+    updatedAt: new Date(2026, 0, 1),
+    lessons: [],
+  };
+}
+
+interface SnapshotFixture {
+  catalog?: ReturnType<typeof catalogCourse>[];
+  members?: {
+    id: string;
+    role?: string;
+    joinedAt?: Date;
+    lastLoginAt?: Date | null;
+    facilities?: { facilityId: string }[];
+  }[];
+  enrollments?: {
+    id: string;
+    organizationUserId: string;
+    courseId: string;
+    status: string;
+    startedAt?: Date;
+    accessAt?: Date | null;
+    lastActivityAt?: Date | null;
+    dueAt?: Date | null;
+    completedAt?: Date | null;
+    retakeOf?: string | null;
+  }[];
+  attempts?: { enrollmentId: string; quizId: string; score: number; completedAt?: Date }[];
+  quizzes?: { id: string; passingScore: number; courseId: string | null }[];
+}
+
+/**
+ * Wires every read the snapshot loader and the catalogue query issue. The two
+ * `course.findMany` calls are told apart by the published-course filter rather
+ * than call order.
+ */
+function wireSnapshot(fixture: SnapshotFixture = {}) {
+  const catalog = fixture.catalog ?? [];
+  mockCourseFindMany.mockImplementation((args: { where: { status?: string } }) =>
+    Promise.resolve(
+      args.where.status === 'published'
+        ? catalog.filter((c) => c.status === 'published').map((c) => ({ id: c.id }))
+        : catalog,
+    ),
+  );
+  mockOrgUserFindMany.mockResolvedValue(
+    (fixture.members ?? []).map((m) => ({
+      role: 'nurse',
+      joinedAt: new Date(2026, 0, 1),
+      lastLoginAt: new Date(),
+      facilities: [],
+      ...m,
+    })),
+  );
+  mockEnrollmentFindMany.mockResolvedValue(
+    (fixture.enrollments ?? []).map((e) => ({
+      startedAt: new Date(),
+      accessAt: null,
+      lastActivityAt: null,
+      dueAt: null,
+      completedAt: null,
+      retakeOf: null,
+      ...e,
+    })),
+  );
+  mockQuizAttemptFindMany.mockResolvedValue(
+    (fixture.attempts ?? []).map((a) => ({ completedAt: new Date(2026, 0, 5), ...a })),
+  );
+  mockCertificateFindMany.mockResolvedValue([]);
+  mockQuizFindMany.mockResolvedValue((fixture.quizzes ?? []).map((q) => ({ ...q, lesson: null })));
 }
 
 describe('getDashboardData', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Post User/OrganizationUser split: the session carries organizationUserId
-    // and organizationId directly — no separate `prisma.user` lookup.
     // `role` is load-bearing: getDashboardData resolves its own facility scope
     // from the session, and only an org-wide role gets the unfiltered shape.
     mockAdminAuth.mockResolvedValue({
@@ -108,10 +189,7 @@ describe('getDashboardData', () => {
     mockWorkerAuth.mockResolvedValue(null);
     mockListAccessibleFacilities.mockResolvedValue([]);
     mockOrgCourseOfferingFindMany.mockResolvedValue([]);
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
+    wireSnapshot();
   });
 
   it('throws Unauthorized when there is no admin or worker session', async () => {
@@ -121,172 +199,84 @@ describe('getDashboardData', () => {
     await expect(getDashboardData()).rejects.toThrow('Unauthorized');
   });
 
-  it('computes per-course counts, completion rate, coverage, grade and pass/fail from a realistic fixture', async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date(2026, 4, 15, 12, 0, 0)); // May 15 2026, local noon (avoids DST/midnight edge)
-
-    mockCourseFindMany.mockResolvedValue([
-      {
-        id: 'course-a',
-        title: 'Course A',
-        description: null,
-        thumbnail: null,
-        status: 'published',
-        type: 'document',
-        duration: 30,
-        createdAt: new Date(2026, 0, 1),
-        updatedAt: new Date(2026, 0, 1),
-        lessons: [{ quiz: { passingScore: 70 } }],
-      },
-      {
-        id: 'course-b',
-        title: 'Course B',
-        description: null,
-        thumbnail: null,
-        status: 'published',
-        type: 'document',
-        duration: 20,
-        createdAt: new Date(2026, 0, 2),
-        updatedAt: new Date(2026, 0, 2),
-        lessons: [{ quiz: null }], // no quiz -> pass/fail threshold falls back to default 70
-      },
-      {
-        id: 'course-c',
-        title: 'Course C (no enrollments)',
-        description: null,
-        thumbnail: null,
-        status: 'draft',
-        type: 'document',
-        duration: 10,
-        createdAt: new Date(2026, 0, 3),
-        updatedAt: new Date(2026, 0, 3),
-        lessons: [],
-      },
-      {
-        id: 'course-d',
-        title: 'Course D (enrolled, unscored)',
-        description: null,
-        thumbnail: null,
-        status: 'published',
-        type: 'document',
-        duration: 15,
-        createdAt: new Date(2026, 0, 4),
-        updatedAt: new Date(2026, 0, 4),
-        lessons: [{ quiz: { passingScore: 80 } }],
-      },
-    ]);
-
-    // Per-course [courseId, status] tallies backing enrollmentsCount + completionRate.
-    // course-a: 4 total, 2 completed -> 50%. course-b: 2 total, 1 completed -> 50%.
-    // course-d: 1 total (in_progress), 0 completed -> 0%. course-c: no rows -> 0/0%.
-    wireGroupBy(
-      [
-        { courseId: 'course-a', status: 'completed', _count: { _all: 2 } },
-        { courseId: 'course-a', status: 'in_progress', _count: { _all: 1 } },
-        { courseId: 'course-a', status: 'enrolled', _count: { _all: 1 } },
-        { courseId: 'course-b', status: 'completed', _count: { _all: 1 } },
-        { courseId: 'course-b', status: 'failed', _count: { _all: 1 } },
-        { courseId: 'course-d', status: 'in_progress', _count: { _all: 1 } },
+  it('computes the founder tiles, per-course figures and per-assignment coverage from a realistic fixture', async () => {
+    wireSnapshot({
+      catalog: [
+        catalogCourse({ id: 'course-a', title: 'Course A' }),
+        catalogCourse({ id: 'course-b', title: 'Course B' }),
+        catalogCourse({ id: 'course-c', title: 'Course C (draft)', status: 'draft' }),
+        catalogCourse({ id: 'course-d', title: 'Course D (all finished)' }),
       ],
-      // Per-membership [organizationUserId, status] tallies backing training
-      // coverage + totalStaffAssigned.
-      // 7 distinct staff: u1,u2,u5 completed; u3,u7 in_progress; u4 enrolled (not started);
-      // u6 failed (also classified "not started" by the current status mapping).
-      [
-        { organizationUserId: 'u1', status: 'completed', _count: { _all: 1 } },
-        { organizationUserId: 'u2', status: 'completed', _count: { _all: 1 } },
-        { organizationUserId: 'u3', status: 'in_progress', _count: { _all: 1 } },
-        { organizationUserId: 'u4', status: 'enrolled', _count: { _all: 1 } },
-        { organizationUserId: 'u5', status: 'completed', _count: { _all: 1 } },
-        { organizationUserId: 'u6', status: 'failed', _count: { _all: 1 } },
-        { organizationUserId: 'u7', status: 'in_progress', _count: { _all: 1 } },
+      members: [{ id: 'u1' }, { id: 'u2' }, { id: 'u3' }, { id: 'u4' }],
+      enrollments: [
+        { id: 'a1', organizationUserId: 'u1', courseId: 'course-a', status: 'attested' },
+        { id: 'a2', organizationUserId: 'u2', courseId: 'course-a', status: 'in_progress' },
+        { id: 'a3', organizationUserId: 'u3', courseId: 'course-a', status: 'locked' },
+        { id: 'b1', organizationUserId: 'u1', courseId: 'course-b', status: 'assigned' },
+        { id: 'c1', organizationUserId: 'u4', courseId: 'course-c', status: 'enrolled' },
+        { id: 'd1', organizationUserId: 'u4', courseId: 'course-d', status: 'completed' },
       ],
-    );
-
-    // Narrow scored-enrollment projection: only rows with a non-null score.
-    mockEnrollmentFindMany.mockResolvedValue([
-      { courseId: 'course-a', score: 85, completedAt: new Date(2026, 2, 15) },
-      { courseId: 'course-a', score: 70, completedAt: new Date(2026, 3, 10) }, // == passingScore boundary
-      { courseId: 'course-b', score: 90, completedAt: new Date(2026, 3, 20) },
-      { courseId: 'course-b', score: 50, completedAt: new Date(2026, 4, 1) },
-    ]);
-
-    mockOrgUserCount.mockResolvedValue(10); // total workers in the org
+      attempts: [
+        // a1: two submitted attempts on one quiz — the BEST (88) is its grade.
+        { enrollmentId: 'a1', quizId: 'quiz-a', score: 60 },
+        { enrollmentId: 'a1', quizId: 'quiz-a', score: 88 },
+        { enrollmentId: 'a3', quizId: 'quiz-a', score: 40 },
+        { enrollmentId: 'd1', quizId: 'quiz-d', score: 95 },
+      ],
+      quizzes: [
+        { id: 'quiz-a', passingScore: 70, courseId: 'course-a' },
+        { id: 'quiz-d', passingScore: 90, courseId: 'course-d' },
+      ],
+    });
 
     const result = await getDashboardData();
 
-    // --- per-course counts + completion rate ---
-    const byId = Object.fromEntries(result.courses.map((c) => [c.id, c]));
-    expect(byId['course-a'].enrollmentsCount).toBe(4);
-    expect(byId['course-a'].completionRate).toBe(50);
-    expect(byId['course-b'].enrollmentsCount).toBe(2);
-    expect(byId['course-b'].completionRate).toBe(50);
-    expect(byId['course-c'].enrollmentsCount).toBe(0);
-    expect(byId['course-c'].completionRate).toBe(0);
-    expect(byId['course-d'].enrollmentsCount).toBe(1);
-    expect(byId['course-d'].completionRate).toBe(0);
-
-    expect(result.stats.totalCourses).toBe(4);
-
-    // --- overall average grade: (85 + 70 + 90 + 50) / 4 = 73.75 -> 74 ---
+    // Published courses with an unfinished enrolment: A (a2, a3) and B (b1).
+    // C is a draft; D is fully finished.
+    expect(result.stats.totalActiveCourses).toBe(2);
+    // Staff with an unfinished enrolment: u1 (b1), u2, u3, u4 (c1).
+    expect(result.stats.totalAssignedLearners).toBe(4);
+    // Grades: a1 = 88, a3 = 40, d1 = 95 -> round(223 / 3) = 74.
     expect(result.stats.averageGrade).toBe(74);
+    expect(result.stats.catalogCourseCount).toBe(4);
 
-    // --- training coverage (distinct staff classified by their worst outstanding status) ---
-    expect(result.stats.totalStaffAssigned).toBe(7);
+    // Per ASSIGNMENT (BUG-33): a1, d1 finished; a2, a3 (locked still owes the
+    // training) in progress; b1, c1 not started. 2/2/2 -> largest remainder.
     expect(result.stats.trainingCoverage).toEqual({
-      completed: 30, // 3 of 10 org staff (u1, u2, u5)
-      inProgress: 20, // 2 of 10 (u3, u7)
-      notStarted: 50, // 5 of 10 (u4, u6 + 3 staff with zero enrollments)
-      totalStaff: 7, // distinct enrolled staff, not totalOrgStaff
+      completed: 34,
+      inProgress: 33,
+      notStarted: 33,
+      totalAssignments: 6,
     });
 
-    // --- pass/fail per course, including the score === passingScore boundary ---
-    const perfByName = Object.fromEntries(result.stats.coursePerformance.map((p) => [p.name, p]));
-    expect(perfByName['Course A']).toMatchObject({
+    const byId = Object.fromEntries(result.courses.map((c) => [c.id, c]));
+    expect(byId['course-a']).toMatchObject({ enrollmentsCount: 3, completionRate: 33 });
+    expect(byId['course-b']).toMatchObject({ enrollmentsCount: 1, completionRate: 0 });
+    expect(byId['course-d']).toMatchObject({ enrollmentsCount: 1, completionRate: 100 });
+
+    const perf = Object.fromEntries(result.stats.coursePerformance.map((p) => [p.name, p]));
+    expect(perf['Course A']).toMatchObject({
       passingScore: 70,
-      passCount: 2, // 85 and the boundary score of 70 both count as passes
-      failCount: 0,
-      score: 78, // round((85 + 70) / 2)
-    });
-    expect(perfByName['Course B']).toMatchObject({
-      passingScore: 70, // no quiz on this course -> falls back to the default 70
       passCount: 1,
       failCount: 1,
-      score: 70, // round((90 + 50) / 2)
+      score: 64,
     });
-    expect(perfByName['Course D (enrolled, unscored)']).toMatchObject({
-      passingScore: 80,
+    expect(perf['Course B']).toMatchObject({
+      passingScore: 70, // no quiz -> default bar
       passCount: 0,
       failCount: 0,
-      score: 0, // no scored enrollments for this course -> average falls back to 0
+      score: 0,
     });
-
-    // --- monthly performance: only months with scored, completed enrollments are non-zero ---
-    const marchLabel = new Date(2026, 2, 1).toLocaleString('default', { month: 'short' });
-    const aprilLabel = new Date(2026, 3, 1).toLocaleString('default', { month: 'short' });
-    const mayLabel = new Date(2026, 4, 1).toLocaleString('default', { month: 'short' });
-    const monthlyByLabel = Object.fromEntries(
-      result.stats.monthlyPerformance.map((m) => [m.month, m.value]),
-    );
-    expect(result.stats.monthlyPerformance).toHaveLength(12);
-    expect(monthlyByLabel[marchLabel]).toBe(85);
-    expect(monthlyByLabel[aprilLabel]).toBe(80); // round((70 + 90) / 2)
-    expect(monthlyByLabel[mayLabel]).toBe(50);
-    const otherMonths = result.stats.monthlyPerformance.filter(
-      (m) => ![marchLabel, aprilLabel, mayLabel].includes(m.month),
-    );
-    expect(otherMonths.every((m) => m.value === 0)).toBe(true);
+    expect(perf['Course D (all finished)']).toMatchObject({
+      passingScore: 90,
+      passCount: 1,
+      failCount: 0,
+    });
+    expect(result.stats).not.toHaveProperty('monthlyPerformance');
   });
 
-  it('returns all zeros with no divide-by-zero when there are no courses or enrollments', async () => {
-    mockCourseFindMany.mockResolvedValue([]);
-    wireGroupBy([], []);
-    mockEnrollmentFindMany.mockResolvedValue([]);
-    // No org membership in session at all — courses/enrollments queries are
-    // skipped (empty via the ternaries) and the staff-count query is skipped.
-    // `role` is load-bearing since the permission gate landed: an org-less
-    // session must still carry a role that gets past it, or this asserts the
-    // denial rather than the empty-org arithmetic it is about.
+  it('returns all zeros with no divide-by-zero, and issues no read, when there is no organisation', async () => {
+    // `role` is load-bearing: an org-less session must still get past the gate.
     mockAdminAuth.mockResolvedValue({
       user: { id: 'admin-1', role: 'admin', organizationUserId: null, organizationId: null },
     });
@@ -294,20 +284,16 @@ describe('getDashboardData', () => {
     const result = await getDashboardData();
 
     expect(result.courses).toEqual([]);
-    expect(result.stats.totalCourses).toBe(0);
-    expect(result.stats.totalStaffAssigned).toBe(0);
-    expect(result.stats.averageGrade).toBe(0);
-    expect(result.stats.coursePerformance).toEqual([]);
-    expect(result.stats.trainingCoverage).toEqual({
-      completed: 0,
-      inProgress: 0,
-      notStarted: 0,
-      totalStaff: 0,
+    expect(result.stats).toEqual({
+      totalActiveCourses: 0,
+      totalAssignedLearners: 0,
+      averageGrade: 0,
+      catalogCourseCount: 0,
+      coursePerformance: [],
+      trainingCoverage: { completed: 0, inProgress: 0, notStarted: 0, totalAssignments: 0 },
     });
-    expect(result.stats.monthlyPerformance).toHaveLength(12);
-    expect(result.stats.monthlyPerformance.every((m) => m.value === 0)).toBe(true);
-    // No organizationId -> the org staff-count query must be skipped entirely.
-    expect(mockOrgUserCount).not.toHaveBeenCalled();
+    expect(mockEnrollmentFindMany).not.toHaveBeenCalled();
+    expect(mockOrgUserFindMany).not.toHaveBeenCalled();
   });
 
   // BUG-17: the dashboard and Training tables draw a video course from
@@ -316,27 +302,15 @@ describe('getDashboardData', () => {
     const updatedAt = new Date('2026-09-01T00:00:00.000Z');
     const lessonUpdatedAt = new Date('2026-09-10T00:00:00.000Z');
     const row = (id: string, type: string, poster: string | null) => ({
-      id,
-      title: id,
-      description: null,
-      thumbnailStorageUri: null,
-      previewPosterStorageUri: null,
-      status: 'published',
-      type,
-      duration: 10,
-      createdAt: updatedAt,
+      ...catalogCourse({ id, title: id, type }),
       updatedAt,
-      quiz: null,
-      lessons: [{ videoPosterStorageUri: poster, updatedAt: lessonUpdatedAt, quiz: null }],
+      lessons: [{ videoPosterStorageUri: poster, updatedAt: lessonUpdatedAt }],
     });
     mockCourseFindMany.mockResolvedValue([
       row('video-1', 'video', 'gcs://lms/system/videos/posters/1.jpg'),
       row('video-2', 'video', null),
       row('reading-1', 'text', 'gcs://lms/system/videos/posters/2.jpg'),
     ]);
-    wireGroupBy([], []);
-    mockEnrollmentFindMany.mockResolvedValue([]);
-    mockOrgUserCount.mockResolvedValue(0);
 
     const result = await getDashboardData();
 
@@ -345,62 +319,46 @@ describe('getDashboardData', () => {
       'video-2': null,
       'reading-1': null,
     });
-    expect(mockCourseFindMany.mock.calls[0][0].select.lessons.orderBy).toEqual({ order: 'asc' });
+    const catalogCall = mockCourseFindMany.mock.calls.find((call) => !call[0].where.status);
+    expect(catalogCall?.[0].select.lessons.orderBy).toEqual({ order: 'asc' });
   });
 
-  it('does NOT materialize every enrollment row (guards the F-028 perf regression)', async () => {
-    mockCourseFindMany.mockResolvedValue([]);
-    wireGroupBy([], []);
-    mockEnrollmentFindMany.mockResolvedValue([]);
-    mockOrgUserCount.mockResolvedValue(0);
-
+  it('reads narrow enrolment rows through the shared population predicate — never a materialised `enrollments: true`', async () => {
     await getDashboardData();
 
-    // Counts must be computed via two groupBy aggregations, never a full
-    // `enrollments: true` materialization pulled through course.findMany.
-    expect(mockEnrollmentGroupBy).toHaveBeenCalledTimes(2);
-    const groupByArgs = mockEnrollmentGroupBy.mock.calls.map((call) => call[0]);
-    expect(
-      groupByArgs.some((args) => args.by.includes('courseId') && args.by.includes('status')),
-    ).toBe(true);
-    expect(
-      groupByArgs.some(
-        (args) => args.by.includes('organizationUserId') && args.by.includes('status'),
-      ),
-    ).toBe(true);
+    const catalogCall = mockCourseFindMany.mock.calls.find((call) => !call[0].where.status);
+    expect(catalogCall?.[0].include).toBeUndefined();
+    expect(catalogCall?.[0].select?.enrollments).toBeUndefined();
 
-    // The course query must select specific columns, never `include: { enrollments: true }`.
-    const courseCallArgs = mockCourseFindMany.mock.calls[0][0];
-    expect(courseCallArgs.include).toBeUndefined();
-    expect(courseCallArgs.select?.enrollments).toBeUndefined();
-
-    // The only row-level enrollment read must be the narrow scored projection.
-    // Post dashboard-scope fix: the population is the ORGANISATION's courses
-    // (an admin is an org manager per `authoredCourseWhere`), pinned to the
-    // organisation's members — not the viewer's own `createdByOrgUserId`. That
-    // literal was the single-facility dashboard bug (see dashboard-parity.test.ts).
-    // `active: true` arrived with founder Q23: removeStaff now retains a departed
-    // member's enrollments, so a dashboard must exclude them or report on people
-    // who have left. `archivedAt: null` is the same shape of rule for courses:
-    // the archive filter is a query extension on Course's OWN reads and cannot
-    // reach this nested traversal, so "Total Courses" and every enrolment-derived
-    // figure would otherwise count different catalogues.
+    // Org-pinned, active members only (founder Q23), live org courses only —
+    // and never the `Enrollment.facilityId` stamp (BUG-36).
     expect(mockEnrollmentFindMany).toHaveBeenCalledWith({
       where: {
-        course: { organizationId: ORG_ID, archivedAt: null },
         organizationUser: { organizationId: ORG_ID, active: true },
-        score: { not: null },
+        course: { organizationId: ORG_ID, archivedAt: null },
       },
-      select: { courseId: true, score: true, completedAt: true },
+      select: {
+        id: true,
+        organizationUserId: true,
+        courseId: true,
+        status: true,
+        startedAt: true,
+        accessAt: true,
+        lastActivityAt: true,
+        dueAt: true,
+        completedAt: true,
+        retakeOf: true,
+      },
     });
+    // Submitted attempts only — a draft is working state, not an attempt.
+    expect(mockQuizAttemptFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ timeTaken: { not: null } }) }),
+    );
   });
 
-  describe('facility scope (requestedFacilityIds)', () => {
-    beforeEach(() => {
-      mockCourseFindMany.mockResolvedValue([]);
-      wireGroupBy([], []);
-      mockEnrollmentFindMany.mockResolvedValue([]);
-      mockOrgUserCount.mockResolvedValue(0);
+  describe('facility scope (requestedFacilityIds) — current roster, never the stamp', () => {
+    const ROSTER = (ids: string[]) => ({
+      facilities: { some: { facilityId: { in: ids }, active: true } },
     });
 
     it('re-validates the requested ids against the accessible set rather than trusting them', async () => {
@@ -413,50 +371,45 @@ describe('getDashboardData', () => {
       );
     });
 
-    it('narrows every enrollment-derived query to the requested facilities', async () => {
+    it('narrows the population and every enrolment read by current roster', async () => {
       mockListAccessibleFacilities.mockResolvedValue([{ id: 'fac-1' }, { id: 'fac-2' }]);
 
       await getDashboardData(['fac-1']);
 
-      const groupByArgs = mockEnrollmentGroupBy.mock.calls.map((call) => call[0]);
-      expect(groupByArgs.every((args) => args.where.facilityId?.in?.[0] === 'fac-1')).toBe(true);
-      expect(mockEnrollmentFindMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({ facilityId: { in: ['fac-1'] } }),
-        }),
-      );
+      expect(mockOrgUserFindMany.mock.calls[0][0].where).toMatchObject(ROSTER(['fac-1']));
+      const enrollmentWhere = mockEnrollmentFindMany.mock.calls[0][0].where;
+      expect(enrollmentWhere).not.toHaveProperty('facilityId');
+      expect(enrollmentWhere.organizationUser).toMatchObject(ROSTER(['fac-1']));
     });
 
-    it('narrows the total-staff coverage base to members of those facilities, not the whole org', async () => {
-      mockListAccessibleFacilities.mockResolvedValue([{ id: 'fac-1' }]);
+    it('counts a transferred member at their CURRENT facility only', async () => {
+      mockListAccessibleFacilities.mockResolvedValue([{ id: 'fac-a' }, { id: 'fac-b' }]);
+      wireSnapshot({
+        catalog: [catalogCourse({ id: 'course-a', title: 'Course A' })],
+        // Stamped at fac-a when assigned; rostered at fac-b today.
+        members: [{ id: 'moved', facilities: [{ facilityId: 'fac-b' }] }],
+        enrollments: [
+          { id: 'e1', organizationUserId: 'moved', courseId: 'course-a', status: 'in_progress' },
+        ],
+      });
 
-      await getDashboardData(['fac-1']);
+      const atA = await getDashboardData(['fac-a']);
+      const atB = await getDashboardData(['fac-b']);
 
-      expect(mockOrgUserCount).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            facilities: { some: { facilityId: { in: ['fac-1'] }, active: true } },
-          }),
-        }),
-      );
+      expect(atA.stats.totalAssignedLearners).toBe(0);
+      expect(atB.stats.totalAssignedLearners).toBe(1);
+      expect(atB.stats.totalActiveCourses).toBe(1);
     });
 
-    // Rewritten 2026-08-27: this asserted the OPPOSITE — an inaccessible id fell
-    // back to `{ mode: 'all' }` and every query widened to the organisation. That
-    // is the fail-open the `string[] | null` contract exists to remove.
+    // Rewritten 2026-08-27: an inaccessible id used to widen to the whole org.
     it('narrows to NOTHING when no requested id is accessible, never back to the whole org', async () => {
       mockListAccessibleFacilities.mockResolvedValue([{ id: 'fac-1' }]);
 
       await getDashboardData(['foreign-or-unknown-id']);
 
-      const groupByArgs = mockEnrollmentGroupBy.mock.calls.map((call) => call[0]);
-      expect(groupByArgs.every((args) => args.where.facilityId?.in?.length === 0)).toBe(true);
-      expect(mockOrgUserCount).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            facilities: { some: { facilityId: { in: [] }, active: true } },
-          }),
-        }),
+      expect(mockOrgUserFindMany.mock.calls[0][0].where).toMatchObject(ROSTER([]));
+      expect(mockEnrollmentFindMany.mock.calls[0][0].where.organizationUser).toMatchObject(
+        ROSTER([]),
       );
     });
 
@@ -473,52 +426,27 @@ describe('getDashboardData', () => {
 
       await getDashboardData();
 
-      const groupByArgs = mockEnrollmentGroupBy.mock.calls.map((call) => call[0]);
-      expect(groupByArgs.every((args) => args.where.facilityId?.in?.length === 0)).toBe(true);
+      expect(mockEnrollmentFindMany.mock.calls[0][0].where.organizationUser).toMatchObject(
+        ROSTER([]),
+      );
     });
 
-    it('leaves every query byte-identical to the unfiltered path for an org-wide role with no requested ids', async () => {
+    it('applies no roster narrowing for an org-wide role with no requested ids', async () => {
       await getDashboardData();
 
-      const groupByArgs = mockEnrollmentGroupBy.mock.calls.map((call) => call[0]);
-      expect(groupByArgs.every((args) => !('facilityId' in args.where))).toBe(true);
-      expect(mockOrgUserCount).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.not.objectContaining({ facilities: expect.anything() }),
-        }),
+      expect(mockOrgUserFindMany.mock.calls[0][0].where).not.toHaveProperty('facilities');
+      expect(mockEnrollmentFindMany.mock.calls[0][0].where.organizationUser).not.toHaveProperty(
+        'facilities',
       );
     });
   });
 
-  // Population scoping — the reported bug and the guard against reintroducing
-  // it. See `src/lib/dashboard/scope.ts` and `authoredCourseWhere`
-  // (`src/lib/course/org-scope.ts`), which these predicates are read from.
-  describe('population scoping (manager vs non-manager, cross-tenant guard)', () => {
-    beforeEach(() => {
-      wireGroupBy([], []);
-      mockEnrollmentFindMany.mockResolvedValue([]);
-      mockOrgUserCount.mockResolvedValue(0);
-    });
-
+  // Population scoping — see `src/lib/dashboard/scope.ts` and `orgCourseWhere`.
+  describe('population scoping (one population per organisation, cross-tenant guard)', () => {
     it('a manager sees a colleague-authored course — the reported bug', async () => {
-      // Admin (session user) did not author this course; HR did. Pre-fix this
-      // course.findMany where(createdByOrgUserId: ORG_USER_ID) would have hidden
-      // it from the admin's own dashboard entirely.
-      mockCourseFindMany.mockResolvedValue([
-        {
-          id: 'hr-authored-course',
-          title: "HR's course",
-          description: null,
-          thumbnail: null,
-          status: 'published',
-          type: 'document',
-          duration: 10,
-          createdAt: new Date(2026, 0, 1),
-          updatedAt: new Date(2026, 0, 1),
-          quiz: null,
-          lessons: [],
-        },
-      ]);
+      wireSnapshot({
+        catalog: [catalogCourse({ id: 'hr-authored-course', title: "HR's course" })],
+      });
 
       const result = await getDashboardData();
 
@@ -528,7 +456,9 @@ describe('getDashboardData', () => {
       );
     });
 
-    it('a non-manager (finance — no course.read) stays creator-scoped, never widened to the organisation', async () => {
+    // SUPERSEDED 2026-09-24 (BUG-01): finance reads the SAME population; what it
+    // may SEE of it is withheld in the payload, not by counting fewer things.
+    it('a role without course.read (finance) reads the SAME organisation-wide population, and is still handed no course rows', async () => {
       mockAdminAuth.mockResolvedValue({
         user: {
           id: 'finance-1',
@@ -537,63 +467,38 @@ describe('getDashboardData', () => {
           organizationId: ORG_ID,
         },
       });
+      wireSnapshot({
+        catalog: [catalogCourse({ id: 'hr-authored-course', title: "HR's course" })],
+      });
 
-      await getDashboardData();
+      const result = await getDashboardData();
 
       expect(mockCourseFindMany).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { createdByOrgUserId: ORG_USER_ID } }),
+        expect.objectContaining({ where: { organizationId: ORG_ID } }),
       );
+      expect(result.stats.catalogCourseCount).toBe(1);
+      expect(result.courses).toEqual([]);
+      expect(result.stats.coursePerformance).toEqual([]);
     });
 
-    // CROSS-TENANT GUARD: this course is authored in OUR org (so it correctly
-    // belongs in `courseWhere`) but is ALSO adopted by a DIFFERENT organisation
-    // via `OrgCourseOffering` — meaning that other org's own members could be
-    // enrolled in the very same course row. A course-only enrollment predicate
-    // (`course: { organizationId } }` with no member pin) would
-    // therefore also match THEIR enrollments. This test fails if
-    // `organizationUser: { organizationId }` is ever dropped from
-    // `enrollmentWhere` — see `dashboard-parity.test.ts` for the same property
-    // asserted generically over every captured query.
-    it('never queries enrollments without the organisation-member pin, even for a course another org has adopted', async () => {
-      mockCourseFindMany.mockResolvedValue([
-        {
-          id: 'shared-course',
-          title: 'Shared Course',
-          description: null,
-          thumbnail: null,
-          status: 'published',
-          type: 'document',
-          duration: 10,
-          createdAt: new Date(2026, 0, 1),
-          updatedAt: new Date(2026, 0, 1),
-          quiz: null,
-          lessons: [],
-        },
-      ]);
-
+    // CROSS-TENANT GUARD: a course may be adopted by another organisation, whose
+    // members could be enrolled in the same course row. A course-only predicate
+    // would count them; the member pin must be on every enrolment-derived read.
+    it('never reads enrolments, attempts or certificates without the organisation-member pin', async () => {
       await getDashboardData();
 
-      const enrollmentWheres = [
-        ...mockEnrollmentGroupBy.mock.calls.map((call) => call[0].where),
-        ...mockEnrollmentFindMany.mock.calls.map((call) => call[0].where),
+      const wheres = [
+        mockEnrollmentFindMany.mock.calls[0][0].where,
+        mockQuizAttemptFindMany.mock.calls[0][0].where.enrollment,
+        mockCertificateFindMany.mock.calls[0][0].where.enrollment,
       ];
-      expect(enrollmentWheres.length).toBeGreaterThan(0);
-      for (const where of enrollmentWheres) {
-        expect(where.organizationUser?.organizationId).toBe(ORG_ID);
+      for (const where of wheres) {
+        expect(where.organizationUser).toMatchObject({ organizationId: ORG_ID, active: true });
       }
-    });
-
-    it('the coverage numerator (per-member groupBy) and denominator (org staff count) apply the IDENTICAL member predicate — an admin’s own or a deactivated worker’s enrollment cannot land in one and not the other', async () => {
-      await getDashboardData();
-
-      const userStatusGroupByCall = mockEnrollmentGroupBy.mock.calls.find((call) =>
-        call[0].by.includes('organizationUserId'),
-      );
-      const orgUserCountCall = mockOrgUserCount.mock.calls[0];
-
-      expect(userStatusGroupByCall?.[0].where.organizationUser).toEqual(
-        orgUserCountCall?.[0].where,
-      );
+      expect(mockOrgUserFindMany.mock.calls[0][0].where).toMatchObject({
+        organizationId: ORG_ID,
+        active: true,
+      });
     });
   });
 
@@ -611,13 +516,6 @@ describe('getDashboardData', () => {
         can(dbRoleToRoleKey(role), 'course.read') && can(dbRoleToRoleKey(role), 'enrollment.read'),
     );
 
-    beforeEach(() => {
-      wireGroupBy([], []);
-      mockCourseFindMany.mockResolvedValue([]);
-      mockEnrollmentFindMany.mockResolvedValue([]);
-      mockOrgUserCount.mockResolvedValue(0);
-    });
-
     it('every worker role holds course.read AND enrollment.read — the reason neither can be the gate', () => {
       expect(WORKER_ROLES_HOLDING_THE_TEMPTING_VERBS).toEqual([...WORKER_ROLES]);
       expect(WORKER_ROLES_HOLDING_THE_TEMPTING_VERBS.length).toBeGreaterThanOrEqual(3);
@@ -633,7 +531,7 @@ describe('getDashboardData', () => {
 
         await expect(getDashboardData()).rejects.toThrow('Forbidden');
         expect(mockCourseFindMany).not.toHaveBeenCalled();
-        expect(mockEnrollmentGroupBy).not.toHaveBeenCalled();
+        expect(mockEnrollmentFindMany).not.toHaveBeenCalled();
       },
     );
 
@@ -657,28 +555,15 @@ describe('getDashboardData', () => {
    */
   describe('course-identifying fields', () => {
     beforeEach(() => {
-      mockCourseFindMany.mockResolvedValue([
-        {
-          id: 'course-a',
-          title: 'Course A',
-          description: null,
-          thumbnail: null,
-          status: 'published',
-          type: 'document',
-          duration: 30,
-          createdAt: new Date(2026, 0, 1),
-          updatedAt: new Date(2026, 0, 1),
-          lessons: [{ quiz: { passingScore: 70 } }],
-        },
-      ]);
-      wireGroupBy(
-        [{ courseId: 'course-a', status: 'completed', _count: { _all: 1 } }],
-        [{ organizationUserId: 'u1', status: 'completed', _count: { _all: 1 } }],
-      );
-      mockEnrollmentFindMany.mockResolvedValue([
-        { courseId: 'course-a', score: 90, completedAt: new Date(2026, 0, 5) },
-      ]);
-      mockOrgUserCount.mockResolvedValue(1);
+      wireSnapshot({
+        catalog: [catalogCourse({ id: 'course-a', title: 'Course A' })],
+        members: [{ id: 'u1' }],
+        enrollments: [
+          { id: 'e1', organizationUserId: 'u1', courseId: 'course-a', status: 'in_progress' },
+        ],
+        attempts: [{ enrollmentId: 'e1', quizId: 'quiz-a', score: 90 }],
+        quizzes: [{ id: 'quiz-a', passingScore: 70, courseId: 'course-a' }],
+      });
     });
 
     it('withholds the course list and per-course chart from Finance, keeping its aggregates', async () => {
@@ -691,8 +576,8 @@ describe('getDashboardData', () => {
       expect(result.courses).toEqual([]);
       expect(result.stats.coursePerformance).toEqual([]);
       expect(JSON.stringify(result)).not.toContain('Course A');
-      expect(result.stats.totalCourses).toBe(1);
-      expect(result.stats.totalStaffAssigned).toBe(1);
+      expect(result.stats.totalActiveCourses).toBe(1);
+      expect(result.stats.totalAssignedLearners).toBe(1);
       expect(result.stats.averageGrade).toBe(90);
     });
 

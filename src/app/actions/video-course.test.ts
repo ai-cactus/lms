@@ -136,7 +136,7 @@ describe('createVideoCourse', () => {
       storageUri: 'minio://preview.mp4',
     });
     // A new published global course must bust the cached org-facing catalog.
-    expect(mockRevalidateTag).toHaveBeenCalledWith('video-catalog', 'max');
+    expect(mockRevalidateTag).toHaveBeenCalledWith('video-catalog', { expire: 0 });
   });
 
   it('allows an unspecified skill level', async () => {
@@ -201,7 +201,7 @@ describe('setVideoCourseStatus', () => {
     });
     expect(mockRevalidate).toHaveBeenCalledWith('/system/video-courses');
     // Deactivating removes the course from the org-facing catalog — bust it.
-    expect(mockRevalidateTag).toHaveBeenCalledWith('video-catalog', 'max');
+    expect(mockRevalidateTag).toHaveBeenCalledWith('video-catalog', { expire: 0 });
   });
 
   it('reactivates a course back to published', async () => {
@@ -212,7 +212,7 @@ describe('setVideoCourseStatus', () => {
       data: { status: 'published' },
     });
     // Publishing adds the course to the org-facing catalog — bust it too.
-    expect(mockRevalidateTag).toHaveBeenCalledWith('video-catalog', 'max');
+    expect(mockRevalidateTag).toHaveBeenCalledWith('video-catalog', { expire: 0 });
   });
 
   it('rejects when not a system admin', async () => {
@@ -269,7 +269,7 @@ describe('updateVideoCourse', () => {
     expect(mockEnqueueTranscode).not.toHaveBeenCalled();
     expect(mockRevalidate).toHaveBeenCalledWith('/system/video-courses');
     // Title/scoring edits are reflected in the org-facing catalog — bust it.
-    expect(mockRevalidateTag).toHaveBeenCalledWith('video-catalog', 'max');
+    expect(mockRevalidateTag).toHaveBeenCalledWith('video-catalog', { expire: 0 });
   });
 
   it('replaces the course video and enqueues a transcode for it', async () => {

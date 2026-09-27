@@ -52,7 +52,6 @@ function makeStaff(role = 'nurse', id = 'ou-1') {
       role,
       firstName: 'Target',
       lastName: 'User',
-      jobTitle: 'Staff Nurse',
       facilityName: 'Akobo branch',
     },
     stats: { totalCourses: 0, completedCourses: 0, failedCourses: 0, activeCourses: 0 },
@@ -87,15 +86,13 @@ describe('StaffProfileClient — Edit Profile affordance (Q2)', () => {
     expect(editProfile()).not.toBeInTheDocument();
   });
 
-  // The job title had no rendered home on this page: the header chip read
-  // `getRoleDisplayName(role) || user.jobTitle`, and getRoleDisplayName never
-  // returns '' — it falls back to the raw enum value — so an edited job title
-  // was stored and then displayed nowhere, which reads as "it did not save".
-  it('shows the stored job title on the profile, alongside the role', () => {
+  // Founder ruling Q3/Q17 (2026-09-23): the system-assigned role IS the title,
+  // so the header carries the role chip and no separate job-title line.
+  it('identifies the member by role and facility, with no job-title line', () => {
     renderProfile('supervisor');
 
-    expect(screen.getByText('Staff Nurse')).toBeInTheDocument();
-    expect(screen.getByText(/Akobo branch/)).toBeInTheDocument();
+    expect(screen.getByText(/Nurse, Akobo branch/)).toBeInTheDocument();
+    expect(screen.queryByText('Staff Nurse')).not.toBeInTheDocument();
   });
 
   it('opens the edit modal prefilled from the loaded member', async () => {
@@ -106,7 +103,8 @@ describe('StaffProfileClient — Edit Profile affordance (Q2)', () => {
 
     expect(screen.getByRole('heading', { name: 'Edit profile' })).toBeInTheDocument();
     expect(screen.getByLabelText(/First name/)).toHaveValue('Target');
-    expect(screen.getByLabelText(/Job title/)).toHaveValue('Staff Nurse');
+    expect(screen.getByLabelText(/Last name/)).toHaveValue('User');
+    expect(screen.queryByLabelText(/Job title/i)).not.toBeInTheDocument();
   });
 });
 

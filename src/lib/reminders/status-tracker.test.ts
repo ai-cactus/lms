@@ -6,13 +6,17 @@
  *
  * Covers: correct row mapping (all fields), daysOverdue calculation (tz-aware),
  * hardEscalationCount (≥7 days), descending sort by daysOverdue, manager name
- * propagation, workerName fallback to email, empty result.
+ * propagation, workerName fallback to email, empty result, the shared 14-day
+ * due-soon window, and CURRENT-roster facility attribution (never the
+ * `Enrollment.facilityId` stamp).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const { prismaMock } = vi.hoisted(() => {
   const prismaMock = {
     enrollment: { findMany: vi.fn() },
+    // buildDashboardScope -> orgCourseWhere -> listAdoptedCourseIds.
+    orgCourseOffering: { findMany: vi.fn() },
   };
   return { prismaMock };
 });
@@ -32,7 +36,13 @@ const NOW = new Date('2024-06-15T12:00:00Z');
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(NOW);
+  prismaMock.orgCourseOffering.findMany.mockResolvedValue([]);
 });
+
+/** The org-wide call every legacy case used; `null` = no facility narrowing. */
+function summary(organizationId = 'org-1', dataFacilityIds: string[] | null = null) {
+  return getStatusTrackerSummaryForOrg({ organizationId, dataFacilityIds });
+}
 
 afterEach(() => {
   vi.useRealTimers();
@@ -47,6 +57,8 @@ function makeEnrollment(
     fullName?: string | null;
     managerName?: string | null;
     timezone?: string | null;
+    /** The member's CURRENT active roster rows; defaults to one facility. */
+    roster?: { facilityId: string; name: string; timezone: string | null }[];
     assignment?: {
       reminderStages: { stage: string; offsetDays: number; enabled: boolean }[];
     } | null;
@@ -59,6 +71,9 @@ function makeEnrollment(
     timezone = 'America/New_York',
     assignment = null,
   } = opts;
+  const roster =
+    opts.roster ??
+    (timezone !== null ? [{ facilityId: 'fac-home', name: 'Home Facility', timezone }] : []);
   return {
     id,
     organizationUserId: `ou-${id}`,
@@ -70,7 +85,10 @@ function makeEnrollment(
     organizationUser: {
       user: { email: `worker-${id}@test.com`, fullName },
       manager: managerName !== null ? { user: { fullName: managerName } } : null,
-      facilities: timezone !== null ? [{ facility: { timezone } }] : [],
+      facilities: roster.map((row) => ({
+        facilityId: row.facilityId,
+        facility: { name: row.name, timezone: row.timezone },
+      })),
     },
   };
 }
@@ -81,7 +99,7 @@ describe('getStatusTrackerSummaryForOrg', () => {
   it('returns an empty summary when prisma returns no overdue enrollments', async () => {
     prismaMock.enrollment.findMany.mockResolvedValue([]);
 
-    const result = await getStatusTrackerSummaryForOrg('org-1');
+    const result = await summary();
 
     expect(result.overdueCount).toBe(0);
     expect(result.hardEscalationCount).toBe(0);
@@ -94,7 +112,7 @@ describe('getStatusTrackerSummaryForOrg', () => {
       makeEnrollment('e1', '2024-06-05T12:00:00Z', { managerName: 'Alice Manager' }),
     ]);
 
-    const result = await getStatusTrackerSummaryForOrg('org-1');
+    const result = await summary();
 
     expect(result.rows).toHaveLength(1);
     const row = result.rows[0];
@@ -116,7 +134,7 @@ describe('getStatusTrackerSummaryForOrg', () => {
       makeEnrollment('e1', '2024-06-12T12:00:00Z'),
     ]);
 
-    const { rows } = await getStatusTrackerSummaryForOrg('org-1');
+    const { rows } = await summary();
     expect(rows[0].daysOverdue).toBe(3);
   });
 
@@ -127,7 +145,7 @@ describe('getStatusTrackerSummaryForOrg', () => {
       makeEnrollment('e3', '2024-06-12T12:00:00Z'), // 3 days overdue → not hard
     ]);
 
-    const result = await getStatusTrackerSummaryForOrg('org-1');
+    const result = await summary();
 
     expect(result.overdueCount).toBe(3);
     expect(result.hardEscalationCount).toBe(2);
@@ -140,7 +158,7 @@ describe('getStatusTrackerSummaryForOrg', () => {
       makeEnrollment('e3', '2024-06-08T12:00:00Z'), // 7 days overdue
     ]);
 
-    const { rows } = await getStatusTrackerSummaryForOrg('org-1');
+    const { rows } = await summary();
 
     expect(rows.map((r) => r.enrollmentId)).toEqual(['e2', 'e3', 'e1']);
     expect(rows[0].daysOverdue).toBeGreaterThanOrEqual(rows[1].daysOverdue);
@@ -152,7 +170,7 @@ describe('getStatusTrackerSummaryForOrg', () => {
       makeEnrollment('e1', '2024-06-05T12:00:00Z', { fullName: null }),
     ]);
 
-    const { rows } = await getStatusTrackerSummaryForOrg('org-1');
+    const { rows } = await summary();
     expect(rows[0].workerName).toBe('worker-e1@test.com');
   });
 
@@ -161,7 +179,7 @@ describe('getStatusTrackerSummaryForOrg', () => {
       makeEnrollment('e1', '2024-06-05T12:00:00Z', { managerName: null }),
     ]);
 
-    const { rows } = await getStatusTrackerSummaryForOrg('org-1');
+    const { rows } = await summary();
     expect(rows[0].managerName).toBeNull();
   });
 
@@ -171,7 +189,7 @@ describe('getStatusTrackerSummaryForOrg', () => {
       makeEnrollment('e1', '2024-06-05T12:00:00Z', { timezone: null }),
     ]);
 
-    const { rows } = await getStatusTrackerSummaryForOrg('org-1');
+    const { rows } = await summary();
     // Should still compute 10 days using the fallback timezone
     expect(rows[0].daysOverdue).toBe(10);
   });
@@ -189,31 +207,29 @@ describe('getStatusTrackerSummaryForOrg', () => {
       makeEnrollment('e1', '2024-06-05T05:00:00Z', { timezone: 'America/Los_Angeles' }),
     ]);
 
-    const { rows } = await getStatusTrackerSummaryForOrg('org-1');
+    const { rows } = await summary();
 
     expect(rows[0].daysOverdue).toBe(11);
 
     const call = prismaMock.enrollment.findMany.mock.calls[0][0];
     expect(call.select.organizationUser.select.facilities).toEqual({
       where: { active: true },
-      take: 1,
-      select: { facility: { select: { timezone: true } } },
+      orderBy: { joinedAt: 'asc' },
+      select: { facilityId: true, facility: { select: { name: true, timezone: true } } },
     });
     expect(call.select.organizationUser.select.organization).toBeUndefined();
   });
 
-  it('queries with the correct orgId filter (passes it to prisma)', async () => {
+  it("queries the dashboards' population: active members of the org, live org courses", async () => {
     prismaMock.enrollment.findMany.mockResolvedValue([]);
 
-    await getStatusTrackerSummaryForOrg('org-42');
+    await summary('org-42');
 
-    expect(prismaMock.enrollment.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          organizationUser: { is: { organizationId: 'org-42', active: true } },
-        }),
-      }),
-    );
+    const overdueCall = prismaMock.enrollment.findMany.mock.calls[0][0];
+    expect(overdueCall.where.organizationUser).toEqual({ organizationId: 'org-42', active: true });
+    expect(overdueCall.where.course).toEqual({ organizationId: 'org-42', archivedAt: null });
+    expect(overdueCall.where.dueAt).toEqual({ not: null, lt: NOW });
+    expect(overdueCall.where.status).toEqual({ notIn: ['completed', 'attested'] });
   });
 });
 
@@ -233,7 +249,7 @@ describe('getStatusTrackerSummaryForOrg — per-assignment HARD_ESCALATION overr
       ])
       .mockResolvedValueOnce([]); // nearDeadline
 
-    const { rows, hardEscalationCount } = await getStatusTrackerSummaryForOrg('org-1');
+    const { rows, hardEscalationCount } = await summary();
 
     expect(rows[0].daysOverdue).toBe(2);
     expect(rows[0].isHardEscalation).toBe(true);
@@ -253,7 +269,7 @@ describe('getStatusTrackerSummaryForOrg — per-assignment HARD_ESCALATION overr
       ])
       .mockResolvedValueOnce([]);
 
-    const { rows, hardEscalationCount } = await getStatusTrackerSummaryForOrg('org-1');
+    const { rows, hardEscalationCount } = await summary();
 
     expect(rows[0].daysOverdue).toBe(14);
     expect(rows[0].isHardEscalation).toBe(false);
@@ -272,7 +288,7 @@ describe('getStatusTrackerSummaryForOrg — per-assignment HARD_ESCALATION overr
       ])
       .mockResolvedValueOnce([]);
 
-    const { rows } = await getStatusTrackerSummaryForOrg('org-1');
+    const { rows } = await summary();
 
     expect(rows[0].isHardEscalation).toBe(true); // 7 >= default threshold (7)
   });
@@ -290,7 +306,7 @@ describe('getStatusTrackerSummaryForOrg — nearDeadline (At Risk) view', () => 
         makeEnrollment('soon-2', '2024-06-17T12:00:00Z'),
       ]);
 
-    const { rows, nearDeadline } = await getStatusTrackerSummaryForOrg('org-1');
+    const { rows, nearDeadline } = await summary();
 
     // Disjoint: the overdue row never leaks into nearDeadline and vice versa.
     expect(rows.map((r) => r.enrollmentId)).toEqual(['overdue-1']);
@@ -303,20 +319,22 @@ describe('getStatusTrackerSummaryForOrg — nearDeadline (At Risk) view', () => 
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([makeEnrollment('soon-1', '2024-06-18T12:00:00Z')]); // 3 days out
 
-    const { nearDeadline } = await getStatusTrackerSummaryForOrg('org-1');
+    const { nearDeadline } = await summary();
 
     expect(nearDeadline.rows[0].daysUntilDue).toBe(3);
   });
 
-  it('queries the near-deadline window as [now, now + 7 days] and excludes terminal statuses', async () => {
+  // BUG-35: one due-soon window (14 days) shared with the Global View's
+  // "Approaching Deadlines".
+  it('queries the near-deadline window as [now, now + 14 days] and excludes terminal statuses', async () => {
     prismaMock.enrollment.findMany.mockResolvedValue([]);
 
-    await getStatusTrackerSummaryForOrg('org-1');
+    await summary();
 
     const nearDeadlineCall = prismaMock.enrollment.findMany.mock.calls[1][0];
     expect(nearDeadlineCall.where.dueAt).toEqual({
       gte: NOW,
-      lte: new Date('2024-06-22T12:00:00Z'), // NOW + 7 days
+      lte: new Date('2024-06-29T12:00:00Z'), // NOW + 14 days
     });
     expect(nearDeadlineCall.where.status).toEqual({ notIn: ['completed', 'attested'] });
   });
@@ -324,62 +342,95 @@ describe('getStatusTrackerSummaryForOrg — nearDeadline (At Risk) view', () => 
   it('returns an empty nearDeadline block when there is nothing due soon', async () => {
     prismaMock.enrollment.findMany.mockResolvedValue([]);
 
-    const { nearDeadline } = await getStatusTrackerSummaryForOrg('org-1');
+    const { nearDeadline } = await summary();
 
     expect(nearDeadline).toEqual({ count: 0, rows: [] });
   });
 });
 
-// The `facilityId` param — no prior test ever passed a third argument at all.
-// The fix under test: an empty array must narrow to NOTHING, never fall back
-// to the org-wide `{}` shape (the `/dashboard/status-tracker` incident this
-// module's own doc comment describes).
-describe('getStatusTrackerSummaryForOrg — facilityId param', () => {
-  it('applies no facility predicate when facilityId is omitted (org-wide)', async () => {
+// Facility scope. BUG-36: narrowing is by the member's CURRENT roster, never
+// the `Enrollment.facilityId` stamp, and an empty array must narrow to NOTHING,
+// never fall back to org-wide (the `/dashboard/status-tracker` incident).
+describe('getStatusTrackerSummaryForOrg — facility scope', () => {
+  const ROSTER_NARROWING = (ids: string[]) => ({
+    facilities: { some: { facilityId: { in: ids }, active: true } },
+  });
+
+  it('applies no facility predicate for an org-wide caller (null)', async () => {
     prismaMock.enrollment.findMany.mockResolvedValue([]);
 
-    await getStatusTrackerSummaryForOrg('org-1');
+    await summary('org-1', null);
 
     const overdueCall = prismaMock.enrollment.findMany.mock.calls[0][0];
     expect(overdueCall.where.facilityId).toBeUndefined();
+    expect(overdueCall.where.organizationUser).not.toHaveProperty('facilities');
   });
 
-  it('narrows to a single facility when passed a bare string', async () => {
+  it('narrows by current roster on BOTH the overdue and near-deadline queries', async () => {
     prismaMock.enrollment.findMany.mockResolvedValue([]);
 
-    await getStatusTrackerSummaryForOrg('org-1', NOW, 'fac-1');
+    await summary('org-1', ['fac-1', 'fac-2']);
 
-    const overdueCall = prismaMock.enrollment.findMany.mock.calls[0][0];
-    expect(overdueCall.where.facilityId).toBe('fac-1');
+    for (const [call] of prismaMock.enrollment.findMany.mock.calls) {
+      expect(call.where.facilityId).toBeUndefined();
+      expect(call.where.organizationUser).toMatchObject(ROSTER_NARROWING(['fac-1', 'fac-2']));
+    }
   });
 
-  it('narrows to an `in` predicate for a non-empty array, on BOTH the overdue and near-deadline queries', async () => {
+  it('FAIL-CLOSED: an empty array narrows to an impossible `in: []`, never org-wide', async () => {
     prismaMock.enrollment.findMany.mockResolvedValue([]);
 
-    await getStatusTrackerSummaryForOrg('org-1', NOW, ['fac-1', 'fac-2']);
+    await summary('org-1', []);
 
     const overdueCall = prismaMock.enrollment.findMany.mock.calls[0][0];
-    const nearDeadlineCall = prismaMock.enrollment.findMany.mock.calls[1][0];
-    expect(overdueCall.where.facilityId).toEqual({ in: ['fac-1', 'fac-2'] });
-    expect(nearDeadlineCall.where.facilityId).toEqual({ in: ['fac-1', 'fac-2'] });
+    expect(overdueCall.where.organizationUser).toMatchObject(ROSTER_NARROWING([]));
   });
 
-  it('FAIL-CLOSED: an empty array narrows to an impossible `in: []` — never falls back to org-wide `{}`', async () => {
-    prismaMock.enrollment.findMany.mockResolvedValue([]);
+  it("names the member's CURRENT facility, not the one stamped at assignment", async () => {
+    // A transferred worker: the row is listed under facility B, where they are
+    // rostered today. The stamp (facility A) is not even selected any more.
+    prismaMock.enrollment.findMany
+      .mockResolvedValueOnce([
+        makeEnrollment('e1', '2024-06-05T12:00:00Z', {
+          roster: [{ facilityId: 'fac-b', name: 'Beta', timezone: 'America/New_York' }],
+        }),
+      ])
+      .mockResolvedValueOnce([]);
 
-    await getStatusTrackerSummaryForOrg('org-1', NOW, []);
+    const { rows } = await summary('org-1', ['fac-b']);
 
-    const overdueCall = prismaMock.enrollment.findMany.mock.calls[0][0];
-    expect(overdueCall.where.facilityId).toEqual({ in: [] });
-    expect(overdueCall.where.facilityId).not.toBeUndefined();
+    expect(rows[0].facilityName).toBe('Beta');
+    const call = prismaMock.enrollment.findMany.mock.calls[0][0];
+    expect(call.select.facility).toBeUndefined();
   });
 
-  it('null is treated the same as omitted — no facility predicate', async () => {
-    prismaMock.enrollment.findMany.mockResolvedValue([]);
+  it('names only the in-scope facilities of a two-facility member', async () => {
+    const roster = [
+      { facilityId: 'fac-a', name: 'Alpha', timezone: 'America/New_York' },
+      { facilityId: 'fac-c', name: 'Gamma', timezone: 'America/Los_Angeles' },
+    ];
+    prismaMock.enrollment.findMany
+      .mockResolvedValueOnce([makeEnrollment('e1', '2024-06-05T12:00:00Z', { roster })])
+      .mockResolvedValueOnce([]);
 
-    await getStatusTrackerSummaryForOrg('org-1', NOW, null);
+    const scoped = await summary('org-1', ['fac-a']);
+    expect(scoped.rows[0].facilityName).toBe('Alpha');
 
-    const overdueCall = prismaMock.enrollment.findMany.mock.calls[0][0];
-    expect(overdueCall.where.facilityId).toBeUndefined();
+    prismaMock.enrollment.findMany
+      .mockResolvedValueOnce([makeEnrollment('e1', '2024-06-05T12:00:00Z', { roster })])
+      .mockResolvedValueOnce([]);
+
+    const orgWide = await summary('org-1', null);
+    expect(orgWide.rows[0].facilityName).toBe('Alpha, Gamma');
+  });
+
+  it('reports no facility name for a member with no roster row', async () => {
+    prismaMock.enrollment.findMany
+      .mockResolvedValueOnce([makeEnrollment('e1', '2024-06-05T12:00:00Z', { timezone: null })])
+      .mockResolvedValueOnce([]);
+
+    const { rows } = await summary();
+
+    expect(rows[0].facilityName).toBeNull();
   });
 });

@@ -41,7 +41,7 @@ const STAFF = [
     id: 'ou-1',
     name: 'Alex Rivera',
     email: 'alex@acme.com',
-    roleLabel: 'Compliance/ Nurse',
+    roleLabel: 'Nurse',
     coursesAssigned: 12,
     coursesCompleted: 12,
     lastCompletion: new Date('2026-01-15T14:20:00Z'),
@@ -83,7 +83,7 @@ describe('AuditorStaffTab — columns', () => {
     render(<AuditorStaffTab totalStaff={30} />);
     await screen.findByText('Alex Rivera');
 
-    expect(screen.getByText('Compliance/ Nurse')).toBeInTheDocument();
+    expect(screen.getByText('Nurse')).toBeInTheDocument();
     expect(screen.getByText('Therapist / Clinician')).toBeInTheDocument();
   });
 

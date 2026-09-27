@@ -2,7 +2,7 @@
  * Unit tests for src/app/actions/staff.ts
  *
  * Post multi-org schema split: "a person within an organization" is an
- * OrganizationUser row (id, userId, organizationId, role, jobTitle, managerId),
+ * OrganizationUser row (id, userId, organizationId, role, managerId),
  * not a flat User row. Identity fields (email, firstName/lastName/fullName,
  * avatarUrl) live on User; org-scoped fields live on OrganizationUser.
  * `session.user` carries `organizationId`/`organizationUserId`/`role` directly
@@ -210,7 +210,6 @@ const baseData = {
   firstName: 'Jane',
   lastName: 'Doe',
   role: 'nurse' as const,
-  jobTitle: 'Nurse',
 };
 
 const PENDING_INVITE = {
@@ -309,7 +308,7 @@ describe('updateStaffDetails() — owner role cannot be granted via edit (one-ow
     expect(result.error).toMatch(/Owner role cannot be assigned/i);
   });
 
-  it('allows an existing owner to keep their role while changing name/title', async () => {
+  it('allows an existing owner to keep their role while changing their name', async () => {
     mockAuth.mockResolvedValue(makeAdminSession('owner'));
     // Target is already an owner — keeping their role is allowed
     mockOrgUserFindUnique.mockResolvedValue({
@@ -322,7 +321,6 @@ describe('updateStaffDetails() — owner role cannot be granted via edit (one-ow
       firstName: 'Alice',
       lastName: 'Smith',
       role: 'owner',
-      jobTitle: 'CEO',
     });
 
     expect(result.success).toBe(true);
@@ -362,7 +360,7 @@ describe('updateStaffDetails() — tenant isolation', () => {
 // ── Happy path ────────────────────────────────────────────────────────────────
 
 describe('updateStaffDetails() — happy path', () => {
-  it('updates the org-membership role/jobTitle and the identity name fields when all checks pass', async () => {
+  it('updates the org-membership role and the identity name fields when all checks pass', async () => {
     mockAuth.mockResolvedValue(makeAdminSession('owner'));
     mockOrgUserFindUnique.mockResolvedValue({
       userId: 'target-user-1',
@@ -374,18 +372,17 @@ describe('updateStaffDetails() — happy path', () => {
       firstName: 'Jane',
       lastName: 'Doe',
       role: 'supervisor',
-      jobTitle: 'Supervisor',
     });
 
     expect(result.success).toBe(true);
     expect(mockOrgUserUpdate).toHaveBeenCalledWith({
       where: { id: 'target-1' },
-      data: { role: 'supervisor', jobTitle: 'Supervisor', roleAssignedAt: expect.any(Date) },
+      data: { role: 'supervisor', roleAssignedAt: expect.any(Date) },
     });
     // Two separate User writes: the sessionVersion kill-switch bump (role
     // changed) and the identity name-field update. The old single
-    // `profile.upsert` call is gone — Profile was merged into User, and
-    // role/jobTitle now live on OrganizationUser, not User.
+    // `profile.upsert` call is gone — Profile was merged into User, and role
+    // now lives on OrganizationUser, not User.
     expect(mockUserUpdate).toHaveBeenCalledWith({
       where: { id: 'target-user-1' },
       data: { sessionVersion: { increment: 1 } },
@@ -395,6 +392,34 @@ describe('updateStaffDetails() — happy path', () => {
       data: { firstName: 'Jane', lastName: 'Doe', fullName: 'Jane Doe' },
     });
   });
+
+  // A role change must rewrite the role and NOTHING else on the membership.
+  // `updateStaffDetails` spreads its DTO straight into `prisma.update`, so a
+  // field that quietly enters the payload is a column quietly overwritten — the
+  // failure mode that cost the job title a release. Assert the exact key sets.
+  it('writes only the role fields on the membership and only the name fields on the identity', async () => {
+    mockAuth.mockResolvedValue(makeAdminSession('owner'));
+    mockOrgUserFindUnique.mockResolvedValue({
+      userId: 'target-user-1',
+      organizationId: 'org-1',
+      role: 'nurse',
+    });
+
+    await updateStaffDetails('target-1', {
+      firstName: 'Jane',
+      lastName: 'Doe',
+      role: 'supervisor',
+    });
+
+    expect(Object.keys(mockOrgUserUpdate.mock.calls[0][0].data).sort()).toEqual([
+      'role',
+      'roleAssignedAt',
+    ]);
+    const nameWrite = mockUserUpdate.mock.calls.find(
+      (call) => call[0].data.firstName !== undefined,
+    );
+    expect(Object.keys(nameWrite![0].data).sort()).toEqual(['firstName', 'fullName', 'lastName']);
+  });
 });
 
 // ── updateStaffDetails() — RBAC matrix realignment ──────────────────────────────
@@ -402,7 +427,7 @@ describe('updateStaffDetails() — happy path', () => {
 /**
  * Actor-role gate for updateStaffDetails: STAFF_PROFILE_ACTOR_ROLES, NOT
  * `can(..., 'user.edit')`. Founder Q2 grants the supervisor basic profile
- * editing (name, job title, contact) over their own facility, while `user.edit`
+ * editing (name, contact) over their own facility, while `user.edit`
  * also gates the facility move and the role change — both reserved for
  * Owner/Admin/HR. Finance and Clinical Director hold `user.read` only and stay
  * denied.
@@ -557,7 +582,7 @@ describe('updateStaffDetails() — in-place role change (canChangeRole integrati
     expect(result).toEqual({ success: true });
     expect(mockOrgUserUpdate).toHaveBeenCalledWith({
       where: { id: 'target-1' },
-      data: { role: 'nurse', jobTitle: 'Nurse' },
+      data: { role: 'nurse' },
     });
     // Only the name-field update fires — no sessionVersion bump.
     expect(mockUserUpdate).toHaveBeenCalledOnce();
@@ -1063,7 +1088,6 @@ describe('getStaffDetails — org isolation (F-009)', () => {
     return {
       id: 'target-1',
       role: 'nurse',
-      jobTitle: 'Nurse',
       managerId: null,
       organizationId,
       user: {
@@ -1102,16 +1126,15 @@ describe('getStaffDetails — org isolation (F-009)', () => {
   });
 
   // The profile page's Edit Profile / Change Role modals echo back whichever of
-  // `updateStaffDetails`' four fields they do not edit, so these three must be
-  // the STORED record, never a display fallback.
-  it('reports the editable name and job-title fields verbatim', async () => {
+  // `updateStaffDetails`' fields they do not edit, so these must be the STORED
+  // record, never a display fallback.
+  it('reports the editable name fields verbatim', async () => {
     mockOrgUserFindUnique.mockResolvedValue(makeTargetOrgUser('org-a'));
 
     const result = await getStaffDetails('target-1');
 
     expect(result?.user.firstName).toBe('Target');
     expect(result?.user.lastName).toBe('User');
-    expect(result?.user.jobTitle).toBe('Nurse');
   });
 
   // BUG-17: the profile's course table draws a video course from this value, so
@@ -1160,10 +1183,9 @@ describe('getStaffDetails — org isolation (F-009)', () => {
     expect(courseSelect.lessons.orderBy).toEqual({ order: 'asc' });
   });
 
-  it('reports a blank job title as blank rather than substituting a placeholder', async () => {
+  it('reports blank name fields as blank rather than substituting a placeholder', async () => {
     mockOrgUserFindUnique.mockResolvedValue({
       ...makeTargetOrgUser('org-a'),
-      jobTitle: null,
       user: {
         fullName: 'Target User',
         email: 'target@example.com',
@@ -1175,9 +1197,8 @@ describe('getStaffDetails — org isolation (F-009)', () => {
 
     const result = await getStaffDetails('target-1');
 
-    // A placeholder here would make Change Role silently write "Staff Member"
-    // into a job title the admin never touched.
-    expect(result?.user.jobTitle).toBe('');
+    // A placeholder here would make Change Role silently overwrite a name the
+    // admin never touched.
     expect(result?.user.firstName).toBe('');
     expect(result?.user.lastName).toBe('');
   });

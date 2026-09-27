@@ -169,6 +169,7 @@ function makeTrackAEnrollment(
     course: { title: `Course ${id}` },
     organizationUser: {
       id: `ou-${id}`,
+      role: 'nurse',
       user: { email: `worker-${id}@test.com`, fullName: `Worker ${id}` },
       // A facility row present but with a null timezone → falls back to DEFAULT_TZ
       // (America/New_York). See the dedicated "no facility at all" test for the
@@ -194,6 +195,7 @@ function makeTrackBEnrollment(
     course: { title: `Course ${id}`, quiz },
     organizationUser: {
       id: `ou-${id}`,
+      role: 'nurse',
       user: { email: `worker-${id}@test.com`, fullName: `Worker ${id}` },
     },
   };
@@ -1073,7 +1075,7 @@ function makeRenewalCandidate(overrides: Record<string, unknown> = {}) {
     courseId: 'course-renewal-1',
     completedAt: new Date('2023-01-01T12:00:00Z'), // well past a 365-day annual cycle by NOW
     assignmentId: 'assignment-renewal-1',
-    organizationUser: { user: { email: 'worker@test.com', fullName: 'Worker One' } },
+    organizationUser: { role: 'nurse', user: { email: 'worker@test.com', fullName: 'Worker One' } },
     ...overrides,
   };
 }
@@ -1106,6 +1108,25 @@ describe('runReminderSweep — renewal re-trigger pre-pass', () => {
       }),
     );
     expect(summary.renewalsCreated).toBe(1);
+  });
+
+  // Regression guard for enrollments.last_activity_at (dormant-staff reporting):
+  // a renewal is a sweep-initiated administrative action, not the learner
+  // engaging, so it must be minted with no stamp. The `objectContaining`
+  // assertions above would silently accept one being added, so this checks
+  // the created data directly.
+  it('never stamps lastActivityAt on a renewal — the sweep is not learner engagement', async () => {
+    wireCourseAssignmentFindMany({ renewal: [makeRenewalAssignment()] });
+    prismaMock.enrollment.findMany
+      .mockResolvedValueOnce([makeRenewalCandidate()])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    await runReminderSweep(BASE_OPTS);
+
+    const { data } = prismaMock.enrollment.create.mock.calls[0][0];
+    expect(data).not.toHaveProperty('lastActivityAt');
   });
 
   it("stamps the renewal with the member's CURRENT facility, not the completed enrollment's facility", async () => {
@@ -1314,6 +1335,44 @@ describe('runReminderSweep — archived courses are excluded from both write pre
     await runReminderSweep(BASE_OPTS);
 
     const where = whereFor((w) => 'renewalCycle' in w);
+    expect(where.course).toEqual({ archivedAt: null });
+  });
+});
+
+/**
+ * Founder Q-06 (2026-09-23): no reminders for an archived course.
+ *
+ * The two pre-passes above already refused to WRITE on a retired course; the
+ * two dispatch tracks kept mailing about one. That is the visible half: an
+ * overdue notice naming a course the learner can no longer open (Q-04 refuses
+ * access, the quiz and the retake), which no action of theirs and no action of
+ * their manager's can clear.
+ *
+ * Asserted on the query, like the pre-passes: an archived enrolment is never
+ * fetched, so there is no per-row skip to observe.
+ */
+describe('runReminderSweep — archived courses produce no reminders (Q-06)', () => {
+  function enrollmentWhereFor(predicate: (where: Record<string, unknown>) => boolean) {
+    const where = prismaMock.enrollment.findMany.mock.calls
+      .map((args: unknown[]) => (args[0] as { where: Record<string, unknown> }).where)
+      .find(predicate);
+    expect(where).toBeDefined();
+    return where as Record<string, unknown>;
+  }
+
+  it('Track A — the deadline/overdue ladder skips enrolments on an archived course', async () => {
+    await runReminderSweep(BASE_OPTS);
+
+    const where = enrollmentWhereFor((w) => 'dueAt' in w);
+    expect(where.course).toEqual({ archivedAt: null });
+  });
+
+  it('Track B — the resume/retake nudges skip enrolments on an archived course', async () => {
+    await runReminderSweep(BASE_OPTS);
+
+    const where = enrollmentWhereFor(
+      (w) => !('dueAt' in w) && !('assignmentId' in w) && 'status' in w,
+    );
     expect(where.course).toEqual({ archivedAt: null });
   });
 });

@@ -1,3 +1,9 @@
+export interface QuizExplanation {
+  correctExplanation: string;
+  /** Rationale per WRONG option, keyed by that option's index in `options`. */
+  incorrectOptions: Record<string, string>;
+}
+
 export interface QuizQuestion {
   question: string;
   options: string[];
@@ -5,10 +11,7 @@ export interface QuizQuestion {
   type?: string;
   archetype?: string;
   difficulty?: string;
-  explanation?: {
-    correctExplanation: string;
-    incorrectOptions: Record<string, string>;
-  };
+  explanation?: QuizExplanation;
   evidence?: {
     moduleSectionId: string;
     moduleSectionHeading: string;
@@ -17,11 +20,4 @@ export interface QuizQuestion {
   /** Wizard module this question was generated from, in course order. */
   moduleIndex?: number;
   qualityFlags?: string[];
-}
-
-export interface QuizAttemptResult {
-  score: number;
-  passed: boolean;
-  correctCount: number;
-  totalQuestions: number;
 }

@@ -41,7 +41,6 @@ const STAFF = {
     role: 'nurse',
     firstName: 'Target',
     lastName: 'User',
-    jobTitle: 'Nurse',
     facilityName: 'Northside Clinic',
   },
   stats: { totalCourses: 0, completedCourses: 0, failedCourses: 0, activeCourses: 0 },

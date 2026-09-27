@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/table';
 import EmptyTableState from '@/components/ui/EmptyTableState';
 import { logger } from '@/lib/logger';
+import { getUserDisplayName, getUserInitials } from '@/lib/user-display';
 
 interface UserDetailClientProps {
   user: SystemUserDetail;
@@ -78,17 +79,8 @@ export default function UserDetailClient({ user }: UserDetailClientProps) {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   }
 
-  const displayName =
-    user.profile?.fullName || user.profile?.firstName
-      ? `${user.profile.firstName || ''} ${user.profile.lastName || ''}`.trim()
-      : user.email.split('@')[0];
-
-  const initials = displayName
-    .split(' ')
-    .map((n) => n[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2);
+  const displayName = getUserDisplayName(user.profile, user.email);
+  const initials = getUserInitials(user.profile, user.email);
 
   const roleBadgeClass = isAdminRole(user.role)
     ? 'bg-primary/10 text-primary'
@@ -167,14 +159,6 @@ export default function UserDetailClient({ user }: UserDetailClientProps) {
           </div>
           {user.profile ? (
             <div>
-              {user.profile.jobTitle && (
-                <div className="flex items-center justify-between border-b border-border py-2.5 last:border-0">
-                  <span className="text-sm text-text-secondary">Job Title</span>
-                  <span className="text-sm font-medium text-foreground">
-                    {user.profile.jobTitle}
-                  </span>
-                </div>
-              )}
               <div className="flex items-center justify-between border-b border-border py-2.5 last:border-0">
                 <span className="text-sm text-text-secondary">Last Updated</span>
                 <span className="text-sm font-medium text-foreground">

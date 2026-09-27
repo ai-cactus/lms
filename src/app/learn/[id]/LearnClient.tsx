@@ -47,6 +47,11 @@ interface Question {
   options: string[];
   correctAnswer: string;
   explanation?: string;
+  /**
+   * Why each wrong option is wrong, keyed by its index in `options`. Answer key,
+   * so the payload only carries it for admin viewers.
+   */
+  incorrectOptionExplanations?: Record<string, string>;
 }
 
 interface Quiz {
@@ -89,7 +94,7 @@ interface EnrollmentData {
 interface QuizQuestionResult {
   id: string;
   text: string;
-  options: { id: string; text: string }[];
+  options: { id: string; text: string; explanation?: string }[];
   selectedAnswer: string;
   correctAnswer: string;
   explanation: string;
@@ -127,7 +132,6 @@ interface UserData {
   canEditContent: boolean;
   organizationName?: string;
   email: string;
-  jobTitle: string;
 }
 
 type QuizStep = 'intro' | 'active' | 'results' | 'review';
@@ -927,7 +931,6 @@ export default function LearnClient({ initialData }: LearnClientProps) {
                   allowedAttempts: quizResults.allowedAttempts,
                   userName: userData?.name,
                   userEmail: userData?.email,
-                  jobTitle: userData?.jobTitle,
                 }}
                 hideActions={enrollmentIsSigned}
                 passed={quizResults.passed}

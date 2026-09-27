@@ -100,7 +100,6 @@ beforeEach(() => {
   mockEnrollmentFindFirst.mockResolvedValue(null);
   mockOrganizationUserFindUnique.mockResolvedValue({
     role: 'nurse',
-    jobTitle: 'RN',
     user: { fullName: 'Jane Worker', email: 'jane@example.com' },
     organization: { name: 'Acme Health' },
   });

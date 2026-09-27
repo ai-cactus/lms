@@ -1,5 +1,7 @@
 import { logger, maskEmail } from '@/lib/logger';
 import { createNotification } from '@/lib/notifications/create';
+import { trainingNoticeLink } from '@/lib/notifications/portal-link';
+import type { UserRole } from '@/generated/prisma/enums';
 import type { DeferredWorkerNotification } from './create';
 
 /** One newly assigned course, as listed in a batched notice. */
@@ -16,6 +18,8 @@ export interface BatchedAssignmentNotice {
   userId: string;
   email: string;
   recipientName: string;
+  /** The recipient's role in this org — it decides which portal the notice links into. */
+  recipientRole: UserRole;
   organizationName: string;
   courses: AssignedCourse[];
 }
@@ -41,6 +45,7 @@ export function collectDeferredNotices(
           userId: item.userId,
           email: item.email,
           recipientName: item.recipientName,
+          recipientRole: item.recipientRole,
           organizationName: item.organizationName,
           courses: [],
         },
@@ -83,6 +88,7 @@ export async function notifyCoursesAssigned(
   }
 
   const titles = notice.courses.map((course) => course.courseTitle);
+  const courseIds = notice.courses.map((course) => course.courseId);
 
   let notificationCreated = false;
   try {
@@ -95,12 +101,12 @@ export async function notifyCoursesAssigned(
         count === 1
           ? `You have been assigned a new course: ${titles[0]}`
           : `You have been assigned ${count} new courses: ${titles.join(', ')}`,
-      linkUrl: `/worker/trainings`,
+      linkUrl: trainingNoticeLink(notice.recipientRole, courseIds),
       metadata: {
         // `courseId` is kept alongside the batched fields so existing consumers
         // of a COURSE_ASSIGNED notification keep working unchanged.
-        courseId: notice.courses[0].courseId,
-        courseIds: notice.courses.map((course) => course.courseId),
+        courseId: courseIds[0],
+        courseIds,
         courseTitles: titles,
         count,
       },

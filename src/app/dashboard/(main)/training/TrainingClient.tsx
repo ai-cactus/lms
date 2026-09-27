@@ -13,15 +13,18 @@ import { CourseWithStats } from '@/types/course';
 interface TrainingClientProps {
   stats: DashboardStats;
   courses: CourseWithStats[];
+  /** Founder ruling Q2 — the wizard is offered only to `course.create` holders. */
+  canCreateCourses: boolean;
 }
 
 import { useRouter } from 'next/navigation';
 
-export default function TrainingClient({ stats, courses }: TrainingClientProps) {
+export default function TrainingClient({ stats, courses, canCreateCourses }: TrainingClientProps) {
   const router = useRouter();
-  // If user has courses, default to showing the dashboard.
-  // Otherwise show the empty state / onboarding.
-  const [showDashboard, setShowDashboard] = React.useState(courses.length > 0);
+  // If user has courses, default to showing the dashboard. The onboarding pitch
+  // is entirely a create-course affordance, so a viewer who cannot create one
+  // goes straight to the dashboard instead.
+  const [showDashboard, setShowDashboard] = React.useState(courses.length > 0 || !canCreateCourses);
 
   const handleCreateCourse = () => {
     router.push('/dashboard/courses/create');
@@ -29,7 +32,12 @@ export default function TrainingClient({ stats, courses }: TrainingClientProps) 
 
   if (showDashboard) {
     return (
-      <TrainingDashboard onCreateCourse={handleCreateCourse} stats={stats} courses={courses} />
+      <TrainingDashboard
+        onCreateCourse={handleCreateCourse}
+        stats={stats}
+        courses={courses}
+        canCreateCourses={canCreateCourses}
+      />
     );
   }
 

@@ -39,9 +39,9 @@ import type { Role } from '@/types/next-auth';
 import { getAdminWorkerCertificates } from '@/app/actions/certificate';
 import { logger } from '@/lib/logger';
 import { cn } from '@/lib/utils';
+import { DUE_SOON_WINDOW_DAYS } from '@/lib/facility/metrics';
 import {
   ArrowLeft,
-  Briefcase,
   Building2,
   Pencil,
   ShieldCheck,
@@ -72,7 +72,6 @@ interface StaffProfileClientProps {
       role: string;
       firstName: string;
       lastName: string;
-      jobTitle: string;
       facilityName: string | null;
     };
     stats: {
@@ -120,13 +119,6 @@ const searchInputCls =
 const rowLinkCls = 'h-auto p-0 text-[15.5px] font-medium';
 
 /**
- * Mirrors `AT_RISK_WINDOW_DAYS` in `src/lib/reminders/status-tracker.ts` — a
- * deadline flagged red here is the same one the Status Tracker calls "at risk".
- * Duplicated rather than imported because that module pulls in Prisma.
- */
-const DUE_SOON_WINDOW_DAYS = 7;
-
-/**
  * Pins a fixed timeZone so the server (UTC) and the browser (local) render the
  * same string — otherwise React reports a hydration mismatch (#418).
  */
@@ -139,6 +131,7 @@ function formatDate(value: Date | string): string {
   });
 }
 
+/** Same window as the Status Tracker's "at risk" — one shared constant, Prisma-free. */
 function isDueUrgent(dueAt: string): boolean {
   const msUntilDue = new Date(dueAt).getTime() - Date.now();
   return msUntilDue <= DUE_SOON_WINDOW_DAYS * 24 * 60 * 60 * 1000;
@@ -229,7 +222,6 @@ export default function StaffProfileClient({
     email: user.email,
     firstName: user.firstName,
     lastName: user.lastName,
-    jobTitle: user.jobTitle,
     role: user.role as Role,
   };
 
@@ -375,19 +367,6 @@ export default function StaffProfileClient({
                 <User className="size-[19px] shrink-0" aria-hidden="true" />
                 <span className="truncate">{user.email}</span>
               </div>
-              {/* Job title is free text and the ROLE is an authorization fact —
-                  two different things, so the job title gets its own line rather
-                  than sharing the role chip. It used to sit behind
-                  `getRoleDisplayName(role) || user.jobTitle`, which never falls
-                  through (getRoleDisplayName returns the raw enum value for an
-                  unknown role, never ''), so an edited job title was saved and
-                  then rendered nowhere on this page. */}
-              {user.jobTitle && (
-                <div className="flex items-center gap-2.5 text-[14px] leading-5 text-[#475467]">
-                  <Briefcase className="size-[19px] shrink-0" aria-hidden="true" />
-                  <span className="truncate">{user.jobTitle}</span>
-                </div>
-              )}
               <span className="w-fit rounded-[6px] bg-[#eafdf5] px-[12.4px] py-[5px] text-[12.4px] leading-[20.667px] font-semibold text-[#59904b]">
                 {[getRoleDisplayName(user.role as Role), user.facilityName]
                   .filter(Boolean)

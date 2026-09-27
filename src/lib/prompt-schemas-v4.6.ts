@@ -150,7 +150,12 @@ const QuizMetaV46Schema = z
   })
   .passthrough();
 
-const QuizOptionV46Schema = z
+/**
+ * One answer option, per-option rationale included. Shared with the wizard's
+ * single-question / regenerate actions so both AI paths return the same shape
+ * (founder ruling Q-13).
+ */
+export const QuizOptionV46Schema = z
   .object({
     text: z.string(),
     isCorrect: z.boolean(),

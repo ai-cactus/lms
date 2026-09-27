@@ -5,13 +5,14 @@ import { dbRoleToRoleKey, isAdminRole } from '@/lib/rbac/role-utils';
 import { can, type Permission } from '@/lib/rbac/permissions';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
-import { revalidatePath, unstable_cache } from 'next/cache';
+import { unstable_cache } from 'next/cache';
 import type { Role } from '@/types/next-auth';
 import type { CourseWithStats } from '@/types/course';
 import { hasActiveBilling } from '@/lib/billing';
 import { logger } from '@/lib/logger';
 import { getCourses } from './course';
 import { buildCourseThumbnailUrl } from '@/lib/video/thumbnail';
+import { VIDEO_CATALOG_TAG } from '@/lib/video/catalog-cache';
 
 // ---------------------------------------------------------------------------
 // Session helper — mirrors the pattern in course.ts
@@ -33,14 +34,13 @@ function resolveOrg(
   if (!sessionUser.organizationId) {
     throw new Error('No organization');
   }
-  // `isAdminRole` alone covered BOTH the reads and the mutations below, so a
-  // read-only admin-tier role (supervisor, finance, clinical_director — none of
-  // which hold a `course.*` write verb) could add a catalog course to the
-  // organisation, retitle it, or withdraw it entirely. The verb is now named per
-  // call site.
+  // The verb is named per call site rather than left implicit in the tier: an
+  // `isAdminRole` check on its own admits every admin-tier role, including the
+  // read-only ones (supervisor, finance, clinical_director) that hold no
+  // `course.*` write verb.
   //
   // The tier check STAYS, composed with the verb rather than replaced by it:
-  // `workerPermissions` grants every learner `course.read`, so gating the reads
+  // `workerPermissions` grants every learner `course.read`, so gating the read
   // on the permission alone would open the admin catalog to the whole workforce.
   // Same reasoning as getCourseForOrgView in course.ts.
   if (!isAdminRole(sessionUser.role) || !can(dbRoleToRoleKey(sessionUser.role), permission)) {
@@ -56,8 +56,8 @@ function resolveOrg(
 //   tenant-specific — enrollment tallies, adoption state — is joined AFTER
 //   this read (see listGlobalVideoCatalogCourses) so the cached payload never
 //   carries a tenant id and one invalidation refreshes every org at once.
-//   Invalidate via revalidateTag('video-catalog') at every global-video
-//   create / edit / status-change / thumbnail site (see video-course.ts and
+//   Invalidate via expireVideoCatalog() at every global-video create / edit /
+//   status-change / thumbnail site (see video-course.ts and
 //   src/lib/video/custom-thumbnail.ts).
 //
 //   `thumbnail` is the one field a server action does NOT always refresh: a
@@ -144,11 +144,11 @@ const getGlobalVideoCatalog = unstable_cache(
     });
   },
   ['global-video-catalog'],
-  { revalidate: 3600, tags: ['video-catalog'] },
+  { revalidate: 3600, tags: [VIDEO_CATALOG_TAG] },
 );
 
 // ---------------------------------------------------------------------------
-// 1. listGlobalVideoCatalogCourses
+// listGlobalVideoCatalogCourses
 //     The same published global video catalog, projected into the Courses-list
 //     row shape so it can be merged into the org's own course list.
 //
@@ -214,102 +214,6 @@ export async function listGlobalVideoCatalogCourses(): Promise<CourseWithStats[]
       isOrgAuthored: false,
     };
   });
-}
-
-// ---------------------------------------------------------------------------
-// 2. offerCourseToOrg
-//    Upsert an OrgCourseOffering keyed by [organizationId, courseId].
-// ---------------------------------------------------------------------------
-export interface OfferingOverrides {
-  customTitle?: string;
-  customDescription?: string;
-  customIntro?: string;
-}
-
-export async function offerCourseToOrg(courseId: string, overrides?: OfferingOverrides) {
-  const session = await resolveSession();
-  if (!session?.user?.id) {
-    throw new Error('Unauthorized');
-  }
-
-  const organizationId = resolveOrg(session.user, 'course.create');
-
-  const course = await prisma.course.findFirst({
-    where: { id: courseId, isGlobal: true, type: 'video', status: 'published' },
-    select: { id: true },
-  });
-  if (!course) throw new Error('Course not found');
-
-  const offering = await prisma.orgCourseOffering.upsert({
-    where: { organizationId_courseId: { organizationId, courseId } },
-    update: { ...(overrides ?? {}) },
-    create: {
-      organizationId,
-      courseId,
-      addedByAdminId: session.user.id,
-      ...(overrides ?? {}),
-    },
-  });
-
-  revalidatePath('/dashboard/courses');
-  revalidatePath('/dashboard');
-
-  return offering;
-}
-
-// ---------------------------------------------------------------------------
-// 3. updateOffering
-//    Update custom fields on an existing offering (must belong to caller's org).
-// ---------------------------------------------------------------------------
-export async function updateOffering(id: string, overrides: OfferingOverrides) {
-  const session = await resolveSession();
-  if (!session?.user?.id) {
-    throw new Error('Unauthorized');
-  }
-
-  const organizationId = resolveOrg(session.user, 'course.edit');
-
-  const existing = await prisma.orgCourseOffering.findUnique({ where: { id } });
-  if (!existing || existing.organizationId !== organizationId) {
-    throw new Error('Forbidden');
-  }
-
-  const updated = await prisma.orgCourseOffering.update({
-    where: { id },
-    data: {
-      customTitle: overrides.customTitle,
-      customDescription: overrides.customDescription,
-      customIntro: overrides.customIntro,
-    },
-  });
-
-  revalidatePath('/dashboard/courses');
-  revalidatePath('/dashboard');
-
-  return updated;
-}
-
-// ---------------------------------------------------------------------------
-// 4. withdrawOffering
-//    Delete an offering (must belong to caller's org).
-// ---------------------------------------------------------------------------
-export async function withdrawOffering(id: string) {
-  const session = await resolveSession();
-  if (!session?.user?.id) {
-    throw new Error('Unauthorized');
-  }
-
-  const organizationId = resolveOrg(session.user, 'course.delete');
-
-  const existing = await prisma.orgCourseOffering.findUnique({ where: { id } });
-  if (!existing || existing.organizationId !== organizationId) {
-    throw new Error('Forbidden');
-  }
-
-  await prisma.orgCourseOffering.delete({ where: { id } });
-
-  revalidatePath('/dashboard/courses');
-  revalidatePath('/dashboard');
 }
 
 /**

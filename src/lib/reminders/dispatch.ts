@@ -1,8 +1,9 @@
 import prisma from '@/lib/prisma';
 import { Prisma } from '@/generated/prisma/client';
-import type { ReminderStage, ReminderNudgeKind } from '@/generated/prisma/enums';
+import type { ReminderStage, ReminderNudgeKind, UserRole } from '@/generated/prisma/enums';
 import { logger, maskEmail } from '@/lib/logger';
 import { createNotification } from '@/lib/notifications/create';
+import { trainingNoticeLink } from '@/lib/notifications/portal-link';
 import { isCycleSummaryEnabled } from '@/lib/cycle-summary/flag';
 import { REMINDER_STAGE_DEFAULTS } from './stages';
 import { resolveEscalationRecipients, type EscalationRecipients } from './recipients';
@@ -365,8 +366,12 @@ function escalationStageCopy(
 export interface LadderStageInput {
   enrollment: { id: string; organizationUserId: string; courseId: string };
   courseTitle: string;
-  /** `worker.id` is the `OrganizationUser.id` — createNotification's recipient key. */
-  worker: { id: string; email: string; name: string | null };
+  /**
+   * `worker.id` is the `OrganizationUser.id` — createNotification's recipient
+   * key. `role` is that membership's role: managers are enrolled like anyone
+   * else, and it decides which portal the in-app notice links into.
+   */
+  worker: { id: string; email: string; name: string | null; role: UserRole };
   stage: ReminderStage;
   /** Effective channels for this stage (`'email'`, `'in_app'`). */
   channels: string[];
@@ -450,7 +455,7 @@ export async function dispatchLadderStage(input: LadderStageInput): Promise<Disp
           type: stageToNotificationType(stage),
           title: copy.title,
           message: copy.message,
-          linkUrl: '/worker/trainings',
+          linkUrl: trainingNoticeLink(worker.role, [enrollment.courseId]),
           metadata,
         });
       }
@@ -542,7 +547,7 @@ export interface NudgeInput {
   enrollmentId: string;
   courseId: string;
   courseTitle: string;
-  worker: { id: string; email: string; name: string | null };
+  worker: { id: string; email: string; name: string | null; role: UserRole };
   /** Escalation targets — used for `ADMIN_REASSIGN`. */
   recipients: EscalationRecipients;
   /** Minimum days between nudges of this kind for this enrollment. */
@@ -610,7 +615,7 @@ export async function dispatchNudge(input: NudgeInput): Promise<DispatchResult> 
         type: 'COURSE_RETAKE_REMINDER',
         title: 'Retake your quiz',
         message: `You still have attempts remaining for "${courseTitle}". Please retake the quiz before your deadline.`,
-        linkUrl: '/worker/trainings',
+        linkUrl: trainingNoticeLink(worker.role, [courseId]),
         metadata,
       });
       if (!deferEmailToSummary) {

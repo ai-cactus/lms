@@ -17,19 +17,23 @@ const {
   mockAdminAuth,
   mockWorkerAuth,
   mockCourseFindMany,
-  mockEnrollmentGroupBy,
   mockEnrollmentFindMany,
-  mockOrgUserCount,
+  mockOrgUserFindMany,
   mockOrgCourseOfferingFindMany,
+  mockQuizAttemptFindMany,
+  mockCertificateFindMany,
+  mockQuizFindMany,
 } = vi.hoisted(() => ({
   mockRequirePermissionWithFacilityScope: vi.fn(),
   mockAdminAuth: vi.fn(),
   mockWorkerAuth: vi.fn(),
   mockCourseFindMany: vi.fn(),
-  mockEnrollmentGroupBy: vi.fn(),
   mockEnrollmentFindMany: vi.fn(),
-  mockOrgUserCount: vi.fn(),
+  mockOrgUserFindMany: vi.fn(),
   mockOrgCourseOfferingFindMany: vi.fn(),
+  mockQuizAttemptFindMany: vi.fn(),
+  mockCertificateFindMany: vi.fn(),
+  mockQuizFindMany: vi.fn(),
 }));
 
 vi.mock('@/lib/rbac/require-permission', () => ({
@@ -44,15 +48,18 @@ vi.mock('@/lib/logger', () => ({
 vi.mock('@/lib/prisma', () => {
   const prisma = {
     course: { findMany: mockCourseFindMany },
-    enrollment: { groupBy: mockEnrollmentGroupBy, findMany: mockEnrollmentFindMany },
-    organizationUser: { count: mockOrgUserCount },
+    enrollment: { findMany: mockEnrollmentFindMany },
+    organizationUser: { findMany: mockOrgUserFindMany },
     orgCourseOffering: { findMany: mockOrgCourseOfferingFindMany },
+    quizAttempt: { findMany: mockQuizAttemptFindMany },
+    certificate: { findMany: mockCertificateFindMany },
+    quiz: { findMany: mockQuizFindMany },
   };
   return { prisma, default: prisma };
 });
 vi.mock('./TrainingClient', () => ({
-  default: ({ stats }: { stats: { totalCourses: number } }) => (
-    <div data-testid="training-client">{stats.totalCourses}</div>
+  default: ({ stats }: { stats: { catalogCourseCount: number } }) => (
+    <div data-testid="training-client">{stats.catalogCourseCount}</div>
   ),
 }));
 
@@ -73,10 +80,12 @@ beforeEach(() => {
     },
   });
   mockWorkerAuth.mockResolvedValue(null);
-  mockEnrollmentGroupBy.mockResolvedValue([]);
   mockEnrollmentFindMany.mockResolvedValue([]);
-  mockOrgUserCount.mockResolvedValue(0);
+  mockOrgUserFindMany.mockResolvedValue([]);
   mockOrgCourseOfferingFindMany.mockResolvedValue([]);
+  mockQuizAttemptFindMany.mockResolvedValue([]);
+  mockCertificateFindMany.mockResolvedValue([]);
+  mockQuizFindMany.mockResolvedValue([]);
 });
 
 describe('TrainingPage — org-scoped population (real getDashboardData)', () => {
@@ -92,7 +101,6 @@ describe('TrainingPage — org-scoped population (real getDashboardData)', () =>
         duration: 10,
         createdAt: new Date(2026, 0, 1),
         updatedAt: new Date(2026, 0, 1),
-        quiz: null,
         lessons: [],
       },
     ]);

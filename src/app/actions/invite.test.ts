@@ -8,7 +8,7 @@
  *   - Privilege escalation (hr→supervisor, anyone→owner) → per-row 'forbidden'
  *   - Valid invite path → invites are created (with the invite's facility), email is sent
  *   - Per-item roles → each email's invite is created with ITS own role
- *   - Seat counting (D2): all non-owner roles count; owner does not
+ *   - Seat counting: every role consumes a seat, the owner included
  *
  * Multi-org refactor: every invite now targets a facility (resolved from the
  * inviter's own OrganizationUserFacility, falling back to the org's oldest
@@ -429,9 +429,9 @@ describe('createInvites() — each email gets its own role', () => {
   });
 });
 
-// ── Seat counting (D2) ────────────────────────────────────────────────────────
+// ── Seat counting ─────────────────────────────────────────────────────────────
 
-describe('createInvites() — seat counting excludes owner (D2)', () => {
+describe('createInvites() — seat counting includes the owner', () => {
   beforeEach(() => {
     mockAuth.mockResolvedValue(makeSession('owner'));
     // Org with a plan that has a seat limit
@@ -441,7 +441,7 @@ describe('createInvites() — seat counting excludes owner (D2)', () => {
     });
   });
 
-  it('seat count query filters role: { not: "owner" }, active: true, for this organization', async () => {
+  it('counts every ACTIVE membership in this organization, the owner included', async () => {
     // Set up: 9 active users + 0 pending invites = 9/10 used
     mockOrganizationUserCount.mockResolvedValue(9);
     mockInviteCount.mockResolvedValue(0);
@@ -451,12 +451,14 @@ describe('createInvites() — seat counting excludes owner (D2)', () => {
     await createInvites([item('new@acme.com', 'nurse')]);
 
     const orgUserCountCall = mockOrganizationUserCount.mock.calls[0][0];
-    expect(orgUserCountCall.where.role).toEqual({ not: 'owner' });
+    // Founder ruling 2026-09-23: no role is exempt — the owner uses the
+    // learning features like anyone else, so the count carries no role filter.
+    expect(orgUserCountCall.where.role).toBeUndefined();
     expect(orgUserCountCall.where.organizationId).toBe('org-1');
     expect(orgUserCountCall.where.active).toBe(true);
   });
 
-  it('seat count query filters role: { not: "owner" } for pending invites', async () => {
+  it('counts every live pending invite, whatever role it carries', async () => {
     mockOrganizationUserCount.mockResolvedValue(0);
     mockInviteCount.mockResolvedValue(0);
     mockOrganizationUserFindMany.mockResolvedValue([]);
@@ -465,7 +467,8 @@ describe('createInvites() — seat counting excludes owner (D2)', () => {
     await createInvites([item('new@acme.com', 'nurse')]);
 
     const inviteCountCall = mockInviteCount.mock.calls[0][0];
-    expect(inviteCountCall.where.role).toEqual({ not: 'owner' });
+    expect(inviteCountCall.where.role).toBeUndefined();
+    expect(inviteCountCall.where.organizationId).toBe('org-1');
     expect(inviteCountCall.where.status).toBe('pending');
   });
 

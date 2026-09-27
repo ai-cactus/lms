@@ -41,7 +41,7 @@ const BillingHistoryTab = dynamic(() => import('./BillingHistoryTab'), { ssr: fa
 const PaymentMethodTab = dynamic(() => import('./PaymentMethodTab'), { ssr: false });
 
 interface BillingPageProps {
-  /** Org-wide billable headcount (active non-owner members). */
+  /** Org-wide billable headcount (every active member, the owner included). */
   orgStaffCount: number;
   currentPlan: string | null;
   /** Live Stripe-derived plan prices, keyed by plan and cycle. */

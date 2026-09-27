@@ -7,7 +7,6 @@ export interface ProfileData {
   email: string;
   role: Role;
   roleDisplayName: string;
-  jobTitle?: string;
   avatarUrl?: string | null;
   avatarDisplayUrl?: string | null;
   authProvider?: string;

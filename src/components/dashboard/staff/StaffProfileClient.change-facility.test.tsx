@@ -41,7 +41,6 @@ function makeStaff(role = 'nurse') {
       role,
       firstName: 'Target',
       lastName: 'User',
-      jobTitle: 'Nurse',
       facilityName: 'Akobo branch',
     },
     stats: { totalCourses: 0, completedCourses: 0, failedCourses: 0, activeCourses: 0 },
