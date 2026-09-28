@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { ResponsiveContainer, PieChart, Pie, Cell, Label } from 'recharts';
+import { COVERAGE_LABELS } from '@/lib/dashboard/metrics';
 
 interface DashboardChartsProps {
   stats?: {
@@ -26,9 +27,9 @@ const PASS_COLOR = '#16a34a';
 const FAIL_COLOR = '#ec484b';
 
 const COVERAGE_SEGMENTS = [
-  { key: 'completed', label: 'Assignments completed', color: '#14b8a6' },
-  { key: 'inProgress', label: 'Assignments in progress', color: '#facc15' },
-  { key: 'notStarted', label: 'Assignments not yet started', color: '#ec484b' },
+  { key: 'completed', label: COVERAGE_LABELS.completed, color: '#14b8a6' },
+  { key: 'inProgress', label: COVERAGE_LABELS.inProgress, color: '#facc15' },
+  { key: 'notStarted', label: COVERAGE_LABELS.notStarted, color: '#ec484b' },
 ] as const;
 
 export default function DashboardCharts({ stats }: DashboardChartsProps) {

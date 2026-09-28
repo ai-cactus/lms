@@ -57,7 +57,7 @@ export type AuditReadinessLevel = 'audit_ready' | 'needs_attention' | 'critical'
 export interface FacilityComplianceSignals {
   /** Overdue trainings more than {@link RISK_OVERDUE_GRACE_DAYS} days past due. */
   overdueBeyondGrace: number;
-  /** Overdue trainings 1–{@link RISK_OVERDUE_GRACE_DAYS} days past due. */
+  /** Overdue trainings at most {@link RISK_OVERDUE_GRACE_DAYS} days past due (minutes count). */
   overdueWithinGrace: number;
   /**
    * Training completion for the facility, or `null` when it has nothing
@@ -189,7 +189,7 @@ export const METRIC_DEFINITIONS = {
   averageGrade:
     "The mean of each enrolment's grade, where an enrolment's grade is the average of its best submitted score on each quiz. A retaken assignment is graded by its retake.",
   auditReadiness: `Audit Ready only with zero overdue trainings, zero expired credentials and training completion at or above ${AUDIT_READY_MIN_COMPLETION_PERCENT}%.`,
-  riskLevel: `High when a training is over ${RISK_OVERDUE_GRACE_DAYS} days overdue, completion is below ${RISK_HIGH_COMPLETION_PERCENT}% or a credential has expired. Medium when a training is 1–${RISK_OVERDUE_GRACE_DAYS} days overdue, completion is ${RISK_HIGH_COMPLETION_PERCENT}–${RISK_LOW_COMPLETION_PERCENT - 1}% or a credential expires within ${EXPIRING_CREDENTIALS_WINDOW_DAYS} days. Low otherwise.`,
+  riskLevel: `High when a training is more than ${RISK_OVERDUE_GRACE_DAYS} days overdue, completion is below ${RISK_HIGH_COMPLETION_PERCENT}% or a credential has expired. Medium when a training is overdue by up to ${RISK_OVERDUE_GRACE_DAYS} days, completion is ${RISK_HIGH_COMPLETION_PERCENT}–${RISK_LOW_COMPLETION_PERCENT - 1}% or a credential expires within ${EXPIRING_CREDENTIALS_WINDOW_DAYS} days. Low otherwise. Completion is rounded to the nearest whole percent.`,
 } as const;
 
 /** Ordering weight for "most at risk first" — high risk sorts before low. */
