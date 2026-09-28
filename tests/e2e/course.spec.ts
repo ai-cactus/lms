@@ -55,6 +55,11 @@ test.describe('Course Flows', () => {
     await expect(dialog).toBeVisible();
     await expect(dialog.getByRole('heading', { name: 'Assign Retake' })).toBeVisible();
 
+    // Q-26: the retake carries a due date, pre-filled 14 days out, so the ladder
+    // reminds the learner. The picker's accessible name is its `label`; its
+    // text is the formatted date, so a filled value shows as a year.
+    await expect(dialog.getByRole('button', { name: 'Retake due date' })).toContainText(/\d{4}/);
+
     // Complete the modal: an optional reason, then confirm.
     await dialog
       .getByLabel(/reason for retake/i)

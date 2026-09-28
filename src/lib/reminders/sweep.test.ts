@@ -709,6 +709,31 @@ describe('runReminderSweep — superseded enrolments (BUG-44)', () => {
       expect(summary.errors).toBe(0);
     });
 
+    // Q-26: a retake now carries a `dueAt` and no assignment, so the Track A
+    // query's `assignmentId: null` branch selects it. The ladder must run for
+    // the retake while its superseded original stays silent.
+    it('ladders a retake that carries a due date, and never its superseded original', async () => {
+      const retake = {
+        ...makeTrackAEnrollment('retake', DUE_AT_WEEK_AGO, null),
+        retakeOf: 'original',
+      };
+      routeEnrollmentQueries({
+        trackA: [makeTrackAEnrollment('original', DUE_AT_WEEK_AGO), retake],
+        retakes: [{ retakeOf: 'original', status: 'enrolled' }],
+      });
+
+      await runReminderSweep(WIDE_CATCH_UP);
+
+      expect(dispatchedStagesFor('original')).toEqual([]);
+      expect(dispatchedStagesFor('retake')).toEqual(
+        expect.arrayContaining(['DAY_OF_DEADLINE', 'GRACE_SOFT_ESCALATION', 'HARD_ESCALATION']),
+      );
+      const trackAWhere = prismaMock.enrollment.findMany.mock.calls
+        .map((args: unknown[]) => (args[0] as { where: Record<string, unknown> }).where)
+        .find((where: Record<string, unknown>) => 'dueAt' in where);
+      expect(trackAWhere?.OR).toEqual(expect.arrayContaining([{ assignmentId: null }]));
+    });
+
     it.each(['enrolled', 'in_progress', 'locked', 'completed', 'attested'])(
       'treats the original as superseded whatever the retake status (%s)',
       async (status) => {
