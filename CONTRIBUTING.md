@@ -82,6 +82,36 @@ npm run test:changed  # affected unit tests only (VERIFY_BASE=origin/main to ret
 npm run secrets:scan  # staged-only gitleaks scan
 ```
 
+#### Route-group paths: `(main)` in a glob matches nothing
+
+Route groups put parentheses in paths (`src/app/dashboard/(main)/…`). To a glob
+engine `(main)` is a group matching the text `main`, not the directory `(main)`, so
+a **glob** containing it matches no file:
+
+```bash
+npx prettier --check "src/app/dashboard/(main)/**/*.tsx"
+# [error] No files matching the pattern were found …
+# All matched files use Prettier code style!     ← reads like a pass; exit code is 2
+```
+
+That is how an unformatted file reached CI on #659. Safe forms (checked against
+Prettier 3.9, ESLint 9 and Vitest 4.1):
+
+- **Pass a literal, existing file or directory path**, no wildcards —
+  `npx prettier --check "src/app/dashboard/(main)/page.tsx"` or
+  `npx prettier --check "src/app/dashboard/(main)/"`. Prettier and ESLint treat a
+  path that exists as a path, not a pattern.
+- **Escape the parentheses when you need a glob** —
+  `npx prettier --check "src/app/dashboard/\(main\)/**/*.tsx"`.
+- **For Vitest, pass a plain path substring, never an escaped one.** Its positional
+  filters are substrings, not globs: `npx vitest run "dashboard/(main)/layout"` works,
+  while `"dashboard/\(main\)/layout"` finds no test files. Filtering by test name
+  (`-t "…"`) sidesteps paths altogether.
+- Always read the exit code, not the last line of output.
+
+`npm run verify` is not affected: it hands ESLint literal changed-file paths and
+lets `vitest --changed` pick tests from the module graph.
+
 ### Running E2E locally
 
 `npm run e2e:local` runs the Playwright suite in CI parity — production build,
