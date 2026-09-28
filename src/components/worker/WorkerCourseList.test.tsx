@@ -319,3 +319,31 @@ describe('WorkerCourseList — an archived course reads as cancelled', () => {
     expect(mockPush).toHaveBeenCalledWith('/worker/courses/course-1');
   });
 });
+
+describe('WorkerCourseList — deadline (BUG-41)', () => {
+  const pastDeadline = new Date('2020-01-15T12:00:00Z');
+
+  it('flags a past deadline as "Due …" on an unfinished course', () => {
+    render(
+      <WorkerCourseList
+        courses={[baseCourse({ status: 'in_progress', deadline: pastDeadline })]}
+      />,
+    );
+
+    expect(screen.getByText(/Due Jan 15, 2020/)).toBeInTheDocument();
+  });
+
+  it.each(['completed', 'attested'])(
+    'shows a plain date, never "Due …", on a %s course',
+    (status) => {
+      render(
+        <WorkerCourseList
+          courses={[baseCourse({ status, progress: 100, deadline: pastDeadline })]}
+        />,
+      );
+
+      expect(screen.queryByText(/Due /)).not.toBeInTheDocument();
+      expect(screen.getByText('Jan 15, 2020')).toBeInTheDocument();
+    },
+  );
+});
