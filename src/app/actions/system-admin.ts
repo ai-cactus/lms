@@ -353,7 +353,7 @@ export interface SystemUserDetail {
     score: number | null;
     startedAt: Date;
     completedAt: Date | null;
-    course: { id: string; title: string; thumbnail: string | null };
+    course: { id: string; title: string };
   }>;
   documents: Array<{
     id: string;
@@ -419,7 +419,7 @@ export async function getUserDetail(userId: string): Promise<SystemUserDetail | 
           score: true,
           startedAt: true,
           completedAt: true,
-          course: { select: { id: true, title: true, thumbnail: true } },
+          course: { select: { id: true, title: true } },
         },
         orderBy: { startedAt: 'desc' },
       },

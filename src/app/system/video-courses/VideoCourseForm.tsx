@@ -36,12 +36,14 @@ export interface VideoCourseFormValues {
   passingScore: number;
   allowedAttempts: number;
   duration: number | null;
-  previewExistingUri: string | null; // current preview when editing
+  // Edit mode only: whether the course already has a preview. A boolean, not
+  // the storage URI — raw storage URIs never go to the browser.
+  hasExistingPreview: boolean;
   previewFile: File | null; // newly chosen preview
   previewDurationSeconds: number | null;
-  // The single course video. `courseVideoExistingUri` is the current video when
-  // editing; `courseVideoFile` is a newly chosen/replacement upload.
-  courseVideoExistingUri: string | null;
+  // The single course video. `hasExistingCourseVideo` says one is already
+  // attached when editing; `courseVideoFile` is a newly chosen/replacement upload.
+  hasExistingCourseVideo: boolean;
   courseVideoFile: File | null;
   courseVideoDurationSeconds: number | null;
   quizFile?: File | null; // create-only; set by the form when showQuizPicker is true
@@ -144,17 +146,17 @@ export default function VideoCourseForm({
   );
   const [duration, setDuration] = useState<number | null>(initialValues?.duration ?? null);
 
-  // Existing preview URI (edit mode); read-only here — replacing it just sets
-  // previewFile, and the parent decides what to persist.
-  const [previewExistingUri] = useState<string | null>(initialValues?.previewExistingUri ?? null);
+  // Read-only here — replacing the preview just sets previewFile, and the
+  // parent decides what to persist.
+  const [hasExistingPreview] = useState<boolean>(initialValues?.hasExistingPreview ?? false);
   const [previewFile, setPreviewFile] = useState<File | null>(initialValues?.previewFile ?? null);
   const [previewDurationSeconds, setPreviewDurationSeconds] = useState<number | null>(
     initialValues?.previewDurationSeconds ?? null,
   );
 
   // The single course video.
-  const [courseVideoExistingUri] = useState<string | null>(
-    initialValues?.courseVideoExistingUri ?? null,
+  const [hasExistingCourseVideo] = useState<boolean>(
+    initialValues?.hasExistingCourseVideo ?? false,
   );
   const [courseVideoFile, setCourseVideoFile] = useState<File | null>(
     initialValues?.courseVideoFile ?? null,
@@ -221,7 +223,7 @@ export default function VideoCourseForm({
   const hasCourseVideo =
     mode === 'create'
       ? courseVideoFile !== null
-      : Boolean(courseVideoExistingUri) || courseVideoFile !== null;
+      : hasExistingCourseVideo || courseVideoFile !== null;
 
   const quizSatisfied = !showQuizPicker || !quizRequired || quizFile !== null;
   const canSubmit = title.trim().length > 0 && quizSatisfied && hasCourseVideo;
@@ -240,10 +242,10 @@ export default function VideoCourseForm({
         passingScore,
         allowedAttempts,
         duration,
-        previewExistingUri,
+        hasExistingPreview,
         previewFile,
         previewDurationSeconds,
-        courseVideoExistingUri,
+        hasExistingCourseVideo,
         courseVideoFile,
         courseVideoDurationSeconds,
         quizFile: showQuizPicker ? quizFile : null,
@@ -363,7 +365,7 @@ export default function VideoCourseForm({
         <label className="text-sm font-medium text-foreground" htmlFor="previewVideo">
           Preview video (optional)
         </label>
-        {mode === 'edit' && previewExistingUri && !previewFile && (
+        {mode === 'edit' && hasExistingPreview && !previewFile && (
           <p className="text-xs text-text-muted">Current preview: a preview video is attached.</p>
         )}
         <div className="relative flex items-center gap-3 rounded-[10px] border border-dashed border-border p-4">
@@ -371,7 +373,7 @@ export default function VideoCourseForm({
           <span className="flex-1 truncate text-sm text-text-secondary">
             {previewFile
               ? previewFile.name
-              : previewExistingUri
+              : hasExistingPreview
                 ? 'Current preview attached'
                 : 'MP4 or WebM'}
             {previewFile && previewDurationSeconds != null && (
@@ -401,7 +403,7 @@ export default function VideoCourseForm({
             onClick={() => previewInputRef.current?.click()}
             disabled={isSubmitting}
           >
-            {mode === 'edit' && (previewExistingUri || previewFile)
+            {mode === 'edit' && (hasExistingPreview || previewFile)
               ? 'Replace video'
               : 'Choose file'}
           </Button>
@@ -412,7 +414,7 @@ export default function VideoCourseForm({
         <label className="text-sm font-medium text-foreground" htmlFor="courseVideo">
           Course video <span className="text-error">*</span>
         </label>
-        {mode === 'edit' && courseVideoExistingUri && !courseVideoFile && (
+        {mode === 'edit' && hasExistingCourseVideo && !courseVideoFile && (
           <p className="text-xs text-text-muted">Current video: a course video is attached.</p>
         )}
         <div className="relative flex items-center gap-3 rounded-[10px] border border-dashed border-border p-4">
@@ -420,7 +422,7 @@ export default function VideoCourseForm({
           <span className="flex-1 truncate text-sm text-text-secondary">
             {courseVideoFile
               ? courseVideoFile.name
-              : courseVideoExistingUri
+              : hasExistingCourseVideo
                 ? 'Current video attached'
                 : 'MP4 or WebM'}
             {courseVideoFile && courseVideoDurationSeconds != null && (
@@ -450,7 +452,7 @@ export default function VideoCourseForm({
             onClick={() => courseVideoInputRef.current?.click()}
             disabled={isSubmitting}
           >
-            {mode === 'edit' && (courseVideoExistingUri || courseVideoFile)
+            {mode === 'edit' && (hasExistingCourseVideo || courseVideoFile)
               ? 'Replace video'
               : 'Choose file'}
           </Button>
