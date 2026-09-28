@@ -13,6 +13,8 @@
  *    ({@link sliceSnapshot}). `Enrollment.facilityId` (the write-time stamp) is
  *    never read, so a transferred member counts at their current facility only.
  *  - Unfinished: every status except completed/attested ({@link ENROLLMENT_PHASE}).
+ *  - Retakes: an enrolment a retake has superseded counts only towards
+ *    First-Time Pass Rate ({@link supersededEnrollmentIds}).
  *
  * Each Prisma where-builder here sits next to the in-memory predicate it
  * mirrors, so the Status Tracker (which queries) and the dashboards (which
@@ -62,7 +64,8 @@ export type EnrollmentPhase = 'not_started' | 'in_progress' | 'finished';
  *
  * locked / failed / retry_requested are unfinished on purpose: the learner still
  * owes the training, so they stay in overdue, active-learner and coverage
- * figures (founder ruling 2026-09-26).
+ * figures (founder ruling 2026-09-26) — until a retake supersedes the row
+ * ({@link supersededEnrollmentIds}).
  */
 export const ENROLLMENT_PHASE: Readonly<Record<EnrollmentStatus, EnrollmentPhase>> = {
   enrolled: 'not_started',
@@ -106,7 +109,11 @@ interface DeadlineFields {
   dueAt: Date | null;
 }
 
-/** Past due and unfinished — no grace. The ONE overdue definition. */
+/**
+ * Past due and unfinished — no grace. The ONE overdue definition. Row-level:
+ * every caller also drops superseded rows ({@link supersededEnrollmentIds}),
+ * which no single row can tell about itself.
+ */
 export function isOverdue(enrollment: DeadlineFields, now: Date): boolean {
   return (
     enrollment.dueAt !== null &&
@@ -332,6 +339,53 @@ export function sliceSnapshot(
   };
 }
 
+// ── Retakes ─────────────────────────────────────────────────────────────────
+
+/**
+ * Enrolments another enrolment names in `retakeOf` — SUPERSEDED (BUG-38).
+ *
+ * `assignRetake` opens a new enrolment and leaves the failed one `locked` for
+ * good, so from then on the retake carries the obligation. A superseded row is
+ * dropped from every obligation, progress and grade figure
+ * ({@link withoutSuperseded}) and kept only by First-Time Pass Rate, which
+ * measures exactly that failed original attempt. A `locked` row with no retake
+ * still counts: that learner is genuinely stuck.
+ *
+ * A retake belongs to the same member and course as its original, so both
+ * always fall in the same scope and the same facility slice. The Status Tracker
+ * applies this rule through {@link retakesOfWhere}; change the two together.
+ */
+export function supersededEnrollmentIds(
+  enrollments: readonly { retakeOf: string | null }[],
+): Set<string> {
+  const superseded = new Set<string>();
+  for (const e of enrollments) {
+    if (e.retakeOf !== null) superseded.add(e.retakeOf);
+  }
+  return superseded;
+}
+
+/**
+ * Mirrors {@link supersededEnrollmentIds} for a query: AND it with the scope's
+ * `enrollmentWhere` to find the in-scope retakes of `ids`. A where-predicate
+ * alone cannot express "is named by another row" — `retakeOf` is a plain column
+ * with no relation — so callers look the retakes up and filter.
+ */
+export function retakesOfWhere(ids: readonly string[]): Prisma.EnrollmentWhereInput {
+  return { retakeOf: { in: [...ids] } };
+}
+
+/** The slice minus superseded enrolments and their attempts — what obligation figures count. */
+export function withoutSuperseded(slice: DashboardSlice): DashboardSlice {
+  const superseded = supersededEnrollmentIds(slice.enrollments);
+  if (superseded.size === 0) return slice;
+  return {
+    ...slice,
+    enrollments: slice.enrollments.filter((e) => !superseded.has(e.id)),
+    attempts: slice.attempts.filter((a) => !superseded.has(a.enrollmentId)),
+  };
+}
+
 // ── Learners & courses ──────────────────────────────────────────────────────
 
 /** Distinct staff with ≥1 unfinished enrolment — Active Learners / Total Assigned Learners. */
@@ -538,19 +592,20 @@ export interface HeadlineFigures {
 
 /** The Global View's headline tiles (Total Facilities is a count of the scope itself). */
 export function computeHeadline(slice: DashboardSlice): HeadlineFigures {
-  const byMember = groupBy(slice.enrollments, (e) => e.organizationUserId);
+  // First-Time Pass Rate is the one figure that keeps superseded enrolments.
   const firstAttempts = firstAttemptOutcomes(slice);
+  const live = withoutSuperseded(slice);
+  const byMember = groupBy(live.enrollments, (e) => e.organizationUserId);
 
   return {
-    totalStaff: slice.members.length,
-    activeLearners: countActiveLearners(slice.enrollments),
-    ongoingCourses: countActiveCourses(slice.enrollments, slice.publishedCourseIds),
+    totalStaff: live.members.length,
+    activeLearners: countActiveLearners(live.enrollments),
+    ongoingCourses: countActiveCourses(live.enrollments, live.publishedCourseIds),
     firstTimePassRate: percentOf(firstAttempts.passed, firstAttempts.total),
-    overdueTrainings: slice.enrollments.filter((e) => isOverdue(e, slice.now)).length,
-    dormantStaff: slice.members.filter((m) =>
-      isDormantMember(m, byMember.get(m.id) ?? [], slice.now),
-    ).length,
-    expiringCredentials: countCredentials(slice).expiring,
+    overdueTrainings: live.enrollments.filter((e) => isOverdue(e, live.now)).length,
+    dormantStaff: live.members.filter((m) => isDormantMember(m, byMember.get(m.id) ?? [], live.now))
+      .length,
+    expiringCredentials: countCredentials(live).expiring,
   };
 }
 
@@ -576,7 +631,8 @@ export interface FacilityViewFigures {
 }
 
 /** The single-facility view: three tiles, the coverage donut and per-course figures. */
-export function computeFacilityView(slice: DashboardSlice): FacilityViewFigures {
+export function computeFacilityView(fullSlice: DashboardSlice): FacilityViewFigures {
+  const slice = withoutSuperseded(fullSlice);
   const grades = enrollmentGrades(slice.attempts);
   const coverage: CoverageCounts = { completed: 0, inProgress: 0, notStarted: 0 };
   const byCourse = new Map<string, CourseFigures & { gradeSum: number }>();
@@ -638,7 +694,8 @@ export interface FacilityRowFigures {
 }
 
 /** One facility's row in the Global View tables, over the same slice as its facility view. */
-export function computeFacilityRow(slice: DashboardSlice): FacilityRowFigures {
+export function computeFacilityRow(fullSlice: DashboardSlice): FacilityRowFigures {
+  const slice = withoutSuperseded(fullSlice);
   const { now, enrollments } = slice;
   const graceCutoff = daysBefore(now, RISK_OVERDUE_GRACE_DAYS).getTime();
 
