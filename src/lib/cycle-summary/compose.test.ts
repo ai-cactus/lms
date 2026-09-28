@@ -638,6 +638,35 @@ describe('runCycleSummary — re-checks the enrolment before a line (BUG-45)', (
   });
 });
 
+describe('runCycleSummary — escalation audience follows the in-app notice (Q-25)', () => {
+  it('resolves a ladder escalation for the Status Tracker audience and ADMIN_REASSIGN for the staff-profile one', async () => {
+    prismaMock.reminderLog.findMany.mockResolvedValue([
+      reminderLogRow({ id: 'log-a', stage: 'HARD_ESCALATION' }),
+    ]);
+    prismaMock.reminderNudge.findMany.mockResolvedValue([
+      {
+        id: 'nudge-a',
+        kind: 'ADMIN_REASSIGN',
+        attemptsRemaining: null,
+        enrollment: enrollmentContext({ enrollmentId: 'locked-1', status: 'locked' }),
+      },
+    ]);
+    prismaMock.organization.findMany.mockResolvedValue([ORG]);
+
+    await runCycleSummary({ now: WEDNESDAY, dryRun: false });
+
+    expect(mockResolveEscalationRecipients).toHaveBeenCalledTimes(2);
+    expect(mockResolveEscalationRecipients).toHaveBeenCalledWith({
+      organizationUserId: 'worker-ou-1',
+      requiredPermission: 'assignment.read',
+    });
+    expect(mockResolveEscalationRecipients).toHaveBeenCalledWith({
+      organizationUserId: 'worker-ou-1',
+      requiredPermission: 'user.read',
+    });
+  });
+});
+
 describe('runCycleSummary — leftover rows with zero resolved recipients', () => {
   it('stamps a reminder row whose only audience is escalation but nobody resolved', async () => {
     mockResolveEscalationRecipients.mockResolvedValue({

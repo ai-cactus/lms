@@ -21,6 +21,7 @@ import {
   type DispatchResult,
   type ReminderEmailSender,
 } from './dispatch';
+import { REASSIGN_ESCALATION_PERMISSION } from '@/lib/notifications/link-audience';
 import { resolveEscalationRecipients, NO_ESCALATION_RECIPIENTS } from './recipients';
 import { findIneligibleEnrollmentIds, findSupersededIds } from './eligibility';
 
@@ -1019,8 +1020,11 @@ async function runTrackB(
           continue;
         }
 
+        // The nudge's notice opens the learner's staff profile, so its email
+        // goes to the same `user.read` audience (Q-25).
         const recipients = await resolveEscalationRecipients({
           organizationUserId: enrollment.organizationUserId,
+          requiredPermission: REASSIGN_ESCALATION_PERMISSION,
         });
         const result = await dispatchNudge({
           kind: 'ADMIN_REASSIGN',

@@ -205,9 +205,11 @@ describe('dispatchLadderStage', () => {
       expect(result).toEqual({ sent: true, reason: 'sent' });
 
       // resolveEscalationRecipients invoked
-      expect(mockResolveEscalationRecipients).toHaveBeenCalledWith(
-        expect.objectContaining({ organizationUserId: 'user-1' }),
-      );
+      // Q-25: the escalation notice opens the Status Tracker.
+      expect(mockResolveEscalationRecipients).toHaveBeenCalledWith({
+        organizationUserId: 'user-1',
+        requiredPermission: 'assignment.read',
+      });
 
       // In-app for escalation admin
       expect(mockCreateNotification).toHaveBeenCalledWith(

@@ -582,9 +582,11 @@ describe('runReminderSweep — Track B (quiz nudges)', () => {
 
     const summary = await runReminderSweep(BASE_OPTS);
 
-    expect(mockResolveEscalationRecipients).toHaveBeenCalledWith(
-      expect.objectContaining({ organizationUserId: 'ou-e1' }),
-    );
+    // Q-25: the nudge's notice opens the staff profile, so user.read it is.
+    expect(mockResolveEscalationRecipients).toHaveBeenCalledWith({
+      organizationUserId: 'ou-e1',
+      requiredPermission: 'user.read',
+    });
     expect(mockDispatchNudge).toHaveBeenCalledWith(
       expect.objectContaining({
         kind: 'ADMIN_REASSIGN',

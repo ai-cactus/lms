@@ -6,6 +6,7 @@ import { createNotification } from '@/lib/notifications/create';
 import { trainingNoticeLink } from '@/lib/notifications/portal-link';
 import { isCycleSummaryEnabled } from '@/lib/cycle-summary/flag';
 import { REMINDER_STAGE_DEFAULTS } from './stages';
+import { LADDER_ESCALATION_PERMISSION } from '@/lib/notifications/link-audience';
 import { resolveEscalationRecipients, type EscalationRecipients } from './recipients';
 import { diffInDaysInTz } from './time';
 
@@ -546,6 +547,7 @@ export async function dispatchLadderStage(input: LadderStageInput): Promise<Disp
     if (audience === 'escalation' || audience === 'worker_and_escalation') {
       const recipients = await resolveEscalationRecipients({
         organizationUserId: enrollment.organizationUserId,
+        requiredPermission: LADDER_ESCALATION_PERMISSION,
       });
       const workerName = worker.name ?? worker.email;
       const copy = escalationStageCopy(

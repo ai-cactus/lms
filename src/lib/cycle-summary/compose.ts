@@ -4,6 +4,10 @@ import type { EnrollmentStatus, ReminderNudgeKind, ReminderStage } from '@/gener
 import { logger, maskEmail } from '@/lib/logger';
 import { REMINDER_STAGE_DEFAULTS } from '@/lib/reminders/stages';
 import { resolveEscalationRecipients } from '@/lib/reminders/recipients';
+import {
+  LADDER_ESCALATION_PERMISSION,
+  REASSIGN_ESCALATION_PERMISSION,
+} from '@/lib/notifications/link-audience';
 import { DEFAULT_TZ, diffInDaysInTz } from '@/lib/reminders/time';
 import {
   findIneligibleEnrollmentIds,
@@ -533,7 +537,10 @@ async function composeOrganization(
       apply(bucket);
     };
 
-    // One escalation resolution per learner, reused across all of their rows.
+    // One escalation resolution per (learner, audience), reused across all of
+    // their rows. The audience follows the row's in-app notice (Q-25): a
+    // ladder escalation opens the Status Tracker, an ADMIN_REASSIGN nudge the
+    // learner's staff profile, and the email must reach the same people.
     const escalationCache = new Map<
       string,
       { organizationUserId: string; email: string; name: string | null }[]
@@ -554,13 +561,19 @@ async function composeOrganization(
       }
 
       if (audience.escalation) {
-        let escalation = escalationCache.get(row.organizationUserId);
+        const requiredPermission =
+          row.itemType === 'reminder_nudge'
+            ? REASSIGN_ESCALATION_PERMISSION
+            : LADDER_ESCALATION_PERMISSION;
+        const cacheKey = `${row.organizationUserId}|${requiredPermission}`;
+        let escalation = escalationCache.get(cacheKey);
         if (!escalation) {
           const resolved = await resolveEscalationRecipients({
             organizationUserId: row.organizationUserId,
+            requiredPermission,
           });
           escalation = resolved.members;
-          escalationCache.set(row.organizationUserId, escalation);
+          escalationCache.set(cacheKey, escalation);
         }
         for (const recipient of escalation) {
           addTo(recipient, (bucket) =>
