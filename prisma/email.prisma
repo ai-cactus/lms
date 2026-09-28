@@ -50,15 +50,24 @@ model EmailMessage {
 /// and `itemId` is that row's id — deliberately unconstrained (the source row
 /// may be purged independently), while the EmailMessage side is a real FK so
 /// retention purging an email takes its item rows with it.
+///
+/// `recipientRole` is the audience a reminder line was written for — `worker`
+/// or `escalation` — and is part of the key (BUG-21): a self-escalating admin's
+/// own overdue course is legitimately ONE row carried TWICE by one email (under
+/// "Your training" and under "Team & compliance"), and a key without the role
+/// collapsed the two, so a retry could only rebuild one. `''` for a
+/// notification event, and for rows recorded before the column existed, whose
+/// role the retry still infers from the recipient's address.
 model CycleSummaryItem {
   id             String       @id @default(uuid())
   emailMessageId String       @map("email_message_id")
   itemType       String       @map("item_type")
   itemId         String       @map("item_id")
+  recipientRole  String       @default("") @map("recipient_role")
   createdAt      DateTime     @default(now()) @map("created_at")
   emailMessage   EmailMessage @relation(fields: [emailMessageId], references: [id], onDelete: Cascade)
 
-  @@unique([emailMessageId, itemType, itemId])
+  @@unique([emailMessageId, itemType, itemId, recipientRole])
   @@index([emailMessageId])
   @@map("cycle_summary_items")
 }

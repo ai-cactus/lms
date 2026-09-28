@@ -353,6 +353,22 @@ describe('runCycleSummary — per-recipient grouping', () => {
       'training_due',
       'team_compliance',
     ]);
+    // Both copies are recorded — one per audience — so a retry can rebuild both
+    // sections rather than collapsing them into one (BUG-21).
+    expect(prismaMock.cycleSummaryItem.createMany.mock.calls[0][0].data).toEqual([
+      {
+        emailMessageId: 'email-1',
+        itemType: 'reminder_log',
+        itemId: 'log-a',
+        recipientRole: 'worker',
+      },
+      {
+        emailMessageId: 'email-1',
+        itemType: 'reminder_log',
+        itemId: 'log-a',
+        recipientRole: 'escalation',
+      },
+    ]);
   });
 
   it('records the email with the summary kind, the org and the recipient name', async () => {
@@ -381,7 +397,14 @@ describe('runCycleSummary — per-recipient grouping', () => {
     await runCycleSummary({ now: WEDNESDAY, dryRun: false });
 
     expect(prismaMock.cycleSummaryItem.createMany).toHaveBeenCalledWith({
-      data: [{ emailMessageId: 'email-1', itemType: 'reminder_log', itemId: 'log-a' }],
+      data: [
+        {
+          emailMessageId: 'email-1',
+          itemType: 'reminder_log',
+          itemId: 'log-a',
+          recipientRole: 'worker',
+        },
+      ],
       skipDuplicates: true,
     });
   });

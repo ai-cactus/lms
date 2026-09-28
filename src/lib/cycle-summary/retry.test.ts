@@ -282,25 +282,27 @@ describe('runCycleSummaryRetry — rebuild and re-send', () => {
   });
 });
 
-describe('runCycleSummaryRetry — recipient who is their own escalation target', () => {
+describe('runCycleSummaryRetry — recipient who is their own escalation target (BUG-21)', () => {
   // A worker_and_escalation row (e.g. GRACE_SOFT_ESCALATION) for a learner whose
   // resolved escalation recipient is themselves (no manager set, falls back to
   // "every admin", and this learner IS an admin) lands in compose.ts's bucket
-  // TWICE — once as the 'worker' copy, once as the 'escalation' copy — which is
-  // what lets the original email show both "Your training" and "Team &
-  // compliance" (see compose.test.ts: "gives a manager who is also a learner ONE
-  // email holding both section families"). But CycleSummaryItem's unique
-  // constraint is (emailMessageId, itemType, itemId) — it has no recipientRole
-  // column — so `skipDuplicates` collapses those two copies into ONE recorded
-  // row. If that email fails and is retried, only one row survives to rebuild
-  // from, and retry derives recipientRole solely from `workerEmail ===
-  // candidate.toEmail`, which is true here (same person) — so it can only ever
-  // reconstruct the 'worker' copy. The 'escalation' copy the original send would
-  // have had is silently missing from the retried email.
-  it('reconstructs only the worker copy, losing the escalation copy the original send had', async () => {
+  // TWICE — once as the 'worker' copy, once as the 'escalation' copy. The item
+  // key carries the role, so both copies are recorded and both come back.
+  it('rebuilds both the worker copy and the escalation copy the original send had', async () => {
     prismaMock.emailMessage.findMany.mockResolvedValue([failedMessage()]); // toEmail: WORKER_EMAIL
     prismaMock.cycleSummaryItem.findMany.mockResolvedValue([
-      { emailMessageId: 'email-1', itemType: 'reminder_log', itemId: 'log-1' },
+      {
+        emailMessageId: 'email-1',
+        itemType: 'reminder_log',
+        itemId: 'log-1',
+        recipientRole: 'worker',
+      },
+      {
+        emailMessageId: 'email-1',
+        itemType: 'reminder_log',
+        itemId: 'log-1',
+        recipientRole: 'escalation',
+      },
     ]);
     prismaMock.reminderLog.findMany.mockResolvedValue([
       { id: 'log-1', stage: 'GRACE_SOFT_ESCALATION', enrollment: enrollmentContext() },
@@ -310,12 +312,28 @@ describe('runCycleSummaryRetry — recipient who is their own escalation target'
     await runCycleSummaryRetry({ now: NOW, dryRun: false, sendEmail });
 
     const [message] = sendEmail.mock.calls[0];
-    const sectionIds = message.sections.map((s: { id: string }) => s.id);
-    // Product bug: this should equal ['training_due', 'team_compliance'] to match
-    // what the original (failed) send attempted, but only 'training_due' is
-    // reconstructable from the single deduplicated CycleSummaryItem row.
-    expect(sectionIds).toEqual(['training_due']);
-    expect(sectionIds).not.toContain('team_compliance');
+    expect(message.sections.map((s: { id: string }) => s.id)).toEqual([
+      'training_due',
+      'team_compliance',
+    ]);
+  });
+
+  it('still infers the role from the address for a row recorded before the column existed', async () => {
+    prismaMock.emailMessage.findMany.mockResolvedValue([
+      failedMessage({ toEmail: MANAGER_EMAIL, toName: 'Morgan Manager' }),
+    ]);
+    prismaMock.cycleSummaryItem.findMany.mockResolvedValue([
+      { emailMessageId: 'email-1', itemType: 'reminder_log', itemId: 'log-1', recipientRole: '' },
+    ]);
+    prismaMock.reminderLog.findMany.mockResolvedValue([
+      { id: 'log-1', stage: 'GRACE_SOFT_ESCALATION', enrollment: enrollmentContext() },
+    ]);
+    const sendEmail = vi.fn().mockResolvedValue({ ok: true });
+
+    await runCycleSummaryRetry({ now: NOW, dryRun: false, sendEmail });
+
+    const [message] = sendEmail.mock.calls[0];
+    expect(message.sections.map((s: { id: string }) => s.id)).toEqual(['team_compliance']);
   });
 });
 

@@ -724,11 +724,15 @@ async function deliverBucket(params: {
       select: { id: true },
     });
 
+    // The role is part of the key: a learner who is also their own escalation
+    // target holds two copies of one row, and the retry must rebuild both
+    // (BUG-21). skipDuplicates still absorbs a retried transaction's re-insert.
     const items = [
       ...bucket.reminders.map((item) => ({
         emailMessageId: record.id,
         itemType: item.itemType,
         itemId: item.id,
+        recipientRole: item.recipientRole,
       })),
       ...bucket.events.map((event) => ({
         emailMessageId: record.id,
@@ -737,8 +741,6 @@ async function deliverBucket(params: {
       })),
     ];
     if (items.length > 0) {
-      // A learner who is also their own escalation target legitimately holds two
-      // copies of one row; skipDuplicates absorbs that and any retry re-insert.
       await tx.cycleSummaryItem.createMany({ data: items, skipDuplicates: true });
     }
 

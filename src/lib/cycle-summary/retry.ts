@@ -89,6 +89,14 @@ export interface CycleSummaryRetrySummary {
   errors: number;
 }
 
+/** One line a failed email was supposed to carry, as `CycleSummaryItem` recorded it. */
+interface RecordedItem {
+  itemType: string;
+  itemId: string;
+  /** `worker` | `escalation` for a reminder line; `''` for an event or a pre-BUG-21 row. */
+  recipientRole: string;
+}
+
 /** One recipient's failed email, with the rows it was supposed to carry. */
 interface RetryCandidate {
   id: string;
@@ -96,7 +104,7 @@ interface RetryCandidate {
   toName: string | null;
   organizationId: string | null;
   createdAt: Date;
-  items: { itemType: string; itemId: string }[];
+  items: RecordedItem[];
 }
 
 export async function runCycleSummaryRetry(
@@ -154,14 +162,14 @@ export async function runCycleSummaryRetry(
   const messageIds = retryable.map((m) => m.id);
   const itemRows = await prisma.cycleSummaryItem.findMany({
     where: { emailMessageId: { in: messageIds } },
-    select: { emailMessageId: true, itemType: true, itemId: true },
+    select: { emailMessageId: true, itemType: true, itemId: true, recipientRole: true },
   });
 
-  const itemsByMessage = new Map<string, { itemType: string; itemId: string }[]>();
-  for (const row of itemRows) {
-    const bucket = itemsByMessage.get(row.emailMessageId);
-    if (bucket) bucket.push({ itemType: row.itemType, itemId: row.itemId });
-    else itemsByMessage.set(row.emailMessageId, [{ itemType: row.itemType, itemId: row.itemId }]);
+  const itemsByMessage = new Map<string, RecordedItem[]>();
+  for (const { emailMessageId, ...item } of itemRows) {
+    const bucket = itemsByMessage.get(emailMessageId);
+    if (bucket) bucket.push(item);
+    else itemsByMessage.set(emailMessageId, [item]);
   }
 
   const candidates: RetryCandidate[] = retryable.map((message) => ({
@@ -325,13 +333,7 @@ async function retryOne(params: {
       continue;
     }
 
-    // The item rows record WHAT the email carried, not which audience each line
-    // was written for. The learner's own address is the discriminator, exactly
-    // as the per-stage retry derived it: anyone else holding this row is an
-    // escalation recipient.
-    const recipientRole =
-      row.workerEmail === candidate.toEmail ? ('worker' as const) : ('escalation' as const);
-    reminders.push(toSummaryItem(row, recipientRole, now));
+    reminders.push(toSummaryItem(row, recordedRecipientRole(item, row, candidate), now));
   }
 
   summary.itemsUnavailable += unavailable;
@@ -425,6 +427,24 @@ async function retryOne(params: {
     to: maskEmail(candidate.toEmail),
     err: delivery.error,
   });
+}
+
+/**
+ * The audience a reminder line was written for. Recorded on the item since
+ * BUG-21, which is what lets a self-escalating admin's retry carry both copies
+ * of their own row. A row recorded before that has no role, so the learner's own
+ * address is the discriminator, exactly as the per-stage retry derived it:
+ * anyone else holding the row is an escalation recipient.
+ */
+function recordedRecipientRole(
+  item: RecordedItem,
+  row: ReminderSourceRow,
+  candidate: RetryCandidate,
+): 'worker' | 'escalation' {
+  if (item.recipientRole === 'worker' || item.recipientRole === 'escalation') {
+    return item.recipientRole;
+  }
+  return row.workerEmail === candidate.toEmail ? 'worker' : 'escalation';
 }
 
 /** Trim an unknown transport error down to a persistable message string. */
