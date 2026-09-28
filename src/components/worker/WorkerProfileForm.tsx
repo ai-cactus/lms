@@ -157,7 +157,9 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
       const result = await updateProfile('worker', {
         first_name: formData.first_name,
         last_name: formData.last_name,
-        avatarUrl: avatarUrl || undefined,
+        // Only a changed photo is sent, and a removed one as an explicit null —
+        // `undefined` means "leave unchanged", so it can never express a clear.
+        avatarUrl: avatarUrl !== baseAvatarUrl ? avatarUrl : undefined,
       });
 
       if (result.success) {

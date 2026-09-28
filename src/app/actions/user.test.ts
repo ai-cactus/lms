@@ -548,3 +548,69 @@ describe('BUG-05 — realm selection for self-service writes', () => {
     expect(prismaMock.organizationUser.findMany).not.toHaveBeenCalled();
   });
 });
+
+// ---------------------------------------------------------------------------
+// RISK-02 — clearing a profile photo. `undefined` means "leave unchanged", so
+// an intentional clear must arrive as null and be written as null. A new photo
+// must be one `uploadAvatar` produced for THIS user: the profile pages sign the
+// stored value by key, so any other URI would be read back as a signed URL.
+// ---------------------------------------------------------------------------
+
+describe('updateProfile — avatarUrl', () => {
+  const OWN_AVATAR = 'gcs://bucket/avatars/user-1/1700000000000-me.png';
+
+  function writtenAvatar() {
+    return prismaMock.user.update.mock.calls[0][0].data.avatarUrl;
+  }
+
+  it.each([
+    ['null', null],
+    ['an empty string', ''],
+    ['whitespace', '   '],
+  ])('clears the stored photo when sent %s', async (_label, avatarUrl) => {
+    const result = await updateProfile('admin', baseData({ avatarUrl }));
+
+    expect(result).toEqual({ success: true });
+    expect(prismaMock.user.update.mock.calls[0][0].data).toHaveProperty('avatarUrl', null);
+  });
+
+  it('leaves the stored photo untouched when avatarUrl is omitted', async () => {
+    await updateProfile('admin', baseData());
+
+    expect(writtenAvatar()).toBeUndefined();
+  });
+
+  it.each([OWN_AVATAR, 'minio://lms-documents/avatars/user-1/123-me.png'])(
+    'stores a photo from the caller’s own avatar uploads: %s',
+    async (avatarUrl) => {
+      const result = await updateProfile('admin', baseData({ avatarUrl }));
+
+      expect(result).toEqual({ success: true });
+      expect(writtenAvatar()).toBe(avatarUrl);
+    },
+  );
+
+  it.each([
+    ["another user's avatar", 'gcs://bucket/avatars/user-2/1-them.png'],
+    ['a prefix collision on the user id', 'gcs://bucket/avatars/user-10/1-them.png'],
+    ["another tenant's document", 'gcs://bucket/documents/org-b/secret.pdf'],
+    ['a traversal out of the avatar folder', 'gcs://bucket/avatars/user-1/../../documents/x.pdf'],
+    ['an external URL', 'https://evil.example/pixel.png'],
+    ['a legacy local path', '/uploads/avatars/user-1/me.png'],
+  ])('refuses %s and writes nothing', async (_label, avatarUrl) => {
+    const result = await updateProfile('admin', baseData({ avatarUrl }));
+
+    expect(result).toEqual({
+      success: false,
+      error: 'Invalid profile photo. Please upload it again.',
+    });
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
+  });
+
+  it('refuses a non-string avatarUrl (Server Action arguments are unchecked)', async () => {
+    const result = await updateProfile('admin', baseData({ avatarUrl: 42 as unknown as string }));
+
+    expect(result.success).toBe(false);
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
+  });
+});

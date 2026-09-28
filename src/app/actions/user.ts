@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache';
 
 import { logger, maskEmail } from '@/lib/logger';
 import { getRealmSession, isPortalRealm, type PortalRealm } from '@/lib/auth/portal-sessions';
+import { parseStorageUri } from '@/lib/storage/types';
 import { can } from '@/lib/rbac/permissions';
 import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
 import {
@@ -211,13 +212,29 @@ export async function searchStaffUsers(query: string) {
 
 // --- Onboarding / Profile Management ---
 
+/**
+ * True only for an object `uploadAvatar` could have produced for this user.
+ * The profile pages hand the stored value to `getSignedUrl`, which signs by key
+ * alone, so accepting any URI here would let a caller point their avatar at
+ * another tenant's document and read it back through a signed URL.
+ */
+function isOwnAvatarUri(uri: string, userId: string): boolean {
+  try {
+    const { key } = parseStorageUri(uri);
+    return key.startsWith(`avatars/${userId}/`) && !key.split('/').includes('..');
+  } catch {
+    return false;
+  }
+}
+
 export async function updateProfile(
   realm: PortalRealm,
   data: {
     first_name: string;
     last_name: string;
     company_name?: string;
-    avatarUrl?: string;
+    /** `undefined` leaves the photo unchanged; `null` (or blank) clears it. */
+    avatarUrl?: string | null;
   },
 ) {
   const session = await sessionForRealm(realm);
@@ -248,6 +265,28 @@ export async function updateProfile(
       return { success: false, error: 'User ID missing' };
     }
 
+    const requestedAvatar: unknown = data.avatarUrl;
+    let avatarUrl: string | null | undefined;
+    if (requestedAvatar === undefined) {
+      avatarUrl = undefined;
+    } else if (
+      requestedAvatar === null ||
+      (typeof requestedAvatar === 'string' && requestedAvatar.trim() === '')
+    ) {
+      avatarUrl = null;
+    } else if (
+      typeof requestedAvatar === 'string' &&
+      isOwnAvatarUri(requestedAvatar, session.user.id)
+    ) {
+      avatarUrl = requestedAvatar;
+    } else {
+      logger.warn({
+        msg: '[user] updateProfile: refused an avatar outside the caller’s own uploads',
+        userId: session.user.id,
+      });
+      return { success: false, error: 'Invalid profile photo. Please upload it again.' };
+    }
+
     logger.info({ msg: '[user] Updating profile', userId: session.user.id });
     // firstName/lastName/fullName/avatarUrl now live directly on the identity;
     // companyName has no home anymore (organization name lives on Organization).
@@ -257,7 +296,7 @@ export async function updateProfile(
         firstName,
         lastName,
         fullName,
-        avatarUrl: data.avatarUrl,
+        avatarUrl,
       },
     });
 
