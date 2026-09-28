@@ -22,6 +22,9 @@
  *   - locked + a retake exists → skipped
  *   - Per-enrollment error isolation
  *
+ * Email retry pre-pass (BUG-45 / BUG-31): a failed email about a finished,
+ * superseded or archived enrolment is cancelled, never re-sent.
+ *
  * resolveOnCompletion:
  *   - Calls notification.updateMany with correct type filter and metadata path
  *   - Never throws
@@ -58,7 +61,7 @@ const {
     reminderLog: { findMany: vi.fn(), create: vi.fn() },
     quizAttempt: { findMany: vi.fn() },
     notification: { updateMany: vi.fn() },
-    emailMessage: { findMany: vi.fn() },
+    emailMessage: { findMany: vi.fn(), update: vi.fn() },
     courseAssignment: { findMany: vi.fn() },
     organizationUser: { findMany: vi.fn() },
     organizationUserFacility: { findMany: vi.fn() },
@@ -847,8 +850,11 @@ describe('runReminderSweep — email retry pre-pass', () => {
       stage: 'FRIENDLY_REMINDER',
       targetDate: new Date('2024-06-15T04:00:00Z'),
       enrollment: {
+        id: 'enrollment-e1',
+        organizationUserId: 'ou-e1',
+        status: 'in_progress',
         dueAt: DUE_AT_FIRES_TODAY,
-        course: { title: 'Course e1' },
+        course: { title: 'Course e1', archivedAt: null as Date | null },
         organizationUser: {
           user: { email: 'worker-e1@test.com', fullName: 'Worker e1' },
           facilities: [{ facility: { timezone: null } }],
@@ -901,6 +907,84 @@ describe('runReminderSweep — email retry pre-pass', () => {
 
     expect(mockRetryReminderEmail).not.toHaveBeenCalled();
     expect(summary.retriesSent).toBe(0);
+  });
+
+  describe('re-checks the enrolment before re-sending (BUG-45 / BUG-31)', () => {
+    function logFor(enrollment: Record<string, unknown>) {
+      const log = makeReminderLog();
+      return { ...log, enrollment: { ...log.enrollment, ...enrollment } };
+    }
+
+    it.each([
+      ['completed', { status: 'completed' }],
+      ['attested', { status: 'attested' }],
+      [
+        'on an archived course',
+        { course: { title: 'Course e1', archivedAt: new Date('2024-06-10T00:00:00Z') } },
+      ],
+    ])('cancels instead of re-sending when the enrolment is %s', async (_label, state) => {
+      prismaMock.emailMessage.findMany.mockResolvedValue([makeFailedEmail()]);
+      prismaMock.reminderLog.findMany.mockResolvedValue([logFor(state)]);
+
+      const summary = await runReminderSweep(BASE_OPTS);
+
+      expect(mockRetryReminderEmail).not.toHaveBeenCalled();
+      expect(prismaMock.emailMessage.update).toHaveBeenCalledWith({
+        where: { id: 'email-1' },
+        data: { status: 'cancelled' },
+      });
+      expect(summary.retriesSent).toBe(0);
+    });
+
+    it('cancels instead of re-sending when a retake has superseded the enrolment', async () => {
+      prismaMock.emailMessage.findMany.mockResolvedValue([makeFailedEmail()]);
+      prismaMock.reminderLog.findMany.mockResolvedValue([logFor({ status: 'locked' })]);
+      prismaMock.enrollment.findMany.mockImplementation(async (args: { where?: object }) =>
+        args.where && 'retakeOf' in args.where ? [{ retakeOf: 'enrollment-e1' }] : [],
+      );
+
+      await runReminderSweep(BASE_OPTS);
+
+      expect(mockRetryReminderEmail).not.toHaveBeenCalled();
+      expect(prismaMock.emailMessage.update).toHaveBeenCalledWith({
+        where: { id: 'email-1' },
+        data: { status: 'cancelled' },
+      });
+    });
+
+    it('looks the retakes up once for the whole backlog, pinned to its members', async () => {
+      prismaMock.emailMessage.findMany.mockResolvedValue([
+        makeFailedEmail(),
+        makeFailedEmail({ id: 'email-2', reminderLogId: 'log-2' }),
+      ]);
+      prismaMock.reminderLog.findMany.mockResolvedValue([
+        makeReminderLog(),
+        { ...makeReminderLog('log-2'), enrollment: { ...makeReminderLog().enrollment, id: 'e2' } },
+      ]);
+
+      await runReminderSweep(BASE_OPTS);
+
+      const retakeLookups = prismaMock.enrollment.findMany.mock.calls.filter(
+        ([args]) => 'retakeOf' in (args?.where ?? {}),
+      );
+      expect(retakeLookups).toHaveLength(1);
+      expect(retakeLookups[0][0].where).toEqual({
+        retakeOf: { in: ['enrollment-e1', 'e2'] },
+        organizationUserId: { in: ['ou-e1'] },
+      });
+      expect(mockRetryReminderEmail).toHaveBeenCalledTimes(2);
+    });
+
+    it('still re-sends for an enrolment that is still owed', async () => {
+      prismaMock.emailMessage.findMany.mockResolvedValue([makeFailedEmail()]);
+      prismaMock.reminderLog.findMany.mockResolvedValue([makeReminderLog()]);
+
+      const summary = await runReminderSweep(BASE_OPTS);
+
+      expect(mockRetryReminderEmail).toHaveBeenCalledTimes(1);
+      expect(prismaMock.emailMessage.update).not.toHaveBeenCalled();
+      expect(summary.retriesSent).toBe(1);
+    });
   });
 
   it('does not run the retry pre-pass in dry-run mode', async () => {

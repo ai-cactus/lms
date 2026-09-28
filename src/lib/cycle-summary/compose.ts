@@ -1,10 +1,14 @@
 import prisma from '@/lib/prisma';
 import { Prisma } from '@/generated/prisma/client';
-import type { ReminderNudgeKind, ReminderStage } from '@/generated/prisma/enums';
+import type { EnrollmentStatus, ReminderNudgeKind, ReminderStage } from '@/generated/prisma/enums';
 import { logger, maskEmail } from '@/lib/logger';
 import { REMINDER_STAGE_DEFAULTS } from '@/lib/reminders/stages';
 import { resolveEscalationRecipients } from '@/lib/reminders/recipients';
 import { DEFAULT_TZ, diffInDaysInTz } from '@/lib/reminders/time';
+import {
+  findIneligibleEnrollmentIds,
+  type ReminderEnrollmentState,
+} from '@/lib/reminders/eligibility';
 import { resolveRoleRecipients } from '@/lib/notifications/recipients';
 import {
   buildSections,
@@ -96,6 +100,11 @@ export interface CycleSummaryRunSummary {
   emailsSent: number;
   /** Reminder rows stamped `summarizedAt` by this run. */
   remindersSummarized: number;
+  /**
+   * Reminder rows retired without a line because their enrolment was finished,
+   * superseded or archived by the time the summary ran (BUG-45).
+   */
+  remindersDropped: number;
   /** Notification events flipped to `dispatched` by this run. */
   eventsDispatched: number;
   /** Organizations skipped — already summarized this period. */
@@ -133,6 +142,8 @@ export interface ReminderSourceRow {
   timezone: string;
   /** Pinned on the nudge row at claim time — `WORKER_RETAKE` only. */
   attemptsRemaining?: number;
+  /** The enrolment as it stands now — re-checked before the row becomes a line. */
+  enrollment: ReminderEnrollmentState;
 }
 
 /** One recipient's slice of an organization's summary. */
@@ -150,9 +161,11 @@ interface RecipientBucket {
  * shape the original compose used.
  */
 export const ENROLLMENT_CONTEXT_SELECT = {
+  id: true,
+  status: true,
   dueAt: true,
   organizationUserId: true,
-  course: { select: { title: true } },
+  course: { select: { title: true, archivedAt: true } },
   organizationUser: {
     select: {
       organizationId: true,
@@ -167,9 +180,11 @@ export const ENROLLMENT_CONTEXT_SELECT = {
 } as const;
 
 export type EnrollmentContext = {
+  id: string;
+  status: EnrollmentStatus;
   dueAt: Date | null;
   organizationUserId: string;
-  course: { title: string };
+  course: { title: string; archivedAt: Date | null };
   organizationUser: {
     organizationId: string;
     user: { email: string; fullName: string | null };
@@ -196,7 +211,32 @@ export function toSourceRow(
     courseTitle: enrollment.course.title,
     dueAt: enrollment.dueAt,
     timezone: membership.facilities[0]?.facility.timezone ?? DEFAULT_TZ,
+    enrollment: {
+      id: enrollment.id,
+      organizationUserId: enrollment.organizationUserId,
+      status: enrollment.status,
+      courseArchivedAt: enrollment.course.archivedAt,
+    },
   };
+}
+
+/**
+ * Split gathered rows into those that may still become a summary line and those
+ * that may not (BUG-45): a row claimed just before its enrolment was finished,
+ * superseded by a retake, or archived would otherwise chase training that is no
+ * longer owed. One batched lookup for the whole set. Exported for the retry
+ * pass, which re-checks the same rule before re-sending a failed summary.
+ */
+export async function partitionByEnrollmentEligibility(
+  rows: readonly ReminderSourceRow[],
+): Promise<{ eligible: ReminderSourceRow[]; ineligible: ReminderSourceRow[] }> {
+  const ineligibleIds = await findIneligibleEnrollmentIds(rows.map((row) => row.enrollment));
+  const eligible: ReminderSourceRow[] = [];
+  const ineligible: ReminderSourceRow[] = [];
+  for (const row of rows) {
+    (ineligibleIds.has(row.enrollment.id) ? ineligible : eligible).push(row);
+  }
+  return { eligible, ineligible };
 }
 
 /**
@@ -295,6 +335,7 @@ export async function runCycleSummary(opts: CycleSummaryOptions): Promise<CycleS
     summariesSent: 0,
     emailsSent: 0,
     remindersSummarized: 0,
+    remindersDropped: 0,
     eventsDispatched: 0,
     skipped: 0,
     wouldSend: 0,
@@ -315,8 +356,11 @@ export async function runCycleSummary(opts: CycleSummaryOptions): Promise<CycleS
     gatherReminderRows(),
   ]);
 
+  const { eligible, ineligible } = await partitionByEnrollmentEligibility(reminderRows);
+  if (ineligible.length > 0) await retireIneligibleRows(ineligible, now, dryRun, summary);
+
   const remindersByOrg = new Map<string, ReminderSourceRow[]>();
-  for (const row of reminderRows) {
+  for (const row of eligible) {
     const bucket = remindersByOrg.get(row.organizationId);
     if (bucket) bucket.push(row);
     else remindersByOrg.set(row.organizationId, [row]);
@@ -357,6 +401,42 @@ export async function runCycleSummary(opts: CycleSummaryOptions): Promise<CycleS
 
   logger.info({ msg: '[cycle-summary] Run complete', dryRun, ...summary });
   return summary;
+}
+
+/**
+ * Stamp rows that will never become a line, so the `summarizedAt IS NULL` queue
+ * stops re-gathering them. The stamp means "not eligible for a summary", which
+ * is exactly what these rows now are — the same meaning every other writer of
+ * the column gives it. Skipped under dry-run like every other write.
+ */
+async function retireIneligibleRows(
+  rows: readonly ReminderSourceRow[],
+  now: Date,
+  dryRun: boolean,
+  summary: CycleSummaryRunSummary,
+): Promise<void> {
+  summary.remindersDropped += rows.length;
+  logger.info({
+    msg: '[cycle-summary] Dropped reminders whose enrolment is finished, superseded or archived',
+    count: rows.length,
+    dryRun,
+  });
+  if (dryRun) return;
+
+  const logIds = rows.filter((r) => r.itemType === 'reminder_log').map((r) => r.id);
+  const nudgeIds = rows.filter((r) => r.itemType === 'reminder_nudge').map((r) => r.id);
+  if (logIds.length > 0) {
+    await prisma.reminderLog.updateMany({
+      where: { id: { in: logIds }, summarizedAt: null },
+      data: { summarizedAt: now },
+    });
+  }
+  if (nudgeIds.length > 0) {
+    await prisma.reminderNudge.updateMany({
+      where: { id: { in: nudgeIds }, summarizedAt: null },
+      data: { summarizedAt: now },
+    });
+  }
 }
 
 async function composeOrganization(

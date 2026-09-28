@@ -7,6 +7,10 @@
 /// reminder and tenancy data it describes, and the delivery trail survives
 /// deletion of the rows it points at.
 ///
+/// `status` is `queued` → `sent` | `failed`; a `failed` row the retry pass will
+/// not re-send because its enrolment was since finished, superseded or archived
+/// is retired as `cancelled` (BUG-45).
+///
 /// `reminderLogId` stays null for the `cycle_summary` kind: a summary email
 /// covers many reminder rows at once, so the single-ReminderLog pointer cannot
 /// express its contents. The rows it captured are enumerated by

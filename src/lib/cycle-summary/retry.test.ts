@@ -16,6 +16,7 @@ const { prismaMock } = vi.hoisted(() => ({
     cycleSummaryItem: { findMany: vi.fn() },
     reminderLog: { findMany: vi.fn() },
     reminderNudge: { findMany: vi.fn() },
+    enrollment: { findMany: vi.fn() },
     notificationEvent: { findMany: vi.fn() },
     organization: { findMany: vi.fn() },
     facility: { findMany: vi.fn() },
@@ -52,11 +53,24 @@ function failedMessage(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function enrollmentContext(overrides: { dueAt?: Date | null; title?: string } = {}) {
+function enrollmentContext(
+  overrides: {
+    dueAt?: Date | null;
+    title?: string;
+    id?: string;
+    status?: 'in_progress' | 'locked' | 'completed' | 'attested';
+    archivedAt?: Date | null;
+  } = {},
+) {
   return {
+    id: overrides.id ?? 'enrollment-1',
+    status: overrides.status ?? 'in_progress',
     dueAt: overrides.dueAt === undefined ? new Date('2026-09-20T00:00:00.000Z') : overrides.dueAt,
     organizationUserId: 'worker-ou-1',
-    course: { title: overrides.title ?? 'Bloodborne Pathogens' },
+    course: {
+      title: overrides.title ?? 'Bloodborne Pathogens',
+      archivedAt: overrides.archivedAt ?? null,
+    },
     organizationUser: {
       organizationId: 'org-1',
       user: { email: WORKER_EMAIL, fullName: 'Dana Learner' },
@@ -72,6 +86,7 @@ beforeEach(() => {
   prismaMock.cycleSummaryItem.findMany.mockResolvedValue([]);
   prismaMock.reminderLog.findMany.mockResolvedValue([]);
   prismaMock.reminderNudge.findMany.mockResolvedValue([]);
+  prismaMock.enrollment.findMany.mockResolvedValue([]); // superseded lookup: no retakes
   prismaMock.notificationEvent.findMany.mockResolvedValue([]);
   prismaMock.organization.findMany.mockResolvedValue([{ id: 'org-1', name: 'Acme Care' }]);
   prismaMock.facility.findMany.mockResolvedValue([]);
@@ -112,6 +127,76 @@ describe('runCycleSummaryRetry — candidate selection', () => {
     expect(summary).toMatchObject({ candidates: 0, exhausted: 1, resent: 0 });
     expect(sendEmail).not.toHaveBeenCalled();
     expect(prismaMock.emailMessage.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('runCycleSummaryRetry — re-checks the enrolment before re-sending (BUG-45)', () => {
+  beforeEach(() => {
+    prismaMock.emailMessage.findMany.mockResolvedValue([failedMessage()]);
+  });
+
+  it('cancels an email whose only line is about a finished enrolment, sending nothing', async () => {
+    prismaMock.cycleSummaryItem.findMany.mockResolvedValue([
+      { emailMessageId: 'email-1', itemType: 'reminder_log', itemId: 'log-1' },
+    ]);
+    prismaMock.reminderLog.findMany.mockResolvedValue([
+      {
+        id: 'log-1',
+        stage: 'GRACE_SOFT_ESCALATION',
+        enrollment: enrollmentContext({ status: 'attested' }),
+      },
+    ]);
+    const sendEmail = vi.fn().mockResolvedValue({ ok: true });
+
+    const summary = await runCycleSummaryRetry({ now: NOW, dryRun: false, sendEmail });
+
+    expect(sendEmail).not.toHaveBeenCalled();
+    expect(prismaMock.emailMessage.update).toHaveBeenCalledWith({
+      where: { id: 'email-1' },
+      data: { status: 'cancelled' },
+    });
+    expect(summary).toMatchObject({ cancelled: 1, itemsDropped: 1, unreconstructable: 0 });
+  });
+
+  it('drops a superseded line and still re-sends the owed one', async () => {
+    prismaMock.cycleSummaryItem.findMany.mockResolvedValue([
+      { emailMessageId: 'email-1', itemType: 'reminder_log', itemId: 'log-locked' },
+      { emailMessageId: 'email-1', itemType: 'reminder_log', itemId: 'log-owed' },
+    ]);
+    prismaMock.reminderLog.findMany.mockResolvedValue([
+      {
+        id: 'log-locked',
+        stage: 'HARD_ESCALATION',
+        enrollment: enrollmentContext({ id: 'locked-1', status: 'locked', title: 'Old' }),
+      },
+      { id: 'log-owed', stage: 'GRACE_SOFT_ESCALATION', enrollment: enrollmentContext() },
+    ]);
+    prismaMock.enrollment.findMany.mockResolvedValue([{ retakeOf: 'locked-1' }]);
+    const sendEmail = vi.fn().mockResolvedValue({ ok: true });
+
+    const summary = await runCycleSummaryRetry({ now: NOW, dryRun: false, sendEmail });
+
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(sendEmail.mock.calls[0][0].sections)).not.toContain('"Old"');
+    expect(summary).toMatchObject({ resent: 1, itemsDropped: 1, cancelled: 0 });
+  });
+
+  it('writes nothing under dryRun', async () => {
+    prismaMock.cycleSummaryItem.findMany.mockResolvedValue([
+      { emailMessageId: 'email-1', itemType: 'reminder_log', itemId: 'log-1' },
+    ]);
+    prismaMock.reminderLog.findMany.mockResolvedValue([
+      {
+        id: 'log-1',
+        stage: 'GRACE_SOFT_ESCALATION',
+        enrollment: enrollmentContext({ archivedAt: new Date('2026-09-22T00:00:00.000Z') }),
+      },
+    ]);
+
+    const summary = await runCycleSummaryRetry({ now: NOW, dryRun: true });
+
+    expect(prismaMock.emailMessage.update).not.toHaveBeenCalled();
+    expect(summary.cancelled).toBe(1);
   });
 });
 

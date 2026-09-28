@@ -7,7 +7,6 @@ import { createEnrollmentForUser, type CreateEnrollmentContext } from '@/lib/enr
 import { assignmentAdmitsHolder } from '@/lib/enrollment/assignment-facility-scope';
 import { resolveMemberFacilityIds } from '@/lib/facility/member-facility';
 import { isCycleSummaryEnabled } from '@/lib/cycle-summary/flag';
-import { retakesOfWhere, supersededEnrollmentIds } from '@/lib/dashboard/definitions';
 import type { UserRole } from '@/generated/prisma/enums';
 import { SWEEP_LADDER_STAGES, REMINDER_STAGE_DEFAULTS } from './stages';
 import { DEFAULT_TZ, startOfDayInTz, addDays, diffInDaysInTz } from './time';
@@ -22,6 +21,7 @@ import {
   type ReminderEmailSender,
 } from './dispatch';
 import { resolveEscalationRecipients, NO_ESCALATION_RECIPIENTS } from './recipients';
+import { findIneligibleEnrollmentIds, findSupersededIds } from './eligibility';
 
 /**
  * Reminder sweep — pure, unit-testable orchestration (mirrors `runVideoSweep`).
@@ -159,6 +159,11 @@ export async function runReminderSweep(opts: ReminderSweepOptions): Promise<Remi
  * the two retry passes off each other's rows, and the unchanged attempt cap and
  * backoff floor bound the drain: every candidate ends `sent` or exhausted, after
  * which this costs one indexed query per sweep that returns nothing.
+ *
+ * Re-checks the enrolment before re-sending (BUG-45 / BUG-31): an email about
+ * training that has since been finished, superseded by a retake, or archived is
+ * not re-sent but stamped `cancelled`, which takes it out of this query for
+ * good. One batched lookup covers the whole backlog.
  */
 async function runRetryPrePass(
   opts: ReminderSweepOptions,
@@ -198,8 +203,11 @@ async function runRetryPrePass(
       targetDate: true,
       enrollment: {
         select: {
+          id: true,
+          organizationUserId: true,
+          status: true,
           dueAt: true,
-          course: { select: { title: true } },
+          course: { select: { title: true, archivedAt: true } },
           organizationUser: {
             select: {
               user: { select: { email: true, fullName: true } },
@@ -215,6 +223,14 @@ async function runRetryPrePass(
     },
   });
   const logById = new Map(logs.map((l) => [l.id, l]));
+  const ineligible = await findIneligibleEnrollmentIds(
+    logs.map((l) => ({
+      id: l.enrollment.id,
+      organizationUserId: l.enrollment.organizationUserId,
+      status: l.enrollment.status,
+      courseArchivedAt: l.enrollment.course.archivedAt,
+    })),
+  );
 
   for (const message of retryable) {
     try {
@@ -222,6 +238,11 @@ async function runRetryPrePass(
       if (!log) {
         // The linked ReminderLog is gone (e.g. enrollment deleted) — nothing to
         // reconstruct from; leave the row as-is rather than guess.
+        summary.skipped += 1;
+        continue;
+      }
+      if (ineligible.has(log.enrollment.id)) {
+        await cancelStaleReminderEmail(message.id, log.enrollment.id);
         summary.skipped += 1;
         continue;
       }
@@ -247,6 +268,24 @@ async function runRetryPrePass(
       logger.error({ msg: '[reminders] Email retry failed', emailMessageId: message.id, err });
     }
   }
+}
+
+/**
+ * Retire a failed reminder email whose enrolment no longer warrants it. Stamped
+ * `cancelled` rather than left `failed`: the retry query selects `failed`, so
+ * this is what stops it being re-examined every sweep. `lastError` is left as
+ * the original delivery failure — the trail should still say why it never went.
+ */
+async function cancelStaleReminderEmail(emailMessageId: string, enrollmentId: string) {
+  await prisma.emailMessage.update({
+    where: { id: emailMessageId },
+    data: { status: 'cancelled' },
+  });
+  logger.info({
+    msg: '[reminders] Failed reminder email cancelled — enrolment finished, superseded or archived',
+    emailMessageId,
+    enrollmentId,
+  });
 }
 
 /**
@@ -657,32 +696,6 @@ async function runRenewalRetriggerPrePass(
     summary.errors += 1;
     logger.error({ msg: '[reminders] Renewal re-trigger pre-pass failed', err });
   }
-}
-
-/**
- * The ids in `rows` that a retake has superseded (BUG-44). From the moment an
- * admin assigns a retake, the retake carries the obligation, so neither track
- * may remind about or escalate the original — the rule the dashboards and the
- * Status Tracker already apply (BUG-38). ANY retake counts, finished or not:
- * once the learner has passed it, escalating the locked original would chase an
- * obligation that is already met.
- *
- * One query for the whole batch. Pinned to the batch's own members because a
- * retake always belongs to the member who held the original, which also keeps
- * the lookup inside each row's tenant.
- */
-async function findSupersededIds(
-  rows: readonly { id: string; organizationUserId: string }[],
-): Promise<Set<string>> {
-  if (rows.length === 0) return new Set();
-  const retakes = await prisma.enrollment.findMany({
-    where: {
-      ...retakesOfWhere(rows.map((r) => r.id)),
-      organizationUserId: { in: [...new Set(rows.map((r) => r.organizationUserId))] },
-    },
-    select: { retakeOf: true },
-  });
-  return supersededEnrollmentIds(retakes);
 }
 
 async function runTrackA(
