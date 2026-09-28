@@ -122,3 +122,4 @@
 - [origin/dev moves under a worktree](gotcha_worktree_bash_guard_and_shared_refs.md): refs are shared; never revert a file from origin/dev
 - [User delete = asset custody transfer](gotcha_user_delete_asset_custody.md): courses/documents are REASSIGNED, never deleted
 - [Scratchpad shared across agents](gotcha_scratchpad_shared_across_agents.md): parallel worktree agents share one scratchpad; use a unique log subdir
+- [minio audit overrides break it](gotcha_minio_transitive_audit_overrides_break_it.md): stream-json/decode-uri-component fixes are ESM-only; unreachable paths
