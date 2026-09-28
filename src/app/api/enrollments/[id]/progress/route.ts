@@ -5,6 +5,7 @@ import { auth as workerAuth } from '@/auth.worker';
 import { z } from 'zod';
 import { logger } from '@/lib/logger';
 import { touchEnrollmentActivity } from '@/lib/enrollment/activity';
+import { statusAfterProgress } from '@/lib/enrollment/status-guards';
 import { ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
 
 const progressSchema = z.object({
@@ -72,17 +73,10 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       return NextResponse.json({ success: true, message: 'Progress already ahead' });
     }
 
-    let newStatus = enrollment.status;
-    if (newProgress < 100) {
-      newStatus = 'in_progress';
-    } else if (
-      newProgress === 100 &&
-      enrollment.status !== 'completed' &&
-      enrollment.status !== 'attested'
-    ) {
-      // All lessons done but quiz not yet taken
-      newStatus = 'lessons_complete';
-    }
+    // BUG-53: progress is recorded on any status (it is a high-water mark of
+    // what the learner has read), but it may only move the STATUS within the
+    // reading phase — a locked, failed or signed-off enrolment keeps its status.
+    const newStatus = statusAfterProgress(enrollment.status, newProgress);
 
     await prisma.enrollment.update({
       where: { id: enrollmentId },

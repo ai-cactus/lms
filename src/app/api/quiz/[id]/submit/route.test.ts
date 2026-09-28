@@ -115,6 +115,7 @@ const ENROLLMENT = {
   id: 'enr-1',
   organizationUserId: 'ou-1',
   courseId: 'course-1',
+  status: 'in_progress',
   // A live course, so the Q-04 archive gate lets the submission through.
   course: { archivedAt: null },
   // Active billing so the defense-in-depth gate lets the attempt through.
@@ -528,4 +529,68 @@ describe('POST /api/quiz/[id]/submit — archived course (Q-04)', () => {
     expect(prismaMock.enrollment.update).not.toHaveBeenCalled();
     expect(mockCallVertexAI).not.toHaveBeenCalled();
   });
+});
+
+/**
+ * BUG-53: grading writes the enrolment's status (in_progress / locked) and
+ * score. Against signed-off training that rewrote the score behind the
+ * attestation and dropped the status to in_progress; against a locked one it
+ * let a direct POST skip /start's lockout. Both are refused before any write
+ * or AI spend.
+ */
+describe('POST /api/quiz/[id]/submit — closed enrolments (BUG-53)', () => {
+  it.each(['completed', 'attested'])(
+    '403s QUIZ_ALREADY_COMPLETED on a "%s" enrolment and writes nothing',
+    async (status) => {
+      prismaMock.enrollment.findUnique.mockResolvedValue({ ...ENROLLMENT, status });
+
+      const res = await POST(
+        makeReq({ enrollmentId: 'enr-1', answers: makeAnswers(2, 0), timeTaken: 30 }),
+        { params },
+      );
+      const json = await res.json();
+
+      expect(res.status).toBe(403);
+      expect(json.error).toBe('QUIZ_ALREADY_COMPLETED');
+      expect(json.message).toEqual(expect.any(String));
+      expect(prismaMock.quiz.findUnique).not.toHaveBeenCalled();
+      expect(prismaMock.$transaction).not.toHaveBeenCalled();
+      expect(prismaMock.enrollment.update).not.toHaveBeenCalled();
+      expect(mockCallVertexAI).not.toHaveBeenCalled();
+    },
+  );
+
+  it('403s QUIZ_LOCKED_MAX_ATTEMPTS on a locked enrolment even if the attempt limit was raised', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue({ ...ENROLLMENT, status: 'locked' });
+    prismaMock.quiz.findUnique.mockResolvedValue(makeQuiz({ allowedAttempts: 10 }));
+    txMock.quizAttempt.count.mockResolvedValue(2);
+
+    const res = await POST(
+      makeReq({ enrollmentId: 'enr-1', answers: makeAnswers(2, 2), timeTaken: 30 }),
+      { params },
+    );
+    const json = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(json.error).toBe('QUIZ_LOCKED_MAX_ATTEMPTS');
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(prismaMock.enrollment.update).not.toHaveBeenCalled();
+  });
+
+  it.each(['enrolled', 'assigned', 'in_progress', 'lessons_complete'])(
+    'CONTROL: grades a "%s" enrolment',
+    async (status) => {
+      prismaMock.enrollment.findUnique.mockResolvedValue({ ...ENROLLMENT, status });
+
+      const res = await POST(
+        makeReq({ enrollmentId: 'enr-1', answers: makeAnswers(2, 2), timeTaken: 30 }),
+        { params },
+      );
+
+      expect(res.status).toBe(200);
+      expect(prismaMock.enrollment.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ status: 'in_progress' }) }),
+      );
+    },
+  );
 });
