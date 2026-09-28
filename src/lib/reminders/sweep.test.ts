@@ -27,6 +27,7 @@
  *
  * resolveOnCompletion:
  *   - Calls notification.updateMany with correct type filter and metadata path
+ *   - Walks the retakeOf chain so a finished retake clears its originals (BUG-46)
  *   - Never throws
  *
  * Dates: fixed at 2024-06-15T12:00:00Z (noon UTC = 08:00 EDT, local date "2024-06-15").
@@ -57,7 +58,7 @@ const {
   mockSendCourseLaunchEmail,
 } = vi.hoisted(() => {
   const prismaMock = {
-    enrollment: { findMany: vi.fn(), create: vi.fn() },
+    enrollment: { findMany: vi.fn(), findUnique: vi.fn(), create: vi.fn() },
     reminderLog: { findMany: vi.fn(), create: vi.fn() },
     quizAttempt: { findMany: vi.fn() },
     notification: { updateMany: vi.fn() },
@@ -216,6 +217,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   // Safe defaults: empty result sets (both tracks empty)
   prismaMock.enrollment.findMany.mockResolvedValue([]);
+  prismaMock.enrollment.findUnique.mockResolvedValue({ retakeOf: null });
   prismaMock.reminderLog.findMany.mockResolvedValue([]);
   prismaMock.quizAttempt.findMany.mockResolvedValue([]);
   prismaMock.notification.updateMany.mockResolvedValue({ count: 0 });
@@ -1745,10 +1747,41 @@ describe('resolveOnCompletion', () => {
       where: {
         type: { in: ['COURSE_OVERDUE', 'COMPLIANCE_ESCALATION', 'COURSE_RETAKE_REMINDER'] },
         resolvedAt: null,
-        metadata: { path: ['enrollmentId'], equals: 'enroll-42' },
+        OR: [{ metadata: { path: ['enrollmentId'], equals: 'enroll-42' } }],
       },
       data: expect.objectContaining({ isRead: true }),
     });
+  });
+
+  it('also resolves every enrolment the completed retake supersedes, up the retakeOf chain (BUG-46)', async () => {
+    const chain: Record<string, string | null> = {
+      'retake-2': 'retake-1',
+      'retake-1': 'original',
+      original: null,
+    };
+    prismaMock.enrollment.findUnique.mockImplementation(
+      async ({ where }: { where: { id: string } }) => ({ retakeOf: chain[where.id] ?? null }),
+    );
+
+    await resolveOnCompletion('retake-2');
+
+    expect(prismaMock.notification.updateMany).toHaveBeenCalledTimes(1);
+    expect(prismaMock.notification.updateMany.mock.calls[0][0].where.OR).toEqual([
+      { metadata: { path: ['enrollmentId'], equals: 'retake-2' } },
+      { metadata: { path: ['enrollmentId'], equals: 'retake-1' } },
+      { metadata: { path: ['enrollmentId'], equals: 'original' } },
+    ]);
+  });
+
+  it('stops on a retakeOf cycle instead of looping', async () => {
+    prismaMock.enrollment.findUnique.mockImplementation(
+      async ({ where }: { where: { id: string } }) => ({ retakeOf: where.id === 'a' ? 'b' : 'a' }),
+    );
+
+    await resolveOnCompletion('a');
+
+    expect(prismaMock.enrollment.findUnique).toHaveBeenCalledTimes(2);
+    expect(prismaMock.notification.updateMany.mock.calls[0][0].where.OR).toHaveLength(2);
   });
 
   it('sets isRead:true and a resolvedAt timestamp', async () => {

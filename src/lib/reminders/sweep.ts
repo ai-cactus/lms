@@ -1007,18 +1007,51 @@ async function runTrackB(
 }
 
 /**
+ * Longest `retakeOf` chain {@link resolveOnCompletion} will follow. A chain is
+ * one hop per retake an admin assigned; this bound only guards against a cycle
+ * or corrupt data turning a completion into an unbounded loop.
+ */
+const MAX_RETAKE_CHAIN = 25;
+
+/**
+ * The enrolment and every enrolment it supersedes, newest first: its original,
+ * that original's original, and so on up the `retakeOf` chain. One lookup per
+ * hop — `retakeOf` is a bare column with no relation to join through, and a
+ * chain is almost always a single hop.
+ */
+async function retakeLineage(enrollmentId: string): Promise<string[]> {
+  const lineage = [enrollmentId];
+  let cursor: string | null = enrollmentId;
+  while (cursor && lineage.length <= MAX_RETAKE_CHAIN) {
+    const row: { retakeOf: string | null } | null = await prisma.enrollment.findUnique({
+      where: { id: cursor },
+      select: { retakeOf: true },
+    });
+    cursor = row?.retakeOf ?? null;
+    if (!cursor || lineage.includes(cursor)) break;
+    lineage.push(cursor);
+  }
+  return lineage;
+}
+
+/**
  * Stamp `resolvedAt`/`isRead` on the open reminder/escalation notifications for
  * an enrollment once it completes, so the status-tracker banner/page self-clear.
  * Called wherever an enrollment transitions to completed/attested (Phase 8).
- * Never throws.
+ *
+ * Also resolves those of every enrolment it supersedes (BUG-46): finishing a
+ * retake meets the obligation the locked original's overdue and escalation
+ * alerts were about, so leaving them open would keep chasing a met deadline in
+ * every admin's notification list. Never throws.
  */
 export async function resolveOnCompletion(enrollmentId: string): Promise<void> {
   try {
+    const lineage = await retakeLineage(enrollmentId);
     await prisma.notification.updateMany({
       where: {
         type: { in: ['COURSE_OVERDUE', 'COMPLIANCE_ESCALATION', 'COURSE_RETAKE_REMINDER'] },
         resolvedAt: null,
-        metadata: { path: ['enrollmentId'], equals: enrollmentId },
+        OR: lineage.map((id) => ({ metadata: { path: ['enrollmentId'], equals: id } })),
       },
       data: { resolvedAt: new Date(), isRead: true },
     });
