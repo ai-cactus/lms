@@ -1,6 +1,6 @@
 ---
 name: archive-filter-and-raw-prisma
-description: Course/Document reads are archive-filtered by a client extension in db/index.ts; 8 named files must use the un-extended rawPrisma, and NO nested position (where, include or select) is covered
+description: Course/Document reads are archive-filtered by a client extension in db/index.ts; 9 named files must use the un-extended rawPrisma, and NO nested position (where, include or select) is covered
 metadata:
   type: project
 ---
@@ -9,11 +9,12 @@ Since Phase 6 PR B (2026-09-16), deleting a course or a document **archives** it
 
 **The filter is a Prisma query extension in `db/index.ts`**, applied to `findFirst`, `findFirstOrThrow`, `findMany`, `findUnique`, `findUniqueOrThrow`, `count`, `aggregate`, `groupBy` on Course and Document. Deliberately **not** on writes — rerouting `.delete()` to an archive `.update()` would make the two archive writes' intent invisible at the call site. The merge helper is `db/archive-filter.ts` (pure, unit-tested; the `...args.where` spread is load-bearing — dropping it would discard every caller's tenancy predicate).
 
-**Eight files import `rawPrisma` and MUST keep doing so** (the seven below plus `src/lib/audit-reports/catalogue-scope.ts`, the shared auditor predicate — see [[gotcha_auditor_catalogue_lockstep]]). Each is guarded by a test that gives the two clients different spies, so a swap fails loudly rather than looking equivalent:
+**Nine files import `rawPrisma` and MUST keep doing so** (the eight below plus `src/lib/audit-reports/catalogue-scope.ts`, the shared auditor predicate — see [[gotcha_auditor_catalogue_lockstep]]). Each is guarded by a test that gives the two clients different spies, so a swap fails loudly rather than looking equivalent:
 - `src/lib/queue/video-sweep-worker.ts` — the storage reference set; filtered, the sweeper deletes an archived course's video.
 - `src/lib/queue/auditor-export-worker.ts` — 4 Course queries; filtered, the compliance export is silently incomplete.
 - `src/app/actions/auditor.ts` + `src/app/api/auditor/export/start/route.ts` — the auditor's ON-SCREEN catalogue, kept in step with the export above. These widen the Course ROW only; the `auditPack.*` gates, `orgCourseWhere` and every facility narrowing around them are untouched, and a test pins that a supervisor keeps facility scope on staff/enrollments/rollups.
 - `src/app/actions/system-admin.ts` — the delete preview AND `deleteUserWithRelations`' whole `$transaction` (its `deleteMany`s destroy archived rows regardless, so the `findMany` deriving `courseIds` must match).
+- `src/app/api/courses/[id]/thumbnail/route.ts` — Q-15 (2026-09-29): an org admin keeps seeing a retired/archived global video course's STILL (never its video) when the org offered it or enrolled on it. The preview-poster rules inside it refuse archived rows themselves, so the raw read widens nothing else.
 - `src/lib/learn/get-learn-payload.ts` and `src/app/actions/course.ts::getCourseById` — both still read unfiltered, but the REASON changed on 2026-09-23 (founder Q-04/Q-05, see [[project_archived_course_cancels_learner_actions]]): they read raw so the archived row can be **refused with the right answer**, not so an enrolled learner can open it. `getCourseById` selects `archivedAt` **alongside** `courseDetailSelect` (never *into* it — the field stays out of `CourseWithRelations` and the UI contract) and then refuses unconditionally. The enrolment carve-out (`&& !isEnrolled`) is GONE; do not restore it.
 
 **Nested traversal, one real hole closed:** `getCourses`' adopted-offering read now states `where: { organizationId, course: { archivedAt: null } }`, and the source-document lineage select pulls `documentVersion.document.archivedAt` so `sourceDocumentIdOf` can report an archived source as "no source document" (which is the state the row-actions menu already renders disabled). Both are relation predicates/fields on the PARENT read — the shape a query extension cannot supply for you.

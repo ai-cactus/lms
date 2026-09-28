@@ -88,7 +88,7 @@
 - [RBAC actor lists vs permissions](gotcha_rbac_actor_lists_vs_permissions.md): a ruling finer than a verb ships as a role-utils list, not a grant
 - [Self-service verbs pollute the matrix](gotcha_self_service_verbs_pollute_the_matrix.md): a matrix `R` cell reads as `CR`; quiz authoring is `course.edit`
 - [NOT NULL column needs its writer in the same PR](gotcha_required_column_needs_its_writer_same_pr.md): land it nullable
-- [Archive filter + rawPrisma](project_archive_filter_and_raw_prisma.md): 7 files MUST use rawPrisma; a restated `course:` key SHADOWS the predicate
+- [Archive filter + rawPrisma](project_archive_filter_and_raw_prisma.md): 9 files MUST use rawPrisma; a restated `course:` key SHADOWS the predicate
 - [Authorship is not ownership](gotcha_authorship_is_not_ownership.md): a `createdBy… === me` gate revoked HR's granted `assessment.read`
 - [$extends breaks TransactionClient](gotcha_prisma_extension_breaks_transactionclient_type.md): invalidates `Prisma.TransactionClient` types
 - [e2e specs raw-SQL-insert courses](gotcha_e2e_specs_raw_sql_insert_courses.md): 13 specs bypass Prisma, so a new NOT NULL column breaks them silently
