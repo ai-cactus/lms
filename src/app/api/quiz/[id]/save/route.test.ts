@@ -57,7 +57,12 @@ function makeAttempt(overrides: Record<string, unknown> = {}) {
     enrollmentId: 'enr-1',
     quizId: 'quiz-1',
     timeTaken: null,
-    enrollment: { id: 'enr-1', organizationUserId: 'ou-1', course: { archivedAt: null } },
+    enrollment: {
+      id: 'enr-1',
+      organizationUserId: 'ou-1',
+      course: { archivedAt: null },
+      organizationUser: { organization: { subscription: { status: 'active', pausedAt: null } } },
+    },
     ...overrides,
   };
 }
@@ -185,6 +190,9 @@ describe('POST /api/quiz/[id]/save — archived course (Q-04)', () => {
           id: 'enr-1',
           organizationUserId: 'ou-1',
           course: { archivedAt: new Date('2026-09-20') },
+          organizationUser: {
+            organization: { subscription: { status: 'active', pausedAt: null } },
+          },
         },
       }),
     );
@@ -196,5 +204,80 @@ describe('POST /api/quiz/[id]/save — archived course (Q-04)', () => {
     expect(body.error).toBe(ARCHIVED_COURSE_LEARNER_MESSAGE);
     expect(prismaMock.quizAttempt.update).not.toHaveBeenCalled();
     expect(prismaMock.enrollment.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * SEC-08: /start and /submit gate on active billing; /save did not, so a
+ * direct POST kept writing quiz answers for a paused organization.
+ */
+describe('POST /api/quiz/[id]/save — billing gate (SEC-08)', () => {
+  const PAUSED_MESSAGE =
+    'Your organization’s training access is paused. Please contact your administrator.';
+
+  function attemptWithSubscription(subscription: unknown) {
+    return makeAttempt({
+      enrollment: {
+        id: 'enr-1',
+        organizationUserId: 'ou-1',
+        course: { archivedAt: null },
+        organizationUser: { organization: { subscription } },
+      },
+    });
+  }
+
+  it('403s and writes no answers when the subscription is paused', async () => {
+    prismaMock.quizAttempt.findFirst.mockResolvedValue(
+      attemptWithSubscription({ status: 'active', pausedAt: new Date('2026-09-01') }),
+    );
+
+    const res = await POST(makeReq({ enrollmentId: 'enr-1', answers: ANSWERS }), { params });
+
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: PAUSED_MESSAGE });
+    expect(prismaMock.quizAttempt.update).not.toHaveBeenCalled();
+    expect(prismaMock.enrollment.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('403s when the org has no subscription row at all', async () => {
+    prismaMock.quizAttempt.findFirst.mockResolvedValue(attemptWithSubscription(null));
+
+    const res = await POST(makeReq({ enrollmentId: 'enr-1', answers: ANSWERS }), { params });
+
+    expect(res.status).toBe(403);
+    expect(prismaMock.quizAttempt.update).not.toHaveBeenCalled();
+  });
+
+  it('403s on a canceled subscription', async () => {
+    prismaMock.quizAttempt.findFirst.mockResolvedValue(
+      attemptWithSubscription({ status: 'canceled', pausedAt: null }),
+    );
+
+    const res = await POST(makeReq({ enrollmentId: 'enr-1', answers: ANSWERS }), { params });
+
+    expect(res.status).toBe(403);
+    expect(prismaMock.quizAttempt.update).not.toHaveBeenCalled();
+  });
+
+  it("reads the subscription through the attempt's enrollment", async () => {
+    await POST(makeReq({ enrollmentId: 'enr-1', answers: ANSWERS }), { params });
+
+    expect(prismaMock.quizAttempt.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        include: {
+          enrollment: {
+            include: expect.objectContaining({
+              organizationUser: {
+                select: {
+                  organization: {
+                    select: { subscription: { select: { status: true, pausedAt: true } } },
+                  },
+                },
+              },
+            }),
+          },
+        },
+      }),
+    );
   });
 });

@@ -5,6 +5,7 @@ import { auth as workerAuth } from '@/auth.worker';
 import { z } from 'zod';
 import { logger } from '@/lib/logger';
 import { guardApiSession } from '@/lib/auth-guard';
+import { hasActiveBilling } from '@/lib/billing';
 import { touchEnrollmentActivity } from '@/lib/enrollment/activity';
 import { ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
 
@@ -47,7 +48,20 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     const attempt = await prisma.quizAttempt.findFirst({
       where: { enrollmentId, quizId },
       orderBy: { completedAt: 'desc' },
-      include: { enrollment: { include: { course: { select: { archivedAt: true } } } } },
+      include: {
+        enrollment: {
+          include: {
+            course: { select: { archivedAt: true } },
+            organizationUser: {
+              select: {
+                organization: {
+                  select: { subscription: { select: { status: true, pausedAt: true } } },
+                },
+              },
+            },
+          },
+        },
+      },
     });
 
     if (!attempt) {
@@ -60,6 +74,22 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     ) {
       return NextResponse.json(
         { error: 'Enrollment does not belong to active sessions' },
+        { status: 403 },
+      );
+    }
+
+    // Billing gate (defense in depth): the layout blocks the portal when the org
+    // lacks active billing; this stops a direct POST from writing quiz answers.
+    if (!hasActiveBilling(attempt.enrollment.organizationUser?.organization?.subscription)) {
+      logger.warn({
+        msg: '[quiz] Answer save blocked — organization lacks active billing',
+        enrollmentId,
+      });
+      return NextResponse.json(
+        {
+          error:
+            'Your organization’s training access is paused. Please contact your administrator.',
+        },
         { status: 403 },
       );
     }
