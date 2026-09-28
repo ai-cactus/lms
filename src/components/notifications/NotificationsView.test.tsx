@@ -5,7 +5,8 @@
  * Covers the two pieces of new interactive state called out as coverage gaps:
  * filter-chip selection (drives `useNotifications`' `setTypeFilter`, which
  * re-fetches with the chosen type) and the per-type preference toggle switch
- * (drives `setNotificationPreference` with an optimistic UI flip).
+ * (drives `setNotificationPreference` with an optimistic UI flip, reverted with
+ * the error shown when the save is refused — BUG-50).
  */
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -112,6 +113,59 @@ describe('NotificationsView preference toggles', () => {
     await user.click(assignedSwitch);
 
     expect(mockSetNotificationPreference).toHaveBeenCalledWith('COURSE_ASSIGNED', false);
+    expect(assignedSwitch).toHaveAttribute('aria-checked', 'false');
+  });
+
+  it('flips the switch back and shows the error when the save is refused (BUG-50)', async () => {
+    const user = userEvent.setup();
+    mockSetNotificationPreference.mockResolvedValue({
+      success: false,
+      error: 'Failed to update preference',
+    });
+    render(<NotificationsView backHref="/dashboard" audience="worker" />);
+    await waitFor(() => expect(mockGetNotificationPreferences).toHaveBeenCalled());
+    await user.click(screen.getByRole('button', { name: 'Notification preferences' }));
+
+    const assignedSwitch = screen.getByRole('switch', { name: /When a course is assigned to you/ });
+    await user.click(assignedSwitch);
+
+    expect(await screen.findByText('Failed to update preference')).toBeInTheDocument();
+    expect(assignedSwitch).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('flips the switch back with a generic message when the save throws', async () => {
+    const user = userEvent.setup();
+    mockSetNotificationPreference.mockRejectedValue(new Error('network down'));
+    render(<NotificationsView backHref="/dashboard" audience="worker" />);
+    await waitFor(() => expect(mockGetNotificationPreferences).toHaveBeenCalled());
+    await user.click(screen.getByRole('button', { name: 'Notification preferences' }));
+
+    const assignedSwitch = screen.getByRole('switch', { name: /When a course is assigned to you/ });
+    await user.click(assignedSwitch);
+
+    expect(
+      await screen.findByText("Couldn't save that preference. Please try again."),
+    ).toBeInTheDocument();
+    expect(assignedSwitch).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('clears a previous error once a later save succeeds', async () => {
+    const user = userEvent.setup();
+    mockSetNotificationPreference
+      .mockResolvedValueOnce({ success: false, error: 'Failed to update preference' })
+      .mockResolvedValueOnce({ success: true });
+    render(<NotificationsView backHref="/dashboard" audience="worker" />);
+    await waitFor(() => expect(mockGetNotificationPreferences).toHaveBeenCalled());
+    await user.click(screen.getByRole('button', { name: 'Notification preferences' }));
+
+    const assignedSwitch = screen.getByRole('switch', { name: /When a course is assigned to you/ });
+    await user.click(assignedSwitch);
+    await screen.findByText('Failed to update preference');
+    await user.click(assignedSwitch);
+
+    await waitFor(() =>
+      expect(screen.queryByText('Failed to update preference')).not.toBeInTheDocument(),
+    );
     expect(assignedSwitch).toHaveAttribute('aria-checked', 'false');
   });
 
