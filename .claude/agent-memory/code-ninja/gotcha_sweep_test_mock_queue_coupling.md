@@ -27,3 +27,12 @@ fixture in the same edit — the fixture must carry every column the new `select
 asks for, or `undefined` leaks into an `expect.objectContaining({ x: null })`.
 A broad red result there is almost never 13 real regressions. See
 [[targetroles-backfill-is-provable]].
+
+The inverse trap: ADDING a query can leave tests green but vacuous. BUG-44 put a
+retake lookup (`enrollment.findMany`, where has `retakeOf`) after a non-empty
+Track A batch, which silently ate the queued `[] // Track B` slot; the
+idempotent re-run test then fed run 2's Track A fixture to Track B and passed
+for the wrong reason. Every Track A test now queues an explicit
+`[] // Track A retake lookup`. For new tests prefer the where-routed
+`routeEnrollmentQueries` helper in the BUG-44 describe (it also honours a
+`status.notIn`, so a narrowed lookup can't pass by accident) over the queue.
