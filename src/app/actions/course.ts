@@ -1502,11 +1502,20 @@ export async function createFullCourse(data: {
   };
 }
 
+const ALREADY_ATTESTED_MESSAGE = 'This course has already been attested.';
+
+/**
+ * Records the learner's signed attestation — this product's completion act.
+ *
+ * `alreadyAttested` marks the one refusal the caller may recover from: the
+ * attestation stands, so the certificate can still be fetched (or issued, if the
+ * first attempt stopped short of it) without attesting again.
+ */
 export async function attestCourse(
   enrollmentId: string,
   signature: string,
   role: string,
-): Promise<{ success: boolean; refusedReason?: string }> {
+): Promise<{ success: boolean; refusedReason?: string; alreadyAttested?: boolean }> {
   // Resolve BOTH sessions to handle cookie collision (admin + worker in same browser)
   const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
   const adminId = admin?.user?.id;
@@ -1560,8 +1569,30 @@ export async function attestCourse(
     return { success: false, refusedReason: ARCHIVED_COURSE_LEARNER_MESSAGE };
   }
 
-  await prisma.enrollment.update({
-    where: { id: enrollmentId },
+  // RISK-10 (ruled 2026-09-28: refuse, no side effects). `attestedAt` dates the
+  // compliance record and `completedAt` starts the renewal clock, so a replayed
+  // call — a double click, a retried request, a direct POST — must not move
+  // either. Refused before any write: no re-stamp, no admin notice, no
+  // analytics event. The pre-read answers the common case; the conditional
+  // write below is what makes two concurrent calls unable to both stamp.
+  const refuseAlreadyAttested = () => {
+    logger.warn({
+      msg: '[course] Attestation refused — enrollment is already attested',
+      enrollmentId,
+      courseId: enrollment.courseId,
+    });
+    return {
+      success: false,
+      refusedReason: ALREADY_ATTESTED_MESSAGE,
+      alreadyAttested: true,
+    };
+  };
+  if (enrollment.status === 'attested') {
+    return refuseAlreadyAttested();
+  }
+
+  const { count } = await prisma.enrollment.updateMany({
+    where: { id: enrollmentId, status: { not: 'attested' } },
     data: {
       status: 'attested',
       completedAt,
@@ -1571,6 +1602,9 @@ export async function attestCourse(
       attestationRole: role, // Now acts as job description
     },
   });
+  if (count === 0) {
+    return refuseAlreadyAttested();
+  }
 
   logger.info({
     msg: '[course] Course attested',
