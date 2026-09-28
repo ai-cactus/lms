@@ -138,7 +138,7 @@ As a team member, you can find detailed instructions on how to contribute and th
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for more details.
 
 ---
 
