@@ -12,9 +12,9 @@
  * bypasses — and it builds its queries from this predicate. Baking the filter in
  * here would re-exclude them at the one call site that most needs them.
  *
- * `getCourses` (`src/app/actions/course.ts`) builds the same union in row form
- * because it needs each offering's course payload; this module is the predicate
- * form, for callers that only need to match.
+ * `getCourses` (`src/app/actions/course.ts`) lists a manager's courses with this
+ * predicate too (RISK-11), so the courses list and the dashboards cannot
+ * disagree about which courses the organisation has.
  */
 import prisma from '@/lib/prisma';
 import type { Prisma } from '@/generated/prisma/client';

@@ -28,6 +28,7 @@ import {
 } from '@/lib/facility/staff-where';
 import { CourseAccessError } from '@/lib/course/access-error';
 import { isCourseEditableByOrganization } from '@/lib/course/edit-access';
+import { listAdoptedCourseIds, orgCourseWhere } from '@/lib/course/org-scope';
 import {
   ARCHIVED_COURSE_ADMIN_MESSAGE,
   ARCHIVED_COURSE_LEARNER_MESSAGE,
@@ -81,8 +82,6 @@ function sourceDocumentIdOf(
   return latest.documentId;
 }
 
-// KursWithStats is now imported from '@/types/course'
-
 export async function getCourses(): Promise<CourseWithStats[]> {
   const session = await resolveSession();
   if (!session?.user?.id) {
@@ -112,15 +111,26 @@ export async function getCourses(): Promise<CourseWithStats[]> {
   // also hold `course.read` (for their own enrolled courses), so the permission
   // alone would widen this list to every worker. Workers stay enrollment-gated.
   const isOrgManager =
-    !!organizationId &&
-    isAdminRole(session.user.role) &&
-    can(dbRoleToRoleKey(session.user.role), 'course.read');
+    isAdminRole(session.user.role) && can(dbRoleToRoleKey(session.user.role), 'course.read');
 
-  // Managers see every course authored inside their organization; everyone else
-  // keeps the original creator scope.
-  const authoredWhere: Prisma.CourseWhereInput = isOrgManager
-    ? { creator: { organizationId } }
-    : { createdByOrgUserId };
+  // RISK-11: managers see "the organisation's courses" by the ONE definition the
+  // dashboards and audit reports use — owned in-house (`Course.organizationId`,
+  // Q25) or adopted through an offering. This list used to spell out its own
+  // union keyed on the AUTHOR's membership, so the two could disagree.
+  //
+  // Everyone else keeps the original creator scope plus the org's adopted
+  // offerings. Without an active organisation there is nothing to adopt into,
+  // so the list is the caller's own courses and never an unscoped read.
+  let listWhere: Prisma.CourseWhereInput;
+  if (organizationId && isOrgManager) {
+    listWhere = await orgCourseWhere(organizationId);
+  } else {
+    const adoptedCourseIds = organizationId ? await listAdoptedCourseIds(organizationId) : [];
+    listWhere =
+      adoptedCourseIds.length === 0
+        ? { createdByOrgUserId }
+        : { OR: [{ createdByOrgUserId }, { id: { in: adoptedCourseIds } }] };
+  }
 
   // Course structure only — lesson/enrollment tallies come from grouped
   // aggregation below, not from materializing every enrollment row per course.
@@ -139,63 +149,39 @@ export async function getCourses(): Promise<CourseWithStats[]> {
     lessons: firstLessonThumbnailSelect,
   } satisfies Prisma.CourseSelect;
 
-  const [ownCourses, offerings] = await Promise.all([
-    prisma.course.findMany({
-      where: authoredWhere,
-      select: {
-        ...courseCardSelect,
-        // Latest source-document lineage, so the list can offer "View Source
-        // Document" only for courses that actually have one. `archivedAt` rides
-        // along because the archive filter is a query extension on Document's
-        // OWN reads and cannot reach this traversal — see `sourceDocumentIdOf`.
-        versions: {
-          select: {
-            documentVersion: {
-              select: { documentId: true, document: { select: { archivedAt: true } } },
-            },
+  // One read over one predicate. The archive filter (a query extension on
+  // Course's OWN reads) applies here for adopted courses too, which is why the
+  // explicit `course: { archivedAt: null }` the offering read needed is gone.
+  const courses = await prisma.course.findMany({
+    where: listWhere,
+    select: {
+      ...courseCardSelect,
+      organizationId: true,
+      // Latest source-document lineage, so the list can offer "View Source
+      // Document" only for courses that actually have one. `archivedAt` rides
+      // along because the archive filter is a query extension on Document's
+      // OWN reads and cannot reach this traversal — see `sourceDocumentIdOf`.
+      versions: {
+        select: {
+          documentVersion: {
+            select: { documentId: true, document: { select: { archivedAt: true } } },
           },
-          orderBy: { version: 'desc' },
-          take: 1,
         },
+        orderBy: { version: 'desc' },
+        take: 1,
       },
-      orderBy: { createdAt: 'desc' },
-    }),
-    organizationId
-      ? prisma.orgCourseOffering.findMany({
-          // The archive filter is a query extension on Course's OWN reads; it
-          // cannot reach a nested traversal, so an offering would hand this list
-          // an archived course back through the relation. Spelled as a relation
-          // predicate on the parent read, which Prisma does apply.
-          where: { organizationId, course: { archivedAt: null } },
-          orderBy: { createdAt: 'desc' },
-          select: {
-            course: {
-              select: {
-                ...courseCardSelect,
-                versions: {
-                  select: {
-                    documentVersion: {
-                      select: { documentId: true, document: { select: { archivedAt: true } } },
-                    },
-                  },
-                  orderBy: { version: 'desc' },
-                  take: 1,
-                },
-                creator: { select: { organizationId: true } },
-              },
-            },
-          },
-        })
-      : Promise.resolve([]),
-  ]);
-
-  const adoptedCourses = offerings.map((o) => o.course);
-  const adoptedCourseIds = adoptedCourses.map((c) => c.id);
+    },
+    orderBy: { createdAt: 'desc' },
+  });
 
   // Per-course enrollment totals + completed/attested tallies via grouped
-  // aggregation (F-028 pattern). Adopted courses count only THIS org's staff.
+  // aggregation (F-028 pattern), over exactly the courses listed.
   //
-  // Both are also facility-scoped: a supervisor's card must not report an
+  // The LEARNER is pinned to this organisation as well as the course: an
+  // OrgCourseOffering puts the same course in front of other tenants' staff,
+  // whose enrollments would otherwise inflate this card's figures.
+  //
+  // Also facility-scoped: a supervisor's card must not report an
   // organisation-wide "42 enrolled / 61% complete" over a roster they cannot
   // open — the detail page's roster is narrowed the same way, and a headline
   // figure that disagrees with the list beneath it is still leaked information.
@@ -203,113 +189,59 @@ export async function getCourses(): Promise<CourseWithStats[]> {
   const facilityFilter: Prisma.EnrollmentWhereInput =
     dataFacilityIds === null ? {} : { facilityId: { in: dataFacilityIds } };
 
-  const [ownCounts, adoptedCounts] = await Promise.all([
-    prisma.enrollment.groupBy({
-      by: ['courseId', 'status'],
-      // Must track `authoredWhere` — otherwise a manager sees their colleagues'
-      // courses listed with a permanent 0 enrolled / 0 completed.
-      //
-      // `authoredWhere` pins the COURSE to this organization, never the LEARNER:
-      // an OrgCourseOffering can put the same course in front of another
-      // tenant's staff, whose enrollments would then inflate this card's
-      // enrolled/completed figures. Pin the learner the same way the adopted
-      // sibling below does.
-      where: {
-        course: authoredWhere,
-        ...(organizationId ? { organizationUser: { organizationId } } : {}),
-        ...facilityFilter,
-      },
-      _count: { _all: true },
-    }),
-    organizationId && adoptedCourseIds.length
-      ? prisma.enrollment.groupBy({
+  const counts =
+    courses.length === 0
+      ? []
+      : await prisma.enrollment.groupBy({
           by: ['courseId', 'status'],
           where: {
-            courseId: { in: adoptedCourseIds },
-            organizationUser: { organizationId },
+            courseId: { in: courses.map((course) => course.id) },
+            ...(organizationId ? { organizationUser: { organizationId } } : {}),
             ...facilityFilter,
           },
           _count: { _all: true },
-        })
-      : Promise.resolve([]),
-  ]);
+        });
 
-  const toCountMap = (
-    rows: { courseId: string; status: string; _count: { _all: number } }[],
-  ): Map<string, { total: number; completed: number }> => {
-    const map = new Map<string, { total: number; completed: number }>();
-    for (const row of rows) {
-      const entry = map.get(row.courseId) ?? { total: 0, completed: 0 };
-      entry.total += row._count._all;
-      if (row.status === 'completed' || row.status === 'attested') {
-        entry.completed += row._count._all;
-      }
-      map.set(row.courseId, entry);
+  const countMap = new Map<string, { total: number; completed: number }>();
+  for (const row of counts) {
+    const entry = countMap.get(row.courseId) ?? { total: 0, completed: 0 };
+    entry.total += row._count._all;
+    if (row.status === 'completed' || row.status === 'attested') {
+      entry.completed += row._count._all;
     }
-    return map;
-  };
+    countMap.set(row.courseId, entry);
+  }
 
-  const ownCountMap = toCountMap(ownCounts);
-  const adoptedCountMap = toCountMap(adoptedCounts);
-
-  const toStats = (
-    course: {
-      id: string;
-      title: string;
-      description: string | null;
-      thumbnailStorageUri: string | null;
-      previewPosterStorageUri: string | null;
-      status: string;
-      type: string;
-      duration: number | null;
-      createdAt: Date;
-      updatedAt: Date;
-      _count: { lessons: number };
-      lessons: { videoPosterStorageUri: string | null; updatedAt: Date }[];
-      versions?: {
-        documentVersion: { documentId: string; document: { archivedAt: Date | null } };
-      }[];
-    },
-    counts: { total: number; completed: number },
-  ): CourseWithStats => ({
-    id: course.id,
-    title: course.title,
-    description: course.description,
-    thumbnail: buildCourseThumbnailUrl(course, course.lessons[0]),
-    status: course.status,
-    type: course.type,
-    duration: course.duration,
-    createdAt: course.createdAt,
-    updatedAt: course.updatedAt,
-    lessonsCount: course._count.lessons,
-    enrollmentsCount: counts.total,
-    sourceDocumentId: sourceDocumentIdOf(course.versions),
-    completionRate: counts.total > 0 ? Math.round((counts.completed / counts.total) * 100) : 0,
+  const rows = courses.map((course): CourseWithStats => {
+    const tally = countMap.get(course.id) ?? { total: 0, completed: 0 };
+    // An adopted course is usually another tenant's, only sometimes our own.
+    // With no active organisation only the caller's own courses were listed.
+    const isOrgAuthored = organizationId ? course.organizationId === organizationId : true;
+    return {
+      id: course.id,
+      title: course.title,
+      description: course.description,
+      thumbnail: buildCourseThumbnailUrl(course, course.lessons[0]),
+      status: course.status,
+      type: course.type,
+      duration: course.duration,
+      createdAt: course.createdAt,
+      updatedAt: course.updatedAt,
+      lessonsCount: course._count.lessons,
+      enrollmentsCount: tally.total,
+      // Same-org courses keep their source-document lineage (an admin/HR must be
+      // able to open a colleague's source doc — COU-004). A cross-tenant course
+      // never does: its document belongs to the publishing org and must never
+      // be linked from this tenant.
+      sourceDocumentId: isOrgAuthored ? sourceDocumentIdOf(course.versions) : null,
+      completionRate: tally.total > 0 ? Math.round((tally.completed / tally.total) * 100) : 0,
+      isOrgAuthored,
+    };
   });
 
-  const own = ownCourses.map((course) =>
-    toStats(course, ownCountMap.get(course.id) ?? { total: 0, completed: 0 }),
-  );
-  // Offerings from a SAME-ORG creator keep their source-document lineage (an
-  // admin/HR must be able to open a colleague's source doc — COU-004). Only
-  // cross-tenant offerings null it out: their document belongs to the
-  // publishing org and must never be linked from this tenant.
-  const adopted = adoptedCourses.map((course) => ({
-    ...toStats(
-      course.creator.organizationId === organizationId ? course : { ...course, versions: [] },
-      adoptedCountMap.get(course.id) ?? { total: 0, completed: 0 },
-    ),
-    // An adopted course is usually another tenant's; only sometimes our own.
-    isOrgAuthored: course.creator.organizationId === organizationId,
-  }));
-
-  // De-dupe in case the admin both created and adopted the same course id.
-  const seen = new Set(own.map((c) => c.id));
-  // `own` is by definition authored inside this organisation.
-  return [
-    ...own.map((c) => ({ ...c, isOrgAuthored: true })),
-    ...adopted.filter((c) => !seen.has(c.id)),
-  ];
+  // The organisation's own courses lead and adopted catalogue courses follow,
+  // as they did when the two came from separate reads.
+  return [...rows.filter((row) => row.isOrgAuthored), ...rows.filter((row) => !row.isOrgAuthored)];
 }
 
 /**
