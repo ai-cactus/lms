@@ -25,7 +25,7 @@
 - [Offline migrations](project_offline_migrations.md): dev DB often unreachable; scaffold via `migrate diff --from-schema/--to-schema`
 - [migrate dev destructive diff](project_migrate_dev_destructive_diff.md): autogen drops pgvector/HNSW/defaults; a RENAME comes out as DROP+CREATE
 - [prisma format runs in pre-commit](gotcha_prisma_format_churn.md): lint-staged formats staged .prisma, so schemas ARE canonical
-- [MinIO dev port mismatch](gotcha_minio_dev_port_mismatch.md): compose publishes 9005, .env.example says 9000; set MINIO_PORT=9005
+- [MinIO dev port](gotcha_minio_dev_port_mismatch.md): compose publishes 9005; an old .env may still say 9000
 - [Vitest @/generated alias](project_vitest_generated_alias.md): vitest.config.mts must alias @/generated & @/db, most-specific first
 - [vi.mock of node builtins needs `default`](gotcha_vitest_node_builtin_mock_default.md): fs/promises & child_process mocks must export default too
 - [Email delivery tracking](project_email_delivery_tracking.md): two disjoint recording paths; reminder senders bypass sendMailTracked by design
