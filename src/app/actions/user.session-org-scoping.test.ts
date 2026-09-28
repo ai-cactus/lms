@@ -113,6 +113,29 @@ describe('searchStaffUsers — org-scoping sourced from the session', () => {
     );
   });
 
+  // BUG-23: the roster lists the owner, so searching must be able to find them.
+  it('searches the same population the roster lists — the owner is not filtered out', async () => {
+    mockAdminAuth.mockResolvedValue({
+      user: { id: 'admin-1', role: 'admin', organizationId: 'org-A' },
+    });
+    mockWorkerAuth.mockResolvedValue(null);
+    mockOrgUserFindMany.mockResolvedValue([
+      {
+        id: 'ou-owner',
+        role: 'owner',
+        user: { email: 'olivia@acme.com', fullName: 'Olivia Owner' },
+      },
+    ]);
+
+    const result = await searchStaffUsers('olivia');
+
+    const where = mockOrgUserFindMany.mock.calls[0][0].where;
+    expect(where).not.toHaveProperty('role');
+    expect(result).toEqual([
+      expect.objectContaining({ id: 'ou-owner', role: 'owner', name: 'Olivia Owner' }),
+    ]);
+  });
+
   it('a different org session (org-B) never triggers an org-A-scoped search', async () => {
     mockAdminAuth.mockResolvedValue({
       user: { id: 'admin-2', role: 'owner', organizationId: 'org-B' },

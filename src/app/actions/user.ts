@@ -186,7 +186,8 @@ export async function searchStaffUsers(query: string) {
       where: {
         organizationId,
         active: true,
-        role: { not: 'owner' },
+        // The same population `getStaffUsers` lists — owner included — so a
+        // member visible in the roster can always be found by name.
         ...staffFacilityWhere(dataFacilityIds),
         OR: [
           { user: { email: { contains: query, mode: 'insensitive' } } },
