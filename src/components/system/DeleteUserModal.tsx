@@ -76,6 +76,7 @@ export default function DeleteUserModal({ preview, onClose, onSuccess }: DeleteU
     { label: 'Quiz Attempts', count: counts.quizAttempts },
     { label: 'Certificates', count: counts.certificates },
     { label: 'Notifications', count: counts.notifications },
+    { label: 'Notification Preferences', count: counts.notificationPreferences },
     { label: 'Jobs', count: counts.jobs },
     { label: 'Invites', count: counts.invites },
     { label: 'Verification Tokens', count: counts.verificationTokens },
@@ -85,6 +86,7 @@ export default function DeleteUserModal({ preview, onClose, onSuccess }: DeleteU
     { label: 'Courses authored (reassigned)', count: retained.courses },
     { label: 'Documents uploaded (reassigned)', count: retained.documents },
     { label: "Other members' enrollments (untouched)", count: retained.otherEnrollments },
+    { label: 'Direct reports (manager cleared)', count: retained.directReports },
   ].filter((row) => row.count > 0);
 
   if (success) {
@@ -148,6 +150,14 @@ export default function DeleteUserModal({ preview, onClose, onSuccess }: DeleteU
               This user authored courses or uploaded documents that no one is left to inherit in{' '}
               <strong>{blockedOrganizations.join(', ')}</strong>. Add a member there, or delete the
               organization, before deleting this user.
+            </Alert>
+          )}
+
+          {retained.directReports > 0 && (
+            <Alert variant="warning" className="w-full">
+              <strong>{retained.directReports}</strong>{' '}
+              {retained.directReports === 1 ? 'direct report' : 'direct reports'} will lose their
+              manager. Assign them a new manager after the delete.
             </Alert>
           )}
 
