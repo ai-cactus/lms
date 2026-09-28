@@ -12,13 +12,14 @@
  *   - Completed/attested enrollments excluded (modelled via empty prisma result)
  *   - Idempotent re-run: second run skips stages already in sentSet
  *   - Per-enrollment error isolation: one throw increments errors, others proceed
+ *   - Superseded enrollments (a retake names them) get no stage (BUG-44)
  *
  * runReminderSweep covered (Track B — quiz nudges):
  *   - in_progress + failing score + attempts remaining → WORKER_RETAKE dispatched
  *   - in_progress + passing score → skipped
  *   - in_progress + no quiz data → skipped
- *   - locked + no active retake → ADMIN_REASSIGN dispatched (resolveEscalationRecipients called)
- *   - locked + active retake exists → skipped
+ *   - locked + no retake → ADMIN_REASSIGN dispatched (resolveEscalationRecipients called)
+ *   - locked + a retake exists → skipped
  *   - Per-enrollment error isolation
  *
  * resolveOnCompletion:
@@ -249,6 +250,7 @@ describe('runReminderSweep — Track A (deadline ladder)', () => {
     // Track A returns 1 enrollment; Track B returns 0
     prismaMock.enrollment.findMany
       .mockResolvedValueOnce([makeTrackAEnrollment('e1')]) // Track A
+      .mockResolvedValueOnce([]) // Track A retake lookup: none
       .mockResolvedValueOnce([]); // Track B
     prismaMock.reminderLog.findMany.mockResolvedValue([]);
 
@@ -278,7 +280,10 @@ describe('runReminderSweep — Track A (deadline ladder)', () => {
     const enrollment = makeTrackAEnrollment('e1');
     enrollment.organizationUser.facilities = [{ facility: { timezone: 'America/Los_Angeles' } }];
 
-    prismaMock.enrollment.findMany.mockResolvedValueOnce([enrollment]).mockResolvedValueOnce([]);
+    prismaMock.enrollment.findMany
+      .mockResolvedValueOnce([enrollment]) // Track A
+      .mockResolvedValueOnce([]) // Track A retake lookup: none
+      .mockResolvedValueOnce([]); // Track B
     prismaMock.reminderLog.findMany.mockResolvedValue([]);
 
     await runReminderSweep(BASE_OPTS);
@@ -318,7 +323,10 @@ describe('runReminderSweep — Track A (deadline ladder)', () => {
     // Models a worker who has not been attached to a facility yet.
     enrollment.organizationUser.facilities = [];
 
-    prismaMock.enrollment.findMany.mockResolvedValueOnce([enrollment]).mockResolvedValueOnce([]);
+    prismaMock.enrollment.findMany
+      .mockResolvedValueOnce([enrollment]) // Track A
+      .mockResolvedValueOnce([]) // Track A retake lookup: none
+      .mockResolvedValueOnce([]); // Track B
     prismaMock.reminderLog.findMany.mockResolvedValue([]);
 
     await runReminderSweep(BASE_OPTS);
@@ -331,6 +339,7 @@ describe('runReminderSweep — Track A (deadline ladder)', () => {
   it('skips a stage that already has a ReminderLog entry (sentSet dedup)', async () => {
     prismaMock.enrollment.findMany
       .mockResolvedValueOnce([makeTrackAEnrollment('e1')]) // Track A
+      .mockResolvedValueOnce([]) // Track A retake lookup: none
       .mockResolvedValueOnce([]); // Track B
     // Simulate that FRIENDLY_REMINDER was already sent
     prismaMock.reminderLog.findMany.mockResolvedValue([
@@ -356,7 +365,10 @@ describe('runReminderSweep — Track A (deadline ladder)', () => {
         },
       ],
     });
-    prismaMock.enrollment.findMany.mockResolvedValueOnce([enrollment]).mockResolvedValueOnce([]);
+    prismaMock.enrollment.findMany
+      .mockResolvedValueOnce([enrollment]) // Track A
+      .mockResolvedValueOnce([]) // Track A retake lookup: none
+      .mockResolvedValueOnce([]); // Track B
     prismaMock.reminderLog.findMany.mockResolvedValue([]);
 
     const summary = await runReminderSweep(BASE_OPTS);
@@ -370,7 +382,8 @@ describe('runReminderSweep — Track A (deadline ladder)', () => {
     // FRIENDLY_REMINDER target = June 14 (yesterday), daysSinceTarget=1 ≤ catchUpDays=1 → fires
     prismaMock.enrollment.findMany
       .mockResolvedValueOnce([makeTrackAEnrollment('e1', DUE_AT_TARGET_YESTERDAY)])
-      .mockResolvedValueOnce([]);
+      .mockResolvedValueOnce([]) // Track A retake lookup: none
+      .mockResolvedValueOnce([]); // Track B
     prismaMock.reminderLog.findMany.mockResolvedValue([]);
 
     const summary = await runReminderSweep({ ...BASE_OPTS, catchUpDays: 1 });
@@ -383,7 +396,8 @@ describe('runReminderSweep — Track A (deadline ladder)', () => {
     // FRIENDLY_REMINDER target = June 12 (3 days ago), daysSinceTarget=3 > catchUpDays=2 → skip
     prismaMock.enrollment.findMany
       .mockResolvedValueOnce([makeTrackAEnrollment('e1', DUE_AT_TARGET_3_DAYS_AGO)])
-      .mockResolvedValueOnce([]);
+      .mockResolvedValueOnce([]) // Track A retake lookup: none
+      .mockResolvedValueOnce([]); // Track B
     prismaMock.reminderLog.findMany.mockResolvedValue([]);
 
     const summary = await runReminderSweep({ ...BASE_OPTS, catchUpDays: 2 });
@@ -397,8 +411,10 @@ describe('runReminderSweep — Track A (deadline ladder)', () => {
     // First run: send FRIENDLY_REMINDER
     prismaMock.enrollment.findMany
       .mockResolvedValueOnce([makeTrackAEnrollment('e1')]) // Track A run 1
+      .mockResolvedValueOnce([]) // Track A retake lookup run 1: none
       .mockResolvedValueOnce([]) // Track B run 1
       .mockResolvedValueOnce([makeTrackAEnrollment('e1')]) // Track A run 2
+      .mockResolvedValueOnce([]) // Track A retake lookup run 2: none
       .mockResolvedValueOnce([]); // Track B run 2
     prismaMock.reminderLog.findMany
       .mockResolvedValueOnce([]) // run 1: no existing logs
@@ -418,6 +434,7 @@ describe('runReminderSweep — Track A (deadline ladder)', () => {
 
     prismaMock.enrollment.findMany
       .mockResolvedValueOnce([e1, e2]) // Track A
+      .mockResolvedValueOnce([]) // Track A retake lookup: none
       .mockResolvedValueOnce([]); // Track B
     prismaMock.reminderLog.findMany.mockResolvedValue([]);
 
@@ -442,6 +459,7 @@ describe('runReminderSweep — Track A (deadline ladder)', () => {
     // so FRIENDLY_REMINDER (offset -14) still targets today and fires.
     prismaMock.enrollment.findMany
       .mockResolvedValueOnce([makeTrackAEnrollment('e1', DUE_AT_FIRES_TODAY, null)]) // Track A: no assignment
+      .mockResolvedValueOnce([]) // Track A retake lookup: none
       .mockResolvedValueOnce([]); // Track B
     prismaMock.reminderLog.findMany.mockResolvedValue([]);
 
@@ -538,12 +556,12 @@ describe('runReminderSweep — Track B (quiz nudges)', () => {
     expect(summary.skipped).toBe(1);
   });
 
-  it('dispatches ADMIN_REASSIGN for locked enrollment with no active retake', async () => {
+  it('dispatches ADMIN_REASSIGN for locked enrollment with no retake', async () => {
     const enrollment = makeTrackBEnrollment('e1', 'locked');
     prismaMock.enrollment.findMany
       .mockResolvedValueOnce([]) // Track A
       .mockResolvedValueOnce([enrollment]) // Track B
-      .mockResolvedValueOnce([]); // active retakes: none
+      .mockResolvedValueOnce([]); // retakes: none
     prismaMock.quizAttempt.findMany.mockResolvedValue([]);
     mockResolveEscalationRecipients.mockResolvedValue({
       organizationUserIds: ['admin-1'],
@@ -565,12 +583,12 @@ describe('runReminderSweep — Track B (quiz nudges)', () => {
     expect(summary.nudgesSent).toBe(1);
   });
 
-  it('skips locked enrollment that already has an active (non-terminal) retake', async () => {
+  it('skips locked enrollment that already has a retake', async () => {
     const enrollment = makeTrackBEnrollment('e1', 'locked');
     prismaMock.enrollment.findMany
       .mockResolvedValueOnce([]) // Track A
       .mockResolvedValueOnce([enrollment]) // Track B
-      .mockResolvedValueOnce([{ retakeOf: 'e1' }]); // active retake exists
+      .mockResolvedValueOnce([{ retakeOf: 'e1' }]); // retake exists
     prismaMock.quizAttempt.findMany.mockResolvedValue([]);
 
     const summary = await runReminderSweep(BASE_OPTS);
@@ -603,6 +621,209 @@ describe('runReminderSweep — Track B (quiz nudges)', () => {
     expect(mockLoggerError).toHaveBeenCalledWith(
       expect.objectContaining({ msg: expect.stringContaining('Track B enrollment failed') }),
     );
+  });
+});
+
+// ─── Superseded enrolments (BUG-44) ───────────────────────────────────────────
+
+/**
+ * Ruling 2026-09-28: a finished retake stops the reminders for the assignment
+ * it replaced. More generally, an enrolment named by another enrolment's
+ * `retakeOf` is superseded (BUG-38's rule) and gets no learner reminder and no
+ * admin escalation or nudge — whatever the retake's status. A `locked` row with
+ * no retake yet keeps today's behaviour: that learner is genuinely stuck.
+ *
+ * Routed by `where` rather than queued, so the assertions cannot drift onto the
+ * wrong query when a pre-pass adds or drops an `enrollment.findMany`.
+ */
+describe('runReminderSweep — superseded enrolments (BUG-44)', () => {
+  type RetakeRow = { retakeOf: string; status: string };
+
+  function routeEnrollmentQueries({
+    trackA = [] as unknown[],
+    trackB = [] as unknown[],
+    retakes = [] as RetakeRow[],
+  }) {
+    prismaMock.enrollment.findMany.mockImplementation(
+      async (args: { where: Record<string, unknown> }) => {
+        const { where } = args;
+        if ('retakeOf' in where) {
+          const ids = (where.retakeOf as { in: string[] }).in;
+          // Honour a status filter as the database would, so a lookup that
+          // narrowed to unfinished retakes cannot pass these tests by accident.
+          const excluded = (where.status as { notIn?: string[] } | undefined)?.notIn ?? [];
+          return retakes.filter((r) => ids.includes(r.retakeOf) && !excluded.includes(r.status));
+        }
+        return 'dueAt' in where ? trackA : trackB;
+      },
+    );
+  }
+
+  function retakeLookups(): Record<string, unknown>[] {
+    return prismaMock.enrollment.findMany.mock.calls
+      .map((args: unknown[]) => (args[0] as { where: Record<string, unknown> }).where)
+      .filter((where: Record<string, unknown>) => 'retakeOf' in where);
+  }
+
+  // A week past the deadline: with a wide catch-up window every ladder stage,
+  // HARD_ESCALATION (+7d) included, is due today.
+  const DUE_AT_WEEK_AGO = new Date('2024-06-08T12:00:00Z');
+  const WIDE_CATCH_UP = { ...BASE_OPTS, catchUpDays: 30 };
+
+  function dispatchedStagesFor(enrollmentId: string): string[] {
+    return mockDispatchLadderStage.mock.calls
+      .map((args: unknown[]) => args[0] as { enrollment: { id: string }; stage: string })
+      .filter((input) => input.enrollment.id === enrollmentId)
+      .map((input) => input.stage);
+  }
+
+  describe('Track A — deadline ladder', () => {
+    it('sends no stage, HARD_ESCALATION included, for a locked row whose retake the learner passed — while a locked row with no retake still gets every due stage', async () => {
+      routeEnrollmentQueries({
+        trackA: [
+          makeTrackAEnrollment('superseded', DUE_AT_WEEK_AGO),
+          makeTrackAEnrollment('stuck', DUE_AT_WEEK_AGO),
+        ],
+        retakes: [{ retakeOf: 'superseded', status: 'attested' }],
+      });
+
+      const summary = await runReminderSweep(WIDE_CATCH_UP);
+
+      expect(dispatchedStagesFor('superseded')).toEqual([]);
+      expect(dispatchedStagesFor('stuck')).toEqual(
+        expect.arrayContaining(['DAY_OF_DEADLINE', 'GRACE_SOFT_ESCALATION', 'HARD_ESCALATION']),
+      );
+      expect(summary.scanned).toBe(2);
+      expect(summary.errors).toBe(0);
+    });
+
+    it.each(['enrolled', 'in_progress', 'locked', 'completed', 'attested'])(
+      'treats the original as superseded whatever the retake status (%s)',
+      async (status) => {
+        routeEnrollmentQueries({
+          trackA: [makeTrackAEnrollment('e1', DUE_AT_WEEK_AGO)],
+          retakes: [{ retakeOf: 'e1', status }],
+        });
+
+        const summary = await runReminderSweep(WIDE_CATCH_UP);
+
+        expect(mockDispatchLadderStage).not.toHaveBeenCalled();
+        expect(summary.scanned).toBe(1);
+        expect(summary.skipped).toBe(1);
+      },
+    );
+
+    it('never reads sent-stage logs for a superseded row', async () => {
+      routeEnrollmentQueries({
+        trackA: [makeTrackAEnrollment('e1'), makeTrackAEnrollment('e2')],
+        retakes: [{ retakeOf: 'e1', status: 'completed' }],
+      });
+
+      await runReminderSweep(BASE_OPTS);
+
+      expect(prismaMock.reminderLog.findMany).toHaveBeenCalledOnce();
+      expect(prismaMock.reminderLog.findMany.mock.calls[0][0].where).toEqual({
+        enrollmentId: { in: ['e2'] },
+      });
+    });
+
+    it('looks the retakes up in ONE query for the whole batch, pinned to the batch members, with no status restriction', async () => {
+      routeEnrollmentQueries({
+        trackA: [
+          makeTrackAEnrollment('e1'),
+          makeTrackAEnrollment('e2'),
+          makeTrackAEnrollment('e3'),
+        ],
+      });
+
+      await runReminderSweep(BASE_OPTS);
+
+      const lookups = retakeLookups();
+      expect(lookups).toHaveLength(1);
+      expect(lookups[0]).toEqual({
+        retakeOf: { in: ['e1', 'e2', 'e3'] },
+        organizationUserId: { in: ['ou-e1', 'ou-e2', 'ou-e3'] },
+      });
+    });
+
+    it('skips the retake lookup when the batch is empty', async () => {
+      routeEnrollmentQueries({});
+
+      await runReminderSweep(BASE_OPTS);
+
+      expect(retakeLookups()).toHaveLength(0);
+      expect(prismaMock.reminderLog.findMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Track B — ADMIN_REASSIGN', () => {
+    it.each(['attested', 'completed'])(
+      'sends no ADMIN_REASSIGN for a locked row whose retake is %s',
+      async (status) => {
+        routeEnrollmentQueries({
+          trackB: [makeTrackBEnrollment('e1', 'locked')],
+          retakes: [{ retakeOf: 'e1', status }],
+        });
+
+        const summary = await runReminderSweep(BASE_OPTS);
+
+        expect(mockResolveEscalationRecipients).not.toHaveBeenCalled();
+        expect(mockDispatchNudge).not.toHaveBeenCalled();
+        expect(summary.skipped).toBe(1);
+      },
+    );
+
+    it.each(['enrolled', 'in_progress'])(
+      'still sends no ADMIN_REASSIGN for a locked row whose retake is %s (unchanged)',
+      async (status) => {
+        routeEnrollmentQueries({
+          trackB: [makeTrackBEnrollment('e1', 'locked')],
+          retakes: [{ retakeOf: 'e1', status }],
+        });
+
+        await runReminderSweep(BASE_OPTS);
+
+        expect(mockDispatchNudge).not.toHaveBeenCalled();
+      },
+    );
+
+    it('still nudges admins about a locked row with no retake, and only that row', async () => {
+      routeEnrollmentQueries({
+        trackB: [
+          makeTrackBEnrollment('stuck', 'locked'),
+          makeTrackBEnrollment('replaced', 'locked'),
+        ],
+        retakes: [{ retakeOf: 'replaced', status: 'attested' }],
+      });
+
+      const summary = await runReminderSweep(BASE_OPTS);
+
+      expect(mockDispatchNudge).toHaveBeenCalledOnce();
+      expect(mockDispatchNudge).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: 'ADMIN_REASSIGN', enrollmentId: 'stuck' }),
+      );
+      expect(summary.nudgesSent).toBe(1);
+      expect(summary.skipped).toBe(1);
+    });
+
+    it('looks up retakes of the LOCKED rows only, member-pinned, with no status restriction', async () => {
+      routeEnrollmentQueries({
+        trackB: [
+          makeTrackBEnrollment('e1', 'locked'),
+          makeTrackBEnrollment('e2', 'in_progress'),
+          makeTrackBEnrollment('e3', 'locked'),
+        ],
+      });
+
+      await runReminderSweep(BASE_OPTS);
+
+      const lookups = retakeLookups();
+      expect(lookups).toHaveLength(1);
+      expect(lookups[0]).toEqual({
+        retakeOf: { in: ['e1', 'e3'] },
+        organizationUserId: { in: ['ou-e1', 'ou-e3'] },
+      });
+    });
   });
 });
 
@@ -1383,6 +1604,7 @@ describe('runReminderSweep — dry-run tally accuracy', () => {
   it('tallies a dry-run dispatch into wouldSend, not skipped, and never increments ladderSent', async () => {
     prismaMock.enrollment.findMany
       .mockResolvedValueOnce([makeTrackAEnrollment('e1')]) // Track A
+      .mockResolvedValueOnce([]) // Track A retake lookup: none
       .mockResolvedValueOnce([]); // Track B
     prismaMock.reminderLog.findMany.mockResolvedValue([]);
     mockDispatchLadderStage.mockResolvedValue({ sent: false, reason: 'dry-run' });
@@ -1400,7 +1622,8 @@ describe('runReminderSweep — dry-run tally accuracy', () => {
   it('a genuinely skipped (non-dry-run) dispatch still tallies into skipped, not wouldSend', async () => {
     prismaMock.enrollment.findMany
       .mockResolvedValueOnce([makeTrackAEnrollment('e1')])
-      .mockResolvedValueOnce([]);
+      .mockResolvedValueOnce([]) // Track A retake lookup: none
+      .mockResolvedValueOnce([]); // Track B
     prismaMock.reminderLog.findMany.mockResolvedValue([]);
     mockDispatchLadderStage.mockResolvedValue({ sent: false, reason: 'no-recipients' });
 
@@ -1414,7 +1637,8 @@ describe('runReminderSweep — dry-run tally accuracy', () => {
   it('a real (non-dry-run) sent dispatch tallies into ladderSent, never wouldSend', async () => {
     prismaMock.enrollment.findMany
       .mockResolvedValueOnce([makeTrackAEnrollment('e1')])
-      .mockResolvedValueOnce([]);
+      .mockResolvedValueOnce([]) // Track A retake lookup: none
+      .mockResolvedValueOnce([]); // Track B
     prismaMock.reminderLog.findMany.mockResolvedValue([]);
     mockDispatchLadderStage.mockResolvedValue({ sent: true, reason: 'sent' });
 

@@ -19,7 +19,8 @@ reconcile between them. There is **no mobile frame** for this page.
 
 Design facts worth reusing: status pills are `#fee4e2`/`#d92d20` dot/`#b42318` text for overdue and
 `#fef0c7`/`#f79009`/`#b54708` for due-soon, both `px-[14.4px] py-[6px]` fully-rounded with a 7.2px
-dot — the same pill is reused as the header's "N at risk" chip. The card declares a fixed
+dot — the same pill is reused as the header's "N at risk" chip (the product deliberately reads
+"N overdue or due soon" instead: the count includes overdue rows, BUG-42). The card declares a fixed
 `h-[732.533px]`, which is just the natural height of a 10-row page; do not hard-code it (siblings
 size to content).
 

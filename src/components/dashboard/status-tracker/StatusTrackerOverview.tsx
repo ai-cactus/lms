@@ -57,7 +57,7 @@ export default function StatusTrackerOverview({ rows }: Props) {
         {rows.length > 0 && (
           <span className="inline-flex shrink-0 items-center gap-[7px] rounded-full bg-[#fee4e2] px-[14px] py-1.5 text-[13px] font-semibold whitespace-nowrap text-[#b42318] sm:text-[14.4px]">
             <span aria-hidden="true" className="size-[7px] shrink-0 rounded-full bg-[#d92d20]" />
-            {rows.length} at risk
+            {rows.length} overdue or due soon
           </span>
         )}
       </div>

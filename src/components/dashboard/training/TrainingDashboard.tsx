@@ -18,6 +18,7 @@ import Link from 'next/link';
 import EmptyTableState from '@/components/ui/EmptyTableState';
 import { Plus, Search, BookOpen, Users, Activity, ChevronRight } from 'lucide-react';
 import { METRIC_DEFINITIONS } from '@/lib/facility/metrics';
+import { COVERAGE_LABELS } from '@/lib/dashboard/metrics';
 
 export interface DashboardStats {
   totalActiveCourses: number;
@@ -62,7 +63,7 @@ function DonutChartWithTooltip({ coverage }: { coverage: DashboardStats['trainin
   const segments = [
     {
       id: 'completed',
-      label: 'Assignments completed',
+      label: COVERAGE_LABELS.completed,
       value: parseVal(coverage.completed),
       color: '#14B8A6',
       hoverColor: '#2DD4BF',
@@ -70,7 +71,7 @@ function DonutChartWithTooltip({ coverage }: { coverage: DashboardStats['trainin
     },
     {
       id: 'enrolled',
-      label: 'Assignments in progress',
+      label: COVERAGE_LABELS.inProgress,
       value: parseVal(coverage.inProgress),
       color: '#F59E0B',
       hoverColor: '#FBBF24',
@@ -78,7 +79,7 @@ function DonutChartWithTooltip({ coverage }: { coverage: DashboardStats['trainin
     },
     {
       id: 'notStarted',
-      label: 'Assignments not yet started',
+      label: COVERAGE_LABELS.notStarted,
       value: parseVal(coverage.notStarted),
       color: '#EF4444',
       hoverColor: '#F87171',
@@ -600,15 +601,15 @@ export default function TrainingDashboard({
 
             <div className="grid grid-cols-[auto_1fr_auto] gap-y-3 gap-x-4 items-center w-full">
               <div className="size-3 rounded-full" style={{ background: '#14B8A6' }}></div>
-              <div className="text-sm text-[#4A5568]">% of staff who have completed</div>
+              <div className="text-sm text-[#4A5568]">{COVERAGE_LABELS.completed}</div>
               <span className="font-semibold text-[#1a202c]">{coverage.completed}%</span>
 
               <div className="size-3 rounded-full" style={{ background: '#F59E0B' }}></div>
-              <div className="text-sm text-[#4A5568]">% of staff currently enrolled</div>
+              <div className="text-sm text-[#4A5568]">{COVERAGE_LABELS.inProgress}</div>
               <span className="font-semibold text-[#1a202c]">{coverage.inProgress}%</span>
 
               <div className="size-3 rounded-full" style={{ background: '#EF4444' }}></div>
-              <div className="text-sm text-[#4A5568]">% of staff yet to begin any course</div>
+              <div className="text-sm text-[#4A5568]">{COVERAGE_LABELS.notStarted}</div>
               <span className="font-semibold text-[#1a202c]">{coverage.notStarted}%</span>
             </div>
           </div>

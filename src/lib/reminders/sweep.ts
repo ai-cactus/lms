@@ -7,6 +7,7 @@ import { createEnrollmentForUser, type CreateEnrollmentContext } from '@/lib/enr
 import { assignmentAdmitsHolder } from '@/lib/enrollment/assignment-facility-scope';
 import { resolveMemberFacilityIds } from '@/lib/facility/member-facility';
 import { isCycleSummaryEnabled } from '@/lib/cycle-summary/flag';
+import { retakesOfWhere, supersededEnrollmentIds } from '@/lib/dashboard/definitions';
 import type { UserRole } from '@/generated/prisma/enums';
 import { SWEEP_LADDER_STAGES, REMINDER_STAGE_DEFAULTS } from './stages';
 import { DEFAULT_TZ, startOfDayInTz, addDays, diffInDaysInTz } from './time';
@@ -31,8 +32,8 @@ import { resolveEscalationRecipients, NO_ESCALATION_RECIPIENTS } from './recipie
  * failures change underneath it, and is resilient to a missed cron day.
  *
  * Bulk queries only (no N+1): one query per track plus one batched lookup each
- * for existing logs, quiz attempts, and active retakes. Per-enrollment failures
- * are isolated so one bad row never aborts the run.
+ * for retakes, existing logs, and quiz attempts. Per-enrollment failures are
+ * isolated so one bad row never aborts the run.
  *
  * Note: `renewalCycle` is out of scope for v1 — the deadline is always the
  * current enrollment's `dueAt`.
@@ -658,6 +659,32 @@ async function runRenewalRetriggerPrePass(
   }
 }
 
+/**
+ * The ids in `rows` that a retake has superseded (BUG-44). From the moment an
+ * admin assigns a retake, the retake carries the obligation, so neither track
+ * may remind about or escalate the original — the rule the dashboards and the
+ * Status Tracker already apply (BUG-38). ANY retake counts, finished or not:
+ * once the learner has passed it, escalating the locked original would chase an
+ * obligation that is already met.
+ *
+ * One query for the whole batch. Pinned to the batch's own members because a
+ * retake always belongs to the member who held the original, which also keeps
+ * the lookup inside each row's tenant.
+ */
+async function findSupersededIds(
+  rows: readonly { id: string; organizationUserId: string }[],
+): Promise<Set<string>> {
+  if (rows.length === 0) return new Set();
+  const retakes = await prisma.enrollment.findMany({
+    where: {
+      ...retakesOfWhere(rows.map((r) => r.id)),
+      organizationUserId: { in: [...new Set(rows.map((r) => r.organizationUserId))] },
+    },
+    select: { retakeOf: true },
+  });
+  return supersededEnrollmentIds(retakes);
+}
+
 async function runTrackA(
   opts: ReminderSweepOptions,
   summary: ReminderSweepSummary,
@@ -681,7 +708,7 @@ async function runTrackA(
   // decision Q23) instead of deleting them, so without this predicate every
   // removal would start mailing "your training is overdue" to someone whose
   // access was just revoked. getStatusTrackerSummaryForOrg filters the same way.
-  const enrollments = await prisma.enrollment.findMany({
+  const candidates = await prisma.enrollment.findMany({
     where: {
       dueAt: { not: null },
       status: { notIn: [...TERMINAL_STATUSES] },
@@ -723,6 +750,19 @@ async function runTrackA(
     },
   });
 
+  if (candidates.length === 0) return;
+
+  const superseded = await findSupersededIds(candidates);
+  const enrollments = candidates.filter((e) => !superseded.has(e.id));
+  const supersededCount = candidates.length - enrollments.length;
+  if (supersededCount > 0) {
+    summary.scanned += supersededCount;
+    summary.skipped += supersededCount;
+    logger.debug({
+      msg: '[reminders] Track A skipped superseded enrollments',
+      count: supersededCount,
+    });
+  }
   if (enrollments.length === 0) return;
 
   // One batched lookup of already-sent stages.
@@ -866,17 +906,13 @@ async function runTrackB(
     }
   }
 
-  // One batched lookup of active (non-terminal) retakes for locked enrollments.
-  const lockedIds = enrollments.filter((e) => e.status === 'locked').map((e) => e.id);
-  const activeRetakes = lockedIds.length
-    ? await prisma.enrollment.findMany({
-        where: { retakeOf: { in: lockedIds }, status: { notIn: [...TERMINAL_STATUSES] } },
-        select: { retakeOf: true },
-      })
-    : [];
-  const hasActiveRetake = new Set(
-    activeRetakes.map((r) => r.retakeOf).filter((id): id is string => id !== null),
-  );
+  const superseded = await findSupersededIds(enrollments.filter((e) => e.status === 'locked'));
+  if (superseded.size > 0) {
+    logger.debug({
+      msg: '[reminders] Track B skipped superseded enrollments',
+      count: superseded.size,
+    });
+  }
 
   for (const enrollment of enrollments) {
     summary.scanned += 1;
@@ -924,8 +960,7 @@ async function runTrackB(
         });
         tally(result);
       } else {
-        // status === 'locked': ADMIN_REASSIGN unless a retake is already active.
-        if (hasActiveRetake.has(enrollment.id)) {
+        if (superseded.has(enrollment.id)) {
           summary.skipped += 1;
           continue;
         }

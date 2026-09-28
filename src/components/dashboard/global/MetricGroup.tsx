@@ -1,6 +1,7 @@
 import React from 'react';
 import { ArrowDown, ArrowUp, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { TREND_WINDOW_DAYS } from '@/lib/facility/metrics';
 
 export interface MetricCardData {
   label: string;
@@ -10,7 +11,7 @@ export interface MetricCardData {
   icon: LucideIcon;
   /** Background utility for the icon medallion (the metric's accent colour). */
   iconSurface: string;
-  /** Percentage movement vs. the previous month; null renders no chip. */
+  /** Percentage movement vs. {@link TREND_WINDOW_DAYS} days ago; null renders no chip. */
   trendPercent: number | null;
   /** Whether a rise is good news — decides the chip's colour, not its arrow. */
   higherIsBetter: boolean;
@@ -29,20 +30,21 @@ function TrendChip({
 }: Pick<MetricCardData, 'trendPercent' | 'higherIsBetter'>) {
   if (trendPercent === null) return null;
 
-  const rising = trendPercent >= 0;
-  const favourable = rising === higherIsBetter;
-  const Icon = rising ? ArrowUp : ArrowDown;
+  // No movement is neither good nor bad news, so it gets no arrow and no colour.
+  const direction = Math.sign(trendPercent);
+  const Icon = direction > 0 ? ArrowUp : direction < 0 ? ArrowDown : null;
+  const tone =
+    direction === 0
+      ? 'text-text-secondary'
+      : direction > 0 === higherIsBetter
+        ? 'text-success'
+        : 'text-error';
 
   return (
-    <span
-      className={cn(
-        'inline-flex shrink-0 items-center gap-1 text-xs whitespace-nowrap',
-        favourable ? 'text-success' : 'text-error',
-      )}
-    >
-      <Icon className="size-3" aria-hidden="true" />
+    <span className={cn('inline-flex shrink-0 items-center gap-1 text-xs whitespace-nowrap', tone)}>
+      {Icon && <Icon className="size-3" aria-hidden="true" />}
       <span className="font-semibold">{Math.abs(trendPercent)}%</span>
-      <span className="hidden text-text-secondary sm:inline">from last month</span>
+      <span className="hidden text-text-secondary sm:inline">vs {TREND_WINDOW_DAYS} days ago</span>
     </span>
   );
 }

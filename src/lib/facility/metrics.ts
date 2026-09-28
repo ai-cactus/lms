@@ -57,7 +57,7 @@ export type AuditReadinessLevel = 'audit_ready' | 'needs_attention' | 'critical'
 export interface FacilityComplianceSignals {
   /** Overdue trainings more than {@link RISK_OVERDUE_GRACE_DAYS} days past due. */
   overdueBeyondGrace: number;
-  /** Overdue trainings 1–{@link RISK_OVERDUE_GRACE_DAYS} days past due. */
+  /** Overdue trainings at most {@link RISK_OVERDUE_GRACE_DAYS} days past due (minutes count). */
   overdueWithinGrace: number;
   /**
    * Training completion for the facility, or `null` when it has nothing
@@ -173,21 +173,23 @@ export const METRIC_DEFINITIONS = {
   firstTimePassRate:
     "Of each learner's first submitted attempt at each quiz, the share that met the quiz's passing score. Renewals count as first attempts; retakes do not.",
   overdueTrainings:
-    'Individual assignments past their due date and not yet finished, across active staff. Assignment-level count.',
+    'Individual assignments past their due date and not yet finished, across active staff. Assignment-level count; a retaken assignment counts once, as its retake.',
   approachingDeadlines: `Individual assignments not yet finished, due within the next ${DUE_SOON_WINDOW_DAYS} days.`,
   dormantStaff: `Active staff who have not logged in for ${DORMANT_LOGIN_DAYS} days (after their first ${DORMANT_LOGIN_DAYS} days), have an assignment not started ${DORMANT_UNSTARTED_DAYS} days after it opened, or have a started course with no activity for ${DORMANT_STALLED_DAYS} days. Having no assignments alone is not dormant.`,
   expiringCredentials: `Certificates of active staff on recurring training whose renewal cycle ends within the next ${EXPIRING_CREDENTIALS_WINDOW_DAYS} days and that have not already been renewed.`,
   staffCount: 'Active staff currently assigned to this facility.',
-  activeTrainings: 'Assignments at this facility not yet finished. Assignment-level count.',
-  trainingCompletion: 'Finished assignments divided by all assignments at this facility.',
+  activeTrainings:
+    'Assignments at this facility not yet finished. Assignment-level count; a retaken assignment counts once, as its retake.',
+  trainingCompletion:
+    'Finished assignments divided by all assignments at this facility. A retaken assignment counts once, as its retake.',
   totalActiveCourses:
     'Published courses with at least one unfinished enrolment by staff in this facility.',
   totalAssignedLearners:
     'Staff in this facility with at least one assigned course they have not yet finished.',
   averageGrade:
-    "The mean of each enrolment's grade, where an enrolment's grade is the average of its best submitted score on each quiz.",
+    "The mean of each enrolment's grade, where an enrolment's grade is the average of its best submitted score on each quiz. A retaken assignment is graded by its retake.",
   auditReadiness: `Audit Ready only with zero overdue trainings, zero expired credentials and training completion at or above ${AUDIT_READY_MIN_COMPLETION_PERCENT}%.`,
-  riskLevel: `High when a training is over ${RISK_OVERDUE_GRACE_DAYS} days overdue, completion is below ${RISK_HIGH_COMPLETION_PERCENT}% or a credential has expired. Medium when a training is 1–${RISK_OVERDUE_GRACE_DAYS} days overdue, completion is ${RISK_HIGH_COMPLETION_PERCENT}–${RISK_LOW_COMPLETION_PERCENT - 1}% or a credential expires within ${EXPIRING_CREDENTIALS_WINDOW_DAYS} days. Low otherwise.`,
+  riskLevel: `High when a training is more than ${RISK_OVERDUE_GRACE_DAYS} days overdue, completion is below ${RISK_HIGH_COMPLETION_PERCENT}% or a credential has expired. Medium when a training is overdue by up to ${RISK_OVERDUE_GRACE_DAYS} days, completion is ${RISK_HIGH_COMPLETION_PERCENT}–${RISK_LOW_COMPLETION_PERCENT - 1}% or a credential expires within ${EXPIRING_CREDENTIALS_WINDOW_DAYS} days. Low otherwise. Completion is rounded to the nearest whole percent.`,
 } as const;
 
 /** Ordering weight for "most at risk first" — high risk sorts before low. */

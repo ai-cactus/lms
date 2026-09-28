@@ -117,6 +117,12 @@ describe('GlobalDashboardView — unfiltered', () => {
       within(overview).getByText('Performance overview across all facilities'),
     ).toBeInTheDocument();
     expect(within(overview).getByText('Showing 1 to 3 of 3 facilities')).toBeInTheDocument();
+    // BUG-42: the risk table says how it is ordered rather than reusing the overview's line.
+    expect(
+      within(section('Priority Risks & Deadlines by Facilities')).getByText(
+        'Facilities ranked by risk, then overdue trainings',
+      ),
+    ).toBeInTheDocument();
     expect(within(overview).getByText('Beta Site')).toBeInTheDocument();
     expect(metricValue(FOOTPRINT, 'Total Staff Count')).toBe('60');
   });
@@ -136,10 +142,10 @@ describe('GlobalDashboardView — unfiltered', () => {
   it('renders a trend chip only on Total Facilities and Total Staff', () => {
     render(<GlobalDashboardView data={DATA} userName="Jane" />);
 
-    expect(screen.getAllByText('from last month')).toHaveLength(2);
-    expect(within(section(FOOTPRINT)).getAllByText('from last month')).toHaveLength(2);
-    expect(within(section(VELOCITY)).queryByText('from last month')).not.toBeInTheDocument();
-    expect(within(section(RISK)).queryByText('from last month')).not.toBeInTheDocument();
+    expect(screen.getAllByText('vs 30 days ago')).toHaveLength(2);
+    expect(within(section(FOOTPRINT)).getAllByText('vs 30 days ago')).toHaveLength(2);
+    expect(within(section(VELOCITY)).queryByText('vs 30 days ago')).not.toBeInTheDocument();
+    expect(within(section(RISK)).queryByText('vs 30 days ago')).not.toBeInTheDocument();
   });
 
   it("carries each tile's definition as its help text", () => {
@@ -215,7 +221,7 @@ describe('GlobalDashboardView — comparison', () => {
   it('renders no trend chip on a comparison — a subset has no history', () => {
     renderComparison();
 
-    expect(screen.queryByText('from last month')).not.toBeInTheDocument();
+    expect(screen.queryByText('vs 30 days ago')).not.toBeInTheDocument();
   });
 
   it('reports the compared ids to the switcher', () => {

@@ -35,7 +35,7 @@ export interface StatusTrackerRowView {
   workerEmail: string;
   courseId: string;
   courseTitle: string;
-  /** Facility stamped on the enrollment at assignment time; null when none. */
+  /** The member's current roster facilities in the viewer's scope, comma-joined; null when none. */
   facilityName: string | null;
   dueAt: string;
   daysOverdue: number | null;

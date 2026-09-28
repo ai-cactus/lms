@@ -46,7 +46,7 @@ export default function PriorityRisksTable({ rows, comparisonTotal }: PriorityRi
       description={
         comparing
           ? facilityComparisonDescription(rows.length, comparisonTotal)
-          : 'Performance overview across all facilities'
+          : 'Facilities ranked by risk, then overdue trainings'
       }
       shown={topRows.length}
       total={rows.length}
