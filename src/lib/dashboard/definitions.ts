@@ -353,7 +353,8 @@ export function sliceSnapshot(
  *
  * A retake belongs to the same member and course as its original, so both
  * always fall in the same scope and the same facility slice. The Status Tracker
- * applies this rule through {@link retakesOfWhere}; change the two together.
+ * and the reminder sweep (BUG-44) apply this rule through {@link retakesOfWhere};
+ * change them together.
  */
 export function supersededEnrollmentIds(
   enrollments: readonly { retakeOf: string | null }[],
