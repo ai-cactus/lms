@@ -40,10 +40,13 @@ echo "→ [2/6] ensuring the lms-documents bucket exists"
 $COMPOSE --profile init run --rm --no-deps mc-init
 
 if [ -n "${E2E_RESET:-}" ]; then
-  echo "→ [3/6] resetting the e2e database (drop + migrate + seed)"
-  # `migrate reset` runs prisma.config.ts's seed itself.
-  $RUN npx prisma migrate reset --force --skip-generate
-  echo "→ [4/6] (seed ran as part of the reset)"
+  echo "→ [3/6] resetting the e2e database (drop + migrate)"
+  # Prisma 7 removed `--skip-generate`/`--skip-seed`: `migrate reset` now only
+  # drops and re-applies migrations, and never runs the seed itself.
+  $RUN npx prisma migrate reset --force
+
+  echo "→ [4/6] seeding e2e fixtures"
+  $RUN npx prisma db seed
 else
   echo "→ [3/6] applying migrations"
   $RUN npx prisma migrate deploy
