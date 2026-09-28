@@ -50,6 +50,7 @@ const {
   mockDispatchLadderStage,
   mockDispatchNudge,
   mockRetryReminderEmail,
+  mockRetryNudgeEmail,
   mockResolveEscalationRecipients,
   mockRunRetentionPurge,
   mockLoggerError,
@@ -63,6 +64,7 @@ const {
     quizAttempt: { findMany: vi.fn() },
     notification: { updateMany: vi.fn() },
     emailMessage: { findMany: vi.fn(), update: vi.fn() },
+    reminderNudge: { findMany: vi.fn() },
     courseAssignment: { findMany: vi.fn() },
     organizationUser: { findMany: vi.fn() },
     organizationUserFacility: { findMany: vi.fn() },
@@ -70,6 +72,7 @@ const {
   const mockDispatchLadderStage = vi.fn();
   const mockDispatchNudge = vi.fn();
   const mockRetryReminderEmail = vi.fn();
+  const mockRetryNudgeEmail = vi.fn();
   const mockResolveEscalationRecipients = vi.fn();
   const mockRunRetentionPurge = vi.fn();
   const mockLoggerError = vi.fn();
@@ -81,6 +84,7 @@ const {
     mockDispatchLadderStage,
     mockDispatchNudge,
     mockRetryReminderEmail,
+    mockRetryNudgeEmail,
     mockResolveEscalationRecipients,
     mockRunRetentionPurge,
     mockLoggerError,
@@ -96,6 +100,7 @@ vi.mock('@/lib/reminders/dispatch', () => ({
   dispatchLadderStage: mockDispatchLadderStage,
   dispatchNudge: mockDispatchNudge,
   retryReminderEmail: mockRetryReminderEmail,
+  retryNudgeEmail: mockRetryNudgeEmail,
   noopEmailSender: vi.fn().mockResolvedValue({ ok: true }),
   // Mirrors the real constant — the retry pre-pass filters on it, so the values
   // are asserted (not just referenced) by the cycle-summary drain tests below.
@@ -240,6 +245,8 @@ beforeEach(() => {
   mockDispatchLadderStage.mockResolvedValue({ sent: true, reason: 'sent' });
   mockDispatchNudge.mockResolvedValue({ sent: true, reason: 'sent' });
   mockRetryReminderEmail.mockResolvedValue(true);
+  mockRetryNudgeEmail.mockResolvedValue(true);
+  prismaMock.reminderNudge.findMany.mockResolvedValue([]);
   mockResolveEscalationRecipients.mockResolvedValue({ organizationUserIds: [], emails: [] });
   mockRunRetentionPurge.mockResolvedValue({
     verificationTokens: 0,
@@ -842,6 +849,7 @@ describe('runReminderSweep — email retry pre-pass', () => {
       attempts: 1,
       maxAttempts: 3,
       reminderLogId: 'log-1',
+      reminderNudgeId: null,
       ...overrides,
     };
   }
@@ -901,14 +909,78 @@ describe('runReminderSweep — email retry pre-pass', () => {
     expect(summary.retriesSent).toBe(0);
   });
 
-  it('skips a failed row with no reminderLogId (nudge / generic — not reconstructable)', async () => {
+  it('skips a failed row with neither reminderLogId nor reminderNudgeId (not reconstructable)', async () => {
     prismaMock.emailMessage.findMany.mockResolvedValue([makeFailedEmail({ reminderLogId: null })]);
     prismaMock.enrollment.findMany.mockResolvedValue([]);
 
     const summary = await runReminderSweep(BASE_OPTS);
 
     expect(mockRetryReminderEmail).not.toHaveBeenCalled();
+    expect(mockRetryNudgeEmail).not.toHaveBeenCalled();
     expect(summary.retriesSent).toBe(0);
+  });
+
+  describe('a failed nudge email (BUG-22)', () => {
+    function makeNudge(overrides: Record<string, unknown> = {}) {
+      return {
+        id: 'nudge-1',
+        kind: 'WORKER_RETAKE',
+        attemptsRemaining: 2,
+        enrollment: makeReminderLog().enrollment,
+        ...overrides,
+      };
+    }
+
+    it('is rebuilt from its ReminderNudge and re-sent', async () => {
+      prismaMock.emailMessage.findMany.mockResolvedValue([
+        makeFailedEmail({ reminderLogId: null, reminderNudgeId: 'nudge-1' }),
+      ]);
+      prismaMock.reminderNudge.findMany.mockResolvedValue([makeNudge()]);
+
+      const summary = await runReminderSweep(BASE_OPTS);
+
+      expect(prismaMock.reminderLog.findMany).not.toHaveBeenCalled();
+      expect(mockRetryNudgeEmail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          emailMessage: { id: 'email-1', toEmail: 'worker-e1@test.com' },
+          kind: 'WORKER_RETAKE',
+          courseTitle: 'Course e1',
+          attemptsRemaining: 2,
+          worker: { email: 'worker-e1@test.com', name: 'Worker e1' },
+        }),
+      );
+      expect(mockRetryReminderEmail).not.toHaveBeenCalled();
+      expect(summary.retriesSent).toBe(1);
+    });
+
+    it('is cancelled, not re-sent, once its enrolment is finished', async () => {
+      prismaMock.emailMessage.findMany.mockResolvedValue([
+        makeFailedEmail({ reminderLogId: null, reminderNudgeId: 'nudge-1' }),
+      ]);
+      prismaMock.reminderNudge.findMany.mockResolvedValue([
+        makeNudge({ enrollment: { ...makeReminderLog().enrollment, status: 'completed' } }),
+      ]);
+
+      await runReminderSweep(BASE_OPTS);
+
+      expect(mockRetryNudgeEmail).not.toHaveBeenCalled();
+      expect(prismaMock.emailMessage.update).toHaveBeenCalledWith({
+        where: { id: 'email-1' },
+        data: { status: 'cancelled' },
+      });
+    });
+
+    it('is left alone when its nudge row is gone', async () => {
+      prismaMock.emailMessage.findMany.mockResolvedValue([
+        makeFailedEmail({ reminderLogId: null, reminderNudgeId: 'nudge-gone' }),
+      ]);
+
+      const summary = await runReminderSweep(BASE_OPTS);
+
+      expect(mockRetryNudgeEmail).not.toHaveBeenCalled();
+      expect(prismaMock.emailMessage.update).not.toHaveBeenCalled();
+      expect(summary.skipped).toBeGreaterThanOrEqual(1);
+    });
   });
 
   describe('re-checks the enrolment before re-sending (BUG-45 / BUG-31)', () => {

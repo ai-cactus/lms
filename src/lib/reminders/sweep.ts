@@ -15,6 +15,7 @@ import {
   dispatchLadderStage,
   dispatchNudge,
   noopEmailSender,
+  retryNudgeEmail,
   retryReminderEmail,
   LEGACY_REMINDER_EMAIL_KINDS,
   type DispatchResult,
@@ -139,15 +140,36 @@ export async function runReminderSweep(opts: ReminderSweepOptions): Promise<Remi
   return summary;
 }
 
+/** Enrolment context both retry sources rebuild their copy from. */
+const RETRY_ENROLLMENT_SELECT = {
+  id: true,
+  organizationUserId: true,
+  status: true,
+  dueAt: true,
+  course: { select: { title: true, archivedAt: true } },
+  organizationUser: {
+    select: {
+      user: { select: { email: true, fullName: true } },
+      facilities: {
+        where: { active: true },
+        take: 1,
+        select: { facility: { select: { timezone: true } } },
+      },
+    },
+  },
+} as const;
+
 /**
  * Re-attempt reminder emails that failed to deliver on an earlier sweep.
  *
  * Runs before the ladder/nudge tracks. Selects `EmailMessage` rows that are
  * still `failed`, whose last attempt is older than {@link RETRY_BACKOFF_MS}, and
- * that remain under their per-row `maxAttempts` cap. Only ladder sends carry a
- * `reminderLogId`, so they alone are reconstructable from the claimed
- * ReminderLog + enrollment context; each is rebuilt and re-sent via the injected
- * sender. A no-op under `dryRun` (it would otherwise mutate delivery state).
+ * that remain under their per-row `maxAttempts` cap. A send is reconstructable
+ * from the row it was claimed under — a ladder send's `reminderLogId`, a
+ * nudge send's `reminderNudgeId` (BUG-22) — plus that row's enrolment context;
+ * each is rebuilt and re-sent via the injected sender. A row with neither
+ * pointer (a nudge send written before BUG-22, or any other kind) is left
+ * alone. A no-op under `dryRun` (it would otherwise mutate delivery state).
  *
  * Narrowed, not stood down, while CYCLE_SUMMARY_ENABLED is on. The flag stops
  * NEW per-stage email at the dispatch site, so from the flip onward this pass
@@ -184,83 +206,102 @@ async function runRetryPrePass(
       updatedAt: { lt: backoffFloor },
       ...(drainingLegacyBacklog ? { kind: { in: [...LEGACY_REMINDER_EMAIL_KINDS] } } : {}),
     },
-    select: { id: true, toEmail: true, attempts: true, maxAttempts: true, reminderLogId: true },
+    select: {
+      id: true,
+      toEmail: true,
+      attempts: true,
+      maxAttempts: true,
+      reminderLogId: true,
+      reminderNudgeId: true,
+    },
   });
 
   const retryable = candidates.filter(
-    (m): m is typeof m & { reminderLogId: string } =>
-      m.attempts < m.maxAttempts && m.reminderLogId !== null,
+    (m) => m.attempts < m.maxAttempts && (m.reminderLogId !== null || m.reminderNudgeId !== null),
   );
   if (retryable.length === 0) return;
 
-  // One batched lookup of the claimed logs + their enrollment context.
-  const logIds = [...new Set(retryable.map((m) => m.reminderLogId))];
-  const logs = await prisma.reminderLog.findMany({
-    where: { id: { in: logIds } },
-    select: {
-      id: true,
-      stage: true,
-      targetDate: true,
-      enrollment: {
-        select: {
-          id: true,
-          organizationUserId: true,
-          status: true,
-          dueAt: true,
-          course: { select: { title: true, archivedAt: true } },
-          organizationUser: {
-            select: {
-              user: { select: { email: true, fullName: true } },
-              facilities: {
-                where: { active: true },
-                take: 1,
-                select: { facility: { select: { timezone: true } } },
-              },
-            },
+  // One batched lookup per source table, then one eligibility check for all.
+  const logIds = [...new Set(retryable.flatMap((m) => m.reminderLogId ?? []))];
+  const nudgeIds = [...new Set(retryable.flatMap((m) => m.reminderNudgeId ?? []))];
+  const [logs, nudges] = await Promise.all([
+    logIds.length
+      ? prisma.reminderLog.findMany({
+          where: { id: { in: logIds } },
+          select: {
+            id: true,
+            stage: true,
+            targetDate: true,
+            enrollment: { select: RETRY_ENROLLMENT_SELECT },
           },
-        },
-      },
-    },
-  });
+        })
+      : Promise.resolve([]),
+    nudgeIds.length
+      ? prisma.reminderNudge.findMany({
+          where: { id: { in: nudgeIds } },
+          select: {
+            id: true,
+            kind: true,
+            attemptsRemaining: true,
+            enrollment: { select: RETRY_ENROLLMENT_SELECT },
+          },
+        })
+      : Promise.resolve([]),
+  ]);
   const logById = new Map(logs.map((l) => [l.id, l]));
+  const nudgeById = new Map(nudges.map((n) => [n.id, n]));
   const ineligible = await findIneligibleEnrollmentIds(
-    logs.map((l) => ({
-      id: l.enrollment.id,
-      organizationUserId: l.enrollment.organizationUserId,
-      status: l.enrollment.status,
-      courseArchivedAt: l.enrollment.course.archivedAt,
+    [...logs, ...nudges].map(({ enrollment }) => ({
+      id: enrollment.id,
+      organizationUserId: enrollment.organizationUserId,
+      status: enrollment.status,
+      courseArchivedAt: enrollment.course.archivedAt,
     })),
   );
 
   for (const message of retryable) {
     try {
-      const log = logById.get(message.reminderLogId);
-      if (!log) {
-        // The linked ReminderLog is gone (e.g. enrollment deleted) — nothing to
+      const log = message.reminderLogId ? logById.get(message.reminderLogId) : undefined;
+      const nudge = message.reminderNudgeId ? nudgeById.get(message.reminderNudgeId) : undefined;
+      const source = log ?? nudge;
+      if (!source) {
+        // The claimed row is gone (e.g. enrollment deleted) — nothing to
         // reconstruct from; leave the row as-is rather than guess.
         summary.skipped += 1;
         continue;
       }
-      if (ineligible.has(log.enrollment.id)) {
-        await cancelStaleReminderEmail(message.id, log.enrollment.id);
+      const { enrollment } = source;
+      if (ineligible.has(enrollment.id)) {
+        await cancelStaleReminderEmail(message.id, enrollment.id);
         summary.skipped += 1;
         continue;
       }
 
-      const tz = log.enrollment.organizationUser.facilities[0]?.facility.timezone ?? DEFAULT_TZ;
-      const resent = await retryReminderEmail({
-        sendEmail,
-        emailMessage: { id: message.id, toEmail: message.toEmail },
-        stage: log.stage,
-        targetDate: log.targetDate,
-        courseTitle: log.enrollment.course.title,
-        dueAt: log.enrollment.dueAt,
-        timezone: tz,
-        worker: {
-          email: log.enrollment.organizationUser.user.email,
-          name: log.enrollment.organizationUser.user.fullName,
-        },
-      });
+      const emailMessage = { id: message.id, toEmail: message.toEmail };
+      const worker = {
+        email: enrollment.organizationUser.user.email,
+        name: enrollment.organizationUser.user.fullName,
+      };
+      const resent =
+        'stage' in source
+          ? await retryReminderEmail({
+              sendEmail,
+              emailMessage,
+              stage: source.stage,
+              targetDate: source.targetDate,
+              courseTitle: enrollment.course.title,
+              dueAt: enrollment.dueAt,
+              timezone: enrollment.organizationUser.facilities[0]?.facility.timezone ?? DEFAULT_TZ,
+              worker,
+            })
+          : await retryNudgeEmail({
+              sendEmail,
+              emailMessage,
+              kind: source.kind,
+              courseTitle: enrollment.course.title,
+              attemptsRemaining: source.attemptsRemaining,
+              worker,
+            });
 
       if (resent) summary.retriesSent += 1;
     } catch (err) {

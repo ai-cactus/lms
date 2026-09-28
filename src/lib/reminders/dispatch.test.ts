@@ -6,7 +6,9 @@
  *
  * dispatchNudge: no-existing sends, throttle suppresses, elapsed-interval
  *   sends, dry-run no-writes, WORKER_RETAKE targets worker, ADMIN_REASSIGN
- *   targets recipients.
+ *   targets recipients, every nudge email records its ReminderNudge (BUG-22).
+ *
+ * retryNudgeEmail: rebuilds each kind's copy and finalizes the row (BUG-22).
  *
  * Cycle-summary cutover: both entry points under both flag states — claims and
  *   in-app notifications survive, email does not, and `summarizedAt` /
@@ -80,7 +82,7 @@ vi.mock('@/lib/logger', () => ({
   maskEmail: (e: string) => e,
 }));
 
-import { dispatchLadderStage, dispatchNudge } from './dispatch';
+import { dispatchLadderStage, dispatchNudge, retryNudgeEmail } from './dispatch';
 
 const WORKER = {
   id: 'user-1',
@@ -114,7 +116,7 @@ beforeEach(() => {
   mockCreateNotification.mockResolvedValue(undefined);
   mockResolveEscalationRecipients.mockResolvedValue(ESCALATION_RECIPIENTS);
   prismaMock.reminderNudge.findUnique.mockResolvedValue(null);
-  prismaMock.reminderNudge.upsert.mockResolvedValue({});
+  prismaMock.reminderNudge.upsert.mockResolvedValue({ id: 'nudge-1' });
   prismaMock.emailMessage.create.mockResolvedValue({ id: 'email-1' });
   prismaMock.emailMessage.update.mockResolvedValue({});
 });
@@ -580,6 +582,55 @@ describe('dispatchNudge', () => {
     });
   });
 
+  describe('delivery tracking — a nudge email points at its nudge row (BUG-22)', () => {
+    it('records the WORKER_RETAKE email against the claimed ReminderNudge, not a ReminderLog', async () => {
+      await dispatchNudge(baseNudgeInput());
+
+      expect(prismaMock.emailMessage.create).toHaveBeenCalledWith({
+        data: {
+          toEmail: 'worker@test.com',
+          kind: 'reminder_nudge',
+          reminderNudgeId: 'nudge-1',
+          status: 'queued',
+        },
+      });
+      // The row id has to exist before the email is recorded.
+      expect(prismaMock.reminderNudge.upsert.mock.invocationCallOrder[0]).toBeLessThan(
+        prismaMock.emailMessage.create.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('records every ADMIN_REASSIGN escalation email against the same nudge row', async () => {
+      await dispatchNudge(
+        baseNudgeInput({
+          kind: 'ADMIN_REASSIGN',
+          recipients: {
+            organizationUserIds: ['admin-1', 'admin-2'],
+            emails: [
+              { email: 'a1@test.com', name: 'A1' },
+              { email: 'a2@test.com', name: 'A2' },
+            ],
+            members: [],
+          },
+        }),
+      );
+
+      const created = prismaMock.emailMessage.create.mock.calls.map(([args]) => args.data);
+      expect(created).toEqual([
+        expect.objectContaining({ toEmail: 'a1@test.com', reminderNudgeId: 'nudge-1' }),
+        expect.objectContaining({ toEmail: 'a2@test.com', reminderNudgeId: 'nudge-1' }),
+      ]);
+    });
+
+    it('writes no nudge row when the in-app notice fails, so the nudge is not throttled', async () => {
+      mockCreateNotification.mockRejectedValue(new Error('down'));
+
+      await dispatchNudge(baseNudgeInput());
+
+      expect(prismaMock.reminderNudge.upsert).not.toHaveBeenCalled();
+    });
+  });
+
   describe('resilience — never throws', () => {
     it('returns {sent:false, reason:"error"} when createNotification rejects', async () => {
       prismaMock.reminderNudge.findUnique.mockResolvedValue(null);
@@ -588,6 +639,67 @@ describe('dispatchNudge', () => {
       const result = await dispatchNudge(baseNudgeInput());
 
       expect(result).toEqual({ sent: false, reason: 'error' });
+    });
+  });
+});
+
+describe('retryNudgeEmail (BUG-22)', () => {
+  const EMAIL = { id: 'email-9', toEmail: 'worker@test.com' };
+
+  it('rebuilds a WORKER_RETAKE email for the worker with the pinned attempt count', async () => {
+    const sendEmail = vi.fn().mockResolvedValue({ ok: true });
+
+    const ok = await retryNudgeEmail({
+      sendEmail,
+      emailMessage: EMAIL,
+      kind: 'WORKER_RETAKE',
+      courseTitle: 'Safety Training',
+      attemptsRemaining: 1,
+      worker: { email: 'worker@test.com', name: 'Test Worker' },
+    });
+
+    expect(ok).toBe(true);
+    expect(sendEmail).toHaveBeenCalledWith({
+      to: 'worker@test.com',
+      toName: 'Test Worker',
+      kind: 'WORKER_RETAKE',
+      recipientRole: 'worker',
+      courseTitle: 'Safety Training',
+      dueAt: null,
+      attemptsRemaining: 1,
+    });
+    expect(prismaMock.emailMessage.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'email-9' },
+        data: expect.objectContaining({ status: 'sent' }),
+      }),
+    );
+  });
+
+  it('rebuilds an ADMIN_REASSIGN email as escalation copy naming the worker', async () => {
+    const sendEmail = vi.fn().mockResolvedValue({ ok: false, error: new Error('421') });
+
+    const ok = await retryNudgeEmail({
+      sendEmail,
+      emailMessage: { id: 'email-9', toEmail: 'admin@test.com' },
+      kind: 'ADMIN_REASSIGN',
+      courseTitle: 'Safety Training',
+      attemptsRemaining: null,
+      worker: { email: 'worker@test.com', name: null },
+    });
+
+    expect(ok).toBe(false);
+    expect(sendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: 'admin@test.com',
+        toName: null,
+        recipientRole: 'escalation',
+        workerName: 'worker@test.com',
+      }),
+    );
+    expect(prismaMock.emailMessage.update).toHaveBeenCalledWith({
+      where: { id: 'email-9' },
+      data: { status: 'failed', attempts: { increment: 1 }, lastError: '421' },
     });
   });
 });

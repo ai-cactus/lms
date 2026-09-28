@@ -2,36 +2,40 @@
 
 /// Delivery-tracking record for a single outbound email. Written when an email
 /// is queued and updated as delivery is attempted (status/attempts/lastError).
-/// `reminderLogId` and `organizationId` are plain, unconstrained references —
-/// kept decoupled (no relation/FK) so email delivery is independent of the
-/// reminder and tenancy data it describes, and the delivery trail survives
-/// deletion of the rows it points at.
+/// `reminderLogId`, `reminderNudgeId` and `organizationId` are plain,
+/// unconstrained references — kept decoupled (no relation/FK) so email delivery
+/// is independent of the reminder and tenancy data it describes, and the
+/// delivery trail survives deletion of the rows it points at.
 ///
 /// `status` is `queued` → `sent` | `failed`; a `failed` row the retry pass will
 /// not re-send because its enrolment was since finished, superseded or archived
 /// is retired as `cancelled` (BUG-45).
 ///
-/// `reminderLogId` stays null for the `cycle_summary` kind: a summary email
-/// covers many reminder rows at once, so the single-ReminderLog pointer cannot
-/// express its contents. The rows it captured are enumerated by
+/// A per-reminder send points at the row it was claimed under — `reminderLogId`
+/// for a ladder stage, `reminderNudgeId` for a Track B nudge (BUG-22) — which is
+/// what the sweep's retry pre-pass rebuilds a failed send from.
+///
+/// Both stay null for the `cycle_summary` kind: a summary email covers many
+/// reminder rows at once, so a single-row pointer cannot express its contents. The rows it captured are enumerated by
 /// {@link CycleSummaryItem} instead.
 model EmailMessage {
-  id             String             @id @default(uuid())
-  toEmail        String             @map("to_email")
+  id              String             @id @default(uuid())
+  toEmail         String             @map("to_email")
   /// Recipient display name, when the sender knew one.
-  toName         String?            @map("to_name")
-  kind           String
+  toName          String?            @map("to_name")
+  kind            String
   /// Owning organization, for per-tenant delivery reporting. Unconstrained.
-  organizationId String?            @map("organization_id")
-  reminderLogId  String?            @map("reminder_log_id")
-  status         String             @default("queued")
-  attempts       Int                @default(0)
-  maxAttempts    Int                @default(3) @map("max_attempts")
-  lastError      String?            @map("last_error")
-  sentAt         DateTime?          @map("sent_at")
-  createdAt      DateTime           @default(now()) @map("created_at")
-  updatedAt      DateTime           @updatedAt @map("updated_at")
-  cycleSummary   CycleSummaryItem[]
+  organizationId  String?            @map("organization_id")
+  reminderLogId   String?            @map("reminder_log_id")
+  reminderNudgeId String?            @map("reminder_nudge_id")
+  status          String             @default("queued")
+  attempts        Int                @default(0)
+  maxAttempts     Int                @default(3) @map("max_attempts")
+  lastError       String?            @map("last_error")
+  sentAt          DateTime?          @map("sent_at")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+  cycleSummary    CycleSummaryItem[]
 
   @@index([status, attempts])
   @@map("email_messages")
