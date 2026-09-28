@@ -9,6 +9,7 @@ import { prisma } from '@/db/index';
 import { UserRole } from '@/generated/prisma/enums';
 import bcrypt from 'bcryptjs';
 import { BCRYPT_COST } from '@/lib/bcrypt-config';
+import { logger } from '@/lib/logger';
 
 async function main() {
   const org = await prisma.organization.upsert({
@@ -20,7 +21,12 @@ async function main() {
       hasAuditorAccess: true,
     },
   });
-  console.log('Org:', org.id, '|', org.name, '| hasAuditorAccess:', org.hasAuditorAccess);
+  logger.info({
+    msg: '[seed-test-user] Org',
+    orgId: org.id,
+    name: org.name,
+    hasAuditorAccess: org.hasAuditorAccess,
+  });
 
   const facility = await prisma.facility.upsert({
     where: { id: 'test-facility-id-01' },
@@ -67,7 +73,11 @@ async function main() {
     update: { active: true, deactivatedAt: null },
     create: { organizationUserId: adminMembership.id, facilityId: facility.id },
   });
-  console.log('Admin:', admin.email, '| role:', adminMembership.role);
+  logger.info({
+    msg: '[seed-test-user] Admin',
+    email: admin.email,
+    role: adminMembership.role,
+  });
 
   const workerHash = await bcrypt.hash('Worker123!', BCRYPT_COST);
   // Seed a spread of worker-category roles for fixture variety.
@@ -106,7 +116,7 @@ async function main() {
     });
   }
   // Create a document and version for the admin to use in the wizard
-  console.log('Creating sample document for admin');
+  logger.info({ msg: '[seed-test-user] Creating sample document for admin' });
   const doc = await prisma.document.upsert({
     where: { id: 'test-doc-id-01' },
     update: {},
@@ -134,13 +144,13 @@ async function main() {
     },
   });
 
-  console.log('3 workers created');
-  console.log('\n✅ Done! Login: admin@test.com / Admin123!');
+  logger.info({ msg: '[seed-test-user] 3 workers created' });
+  logger.info({ msg: '[seed-test-user] ✅ Done! Login: admin@test.com / Admin123!' });
 }
 
 main()
   .catch((e) => {
-    console.error(e instanceof Error ? e.message : String(e));
+    logger.error({ msg: '[seed-test-user] Failed', err: e });
     process.exit(1);
   })
   .finally(() => prisma.$disconnect());

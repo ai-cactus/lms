@@ -23,6 +23,7 @@ import {
   resolveVertexEmbeddingLocation,
   VERTEX_EMBEDDING_MODEL,
 } from '@/lib/ai/vertex-config';
+import { logger } from '@/lib/logger';
 
 const execFileAsync = promisify(execFile);
 
@@ -46,9 +47,9 @@ const MIN_LEN = 50;
 const BATCH_SIZE = 100;
 const PROJECT_ID = process.env.GOOGLE_PROJECT_ID;
 if (!PROJECT_ID) {
-  console.error(
-    'GOOGLE_PROJECT_ID is not set — refusing to call Vertex AI (no production fallback).',
-  );
+  logger.error({
+    msg: '[test-full-indexer] GOOGLE_PROJECT_ID is not set — refusing to call Vertex AI (no production fallback).',
+  });
   process.exit(1);
 }
 const EMBED_URL = buildVertexModelUrl({
@@ -121,15 +122,15 @@ async function run() {
     orderBy: { createdAt: 'desc' },
   });
   if (!manual) {
-    console.error('No active manual');
+    logger.error({ msg: '[test-full-indexer] No active manual' });
     return;
   }
-  console.log(`\nManual: ${manual.filename} (${manual.id})`);
+  logger.info({ msg: `[test-full-indexer] Manual: ${manual.filename} (${manual.id})` });
 
-  console.log('\n─── Step 1: Download PDF...');
+  logger.info({ msg: '[test-full-indexer] ─── Step 1: Download PDF...' });
   const match = manual.storagePath.match(/^minio:\/\/([^/]+)\/(.+)$/);
   if (!match) {
-    console.error(`✗ Cannot parse storagePath: ${manual.storagePath}`);
+    logger.error({ msg: `[test-full-indexer] ✗ Cannot parse storagePath: ${manual.storagePath}` });
     return;
   }
   const stream = await MINIO.getObject(match[1], match[2]);
@@ -140,26 +141,26 @@ async function run() {
     stream.on('error', reject);
   });
   const buf = Buffer.concat(bufChunks);
-  console.log(
-    `✓ ${buf.length} bytes | heap: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`,
-  );
+  logger.info({
+    msg: `[test-full-indexer] ✓ ${buf.length} bytes | heap: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`,
+  });
 
-  console.log('\n─── Step 2: Extract text via pdftotext...');
+  logger.info({ msg: '[test-full-indexer] ─── Step 2: Extract text via pdftotext...' });
   const t0 = Date.now();
   const text = await extractText(buf);
-  console.log(
-    `✓ ${text.length} chars in ${((Date.now() - t0) / 1000).toFixed(1)}s | heap: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`,
-  );
+  logger.info({
+    msg: `[test-full-indexer] ✓ ${text.length} chars in ${((Date.now() - t0) / 1000).toFixed(1)}s | heap: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`,
+  });
 
   const allChunks = chunkText(text.trim());
   const limit = TEST_ALL ? allChunks.length : BATCH_SIZE * TEST_BATCHES;
   const chunks = allChunks.slice(0, limit);
-  console.log(
-    `\n─── Step 3: Chunks: ${allChunks.length} total, testing ${chunks.length} (${Math.ceil(chunks.length / BATCH_SIZE)} batches)...`,
-  );
+  logger.info({
+    msg: `[test-full-indexer] ─── Step 3: Chunks: ${allChunks.length} total, testing ${chunks.length} (${Math.ceil(chunks.length / BATCH_SIZE)} batches)...`,
+  });
 
   await prisma.manualChunk.deleteMany({ where: { manualId: manual.id } });
-  console.log('✓ Cleared existing chunks');
+  logger.info({ msg: '[test-full-indexer] ✓ Cleared existing chunks' });
 
   // Batch embed + write
   let processed = 0,
@@ -173,9 +174,9 @@ async function run() {
     try {
       const embeddings: (number[] | null)[] = await batchEmbed(batch);
       const elapsed = ((Date.now() - t1) / 1000).toFixed(1);
-      console.log(
-        `\n  Batch ${b + 1}/${totalBatches}: ${embeddings.length} embeddings in ${elapsed}s | heap: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`,
-      );
+      logger.info({
+        msg: `[test-full-indexer] Batch ${b + 1}/${totalBatches}: ${embeddings.length} embeddings in ${elapsed}s | heap: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`,
+      });
 
       for (let i = 0; i < batch.length; i++) {
         const vec = embeddings[i];
@@ -193,36 +194,39 @@ async function run() {
         );
         processed++;
       }
-      console.log(`  ✓ ${processed} total chunks written`);
+      logger.info({ msg: `[test-full-indexer] ✓ ${processed} total chunks written` });
     } catch (err) {
       failed += batch.length;
-      const e = err instanceof Error ? err : new Error(String(err));
-      console.error(`  ✗ Batch ${b + 1} FAILED: [${e.name}] ${e.message}`);
-      if (e.stack) console.error('  ', e.stack.split('\n').slice(1, 4).join('\n  '));
+      logger.error({ msg: `[test-full-indexer] ✗ Batch ${b + 1} FAILED`, err });
     }
   }
 
   const heapMB = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
-  console.log(`\n─── Result: ${processed} stored, ${failed} failed | heap: ${heapMB}MB`);
+  logger.info({
+    msg: `[test-full-indexer] ─── Result: ${processed} stored, ${failed} failed | heap: ${heapMB}MB`,
+  });
 
   if (!TEST_ALL) {
     // Clean up partial index after test
     await prisma.manualChunk.deleteMany({ where: { manualId: manual.id } });
-    console.log('✓ Cleaned up test chunks (run with TEST_ALL=1 to keep)');
+    logger.info({
+      msg: '[test-full-indexer] ✓ Cleaned up test chunks (run with TEST_ALL=1 to keep)',
+    });
   } else if (processed > 0) {
     await prisma.standardManual.update({
       where: { id: manual.id },
       data: { processedAt: new Date(), chunkCount: processed },
     });
-    console.log(`✓ Manual marked as processed with ${processed} chunks`);
+    logger.info({
+      msg: `[test-full-indexer] ✓ Manual marked as processed with ${processed} chunks`,
+    });
   }
 
   await prisma.$disconnect();
-  console.log('\n─── Full indexer test complete ─────────────────────\n');
+  logger.info({ msg: '[test-full-indexer] ─── Full indexer test complete ─────────────────────' });
 }
 
 run().catch((err) => {
-  const e = err instanceof Error ? err : new Error(String(err));
-  console.error('Fatal:', e.name, e.message);
+  logger.error({ msg: '[test-full-indexer] Fatal', err });
   process.exit(1);
 });

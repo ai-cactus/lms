@@ -20,13 +20,13 @@
  * whitespace warning, and the account address is masked.
  */
 import nodemailer from 'nodemailer';
-import { maskEmail } from '@/lib/logger';
+import { logger, maskEmail } from '@/lib/logger';
 
 const sendIndex = process.argv.indexOf('--send');
 const sendTo = sendIndex === -1 ? null : process.argv[sendIndex + 1];
 
 if (sendIndex !== -1 && (!sendTo || sendTo.startsWith('--'))) {
-  console.error('Usage: test-smtp.ts [--send <recipient-address>]');
+  logger.error({ msg: '[test-smtp] Usage: test-smtp.ts [--send <recipient-address>]' });
   process.exit(1);
 }
 
@@ -50,16 +50,16 @@ function source(primary: string, fallback: string): string {
 function reportConfig(): string[] {
   const problems: string[] = [];
 
-  console.log('SMTP configuration');
-  console.log(`  host            ${host}`);
-  console.log(`  port            ${port} (secure=${secure})`);
-  console.log(`  NODE_ENV        ${process.env.NODE_ENV ?? '(unset)'}`);
-  console.log(
-    `  user            ${user ? maskEmail(user) : 'UNSET'}  [from ${source('SMTP_USER', 'ZOHO_MAIL_USER')}]`,
-  );
-  console.log(
-    `  password        ${pass ? `${pass.length} chars` : 'UNSET'}  [from ${source('SMTP_PASSWORD', 'ZOHO_MAIL_PASSWORD')}]`,
-  );
+  logger.info({ msg: '[test-smtp] SMTP configuration' });
+  logger.info({ msg: `[test-smtp] host            ${host}` });
+  logger.info({ msg: `[test-smtp] port            ${port} (secure=${secure})` });
+  logger.info({ msg: `[test-smtp] NODE_ENV        ${process.env.NODE_ENV ?? '(unset)'}` });
+  logger.info({
+    msg: `[test-smtp] user            ${user ? maskEmail(user) : 'UNSET'}  [from ${source('SMTP_USER', 'ZOHO_MAIL_USER')}]`,
+  });
+  logger.info({
+    msg: `[test-smtp] password        ${pass ? `${pass.length} chars` : 'UNSET'}  [from ${source('SMTP_PASSWORD', 'ZOHO_MAIL_PASSWORD')}]`,
+  });
 
   if (!user)
     problems.push(
@@ -88,7 +88,9 @@ function reportConfig(): string[] {
     );
   }
   if (isLoopbackSmtpSink) {
-    console.log('  note            loopback sink (MailHog) — auth and TLS intentionally skipped.');
+    logger.info({
+      msg: '[test-smtp] note            loopback sink (MailHog) — auth and TLS intentionally skipped.',
+    });
   }
 
   return problems;
@@ -137,12 +139,14 @@ async function main() {
   const problems = reportConfig();
 
   if (problems.length > 0) {
-    console.log('\nConfiguration problems');
-    problems.forEach((p, i) => console.log(`  ${i + 1}. ${p}`));
+    logger.error({ msg: '[test-smtp] Configuration problems' });
+    problems.forEach((p, i) => logger.info({ msg: `[test-smtp] ${i + 1}. ${p}` }));
   }
 
   if (!user || !pass) {
-    console.log('\nRESULT: FAIL — credentials missing; not attempting a connection.');
+    logger.error({
+      msg: '[test-smtp] RESULT: FAIL — credentials missing; not attempting a connection.',
+    });
     process.exit(1);
   }
 
@@ -163,40 +167,42 @@ async function main() {
   // catch. A loopback sink is the one legitimate case — MailHog wants no auth.
   const authExercised = !skipSmtpHardening;
 
-  console.log(
-    `\nConnecting to ${host}:${port}${authExercised ? ' and authenticating' : ' (AUTH skipped by config)'}…`,
-  );
+  logger.info({
+    msg: `[test-smtp] Connecting to ${host}:${port}${authExercised ? ' and authenticating' : ' (AUTH skipped by config)'}…`,
+  });
   try {
     await transporter.verify();
-    console.log(`  connect + TLS${authExercised ? ' + AUTH' : ''}: OK`);
+    logger.info({ msg: `[test-smtp] connect + TLS${authExercised ? ' + AUTH' : ''}: OK` });
   } catch (error) {
-    console.log('  connect + TLS + AUTH: FAILED');
-    console.log(`\n  ${explain(error)}`);
-    console.log(`\n  raw: ${(error as Error).message}`);
-    console.log('\nRESULT: FAIL');
+    logger.error({ msg: '[test-smtp] connect + TLS + AUTH: FAILED' });
+    logger.info({ msg: `[test-smtp] ${explain(error)}` });
+    logger.error({ msg: `[test-smtp] raw: ${(error as Error).message}` });
+    logger.error({ msg: '[test-smtp] RESULT: FAIL' });
     process.exit(1);
   }
 
   if (!authExercised && !isLoopbackSmtpSink) {
-    console.log(
-      '\n  The credentials were NEVER SENT — this run proved only that the host is reachable.',
-    );
-    console.log('\nRESULT: FAIL — fix the configuration problem above, then re-run.');
+    logger.info({
+      msg: '[test-smtp] The credentials were NEVER SENT — this run proved only that the host is reachable.',
+    });
+    logger.error({
+      msg: '[test-smtp] RESULT: FAIL — fix the configuration problem above, then re-run.',
+    });
     process.exit(1);
   }
 
   if (!sendTo) {
-    console.log('\nRESULT: PASS — the transport accepts these credentials.');
-    console.log(
-      'No message was sent. Re-run with `--send <address>` to prove end-to-end delivery.',
-    );
-    console.log(
-      'NOTE: AUTH passing does not guarantee delivery — a suspended account can authenticate and still refuse every recipient.',
-    );
+    logger.info({ msg: '[test-smtp] RESULT: PASS — the transport accepts these credentials.' });
+    logger.info({
+      msg: '[test-smtp] No message was sent. Re-run with `--send <address>` to prove end-to-end delivery.',
+    });
+    logger.info({
+      msg: '[test-smtp] NOTE: AUTH passing does not guarantee delivery — a suspended account can authenticate and still refuse every recipient.',
+    });
     return;
   }
 
-  console.log(`\nSending a test message to ${maskEmail(sendTo)}…`);
+  logger.info({ msg: `[test-smtp] Sending a test message to ${maskEmail(sendTo)}…` });
   try {
     const info = await transporter.sendMail({
       from: `"Theraptly SMTP diagnostic" <${user}>`,
@@ -204,25 +210,31 @@ async function main() {
       subject: `SMTP diagnostic — ${new Date().toISOString()}`,
       text: `Sent by scripts/test-smtp.ts from host ${host}:${port}.\nIf you are reading this, outbound mail works.`,
     });
-    console.log(`  accepted: ${info.accepted.length}  rejected: ${info.rejected.length}`);
-    console.log(`  messageId: ${info.messageId}`);
-    console.log(`  server response: ${info.response}`);
+    logger.info({
+      msg: `[test-smtp] accepted: ${info.accepted.length}  rejected: ${info.rejected.length}`,
+    });
+    logger.info({ msg: `[test-smtp] messageId: ${info.messageId}` });
+    logger.info({ msg: `[test-smtp] server response: ${info.response}` });
 
     if (info.rejected.length > 0) {
-      console.log('\nRESULT: FAIL — the server authenticated but refused the recipient.');
+      logger.error({
+        msg: '[test-smtp] RESULT: FAIL — the server authenticated but refused the recipient.',
+      });
       process.exit(1);
     }
-    console.log('\nRESULT: PASS — message accepted for delivery. Confirm it arrives in the inbox.');
+    logger.info({
+      msg: '[test-smtp] RESULT: PASS — message accepted for delivery. Confirm it arrives in the inbox.',
+    });
   } catch (error) {
-    console.log('  send: FAILED');
-    console.log(`\n  ${explain(error)}`);
-    console.log(`\n  raw: ${(error as Error).message}`);
-    console.log('\nRESULT: FAIL');
+    logger.error({ msg: '[test-smtp] send: FAILED' });
+    logger.info({ msg: `[test-smtp] ${explain(error)}` });
+    logger.error({ msg: `[test-smtp] raw: ${(error as Error).message}` });
+    logger.error({ msg: '[test-smtp] RESULT: FAIL' });
     process.exit(1);
   }
 }
 
 main().catch((error) => {
-  console.error('Diagnostic crashed:', error);
+  logger.error({ msg: '[test-smtp] Diagnostic crashed', err: error });
   process.exit(1);
 });

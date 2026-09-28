@@ -1,6 +1,7 @@
 import { prisma } from '@/db/index';
 import bcrypt from 'bcryptjs';
 import { BCRYPT_COST } from '@/lib/bcrypt-config';
+import { logger } from '@/lib/logger';
 
 async function main() {
   try {
@@ -11,9 +12,9 @@ async function main() {
     // with SEED_ADMIN_PASSWORD). Refuse to run otherwise.
     const adminPassword = process.env.SEED_ADMIN_PASSWORD || process.env.SYSTEM_ADMIN_PASSWORD;
     if (!adminPassword) {
-      console.error(
-        'Refusing to seed admin: set SEED_ADMIN_PASSWORD (or SYSTEM_ADMIN_PASSWORD) in the environment.',
-      );
+      logger.error({
+        msg: '[create-admin] Refusing to seed admin: set SEED_ADMIN_PASSWORD (or SYSTEM_ADMIN_PASSWORD) in the environment.',
+      });
       process.exitCode = 1;
       return;
     }
@@ -36,9 +37,9 @@ async function main() {
       },
     });
 
-    console.log(`Admin user created/verified: ${admin.email}`);
+    logger.info({ msg: `[create-admin] Admin user created/verified: ${admin.email}` });
   } catch (error) {
-    console.error('Error creating admin user:', error);
+    logger.error({ msg: '[create-admin] Error creating admin user', err: error });
   } finally {
     await prisma.$disconnect();
   }

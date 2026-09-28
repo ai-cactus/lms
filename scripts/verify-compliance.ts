@@ -2,11 +2,12 @@ import { prisma } from '@/db/index';
 import { createJob } from '../src/lib/jobs';
 import { scanText } from '../src/lib/documents/phiScanner';
 import { suggestMappings } from '../src/lib/mapping';
+import { logger } from '@/lib/logger';
 
 async function main() {
-  console.log('Starting Verification...');
+  logger.info({ msg: '[verify-compliance] Starting Verification...' });
 
-  console.log('1. Creating Organization & User...');
+  logger.info({ msg: '[verify-compliance] 1. Creating Organization & User...' });
   const org = await prisma.organization.create({
     data: { name: 'Test Org', slug: `test-org-${Date.now()}` },
   });
@@ -25,12 +26,12 @@ async function main() {
   await prisma.organizationUserFacility.create({
     data: { organizationUserId: orgUser.id, facilityId: facility.id },
   });
-  console.log(`   User created: ${user.email} (${user.id})`);
+  logger.info({ msg: `[verify-compliance] User created: ${user.email} (${user.id})` });
 
-  console.log('2. Testing Document Logic...');
+  logger.info({ msg: '[verify-compliance] 2. Testing Document Logic...' });
   const text = 'Patient John Doe (DOB: 01/01/1980) Policy regarding safety.';
   const phi = await scanText(text);
-  console.log(`   PHI Detected: ${phi.hasPHI}`, phi.findings);
+  logger.info({ msg: `[verify-compliance] PHI Detected: ${phi.hasPHI}`, findings: phi.findings });
 
   const doc = await prisma.document.create({
     data: {
@@ -52,37 +53,37 @@ async function main() {
       content: text,
     },
   });
-  console.log(`   Document Version created: ${version.id}`);
+  logger.info({ msg: `[verify-compliance] Document Version created: ${version.id}` });
 
-  console.log('3. Testing Mapping Suggestions...');
+  logger.info({ msg: '[verify-compliance] 3. Testing Mapping Suggestions...' });
   const mappings = await suggestMappings(text);
-  console.log(`   Suggestions found: ${mappings.length}`);
+  logger.info({ msg: `[verify-compliance] Suggestions found: ${mappings.length}` });
 
-  console.log('4. Testing Course Generation Job...');
+  logger.info({ msg: '[verify-compliance] 4. Testing Course Generation Job...' });
   const job = await createJob('GENERATE_DRAFT', {
     documentVersionId: version.id,
     userId: user.id,
   });
-  console.log(`   Job Queued: ${job.id}`);
+  logger.info({ msg: `[verify-compliance] Job Queued: ${job.id}` });
 
-  console.log('   Waiting for job processing...');
+  logger.info({ msg: '[verify-compliance] Waiting for job processing...' });
   await new Promise((r) => setTimeout(r, 7000));
 
   const updatedJob = await prisma.job.findUnique({ where: { id: job.id } });
-  console.log(`   Job Status: ${updatedJob?.status}`);
+  logger.info({ msg: `[verify-compliance] Job Status: ${updatedJob?.status}` });
 
   const course = await prisma.course.findFirst({ where: { createdByOrgUserId: orgUser.id } });
   if (course) {
-    console.log(`   SUCCESS: Course Created: "${course.title}"`);
+    logger.info({ msg: `[verify-compliance] SUCCESS: Course Created: "${course.title}"` });
   } else {
-    console.error('   FAILURE: No course created.');
+    logger.error({ msg: '[verify-compliance] FAILURE: No course created.' });
   }
 
-  console.log('Verification Complete.');
+  logger.info({ msg: '[verify-compliance] Verification Complete.' });
 }
 
 main()
-  .catch((e) => console.error(e))
+  .catch((e) => logger.error({ msg: '[verify-compliance] Failed', err: e }))
   .finally(async () => {
     await prisma.$disconnect();
   });

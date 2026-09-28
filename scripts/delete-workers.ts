@@ -12,6 +12,7 @@
  */
 import { prisma } from '@/db/index';
 import { WORKER_ROLES } from '@/lib/rbac/role-utils';
+import { logger } from '@/lib/logger';
 
 const DRY_RUN = process.argv.includes('--dry-run');
 
@@ -26,16 +27,20 @@ async function main() {
   });
 
   for (const org of orgs) {
-    console.log(`\nOrg: ${org.name} (${org.id})`);
-    console.log(`Workers: ${org.organizationUsers.length}`);
-    org.organizationUsers.forEach((m) => console.log(`  - ${m.user.email} (${m.role})`));
+    logger.info({ msg: `[delete-workers] Org: ${org.name} (${org.id})` });
+    logger.info({ msg: `[delete-workers] Workers: ${org.organizationUsers.length}` });
+    org.organizationUsers.forEach((m) =>
+      logger.info({ msg: `[delete-workers] - ${m.user.email} (${m.role})` }),
+    );
   }
 
   const allWorkerMemberships = orgs.flatMap((o) => o.organizationUsers);
-  console.log(`\nTotal worker memberships to delete: ${allWorkerMemberships.length}`);
+  logger.info({
+    msg: `[delete-workers] Total worker memberships to delete: ${allWorkerMemberships.length}`,
+  });
 
   if (allWorkerMemberships.length === 0) {
-    console.log('No workers found.');
+    logger.info({ msg: '[delete-workers] No workers found.' });
     return;
   }
 
@@ -56,48 +61,50 @@ async function main() {
       }),
       prisma.course.count({ where: { creator: { userId: { in: workerUserIds } } } }),
     ]);
-    console.log('\n[DRY RUN] Would delete:');
-    console.log(`  quiz attempts:  ${attempts}`);
-    console.log(`  enrollments:    ${enrollments}`);
-    console.log(`  courses:        ${courses}`);
-    console.log(`  workers:        ${workerUserIds.length}`);
-    console.log('\n[DRY RUN] Nothing was deleted. Re-run without --dry-run to execute.');
+    logger.info({ msg: '[delete-workers] [DRY RUN] Would delete' });
+    logger.info({ msg: `[delete-workers] quiz attempts:  ${attempts}` });
+    logger.info({ msg: `[delete-workers] enrollments:    ${enrollments}` });
+    logger.info({ msg: `[delete-workers] courses:        ${courses}` });
+    logger.info({ msg: `[delete-workers] workers:        ${workerUserIds.length}` });
+    logger.info({
+      msg: '[delete-workers] [DRY RUN] Nothing was deleted. Re-run without --dry-run to execute.',
+    });
     return;
   }
 
-  console.log('\nDeleting quiz attempts...');
+  logger.info({ msg: '[delete-workers] Deleting quiz attempts...' });
   const deletedAttempts = await prisma.quizAttempt.deleteMany({
     where: { enrollment: { organizationUser: { userId: { in: workerUserIds } } } },
   });
-  console.log(`  Deleted ${deletedAttempts.count} quiz attempts`);
+  logger.info({ msg: `[delete-workers] Deleted ${deletedAttempts.count} quiz attempts` });
 
-  console.log('Deleting enrollments...');
+  logger.info({ msg: '[delete-workers] Deleting enrollments...' });
   const deletedEnrollments = await prisma.enrollment.deleteMany({
     where: { organizationUser: { userId: { in: workerUserIds } } },
   });
-  console.log(`  Deleted ${deletedEnrollments.count} enrollments`);
+  logger.info({ msg: `[delete-workers] Deleted ${deletedEnrollments.count} enrollments` });
 
   // Course.creator is onDelete: Restrict, so a membership that authored a
   // course (not expected for a worker role, but not enforced at the DB level
   // either) would otherwise abort the user deletion below.
-  console.log('Deleting authored courses...');
+  logger.info({ msg: '[delete-workers] Deleting authored courses...' });
   const deletedCourses = await prisma.course.deleteMany({
     where: { creator: { userId: { in: workerUserIds } } },
   });
-  console.log(`  Deleted ${deletedCourses.count} courses`);
+  logger.info({ msg: `[delete-workers] Deleted ${deletedCourses.count} courses` });
 
-  console.log('Deleting workers...');
+  logger.info({ msg: '[delete-workers] Deleting workers...' });
   const deletedUsers = await prisma.user.deleteMany({
     where: { id: { in: workerUserIds } },
   });
-  console.log(`  Deleted ${deletedUsers.count} workers`);
+  logger.info({ msg: `[delete-workers] Deleted ${deletedUsers.count} workers` });
 
-  console.log('\nDone!');
+  logger.info({ msg: '[delete-workers] Done!' });
 }
 
 main()
   .catch((e) => {
-    console.error(e);
+    logger.error({ msg: '[delete-workers] Failed', err: e });
     process.exit(1);
   })
   .finally(async () => {
