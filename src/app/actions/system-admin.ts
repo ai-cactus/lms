@@ -574,6 +574,11 @@ export interface DeletePreview {
      */
     directReports: number;
     /**
+     * Courses this user approved or archived, and documents they archived. The
+     * FKs are SetNull, but each record keeps the actor's name snapshot (BUG-25).
+     */
+    attributions: number;
+    /**
      * Organizations where this account holds assets but no other member
      * survives to inherit them. Non-empty means the delete will be refused.
      */
@@ -637,16 +642,26 @@ export async function getUserDeletePreview(userId: string): Promise<DeletePrevie
   // and documents, and the delete moves custody of those too. Counting through
   // the filtered client would under-report what changes hands on the very
   // screen whose job is to report exactly that.
-  const [authoredCourses, uploadedDocuments] = await Promise.all([
-    rawPrisma.course.findMany({
-      where: { createdByOrgUserId: { in: orgUserIds } },
-      select: { id: true, createdByOrgUserId: true },
-    }),
-    rawPrisma.document.findMany({
-      where: { organizationUserId: { in: orgUserIds } },
-      select: { organizationUserId: true },
-    }),
-  ]);
+  const [authoredCourses, uploadedDocuments, attributedCourses, attributedDocuments] =
+    await Promise.all([
+      rawPrisma.course.findMany({
+        where: { createdByOrgUserId: { in: orgUserIds } },
+        select: { id: true, createdByOrgUserId: true },
+      }),
+      rawPrisma.document.findMany({
+        where: { organizationUserId: { in: orgUserIds } },
+        select: { organizationUserId: true },
+      }),
+      rawPrisma.course.count({
+        where: {
+          OR: [
+            { approvedByOrgUserId: { in: orgUserIds } },
+            { archivedByOrgUserId: { in: orgUserIds } },
+          ],
+        },
+      }),
+      rawPrisma.document.count({ where: { archivedByOrgUserId: { in: orgUserIds } } }),
+    ]);
 
   const courseIds = authoredCourses.map((c) => c.id);
 
@@ -689,6 +704,7 @@ export async function getUserDeletePreview(userId: string): Promise<DeletePrevie
       documents: uploadedDocuments.length,
       otherEnrollments,
       directReports: directReportCount,
+      attributions: attributedCourses + attributedDocuments,
       organizationsWithoutCustodian,
     },
   };

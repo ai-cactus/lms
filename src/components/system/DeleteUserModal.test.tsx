@@ -35,6 +35,7 @@ function preview(
       documents: 0,
       otherEnrollments: 0,
       directReports: 0,
+      attributions: 0,
       organizationsWithoutCustodian: [],
       ...overrides.retained,
     },
@@ -77,5 +78,16 @@ describe('DeleteUserModal — impact preview', () => {
 
     expect(screen.queryByText(/lose their manager/i)).not.toBeInTheDocument();
     expect(screen.queryByRole('row', { name: /Direct reports/ })).not.toBeInTheDocument();
+  });
+});
+
+describe('DeleteUserModal — BUG-25 attribution line', () => {
+  it("lists approvals and archives as kept under the user's name", () => {
+    render(
+      <DeleteUserModal preview={preview({ retained: { attributions: 2 } })} onClose={vi.fn()} />,
+    );
+
+    const row = screen.getByRole('row', { name: /Approvals & archives \(keep this user's name\)/ });
+    expect(within(row).getByText('2')).toBeInTheDocument();
   });
 });

@@ -50,6 +50,7 @@ import { findAssignmentDueAt } from '@/lib/enrollment/assignment';
 import { touchEnrollmentActivity } from '@/lib/enrollment/activity';
 import { captureServer } from '@/lib/analytics/server';
 import { analyticsContextFrom } from '@/lib/analytics/identity';
+import { resolveAttributionName } from '@/lib/attribution-name';
 
 // Helper: resolve the active session from either auth instance
 async function resolveSession() {
@@ -702,6 +703,7 @@ export async function publishCourse(courseId: string, opts?: { acknowledgeWarnin
       // from the session here rather than accepted from the client — the modal's
       // "Reviewed by" field is display-only and must never be authoritative.
       approvedByOrgUserId: session.user.organizationUserId,
+      approvedByName: await resolveAttributionName(session.user.organizationUserId),
       approvedAt: new Date(),
       // Clear the gate once warnings have been acknowledged and published.
       ...(existing.reviewRequired ? { reviewRequired: false } : {}),
@@ -930,6 +932,7 @@ export async function deleteCourse(
     data: {
       archivedAt: new Date(),
       archivedByOrgUserId: session.user.organizationUserId,
+      archivedByName: await resolveAttributionName(session.user.organizationUserId),
     },
   });
 
@@ -1393,7 +1396,11 @@ export async function createFullCourse(data: {
       // yet — publishCourse records the reviewer when the warnings are cleared.
       ...(reviewRequired
         ? {}
-        : { approvedByOrgUserId: session.user.organizationUserId, approvedAt: new Date() }),
+        : {
+            approvedByOrgUserId: session.user.organizationUserId,
+            approvedByName: await resolveAttributionName(session.user.organizationUserId),
+            approvedAt: new Date(),
+          }),
       reviewRequired,
       qualityWarnings,
       pendingAssignment: pendingAssignment

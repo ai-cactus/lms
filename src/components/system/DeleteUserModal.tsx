@@ -87,6 +87,7 @@ export default function DeleteUserModal({ preview, onClose, onSuccess }: DeleteU
     { label: 'Documents uploaded (reassigned)', count: retained.documents },
     { label: "Other members' enrollments (untouched)", count: retained.otherEnrollments },
     { label: 'Direct reports (manager cleared)', count: retained.directReports },
+    { label: "Approvals & archives (keep this user's name)", count: retained.attributions },
   ].filter((row) => row.count > 0);
 
   if (success) {
