@@ -650,6 +650,64 @@ describe('superseded (retaken) enrolments', () => {
     expect(live.attempts.map((a) => a.enrollmentId)).toEqual(['e-new']);
   });
 
+  // A two-deep chain: the original is retaken by a LOCKED retake, which is
+  // itself retaken by the eventual live enrolment. A locked row is still a
+  // live obligation on its own (previous cases) — UNLESS something else names
+  // it in `retakeOf`, in which case it is superseded too, however unfinished
+  // its own status is.
+  it('a retake chain supersedes every earlier link, keeping only the latest', () => {
+    const original = enrollment({
+      id: 'e-old',
+      status: 'locked',
+      startedAt: daysBefore(NOW, 40),
+      lastActivityAt: daysBefore(NOW, 30),
+      dueAt: PAST_DUE,
+    });
+    const middle = enrollment({
+      id: 'e-mid',
+      status: 'locked',
+      retakeOf: 'e-old',
+      startedAt: daysBefore(NOW, 10),
+      lastActivityAt: daysBefore(NOW, 9),
+      dueAt: daysBefore(NOW, 2),
+    });
+    const latest = enrollment({
+      id: 'e-latest',
+      status: 'in_progress',
+      retakeOf: 'e-mid',
+      startedAt: daysBefore(NOW, 3),
+      lastActivityAt: daysBefore(NOW, 1),
+      dueAt: daysAfter(NOW, 5),
+    });
+    const attempts = [
+      attempt({ enrollmentId: 'e-old', score: 40, completedAt: daysBefore(NOW, 30) }),
+      attempt({ enrollmentId: 'e-mid', score: 50, completedAt: daysBefore(NOW, 9) }),
+    ];
+    const chainSlice = slice({
+      members: [member()],
+      enrollments: [original, middle, latest],
+      attempts,
+    });
+
+    expect(supersededEnrollmentIds(chainSlice.enrollments)).toEqual(new Set(['e-old', 'e-mid']));
+
+    const live = withoutSuperseded(chainSlice);
+    expect(live.enrollments.map((e) => e.id)).toEqual(['e-latest']);
+    expect(live.attempts).toEqual([]);
+
+    // The middle link is LOCKED (itself an "unfinished, still owed" status) —
+    // it would count as overdue/active/dormant on its own, but it must not:
+    // it has been superseded by e-latest, just like a finished retake would.
+    const headline = computeHeadline(chainSlice);
+    expect(headline.activeLearners).toBe(1);
+    expect(headline.overdueTrainings).toBe(0);
+    expect(headline.dormantStaff).toBe(0);
+
+    // First-Time Pass Rate is untouched by the chain: only e-old is a
+    // first-time (non-retake) enrolment, and it failed.
+    expect(firstAttemptOutcomes(chainSlice)).toEqual({ total: 1, passed: 0 });
+  });
+
   it.each<[string, RetakeState, Date, Record<string, number>]>([
     [
       'a locked row with NO retake still counts everywhere',

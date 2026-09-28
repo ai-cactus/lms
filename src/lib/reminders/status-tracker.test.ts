@@ -496,4 +496,46 @@ describe('getStatusTrackerSummaryForOrg — superseded (retaken) enrolments', ()
 
     expect(prismaMock.enrollment.findMany).toHaveBeenCalledTimes(2);
   });
+
+  it('drops every earlier link of a retake chain, keeping only the latest', async () => {
+    // e-old (locked) is retaken by e-mid (also locked, itself overdue), which
+    // is retaken by e-new. The retake-lookup query finds e-mid's row naming
+    // e-old AND e-new's row naming e-mid, even though e-new itself is not a
+    // candidate (it is not overdue) — retakeOf carries no status filter.
+    prismaMock.enrollment.findMany
+      .mockResolvedValueOnce([
+        makeEnrollment('e-old', '2024-06-01T12:00:00Z', { status: 'locked' }),
+        makeEnrollment('e-mid', '2024-06-05T12:00:00Z', { status: 'locked' }),
+        makeEnrollment('stuck', '2024-06-08T12:00:00Z', { status: 'locked' }),
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ retakeOf: 'e-old' }, { retakeOf: 'e-mid' }]);
+
+    const result = await summary();
+
+    expect(result.rows.map((r) => r.enrollmentId)).toEqual(['stuck']);
+    expect(result.overdueCount).toBe(1);
+  });
+
+  it('issues the retake lookup exactly once for the whole batch, not per candidate row', async () => {
+    prismaMock.enrollment.findMany
+      .mockResolvedValueOnce([
+        makeEnrollment('e1', '2024-06-01T12:00:00Z', { status: 'locked' }),
+        makeEnrollment('e2', '2024-06-02T12:00:00Z', { status: 'locked' }),
+        makeEnrollment('e3', '2024-06-03T12:00:00Z', { status: 'locked' }),
+      ])
+      .mockResolvedValueOnce([
+        makeEnrollment('e4', '2024-06-20T12:00:00Z'),
+        makeEnrollment('e5', '2024-06-21T12:00:00Z'),
+      ])
+      .mockResolvedValueOnce([]);
+
+    await summary();
+
+    // Overdue + near-deadline + exactly ONE batched retake lookup = 3 calls,
+    // regardless of the 5 candidate rows above.
+    expect(prismaMock.enrollment.findMany).toHaveBeenCalledTimes(3);
+    const retakeCall = prismaMock.enrollment.findMany.mock.calls[2][0];
+    expect(retakeCall.where.retakeOf).toEqual({ in: ['e1', 'e2', 'e3', 'e4', 'e5'] });
+  });
 });
