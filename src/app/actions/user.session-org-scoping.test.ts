@@ -40,7 +40,7 @@ import { getStaffUsers, searchStaffUsers } from './user';
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockHeaders.mockResolvedValue({ get: () => null }); // non-worker referer → resolveSession uses adminAuth
+  mockHeaders.mockResolvedValue({ get: () => null });
   mockOrgUserFindMany.mockResolvedValue([]);
   mockInviteFindMany.mockResolvedValue([]);
 });

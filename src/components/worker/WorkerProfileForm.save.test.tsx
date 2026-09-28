@@ -50,7 +50,8 @@ describe('WorkerProfileForm — profile save payload', () => {
     await u.click(screen.getByRole('button', { name: 'Save Changes' }));
     await u.click(await screen.findByRole('button', { name: 'Confirm' }));
 
-    expect(mockUpdateProfile).toHaveBeenCalledExactlyOnceWith({
+    // BUG-05: the worker form names its own portal; the action never guesses it.
+    expect(mockUpdateProfile).toHaveBeenCalledExactlyOnceWith('worker', {
       first_name: 'Nina-Rose',
       last_name: 'Adeyemi',
       avatarUrl: undefined,
