@@ -27,6 +27,7 @@ import {
   type FacilityScopeSession,
 } from '@/lib/facility/staff-where';
 import { CourseAccessError } from '@/lib/course/access-error';
+import { isCourseEditableByOrganization } from '@/lib/course/edit-access';
 import {
   ARCHIVED_COURSE_ADMIN_MESSAGE,
   ARCHIVED_COURSE_LEARNER_MESSAGE,
@@ -578,6 +579,16 @@ export async function createCourse(data: { title: string; description?: string }
   return course;
 }
 
+/**
+ * Edits a course's own settings (title, description, duration).
+ *
+ * BUG-11: authorised by `course.edit` plus ORGANISATION ownership — see
+ * {@link isCourseEditableByOrganization}. It used to require authorship, so a
+ * colleague who could assign, withdraw and archive a course could not rename it.
+ *
+ * Refusals are RETURNED, never thrown: production redacts a thrown Server
+ * Action message to React error #441, which the rename dialog then displayed.
+ */
 export async function updateCourse(
   courseId: string,
   data: {
@@ -585,10 +596,10 @@ export async function updateCourse(
     description?: string;
     duration?: number;
   },
-) {
+): Promise<{ success: boolean; error?: string }> {
   const session = await resolveSession();
   if (!session?.user?.id) {
-    throw new Error('Unauthorized');
+    return { success: false, error: 'Your session has expired. Sign in and try again.' };
   }
 
   if (!can(dbRoleToRoleKey(session.user.role), 'course.edit')) {
@@ -598,17 +609,22 @@ export async function updateCourse(
       userId: session.user.id,
       role: session.user.role,
     });
-    throw new Error('Insufficient permissions');
+    return { success: false, error: 'Your role does not have permission to edit courses.' };
   }
 
-  const existing = await prisma.course.findUnique({ where: { id: courseId } });
-  if (!existing || existing.createdByOrgUserId !== session.user.organizationUserId) {
+  const existing = await prisma.course.findUnique({
+    where: { id: courseId },
+    select: { organizationId: true, isGlobal: true },
+  });
+  // Missing and foreign are answered identically so the response never confirms
+  // that another organisation's course exists.
+  if (!existing || !isCourseEditableByOrganization(existing, session.user.organizationId)) {
     logger.warn({
-      msg: '[course] updateCourse: not found or unauthorized',
+      msg: '[course] updateCourse: not found or not editable by caller organization',
       courseId,
       userId: session.user.id,
     });
-    throw new Error('Course not found');
+    return { success: false, error: 'Course not found.' };
   }
 
   // Picked field by field: Server Action arguments arrive from the client
@@ -618,7 +634,7 @@ export async function updateCourse(
     ...(data.description !== undefined ? { description: data.description } : {}),
     ...(data.duration !== undefined ? { duration: data.duration } : {}),
   };
-  const course = await prisma.course.update({
+  await prisma.course.update({
     where: { id: courseId },
     data: fields,
   });
@@ -631,7 +647,7 @@ export async function updateCourse(
   });
   revalidatePath('/dashboard/training');
   revalidatePath(`/dashboard/training/${courseId}`);
-  return course;
+  return { success: true };
 }
 
 /**
@@ -669,13 +685,17 @@ export async function publishCourse(courseId: string, opts?: { acknowledgeWarnin
       lessons: { select: { videoStorageUri: true, quiz: { select: { id: true } } } },
     },
   });
-  if (!existing || existing.createdByOrgUserId !== session.user.organizationUserId) {
+  // BUG-11: organisation ownership, not authorship — assigning a colleague's
+  // draft already publishes it (`publishCourseOnAssignment`), so refusing the
+  // explicit publish here only made the same act depend on which button was used.
+  // Returned rather than thrown: both callers read `success: false`.
+  if (!existing || !isCourseEditableByOrganization(existing, session.user.organizationId)) {
     logger.warn({
-      msg: '[course] publishCourse: not found or unauthorized',
+      msg: '[course] publishCourse: not found or not editable by caller organization',
       courseId,
       userId: session.user.id,
     });
-    throw new Error('Course not found');
+    return { success: false as const, error: 'Course not found.', warnings: [] as string[] };
   }
 
   // Publish-review gate (F-051): a course flagged for review cannot be published
@@ -1767,10 +1787,10 @@ export async function updateQuizQuestions(
     /** Keyed by the option's index in `options` as the caller sent it. */
     incorrectOptionExplanations?: Record<string, string>;
   }[],
-) {
+): Promise<{ success: boolean; error?: string }> {
   const session = await resolveSession();
   if (!session?.user?.id) {
-    throw new Error('Unauthorized');
+    return { success: false, error: 'Your session has expired. Sign in again and retry.' };
   }
 
   // Same POST-invocable exposure as `createFullCourse`: ownership is not
@@ -1784,36 +1804,60 @@ export async function updateQuizQuestions(
       userId: session.user.id,
       role: session.user.role,
     });
-    throw new Error('Insufficient permissions');
+    return {
+      success: false,
+      error: 'Your role does not have permission to edit course content.',
+    };
+  }
+
+  // BUG-30: validated before anything is read or written. The save deletes the
+  // whole question set and recreates it in one transaction, so an out-of-range
+  // `answer` used to surface only as a Prisma rejection half-way through it
+  // (`correctAnswer: undefined`) — a thrown, redacted failure with no reason.
+  if (!Array.isArray(questions)) {
+    return { success: false, error: 'The quiz could not be read. Reload the page and try again.' };
+  }
+  const invalidIndex = questions.findIndex(
+    (q) =>
+      !Array.isArray(q.options) ||
+      q.options.length === 0 ||
+      !Number.isInteger(q.answer) ||
+      q.answer < 0 ||
+      q.answer >= q.options.length,
+  );
+  if (invalidIndex !== -1) {
+    logger.warn({
+      msg: '[course] updateQuizQuestions refused — correct answer is not one of the options',
+      courseId,
+      userId: session.user.id,
+      questionIndex: invalidIndex,
+    });
+    return {
+      success: false,
+      error: `Question ${invalidIndex + 1} has no valid correct answer. Mark one of its options as correct and save again.`,
+    };
   }
 
   const course = await prisma.course.findUnique({
     where: { id: courseId },
-    include: {
-      lessons: { include: { quiz: true } },
-      creator: { select: { organizationId: true } },
-    },
+    include: { lessons: { include: { quiz: true } } },
   });
 
-  // COU-004: a course belongs to the ORGANIZATION, not to the member who
-  // authored it — matching `deleteCourse`. Author-equality refused a colleague
-  // editing a course their own org owns.
-  if (
-    !course ||
-    !session.user.organizationId ||
-    course.creator?.organizationId !== session.user.organizationId
-  ) {
+  // BUG-11: organisation ownership, not authorship — see
+  // `isCourseEditableByOrganization`. Missing and foreign are answered
+  // identically so another tenant cannot probe for course ids.
+  if (!course || !isCourseEditableByOrganization(course, session.user.organizationId)) {
     logger.warn({
-      msg: '[course] updateQuizQuestions: not found or outside caller organization',
+      msg: '[course] updateQuizQuestions: not found or not editable by caller organization',
       courseId,
       userId: session.user.id,
     });
-    throw new Error('Unauthorized or Course not found');
+    return { success: false, error: 'Course not found.' };
   }
 
   const lessonWithQuiz = course.lessons.find((l) => l.quiz);
   if (!lessonWithQuiz || !lessonWithQuiz.quiz) {
-    throw new Error('Quiz not found in this course');
+    return { success: false, error: 'This course has no quiz to update.' };
   }
   const quizId = lessonWithQuiz.quiz.id;
 
@@ -1905,17 +1949,13 @@ export async function updateLessonContent(
 
   const lesson = await prisma.lesson.findUnique({
     where: { id: lessonId },
-    include: { course: { include: { creator: { select: { organizationId: true } } } } },
+    include: { course: { select: { organizationId: true, isGlobal: true } } },
   });
 
-  // COU-004 org ownership, as in `deleteCourse` — see `updateQuizQuestions`.
-  // Missing and foreign are answered identically on purpose: distinguishing them
-  // would confirm to another tenant that a lesson id exists.
-  if (
-    !lesson ||
-    !session.user.organizationId ||
-    lesson.course.creator?.organizationId !== session.user.organizationId
-  ) {
+  // BUG-11 org ownership — see `isCourseEditableByOrganization`. Missing and
+  // foreign are answered identically on purpose: distinguishing them would
+  // confirm to another tenant that a lesson id exists.
+  if (!lesson || !isCourseEditableByOrganization(lesson.course, session.user.organizationId)) {
     logger.warn({
       msg: '[course] updateLessonContent: not found or outside caller organization',
       lessonId,
@@ -2008,17 +2048,13 @@ export async function updateLessonSlideContent(
 
   const lesson = await prisma.lesson.findUnique({
     where: { id: lessonId },
-    include: { course: { include: { creator: { select: { organizationId: true } } } } },
+    include: { course: { select: { organizationId: true, isGlobal: true } } },
   });
 
-  // COU-004 org ownership, as in `updateLessonContent`. Missing and foreign are
+  // Org ownership, as in `updateLessonContent`. Missing and foreign are
   // answered identically on purpose: distinguishing them would confirm to
   // another tenant that a lesson id exists.
-  if (
-    !lesson ||
-    !session.user.organizationId ||
-    lesson.course.creator?.organizationId !== session.user.organizationId
-  ) {
+  if (!lesson || !isCourseEditableByOrganization(lesson.course, session.user.organizationId)) {
     logger.warn({
       msg: '[course] updateLessonSlideContent: not found or outside caller organization',
       lessonId,

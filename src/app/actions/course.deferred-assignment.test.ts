@@ -243,6 +243,8 @@ describe('publishCourse — replaying the deferred assignment on acknowledgement
     return {
       id: COURSE_ID,
       createdByOrgUserId: ORG_USER_ID,
+      organizationId: 'org-1',
+      isGlobal: false,
       reviewRequired: true,
       qualityWarnings: ['No slides were generated for this course.'],
       pendingAssignment,
@@ -321,6 +323,8 @@ describe('publishCourse — replaying the deferred assignment on acknowledgement
     mockCourseFindUnique.mockResolvedValueOnce({
       id: COURSE_ID,
       createdByOrgUserId: ORG_USER_ID,
+      organizationId: 'org-1',
+      isGlobal: false,
       reviewRequired: false,
       qualityWarnings: [],
       pendingAssignment: null,
@@ -404,6 +408,8 @@ describe('publishCourse — stale parked deadline replay (elapsed while the cour
     return {
       id: COURSE_ID,
       createdByOrgUserId: ORG_USER_ID,
+      organizationId: 'org-1',
+      isGlobal: false,
       reviewRequired: true,
       qualityWarnings: ['No slides were generated for this course.'],
       pendingAssignment,

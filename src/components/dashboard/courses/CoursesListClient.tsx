@@ -280,7 +280,11 @@ function CourseRenameModal({
     setError(null);
     startTransition(async () => {
       try {
-        await updateCourse(courseId, { title: trimmed });
+        const result = await updateCourse(courseId, { title: trimmed });
+        if (!result.success) {
+          setError(result.error ?? 'Failed to rename course.');
+          return;
+        }
         onRenamed(trimmed);
         onClose();
       } catch (err) {
