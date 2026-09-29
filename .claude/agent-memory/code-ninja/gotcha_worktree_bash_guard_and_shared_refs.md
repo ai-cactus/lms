@@ -16,7 +16,10 @@ The Bash guard ([[gotcha-worktree-generated-symlink-breaks-build]] lists what it
 refuses) also rejects `for` loops and runtime `$VAR`s that feed psql, and
 `cd … && git …`. Use `git -C <worktree>` one command per call, and put multi-step
 shell (applying all migrations via psql to a throwaway Postgres, seeding, sharded
-vitest) in a script under the scratchpad and run `bash <script>`.
+vitest) in a script under the scratchpad and run `bash <script>`. Also refused
+(2026-09-29): `cat >> file <<'EOF'` appends (use the Edit tool), anything through
+`xargs npx …` (list the files literally), and a `$S`-style path variable inside
+`node -e` (inline the literal path). `cd <wt> && python3 - <<'EOF'` is accepted.
 
 **How to apply:** before reporting, compare `git log -1 origin/dev` with your
 branch base; a moved trunk means rebase + re-run the affected tests.
