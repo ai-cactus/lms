@@ -122,6 +122,7 @@
 - [origin/dev moves under a worktree](gotcha_worktree_bash_guard_and_shared_refs.md): refs are shared; never revert a file from origin/dev
 - [User delete = asset custody transfer](gotcha_user_delete_asset_custody.md): courses/documents are REASSIGNED, never deleted
 - [Scratchpad shared across agents](gotcha_scratchpad_shared_across_agents.md): parallel worktree agents share one scratchpad; use a unique log subdir
+- [minio audit overrides break it](gotcha_minio_transitive_audit_overrides_break_it.md): stream-json/decode-uri-component fixes are ESM-only; unreachable paths
 - [Tracker items may already be fixed](gotcha_tracker_items_may_already_be_fixed.md): git log -S before fixing; no-ffmpeg fixture recipe
 - [Self-service actions take a realm](project_self_service_actions_take_a_realm.md): no referer/fallback; a client storage URI signs ANY object
 - [Attestation status writers](gotcha_attestation_status_writers.md): quiz pass stays in_progress; attestCourse has no pass check; progress route can clobber `attested`

@@ -103,6 +103,8 @@ model Enrollment {
   @@index([assignmentId])
   @@index([status, dueAt])
   @@index([courseId, status, completedAt])
+  // RISK-12: withoutSuperseded() and the retake paths look rows up by retake_of.
+  @@index([retakeOf])
   @@map("enrollments")
 }
 
