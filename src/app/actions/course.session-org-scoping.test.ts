@@ -161,7 +161,7 @@ describe('getCourseForOrgView — org-scoped enrollment visibility sourced from 
     // Tier 3 5.2: include -> select (courseDetailSelect), but the org `where`
     // value scoping enrolled staff to the caller's org is unchanged.
     expect(callArgs.select.enrollments.where).toEqual({
-      organizationUser: { organizationId: 'org-A' },
+      organizationUser: { organizationId: 'org-A', active: true },
     });
   });
 

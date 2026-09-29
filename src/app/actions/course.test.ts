@@ -620,7 +620,13 @@ describe('getCourseById', () => {
   const CREATOR_USER_ID = 'creator-user-1';
   const CREATOR_ORG_USER_ID = 'ou-creator-1';
 
-  function makeEnrollment(userId: string, index: number) {
+  type FacilityRef = { id: string; name: string };
+
+  function makeEnrollment(
+    userId: string,
+    index: number,
+    facilities: { current?: FacilityRef[]; assigned?: FacilityRef | null } = {},
+  ) {
     return {
       id: `enrollment-${userId}`,
       organizationUserId: `ou-${userId}`,
@@ -631,7 +637,9 @@ describe('getCourseById', () => {
         userId,
         role: 'nurse',
         user: { email: `${userId}@example.com`, fullName: `Staff Member ${index}` },
+        facilities: (facilities.current ?? []).map((facility) => ({ facility })),
       },
+      facility: facilities.assigned ?? null,
       certificate: null,
     };
   }
@@ -811,6 +819,76 @@ describe('getCourseById', () => {
     },
   );
 
+  describe('roster facility — current roster primary, assignment stamp secondary (BUG-37)', () => {
+    const facA = { id: 'fac-a', name: 'Facility A' };
+    const facB = { id: 'fac-b', name: 'Facility B' };
+    const facC = { id: 'fac-c', name: 'Facility C' };
+
+    it('selects the member’s ACTIVE facilities in the enrolment stamp’s pick order, beside the stamp', async () => {
+      mockRawCourseFindUnique.mockResolvedValue(makeCourse([]));
+      setAdminSession('owner-viewer', 'owner');
+
+      await getCourseById('course-1');
+
+      const { select } = mockRawCourseFindUnique.mock.calls[0][0];
+      expect(select.enrollments.select.organizationUser.select.facilities).toEqual({
+        where: { active: true },
+        orderBy: [{ joinedAt: 'asc' }, { id: 'asc' }],
+        select: { facility: { select: { id: true, name: true } } },
+      });
+      expect(select.enrollments.select.facility).toEqual({ select: { id: true, name: true } });
+    });
+
+    it('an org-wide viewer receives a transferred member’s current AND assigned facility untouched', async () => {
+      const transferred = makeEnrollment('staff-t', 1, { current: [facB], assigned: facA });
+      mockRawCourseFindUnique.mockResolvedValue(makeCourse([transferred]));
+      setAdminSession('owner-viewer', 'owner');
+
+      const [row] = (await getCourseById('course-1')).enrollments;
+
+      expect(row.organizationUser.facilities).toEqual([{ facility: facB }]);
+      expect(row.facility).toEqual(facA);
+    });
+
+    it('the NEW facility’s supervisor sees the transferred member, their current facility and where they were assigned', async () => {
+      const transferred = makeEnrollment('staff-t', 1, { current: [facB], assigned: facA });
+      mockRawCourseFindUnique.mockResolvedValue(makeCourse([transferred]));
+      mockListAccessibleFacilities.mockResolvedValue([{ id: 'fac-b' }]);
+      mockOrgUserFindMany.mockResolvedValue([{ id: 'ou-staff-t' }]);
+      setAdminSession('supervisor-viewer', 'supervisor');
+
+      const [row] = (await getCourseById('course-1')).enrollments;
+
+      expect(row.organizationUser.facilities).toEqual([{ facility: facB }]);
+      expect(row.facility).toEqual(facA);
+    });
+
+    it('hides a kept member’s current facilities outside the supervisor’s scope', async () => {
+      const multi = makeEnrollment('staff-m', 1, { current: [facC, facB], assigned: facC });
+      mockRawCourseFindUnique.mockResolvedValue(makeCourse([multi]));
+      mockListAccessibleFacilities.mockResolvedValue([{ id: 'fac-b' }]);
+      mockOrgUserFindMany.mockResolvedValue([{ id: 'ou-staff-m' }]);
+      setAdminSession('supervisor-viewer', 'supervisor');
+
+      const [row] = (await getCourseById('course-1')).enrollments;
+
+      expect(row.organizationUser.facilities).toEqual([{ facility: facB }]);
+    });
+
+    it('a member with no current facility and no stamp comes through without error', async () => {
+      const unplaced = makeEnrollment('staff-u', 1);
+      mockRawCourseFindUnique.mockResolvedValue(makeCourse([unplaced]));
+      mockListAccessibleFacilities.mockResolvedValue([{ id: 'fac-b' }]);
+      mockOrgUserFindMany.mockResolvedValue([{ id: 'ou-staff-u' }]);
+      setAdminSession('supervisor-viewer', 'supervisor');
+
+      const [row] = (await getCourseById('course-1')).enrollments;
+
+      expect(row.organizationUser.facilities).toEqual([]);
+      expect(row.facility).toBeNull();
+    });
+  });
+
   // Still correct post-fix, unlike the nurse-creator case above: `owner` is
   // org-wide, so `resolveDataFacilityIds` short-circuits to `null` before
   // `listAccessibleFacilities` is even consulted, and `narrowRosterToFacilityScope`
@@ -945,7 +1023,7 @@ describe('getCourseById', () => {
       const callArgs = mockRawCourseFindUnique.mock.calls[0][0];
       expect(callArgs.where).toEqual({ id: 'course-1' });
       expect(callArgs.select.enrollments.where).toEqual({
-        organizationUser: { OR: [{ organizationId: ORG_ID }, { userId: selfId }] },
+        organizationUser: { OR: [{ organizationId: ORG_ID, active: true }, { userId: selfId }] },
       });
     });
 
@@ -1036,7 +1114,9 @@ describe('getCourseForOrgView', () => {
         organizationId: ORG_ID,
         role: 'nurse',
         user: { email: `${userId}@example.com`, fullName: `Staff Member ${index}` },
+        facilities: [],
       },
+      facility: null,
       certificate: null,
     };
   }
@@ -1194,7 +1274,7 @@ describe('getCourseForOrgView', () => {
       status: 'published',
     });
     expect(callArgs.select.enrollments.where).toEqual({
-      organizationUser: { organizationId: ORG_ID },
+      organizationUser: { organizationId: ORG_ID, active: true },
     });
   });
 });

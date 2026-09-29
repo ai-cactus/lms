@@ -59,7 +59,11 @@ function courseWithEnrollment(): CourseWithRelations {
       {
         id: 'enr-1',
         status: 'in_progress',
-        organizationUser: { user: { fullName: 'Nina Nurse', email: 'nina@example.com' } },
+        organizationUser: {
+          user: { fullName: 'Nina Nurse', email: 'nina@example.com' },
+          facilities: [],
+        },
+        facility: null,
       },
     ],
   } as unknown as CourseWithRelations;

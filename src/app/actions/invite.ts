@@ -7,6 +7,11 @@ import { sendInviteEmail } from '@/lib/email';
 import { logger, maskEmail } from '@/lib/logger';
 import { areFacilitiesInCallerScope } from '@/lib/facility/target-scope';
 import { getSeatUsage } from '@/lib/seat-limits';
+import {
+  DELETED_EMAIL_REFUSAL,
+  findDeletedIdentityEmails,
+  logDeletedEmailRefusal,
+} from '@/lib/auth/deleted-email-guard';
 import { can } from '@/lib/rbac/permissions';
 import {
   ADMIN_ROLES,
@@ -21,7 +26,8 @@ import { toCountBand } from '@/lib/analytics/events';
 
 export interface InviteResultItem {
   email: string;
-  status: 'sent' | 'pending' | 'exists' | 'error' | 'resent' | 'forbidden';
+  /** `refused`: the email belongs to a deleted identity (Q-31) — nothing was created or sent. */
+  status: 'sent' | 'pending' | 'exists' | 'error' | 'resent' | 'forbidden' | 'refused';
   message?: string;
 }
 
@@ -186,6 +192,16 @@ export async function createInvites(
       continue;
     }
     if (!emailRoleMap.has(item.email)) emailRoleMap.set(item.email, item.role);
+  }
+
+  // Q-31: a deleted identity's email is refused before seats are counted or any
+  // invite row exists, with a message that does not say why.
+  const deletedEmails = await findDeletedIdentityEmails([...emailRoleMap.keys()]);
+  for (const email of [...emailRoleMap.keys()]) {
+    if (!deletedEmails.has(email.toLowerCase())) continue;
+    logDeletedEmailRefusal('createInvites', email, organizationId);
+    results.push({ email, status: 'refused', message: DELETED_EMAIL_REFUSAL });
+    emailRoleMap.delete(email);
   }
 
   const emails = [...emailRoleMap.keys()];

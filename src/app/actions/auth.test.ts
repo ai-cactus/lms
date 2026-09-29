@@ -116,7 +116,17 @@ vi.mock('@/lib/auth/session-revalidation-cache', () => ({
 // ---------------------------------------------------------------------------
 // Import under test AFTER all vi.mock() declarations.
 // ---------------------------------------------------------------------------
-import { signup, authenticate, forceResetPassword, resetPasswordWithToken } from './auth';
+import {
+  signup,
+  authenticate,
+  forceResetPassword,
+  resetPasswordWithToken,
+  sendPasswordResetLink,
+} from './auth';
+import { createMfaChallenge } from '@/lib/mfa-challenge';
+import { sendPasswordResetEmail } from '@/lib/email';
+import { signIn as adminSignIn } from '@/auth';
+import { signIn as workerSignIn } from '@/auth.worker';
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -647,6 +657,7 @@ describe('resetPasswordWithToken — emailed-token password reset', () => {
     vi.clearAllMocks();
     prismaMock.verificationToken.findFirst.mockResolvedValue(VERIFICATION_TOKEN_ROW);
     prismaMock.verificationToken.delete.mockResolvedValue({});
+    prismaMock.user.findUnique.mockResolvedValue({ deletedAt: null });
     prismaMock.user.update.mockResolvedValue({
       id: 'reset-target-1',
       role: 'nurse',
@@ -719,6 +730,64 @@ describe('resetPasswordWithToken — emailed-token password reset', () => {
 
     expect(result).toEqual({ error: 'Password does not meet requirements: too short' });
     expect(prismaMock.verificationToken.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
+    expect(mockInvalidateRevalidationCache).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Q-23: a soft-deleted identity keeps its row (and its unique email), so every
+// pre-session lookup here must treat it exactly like an unknown account.
+// ---------------------------------------------------------------------------
+
+describe('Q-23 — deleted identity on the credential and password-reset paths', () => {
+  const DELETED = { id: 'user-del', mfaEnabled: true, deletedAt: new Date('2026-09-28') };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    stubHeadersIp();
+    mockCheckRateLimit.mockResolvedValue({ allowed: true, remaining: 9, resetInSeconds: 900 });
+  });
+
+  it('authenticate() answers "Invalid credentials." after the dummy bcrypt, never signs in or sends an MFA code', async () => {
+    prismaMock.user.findUnique.mockResolvedValue(DELETED);
+    prismaMock.verificationToken.findFirst.mockResolvedValue(null);
+    const bcrypt = await import('bcryptjs');
+
+    const result = await authenticate(undefined, makeLoginFormData('deleted@example.com'));
+
+    expect(result).toEqual({ error: 'Invalid credentials.' });
+    expect(bcrypt.default.compare).toHaveBeenCalledWith('dummy', expect.any(String));
+    expect(createMfaChallenge).not.toHaveBeenCalled();
+    expect(adminSignIn).not.toHaveBeenCalled();
+    expect(workerSignIn).not.toHaveBeenCalled();
+    // Not the "access removed" message a removed staffer gets: that would
+    // reveal the account exists.
+    expect(prismaMock.organizationUser.findMany).not.toHaveBeenCalled();
+  });
+
+  it('sendPasswordResetLink() is the same silent no-op as for an unknown email', async () => {
+    prismaMock.user.findUnique.mockResolvedValue({ id: 'user-del', deletedAt: new Date() });
+
+    const result = await sendPasswordResetLink('deleted@example.com');
+
+    expect(result).toEqual({ success: true });
+    expect(prismaMock.verificationToken.create).not.toHaveBeenCalled();
+    expect(sendPasswordResetEmail).not.toHaveBeenCalled();
+  });
+
+  it('resetPasswordWithToken() refuses a surviving token for a deleted identity and writes nothing', async () => {
+    prismaMock.verificationToken.findFirst.mockResolvedValue({
+      identifier: 'deleted@example.com',
+      token: 'tok',
+      type: 'password_reset',
+      expires: new Date(Date.now() + 60_000),
+    });
+    prismaMock.user.findUnique.mockResolvedValue({ deletedAt: new Date() });
+
+    const result = await resetPasswordWithToken('tok', 'NewStr0ng!Pass');
+
+    expect(result).toEqual({ error: 'Invalid or expired reset link.' });
     expect(prismaMock.user.update).not.toHaveBeenCalled();
     expect(mockInvalidateRevalidationCache).not.toHaveBeenCalled();
   });

@@ -36,7 +36,7 @@ vi.mock('@/lib/prisma', () => {
     organization: { findUnique: mockOrgFindUnique },
     course: { findMany: mockCourseFindMany },
     orgCourseOffering: { findMany: mockOfferingFindMany },
-    enrollment: { groupBy: mockGroupBy },
+    enrollment: { groupBy: mockGroupBy, findMany: vi.fn().mockResolvedValue([]) },
   };
   return { prisma, default: prisma };
 });

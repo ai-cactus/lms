@@ -50,6 +50,12 @@ model User {
   // the referenced org is stale/gone.
   lastActiveOrganizationId String? @map("last_active_organization_id")
 
+  // Q-23 soft delete: when set, the identity is deleted. Every membership is
+  // deactivated and every sign-in path refuses it, but the row stays so the
+  // person's enrolments, certificates and attempts keep their owner. The email
+  // is NOT freed for re-registration. See src/lib/system/delete-user.ts.
+  deletedAt DateTime? @map("deleted_at")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -57,6 +63,7 @@ model User {
   mfaFactors              MfaFactor[]
   mfaRecoveryCodes        MfaRecoveryCode[]
 
+  @@index([deletedAt])
   @@map("users")
 }
 

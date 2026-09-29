@@ -29,7 +29,7 @@ const {
 }));
 
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock, default: prismaMock }));
-vi.mock('@/app/actions/mfa', () => ({ verifyUserMfaCode: mockVerifyUserMfaCode }));
+vi.mock('@/lib/auth/mfa-login-code', () => ({ verifyUserMfaCode: mockVerifyUserMfaCode }));
 vi.mock('@/lib/mfa-challenge', () => ({
   peekMfaChallenge: mockPeekMfaChallenge,
   redeemMfaChallenge: mockRedeemMfaChallenge,

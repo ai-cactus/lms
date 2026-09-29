@@ -33,6 +33,7 @@ import {
   resolveActiveMembership,
   type MembershipSummary,
 } from '@/lib/auth/membership';
+import { isDeletedIdentity } from '@/lib/auth/deleted-identity';
 
 interface AuthInstanceConfig {
   cookiePrefix: 'admin' | 'worker';
@@ -227,6 +228,7 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
               password: true,
               mfaEnabled: true,
               passwordResetRequired: true,
+              deletedAt: true,
             },
           });
 
@@ -236,6 +238,20 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
               action: 'auth.login.failure',
               ...clientCtx,
               metadata: { reason: 'user_not_found', instance: cookiePrefix, email: maskedEmail },
+            });
+            return null;
+          }
+
+          // Q-23: a deleted identity is refused exactly like an unknown one, and
+          // before the password is checked, so the response never reveals that
+          // the account existed.
+          if (isDeletedIdentity(user)) {
+            logger.warn({ msg: 'Auth login failed: deleted identity', instance: cookiePrefix });
+            await audit({
+              action: 'auth.login.failure',
+              actorId: user.id,
+              ...clientCtx,
+              metadata: { reason: 'deleted_identity', instance: cookiePrefix, email: maskedEmail },
             });
             return null;
           }
@@ -392,10 +408,30 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
       async signIn({ user, account }: any) {
         if (account?.provider === 'microsoft-entra-id') {
           const email = user.email!;
-          let dbUser = await prisma.user.findUnique({
+          const existingUser = await prisma.user.findUnique({
             where: { email },
-            select: { id: true, fullName: true },
+            select: { id: true, fullName: true, deletedAt: true },
           });
+
+          // Q-23: refuse a deleted identity before anything else runs. Falling
+          // through would either consume a pending invite for it or try to
+          // create a second user with the same (unique) email.
+          if (isDeletedIdentity(existingUser)) {
+            logger.warn({ msg: '[auth] OAuth: deleted identity denied', email: maskEmail(email) });
+            await audit({
+              action: 'auth.login.failure',
+              actorId: existingUser?.id,
+              metadata: {
+                reason: 'deleted_identity',
+                provider: 'microsoft-entra-id',
+                instance: cookiePrefix,
+                email: maskEmail(email),
+              },
+            });
+            return `${config.pages?.signIn}?error=AccessRevoked`;
+          }
+
+          let dbUser: { id: string; fullName: string | null } | null = existingUser;
 
           const pendingInvite = await prisma.invite.findFirst({
             where: { email, status: 'pending' },
@@ -654,10 +690,13 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
                   passwordResetRequired: true,
                   sessionVersion: true,
                   authProvider: true,
+                  deletedAt: true,
                 },
               });
 
-              if (dbUser) {
+              // A deleted identity (Q-23) is treated as absent, so the session
+              // is invalidated below and nothing is cached for it.
+              if (dbUser && !isDeletedIdentity(dbUser)) {
                 freshUser = {
                   id: dbUser.id,
                   fullName: dbUser.fullName,
@@ -667,8 +706,9 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
                   authProvider: dbUser.authProvider,
                 };
                 // Cache only a positive snapshot of non-sensitive validity
-                // fields. Negative results (deleted user) are never cached, so a
-                // deletion is caught on the very next decode, not after the TTL.
+                // fields. Negative results (missing or deleted user) are never
+                // cached, so a deletion is caught on the very next decode, not
+                // after the TTL.
                 await setCachedRevalidation(token.id as string, freshUser);
               }
             }

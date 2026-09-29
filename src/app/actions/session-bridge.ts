@@ -17,6 +17,7 @@ import {
   recordMembershipLogin,
   type MembershipSummary,
 } from '@/lib/auth/membership';
+import { isDeletedIdentity } from '@/lib/auth/deleted-identity';
 
 // Same secret resolution and cookie/salt convention the worker auth instance and
 // the proxy use (AUTH_SECRET first, then NEXTAUTH_SECRET). Keeping this in lockstep
@@ -69,12 +70,13 @@ export async function enterLearnMode(): Promise<void> {
         authProvider: true,
         passwordResetRequired: true,
         sessionVersion: true,
+        deletedAt: true,
       },
     }),
     activeOrganizationId ? getActiveMembership(userId, activeOrganizationId) : null,
   ]);
 
-  if (!fresh || !membership || !isAdminRole(membership.role)) {
+  if (!fresh || isDeletedIdentity(fresh) || !membership || !isAdminRole(membership.role)) {
     logger.warn({
       msg: '[auth] enterLearnMode rejected: not an admin-tier session',
       userId,
@@ -190,12 +192,13 @@ export async function switchOrganization(organizationId: string): Promise<void> 
         authProvider: true,
         passwordResetRequired: true,
         sessionVersion: true,
+        deletedAt: true,
       },
     }),
     getActiveMembership(userId, organizationId),
   ]);
 
-  if (!fresh || !membership) {
+  if (!fresh || isDeletedIdentity(fresh) || !membership) {
     logger.warn({
       msg: '[org] switchOrganization rejected: no active membership',
       userId,
