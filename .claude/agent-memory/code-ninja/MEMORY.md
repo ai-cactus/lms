@@ -127,3 +127,5 @@
 - [Self-service actions take a realm](project_self_service_actions_take_a_realm.md): no referer/fallback; a client storage URI signs ANY object
 - [Attestation status writers](gotcha_attestation_status_writers.md): quiz pass stays in_progress; attestCourse has no pass check; progress route can clobber `attested`
 - [Deadline zone semantics](project_deadline_zone_semantics.md): wall clock vs learner-zone instant; per-learner 'already past' skip/window (Q-32)
+- [Attestation status writers](gotcha_attestation_status_writers.md): quiz pass stays in_progress; no-quiz attest must await its progress write
+- [Attest gate + read access](project_attest_gate_and_read_access.md): Q-27 judges the SERVED quiz's latest attempt; RISK-15 = isCourseOrganizationReviewer

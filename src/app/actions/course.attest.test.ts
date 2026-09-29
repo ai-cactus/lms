@@ -25,6 +25,7 @@ const {
 } = vi.hoisted(() => ({
   prismaMock: {
     enrollment: { findUnique: vi.fn(), updateMany: vi.fn() },
+    quizAttempt: { findFirst: vi.fn() },
   },
   mockAdminAuth: vi.fn(),
   mockWorkerAuth: vi.fn(),
@@ -65,7 +66,8 @@ function makeEnrollment(overrides: Record<string, unknown> = {}) {
       organizationId: 'org-1',
       user: { fullName: 'Dana Reed', email: 'dana@example.com' },
     },
-    course: { title: 'Bloodborne Pathogens' },
+    progress: 100,
+    course: { title: 'Bloodborne Pathogens', quiz: null, lessons: [] },
     ...overrides,
   };
 }
@@ -256,5 +258,130 @@ describe('attestCourse — a no-quiz course at lessons_complete (BUG-28)', () =>
     await expect(attestCourse(ENROLLMENT_ID, SIGNATURE, '')).resolves.toEqual({ success: true });
     expect(updateData()).toMatchObject({ status: 'attested', attestationSignature: SIGNATURE });
     expect(mockNotifyOrganizationAdmins).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * Q-27 (ruled: enforce "finished before attest" on the server). The UI offers
+ * the attestation only after a pass or at the end of the last lesson, but the
+ * Server Action is callable directly, so the action re-derives the finish line.
+ */
+describe('attestCourse — the course must be finished first (Q-27)', () => {
+  const QUIZ = { id: 'quiz-1', passingScore: 80 };
+  const QUIZ_NOT_PASSED = {
+    success: false,
+    refusedReason: 'You need to pass this course’s quiz before you can attest to completing it.',
+  };
+  const LESSONS_NOT_COMPLETE = {
+    success: false,
+    refusedReason:
+      'You need to finish every lesson in this course before you can attest to completing it.',
+  };
+
+  function withLessonQuiz(overrides: Record<string, unknown> = {}) {
+    return makeEnrollment({
+      status: 'in_progress',
+      progress: 100,
+      course: { title: 'Bloodborne Pathogens', quiz: null, lessons: [{ quiz: QUIZ }] },
+      ...overrides,
+    });
+  }
+
+  function expectNoSideEffects() {
+    expect(prismaMock.enrollment.updateMany).not.toHaveBeenCalled();
+    expect(mockNotifyOrganizationAdmins).not.toHaveBeenCalled();
+    expect(mockCaptureServer).not.toHaveBeenCalled();
+    expect(mockResolveOnCompletion).not.toHaveBeenCalled();
+  }
+
+  it('refuses a quiz course the learner has never submitted an attempt for', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue(withLessonQuiz({ progress: 40 }));
+    prismaMock.quizAttempt.findFirst.mockResolvedValue(null);
+
+    await expect(attestCourse(ENROLLMENT_ID, SIGNATURE, '')).resolves.toEqual(QUIZ_NOT_PASSED);
+    expectNoSideEffects();
+  });
+
+  it('refuses when the latest submitted attempt is below the quiz’s passing score', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue(withLessonQuiz());
+    prismaMock.quizAttempt.findFirst.mockResolvedValue({ score: 79 });
+
+    await expect(attestCourse(ENROLLMENT_ID, SIGNATURE, '')).resolves.toEqual(QUIZ_NOT_PASSED);
+    expectNoSideEffects();
+  });
+
+  it('attests once the latest submitted attempt meets the passing score', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue(withLessonQuiz());
+    prismaMock.quizAttempt.findFirst.mockResolvedValue({ score: 80 });
+
+    await expect(attestCourse(ENROLLMENT_ID, SIGNATURE, '')).resolves.toEqual({ success: true });
+    expect(updateData()).toMatchObject({ status: 'attested' });
+  });
+
+  it('judges fail-then-pass on the latest SUBMITTED attempt at the assessment quiz', async () => {
+    // The query returns the newest submission, so a pass after a fail attests.
+    // An in-progress draft (timeTaken null) is not a submission and never counts.
+    prismaMock.enrollment.findUnique.mockResolvedValue(withLessonQuiz());
+    prismaMock.quizAttempt.findFirst.mockResolvedValue({ score: 95 });
+
+    await expect(attestCourse(ENROLLMENT_ID, SIGNATURE, '')).resolves.toEqual({ success: true });
+    expect(prismaMock.quizAttempt.findFirst).toHaveBeenCalledWith({
+      where: { enrollmentId: ENROLLMENT_ID, quizId: QUIZ.id, timeTaken: { not: null } },
+      orderBy: { completedAt: 'desc' },
+      select: { score: true },
+    });
+  });
+
+  it('holds a video course to its course-level quiz', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue(
+      withLessonQuiz({
+        course: {
+          title: 'Hand Hygiene',
+          quiz: { id: 'course-quiz', passingScore: 70 },
+          lessons: [{ quiz: null }],
+        },
+      }),
+    );
+    prismaMock.quizAttempt.findFirst.mockResolvedValue({ score: 60 });
+
+    await expect(attestCourse(ENROLLMENT_ID, SIGNATURE, '')).resolves.toEqual(QUIZ_NOT_PASSED);
+    expect(prismaMock.quizAttempt.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ quizId: 'course-quiz' }) }),
+    );
+  });
+
+  it('attests a passed retake enrolment on the strength of its own attempts', async () => {
+    // A retake is a new enrolment (retakeOf → the locked one); its attempts are
+    // keyed to its own id, so it is judged only on what it submitted.
+    prismaMock.enrollment.findUnique.mockResolvedValue(
+      withLessonQuiz({ id: 'retake-1', retakeOf: ENROLLMENT_ID }),
+    );
+    prismaMock.quizAttempt.findFirst.mockResolvedValue({ score: 85 });
+
+    await expect(attestCourse('retake-1', SIGNATURE, '')).resolves.toEqual({ success: true });
+    expect(prismaMock.quizAttempt.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ enrollmentId: 'retake-1' }) }),
+    );
+  });
+
+  it('refuses a no-quiz course whose lessons are not all read', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue(
+      makeEnrollment({ status: 'in_progress', progress: 67 }),
+    );
+
+    await expect(attestCourse(ENROLLMENT_ID, SIGNATURE, '')).resolves.toEqual(LESSONS_NOT_COMPLETE);
+    expectNoSideEffects();
+    expect(prismaMock.quizAttempt.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('still reports an existing attestation as already attested, not as unfinished', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue(
+      withLessonQuiz({ status: 'attested', progress: 100 }),
+    );
+    prismaMock.quizAttempt.findFirst.mockResolvedValue(null);
+
+    await expect(attestCourse(ENROLLMENT_ID, SIGNATURE, '')).resolves.toMatchObject({
+      alreadyAttested: true,
+    });
   });
 });

@@ -36,7 +36,8 @@ const makeReq = () => new Request('http://localhost/api/courses/course-1/preview
 const params = Promise.resolve({ id: 'course-1' });
 
 const makeCourse = (opts?: {
-  createdByOrgUserId?: string;
+  /** The course's OWNING organisation (RISK-15). */
+  organizationId?: string;
   isGlobal?: boolean;
   status?: string;
   previewVideoStorageUri?: string | null;
@@ -48,7 +49,7 @@ const makeCourse = (opts?: {
   isGlobal: opts?.isGlobal ?? false,
   status: opts?.status ?? 'published',
   type: 'video',
-  createdByOrgUserId: opts?.createdByOrgUserId ?? 'other-org-user',
+  organizationId: opts?.organizationId ?? 'org-other',
 });
 
 const CACHE_ENV_KEYS = [
@@ -100,10 +101,10 @@ describe('GET /api/courses/[id]/preview-video — auth resolution', () => {
     vi.unstubAllGlobals();
   });
 
-  it('403 when the caller is neither the creator, enrolled, nor viewing a global catalog course', async () => {
+  it('403 when the caller is neither an owning-org manager, enrolled, nor viewing a global catalog course', async () => {
     mockAdminAuth.mockResolvedValue({ user: { id: 'a1', organizationUserId: 'ou-admin' } });
     mockCourseFindUnique.mockResolvedValue(
-      makeCourse({ createdByOrgUserId: 'someone-else', isGlobal: false }),
+      makeCourse({ organizationId: 'org-someone-else', isGlobal: false }),
     );
     mockEnrollmentFindFirst.mockResolvedValue(null);
 
@@ -113,9 +114,11 @@ describe('GET /api/courses/[id]/preview-video — auth resolution', () => {
   });
 
   it('404 when the course has no preview video', async () => {
-    mockAdminAuth.mockResolvedValue({ user: { id: 'a1', organizationUserId: 'ou-1' } });
+    mockAdminAuth.mockResolvedValue({
+      user: { id: 'a1', organizationUserId: 'ou-1', organizationId: 'org-1', role: 'admin' },
+    });
     mockCourseFindUnique.mockResolvedValue(
-      makeCourse({ createdByOrgUserId: 'ou-1', previewVideoStorageUri: null }),
+      makeCourse({ organizationId: 'org-1', previewVideoStorageUri: null }),
     );
 
     const res = await GET(makeReq(), { params });
@@ -126,8 +129,10 @@ describe('GET /api/courses/[id]/preview-video — auth resolution', () => {
 
 describe('GET /api/courses/[id]/preview-video — abort handling', () => {
   beforeEach(() => {
-    mockAdminAuth.mockResolvedValue({ user: { id: 'a1', organizationUserId: 'ou-1' } });
-    mockCourseFindUnique.mockResolvedValue(makeCourse({ createdByOrgUserId: 'ou-1' }));
+    mockAdminAuth.mockResolvedValue({
+      user: { id: 'a1', organizationUserId: 'ou-1', organizationId: 'org-1', role: 'admin' },
+    });
+    mockCourseFindUnique.mockResolvedValue(makeCourse({ organizationId: 'org-1' }));
   });
 
   it('forwards the request signal to the upstream fetch and returns 499 with no logger.error when it aborts', async () => {
@@ -177,8 +182,10 @@ describe('GET /api/courses/[id]/preview-video — abort handling', () => {
 
 describe('GET /api/courses/[id]/preview-video — conditional requests', () => {
   beforeEach(() => {
-    mockAdminAuth.mockResolvedValue({ user: { id: 'a1', organizationUserId: 'ou-1' } });
-    mockCourseFindUnique.mockResolvedValue(makeCourse({ createdByOrgUserId: 'ou-1' }));
+    mockAdminAuth.mockResolvedValue({
+      user: { id: 'a1', organizationUserId: 'ou-1', organizationId: 'org-1', role: 'admin' },
+    });
+    mockCourseFindUnique.mockResolvedValue(makeCourse({ organizationId: 'org-1' }));
   });
 
   afterEach(() => {
@@ -244,8 +251,10 @@ describe('GET /api/courses/[id]/preview-video — content-type and accept-ranges
     vi.fn().mockResolvedValue(new Response(null, { status }));
 
   beforeEach(() => {
-    mockAdminAuth.mockResolvedValue({ user: { id: 'u1', organizationUserId: 'ou-1' } });
-    mockCourseFindUnique.mockResolvedValue(makeCourse({ createdByOrgUserId: 'ou-1' }));
+    mockAdminAuth.mockResolvedValue({
+      user: { id: 'u1', organizationUserId: 'ou-1', organizationId: 'org-1', role: 'admin' },
+    });
+    mockCourseFindUnique.mockResolvedValue(makeCourse({ organizationId: 'org-1' }));
   });
 
   afterEach(() => {
@@ -263,7 +272,7 @@ describe('GET /api/courses/[id]/preview-video — content-type and accept-ranges
   it('derives the content-type from the storage key rather than asserting mp4', async () => {
     mockCourseFindUnique.mockResolvedValue(
       makeCourse({
-        createdByOrgUserId: 'ou-1',
+        organizationId: 'org-1',
         previewVideoStorageUri: 'minio://lms-documents/system/videos/preview.webm',
       }),
     );
@@ -278,8 +287,10 @@ describe('GET /api/courses/[id]/preview-video — content-type and accept-ranges
 
 describe('GET /api/courses/[id]/preview-video — browser cache headers', () => {
   beforeEach(() => {
-    mockAdminAuth.mockResolvedValue({ user: { id: 'a1', organizationUserId: 'ou-1' } });
-    mockCourseFindUnique.mockResolvedValue(makeCourse({ createdByOrgUserId: 'ou-1' }));
+    mockAdminAuth.mockResolvedValue({
+      user: { id: 'a1', organizationUserId: 'ou-1', organizationId: 'org-1', role: 'admin' },
+    });
+    mockCourseFindUnique.mockResolvedValue(makeCourse({ organizationId: 'org-1' }));
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('bytes', { status: 206 })));
   });
 
@@ -315,8 +326,10 @@ describe('GET /api/courses/[id]/preview-video — warm playback cache', () => {
   beforeEach(() => {
     delete process.env.VIDEO_PLAYBACK_CACHE_TTL_SECONDS;
     delete process.env.VIDEO_CACHE_MAX_AGE_SECONDS;
-    mockAdminAuth.mockResolvedValue({ user: { id: 'a1', organizationUserId: 'ou-1' } });
-    mockCourseFindUnique.mockResolvedValue(makeCourse({ createdByOrgUserId: 'someone-else' }));
+    mockAdminAuth.mockResolvedValue({
+      user: { id: 'a1', organizationUserId: 'ou-1', organizationId: 'org-1', role: 'admin' },
+    });
+    mockCourseFindUnique.mockResolvedValue(makeCourse({ organizationId: 'org-someone-else' }));
     mockEnrollmentFindFirst.mockResolvedValue({ id: 'e1' });
   });
 

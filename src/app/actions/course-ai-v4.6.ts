@@ -49,6 +49,9 @@ import {
 } from '@/lib/course/module-generation';
 import type { CourseWizardData } from '@/types/course';
 
+const GENERATION_JOB_TYPE = 'GENERATE_V46_COURSE';
+const JOB_NOT_FOUND = 'Job not found';
+
 // Token budget for source content
 const MAX_SOURCE_TOKENS = 100000;
 const MAX_REGEN_CYCLES = 1;
@@ -278,9 +281,14 @@ export async function generateCourseAndQuizV46(
 
   const job = await prisma.job.create({
     data: {
-      type: 'GENERATE_V46_COURSE',
+      type: GENERATION_JOB_TYPE,
       status: 'processing',
       userId: session.user.id,
+      // SEC-14: the organisation the course is being generated FOR, which the
+      // poll checks before returning the result. Only the failure writes
+      // replace the payload, and a failed job reveals nothing but a generic
+      // message, so the stamp survives on every job that carries content.
+      payload: { organizationId: session.user.organizationId ?? null },
     },
   });
 
@@ -356,6 +364,21 @@ export async function startModuleGenerationJobs(
   courseData: CourseWizardData,
   modules: ModuleGenerationRequest[],
 ): Promise<{ jobs: ModuleGenerationJob[]; error?: string }> {
+  // Each module re-checks this inside generateCourseAndQuizV46; checking once
+  // up front turns an unauthorised batch into one refusal instead of N.
+  const session = await auth();
+  if (!session?.user?.id) {
+    return { jobs: [], error: 'Unauthorized' };
+  }
+  if (!can(dbRoleToRoleKey(session.user.role), 'course.create')) {
+    logger.warn({
+      msg: '[v4.6] Module generation denied — missing course.create',
+      userId: session.user.id,
+      role: session.user.role,
+    });
+    return { jobs: [], error: 'Insufficient permissions' };
+  }
+
   if (modules.length === 0) {
     return { jobs: [], error: 'No modules to generate. Please add at least one module.' };
   }
@@ -791,14 +814,63 @@ async function runPipelineV46(
   logger.info({ msg: `[v4.6 Background] runPipelineV46 EXITED for job ${jobId}.` });
 }
 
+/**
+ * Is this the caller's own course-generation job, generated for the
+ * organisation they are signed in to (SEC-14)?
+ *
+ * A job has no organisation column, so ownership is its creator
+ * (`Job.userId`) plus the organisation stamped into its payload at creation.
+ * Creator identity alone is not enough: one person can belong to several
+ * organisations, and a course generated from one tenant's document must not be
+ * collected while signed in to another. A job with no stamp — created before
+ * it existed, or failed (the failure writes replace the payload, and a failed
+ * job returns only a generic message) — is decided on creator identity.
+ */
+function isCallersGenerationJob(
+  job: { type: string; userId: string | null; payload: Prisma.JsonValue },
+  caller: { id: string; organizationId?: string | null },
+): boolean {
+  if (job.type !== GENERATION_JOB_TYPE || job.userId !== caller.id) return false;
+  const payload = job.payload;
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return true;
+  if (!('organizationId' in payload)) return true;
+  return payload.organizationId === (caller.organizationId ?? null);
+}
+
 export async function checkCourseGenerationJobV46(
   jobId: string,
 ): Promise<JobResponse<GeneratedCourseV46>> {
+  // SEC-14: this returns the job's state and the whole generated course, so it
+  // carries the same gate as starting a generation — and the job must be the
+  // caller's own. Someone else's job reads exactly like a missing one, so the
+  // endpoint cannot be used to probe which job ids exist.
+  const session = await auth();
+  if (!session?.user?.id) {
+    return { error: 'Unauthorized' };
+  }
+  if (!can(dbRoleToRoleKey(session.user.role), 'course.create')) {
+    logger.warn({
+      msg: '[v4.6 checkJob] Job poll denied — missing course.create',
+      userId: session.user.id,
+      role: session.user.role,
+    });
+    return { error: 'Insufficient permissions' };
+  }
+
   try {
     const job = await prisma.job.findUnique({ where: { id: jobId } });
     if (!job) {
       logger.info({ msg: `[v4.6 checkJob] Job ${jobId} NOT FOUND in database.` });
-      return { error: 'Job not found' };
+      return { error: JOB_NOT_FOUND };
+    }
+    if (!isCallersGenerationJob(job, session.user)) {
+      logger.warn({
+        msg: '[v4.6 checkJob] Job poll refused — not the caller’s generation job',
+        jobId,
+        userId: session.user.id,
+        orgId: session.user.organizationId,
+      });
+      return { error: JOB_NOT_FOUND };
     }
 
     logger.info({ msg: `[v4.6 checkJob] Job ${jobId} status: ${job.status}` });

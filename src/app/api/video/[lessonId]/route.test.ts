@@ -52,7 +52,8 @@ const makeReq = (range?: string) =>
 const params = Promise.resolve({ lessonId: 'lesson-1' });
 
 const makeLesson = (opts?: {
-  createdByOrgUserId?: string;
+  /** The course's OWNING organisation (RISK-15). */
+  organizationId?: string;
   videoStorageUri?: string | null;
   videoProvider?: string | null;
 }) => ({
@@ -66,7 +67,7 @@ const makeLesson = (opts?: {
   videoDurationSeconds: 600,
   course: {
     id: 'course-1',
-    createdByOrgUserId: opts?.createdByOrgUserId ?? 'other-org-user',
+    organizationId: opts?.organizationId ?? 'org-other',
     isGlobal: false,
     status: 'published',
     type: 'video',
@@ -119,15 +120,59 @@ describe('GET /api/video/[lessonId]', () => {
     expect(res.status).toBe(404);
   });
 
-  it('403 when caller is neither creator nor enrolled', async () => {
+  it('403 when caller is neither an owning-org manager nor enrolled', async () => {
     mockAdminAuth.mockResolvedValue({
       user: { id: 'outsider', organizationUserId: 'ou-outsider' },
     });
-    mockLessonFindUnique.mockResolvedValue(makeLesson({ createdByOrgUserId: 'ou-someone' }));
+    mockLessonFindUnique.mockResolvedValue(makeLesson({ organizationId: 'org-someone' }));
     mockEnrollmentFindFirst.mockResolvedValue(null);
     const res = await GET(makeReq(), { params });
     expect(res.status).toBe(403);
     expect(mockResolveVideoSource).not.toHaveBeenCalled();
+  });
+
+  // RISK-15: access follows the course's owning organisation, not its author.
+  it('lets a manager of the owning organisation watch without an enrolment', async () => {
+    mockAdminAuth.mockResolvedValue({
+      user: { id: 'm1', organizationUserId: 'ou-manager', organizationId: 'org-1', role: 'hr' },
+    });
+    mockLessonFindUnique.mockResolvedValue(makeLesson({ organizationId: 'org-1' }));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('bytes', { status: 200 })));
+
+    const res = await GET(makeReq(), { params });
+
+    expect(res.status).toBe(200);
+    expect(mockEnrollmentFindFirst).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it('refuses a manager of another organisation, such as the one the author moved to', async () => {
+    mockAdminAuth.mockResolvedValue({
+      user: {
+        id: 'm2',
+        organizationUserId: 'ou-elsewhere',
+        organizationId: 'org-2',
+        role: 'owner',
+      },
+    });
+    mockLessonFindUnique.mockResolvedValue(makeLesson({ organizationId: 'org-1' }));
+    mockEnrollmentFindFirst.mockResolvedValue(null);
+
+    const res = await GET(makeReq(), { params });
+
+    expect(res.status).toBe(403);
+  });
+
+  it('refuses an unenrolled learner of the owning organisation', async () => {
+    mockWorkerAuth.mockResolvedValue({
+      user: { id: 'w1', organizationUserId: 'ou-learner', organizationId: 'org-1', role: 'nurse' },
+    });
+    mockLessonFindUnique.mockResolvedValue(makeLesson({ organizationId: 'org-1' }));
+    mockEnrollmentFindFirst.mockResolvedValue(null);
+
+    const res = await GET(makeReq(), { params });
+
+    expect(res.status).toBe(403);
   });
 
   it('404 when the lesson has no video', async () => {

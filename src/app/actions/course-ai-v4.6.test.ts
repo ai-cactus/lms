@@ -105,6 +105,8 @@ const STALE_GRACE_MS = 60 * 1000;
 function baseJob(overrides: Record<string, unknown> = {}) {
   return {
     id: 'job-1',
+    type: 'GENERATE_V46_COURSE',
+    userId: 'user-1',
     status: 'processing',
     payload: null,
     result: null,
@@ -121,6 +123,9 @@ describe('checkCourseGenerationJobV46', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     delete process.env.V46_GENERATION_TIMEOUT_MS;
+    mockAuth.mockResolvedValue({
+      user: { id: 'user-1', role: 'owner', organizationId: 'org-1' },
+    });
   });
 
   it('returns "Job not found" when no job exists', async () => {
@@ -226,6 +231,99 @@ describe('checkCourseGenerationJobV46', () => {
     expect(prismaMock.job.updateMany).not.toHaveBeenCalled();
 
     vi.useRealTimers();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// checkCourseGenerationJobV46 — SEC-14: session, permission and ownership
+// ---------------------------------------------------------------------------
+
+describe('checkCourseGenerationJobV46 — only the caller’s own job (SEC-14)', () => {
+  const GENERATED = { articleMeta: null, articleMarkdown: 'org-1 course body' };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockAuth.mockResolvedValue({
+      user: { id: 'user-1', role: 'owner', organizationId: 'org-1' },
+    });
+  });
+
+  it('refuses with no admin session, before reading the job', async () => {
+    mockAuth.mockResolvedValue(null);
+
+    await expect(checkCourseGenerationJobV46('job-1')).resolves.toEqual({ error: 'Unauthorized' });
+    expect(prismaMock.job.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('refuses a role that may not generate courses', async () => {
+    mockAuth.mockResolvedValue({
+      user: { id: 'user-1', role: 'supervisor', organizationId: 'org-1' },
+    });
+
+    await expect(checkCourseGenerationJobV46('job-1')).resolves.toEqual({
+      error: 'Insufficient permissions',
+    });
+    expect(prismaMock.job.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('returns the caller’s own job generated for their organisation', async () => {
+    prismaMock.job.findUnique.mockResolvedValue(
+      baseJob({ status: 'completed', result: GENERATED, payload: { organizationId: 'org-1' } }),
+    );
+
+    await expect(checkCourseGenerationJobV46('job-1')).resolves.toEqual({
+      status: 'completed',
+      result: GENERATED,
+    });
+  });
+
+  it('hides another organisation’s job as if it did not exist', async () => {
+    mockAuth.mockResolvedValue({
+      user: { id: 'intruder', role: 'owner', organizationId: 'org-2' },
+    });
+    prismaMock.job.findUnique.mockResolvedValue(
+      baseJob({ status: 'completed', result: GENERATED, payload: { organizationId: 'org-1' } }),
+    );
+
+    await expect(checkCourseGenerationJobV46('job-1')).resolves.toEqual({
+      error: 'Job not found',
+    });
+  });
+
+  it('refuses the creator while signed in to a different organisation', async () => {
+    mockAuth.mockResolvedValue({
+      user: { id: 'user-1', role: 'owner', organizationId: 'org-2' },
+    });
+    prismaMock.job.findUnique.mockResolvedValue(
+      baseJob({ status: 'completed', result: GENERATED, payload: { organizationId: 'org-1' } }),
+    );
+
+    await expect(checkCourseGenerationJobV46('job-1')).resolves.toEqual({
+      error: 'Job not found',
+    });
+  });
+
+  it('refuses a same-organisation colleague’s job', async () => {
+    mockAuth.mockResolvedValue({
+      user: { id: 'colleague', role: 'admin', organizationId: 'org-1' },
+    });
+    prismaMock.job.findUnique.mockResolvedValue(
+      baseJob({ status: 'completed', result: GENERATED, payload: { organizationId: 'org-1' } }),
+    );
+
+    await expect(checkCourseGenerationJobV46('job-1')).resolves.toEqual({
+      error: 'Job not found',
+    });
+  });
+
+  it('refuses a job of another type, such as an auditor export', async () => {
+    prismaMock.job.findUnique.mockResolvedValue(
+      baseJob({ type: 'AUDITOR_PACK_EXPORT', status: 'completed', result: GENERATED }),
+    );
+
+    await expect(checkCourseGenerationJobV46('job-1')).resolves.toEqual({
+      error: 'Job not found',
+    });
   });
 });
 
