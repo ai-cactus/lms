@@ -6,7 +6,7 @@ import { revalidatePath } from 'next/cache';
 
 import { logger, maskEmail } from '@/lib/logger';
 import { getRealmSession, isPortalRealm, type PortalRealm } from '@/lib/auth/portal-sessions';
-import { isOwnAvatarUri, signAvatarUrl } from '@/lib/storage/avatar';
+import { deleteReplacedAvatar, isOwnAvatarUri, signAvatarUrl } from '@/lib/storage/avatar';
 import { can } from '@/lib/rbac/permissions';
 import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
 import {
@@ -276,6 +276,20 @@ export async function updateProfile(
       return { success: false, error: 'Invalid profile photo. Please upload it again.' };
     }
 
+    // RISK-13: every replace or clear used to strand the old object in storage.
+    // A concurrent save can at worst read the same previous value and leave
+    // one orphan — each upload key is unique, so nothing still referenced can
+    // be the "previous" value of another save.
+    const previousAvatarUrl =
+      avatarUrl === undefined
+        ? undefined
+        : (
+            await prisma.user.findUnique({
+              where: { id: session.user.id },
+              select: { avatarUrl: true },
+            })
+          )?.avatarUrl;
+
     logger.info({ msg: '[user] Updating profile', userId: session.user.id });
     // firstName/lastName/fullName/avatarUrl now live directly on the identity;
     // companyName has no home anymore (organization name lives on Organization).
@@ -293,6 +307,10 @@ export async function updateProfile(
       msg: '[user] Profile updated successfully',
       userId: session.user.id,
     });
+
+    if (avatarUrl !== undefined) {
+      await deleteReplacedAvatar(previousAvatarUrl, avatarUrl, session.user.id);
+    }
 
     revalidatePath('/dashboard/profile');
     revalidatePath('/worker/profile');
