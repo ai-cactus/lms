@@ -47,7 +47,8 @@ const makeAdminSession = (organizationUserId = 'ou-1') => ({
   user: { id: 'user-1', organizationUserId, organizationId: 'org-1' },
 });
 const makeLesson = (opts?: {
-  createdBy?: string;
+  /** The course's OWNING organisation (RISK-15). */
+  organizationId?: string;
   enrollments?: { id: string }[];
   archivedAt?: Date | null;
 }) => ({
@@ -57,7 +58,7 @@ const makeLesson = (opts?: {
   videoDurationSeconds: 600,
   course: {
     id: 'course-1',
-    createdByOrgUserId: opts?.createdBy ?? 'other-ou',
+    organizationId: opts?.organizationId ?? 'org-other',
     isGlobal: false,
     status: 'published',
     type: 'video',
@@ -90,14 +91,28 @@ describe('getVideoPlaybackUrl', () => {
     expect(url).toBe('/api/video/lesson-1');
   });
 
-  it('returns the proxy URL when caller is the course creator (no enrollment needed)', async () => {
-    mockAdminAuth.mockResolvedValue(makeAdminSession('ou-creator'));
+  // RISK-15: review access follows the course's owning organisation.
+  it('returns the proxy URL to a manager of the owning organisation (no enrollment needed)', async () => {
+    mockAdminAuth.mockResolvedValue({
+      user: { ...makeAdminSession('ou-manager').user, role: 'admin' },
+    });
     mockLessonFindUnique.mockResolvedValue(
-      makeLesson({ createdBy: 'ou-creator', enrollments: [] }),
+      makeLesson({ organizationId: 'org-1', enrollments: [] }),
     );
 
     const url = await getVideoPlaybackUrl('lesson-1');
     expect(url).toBe('/api/video/lesson-1');
+  });
+
+  it('refuses a manager of another organisation, such as the one the author moved to', async () => {
+    mockAdminAuth.mockResolvedValue({
+      user: { id: 'user-2', organizationUserId: 'ou-2', organizationId: 'org-2', role: 'owner' },
+    });
+    mockLessonFindUnique.mockResolvedValue(
+      makeLesson({ organizationId: 'org-1', enrollments: [] }),
+    );
+
+    await expect(getVideoPlaybackUrl('lesson-1')).rejects.toThrow('Forbidden');
   });
 
   it('uses worker session when admin session is absent', async () => {
@@ -129,10 +144,10 @@ describe('getVideoPlaybackUrl', () => {
     expect(mockLessonFindUnique).not.toHaveBeenCalled();
   });
 
-  it('throws "Forbidden" when caller is neither creator nor enrolled', async () => {
+  it('throws "Forbidden" when caller neither manages the owning organisation nor is enrolled', async () => {
     mockAdminAuth.mockResolvedValue(makeAdminSession('ou-outsider'));
     mockLessonFindUnique.mockResolvedValue(
-      makeLesson({ createdBy: 'someone-else', enrollments: [] }),
+      makeLesson({ organizationId: 'org-someone', enrollments: [] }),
     );
 
     await expect(getVideoPlaybackUrl('lesson-1')).rejects.toThrow('Forbidden');

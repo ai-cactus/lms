@@ -2,6 +2,7 @@ import type { Session } from 'next-auth';
 import prisma from '@/lib/prisma';
 import { rawPrisma } from '@/db/index';
 import { getPortalSessions } from '@/lib/auth/portal-sessions';
+import { isCourseOrganizationReviewer } from '@/lib/course/read-access';
 import { canViewOrgCourses } from '@/lib/rbac/role-utils';
 import { resolveCourseThumbnailMeta, resolvePlaybackAuthz } from '@/lib/video/playback-cache';
 import { streamPoster } from '@/lib/video/poster-response';
@@ -24,6 +25,8 @@ export const dynamic = 'force-dynamic';
 
 interface ThumbnailCaller {
   organizationUserId: string | null;
+  organizationId: string | null;
+  role: string | null;
   /** The admin-portal session, when it is the one serving this request. */
   admin: Session | null;
 }
@@ -33,14 +36,19 @@ async function currentCaller(): Promise<ThumbnailCaller | null> {
   const { admin: a, worker: w } = await getPortalSessions();
   const session = a?.user?.id ? a : w?.user?.id ? w : null;
   if (!session?.user?.id) return null;
-  return { organizationUserId: session.user.organizationUserId, admin: session === a ? a : null };
+  return {
+    organizationUserId: session.user.organizationUserId,
+    organizationId: session.user.organizationId ?? null,
+    role: session.user.role ?? null,
+    admin: session === a ? a : null,
+  };
 }
 
 interface ThumbnailCourse {
   isGlobal: boolean;
   status: string;
   type: string;
-  createdByOrgUserId: string | null;
+  organizationId: string;
   archivedAt: Date | null;
 }
 
@@ -48,11 +56,13 @@ interface ThumbnailCourse {
 async function hasPosterAccess(
   course: ThumbnailCourse,
   courseId: string,
-  organizationUserId: string | null,
+  caller: ThumbnailCaller,
 ): Promise<boolean> {
   if (course.archivedAt !== null) return false;
   if (course.isGlobal && course.status === 'published' && course.type === 'video') return true;
-  if (organizationUserId && course.createdByOrgUserId === organizationUserId) return true;
+  // RISK-15: a manager of the organisation that owns the course, not its author.
+  if (isCourseOrganizationReviewer(course, caller)) return true;
+  const { organizationUserId } = caller;
   if (!organizationUserId) return false;
 
   return resolvePlaybackAuthz(organizationUserId, courseId, async () => {
@@ -110,7 +120,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         isGlobal: true,
         status: true,
         type: true,
-        createdByOrgUserId: true,
+        organizationId: true,
         archivedAt: true,
         lessons: {
           orderBy: { order: 'asc' },
@@ -124,7 +134,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (!course) return new Response('Not found', { status: 404 });
 
   const allowed =
-    (await hasPosterAccess(course, courseId, current.organizationUserId)) ||
+    (await hasPosterAccess(course, courseId, current)) ||
     (await orgAdminMayViewRetiredThumbnail(course, courseId, current.admin));
 
   if (!allowed) {

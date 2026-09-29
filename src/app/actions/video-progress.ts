@@ -6,20 +6,31 @@ import { isQuizUnlocked } from '@/lib/video/gating';
 import { logger } from '@/lib/logger';
 import { ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
 import { AuthzError, requireActionSession } from '@/lib/auth-guard';
+import { isCourseOrganizationReviewer } from '@/lib/course/read-access';
 import { hasActiveBilling, TRAINING_ACCESS_PAUSED_MESSAGE } from '@/lib/billing';
 
 const MFA_REQUIRED_MESSAGE = 'Please complete two-factor verification to continue.';
 
 /**
- * Resolves the current session's ACTIVE membership id from either the admin or
- * worker session. Video access and progress are owned by the OrganizationUser,
- * not the identity, so this — not the identity id — is what every ownership
- * check below compares against. Returns null when neither session is active
- * (or the active session has no membership).
+ * The session whose ACTIVE membership acts here — the admin session's, else the
+ * worker session's. Video access is owned by the OrganizationUser, not the
+ * identity, so the membership id (not the identity id) is what the enrolment
+ * check compares against. Null when neither session carries a membership.
  */
-async function currentOrganizationUserId(): Promise<string | null> {
+async function currentMember(): Promise<{
+  organizationUserId: string;
+  organizationId: string | null;
+  role: string | null;
+} | null> {
   const { admin: a, worker: w } = await getPortalSessions();
-  return a?.user?.organizationUserId ?? w?.user?.organizationUserId ?? null;
+  const session = a?.user?.organizationUserId ? a : w?.user?.organizationUserId ? w : null;
+  const organizationUserId = session?.user?.organizationUserId;
+  if (!session || !organizationUserId) return null;
+  return {
+    organizationUserId,
+    organizationId: session.user.organizationId ?? null,
+    role: session.user.role ?? null,
+  };
 }
 
 /**
@@ -38,8 +49,9 @@ async function currentOrganizationUserId(): Promise<string | null> {
  * Throws 'Forbidden'    when the caller has no access.
  */
 export async function getVideoPlaybackUrl(lessonId: string): Promise<string> {
-  const organizationUserId = await currentOrganizationUserId();
-  if (!organizationUserId) throw new Error('Unauthorized');
+  const member = await currentMember();
+  if (!member) throw new Error('Unauthorized');
+  const { organizationUserId } = member;
 
   const lesson = await prisma.lesson.findUnique({
     where: { id: lessonId },
@@ -68,8 +80,9 @@ export async function getVideoPlaybackUrl(lessonId: string): Promise<string> {
   // Global published video courses are a shared catalog any signed-in user may
   // watch (e.g. an org admin previewing before assigning).
   const isGlobalCatalog = c.isGlobal && c.status === 'published' && c.type === 'video';
+  // RISK-15: a manager of the organisation that owns the course, not its author.
   const allowed =
-    c.createdByOrgUserId === organizationUserId || c.enrollments.length > 0 || isGlobalCatalog;
+    isCourseOrganizationReviewer(c, member) || c.enrollments.length > 0 || isGlobalCatalog;
 
   if (!allowed) throw new Error('Forbidden');
 

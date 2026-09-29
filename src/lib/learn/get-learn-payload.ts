@@ -292,9 +292,6 @@ export async function getLearnPayload(courseId: string): Promise<LearnPayload | 
         // that is streaming every lesson body anyway — cheaper than the extra
         // round trip a separate query would cost.
         _count: { select: { modules: true } },
-        creator: {
-          select: { organizationId: true },
-        },
         // Course-level quiz (video courses attach the quiz to the course, not a lesson).
         quiz: { select: QUIZ_SELECT },
         lessons: {
@@ -366,10 +363,12 @@ export async function getLearnPayload(courseId: string): Promise<LearnPayload | 
           })
         : null;
 
+      // RISK-15: the course's OWNING organisation (Q25), not its author's
+      // current one — an author who moves takes neither the course nor its
+      // review right with them.
       const isSameOrg = Boolean(
         adminSession.user.organizationId &&
-        course.creator?.organizationId &&
-        adminSession.user.organizationId === course.creator.organizationId,
+        adminSession.user.organizationId === course.organizationId,
       );
 
       // Global published courses are a shared catalog any org admin may open

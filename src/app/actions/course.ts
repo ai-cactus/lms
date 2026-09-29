@@ -60,6 +60,7 @@ import { captureServer } from '@/lib/analytics/server';
 import { analyticsContextFrom } from '@/lib/analytics/identity';
 import { resolveAttributionName } from '@/lib/attribution-name';
 import { selectAssessmentQuiz } from '@/lib/quiz/assessment';
+import { isCourseOrganizationReviewer } from '@/lib/course/read-access';
 
 // Helper: resolve the active session from either auth instance
 async function resolveSession() {
@@ -338,6 +339,7 @@ export async function getCourseById(courseId: string): Promise<CourseWithRelatio
     select: {
       ...courseDetailSelect,
       archivedAt: true,
+      organizationId: true,
       enrollments: { ...courseDetailSelect.enrollments, where: rosterWhere },
     },
   });
@@ -352,12 +354,18 @@ export async function getCourseById(courseId: string): Promise<CourseWithRelatio
   // org, not just their own (COU-002/COU-004). Workers stay enrollment-gated
   // (course.read in workerPermissions covers only their own enrolled courses),
   // and cross-org access stays denied.
-  const isCreator = course.creator.userId === session.user.id;
+  //
+  // RISK-15: "the course's organization" is `Course.organizationId` (Q25), the
+  // same owner edit access keys on — never the author's CURRENT membership,
+  // which moves with the person. Keyed on the author, a course stayed readable
+  // by whichever organisation its author joined next and went dark for the
+  // organisation that owns it. Authorship likewise counts only inside that
+  // organisation.
+  const inCourseOrganization =
+    Boolean(session.user.organizationId) && course.organizationId === session.user.organizationId;
+  const isCreator = course.creator.userId === session.user.id && inCourseOrganization;
   const isEnrolled = course.enrollments.some((e) => e.organizationUser.userId === session.user.id);
-  const isSameOrgManager =
-    course.creator.organizationId === session.user.organizationId &&
-    isAdminRole(session.user.role) &&
-    can(dbRoleToRoleKey(session.user.role), 'course.read');
+  const isSameOrgManager = isCourseOrganizationReviewer(course, session.user);
 
   if (!isCreator && !isEnrolled && !isSameOrgManager) {
     throw new CourseAccessError('forbidden');
