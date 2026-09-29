@@ -117,6 +117,26 @@ describe('startModuleGenerationJobs', () => {
     expect(jobs[1]).toEqual({ moduleIndex: 1, jobId: undefined, error: 'Document not found' });
   });
 
+  it('refuses the whole batch up front with no session', async () => {
+    mockAuth.mockResolvedValue(null);
+
+    const { jobs, error } = await startModuleGenerationJobs(COURSE_DATA, MODULES);
+
+    expect(jobs).toEqual([]);
+    expect(error).toBe('Unauthorized');
+    expect(prismaMock.job.create).not.toHaveBeenCalled();
+  });
+
+  it('refuses the whole batch up front for a role that may not generate courses', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'sup-1', role: 'supervisor' } });
+
+    const { jobs, error } = await startModuleGenerationJobs(COURSE_DATA, MODULES);
+
+    expect(jobs).toEqual([]);
+    expect(error).toBe('Insufficient permissions');
+    expect(prismaMock.document.findUnique).not.toHaveBeenCalled();
+  });
+
   it('rejects an empty module list', async () => {
     const { jobs, error } = await startModuleGenerationJobs(COURSE_DATA, []);
 

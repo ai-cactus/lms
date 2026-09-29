@@ -54,11 +54,16 @@ function nextLessonId(): string {
   return `lesson-${lessonSeq}`;
 }
 
+const OWNING_ORG_MANAGER = {
+  user: { id: 'u1', organizationUserId: 'ou-manager', organizationId: 'org-1', role: 'admin' },
+};
+
 const makeReq = (headers?: Record<string, string>, signal?: AbortSignal) =>
   new Request('http://localhost/api/video/x/poster', { headers, signal });
 
 const makeLesson = (opts?: {
-  createdByOrgUserId?: string;
+  /** The course's OWNING organisation (RISK-15). */
+  organizationId?: string;
   videoPosterStorageUri?: string | null;
   isGlobal?: boolean;
 }) => ({
@@ -66,7 +71,7 @@ const makeLesson = (opts?: {
     opts && 'videoPosterStorageUri' in opts ? opts.videoPosterStorageUri : POSTER_URI,
   course: {
     id: 'course-1',
-    createdByOrgUserId: opts?.createdByOrgUserId ?? 'other-org-user',
+    organizationId: opts?.organizationId ?? 'org-other',
     isGlobal: opts?.isGlobal ?? false,
     status: 'published',
     type: 'video',
@@ -117,9 +122,9 @@ describe('GET /api/video/[lessonId]/poster', () => {
     expect(res.status).toBe(404);
   });
 
-  it('403 when the caller is neither creator, enrolled, nor browsing the global catalog', async () => {
+  it('403 when the caller is neither an owning-org manager, enrolled, nor browsing the global catalog', async () => {
     mockAdminAuth.mockResolvedValue({ user: { id: 'x', organizationUserId: 'ou-outsider' } });
-    mockLessonFindUnique.mockResolvedValue(makeLesson({ createdByOrgUserId: 'ou-someone' }));
+    mockLessonFindUnique.mockResolvedValue(makeLesson({ organizationId: 'org-someone' }));
     mockEnrollmentFindFirst.mockResolvedValue(null);
 
     const res = await GET(makeReq(), { params: Promise.resolve({ lessonId: nextLessonId() }) });
@@ -128,9 +133,9 @@ describe('GET /api/video/[lessonId]/poster', () => {
     expect(mockSign).not.toHaveBeenCalled();
   });
 
-  it('allows the course creator', async () => {
-    mockAdminAuth.mockResolvedValue({ user: { id: 'u1', organizationUserId: 'ou-creator' } });
-    mockLessonFindUnique.mockResolvedValue(makeLesson({ createdByOrgUserId: 'ou-creator' }));
+  it('allows a manager of the organisation that owns the course', async () => {
+    mockAdminAuth.mockResolvedValue(OWNING_ORG_MANAGER);
+    mockLessonFindUnique.mockResolvedValue(makeLesson({ organizationId: 'org-1' }));
     stubFetch(new Response('jpeg', { status: 200, headers: { 'content-type': 'image/jpeg' } }));
 
     const res = await GET(makeReq(), { params: Promise.resolve({ lessonId: nextLessonId() }) });
@@ -151,9 +156,9 @@ describe('GET /api/video/[lessonId]/poster', () => {
   });
 
   it('404s when the lesson has no poster yet, without touching storage', async () => {
-    mockAdminAuth.mockResolvedValue({ user: { id: 'u1', organizationUserId: 'ou-creator' } });
+    mockAdminAuth.mockResolvedValue(OWNING_ORG_MANAGER);
     mockLessonFindUnique.mockResolvedValue(
-      makeLesson({ createdByOrgUserId: 'ou-creator', videoPosterStorageUri: null }),
+      makeLesson({ organizationId: 'org-1', videoPosterStorageUri: null }),
     );
 
     const res = await GET(makeReq(), { params: Promise.resolve({ lessonId: nextLessonId() }) });
@@ -165,8 +170,8 @@ describe('GET /api/video/[lessonId]/poster', () => {
   });
 
   it('serves the image with an immutable private cache policy', async () => {
-    mockAdminAuth.mockResolvedValue({ user: { id: 'u1', organizationUserId: 'ou-creator' } });
-    mockLessonFindUnique.mockResolvedValue(makeLesson({ createdByOrgUserId: 'ou-creator' }));
+    mockAdminAuth.mockResolvedValue(OWNING_ORG_MANAGER);
+    mockLessonFindUnique.mockResolvedValue(makeLesson({ organizationId: 'org-1' }));
     const fetchMock = stubFetch(
       new Response('jpeg', {
         status: 200,
@@ -185,8 +190,8 @@ describe('GET /api/video/[lessonId]/poster', () => {
   });
 
   it('relays a 304 with no body and no entity headers', async () => {
-    mockAdminAuth.mockResolvedValue({ user: { id: 'u1', organizationUserId: 'ou-creator' } });
-    mockLessonFindUnique.mockResolvedValue(makeLesson({ createdByOrgUserId: 'ou-creator' }));
+    mockAdminAuth.mockResolvedValue(OWNING_ORG_MANAGER);
+    mockLessonFindUnique.mockResolvedValue(makeLesson({ organizationId: 'org-1' }));
     const fetchMock = stubFetch(
       new Response(null, {
         status: 304,
@@ -208,8 +213,8 @@ describe('GET /api/video/[lessonId]/poster', () => {
   });
 
   it('returns 499 on a client abort without logging an error', async () => {
-    mockAdminAuth.mockResolvedValue({ user: { id: 'u1', organizationUserId: 'ou-creator' } });
-    mockLessonFindUnique.mockResolvedValue(makeLesson({ createdByOrgUserId: 'ou-creator' }));
+    mockAdminAuth.mockResolvedValue(OWNING_ORG_MANAGER);
+    mockLessonFindUnique.mockResolvedValue(makeLesson({ organizationId: 'org-1' }));
     const abortError = new Error('The operation was aborted.');
     abortError.name = 'AbortError';
     stubFetch(abortError);
@@ -225,8 +230,8 @@ describe('GET /api/video/[lessonId]/poster', () => {
   it('serves a warm cache with zero database lookups', async () => {
     process.env.VIDEO_PLAYBACK_CACHE_TTL_SECONDS = '60';
     const lessonId = nextLessonId();
-    mockAdminAuth.mockResolvedValue({ user: { id: 'u1', organizationUserId: 'ou-creator' } });
-    mockLessonFindUnique.mockResolvedValue(makeLesson({ createdByOrgUserId: 'ou-creator' }));
+    mockAdminAuth.mockResolvedValue(OWNING_ORG_MANAGER);
+    mockLessonFindUnique.mockResolvedValue(makeLesson({ organizationId: 'org-1' }));
     stubFetch(new Response('jpeg', { status: 200 }));
 
     await GET(makeReq(), { params: Promise.resolve({ lessonId }) });

@@ -197,6 +197,27 @@ describe('publishCourse publish-review gate', () => {
     expect(updateArgs.data.status).toBe('published');
     expect(updateArgs.data.reviewRequired).toBeUndefined();
   });
+
+  // BUG-51: the success arm used to carry no `success` field, so a caller
+  // testing `!result.success` read every successful publish as a refusal.
+  it('reports a successful publish as success: true', async () => {
+    mockCourseFindUnique.mockResolvedValue({
+      id: 'course-3',
+      createdByOrgUserId: ORG_USER_ID,
+      organizationId: 'org-1',
+      isGlobal: false,
+      reviewRequired: false,
+      qualityWarnings: [],
+    });
+    mockCourseUpdate.mockResolvedValue({ id: 'course-3', status: 'published' });
+
+    await expect(publishCourse('course-3')).resolves.toMatchObject({
+      success: true,
+      id: 'course-3',
+      status: 'published',
+      assignmentFailed: false,
+    });
+  });
 });
 
 /**

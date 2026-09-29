@@ -86,7 +86,8 @@ function makeAttestEnrollment(archivedAt: Date | null) {
       organizationId: 'org-1',
       user: { fullName: 'Ada Worker', email: 'ada@acme.test' },
     },
-    course: { title: 'Infection Control', archivedAt },
+    progress: 100,
+    course: { title: 'Infection Control', archivedAt, quiz: null, lessons: [] },
   };
 }
 

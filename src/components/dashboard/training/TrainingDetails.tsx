@@ -168,6 +168,7 @@ export default function TrainingDetails({
   const [retakeEnrollment, setRetakeEnrollment] = useState<{
     id: string;
     courseName: string;
+    learnerName: string;
   } | null>(null);
 
   const [targetRoles, setTargetRoles] = useState<UserRole[]>(assignmentSettings?.targetRoles ?? []);
@@ -554,6 +555,10 @@ export default function TrainingDetails({
                                 setRetakeEnrollment({
                                   id: enrollment.id,
                                   courseName: course.title,
+                                  learnerName:
+                                    enrollment.organizationUser?.user?.fullName ||
+                                    enrollment.organizationUser?.user?.email ||
+                                    'this staff member',
                                 }),
                             },
                             // Offered only to the course creator, matching the
@@ -674,7 +679,7 @@ export default function TrainingDetails({
           onClose={() => setRetakeEnrollment(null)}
           enrollmentId={retakeEnrollment.id}
           courseName={retakeEnrollment.courseName}
-          userName=""
+          userName={retakeEnrollment.learnerName}
         />
       )}
 

@@ -364,7 +364,7 @@ describe('CoursesListClient — row click navigates to the training detail route
     const user = userEvent.setup();
     render(
       <CoursesListClient
-        courses={[makeCourse({ id: 'course-42', title: 'Infection Control' })]}
+        courses={[makeCourse({ id: 'course-42', title: 'Infection Control', type: 'text' })]}
         hasBilling
         viewerRole="owner"
       />,
@@ -426,7 +426,9 @@ describe('CoursesListClient — search narrows within the active tab', () => {
 });
 
 describe('CoursesListClient — row action gating per role', () => {
-  const course = makeCourse();
+  // A reading course: video rows are read-only by ruling (Q-33, below), so the
+  // per-role grants are only fully visible on a course the org authored itself.
+  const course = makeCourse({ type: 'text' });
 
   function actionsForRow() {
     const row = screen.getByText('Infection Control').closest('tr')!;
@@ -462,7 +464,7 @@ describe('CoursesListClient — row action gating per role', () => {
   });
 
   it('supervisor still gets a disabled "View Source Document" when there is no source document (item always listed per design)', () => {
-    const sourcelessCourse = makeCourse({ sourceDocumentId: null });
+    const sourcelessCourse = makeCourse({ type: 'text', sourceDocumentId: null });
     render(<CoursesListClient courses={[sourcelessCourse]} hasBilling viewerRole="supervisor" />);
 
     const actions = actionsForRow();
@@ -485,7 +487,7 @@ describe('CoursesListClient — row action gating per role', () => {
   });
 
   it('shows a DISABLED "View Source Document" when there is no sourceDocumentId — listed per design, not clickable', () => {
-    const sourcelessCourse = makeCourse({ sourceDocumentId: null });
+    const sourcelessCourse = makeCourse({ type: 'text', sourceDocumentId: null });
     render(<CoursesListClient courses={[sourcelessCourse]} hasBilling viewerRole="owner" />);
 
     const actions = actionsForRow();
@@ -499,40 +501,135 @@ describe('CoursesListClient — row action gating per role', () => {
     expect(within(row).queryByTestId('row-actions')).not.toBeInTheDocument();
   });
 
-  // Guard against mutating a course every tenant shares: a catalog row that
-  // this org has not adopted is authored by another tenant, so buildRowActions
-  // returns [] for it regardless of the viewer's own grants — even an owner,
-  // who gets the full action set on their own courses, sees no actions here.
-  it('an isGlobalCatalog row has NO row actions for an owner — no Assign/Rename/Delete/View Source Document', () => {
-    const catalogCourse = makeCourse({
-      id: 'catalog-1',
-      title: 'Platform Catalog Course',
-      isGlobalCatalog: true,
-    });
-    render(<CoursesListClient courses={[catalogCourse]} hasBilling viewerRole="owner" />);
-
-    const row = screen.getByText('Platform Catalog Course').closest('tr')!;
-    expect(within(row).queryByTestId('row-actions')).not.toBeInTheDocument();
-  });
-
-  it('an own (non-catalog) row alongside a catalog row keeps its own full action set', () => {
-    const ownCourse = makeCourse({ id: 'own-1', title: 'Own Course' });
-    const catalogCourse = makeCourse({
-      id: 'catalog-1',
-      title: 'Platform Catalog Course',
-      isGlobalCatalog: true,
-    });
+  it('an own reading row keeps its full action set', () => {
     render(
-      <CoursesListClient courses={[ownCourse, catalogCourse]} hasBilling viewerRole="owner" />,
+      <CoursesListClient
+        courses={[makeCourse({ id: 'own-1', title: 'Own Course', type: 'text' })]}
+        hasBilling
+        viewerRole="owner"
+      />,
     );
 
     const ownRow = screen.getByText('Own Course').closest('tr')!;
-    expect(within(ownRow).getByRole('button', { name: 'Assign to staff' })).toBeInTheDocument();
-    expect(within(ownRow).getByRole('button', { name: 'Rename' })).toBeInTheDocument();
-    expect(within(ownRow).getByRole('button', { name: 'Delete' })).toBeInTheDocument();
+    expect(within(ownRow).getByRole('button', { name: 'Assign to staff' })).toBeEnabled();
+    expect(within(ownRow).getByRole('button', { name: 'View Source Document' })).toBeEnabled();
+    expect(within(ownRow).getByRole('button', { name: 'Rename' })).toBeEnabled();
+    expect(within(ownRow).getByRole('button', { name: 'Delete' })).toBeEnabled();
+  });
+});
 
-    const catalogRow = screen.getByText('Platform Catalog Course').closest('tr')!;
-    expect(within(catalogRow).queryByTestId('row-actions')).not.toBeInTheDocument();
+/**
+ * Q-33 (ruled): every organisation inherits the video courses, so every video
+ * row — including a catalogue row the org has not offered yet — offers an
+ * active "Assign to staff", a DISABLED "View Source Document" and a DISABLED
+ * "Rename" (a global course cannot be renamed; the server refuses it), and
+ * never Delete. Catalogue rows used to show no actions at all.
+ */
+describe('CoursesListClient — video-course rows are assign-only (Q-33)', () => {
+  function expectAssignOnly(title: string) {
+    const row = screen.getByText(title).closest('tr')!;
+    const actions = within(row).getByTestId('row-actions');
+    expect(within(actions).getByRole('button', { name: 'Assign to staff' })).toBeEnabled();
+    expect(within(actions).getByRole('button', { name: 'View Source Document' })).toBeDisabled();
+    expect(within(actions).getByRole('button', { name: 'Rename' })).toBeDisabled();
+    expect(within(actions).queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
+  }
+
+  it('a not-yet-offered catalogue video row offers Assign, with Source and Rename disabled', () => {
+    render(
+      <CoursesListClient
+        courses={[
+          makeCourse({
+            id: 'catalog-1',
+            title: 'Platform Catalog Course',
+            isGlobalCatalog: true,
+            isOrgAuthored: false,
+            sourceDocumentId: null,
+          }),
+        ]}
+        hasBilling
+        viewerRole="owner"
+      />,
+    );
+
+    expectAssignOnly('Platform Catalog Course');
+  });
+
+  it('an offered video row is assign-only too, even with a source document on record', () => {
+    render(
+      <CoursesListClient
+        courses={[makeCourse({ id: 'offered-1', title: 'Offered Video', isOrgAuthored: false })]}
+        hasBilling
+        viewerRole="owner"
+      />,
+    );
+
+    expectAssignOnly('Offered Video');
+  });
+
+  it('never offers Delete on a video row, even one this organisation is recorded as authoring', () => {
+    render(<CoursesListClient courses={[makeCourse()]} hasBilling viewerRole="owner" />);
+
+    expectAssignOnly('Infection Control');
+  });
+
+  it('assigning a catalogue row goes to the assign page, which offers it on assignment', async () => {
+    const user = userEvent.setup();
+    render(
+      <CoursesListClient
+        courses={[makeCourse({ id: 'catalog-1', title: 'Catalog', isGlobalCatalog: true })]}
+        hasBilling
+        viewerRole="owner"
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Assign to staff' }));
+
+    expect(mockPush).toHaveBeenCalledWith('/dashboard/training/courses/catalog-1/assign');
+  });
+
+  it('keeps the billing-gate interception on a catalogue row', async () => {
+    const user = userEvent.setup();
+    render(
+      <CoursesListClient
+        courses={[makeCourse({ id: 'catalog-1', title: 'Catalog', isGlobalCatalog: true })]}
+        hasBilling={false}
+        viewerRole="owner"
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Assign to staff' }));
+
+    expect(mockPush).not.toHaveBeenCalled();
+    expect(screen.getByTestId('billing-gate-modal')).toBeInTheDocument();
+  });
+
+  it('shows a supervisor Assign and the disabled Source item, but no Rename', () => {
+    render(
+      <CoursesListClient
+        courses={[makeCourse({ title: 'Catalog', isGlobalCatalog: true })]}
+        hasBilling
+        viewerRole="supervisor"
+      />,
+    );
+
+    const actions = within(screen.getByText('Catalog').closest('tr')!).getByTestId('row-actions');
+    expect(within(actions).getByRole('button', { name: 'Assign to staff' })).toBeEnabled();
+    expect(within(actions).getByRole('button', { name: 'View Source Document' })).toBeDisabled();
+    expect(within(actions).queryByRole('button', { name: 'Rename' })).not.toBeInTheDocument();
+  });
+
+  it('keeps a non-video row flagged as catalogue view-only', () => {
+    render(
+      <CoursesListClient
+        courses={[makeCourse({ title: 'Odd Row', type: 'text', isGlobalCatalog: true })]}
+        hasBilling
+        viewerRole="owner"
+      />,
+    );
+
+    const row = screen.getByText('Odd Row').closest('tr')!;
+    expect(within(row).queryByTestId('row-actions')).not.toBeInTheDocument();
   });
 });
 
@@ -996,7 +1093,7 @@ describe('CoursesListClient — row thumbnail', () => {
  * value, and the row no longer offers Delete where it could never succeed.
  */
 describe('CoursesListClient — delete refusals are readable', () => {
-  const ownCourse = () => makeCourse({ id: 'c1', title: 'Deletable Course' });
+  const ownCourse = () => makeCourse({ id: 'c1', title: 'Deletable Course', type: 'text' });
 
   it('shows the server’s reason instead of a redacted React error', async () => {
     const user = userEvent.setup();
@@ -1100,7 +1197,13 @@ describe('CoursesListClient — authoring actions follow authorship, not catalog
   });
 
   it('still offers Delete on a course this organization authored', () => {
-    render(<CoursesListClient courses={[makeCourse()]} hasBilling viewerRole={'owner' as Role} />);
+    render(
+      <CoursesListClient
+        courses={[makeCourse({ type: 'text' })]}
+        hasBilling
+        viewerRole={'owner' as Role}
+      />,
+    );
 
     expect(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument();
   });

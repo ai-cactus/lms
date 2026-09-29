@@ -25,8 +25,15 @@ export default async function QuizResultsPage({
   try {
     const enrollment = await getEnrollmentWithResults(enrollmentId);
 
-    const quizAttempts = enrollment.quizAttempts || [];
-    const latestAttempt = quizAttempts[quizAttempts.length - 1];
+    // The newest SUBMITTED attempt. The rows arrive unordered, and an in-progress
+    // draft (timeTaken null) has no score to show.
+    const latestAttempt = (enrollment.quizAttempts ?? [])
+      .filter((attempt) => attempt.timeTaken !== null)
+      .reduce<(typeof enrollment.quizAttempts)[number] | undefined>(
+        (latest, attempt) =>
+          !latest || attempt.completedAt > latest.completedAt ? attempt : latest,
+        undefined,
+      );
 
     if (!latestAttempt) {
       // No quiz attempt yet - show empty state or redirect
@@ -38,9 +45,9 @@ export default async function QuizResultsPage({
       );
     }
 
-    const allQuestions = enrollment.course.lessons.flatMap(
-      (lesson) => lesson.quiz?.questions || [],
-    );
+    // BUG-52: the sheet is the attempted quiz's own questions. Reading them off
+    // the lessons missed a course-level quiz (every video course) entirely.
+    const allQuestions = latestAttempt.quiz.questions;
 
     const answers = latestAttempt.answers as {
       questionId: string;
