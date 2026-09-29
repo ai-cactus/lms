@@ -26,4 +26,10 @@ transfer (BUG-09's `findAssetCustodian`) was deleted with it: authorship is kept
   "members" WITHOUT `active` will show deleted people (the settings team list had exactly that bug).
 - Audit reads (auditor roster/export) deliberately include inactive members — that is what keeps a
   deleted person's records auditable. Do not add `active: true` there.
+- Q-30 (2026-09-29): the delete REFUSES (changes nothing) if an org would be left with no active
+  owner or no active member; checked inside the tx after `SELECT … FOR UPDATE` on the orgs.
+- Q-31 (2026-09-29): inviting/assigning a deleted email is refused with the generic
+  `DELETED_EMAIL_REFUSAL` (`src/lib/auth/deleted-email-guard.ts`) — createInvites, resendInvite,
+  onboarding invites, and `createEnrollmentForUser` (reported as a plain `failed`). A NEW invite
+  path must call the same guard.
 Related: [[project_archive_filter_and_raw_prisma]], [[gotcha_revalidation_cache_is_identity_only]].

@@ -554,3 +554,28 @@ describe('createEnrollmentForUser — deferWorkerNotification', () => {
     expect(mockSendCourseInviteEmail).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('createEnrollmentForUser — Q-31 deleted identity', () => {
+  it('reports failed and creates no invite, parks no course and sends no email', async () => {
+    prismaMock.user.findUnique.mockResolvedValue({
+      id: 'user-deleted',
+      firstName: 'Dana',
+      lastName: 'Deleted',
+      fullName: 'Dana Deleted',
+      deletedAt: new Date('2026-09-28'),
+    });
+    prismaMock.organizationUser.findFirst.mockResolvedValue(null);
+
+    const outcome = await createEnrollmentForUser({ email: 'deleted@example.com' }, BASE_CTX);
+
+    expect(outcome).toEqual({ status: 'failed', email: 'deleted@example.com' });
+    expect(prismaMock.invite.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.invite.create).not.toHaveBeenCalled();
+    expect(prismaMock.invite.update).not.toHaveBeenCalled();
+    expect(prismaMock.inviteCourseAssignment.upsert).not.toHaveBeenCalled();
+    expect(mockSendCourseInviteEmail).not.toHaveBeenCalled();
+    expect(prismaMock.user.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ select: expect.objectContaining({ deletedAt: true }) }),
+    );
+  });
+});
