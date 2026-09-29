@@ -59,6 +59,7 @@ import {
 import { captureServer } from '@/lib/analytics/server';
 import { analyticsContextFrom } from '@/lib/analytics/identity';
 import { resolveAttributionName } from '@/lib/attribution-name';
+import { selectAssessmentQuiz } from '@/lib/quiz/assessment';
 
 // Helper: resolve the active session from either auth instance
 async function resolveSession() {
@@ -1516,6 +1517,43 @@ export async function createFullCourse(data: {
 }
 
 const ALREADY_ATTESTED_MESSAGE = 'This course has already been attested.';
+const QUIZ_NOT_PASSED_MESSAGE =
+  'You need to pass this course’s quiz before you can attest to completing it.';
+const LESSONS_NOT_COMPLETE_MESSAGE =
+  'You need to finish every lesson in this course before you can attest to completing it.';
+
+/**
+ * Why this enrolment may not be attested yet, or null when it may (Q-27).
+ *
+ * - With a quiz: the learner's LATEST submitted attempt at the assessment quiz
+ *   (see `selectAssessmentQuiz`) must meet that quiz's own passing score. The
+ *   latest, not any: it is the verdict the results screen shows, so a
+ *   fail-after-pass cannot be attested around, while fail-then-pass can.
+ *   Attempts belong to the enrolment, so an admin retake or a renewal — each a
+ *   new enrolment — starts with none and must be passed afresh.
+ * - Without a quiz: every lesson must be read — progress 100, which the
+ *   progress route records as `lessons_complete`.
+ */
+async function attestationBlockedReason(enrollment: {
+  id: string;
+  progress: number;
+  course: {
+    quiz: { id: string; passingScore: number } | null;
+    lessons: { quiz: { id: string; passingScore: number } | null }[];
+  };
+}): Promise<string | null> {
+  const quiz = selectAssessmentQuiz(enrollment.course.lessons, enrollment.course.quiz);
+  if (!quiz) {
+    return enrollment.progress >= 100 ? null : LESSONS_NOT_COMPLETE_MESSAGE;
+  }
+
+  const latestAttempt = await prisma.quizAttempt.findFirst({
+    where: { enrollmentId: enrollment.id, quizId: quiz.id, timeTaken: { not: null } },
+    orderBy: { completedAt: 'desc' },
+    select: { score: true },
+  });
+  return latestAttempt && latestAttempt.score >= quiz.passingScore ? null : QUIZ_NOT_PASSED_MESSAGE;
+}
 
 /**
  * Records the learner's signed attestation — this product's completion act.
@@ -1542,7 +1580,17 @@ export async function attestCourse(
     where: { id: enrollmentId },
     include: {
       organizationUser: { include: { user: true } },
-      course: true,
+      course: {
+        include: {
+          quiz: { select: { id: true, passingScore: true } },
+          // Only the last lesson can carry the assessment quiz.
+          lessons: {
+            orderBy: { order: 'desc' },
+            take: 1,
+            select: { quiz: { select: { id: true, passingScore: true } } },
+          },
+        },
+      },
     },
   });
 
@@ -1602,6 +1650,21 @@ export async function attestCourse(
   };
   if (enrollment.status === 'attested') {
     return refuseAlreadyAttested();
+  }
+
+  // Q-27 (ruled: enforce "finished before attest" on the server). The UI only
+  // offers the attestation after a pass or at the end of the last lesson, but
+  // the action is callable directly, so the finish line is re-derived here.
+  const unfinishedReason = await attestationBlockedReason(enrollment);
+  if (unfinishedReason) {
+    logger.warn({
+      msg: '[course] Attestation refused — course not finished',
+      enrollmentId,
+      courseId: enrollment.courseId,
+      status: enrollment.status,
+      progress: enrollment.progress,
+    });
+    return { success: false, refusedReason: unfinishedReason };
   }
 
   const { count } = await prisma.enrollment.updateMany({
@@ -2099,6 +2162,7 @@ export async function retakeQuiz(
       course: {
         include: {
           lessons: {
+            orderBy: { order: 'asc' },
             include: { quiz: true },
           },
           quiz: true,
@@ -2147,10 +2211,7 @@ export async function retakeQuiz(
     };
   }
 
-  // Quiz lives on the last lesson (text courses) or on the course itself
-  // (video courses). Prefer the lesson quiz, fall back to the course quiz.
-  const lastLesson = enrollment.course.lessons[enrollment.course.lessons.length - 1];
-  const quiz = lastLesson?.quiz ?? enrollment.course.quiz;
+  const quiz = selectAssessmentQuiz(enrollment.course.lessons, enrollment.course.quiz);
 
   // Enforce the attempt limit against COMPLETED attempts (timeTaken !== null),
   // consistent with the append-history model in the quiz start/submit routes.

@@ -6,6 +6,7 @@ import { getPortalSessions } from '@/lib/auth/portal-sessions';
 import { logger } from '@/lib/logger';
 import { ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
 import { parseStoredOptionExplanations } from '@/lib/quiz/options';
+import { selectAssessmentQuiz } from '@/lib/quiz/assessment';
 import { isCourseEditableByOrganization } from '@/lib/course/edit-access';
 import type { Role } from '@/types/next-auth';
 
@@ -447,10 +448,7 @@ export async function getLearnPayload(courseId: string): Promise<LearnPayload | 
       videoPositionSeconds: null,
     };
 
-    // Quiz lives on the last lesson (text courses) or on the course itself
-    // (video courses). Prefer the lesson quiz, fall back to the course quiz.
-    const lastLesson = course.lessons[course.lessons.length - 1];
-    const quizData = lastLesson?.quiz ?? course.quiz;
+    const quizData = selectAssessmentQuiz(course.lessons, course.quiz);
 
     const quiz: LearnPayloadQuiz | null = quizData
       ? {
