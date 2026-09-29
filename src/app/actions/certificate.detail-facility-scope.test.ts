@@ -79,7 +79,7 @@ describe('getCertificateDetails — the owning learner', () => {
       user: { id: 'w-1', role: 'nurse', organizationId: ORG_ID, organizationUserId: HOLDER_OU },
     });
 
-    await expect(getCertificateDetails('cert-1')).resolves.toBe(CERTIFICATE);
+    await expect(getCertificateDetails('worker', 'cert-1')).resolves.toBe(CERTIFICATE);
 
     expect(mockListAccessibleFacilities).not.toHaveBeenCalled();
     expect(prismaMock.certificate.findFirst).not.toHaveBeenCalled();
@@ -92,7 +92,7 @@ describe('getCertificateDetails — the owning learner', () => {
     });
     mockListAccessibleFacilities.mockResolvedValue([]);
 
-    await expect(getCertificateDetails('cert-1')).resolves.toBe(CERTIFICATE);
+    await expect(getCertificateDetails('worker', 'cert-1')).resolves.toBe(CERTIFICATE);
   });
 
   it('a worker reading SOMEONE ELSE’s certificate is refused by the role tier, before any query', async () => {
@@ -101,7 +101,7 @@ describe('getCertificateDetails — the owning learner', () => {
       user: { id: 'w-2', role: 'nurse', organizationId: ORG_ID, organizationUserId: 'ou-other' },
     });
 
-    await expect(getCertificateDetails('cert-1')).rejects.toThrow('Unauthorized');
+    await expect(getCertificateDetails('worker', 'cert-1')).rejects.toThrow('Unauthorized');
     // Not by the facility predicate coming back empty — the tier check refuses
     // first, so this never depends on how the target's facilities happen to sit.
     expect(prismaMock.certificate.findFirst).not.toHaveBeenCalled();
@@ -116,14 +116,14 @@ describe('getCertificateDetails — facility scope', () => {
     // holder: no row.
     prismaMock.certificate.findFirst.mockResolvedValue(null);
 
-    await expect(getCertificateDetails('cert-1')).rejects.toThrow('Unauthorized');
+    await expect(getCertificateDetails('admin', 'cert-1')).rejects.toThrow('Unauthorized');
   });
 
   it('a supervisor narrows the scoped re-read to their accessible facilities', async () => {
     setAdminSession('supervisor');
     mockListAccessibleFacilities.mockResolvedValue([{ id: 'fac-1' }]);
 
-    await getCertificateDetails('cert-1');
+    await getCertificateDetails('admin', 'cert-1');
 
     const where = prismaMock.certificate.findFirst.mock.calls[0][0].where;
     expect(where.organizationUser.facilities).toEqual({
@@ -135,7 +135,7 @@ describe('getCertificateDetails — facility scope', () => {
     setAdminSession('supervisor');
     mockListAccessibleFacilities.mockResolvedValue([]);
 
-    await getCertificateDetails('cert-1');
+    await getCertificateDetails('admin', 'cert-1');
 
     const where = prismaMock.certificate.findFirst.mock.calls[0][0].where;
     expect(where.organizationUser.facilities).toEqual({
@@ -146,7 +146,7 @@ describe('getCertificateDetails — facility scope', () => {
   it('an ORG-WIDE role (owner) applies NO facility predicate', async () => {
     setAdminSession('owner');
 
-    await getCertificateDetails('cert-1');
+    await getCertificateDetails('admin', 'cert-1');
 
     const where = prismaMock.certificate.findFirst.mock.calls[0][0].where;
     expect(where.organizationUser.facilities).toBeUndefined();
@@ -155,7 +155,7 @@ describe('getCertificateDetails — facility scope', () => {
   it('tenant isolation is expressed in the query, not compared in JS', async () => {
     setAdminSession('owner');
 
-    await getCertificateDetails('cert-1');
+    await getCertificateDetails('admin', 'cert-1');
 
     const where = prismaMock.certificate.findFirst.mock.calls[0][0].where;
     expect(where.id).toBe('cert-1');
@@ -169,9 +169,9 @@ describe('getCertificateDetails — permission gate', () => {
    * because dropping either one re-opens a different hole.
    *
    * The tier half is genuinely load-bearing on THIS action, unlike the two
-   * admin-fenced certificate gates: `getCertificateDetails` takes
-   * `resolveSession()`, which falls back to the worker instance, so these
-   * sessions are real ones a nurse can actually hold. All eight worker roles
+   * admin-fenced certificate gates: the worker portal calls
+   * `getCertificateDetails` with its own session, so these sessions are real
+   * ones a nurse can actually hold. All eight worker roles
    * hold `certificate.read` (`workerPermissions`, so a learner can read their
    * OWN), and on an id-addressed action the verb does not separate "my
    * certificate" from "theirs". The gate this replaced was `isAdminRole`-only
@@ -189,7 +189,7 @@ describe('getCertificateDetails — permission gate', () => {
         user: { id: 'w-2', role, organizationId: ORG_ID, organizationUserId: 'ou-other' },
       });
 
-      await expect(getCertificateDetails('cert-1')).rejects.toThrow('Unauthorized');
+      await expect(getCertificateDetails('worker', 'cert-1')).rejects.toThrow('Unauthorized');
       expect(prismaMock.certificate.findFirst).not.toHaveBeenCalled();
     },
   );
@@ -199,14 +199,14 @@ describe('getCertificateDetails — permission gate', () => {
     async (role) => {
       setAdminSession(role);
 
-      await expect(getCertificateDetails('cert-1')).resolves.toBe(CERTIFICATE);
+      await expect(getCertificateDetails('admin', 'cert-1')).resolves.toBe(CERTIFICATE);
     },
   );
 
   it('an unknown/stale role key is denied before any scope resolution', async () => {
     setAdminSession('not_a_real_role');
 
-    await expect(getCertificateDetails('cert-1')).rejects.toThrow('Unauthorized');
+    await expect(getCertificateDetails('admin', 'cert-1')).rejects.toThrow('Unauthorized');
     expect(prismaMock.certificate.findFirst).not.toHaveBeenCalled();
   });
 
@@ -216,7 +216,7 @@ describe('getCertificateDetails — permission gate', () => {
     });
     mockWorkerAuth.mockResolvedValue(null);
 
-    await expect(getCertificateDetails('cert-1')).rejects.toThrow('Unauthorized');
+    await expect(getCertificateDetails('admin', 'cert-1')).rejects.toThrow('Unauthorized');
     expect(prismaMock.certificate.findFirst).not.toHaveBeenCalled();
   });
 
@@ -224,6 +224,38 @@ describe('getCertificateDetails — permission gate', () => {
     setAdminSession('owner');
     prismaMock.certificate.findUnique.mockResolvedValue(null);
 
-    await expect(getCertificateDetails('nope')).rejects.toThrow('Certificate not found');
+    await expect(getCertificateDetails('admin', 'nope')).rejects.toThrow('Certificate not found');
+  });
+});
+
+describe('getCertificateDetails — BUG-47 portal', () => {
+  beforeEach(() => {
+    // Two DIFFERENT accounts in one browser: a manager of ANOTHER org on the
+    // admin portal, the certificate's holder on the worker portal.
+    mockAdminAuth.mockResolvedValue({
+      user: { id: 'manager-1', role: 'owner', organizationId: 'org-2', organizationUserId: 'ou-m' },
+    });
+    mockWorkerAuth.mockResolvedValue({
+      user: { id: 'w-1', role: 'nurse', organizationId: ORG_ID, organizationUserId: HOLDER_OU },
+    });
+  });
+
+  it('the worker portal reads its own certificate as the worker, never as the admin account', async () => {
+    await expect(getCertificateDetails('worker', 'cert-1')).resolves.toBe(CERTIFICATE);
+    expect(mockAdminAuth).not.toHaveBeenCalled();
+  });
+
+  it('the admin portal is answered as the admin account', async () => {
+    prismaMock.certificate.findFirst.mockResolvedValue(null);
+
+    await expect(getCertificateDetails('admin', 'cert-1')).rejects.toThrow('Unauthorized');
+    expect(mockWorkerAuth).not.toHaveBeenCalled();
+  });
+
+  it('an unchecked realm resolves to no session and reads nothing', async () => {
+    await expect(getCertificateDetails('portal' as never, 'cert-1')).rejects.toThrow(
+      'Unauthorized',
+    );
+    expect(prismaMock.certificate.findUnique).not.toHaveBeenCalled();
   });
 });

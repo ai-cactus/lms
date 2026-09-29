@@ -50,6 +50,8 @@ describe('WorkerCourseDetailsPage', () => {
     render(element);
 
     expect(screen.getByTestId('course-preview')).toBeInTheDocument();
+    // BUG-47: the worker page must be answered from the worker portal's session.
+    expect(mockGetCourseById).toHaveBeenCalledWith('worker', 'course-1');
   });
 
   it('calls notFound() on a genuine CourseAccessError (denial)', async () => {

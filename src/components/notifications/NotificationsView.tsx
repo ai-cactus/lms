@@ -11,14 +11,12 @@ import { getNotificationPreferences, setNotificationPreference } from '@/app/act
 import NotificationItem from '@/components/notifications/NotificationItem';
 import { useNotifications } from '@/components/notifications/useNotifications';
 import { resolveNotificationLink } from '@/lib/notifications/safe-link';
-import {
-  notificationTypesFor,
-  type NotificationAudience,
-} from '@/components/notifications/notification-display';
+import { notificationTypesFor } from '@/components/notifications/notification-display';
+import type { PortalRealm } from '@/lib/auth/portal-sessions';
 
 interface NotificationsViewProps {
   backHref: string;
-  audience: NotificationAudience;
+  audience: PortalRealm;
 }
 
 const PREF_SAVE_FAILED = "Couldn't save that preference. Please try again.";
@@ -38,7 +36,7 @@ export default function NotificationsView({ backHref, audience }: NotificationsV
     markRead,
     markAll,
     clearAll,
-  } = useNotifications({ autoLoad: true, pageSize: 20 });
+  } = useNotifications({ realm: audience, autoLoad: true, pageSize: 20 });
 
   const types = notificationTypesFor(audience);
   const [showFilters, setShowFilters] = useState(true);
@@ -50,10 +48,10 @@ export default function NotificationsView({ backHref, audience }: NotificationsV
   const latestPrefRequest = useRef<Record<string, number>>({});
 
   useEffect(() => {
-    getNotificationPreferences().then((res) => {
+    getNotificationPreferences(audience).then((res) => {
       if (res.success) setPrefs(res.preferences);
     });
-  }, []);
+  }, [audience]);
 
   const handleItemClick = (id: string, linkUrl?: string | null) => {
     markRead(id);
@@ -71,7 +69,7 @@ export default function NotificationsView({ backHref, audience }: NotificationsV
 
     let refusal: string | null = null;
     try {
-      const result = await setNotificationPreference(type, next);
+      const result = await setNotificationPreference(audience, type, next);
       if (!result.success) refusal = result.error ?? PREF_SAVE_FAILED;
     } catch {
       refusal = PREF_SAVE_FAILED;

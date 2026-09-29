@@ -813,6 +813,7 @@ export default function StaffProfileClient({
 
       {viewingCertificateId && (
         <CertificateModal
+          realm="admin"
           isOpen={true}
           onClose={() => setViewingCertificateId(null)}
           certificateId={viewingCertificateId}

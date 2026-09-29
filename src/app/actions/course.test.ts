@@ -521,19 +521,37 @@ describe('getDashboardData', () => {
       expect(WORKER_ROLES_HOLDING_THE_TEMPTING_VERBS.length).toBeGreaterThanOrEqual(3);
     });
 
+    // Armed on the ADMIN instance: the action reads only that portal (BUG-47),
+    // so this is the gate's own defence should a worker role ever decode there.
     it.each(WORKER_ROLES_HOLDING_THE_TEMPTING_VERBS)(
       '%s is refused before any query runs — despite holding course.read and enrollment.read',
       async (role) => {
-        mockAdminAuth.mockResolvedValue(null);
-        mockWorkerAuth.mockResolvedValue({
+        mockAdminAuth.mockResolvedValue({
           user: { id: 'w-1', role, organizationUserId: 'ou-worker-1', organizationId: ORG_ID },
         });
+        mockWorkerAuth.mockResolvedValue(null);
 
         await expect(getDashboardData()).rejects.toThrow('Forbidden');
         expect(mockCourseFindMany).not.toHaveBeenCalled();
         expect(mockEnrollmentFindMany).not.toHaveBeenCalled();
       },
     );
+
+    it('BUG-47: never reads the worker portal — a worker session alone is unauthenticated here', async () => {
+      mockAdminAuth.mockResolvedValue(null);
+      mockWorkerAuth.mockResolvedValue({
+        user: {
+          id: 'w-1',
+          role: 'owner',
+          organizationUserId: 'ou-worker-1',
+          organizationId: ORG_ID,
+        },
+      });
+
+      await expect(getDashboardData()).rejects.toThrow('Unauthorized');
+      expect(mockWorkerAuth).not.toHaveBeenCalled();
+      expect(mockCourseFindMany).not.toHaveBeenCalled();
+    });
 
     it.each([...ADMIN_ROLES])(
       '%s keeps access — the gate must not narrow the admin tier',
@@ -707,7 +725,7 @@ describe('getCourseById', () => {
       mockRawCourseFindUnique.mockResolvedValue(makeCourse([otherA, self, otherB]));
       setWorkerSession(selfId, role);
 
-      const result = await getCourseById('course-1');
+      const result = await getCourseById('worker', 'course-1');
 
       expect(result.enrollments).toHaveLength(1);
       expect(result.enrollments[0].organizationUser.userId).toBe(selfId);
@@ -728,7 +746,7 @@ describe('getCourseById', () => {
     mockRawCourseFindUnique.mockResolvedValue(makeCourse([...others, self]));
     setWorkerSession(selfId, 'therapist_clinician');
 
-    const result = await getCourseById('course-1');
+    const result = await getCourseById('worker', 'course-1');
 
     expect(result.enrollments).toHaveLength(1);
     expect(result.enrollments[0].organizationUser.userId).toBe(selfId);
@@ -743,7 +761,7 @@ describe('getCourseById', () => {
       mockRawCourseFindUnique.mockResolvedValue(makeCourse([otherA, self]));
       setAdminSession(selfId, role);
 
-      const result = await getCourseById('course-1');
+      const result = await getCourseById('admin', 'course-1');
 
       expect(result.enrollments).toHaveLength(1);
       expect(result.enrollments[0].organizationUser.userId).toBe(selfId);
@@ -764,7 +782,7 @@ describe('getCourseById', () => {
     mockRawCourseFindUnique.mockResolvedValue(makeCourse([otherA, creatorEnrollment, otherB]));
     setWorkerSession(CREATOR_USER_ID, 'nurse');
 
-    const result = await getCourseById('course-1');
+    const result = await getCourseById('worker', 'course-1');
 
     expect(result.enrollments).toHaveLength(1);
     expect(result.enrollments[0].organizationUser.userId).toBe(CREATOR_USER_ID);
@@ -783,7 +801,7 @@ describe('getCourseById', () => {
       mockRawCourseFindUnique.mockResolvedValue(makeCourse([otherA, adminEnrollment, otherB]));
       setAdminSession(adminId, role);
 
-      const result = await getCourseById('course-1');
+      const result = await getCourseById('admin', 'course-1');
 
       expect(result.enrollments).toHaveLength(3);
       expect(result.enrollments.map((e) => e.organizationUser.userId).sort()).toEqual(
@@ -809,7 +827,7 @@ describe('getCourseById', () => {
       mockOrgUserFindMany.mockResolvedValue([{ id: 'ou-staff-a' }]);
       setAdminSession(supervisorId, role);
 
-      const result = await getCourseById('course-1');
+      const result = await getCourseById('admin', 'course-1');
 
       expect(result.enrollments.map((e) => e.organizationUser.userId).sort()).toEqual(
         ['staff-a', supervisorId].sort(),
@@ -828,7 +846,7 @@ describe('getCourseById', () => {
       mockRawCourseFindUnique.mockResolvedValue(makeCourse([]));
       setAdminSession('owner-viewer', 'owner');
 
-      await getCourseById('course-1');
+      await getCourseById('admin', 'course-1');
 
       const { select } = mockRawCourseFindUnique.mock.calls[0][0];
       expect(select.enrollments.select.organizationUser.select.facilities).toEqual({
@@ -844,7 +862,7 @@ describe('getCourseById', () => {
       mockRawCourseFindUnique.mockResolvedValue(makeCourse([transferred]));
       setAdminSession('owner-viewer', 'owner');
 
-      const [row] = (await getCourseById('course-1')).enrollments;
+      const [row] = (await getCourseById('admin', 'course-1')).enrollments;
 
       expect(row.organizationUser.facilities).toEqual([{ facility: facB }]);
       expect(row.facility).toEqual(facA);
@@ -857,7 +875,7 @@ describe('getCourseById', () => {
       mockOrgUserFindMany.mockResolvedValue([{ id: 'ou-staff-t' }]);
       setAdminSession('supervisor-viewer', 'supervisor');
 
-      const [row] = (await getCourseById('course-1')).enrollments;
+      const [row] = (await getCourseById('admin', 'course-1')).enrollments;
 
       expect(row.organizationUser.facilities).toEqual([{ facility: facB }]);
       expect(row.facility).toEqual(facA);
@@ -870,7 +888,7 @@ describe('getCourseById', () => {
       mockOrgUserFindMany.mockResolvedValue([{ id: 'ou-staff-m' }]);
       setAdminSession('supervisor-viewer', 'supervisor');
 
-      const [row] = (await getCourseById('course-1')).enrollments;
+      const [row] = (await getCourseById('admin', 'course-1')).enrollments;
 
       expect(row.organizationUser.facilities).toEqual([{ facility: facB }]);
     });
@@ -882,7 +900,7 @@ describe('getCourseById', () => {
       mockOrgUserFindMany.mockResolvedValue([{ id: 'ou-staff-u' }]);
       setAdminSession('supervisor-viewer', 'supervisor');
 
-      const [row] = (await getCourseById('course-1')).enrollments;
+      const [row] = (await getCourseById('admin', 'course-1')).enrollments;
 
       expect(row.organizationUser.facilities).toEqual([]);
       expect(row.facility).toBeNull();
@@ -901,7 +919,7 @@ describe('getCourseById', () => {
     mockRawCourseFindUnique.mockResolvedValue(makeCourse([otherA]));
     setAdminSession(CREATOR_USER_ID, 'owner');
 
-    const result = await getCourseById('course-1');
+    const result = await getCourseById('admin', 'course-1');
 
     expect(result.enrollments).toHaveLength(1);
     expect(result.enrollments[0].organizationUser.userId).toBe('staff-a');
@@ -918,7 +936,7 @@ describe('getCourseById', () => {
       mockRawCourseFindUnique.mockResolvedValue(makeCourse([otherA]));
       setAdminSession('manager-viewer', role);
 
-      const result = await getCourseById('course-1');
+      const result = await getCourseById('admin', 'course-1');
 
       expect(result.id).toBe('course-1');
     },
@@ -929,7 +947,7 @@ describe('getCourseById', () => {
     mockRawCourseFindUnique.mockResolvedValue(makeCourse([otherA]));
     setAdminSession('manager-viewer', 'finance' as Role);
 
-    await expect(getCourseById('course-1')).rejects.toThrow('Course not found');
+    await expect(getCourseById('admin', 'course-1')).rejects.toThrow('Course not found');
   });
 
   it('a same-org WORKER who is neither creator nor enrolled is still denied (enrollment-gated)', async () => {
@@ -937,7 +955,7 @@ describe('getCourseById', () => {
     mockRawCourseFindUnique.mockResolvedValue(makeCourse([otherA]));
     setWorkerSession('worker-browsing', 'nurse');
 
-    await expect(getCourseById('course-1')).rejects.toThrow('Course not found');
+    await expect(getCourseById('worker', 'course-1')).rejects.toThrow('Course not found');
   });
 
   it('a user who is neither creator, admin, nor enrolled still gets "Course not found" (access gate unchanged)', async () => {
@@ -946,7 +964,7 @@ describe('getCourseById', () => {
     mockRawCourseFindUnique.mockResolvedValue(makeCourse([otherA, otherB]));
     setWorkerSession('outsider-1', 'nurse');
 
-    await expect(getCourseById('course-1')).rejects.toThrow('Course not found');
+    await expect(getCourseById('worker', 'course-1')).rejects.toThrow('Course not found');
   });
 
   it('an admin from another org who is neither creator nor enrolled still gets "Course not found" (privilege does not widen the access gate)', async () => {
@@ -954,14 +972,64 @@ describe('getCourseById', () => {
     mockRawCourseFindUnique.mockResolvedValue(makeCourse([otherA]));
     setAdminSession('admin-outsider', 'owner', 'org-2');
 
-    await expect(getCourseById('course-1')).rejects.toThrow('Course not found');
+    await expect(getCourseById('admin', 'course-1')).rejects.toThrow('Course not found');
   });
 
   it('throws Unauthorized when there is no session at all', async () => {
     mockAdminAuth.mockResolvedValue(null);
     mockWorkerAuth.mockResolvedValue(null);
 
-    await expect(getCourseById('course-1')).rejects.toThrow('Unauthorized');
+    await expect(getCourseById('admin', 'course-1')).rejects.toThrow('Unauthorized');
+  });
+
+  describe('BUG-47 — an admin and a worker session for two DIFFERENT accounts in one browser', () => {
+    const LEARNER_ID = 'worker-learner';
+    const MANAGER_ID = 'admin-manager';
+
+    beforeEach(() => {
+      mockRawCourseFindUnique.mockResolvedValue(
+        makeCourse([
+          makeEnrollment('staff-a', 1),
+          makeEnrollment(LEARNER_ID, 2),
+          makeEnrollment('staff-b', 3),
+        ]),
+      );
+      mockAdminAuth.mockResolvedValue({
+        user: {
+          id: MANAGER_ID,
+          role: 'owner',
+          organizationId: ORG_ID,
+          organizationUserId: `ou-${MANAGER_ID}`,
+        },
+      });
+      mockWorkerAuth.mockResolvedValue({
+        user: {
+          id: LEARNER_ID,
+          role: 'nurse',
+          organizationId: ORG_ID,
+          organizationUserId: `ou-${LEARNER_ID}`,
+        },
+      });
+    });
+
+    it('the worker portal is answered as the worker — only their own row, never the manager’s roster', async () => {
+      const result = await getCourseById('worker', 'course-1');
+
+      expect(result.enrollments.map((e) => e.organizationUser.userId)).toEqual([LEARNER_ID]);
+      expect(mockAdminAuth).not.toHaveBeenCalled();
+    });
+
+    it('the admin portal is answered as the manager', async () => {
+      const result = await getCourseById('admin', 'course-1');
+
+      expect(result.enrollments).toHaveLength(3);
+      expect(mockWorkerAuth).not.toHaveBeenCalled();
+    });
+
+    it('an unchecked realm resolves to no session at all', async () => {
+      await expect(getCourseById('portal' as never, 'course-1')).rejects.toThrow('Unauthorized');
+      expect(mockRawCourseFindUnique).not.toHaveBeenCalled();
+    });
   });
 
   // RISK-15: read access follows the course's owning organisation
@@ -981,21 +1049,21 @@ describe('getCourseById', () => {
       mockRawCourseFindUnique.mockResolvedValue(movedAuthorCourse());
       setAdminSession('manager-viewer', 'admin');
 
-      await expect(getCourseById('course-1')).resolves.toMatchObject({ id: 'course-1' });
+      await expect(getCourseById('admin', 'course-1')).resolves.toMatchObject({ id: 'course-1' });
     });
 
     it('is closed to a manager of the organisation the author moved to', async () => {
       mockRawCourseFindUnique.mockResolvedValue(movedAuthorCourse());
       setAdminSession('manager-elsewhere', 'owner', 'org-2');
 
-      await expect(getCourseById('course-1')).rejects.toThrow('Course not found');
+      await expect(getCourseById('admin', 'course-1')).rejects.toThrow('Course not found');
     });
 
     it('is closed to the author themselves once they act for the other organisation', async () => {
       mockRawCourseFindUnique.mockResolvedValue(movedAuthorCourse());
       setAdminSession(CREATOR_USER_ID, 'owner', 'org-2');
 
-      await expect(getCourseById('course-1')).rejects.toThrow('Course not found');
+      await expect(getCourseById('admin', 'course-1')).rejects.toThrow('Course not found');
     });
   });
 
@@ -1003,7 +1071,7 @@ describe('getCourseById', () => {
     mockRawCourseFindUnique.mockResolvedValue(null);
     setWorkerSession('worker-1', 'nurse');
 
-    await expect(getCourseById('course-1')).rejects.toThrow('Course not found');
+    await expect(getCourseById('worker', 'course-1')).rejects.toThrow('Course not found');
   });
 
   // CROSS-TENANT PII FIX: `mockRawCourseFindUnique` ignores `where`/`select` — every
@@ -1017,7 +1085,7 @@ describe('getCourseById', () => {
       mockRawCourseFindUnique.mockResolvedValue(makeCourse([makeEnrollment(selfId, 1)]));
       setWorkerSession(selfId, 'nurse', ORG_ID);
 
-      await getCourseById('course-1');
+      await getCourseById('worker', 'course-1');
 
       expect(mockRawCourseFindUnique).toHaveBeenCalledTimes(1);
       const callArgs = mockRawCourseFindUnique.mock.calls[0][0];
@@ -1040,7 +1108,7 @@ describe('getCourseById', () => {
         },
       });
 
-      await getCourseById('course-1');
+      await getCourseById('worker', 'course-1');
 
       const callArgs = mockRawCourseFindUnique.mock.calls[0][0];
       expect(callArgs.select.enrollments.where).toEqual({ organizationUser: { userId: selfId } });
@@ -1059,7 +1127,7 @@ describe('getCourseById', () => {
       // real Prisma query would use to keep this row reachable regardless.
       setWorkerSession(selfId, 'nurse', 'org-active-different');
 
-      const result = await getCourseById('course-1');
+      const result = await getCourseById('worker', 'course-1');
 
       const callArgs = mockRawCourseFindUnique.mock.calls[0][0];
       expect(callArgs.select.enrollments.where.organizationUser.OR).toContainEqual({
@@ -1086,7 +1154,7 @@ describe('getCourseById', () => {
         },
       });
 
-      const result = await getCourseById('course-1');
+      const result = await getCourseById('worker', 'course-1');
 
       expect(result.id).toBe('course-1');
       expect(result.enrollments).toHaveLength(1);
@@ -1156,15 +1224,26 @@ describe('getCourseForOrgView', () => {
     mockOrgUserFindMany.mockResolvedValue([]);
   });
 
+  // Armed on the ADMIN instance: the action reads only that portal (BUG-47), so
+  // this pins the `isAdminRole` half of the gate should a worker role ever
+  // decode there.
   it.each(WORKER_ROLES)(
     'SECURITY FIX: a worker (%s) is refused before any course query runs — no roster PII reaches them',
     async (role) => {
-      setWorkerSessionFor('worker-1', role);
+      setAdminSessionFor('worker-1', role);
 
       await expect(getCourseForOrgView('course-1')).rejects.toThrow('Course not found');
       expect(mockCourseFindFirst).not.toHaveBeenCalled();
     },
   );
+
+  it('BUG-47: never reads the worker portal — a worker session alone is unauthenticated here', async () => {
+    setWorkerSessionFor('worker-1', 'owner');
+
+    await expect(getCourseForOrgView('course-1')).rejects.toThrow('Unauthorized');
+    expect(mockWorkerAuth).not.toHaveBeenCalled();
+    expect(mockCourseFindFirst).not.toHaveBeenCalled();
+  });
 
   it('SECURITY FIX: finance (isAdminRole but no course.read post-2026-08-25) is refused before any query runs', async () => {
     setAdminSessionFor('finance-1', 'finance' as Role);

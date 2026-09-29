@@ -148,6 +148,15 @@ describe('getRealmSession', () => {
     await expect(getRealmSession('worker')).resolves.toBeNull();
     expect(mockAdminAuth).not.toHaveBeenCalled();
   });
+
+  it.each([['portal'], [''], [undefined], [null], [{}]])(
+    'returns null without consulting either portal for the unchecked realm %j',
+    async (realm) => {
+      await expect(getRealmSession(realm as never)).resolves.toBeNull();
+      expect(mockAdminAuth).not.toHaveBeenCalled();
+      expect(mockWorkerAuth).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe('isPortalRealm', () => {

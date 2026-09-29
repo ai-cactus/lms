@@ -1007,8 +1007,8 @@ export async function getEnrollmentQuizResult(enrollmentId: string) {
   // `create-auth-instance.ts:736`), so no worker session reaches this line. It
   // matters because every worker role DOES hold `assessment.read` — granted so a
   // learner can read their OWN attempt — so if this action ever moves to a
-  // resolve-either-instance session, as `getEnrollmentWithResults` uses, the verb
-  // alone would open someone else's answers to all eight. Keep them paired.
+  // session that admits the worker portal, the verb alone would open someone
+  // else's answers to all eight. Keep them paired.
   //
   // Together they resolve to owner, admin, hr, supervisor and clinical_director.
   const roleKey = dbRoleToRoleKey(session.user.role);

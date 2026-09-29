@@ -34,6 +34,7 @@ describe('loadCourseDetail', () => {
     const result = await loadCourseDetail('course-1');
 
     expect(result).toBe(COURSE);
+    expect(mockGetCourseById).toHaveBeenCalledWith('admin', 'course-1');
     expect(mockGetCourseForOrgView).not.toHaveBeenCalled();
   });
 

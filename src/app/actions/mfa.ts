@@ -2,8 +2,7 @@
 
 import crypto from 'crypto';
 import prisma from '@/lib/prisma';
-import { auth as adminAuth } from '@/auth';
-import { auth as workerAuth } from '@/auth.worker';
+import { getRealmSession, type PortalRealm } from '@/lib/auth/portal-sessions';
 import { headers } from 'next/headers';
 import {
   encryptSecret,
@@ -23,24 +22,10 @@ import { verifyUserMfaCode } from '@/lib/auth/mfa-login-code';
 type MfaActionResult =
   { success: true; data?: Record<string, unknown> } | { success: false; error: string };
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-async function resolveSession() {
-  const headersList = await headers();
-  const referer = headersList.get('referer');
-  const isWorkerRoute = referer?.includes('/worker');
-
-  if (isWorkerRoute) {
-    const worker = await workerAuth();
-    if (worker?.user?.id) return worker;
-  } else {
-    const admin = await adminAuth();
-    if (admin?.user?.id) return admin;
-  }
-
-  const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
-  return admin?.user?.id ? admin : worker?.user?.id ? worker : null;
-}
+// BUG-47: every action here changes the MFA state of ONE identity, and one
+// browser can hold an admin and a worker session for two different accounts.
+// The caller names its portal; the referer guess this replaced fell back to the
+// admin session whenever the named portal's cookie was absent or the header was.
 
 // ── MFA Setup ─────────────────────────────────────────────────────────────────
 
@@ -48,8 +33,8 @@ async function resolveSession() {
  * Step 1: Generate a one-time email OTP and send it to the user.
  * The factor is stored as unverified — the user must verify with the code to activate.
  */
-export async function requestMfaSetup(): Promise<MfaActionResult> {
-  const session = await resolveSession();
+export async function requestMfaSetup(realm: PortalRealm): Promise<MfaActionResult> {
+  const session = await getRealmSession(realm);
   if (!session?.user?.id) {
     return { success: false, error: 'Not authenticated' };
   }
@@ -117,8 +102,8 @@ export async function requestMfaSetup(): Promise<MfaActionResult> {
  * Step 2: Verify the email OTP entered by the user.
  * On success, enables MFA and generates recovery codes.
  */
-export async function verifyMfaSetup(code: string): Promise<MfaActionResult> {
-  const session = await resolveSession();
+export async function verifyMfaSetup(realm: PortalRealm, code: string): Promise<MfaActionResult> {
+  const session = await getRealmSession(realm);
   if (!session?.user?.id) {
     return { success: false, error: 'Not authenticated' };
   }
@@ -224,8 +209,8 @@ export async function verifyMfaSetup(code: string): Promise<MfaActionResult> {
 /**
  * Disable MFA for the current user. Requires a valid email OTP or recovery code.
  */
-export async function disableMfa(code: string): Promise<MfaActionResult> {
-  const session = await resolveSession();
+export async function disableMfa(realm: PortalRealm, code: string): Promise<MfaActionResult> {
+  const session = await getRealmSession(realm);
   if (!session?.user?.id) {
     return { success: false, error: 'Not authenticated' };
   }
@@ -277,8 +262,11 @@ export async function disableMfa(code: string): Promise<MfaActionResult> {
 /**
  * Regenerate recovery codes. Requires a valid email OTP.
  */
-export async function regenerateRecoveryCodes(code: string): Promise<MfaActionResult> {
-  const session = await resolveSession();
+export async function regenerateRecoveryCodes(
+  realm: PortalRealm,
+  code: string,
+): Promise<MfaActionResult> {
+  const session = await getRealmSession(realm);
   if (!session?.user?.id) {
     return { success: false, error: 'Not authenticated' };
   }
@@ -347,11 +335,13 @@ export async function regenerateRecoveryCodes(code: string): Promise<MfaActionRe
 /**
  * Get the MFA status for the current user (for UI display).
  */
-export async function getMfaStatus(): Promise<
+export async function getMfaStatus(
+  realm: PortalRealm,
+): Promise<
   | { enabled: boolean; factors: { type: string; name: string | null; verified: boolean }[] }
   | { error: string }
 > {
-  const session = await resolveSession();
+  const session = await getRealmSession(realm);
   if (!session?.user?.id) {
     return { error: 'Not authenticated' };
   }
@@ -379,8 +369,8 @@ export async function getMfaStatus(): Promise<
  * Used by the settings panel when the user wants to disable MFA —
  * they need a valid OTP to confirm the action.
  */
-export async function sendDisableMfaCode(): Promise<MfaActionResult> {
-  const session = await resolveSession();
+export async function sendDisableMfaCode(realm: PortalRealm): Promise<MfaActionResult> {
+  const session = await getRealmSession(realm);
   if (!session?.user?.id) {
     return { success: false, error: 'Not authenticated' };
   }
