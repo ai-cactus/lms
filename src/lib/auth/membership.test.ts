@@ -33,6 +33,7 @@ import {
   recordMembershipLogin,
 } from './membership';
 import { DeletedIdentityError } from './deleted-identity';
+import { LastOwnerError } from '@/lib/organization/owner-guard';
 
 function membershipRow(
   overrides: Partial<{ id: string; role: string; organizationId: string }> = {},
@@ -266,8 +267,12 @@ describe('createMembership', () => {
   it('creates the OrganizationUser and its first OrganizationUserFacility row atomically', async () => {
     const txMock = {
       user: { findUnique: vi.fn().mockResolvedValue({ deletedAt: null }) },
-      organizationUser: { upsert: vi.fn().mockResolvedValue(membershipRow()) },
+      organizationUser: {
+        findUnique: vi.fn().mockResolvedValue(null),
+        upsert: vi.fn().mockResolvedValue(membershipRow()),
+      },
       organizationUserFacility: { upsert: vi.fn().mockResolvedValue({}) },
+      $queryRaw: vi.fn(),
     };
     prismaMock.$transaction.mockImplementation(async (cb: (tx: typeof txMock) => unknown) =>
       cb(txMock),
@@ -301,6 +306,38 @@ describe('createMembership', () => {
         create: { organizationUserId: 'ou-1', facilityId: 'facility-1' },
       }),
     );
+    // A first join has no owner seat at stake, so no organization lock is taken.
+    expect(txMock.$queryRaw).not.toHaveBeenCalled();
+  });
+
+  // RISK-16 — the concurrent case is driven end to end in owner-guard.test.ts.
+  it('refuses to re-role the last active owner and writes nothing', async () => {
+    const owner = { id: 'ou-1', organizationId: 'org-1', role: 'owner', active: true };
+    const txMock = {
+      user: { findUnique: vi.fn().mockResolvedValue({ deletedAt: null }) },
+      organizationUser: {
+        findUnique: vi.fn().mockResolvedValue(owner),
+        count: vi.fn().mockResolvedValue(0),
+        upsert: vi.fn(),
+      },
+      organizationUserFacility: { upsert: vi.fn() },
+      $queryRaw: vi.fn().mockResolvedValue([]),
+    };
+    prismaMock.$transaction.mockImplementation(async (cb: (tx: typeof txMock) => unknown) =>
+      cb(txMock),
+    );
+
+    await expect(
+      createMembership({
+        userId: 'user-1',
+        organizationId: 'org-1',
+        facilityId: 'facility-1',
+        role: 'nurse',
+      }),
+    ).rejects.toBeInstanceOf(LastOwnerError);
+    expect(txMock.$queryRaw).toHaveBeenCalledOnce();
+    expect(txMock.organizationUser.upsert).not.toHaveBeenCalled();
+    expect(txMock.organizationUserFacility.upsert).not.toHaveBeenCalled();
   });
 
   it('reactivates a deactivated membership on re-join instead of creating a duplicate row', async () => {

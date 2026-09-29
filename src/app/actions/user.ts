@@ -6,7 +6,7 @@ import { revalidatePath } from 'next/cache';
 
 import { logger, maskEmail } from '@/lib/logger';
 import { getRealmSession, isPortalRealm, type PortalRealm } from '@/lib/auth/portal-sessions';
-import { parseStorageUri } from '@/lib/storage/types';
+import { deleteReplacedAvatar, isOwnAvatarUri, signAvatarUrl } from '@/lib/storage/avatar';
 import { can } from '@/lib/rbac/permissions';
 import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
 import {
@@ -104,11 +104,15 @@ export async function getStaffUsers() {
     // Build a set of emails that already have accounts to avoid duplication
     const acceptedEmails = new Set(orgUsers.map((ou) => ou.user.email.toLowerCase()));
 
-    const acceptedEntries = orgUsers.map((ou) => ({
+    const signedAvatars = await Promise.all(
+      orgUsers.map((ou) => signAvatarUrl(ou.user.avatarUrl, ou.userId)),
+    );
+
+    const acceptedEntries = orgUsers.map((ou, index) => ({
       id: ou.id,
       name: ou.user.fullName || ou.user.email.split('@')[0],
       email: ou.user.email,
-      avatarUrl: ou.user.avatarUrl || null,
+      avatarUrl: signedAvatars[index],
       role: ou.role,
       dateInvited: ou.joinedAt,
       isPending: false,
@@ -212,21 +216,6 @@ export async function searchStaffUsers(query: string) {
 
 // --- Onboarding / Profile Management ---
 
-/**
- * True only for an object `uploadAvatar` could have produced for this user.
- * The profile pages hand the stored value to `getSignedUrl`, which signs by key
- * alone, so accepting any URI here would let a caller point their avatar at
- * another tenant's document and read it back through a signed URL.
- */
-function isOwnAvatarUri(uri: string, userId: string): boolean {
-  try {
-    const { key } = parseStorageUri(uri);
-    return key.startsWith(`avatars/${userId}/`) && !key.split('/').includes('..');
-  } catch {
-    return false;
-  }
-}
-
 export async function updateProfile(
   realm: PortalRealm,
   data: {
@@ -287,6 +276,20 @@ export async function updateProfile(
       return { success: false, error: 'Invalid profile photo. Please upload it again.' };
     }
 
+    // RISK-13: every replace or clear used to strand the old object in storage.
+    // A concurrent save can at worst read the same previous value and leave
+    // one orphan — each upload key is unique, so nothing still referenced can
+    // be the "previous" value of another save.
+    const previousAvatarUrl =
+      avatarUrl === undefined
+        ? undefined
+        : (
+            await prisma.user.findUnique({
+              where: { id: session.user.id },
+              select: { avatarUrl: true },
+            })
+          )?.avatarUrl;
+
     logger.info({ msg: '[user] Updating profile', userId: session.user.id });
     // firstName/lastName/fullName/avatarUrl now live directly on the identity;
     // companyName has no home anymore (organization name lives on Organization).
@@ -304,6 +307,10 @@ export async function updateProfile(
       msg: '[user] Profile updated successfully',
       userId: session.user.id,
     });
+
+    if (avatarUrl !== undefined) {
+      await deleteReplacedAvatar(previousAvatarUrl, avatarUrl, session.user.id);
+    }
 
     revalidatePath('/dashboard/profile');
     revalidatePath('/worker/profile');

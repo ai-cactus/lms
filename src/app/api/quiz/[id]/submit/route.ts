@@ -5,9 +5,8 @@ import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { callVertexAI, interactiveBudget, VertexBudgetExceededError } from '@/lib/ai-client';
-import { logger, maskEmail } from '@/lib/logger';
-import { ADMIN_ROLES } from '@/lib/rbac/role-utils';
-import { roleMayOpenLink } from '@/lib/notifications/link-audience';
+import { logger } from '@/lib/logger';
+import { notifyOrganizationAdminsWithEmail } from '@/lib/notifications/create';
 import { guardApiSession } from '@/lib/auth-guard';
 import { hasActiveBilling } from '@/lib/billing';
 import { checkRateLimit } from '@/lib/rate-limit';
@@ -376,62 +375,38 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
 
         if (!existingNotification) {
           const staffProfileLink = `/dashboard/staff/${organizationUser.id}`;
-          // Q-25: the notice and the email both open the learner's staff
-          // profile, so they go only to admins who can open it (`user.read`).
-          const tier = await prisma.organizationUser.findMany({
-            where: { organizationId: orgId, active: true, role: { in: [...ADMIN_ROLES] } },
-            select: { id: true, role: true, user: { select: { email: true } } },
-          });
-          const admins = tier.filter((admin) => roleMayOpenLink(admin.role, staffProfileLink));
-
-          if (admins.length === 0) {
-            logger.warn({
-              msg: '[quiz] Attempts exhausted but no admin can open the staff profile — nobody notified',
-              enrollmentId,
-              orgId,
-              adminCount: tier.length,
-            });
-          } else {
-            await prisma.notification.createMany({
-              data: admins.map((admin) => ({
-                organizationUserId: admin.id,
-                type: 'QUIZ_RETRY_LIMIT_REACHED',
-                title: 'Quiz Attempts Exhausted',
-                message: `${workerName} has used all ${currentAttemptCount} attempts on "${quizTitle}" in course "${courseName}" and requires a retake assignment.`,
-                linkUrl: staffProfileLink,
-                metadata: {
-                  enrollmentId,
-                  organizationUserId: organizationUser.id,
-                  courseId: enrollmentWithDetails.courseId,
-                  workerName,
-                  quizTitle,
-                  courseName,
-                  attemptsUsed: currentAttemptCount,
-                },
-              })),
-            });
-          }
-
           const appUrl =
             process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'http://localhost:3000';
           const { sendQuizLockedEmail } = await import('@/lib/email');
-          Promise.allSettled(
-            admins.map((admin) =>
+          // BUG-55: through the notification service, so the Q-25 audience
+          // (the link needs `user.read`), per-admin opt-outs and the org's
+          // in-app switch all apply, and the emails finish before we respond.
+          await notifyOrganizationAdminsWithEmail(
+            orgId,
+            {
+              type: 'QUIZ_RETRY_LIMIT_REACHED',
+              title: 'Quiz Attempts Exhausted',
+              message: `${workerName} has used all ${currentAttemptCount} attempts on "${quizTitle}" in course "${courseName}" and requires a retake assignment.`,
+              linkUrl: staffProfileLink,
+              metadata: {
+                enrollmentId,
+                organizationUserId: organizationUser.id,
+                courseId: enrollmentWithDetails.courseId,
+                workerName,
+                quizTitle,
+                courseName,
+                attemptsUsed: currentAttemptCount,
+              },
+            },
+            (admin) =>
               sendQuizLockedEmail(
-                admin.user.email,
+                admin.email,
                 workerName,
                 quizTitle,
                 courseName,
                 currentAttemptCount,
                 `${appUrl}${staffProfileLink}`,
-              ).catch((err) =>
-                logger.error({
-                  msg: '[quiz] Failed to send quiz locked email',
-                  email: maskEmail(admin.user.email),
-                  err,
-                }),
               ),
-            ),
           );
         }
       }

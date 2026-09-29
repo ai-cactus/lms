@@ -43,7 +43,8 @@ describe('setNotificationPreference — type validation', () => {
     });
   });
 
-  it.each(['NOT_A_REAL_TYPE', '', 'course_assigned'])(
+  // COURSE_FAILED was withdrawn from the catalog (BUG-56): nothing ever sent it.
+  it.each(['NOT_A_REAL_TYPE', '', 'course_assigned', 'COURSE_FAILED'])(
     'returns a refusal for the unknown type %j and writes nothing',
     async (type) => {
       const result = await setNotificationPreference(type, false);
