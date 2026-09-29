@@ -8,8 +8,8 @@
  *     policy document, Preview as the primary action and Assign beside it);
  *   - what must NOT be here any more, "View Course" above all — two entry
  *     points into the player on one screen was the symptom users saw;
- *   - the Facility column, which the design has always shown and the roster
- *     never rendered.
+ *   - the Facility column: the member's CURRENT facility, with the facility the
+ *     training was assigned at as a note once they have moved (BUG-37).
  */
 import { render, screen, within } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
@@ -62,8 +62,9 @@ function enrollment(overrides: Record<string, unknown> = {}) {
       userId: 'u-1',
       role: 'clinician',
       user: { email: 'frank@example.com', fullName: 'Frank Doe' },
+      facilities: [{ facility: { id: 'fac-north', name: 'Northside Clinic' } }],
     },
-    facility: { name: 'Northside Clinic' },
+    facility: { id: 'fac-north', name: 'Northside Clinic' },
     certificate: null,
     ...overrides,
   };
@@ -141,22 +142,96 @@ describe('TrainingDetails — linked policy document', () => {
   });
 });
 
-describe('TrainingDetails — enrolled staff Facility column', () => {
-  it('renders a Facility header and the facility recorded on the enrollment', () => {
+describe('TrainingDetails — enrolled staff Facility column (BUG-37)', () => {
+  const memberAt = (facilities: { id: string; name: string }[]) => ({
+    userId: 'u-1',
+    role: 'clinician',
+    user: { email: 'frank@example.com', fullName: 'Frank Doe' },
+    facilities: facilities.map((facility) => ({ facility })),
+  });
+  const north = { id: 'fac-north', name: 'Northside Clinic' };
+  const south = { id: 'fac-south', name: 'Southside Clinic' };
+
+  it('renders the current facility with no note when it matches where the training was assigned', () => {
     render(<TrainingDetails course={baseCourse({ enrollments: [enrollment()] })} />);
 
     expect(screen.getByRole('columnheader', { name: 'Facility' })).toBeInTheDocument();
     const row = screen.getByRole('row', { name: /Frank Doe/ });
     expect(within(row).getByText('Northside Clinic')).toBeInTheDocument();
+    expect(within(row).queryByText(/Assigned at/)).not.toBeInTheDocument();
   });
 
-  it('falls back to a dash when the enrollment carries no facility', () => {
+  it('leads with the CURRENT facility and notes where a transferred member was assigned', () => {
     render(
-      <TrainingDetails course={baseCourse({ enrollments: [enrollment({ facility: null })] })} />,
+      <TrainingDetails
+        course={baseCourse({
+          enrollments: [enrollment({ organizationUser: memberAt([south]), facility: north })],
+        })}
+      />,
+    );
+
+    const row = screen.getByRole('row', { name: /Frank Doe/ });
+    expect(within(row).getByText('Southside Clinic')).toBeInTheDocument();
+    expect(within(row).getByText('Assigned at Northside Clinic')).toBeInTheDocument();
+  });
+
+  it('shows only the first current facility when the member holds several', () => {
+    render(
+      <TrainingDetails
+        course={baseCourse({
+          enrollments: [
+            enrollment({ organizationUser: memberAt([south, north]), facility: south }),
+          ],
+        })}
+      />,
+    );
+
+    const row = screen.getByRole('row', { name: /Frank Doe/ });
+    expect(within(row).getByText('Southside Clinic')).toBeInTheDocument();
+    expect(within(row).queryByText('Northside Clinic')).not.toBeInTheDocument();
+    expect(within(row).queryByText(/Assigned at/)).not.toBeInTheDocument();
+  });
+
+  it('falls back to a dash with no current facility, still noting where it was assigned', () => {
+    render(
+      <TrainingDetails
+        course={baseCourse({
+          enrollments: [enrollment({ organizationUser: memberAt([]), facility: north })],
+        })}
+      />,
     );
 
     const row = screen.getByRole('row', { name: /Frank Doe/ });
     expect(within(row).getAllByText('-').length).toBeGreaterThan(0);
+    expect(within(row).getByText('Assigned at Northside Clinic')).toBeInTheDocument();
+  });
+
+  it('adds no note when the enrollment carries no stamped facility', () => {
+    render(
+      <TrainingDetails
+        course={baseCourse({
+          enrollments: [enrollment({ organizationUser: memberAt([south]), facility: null })],
+        })}
+      />,
+    );
+
+    const row = screen.getByRole('row', { name: /Frank Doe/ });
+    expect(within(row).getByText('Southside Clinic')).toBeInTheDocument();
+    expect(within(row).queryByText(/Assigned at/)).not.toBeInTheDocument();
+  });
+
+  it('renders a dash and no note when neither facility is known', () => {
+    render(
+      <TrainingDetails
+        course={baseCourse({
+          enrollments: [enrollment({ organizationUser: memberAt([]), facility: null })],
+        })}
+      />,
+    );
+
+    const row = screen.getByRole('row', { name: /Frank Doe/ });
+    expect(within(row).getAllByText('-').length).toBeGreaterThan(0);
+    expect(within(row).queryByText(/Assigned at/)).not.toBeInTheDocument();
   });
 });
 

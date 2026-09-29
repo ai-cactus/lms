@@ -90,6 +90,33 @@ const cellCls = 'h-[71px] px-5 text-[17.5px] font-medium tracking-[0.35px] text-
 const tagCls =
   'inline-flex items-center gap-2 rounded-full px-3 py-1 text-[14px] font-medium whitespace-nowrap lg:text-[16.5px]';
 
+/**
+ * The roster's Facility cell (BUG-37). The member's CURRENT facility leads,
+ * matching how the dashboards attribute their training; the facility stamped at
+ * assignment follows as a note only when the member has since moved, so a
+ * transfer neither hides where they work now nor erases where they were enrolled.
+ */
+function RosterFacility({
+  enrollment,
+}: {
+  enrollment: CourseWithRelations['enrollments'][number];
+}) {
+  const current = enrollment.organizationUser.facilities[0]?.facility ?? null;
+  const assigned = enrollment.facility;
+  const showAssigned = assigned !== null && assigned.id !== current?.id;
+
+  return (
+    <div className="flex min-w-0 flex-col gap-[4.5px]">
+      <span className="truncate">{current?.name ?? '-'}</span>
+      {showAssigned && (
+        <span className="truncate text-[13.5px] tracking-[0.27px] text-[#666d80]">
+          Assigned at {assigned.name}
+        </span>
+      )}
+    </div>
+  );
+}
+
 export default function TrainingDetails({
   course,
   canWithdrawAssignments = false,
@@ -460,13 +487,8 @@ export default function TrainingDetails({
                         </div>
                       </div>
                     </TableCell>
-                    {/*
-                      The facility recorded ON the enrollment, not the member's
-                      current assignments — a transfer must not rewrite who was
-                      enrolled where. Null for a member with no active facility.
-                    */}
-                    <TableCell className={cn(cellCls, 'hidden truncate xl:table-cell')}>
-                      {enrollment.facility?.name ?? '-'}
+                    <TableCell className={cn(cellCls, 'hidden xl:table-cell')}>
+                      <RosterFacility enrollment={enrollment} />
                     </TableCell>
                     <TableCell className={cn(cellCls, 'hidden sm:table-cell')}>
                       {enrollment.score !== null ? `${enrollment.score}%` : '-'}
