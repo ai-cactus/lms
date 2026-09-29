@@ -1005,3 +1005,74 @@ describe('5.1 cache — `admin` is a live role, not a retired one, so no pre-cac
     expect(mockGetCachedRevalidation).toHaveBeenCalledExactlyOnceWith('user-1');
   });
 });
+
+describe('Q-23 — a soft-deleted identity is refused on every auth path', () => {
+  const DELETED_AT = new Date('2026-09-28T10:00:00Z');
+
+  it('authorize() refuses a deleted identity exactly like an unknown one, before the password check', async () => {
+    mockFindUnique.mockResolvedValue({ ...baseUser, deletedAt: DELETED_AT });
+    const bcrypt = await import('bcryptjs');
+    (bcrypt.default.compare as ReturnType<typeof vi.fn>).mockClear();
+
+    for (const config of [adminConfig, workerConfig]) {
+      const result = await getAuthorize(config)(
+        { email: 'person@acme.com', password: 'correct-password' },
+        fakeRequest(),
+      );
+      expect(result).toBeNull();
+    }
+
+    expect(bcrypt.default.compare).not.toHaveBeenCalled();
+    expect(mockResolveActiveMembership).not.toHaveBeenCalled();
+    expect(mockAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'auth.login.failure',
+        metadata: expect.objectContaining({ reason: 'deleted_identity' }),
+      }),
+    );
+  });
+
+  it('OAuth signIn redirects a deleted identity with AccessRevoked and never creates a user or consumes an invite', async () => {
+    mockFindUnique.mockResolvedValueOnce({ id: 'user-1', fullName: 'Dana', deletedAt: DELETED_AT });
+    mockInviteFindFirst.mockResolvedValue({
+      id: 'invite-1',
+      organizationId: 'org-2',
+      facilityId: 'facility-1',
+      role: 'nurse',
+    });
+
+    const result = await getSignIn(workerConfig)({
+      user: { id: undefined, email: 'person@acme.com', name: 'Dana' },
+      account: { provider: 'microsoft-entra-id' },
+    });
+
+    expect(result).toBe('/login?error=AccessRevoked');
+    expect(mockUserCreate).not.toHaveBeenCalled();
+    expect(mockCreateMembership).not.toHaveBeenCalled();
+    expect(mockInviteUpdate).not.toHaveBeenCalled();
+    expect(mockCookieStore.set).not.toHaveBeenCalled();
+  });
+
+  it('jwt() invalidates a live session once the identity is deleted, and caches nothing for it', async () => {
+    mockFindUnique.mockResolvedValue({ ...freshUserBase, deletedAt: DELETED_AT });
+    const token = { id: 'user-1', role: 'nurse', organizationId: 'org-1', sessionVersion: 1 };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await (workerConfig.callbacks!.jwt as any)({ token });
+
+    expect(result).toBeNull();
+    expect(mockSetCachedRevalidation).not.toHaveBeenCalled();
+    expect(mockGetActiveMembership).not.toHaveBeenCalled();
+  });
+
+  it('jwt() also kills a session still holding a pre-delete cached snapshot, via the sessionVersion bump', async () => {
+    mockGetCachedRevalidation.mockResolvedValue({ ...freshUserBase, sessionVersion: 2 });
+    mockGetActiveMembership.mockResolvedValue(makeMembership());
+    const token = { id: 'user-1', role: 'nurse', organizationId: 'org-1', sessionVersion: 1 };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await (workerConfig.callbacks!.jwt as any)({ token });
+
+    expect(result).toBeNull();
+  });
+});

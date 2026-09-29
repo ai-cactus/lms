@@ -1,81 +1,78 @@
 /*
- * delete-user.ts — hard-deletes one identity and everything that cascades off
- * it (memberships, enrollments, documents, certificates, notifications), plus
- * its invites, authored courses and verification tokens.
+ * delete-user.ts — soft-deletes one identity through the same shared
+ * `softDeleteUser` the /system console uses (Q-23, RISK-14): every membership
+ * is deactivated and sign-in is refused everywhere, while the person's
+ * enrollments, quiz attempts, certificates and authored content are retained.
+ * Nothing is hard-deleted, and the email is not freed for re-registration.
  *
  * Usage:
- *   npx tsx scripts/delete-user.ts --dry-run   # report only
- *   npx tsx scripts/delete-user.ts             # delete
+ *   npx tsx scripts/delete-user.ts --email someone@example.com --dry-run   # report only
+ *   npx tsx scripts/delete-user.ts --email someone@example.com             # delete
  *
  * Flags:
- *   --dry-run   Report what would be deleted, write nothing.
+ *   --email     The identity to delete (required).
+ *   --dry-run   Report what would change, write nothing.
  */
 import { prisma } from '@/db/index';
-import { logger } from '@/lib/logger';
+import { logger, maskEmail } from '@/lib/logger';
+import { rateLimiterRedis } from '@/lib/rate-limit';
+import { softDeleteUser } from '@/lib/system/delete-user';
 
 const DRY_RUN = process.argv.includes('--dry-run');
 
-async function main() {
-  const email = 'vauntedgiant@zohomail.com';
-  const prefix = DRY_RUN ? '[DRY RUN] Would delete' : 'Deleted';
+function readEmailArg(): string | null {
+  const index = process.argv.indexOf('--email');
+  const value = index === -1 ? undefined : process.argv[index + 1];
+  return value && !value.startsWith('--') ? value.trim() : null;
+}
 
-  const inviteCount = await prisma.invite.count({ where: { email } });
-  if (!DRY_RUN) {
-    await prisma.invite.deleteMany({
-      where: { email },
-    });
+async function main() {
+  const email = readEmailArg();
+  if (!email) {
+    logger.error({ msg: '[delete-user] Missing --email <address>' });
+    process.exitCode = 1;
+    return;
   }
-  logger.info({ msg: `[delete-user] ${prefix} ${inviteCount} invite(s) for ${email}` });
 
   const user = await prisma.user.findUnique({
     where: { email },
-    include: { organizationMemberships: { select: { id: true } } },
+    select: { id: true, deletedAt: true },
   });
-
-  if (user) {
-    const organizationUserIds = user.organizationMemberships.map((m) => m.id);
-
-    // Course.creator is onDelete: Restrict, so authored courses must be
-    // deleted explicitly before the membership (and the user) can be removed.
-    // Enrollments, documents, certificates and notifications all cascade off
-    // OrganizationUser, and every OrganizationUser cascades off User, so
-    // deleting the user below removes all of that automatically.
-    const courseCount = await prisma.course.count({
-      where: { createdByOrgUserId: { in: organizationUserIds } },
-    });
-    if (!DRY_RUN) {
-      await prisma.course.deleteMany({
-        where: { createdByOrgUserId: { in: organizationUserIds } },
-      });
-    }
-    logger.info({ msg: `[delete-user] ${prefix} ${courseCount} course(s) for ${email}` });
-
-    if (!DRY_RUN) {
-      await prisma.user.delete({
-        where: { email },
-      });
-    }
+  if (!user) {
+    logger.info({ msg: '[delete-user] User not found', email: maskEmail(email) });
+    return;
+  }
+  if (user.deletedAt) {
     logger.info({
-      msg: `[delete-user] ${prefix} user ${email} (cascading ${organizationUserIds.length} membership(s), enrollments, and documents)`,
+      msg: '[delete-user] User already deleted',
+      userId: user.id,
+      deletedAt: user.deletedAt.toISOString(),
     });
-  } else {
-    logger.info({ msg: `[delete-user] User ${email} not found` });
+    return;
   }
 
-  const tokenCount = await prisma.verificationToken.count({ where: { identifier: email } });
-  if (!DRY_RUN) {
-    await prisma.verificationToken.deleteMany({
-      where: { identifier: email },
+  if (DRY_RUN) {
+    const activeMemberships = await prisma.organizationUser.count({
+      where: { userId: user.id, active: true },
     });
+    logger.info({
+      msg: '[delete-user] [DRY RUN] Would soft-delete user — nothing written',
+      userId: user.id,
+      activeMemberships,
+    });
+    return;
   }
-  logger.info({ msg: `[delete-user] ${prefix} ${tokenCount} verification token(s) for ${email}` });
+
+  const result = await softDeleteUser(user.id, { actorRole: 'script:delete-user' });
+  logger.info({ msg: '[delete-user] Done', userId: user.id, result });
 }
 
 main()
   .catch((e) => {
     logger.error({ msg: '[delete-user] Failed', err: e });
-    process.exit(1);
+    process.exitCode = 1;
   })
   .finally(async () => {
     await prisma.$disconnect();
+    rateLimiterRedis.disconnect();
   });

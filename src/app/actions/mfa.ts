@@ -17,6 +17,7 @@ import { logger } from '@/lib/logger';
 import { checkRateLimitOnly, recordRateLimitAttempt } from '@/lib/rate-limit';
 import { markSessionMfaVerified } from '@/lib/session-mfa';
 import { audit, getClientContext } from '@/lib/audit';
+import { isDeletedIdentity } from '@/lib/auth/deleted-identity';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -452,10 +453,15 @@ export async function sendLoginMfaCode(userId: string): Promise<MfaActionResult>
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { email: true, mfaFactors: { where: { verified: true, type: 'email' } } },
+    select: {
+      email: true,
+      deletedAt: true,
+      mfaFactors: { where: { verified: true, type: 'email' } },
+    },
   });
 
-  if (!user) return { success: false, error: 'User not found' };
+  // A deleted identity (Q-23) is never sent a login code.
+  if (!user || isDeletedIdentity(user)) return { success: false, error: 'User not found' };
 
   const factor = user.mfaFactors[0];
   if (!factor) return { success: false, error: 'No email MFA factor found' };

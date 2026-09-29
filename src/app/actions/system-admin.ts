@@ -5,8 +5,9 @@ import { rawPrisma } from '@/db/index';
 import { cookies, headers } from 'next/headers';
 import crypto from 'crypto';
 import { revalidatePath } from 'next/cache';
-import { logger, maskEmail } from '@/lib/logger';
-import { audit, auditCritical, getClientContext } from '@/lib/audit';
+import { logger } from '@/lib/logger';
+import { softDeleteUser } from '@/lib/system/delete-user';
+import { audit, getClientContext } from '@/lib/audit';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { verifySystemAdminCookie, SYSTEM_ADMIN_COOKIE } from '@/lib/system-auth';
 import type { Prisma } from '@/generated/prisma/client';
@@ -173,6 +174,8 @@ export interface SystemUserRow {
   authProvider: string;
   emailVerified: boolean;
   createdAt: Date;
+  /** Set when the identity has been deleted (Q-23 soft delete). */
+  deletedAt: Date | null;
   organizationId: string | null;
   organizationName: string | null;
   profile: {
@@ -189,12 +192,16 @@ export interface SystemUserRow {
   };
 }
 
+export type SystemUserStatusFilter = 'active' | 'deleted' | 'all';
+
 export async function getAllUsers(options: {
   page?: number;
   limit?: number;
   search?: string;
   roleFilter?: string;
   orgFilter?: string;
+  /** Defaults to `active`: deleted identities are hidden unless asked for. */
+  statusFilter?: SystemUserStatusFilter;
 }): Promise<{
   users: SystemUserRow[];
   total: number;
@@ -211,14 +218,19 @@ export async function getAllUsers(options: {
   const search = options.search?.trim() || '';
   const roleFilter = options.roleFilter || '';
   const orgFilter = options.orgFilter || '';
+  const statusFilter: SystemUserStatusFilter = options.statusFilter ?? 'active';
 
   const where: Prisma.UserWhereInput = {};
-  // Role/org are now membership attributes, not identity attributes — filter
-  // through the user's active memberships.
+  if (statusFilter === 'active') where.deletedAt = null;
+  if (statusFilter === 'deleted') where.deletedAt = { not: null };
+  // Role/org are membership attributes, not identity attributes — filter
+  // through the user's active memberships. A deleted identity has none left,
+  // so its deactivated memberships stand in: it must still be findable by the
+  // organization it was deleted from.
   if (roleFilter || orgFilter) {
     where.organizationMemberships = {
       some: {
-        active: true,
+        OR: [{ active: true }, { user: { is: { deletedAt: { not: null } } } }],
         ...(roleFilter ? { role: roleFilter as UserRole } : {}),
         ...(orgFilter ? { organizationId: orgFilter } : {}),
       },
@@ -244,9 +256,12 @@ export async function getAllUsers(options: {
         lastName: true,
         fullName: true,
         avatarUrl: true,
+        deletedAt: true,
+        // Every membership, not just active ones: a deleted identity has only
+        // deactivated memberships, and its retained records hang off them.
         organizationMemberships: {
-          where: { active: true },
           select: {
+            active: true,
             role: true,
             organizationId: true,
             organization: { select: { name: true } },
@@ -276,10 +291,15 @@ export async function getAllUsers(options: {
   // Every identity is listed once. Most today hold exactly one membership; a
   // multi-org identity is represented here by its most recently joined active
   // membership, with activity counts summed across all of them — a
-  // system-admin overview simplification, not an authorization decision.
+  // system-admin overview simplification, not an authorization decision. A
+  // deleted identity is represented by the memberships it was deleted from, so
+  // its retained records still show.
   const mappedUsers: SystemUserRow[] = users.map((u) => {
-    const primary = u.organizationMemberships[0];
-    const totals = u.organizationMemberships.reduce(
+    const memberships = u.deletedAt
+      ? u.organizationMemberships
+      : u.organizationMemberships.filter((m) => m.active);
+    const primary = memberships[0];
+    const totals = memberships.reduce(
       (acc, m) => ({
         courses: acc.courses + m._count.createdCourses,
         enrollments: acc.enrollments + m._count.enrollments,
@@ -296,6 +316,7 @@ export async function getAllUsers(options: {
       authProvider: u.authProvider,
       emailVerified: u.emailVerified,
       createdAt: u.createdAt,
+      deletedAt: u.deletedAt,
       organizationId: primary?.organizationId ?? null,
       organizationName: primary?.organization.name ?? null,
       profile: {
@@ -328,6 +349,8 @@ export interface SystemUserDetail {
   emailVerified: boolean;
   createdAt: Date;
   updatedAt: Date;
+  /** Set when the identity has been deleted; the console then opens read-only. */
+  deletedAt: Date | null;
   organization: {
     id: string;
     name: string;
@@ -388,6 +411,7 @@ export async function getUserDetail(userId: string): Promise<SystemUserDetail | 
       lastName: true,
       fullName: true,
       avatarUrl: true,
+      deletedAt: true,
     },
   });
 
@@ -453,6 +477,7 @@ export async function getUserDetail(userId: string): Promise<SystemUserDetail | 
     emailVerified: user.emailVerified,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
+    deletedAt: user.deletedAt,
     organization: membership?.organization ?? null,
     profile: {
       fullName: user.fullName,
@@ -474,72 +499,13 @@ export async function getUserDetail(userId: string): Promise<SystemUserDetail | 
   };
 }
 
-// ── Asset Custody ────────────────────────────────────────────────────────────
-
-/**
- * Seniority order used to pick the member who inherits a deleted account's
- * authored courses and uploaded documents. A worker is only ever chosen when no
- * manager-category member survives, because inheriting custody must not be
- * allowed to fail and strand the organization's training.
- */
-const CUSTODIAN_ROLE_PRECEDENCE: readonly UserRole[] = [
-  'owner',
-  'admin',
-  'hr',
-  'clinical_director',
-  'supervisor',
-  'finance',
-];
-
-/**
- * The surviving member who takes custody of an account's authored records.
- *
- * Courses and documents belong to the ORGANIZATION (Q25);
- * `Course.createdByOrgUserId` and `Document.organizationUserId` record who
- * authored or uploaded them, nothing more. So deleting a person must not take
- * the org's training with them — but the row still has to point at a membership
- * that exists: `Course.creator` is `onDelete: Restrict` (the delete would be
- * refused) and `Document.organizationUser` is `onDelete: Cascade` (the document
- * would be destroyed, which is exactly what Q24 forbids). Custody therefore
- * moves to another member of the SAME organization, which is also what keeps a
- * platform-authored global course serving the other tenants using it.
- *
- * Active members outrank deactivated ones, then role seniority, then the
- * longest-standing membership — so the choice is deterministic rather than
- * dependent on row order. Returns null when the account is the organization's
- * last member, which refuses the delete instead of destroying the assets — and
- * that refusal is what protects the shared catalogue: the identity that authors
- * every `isGlobal` course (`getOrCreateSystemUser`) exclusively occupies the
- * internal System organization, so it can never be deleted out from under the
- * tenants consuming those courses.
- */
-async function findAssetCustodian(
-  client: Prisma.TransactionClient,
-  organizationId: string,
-  departingOrgUserIds: string[],
-): Promise<{ id: string; role: UserRole } | null> {
-  const candidates = await client.organizationUser.findMany({
-    where: { organizationId, id: { notIn: departingOrgUserIds } },
-    select: { id: true, role: true, active: true, joinedAt: true },
-  });
-
-  if (candidates.length === 0) return null;
-
-  const seniority = (role: UserRole) => {
-    const index = CUSTODIAN_ROLE_PRECEDENCE.indexOf(role);
-    return index === -1 ? CUSTODIAN_ROLE_PRECEDENCE.length : index;
-  };
-
-  return candidates.sort(
-    (a, b) =>
-      Number(b.active) - Number(a.active) ||
-      seniority(a.role) - seniority(b.role) ||
-      a.joinedAt.getTime() - b.joinedAt.getTime(),
-  )[0];
-}
-
 // ── Delete Preview ───────────────────────────────────────────────────────────
 
+/**
+ * What deleting a user changes (Q-23). Nothing is destroyed: the delete removes
+ * the person's ACCESS and keeps every record, so the preview reports what is
+ * revoked and what is retained.
+ */
 export interface DeletePreview {
   user: {
     id: string;
@@ -547,42 +513,26 @@ export interface DeletePreview {
     role: string;
     name: string;
   };
-  /** Records the hard delete destroys. */
-  counts: {
+  /** Set when the identity is already deleted — the console offers no delete then. */
+  deletedAt: Date | null;
+  /** Access the delete removes. */
+  revoked: {
+    /** Organizations whose active membership is deactivated. */
+    organizations: string[];
+    /** Pending invites to this email from those organizations, expired. */
+    pendingInvites: number;
+  };
+  /** Records the delete keeps, unchanged, for compliance. */
+  retained: {
     enrollments: number;
     quizAttempts: number;
-    /** Compliance records, destroyed with the enrollments they hang off. */
     certificates: number;
-    notifications: number;
-    /** Per-type notification opt-outs, cascaded away with each membership. */
-    notificationPreferences: number;
-    jobs: number;
-    invites: number;
-    verificationTokens: number;
-  };
-  /** Records the delete leaves intact — organization assets and other members' history. */
-  retained: {
-    /** Authored courses, transferred to a surviving member rather than deleted. */
+    /** Courses this user authored — they stay the organization's, authorship unchanged. */
     courses: number;
-    /** Uploaded documents, transferred to a surviving member rather than deleted. */
+    /** Documents this user uploaded — they stay the organization's, authorship unchanged. */
     documents: number;
-    /** Enrollments other members hold in courses this user authored. */
-    otherEnrollments: number;
-    /**
-     * Other members who report to this user. They are kept, but
-     * `OrganizationUser.managerId` is `SetNull`, so each one loses their manager.
-     */
+    /** Other active members who report to this user; their manager link is kept. */
     directReports: number;
-    /**
-     * Courses this user approved or archived, and documents they archived. The
-     * FKs are SetNull, but each record keeps the actor's name snapshot (BUG-25).
-     */
-    attributions: number;
-    /**
-     * Organizations where this account holds assets but no other member
-     * survives to inherit them. Non-empty means the delete will be refused.
-     */
-    organizationsWithoutCustodian: string[];
   };
 }
 
@@ -593,7 +543,7 @@ export async function getUserDeletePreview(userId: string): Promise<DeletePrevie
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, email: true, fullName: true },
+    select: { id: true, email: true, fullName: true, deletedAt: true },
   });
 
   if (!user) return null;
@@ -604,325 +554,100 @@ export async function getUserDeletePreview(userId: string): Promise<DeletePrevie
     select: {
       id: true,
       role: true,
+      active: true,
       organizationId: true,
       organization: { select: { name: true } },
     },
+    orderBy: [{ active: 'desc' }, { joinedAt: 'desc' }],
   });
   const orgUserIds = orgUsers.map((ou) => ou.id);
 
-  const name = user.fullName || user.email.split('@')[0];
-
+  // ⛔ `rawPrisma` for the two archivable models: archived courses and documents
+  // are retained records too, and the filtered client would under-report them
+  // on the screen whose job is to say what is kept.
   const [
-    enrollmentCount,
-    certificateCount,
-    notificationCount,
-    notificationPreferenceCount,
-    directReportCount,
-    jobCount,
-    inviteCount,
-    verificationTokenCount,
-    quizAttemptCount,
+    enrollments,
+    quizAttempts,
+    certificates,
+    directReports,
+    pendingInvites,
+    courses,
+    documents,
   ] = await Promise.all([
     prisma.enrollment.count({ where: { organizationUserId: { in: orgUserIds } } }),
-    prisma.certificate.count({ where: { organizationUserId: { in: orgUserIds } } }),
-    prisma.notification.count({ where: { organizationUserId: { in: orgUserIds } } }),
-    prisma.notificationPreference.count({ where: { organizationUserId: { in: orgUserIds } } }),
-    prisma.organizationUser.count({
-      where: { managerId: { in: orgUserIds }, id: { notIn: orgUserIds } },
-    }),
-    prisma.job.count({ where: { userId } }),
-    prisma.invite.count({ where: { email: user.email } }),
-    prisma.verificationToken.count({ where: { identifier: user.email } }),
     prisma.quizAttempt.count({
       where: { enrollment: { organizationUserId: { in: orgUserIds } } },
     }),
+    prisma.certificate.count({ where: { organizationUserId: { in: orgUserIds } } }),
+    prisma.organizationUser.count({
+      where: { managerId: { in: orgUserIds }, id: { notIn: orgUserIds }, active: true },
+    }),
+    prisma.invite.count({
+      where: {
+        email: { equals: user.email, mode: 'insensitive' },
+        organizationId: { in: orgUsers.map((ou) => ou.organizationId) },
+        status: 'pending',
+      },
+    }),
+    rawPrisma.course.count({ where: { createdByOrgUserId: { in: orgUserIds } } }),
+    rawPrisma.document.count({ where: { organizationUserId: { in: orgUserIds } } }),
   ]);
-
-  // ⛔ `rawPrisma` for the two archivable models: Q24 retains archived courses
-  // and documents, and the delete moves custody of those too. Counting through
-  // the filtered client would under-report what changes hands on the very
-  // screen whose job is to report exactly that.
-  const [authoredCourses, uploadedDocuments, attributedCourses, attributedDocuments] =
-    await Promise.all([
-      rawPrisma.course.findMany({
-        where: { createdByOrgUserId: { in: orgUserIds } },
-        select: { id: true, createdByOrgUserId: true },
-      }),
-      rawPrisma.document.findMany({
-        where: { organizationUserId: { in: orgUserIds } },
-        select: { organizationUserId: true },
-      }),
-      rawPrisma.course.count({
-        where: {
-          OR: [
-            { approvedByOrgUserId: { in: orgUserIds } },
-            { archivedByOrgUserId: { in: orgUserIds } },
-          ],
-        },
-      }),
-      rawPrisma.document.count({ where: { archivedByOrgUserId: { in: orgUserIds } } }),
-    ]);
-
-  const courseIds = authoredCourses.map((c) => c.id);
-
-  const otherEnrollments =
-    courseIds.length > 0
-      ? await prisma.enrollment.count({
-          where: {
-            courseId: { in: courseIds },
-            organizationUserId: { notIn: orgUserIds },
-          },
-        })
-      : 0;
-
-  const membershipsHoldingAssets = new Set<string>([
-    ...authoredCourses.map((c) => c.createdByOrgUserId),
-    ...uploadedDocuments.map((d) => d.organizationUserId),
-  ]);
-
-  const organizationsWithoutCustodian: string[] = [];
-  for (const orgUser of orgUsers) {
-    if (!membershipsHoldingAssets.has(orgUser.id)) continue;
-    const custodian = await findAssetCustodian(rawPrisma, orgUser.organizationId, orgUserIds);
-    if (!custodian) organizationsWithoutCustodian.push(orgUser.organization.name);
-  }
 
   return {
-    user: { id: user.id, email: user.email, role: orgUsers[0]?.role ?? 'n/a', name },
-    counts: {
-      enrollments: enrollmentCount,
-      quizAttempts: quizAttemptCount,
-      certificates: certificateCount,
-      notifications: notificationCount,
-      notificationPreferences: notificationPreferenceCount,
-      jobs: jobCount,
-      invites: inviteCount,
-      verificationTokens: verificationTokenCount,
+    user: {
+      id: user.id,
+      email: user.email,
+      role: orgUsers[0]?.role ?? 'n/a',
+      name: user.fullName || user.email.split('@')[0],
     },
-    retained: {
-      courses: authoredCourses.length,
-      documents: uploadedDocuments.length,
-      otherEnrollments,
-      directReports: directReportCount,
-      attributions: attributedCourses + attributedDocuments,
-      organizationsWithoutCustodian,
+    deletedAt: user.deletedAt,
+    revoked: {
+      organizations: orgUsers.filter((ou) => ou.active).map((ou) => ou.organization.name),
+      pendingInvites,
     },
+    retained: { enrollments, quizAttempts, certificates, courses, documents, directReports },
   };
 }
 
 // ── Delete User ──────────────────────────────────────────────────────────────
 
+/**
+ * Soft-deletes a user (Q-23) through the shared {@link softDeleteUser}: access
+ * to every organization is removed and sign-in is refused everywhere, while
+ * certificates, enrolments, quiz attempts and authored content are kept.
+ */
 export async function deleteUserWithRelations(userId: string): Promise<{
   success: boolean;
   error?: string;
-  deletedCounts?: Record<string, number>;
-  transferredCounts?: Record<string, number>;
+  membershipsDeactivated?: number;
 }> {
   if (!(await verifySystemAdminCookie())) {
     throw new Error('Unauthorized');
   }
 
   try {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { id: true, email: true },
-    });
+    const result = await softDeleteUser(userId, await systemClientContext());
 
-    if (!user) {
+    if (result.status === 'not_found') {
       return { success: false, error: 'User not found' };
     }
-
-    logger.info({
-      msg: '[system] Deleting user',
-      email: maskEmail(user.email),
-      userId: user.id,
-    });
-
-    // Resolved before opening the transaction: headers() is request-scoped and
-    // must not be awaited inside a transaction callback.
-    const clientContext = await systemClientContext();
-
-    // ⛔ `rawPrisma.$transaction`, so every `tx.*` below is UN-filtered. Q24
-    // retains archived courses and documents, and custody of those has to move
-    // as well: filtered, an archived course would keep pointing at the
-    // membership about to be deleted and `Course.creator`'s Restrict would
-    // block the delete, while an archived document's Cascade would destroy a
-    // row Q24 says must be kept.
-    const result = await rawPrisma.$transaction(async (tx) => {
-      const deleted: Record<string, number> = {};
-      const transferred: Record<string, number> = { courses: 0, documents: 0 };
-
-      const orgUsers = await tx.organizationUser.findMany({
-        where: { userId },
-        select: { id: true, organizationId: true },
-      });
-      const orgUserIds = orgUsers.map((ou) => ou.id);
-
-      // 1. Hand the organization's assets to a surviving member BEFORE anything
-      // is destroyed. A course is never hard-deleted as a side effect of
-      // deleting its author, and never archived either: archiving withdraws it
-      // from every list, and losing the author is not a reason to stop offering
-      // the org's training. A platform-authored global course is being consumed
-      // by other tenants entirely, so it must survive untouched as well.
-      for (const orgUser of orgUsers) {
-        const authoredCourses = await tx.course.count({
-          where: { createdByOrgUserId: orgUser.id },
-        });
-        const uploadedDocuments = await tx.document.count({
-          where: { organizationUserId: orgUser.id },
-        });
-
-        if (authoredCourses === 0 && uploadedDocuments === 0) continue;
-
-        const custodian = await findAssetCustodian(tx, orgUser.organizationId, orgUserIds);
-
-        if (!custodian) {
-          logger.warn({
-            msg: '[system] User delete refused: no surviving member to inherit org assets',
-            userId,
-            orgId: orgUser.organizationId,
-            authoredCourses,
-            uploadedDocuments,
-          });
-          throw new Error(
-            'This user authored courses or uploaded documents in an organization with no other member to inherit them. Add a member, or delete the organization, before deleting this user.',
-          );
-        }
-
-        const movedCourses = await tx.course.updateMany({
-          where: { createdByOrgUserId: orgUser.id },
-          data: { createdByOrgUserId: custodian.id },
-        });
-        const movedDocuments = await tx.document.updateMany({
-          where: { organizationUserId: orgUser.id },
-          data: { organizationUserId: custodian.id },
-        });
-
-        transferred.courses += movedCourses.count;
-        transferred.documents += movedDocuments.count;
-
-        logger.info({
-          msg: '[system] Transferred authored records to a surviving member',
-          orgId: orgUser.organizationId,
-          custodianOrgUserId: custodian.id,
-          custodianRole: custodian.role,
-          courses: movedCourses.count,
-          documents: movedDocuments.count,
-        });
-      }
-
-      // 2. The identity's OWN learning history (every org). Certificates hang
-      // off the enrollment with `onDelete: Cascade`, so they go with it — a hard
-      // delete of the identity cannot keep a compliance record that is keyed to
-      // the membership being removed. Counted before the delete so the audit row
-      // records what went. Enrollments, attempts and certificates belonging to
-      // OTHER members — including in courses this user authored — are
-      // deliberately never touched: their compliance history is not this
-      // person's to destroy.
-      deleted.certificates = await tx.certificate.count({
-        where: { organizationUserId: { in: orgUserIds } },
-      });
-
-      const quizAttempts = await tx.quizAttempt.deleteMany({
-        where: { enrollment: { organizationUserId: { in: orgUserIds } } },
-      });
-      deleted.quizAttempts = quizAttempts.count;
-
-      const enrollments = await tx.enrollment.deleteMany({
-        where: { organizationUserId: { in: orgUserIds } },
-      });
-      deleted.enrollments = enrollments.count;
-
-      // 3. Delete notifications
-      const notifications = await tx.notification.deleteMany({
-        where: { organizationUserId: { in: orgUserIds } },
-      });
-      deleted.notifications = notifications.count;
-
-      // 4. Delete jobs
-      const jobs = await tx.job.deleteMany({
-        where: { userId },
-      });
-      deleted.jobs = jobs.count;
-
-      // 5. Delete invites for user's email
-      const invites = await tx.invite.deleteMany({
-        where: { email: user.email },
-      });
-      deleted.invites = invites.count;
-
-      // 6. Delete verification tokens
-      const tokens = await tx.verificationToken.deleteMany({
-        where: { identifier: user.email },
-      });
-      deleted.verificationTokens = tokens.count;
-
-      // 7. Counted before the delete because neither is deleted explicitly:
-      // preferences cascade with the memberships, and direct reports survive
-      // with `managerId` nulled by the SetNull relation. The audit row should
-      // still say what the delete did to them.
-      deleted.notificationPreferences = await tx.notificationPreference.count({
-        where: { organizationUserId: { in: orgUserIds } },
-      });
-      const unassignedDirectReports = await tx.organizationUser.count({
-        where: { managerId: { in: orgUserIds }, id: { notIn: orgUserIds } },
-      });
-
-      // 8. Delete the user — cascades every OrganizationUser membership (now
-      // safe: the courses and documents they authored point at a surviving
-      // member), MfaFactor and MfaRecoveryCode rows.
-      await tx.user.delete({ where: { id: userId } });
-      deleted.user = 1;
-
-      // F-094: the most destructive action in the system — an irreversible
-      // cross-organization hard delete of a person and all their enrollments,
-      // attempts, certificates and attestations. auditCritical INSIDE the
-      // transaction, so the deletion and its record commit together: there can
-      // be no unexplained disappearance of a user's compliance history. If the
-      // audit write fails, the delete correctly rolls back.
-      await auditCritical(
-        {
-          action: 'system.user.delete',
-          targetType: 'user',
-          targetId: userId,
-          // Counts only — no email, no names. The logger redacts PII anyway,
-          // but the audit row is long-lived so it carries even less.
-          metadata: {
-            deletedCounts: deleted,
-            transferredCounts: transferred,
-            unassignedDirectReports,
-          },
-          ...clientContext,
-        },
-        tx,
-      );
-
-      return { deleted, transferred };
-    });
-
-    logger.info({
-      msg: '[system] User deleted',
-      userId,
-      counts: result.deleted,
-      transferred: result.transferred,
-    });
+    if (result.status === 'already_deleted') {
+      return {
+        success: false,
+        error: `This user was already deleted on ${result.deletedAt.toISOString().slice(0, 10)}.`,
+      };
+    }
 
     revalidatePath('/system');
-    revalidatePath('/system/users');
+    revalidatePath(`/system/users/${userId}`);
 
-    return {
-      success: true,
-      deletedCounts: result.deleted,
-      transferredCounts: result.transferred,
-    };
+    return { success: true, membershipsDeactivated: result.membershipsDeactivated };
   } catch (error) {
     logger.error({ msg: '[system] Failed to delete user', userId, err: error });
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Failed to delete user',
-    };
+    return { success: false, error: 'Failed to delete user. Please try again.' };
   }
 }
+
 /**
  * Check if system admin is enabled (env var is set).
  * Used by the layout to decide whether to show 404.
