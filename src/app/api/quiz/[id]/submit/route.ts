@@ -13,6 +13,13 @@ import { hasActiveBilling } from '@/lib/billing';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
 import { parseStoredOptionExplanations } from '@/lib/quiz/options';
+import {
+  learnerQuizClosedReason,
+  QUIZ_ALREADY_COMPLETED_ERROR_CODE,
+  QUIZ_ALREADY_COMPLETED_MESSAGE,
+  QUIZ_LOCKED_ERROR_CODE,
+  QUIZ_LOCKED_MESSAGE,
+} from '@/lib/enrollment/status-guards';
 const submitQuizSchema = z.object({
   enrollmentId: z.string().min(1, 'Enrollment ID is required'),
   answers: z.array(
@@ -216,6 +223,24 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
         courseId: enrollment.courseId,
       });
       return NextResponse.json({ error: ARCHIVED_COURSE_LEARNER_MESSAGE }, { status: 403 });
+    }
+
+    // BUG-53: grading writes the enrolment's status and score, so a submission
+    // against a locked or already-signed-off enrolment would reopen it. /start
+    // refuses both; this stops a direct POST that skips /start.
+    const closedReason = learnerQuizClosedReason(enrollment.status);
+    if (closedReason) {
+      logger.warn({
+        msg: '[quiz] Submit blocked — enrollment is closed to new attempts',
+        enrollmentId,
+        status: enrollment.status,
+      });
+      return NextResponse.json(
+        closedReason === 'locked'
+          ? { error: QUIZ_LOCKED_ERROR_CODE, message: QUIZ_LOCKED_MESSAGE }
+          : { error: QUIZ_ALREADY_COMPLETED_ERROR_CODE, message: QUIZ_ALREADY_COMPLETED_MESSAGE },
+        { status: 403 },
+      );
     }
 
     const quiz = await prisma.quiz.findUnique({

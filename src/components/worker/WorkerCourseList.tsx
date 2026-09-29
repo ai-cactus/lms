@@ -245,10 +245,12 @@ export default function WorkerCourseList({ courses, showHeading = true }: Worker
     }
   };
 
-  const formatDate = (date: Date | string | null | undefined) => {
+  const formatDate = (date: Date | string | null | undefined, status: string) => {
     if (!date) return <span className="text-sm text-[#cbd5e1]">No deadline</span>;
     const d = new Date(date);
-    const isOverdue = d < new Date();
+    // A finished course cannot be late, however long ago its due date passed.
+    const isFinished = status === 'completed' || status === 'attested';
+    const isOverdue = !isFinished && d < new Date();
     const text = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
     if (isOverdue) {
@@ -366,7 +368,7 @@ export default function WorkerCourseList({ courses, showHeading = true }: Worker
                       </div>
                     </td>
                     <td className="px-6 py-4 align-middle text-[#1a202c] max-md:mr-3 max-md:inline-flex max-md:border-none max-md:px-0 max-md:py-1 max-md:text-xs">
-                      {formatDate(course.deadline)}
+                      {formatDate(course.deadline, course.status)}
                     </td>
                     <td className="px-6 py-4 align-middle text-[#1a202c] max-md:mr-3 max-md:inline-flex max-md:border-none max-md:px-0 max-md:py-1 max-md:text-xs">
                       {getStatusBadge(course, rowState)}

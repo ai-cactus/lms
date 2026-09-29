@@ -102,6 +102,7 @@ export async function saveVideoProgress(
     select: {
       organizationUserId: true,
       status: true,
+      progress: true,
       // Nested, so the archive query extension does not hide the row.
       course: { select: { archivedAt: true } },
     },
@@ -130,7 +131,9 @@ export async function saveVideoProgress(
     where: { id: enrollmentId },
     data: {
       videoPositionSeconds: Math.round(positionSeconds),
-      progress: pct,
+      // A high-water mark, as on the lesson-progress route: the quiz submit
+      // stamps 100, and re-watching a video afterwards must not pull it back.
+      progress: Math.max(enr.progress, pct),
       lastActivityAt: new Date(),
       ...(bumpStatus ? { status: 'lessons_complete' } : {}),
     },

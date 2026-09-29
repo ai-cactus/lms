@@ -51,6 +51,11 @@ import {
 } from '@/lib/course/pending-assignment';
 import { findAssignmentDueAt } from '@/lib/enrollment/assignment';
 import { touchEnrollmentActivity } from '@/lib/enrollment/activity';
+import {
+  learnerQuizClosedReason,
+  QUIZ_ALREADY_COMPLETED_MESSAGE,
+  QUIZ_LOCKED_MESSAGE,
+} from '@/lib/enrollment/status-guards';
 import { captureServer } from '@/lib/analytics/server';
 import { analyticsContextFrom } from '@/lib/analytics/identity';
 import { resolveAttributionName } from '@/lib/attribution-name';
@@ -2122,6 +2127,24 @@ export async function retakeQuiz(
       courseId: enrollment.courseId,
     });
     return { success: false, refusedReason: ARCHIVED_COURSE_LEARNER_MESSAGE };
+  }
+
+  // BUG-53: the reset below clears the score AND the attestation, so a learner
+  // must not be able to aim it at signed-off training; and a locked enrolment
+  // reopens only through an admin retake, even if the quiz's attempt limit was
+  // raised after the lock.
+  const closedReason = learnerQuizClosedReason(enrollment.status);
+  if (closedReason) {
+    logger.warn({
+      msg: '[course] Quiz retake refused — enrollment is closed to new attempts',
+      enrollmentId,
+      status: enrollment.status,
+    });
+    return {
+      success: false,
+      refusedReason:
+        closedReason === 'locked' ? QUIZ_LOCKED_MESSAGE : QUIZ_ALREADY_COMPLETED_MESSAGE,
+    };
   }
 
   // Quiz lives on the last lesson (text courses) or on the course itself

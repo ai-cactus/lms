@@ -131,8 +131,10 @@ export interface EnrollmentPrefetch {
  * instead when {@link CreateEnrollmentContext.deferWorkerNotification} is set.
  * For an unknown or org-less email: send a `/join` invite and park
  * the course on it (materialised into an enrollment on accept) rather than
- * creating an account. Never throws for an individual entry — a failure is
- * reported via the returned {@link EnrollmentOutcome}.
+ * creating an account. Validation, permission and invite failures are reported
+ * as a `failed` {@link EnrollmentOutcome}, and a failed email or reminder-log
+ * write is logged without failing the entry; a database error on the member
+ * branch (name backfill, facility read, enrollment write) propagates.
  *
  * When `prefetch` is supplied the three per-user read queries are served from that
  * snapshot instead of the database; the write/notification/email side-effects are
@@ -473,26 +475,37 @@ export async function createEnrollmentForUser(
 const ENROLLMENT_BATCH_CONCURRENCY = 10;
 
 /**
- * Batched, behaviour-preserving counterpart to {@link createEnrollmentForUser},
- * gated behind the `ENROLLMENT_BATCH_ENABLED` kill-switch at the call sites.
+ * Batched counterpart to {@link createEnrollmentForUser}, gated behind the
+ * `ENROLLMENT_BATCH_ENABLED` kill-switch at the call sites.
  *
- * Equivalent to calling `createEnrollmentForUser` once per entry in array order,
- * but it (a) collapses the per-user identity / membership / enrollment / invite /
- * facility reads into batched look-ups up front and (b) runs the independent per-user
- * side-effects with bounded concurrency instead of awaiting each serially. It
- * chooses the *implementation*, never the outcome: seat-limit rejection, skip
- * logic, which users get enrolled/invited, and the emails sent are all identical
- * to the sequential path.
+ * It (a) collapses the per-user identity / membership / enrollment / invite /
+ * facility reads into batched look-ups up front and (b) runs the independent
+ * per-email groups with bounded concurrency instead of awaiting each serially.
  *
- * Returns one {@link EnrollmentOutcome} per input entry, in input order. Emails in
- * `skipEmails` (already normalised — the seat-limit rejections) are force-failed
- * without any DB work, mirroring the caller's per-entry seat guard. Duplicate
- * emails within the batch are processed sequentially inside their own group, so a
- * repeat occurrence observes the first's writes exactly as the sequential loop
- * does. Partial-failure semantics are inherited unchanged from
- * `createEnrollmentForUser`: a committed enrollment is never rolled back by a
- * later reminder-log or email failure, and a hard failure (e.g. the in-app
- * notification throwing) aborts the run — no per-entry outcome is transactional.
+ * When every database call succeeds it is equivalent to calling
+ * `createEnrollmentForUser` once per entry in array order: seat-limit rejection,
+ * skip logic, which users get enrolled/invited, the returned outcomes (one per
+ * entry, in input order) and the emails sent are identical. Only the ORDER in
+ * which different emails' side-effects happen differs. Emails in `skipEmails`
+ * (already normalised — the seat-limit rejections) are force-failed without any
+ * DB work. Duplicate emails run sequentially inside their own group, so a repeat
+ * occurrence observes the first's writes exactly as the sequential loop does.
+ *
+ * ⚠️ RISK-09 — it is NOT equivalent when a database call throws. Both paths
+ * reject and neither rolls anything back, but they leave different rows behind:
+ *  - A throw inside one entry (e.g. `enrollment.create`): the sequential loop
+ *    never touches the entries after it; here every group already in flight —
+ *    all of them, for a batch of at most {@link ENROLLMENT_BATCH_CONCURRENCY}
+ *    distinct emails — runs to completion and commits.
+ *  - A throw in the up-front batched reads: nothing is written at all, whereas
+ *    the sequential loop would already have committed the entries before the
+ *    one whose read failed.
+ *  - With several failures, the error rethrown is the first one OBSERVED, not
+ *    necessarily the lowest-index entry's.
+ * This is inherent to running groups concurrently; matching the sequential
+ * path would mean serialising the groups, which is the cost this path exists to
+ * avoid. `create-batch.test.ts` pins each difference. Anyone enabling the flag
+ * is accepting them.
  */
 export async function createEnrollmentsForUsers(
   entries: StaffEntry[],

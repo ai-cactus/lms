@@ -677,8 +677,9 @@ export default function GenerationController({
         <div className="flex flex-col items-center gap-3">
           <h2 className={wizardTitleClass}>Your course is being created…</h2>
           <p className={`${wizardSubtitleClass} max-w-[640px]`}>
-            We&apos;re reviewing your document to create the course. You&apos;ll receive an email
-            notification once the course is complete and ready for review.
+            We&apos;re reviewing your document to create the course. You can leave this page while
+            we work — your Courses page will show when it&apos;s ready, so you can resume setup and
+            review it.
           </p>
         </div>
 

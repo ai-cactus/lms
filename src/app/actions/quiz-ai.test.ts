@@ -10,6 +10,7 @@
  *   - per-user rate limiting on an AI endpoint (F-018)
  *   - raw internal error detail returned to the client (F-048 / QA-002)
  *   - undelimited untrusted text in a prompt (F-049 prompt injection)
+ *   - no authoring permission check, only ownership (SEC-10)
  *
  * Both actions share their context resolution through `resolveQuizContext`
  * (PR-3a). It is not exported, so its guards are pinned indirectly through
@@ -54,7 +55,9 @@ import { generateSingleQuestion, regenerateQuiz } from './quiz-ai';
 const OWN_ORG = 'org-mine';
 const OTHER_ORG = 'org-theirs';
 
-const session = { user: { id: 'user-1', organizationUserId: 'ou-mine', organizationId: OWN_ORG } };
+const session = {
+  user: { id: 'user-1', organizationUserId: 'ou-mine', organizationId: OWN_ORG, role: 'owner' },
+};
 
 const RAW_VERTEX_ERROR =
   'Vertex AI 404 Not Found: <!DOCTYPE html><html><body>Not Found</body></html>';
@@ -697,5 +700,64 @@ describe('regenerateQuiz — questionCount clamping', () => {
     const options = mockCallVertexAI.mock.calls[0][1] as { maxOutputTokens: number };
     expect(prompt).toContain('generate a complete set of 1');
     expect(options.maxOutputTokens).toBe(quizOutputTokenBudget(1));
+  });
+});
+
+/**
+ * SEC-10: both actions checked only a rate limit and course ownership, so any
+ * admin-portal session — a finance user, or a supervisor (read-only on
+ * courses) — could author quiz content and spend Vertex budget. Against a
+ * course they now require `course.edit` (updateCourse's gate); from the wizard's
+ * pre-course context path they require `course.create`.
+ */
+describe.each([
+  ['generateSingleQuestion', generateSingleQuestion],
+  ['regenerateQuiz', regenerateQuiz],
+] as const)('%s — authoring permission (SEC-10)', (_name, action) => {
+  it.each(['finance', 'supervisor', 'nurse'])(
+    'refuses a %s against a course before the rate limit, the DB or Vertex',
+    async (role) => {
+      mockAuth.mockResolvedValue({ user: { ...session.user, role } });
+      prismaMock.course.findUnique.mockResolvedValue(courseOwnedBy(OWN_ORG));
+
+      const result = await action({ courseId: 'course-1' });
+
+      expect(result).toEqual({ success: false, error: 'Insufficient permissions' });
+      expect(mockCheckRateLimit).not.toHaveBeenCalled();
+      expect(prismaMock.course.findUnique).not.toHaveBeenCalled();
+      expect(mockCallVertexAI).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['finance', 'supervisor'])(
+    'refuses a %s on the wizard context path (no course yet)',
+    async (role) => {
+      mockAuth.mockResolvedValue({ user: { ...session.user, role } });
+
+      const result = await action({ context: 'Escalate within 72 hours.' });
+
+      expect(result).toEqual({ success: false, error: 'Insufficient permissions' });
+      expect(mockCallVertexAI).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['owner', 'admin', 'hr', 'clinical_director'])(
+    'CONTROL: lets a %s through to the course',
+    async (role) => {
+      mockAuth.mockResolvedValue({ user: { ...session.user, role } });
+      prismaMock.course.findUnique.mockResolvedValue(courseOwnedBy(OWN_ORG));
+
+      await action({ courseId: 'course-1' });
+
+      expect(prismaMock.course.findUnique).toHaveBeenCalled();
+    },
+  );
+
+  it('refuses a stale/unknown role key (least privilege)', async () => {
+    mockAuth.mockResolvedValue({ user: { ...session.user, role: 'retired_role' } });
+
+    const result = await action({ context: 'Escalate within 72 hours.' });
+
+    expect(result).toEqual({ success: false, error: 'Insufficient permissions' });
   });
 });

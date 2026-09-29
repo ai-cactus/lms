@@ -62,6 +62,8 @@ function makeEnrollment(overrides: Record<string, unknown> = {}) {
     // enrollment's `organizationUser` relation, not a direct `userId` column.
     organizationUser: { userId: WORKER_ID },
     courseId: COURSE_ID,
+    // A failed attempt leaves the enrolment here — the one state the UI offers a retake from.
+    status: 'in_progress',
     course: {
       lessons: [{ id: 'lesson-1', quiz: { id: LESSON_QUIZ_ID, allowedAttempts: 3 } }],
       quiz: null,
@@ -348,4 +350,47 @@ describe('retakeQuiz — archived course', () => {
     await expect(retakeQuiz(ENROLLMENT_ID)).resolves.toEqual({ success: true });
     expect(prismaMock.enrollment.update).toHaveBeenCalledTimes(1);
   });
+});
+
+/**
+ * BUG-53: the retake reset clears the score, completedAt, attestedAt and the
+ * signature. The UI only offers it after a failed attempt, but the action
+ * accepted any owned enrolment, so a direct call could erase signed-off
+ * training. A locked enrolment reopens only through an admin retake, even if
+ * the quiz's attempt limit was raised after the lock.
+ */
+describe('retakeQuiz — closed enrolments (BUG-53)', () => {
+  it.each(['completed', 'attested'])(
+    'refuses a "%s" enrolment by return and resets nothing',
+    async (status) => {
+      prismaMock.enrollment.findUnique.mockResolvedValue(makeEnrollment({ status }));
+
+      const result = await retakeQuiz(ENROLLMENT_ID);
+
+      expect(result.success).toBe(false);
+      expect(result.refusedReason).toMatch(/already completed/i);
+      expect(prismaMock.enrollment.update).not.toHaveBeenCalled();
+    },
+  );
+
+  it('refuses a locked enrolment even when attempts remain under a raised limit', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue(makeEnrollment({ status: 'locked' }));
+    prismaMock.quizAttempt.count.mockResolvedValue(0);
+
+    const result = await retakeQuiz(ENROLLMENT_ID);
+
+    expect(result.success).toBe(false);
+    expect(result.refusedReason).toMatch(/admin must assign a retake/i);
+    expect(prismaMock.enrollment.update).not.toHaveBeenCalled();
+  });
+
+  it.each(['in_progress', 'lessons_complete'])(
+    'CONTROL: resets a "%s" enrolment after a failed attempt',
+    async (status) => {
+      prismaMock.enrollment.findUnique.mockResolvedValue(makeEnrollment({ status }));
+
+      await expect(retakeQuiz(ENROLLMENT_ID)).resolves.toEqual({ success: true });
+      expect(prismaMock.enrollment.update).toHaveBeenCalledTimes(1);
+    },
+  );
 });
