@@ -60,6 +60,7 @@ const {
   mockInvalidateRevalidationCache,
   mockOrgUserFindMany,
   mockListAccessibleFacilities,
+  mockGetSignedUrl,
   prismaMock,
 } = vi.hoisted(() => {
   const mockOrgUserFindUnique = vi.fn();
@@ -137,6 +138,7 @@ const {
     mockInvalidateRevalidationCache: vi.fn(),
     mockOrgUserFindMany,
     mockListAccessibleFacilities: vi.fn(),
+    mockGetSignedUrl: vi.fn(),
     prismaMock,
   };
 });
@@ -174,6 +176,7 @@ vi.mock('@/lib/auth/session-revalidation-cache', () => ({
 // The facility narrowing itself is exercised for real (target-scope and
 // staff-where are NOT mocked); only the roster lookup behind the caller's
 // accessible set is stubbed, so a supervisor session resolves to a real scope.
+vi.mock('@/lib/storage', () => ({ getSignedUrl: mockGetSignedUrl }));
 vi.mock('@/lib/facility/scope', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/facility/scope')>()),
   listAccessibleFacilities: mockListAccessibleFacilities,
@@ -1198,6 +1201,42 @@ describe('getStaffDetails — org isolation (F-009)', () => {
     const courseSelect =
       mockOrgUserFindUnique.mock.calls[0][0].select.enrollments.select.course.select;
     expect(courseSelect.lessons.orderBy).toEqual({ order: 'asc' });
+  });
+
+  // BUG-48: the stored value is a storage URI the browser cannot fetch and
+  // should never see; the profile header and Change Facility modal draw this.
+  it('hands the profile a signed avatar URL, never the stored storage URI', async () => {
+    const stored = 'gcs://lms-bucket/avatars/user-t/1700000000000-me.png';
+    const signed = 'https://storage.googleapis.com/lms-bucket/avatars/user-t/me.png?sig=1';
+    mockOrgUserFindUnique.mockResolvedValue({
+      ...makeTargetOrgUser('org-a'),
+      userId: 'user-t',
+      user: { ...makeTargetOrgUser('org-a').user, avatarUrl: stored },
+    });
+    mockGetSignedUrl.mockResolvedValue(signed);
+
+    const result = await getStaffDetails('target-1');
+
+    expect(mockGetSignedUrl).toHaveBeenCalledWith(stored);
+    expect(result?.user.avatarUrl).toBe(signed);
+    expect(JSON.stringify(result)).not.toContain('gcs://lms-bucket/avatars');
+  });
+
+  it('reports a null avatar when signing fails, instead of failing the profile', async () => {
+    mockOrgUserFindUnique.mockResolvedValue({
+      ...makeTargetOrgUser('org-a'),
+      userId: 'user-t',
+      user: {
+        ...makeTargetOrgUser('org-a').user,
+        avatarUrl: 'gcs://lms-bucket/avatars/user-t/1-me.png',
+      },
+    });
+    mockGetSignedUrl.mockRejectedValue(new Error('GCS unavailable'));
+
+    const result = await getStaffDetails('target-1');
+
+    expect(result?.user.avatarUrl).toBeNull();
+    expect(result?.user.email).toBe('target@example.com');
   });
 
   it('reports blank name fields as blank rather than substituting a placeholder', async () => {

@@ -6,7 +6,7 @@ import { revalidatePath } from 'next/cache';
 
 import { logger, maskEmail } from '@/lib/logger';
 import { getRealmSession, isPortalRealm, type PortalRealm } from '@/lib/auth/portal-sessions';
-import { parseStorageUri } from '@/lib/storage/types';
+import { isOwnAvatarUri, signAvatarUrl } from '@/lib/storage/avatar';
 import { can } from '@/lib/rbac/permissions';
 import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
 import {
@@ -104,11 +104,15 @@ export async function getStaffUsers() {
     // Build a set of emails that already have accounts to avoid duplication
     const acceptedEmails = new Set(orgUsers.map((ou) => ou.user.email.toLowerCase()));
 
-    const acceptedEntries = orgUsers.map((ou) => ({
+    const signedAvatars = await Promise.all(
+      orgUsers.map((ou) => signAvatarUrl(ou.user.avatarUrl, ou.userId)),
+    );
+
+    const acceptedEntries = orgUsers.map((ou, index) => ({
       id: ou.id,
       name: ou.user.fullName || ou.user.email.split('@')[0],
       email: ou.user.email,
-      avatarUrl: ou.user.avatarUrl || null,
+      avatarUrl: signedAvatars[index],
       role: ou.role,
       dateInvited: ou.joinedAt,
       isPending: false,
@@ -211,21 +215,6 @@ export async function searchStaffUsers(query: string) {
 }
 
 // --- Onboarding / Profile Management ---
-
-/**
- * True only for an object `uploadAvatar` could have produced for this user.
- * The profile pages hand the stored value to `getSignedUrl`, which signs by key
- * alone, so accepting any URI here would let a caller point their avatar at
- * another tenant's document and read it back through a signed URL.
- */
-function isOwnAvatarUri(uri: string, userId: string): boolean {
-  try {
-    const { key } = parseStorageUri(uri);
-    return key.startsWith(`avatars/${userId}/`) && !key.split('/').includes('..');
-  } catch {
-    return false;
-  }
-}
 
 export async function updateProfile(
   realm: PortalRealm,

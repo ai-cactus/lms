@@ -34,6 +34,7 @@ import { invalidateRevalidationCache } from '@/lib/auth/session-revalidation-cac
 import type { ActivityReportEnrollment } from '@/lib/pdf-reports';
 import { captureServer } from '@/lib/analytics/server';
 import { buildCourseThumbnailUrl } from '@/lib/video/thumbnail';
+import { signAvatarUrl } from '@/lib/storage/avatar';
 import { parseStoredOptionExplanations } from '@/lib/quiz/options';
 import {
   DELETED_EMAIL_REFUSAL,
@@ -94,6 +95,7 @@ export async function getStaffDetails(organizationUserId: string) {
       // the joined User rows (password hash, MFA state, reset flags).
       select: {
         id: true,
+        userId: true,
         role: true,
         organizationId: true,
         managerId: true,
@@ -200,7 +202,7 @@ export async function getStaffDetails(organizationUserId: string) {
         id: orgUser.id,
         name: orgUser.user.fullName || orgUser.user.email.split('@')[0],
         email: orgUser.user.email,
-        avatarUrl: orgUser.user.avatarUrl ?? null,
+        avatarUrl: await signAvatarUrl(orgUser.user.avatarUrl, orgUser.userId),
         role: orgUser.role,
         // The two name fields are the EDITABLE record, reported verbatim —
         // never a display fallback. `updateStaffDetails` takes name and role
