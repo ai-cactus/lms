@@ -71,12 +71,17 @@ const transporter = nodemailer.createTransport({
 
 /** Reduce a Nodemailer `to` field to a single loggable/persistable address string. */
 function normalizeRecipient(to: SendMailOptions['to']): string {
-  if (!to) return 'unknown';
-  if (typeof to === 'string') return to;
-  if (Array.isArray(to)) {
-    return to.map((entry) => (typeof entry === 'string' ? entry : entry.address)).join(', ');
-  }
-  return to.address;
+  return collectRecipientAddresses(to).join(', ') || 'unknown';
+}
+
+// Nodemailer 10's address input is recursive: nested arrays, plus RFC 5322 groups
+// whose members sit under `group` rather than `address`.
+function collectRecipientAddresses(to: SendMailOptions['to']): string[] {
+  if (!to) return [];
+  if (typeof to === 'string') return [to];
+  if (Array.isArray(to)) return to.flatMap(collectRecipientAddresses);
+  if (to.group) return to.group.flatMap(collectRecipientAddresses);
+  return to.address ? [to.address] : [];
 }
 
 /** Trim an unknown error down to a persistable message string. */
