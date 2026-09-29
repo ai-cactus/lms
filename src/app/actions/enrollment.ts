@@ -55,6 +55,10 @@ const REVIEW_GATE_ASSIGN_MESSAGE =
 /** D-F refusal text, matching the staff-profile modal's own wording. */
 const PAST_DEADLINE_ASSIGN_MESSAGE = 'The deadline must be in the future.';
 
+/** Refusal text for a deadline that is not a date, matching `assignCourseToRoles`. */
+const UNREADABLE_DEADLINE_ASSIGN_MESSAGE =
+  "That completion deadline couldn't be read. Please pick the date again.";
+
 /**
  * Refusal text for a course that is still a draft when the first enrollment
  * would be written. Returned, not thrown, for the same redaction reason as
@@ -448,6 +452,26 @@ export async function enrollUsers(
   const submittedDueAt = optionalSettingsDate(assignmentSettings?.dueAt);
   const scheduleAt = submittedScheduleAt ?? null;
   const deadlineScope = options?.deadlineScope ?? 'assignment';
+
+  // BUG-12.2: an unparseable deadline must be refused, not written to the shared
+  // row as an Invalid Date. Refused by return — a thrown message is redacted in
+  // production builds. Fail-closed: nothing has been written yet.
+  if (submittedDueAt && Number.isNaN(submittedDueAt.getTime())) {
+    logger.warn({
+      msg: '[enrollment] Course assignment blocked — deadline is not a valid date',
+      courseId,
+      organizationId,
+      userId: session.user.id,
+    });
+    return {
+      success: [],
+      alreadyEnrolled: [],
+      newInvited: [],
+      failed: [],
+      refusedReason: UNREADABLE_DEADLINE_ASSIGN_MESSAGE,
+      ...(options?.deferWorkerNotification ? { deferred: [] } : {}),
+    };
+  }
 
   // D-F: refuse a past deadline only when it would CHANGE the stored one, and
   // refuse by return — a thrown message is redacted in production builds.
@@ -1169,7 +1193,7 @@ export async function assignCourseToRoles(
       enrolled: 0,
       alreadyEnrolled: 0,
       failed: 0,
-      refusedReason: "That completion deadline couldn't be read. Please pick the date again.",
+      refusedReason: UNREADABLE_DEADLINE_ASSIGN_MESSAGE,
       targetRoles: [...new Set(roles)],
     };
   }
