@@ -45,6 +45,11 @@ prove "offline" with `unshare -rn` — Turbopack's PostCSS worker then dies
 empty log is the proof. The harness refuses `NODE_OPTIONS=$VAR` inline — put it
 in a script file.
 
+Font payload: Inter/JetBrains Mono/Geist are Google's latin + latin-ext subsets,
+two `next/font/local` faces each (see `src/app/fonts/README.md`). Check preloads
+in `.next/server/app/<page>.html` (`rel="preload"`); the `.p.` in a media file
+name marks a preloaded face.
+
 Also: `npx prettier` cannot parse `.prisma` (no plugin resolved from the CLI) —
 `npx prisma format --schema prisma` is the formatter, and lint-staged already
 runs it on staged schemas.

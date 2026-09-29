@@ -29,7 +29,9 @@ one picked.
 **How to apply:** any new surface that shows an enrollment deadline must carry
 the learner's zone next to it and use `formatDateInTz` (`src/lib/reminders/time.ts`,
 client-safe). Emails take a required `timeZone` arg; `LearnerCourseRow` has
-`deadlineTimeZone`; Status Tracker rows carry `timeZone`. Known leftover: the
+`deadlineTimeZone`; Status Tracker rows carry `timeZone`; the retake dialog takes
+`learnerTimeZone` (roster select / `getStaffDetails`) and pre-fills
+`defaultRetakeDueDate(now, tz)`, the same date the server defaults to. Known leftover: the
 D-F "past deadline" refusal (`isPastDeadlineChange`, staff-modal `<= Date.now()`)
 still judges the UTC wall clock, so "today" can be refused early for a
 Hawaii/Alaska learner late in their day — reported, not changed.
