@@ -51,7 +51,8 @@ import RoleTargetPicker, {
 } from '@/components/dashboard/enrollment/RoleTargetPicker';
 import { courseStatusBadge } from '@/lib/course/course-status-label';
 import { courseSourceDocument } from '@/lib/course/source-document';
-import { CourseWithRelations } from '@/types/course';
+import { DEFAULT_PASSING_SCORE } from '@/lib/dashboard/metrics';
+import type { CourseCertificateRow, CourseWithRelations } from '@/types/course';
 import type { CourseAssignmentSettings } from '@/app/actions/enrollment';
 import type { UserRole } from '@/generated/prisma/enums';
 
@@ -82,6 +83,17 @@ interface TrainingDetailsProps {
   canCreateRoleTargets?: boolean;
   /** The viewer holds `assignment.delete`, so roles may be revoked (D6). */
   canRevokeRoleTargets?: boolean;
+  /**
+   * The course's passing bar, resolved on the server by the dashboards' rule
+   * (`coursePassingScore`) so the roster's Passed/Failed agrees with them.
+   */
+  passingScore?: number;
+  /**
+   * The Certificates tab's rows (`getCourseCertificates`). Separate from the
+   * roster, which lists current staff only: a departed member's certificate
+   * stays listed (Q-29).
+   */
+  certificates?: CourseCertificateRow[];
 }
 
 const headCls =
@@ -89,6 +101,33 @@ const headCls =
 const cellCls = 'h-[71px] px-5 text-[17.5px] font-medium tracking-[0.35px] text-[#0d0d12]';
 const tagCls =
   'inline-flex items-center gap-2 rounded-full px-3 py-1 text-[14px] font-medium whitespace-nowrap lg:text-[16.5px]';
+
+/**
+ * The roster's Facility cell (BUG-37). The member's CURRENT facility leads,
+ * matching how the dashboards attribute their training; the facility stamped at
+ * assignment follows as a note only when the member has since moved, so a
+ * transfer neither hides where they work now nor erases where they were enrolled.
+ */
+function RosterFacility({
+  enrollment,
+}: {
+  enrollment: CourseWithRelations['enrollments'][number];
+}) {
+  const current = enrollment.organizationUser.facilities[0]?.facility ?? null;
+  const assigned = enrollment.facility;
+  const showAssigned = assigned !== null && assigned.id !== current?.id;
+
+  return (
+    <div className="flex min-w-0 flex-col gap-[4.5px]">
+      <span className="truncate">{current?.name ?? '-'}</span>
+      {showAssigned && (
+        <span className="truncate text-[13.5px] tracking-[0.27px] text-[#666d80]">
+          Assigned at {assigned.name}
+        </span>
+      )}
+    </div>
+  );
+}
 
 export default function TrainingDetails({
   course,
@@ -98,6 +137,8 @@ export default function TrainingDetails({
   roleHolderCounts = {},
   canCreateRoleTargets = false,
   canRevokeRoleTargets = false,
+  passingScore = DEFAULT_PASSING_SCORE,
+  certificates = [],
 }: TrainingDetailsProps) {
   const router = useRouter();
   const [withdrawTarget, setWithdrawTarget] = useState<{ id: string; name: string } | null>(null);
@@ -460,20 +501,15 @@ export default function TrainingDetails({
                         </div>
                       </div>
                     </TableCell>
-                    {/*
-                      The facility recorded ON the enrollment, not the member's
-                      current assignments — a transfer must not rewrite who was
-                      enrolled where. Null for a member with no active facility.
-                    */}
-                    <TableCell className={cn(cellCls, 'hidden truncate xl:table-cell')}>
-                      {enrollment.facility?.name ?? '-'}
+                    <TableCell className={cn(cellCls, 'hidden xl:table-cell')}>
+                      <RosterFacility enrollment={enrollment} />
                     </TableCell>
                     <TableCell className={cn(cellCls, 'hidden sm:table-cell')}>
                       {enrollment.score !== null ? `${enrollment.score}%` : '-'}
                     </TableCell>
                     <TableCell className={cn(cellCls, 'hidden px-2 md:table-cell')}>
                       {(enrollment.status === 'completed' || enrollment.status === 'attested') &&
-                      (enrollment.score ?? 0) >= 70 ? (
+                      (enrollment.score ?? 0) >= passingScore ? (
                         <span className={cn(tagCls, 'bg-[#e4fdf2] text-[#59904b]')}>
                           <CheckCircle2 className="size-[22px] shrink-0" aria-hidden="true" />
                           Passed
@@ -553,7 +589,7 @@ export default function TrainingDetails({
           </>
         ) : (
           <div className="space-y-4">
-            {enrollments.filter((e) => e.certificate).length === 0 ? (
+            {certificates.length === 0 ? (
               <EmptyTableState message="No certificates have been issued for this course yet." />
             ) : (
               <Table className="table-fixed">
@@ -571,44 +607,52 @@ export default function TrainingDetails({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {enrollments
-                    .filter((e) => e.certificate)
-                    .map((enrollment) => (
-                      <TableRow key={enrollment.id}>
+                  {certificates.map((certificate) => {
+                    const { user, role, active } = certificate.organizationUser;
+                    return (
+                      <TableRow key={certificate.id}>
                         <TableCell className={cn(cellCls, 'px-2 md:px-[18px]')}>
                           <div className="flex items-center gap-3 sm:gap-[18px]">
                             <div className="flex size-[38px] shrink-0 items-center justify-center rounded-full bg-[#1a202c] text-sm font-semibold text-white">
-                              {(
-                                enrollment.organizationUser?.user?.fullName?.[0] ||
-                                enrollment.organizationUser?.user?.email?.[0] ||
-                                '?'
-                              ).toUpperCase()}
+                              {(user.fullName?.[0] || user.email[0] || '?').toUpperCase()}
                             </div>
                             <div className="flex min-w-0 flex-col gap-[4.5px]">
-                              <span className="truncate text-[15.5px] font-semibold tracking-[0.31px] text-[#0d0d12]">
-                                {enrollment.organizationUser?.user?.fullName ||
-                                  enrollment.organizationUser?.user?.email}
-                              </span>
+                              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                                <span className="truncate text-[15.5px] font-semibold tracking-[0.31px] text-[#0d0d12]">
+                                  {user.fullName || user.email}
+                                </span>
+                                {/* Q-29: a departed member's certificate stays on
+                                    record, marked so it is not read as current staff. */}
+                                {!active && (
+                                  <Badge
+                                    variant="outline"
+                                    className="shrink-0 border-border text-[12px] font-medium text-text-secondary"
+                                  >
+                                    Former staff
+                                  </Badge>
+                                )}
+                              </div>
                               <span className="truncate text-[13.5px] tracking-[0.27px] text-[#666d80]">
-                                {enrollment.organizationUser?.role || 'Staff'}
+                                {role || 'Staff'}
                               </span>
                             </div>
                           </div>
                         </TableCell>
                         <TableCell className={cn(cellCls, 'hidden sm:table-cell')}>
-                          {new Date(enrollment.certificate!.issuedAt).toLocaleDateString()}
+                          {new Date(certificate.issuedAt).toLocaleDateString()}
                         </TableCell>
                         <TableCell className={cn(cellCls, 'px-1 md:px-[18px]')}>
                           <Button
                             variant="outline"
                             className="h-10 rounded-[10px] border-[#dfe1e6] text-sm font-semibold"
-                            onClick={() => setSelectedCertId(enrollment.certificate!.id)}
+                            onClick={() => setSelectedCertId(certificate.id)}
                           >
                             View Certificate
                           </Button>
                         </TableCell>
                       </TableRow>
-                    ))}
+                    );
+                  })}
                 </TableBody>
               </Table>
             )}

@@ -392,6 +392,39 @@ async function addFinanceMember(seeded: SeededSingleFacility): Promise<SeededMem
   }
 }
 
+const SUPERVISOR_PASSWORD = 'FacDash!Super9';
+
+/** A supervisor bound to exactly one facility — facility-scoped, unlike the owner. */
+async function addSupervisorAt(
+  seeded: SeededSingleFacility,
+  facilityId: string,
+): Promise<SeededMember> {
+  const client = await db();
+  try {
+    const email = uid('supervisor');
+    const userId = crypto.randomUUID();
+    const orgUserId = crypto.randomUUID();
+    await client.query(
+      `INSERT INTO users (id, email, password, email_verified, auth_provider, first_name, last_name, full_name, created_at, updated_at)
+       VALUES ($1, $2, $3, true, 'credentials', 'Facility', 'Supervisor', 'Facility Supervisor', NOW(), NOW())`,
+      [userId, email, await bcrypt.hash(SUPERVISOR_PASSWORD, 10)],
+    );
+    await client.query(
+      `INSERT INTO organization_users (id, user_id, organization_id, role, active, joined_at, role_assigned_at, created_at, updated_at)
+       VALUES ($1, $2, $3, 'supervisor'::"UserRole", true, NOW(), NOW(), NOW(), NOW())`,
+      [orgUserId, userId, seeded.orgId],
+    );
+    await client.query(
+      `INSERT INTO organization_user_facilities (id, organization_user_id, facility_id, active, joined_at)
+       VALUES ($1, $2, $3, true, NOW())`,
+      [crypto.randomUUID(), orgUserId, facilityId],
+    );
+    return { userId, orgUserId, email };
+  } finally {
+    await client.end();
+  }
+}
+
 async function removeMember(member: SeededMember): Promise<void> {
   const client = await db();
   try {
@@ -651,6 +684,64 @@ test.describe('Facility dashboard: founder tiles over the organisation, by curre
       await ownerContext.close();
       await financeContext.close();
       await removeMember(finance);
+      await cleanupSingleFacility(seeded, transfer);
+    }
+  });
+});
+
+// BUG-37: the Courses page attributes training exactly as the dashboards above
+// do — by where the member works NOW, never by the facility stamped on the
+// enrolment when it was assigned.
+test.describe('Courses page: a transferred member counts at their current facility', () => {
+  /** The Courses list's "Assigned Staff" cell for a course row. */
+  async function assignedStaff(page: Page, courseTitle: string) {
+    await page.goto('/dashboard/courses');
+    await page.getByRole('tab', { name: /Reading Courses/ }).click();
+    const row = page.getByRole('row', { name: new RegExp(courseTitle) });
+    await expect(row).toBeVisible();
+    return row.getByRole('cell').nth(1);
+  }
+
+  test('each facility’s supervisor sees the card count and roster Facility by current roster, with the assignment facility as a note', async ({
+    browser,
+  }) => {
+    const seeded = await seedOrgWithOneFacilityAndKnownData();
+    const transfer = await addSecondFacilityWithTransferredMember(seeded);
+    const supervisorA = await addSupervisorAt(seeded, seeded.facilityAId);
+    const supervisorB = await addSupervisorAt(seeded, transfer.facilityBId);
+    // Wide enough for the xl-only Facility column inside the 280px sidebar.
+    const viewport = { width: 1440, height: 900 };
+    const contextA = await browser.newContext({ viewport });
+    const contextB = await browser.newContext({ viewport });
+    try {
+      const pageA = await contextA.newPage();
+      const pageB = await contextB.newPage();
+      await login(pageA, supervisorA.email, SUPERVISOR_PASSWORD);
+      await login(pageB, supervisorB.email, SUPERVISOR_PASSWORD);
+
+      // By the enrolment stamp these would read A: 2 and B: 0.
+      await expect(await assignedStaff(pageA, seeded.courseTitle)).toHaveText('1');
+      await expect(await assignedStaff(pageB, seeded.courseTitle)).toHaveText('1');
+
+      await pageB.goto(`/dashboard/training/courses/${seeded.courseId}`);
+      const movedRow = pageB.getByRole('row', { name: /Moved Worker/ });
+      await expect(movedRow).toBeVisible();
+      await expect(movedRow.getByText(transfer.facilityBName, { exact: true })).toBeVisible();
+      await expect(movedRow.getByText(`Assigned at ${seeded.facilityAName}`)).toBeVisible();
+      await expect(pageB.getByRole('row', { name: /Worker Learner/ })).toHaveCount(0);
+
+      // A's supervisor keeps only the member who never moved, with no note.
+      await pageA.goto(`/dashboard/training/courses/${seeded.courseId}`);
+      const stayedRow = pageA.getByRole('row', { name: /Worker Learner/ });
+      await expect(stayedRow).toBeVisible();
+      await expect(stayedRow.getByText(seeded.facilityAName, { exact: true })).toBeVisible();
+      await expect(stayedRow.getByText(/Assigned at/)).toHaveCount(0);
+      await expect(pageA.getByRole('row', { name: /Moved Worker/ })).toHaveCount(0);
+    } finally {
+      await contextA.close();
+      await contextB.close();
+      await removeMember(supervisorA);
+      await removeMember(supervisorB);
       await cleanupSingleFacility(seeded, transfer);
     }
   });

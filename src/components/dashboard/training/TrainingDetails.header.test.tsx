@@ -8,10 +8,10 @@
  *     policy document, Preview as the primary action and Assign beside it);
  *   - what must NOT be here any more, "View Course" above all — two entry
  *     points into the player on one screen was the symptom users saw;
- *   - the Facility column, which the design has always shown and the roster
- *     never rendered.
+ *   - the Facility column: the member's CURRENT facility, with the facility the
+ *     training was assigned at as a note once they have moved (BUG-37).
  */
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
@@ -62,8 +62,9 @@ function enrollment(overrides: Record<string, unknown> = {}) {
       userId: 'u-1',
       role: 'clinician',
       user: { email: 'frank@example.com', fullName: 'Frank Doe' },
+      facilities: [{ facility: { id: 'fac-north', name: 'Northside Clinic' } }],
     },
-    facility: { name: 'Northside Clinic' },
+    facility: { id: 'fac-north', name: 'Northside Clinic' },
     certificate: null,
     ...overrides,
   };
@@ -141,22 +142,181 @@ describe('TrainingDetails — linked policy document', () => {
   });
 });
 
-describe('TrainingDetails — enrolled staff Facility column', () => {
-  it('renders a Facility header and the facility recorded on the enrollment', () => {
+describe('TrainingDetails — enrolled staff Facility column (BUG-37)', () => {
+  const memberAt = (facilities: { id: string; name: string }[]) => ({
+    userId: 'u-1',
+    role: 'clinician',
+    user: { email: 'frank@example.com', fullName: 'Frank Doe' },
+    facilities: facilities.map((facility) => ({ facility })),
+  });
+  const north = { id: 'fac-north', name: 'Northside Clinic' };
+  const south = { id: 'fac-south', name: 'Southside Clinic' };
+
+  it('renders the current facility with no note when it matches where the training was assigned', () => {
     render(<TrainingDetails course={baseCourse({ enrollments: [enrollment()] })} />);
 
     expect(screen.getByRole('columnheader', { name: 'Facility' })).toBeInTheDocument();
     const row = screen.getByRole('row', { name: /Frank Doe/ });
     expect(within(row).getByText('Northside Clinic')).toBeInTheDocument();
+    expect(within(row).queryByText(/Assigned at/)).not.toBeInTheDocument();
   });
 
-  it('falls back to a dash when the enrollment carries no facility', () => {
+  it('leads with the CURRENT facility and notes where a transferred member was assigned', () => {
     render(
-      <TrainingDetails course={baseCourse({ enrollments: [enrollment({ facility: null })] })} />,
+      <TrainingDetails
+        course={baseCourse({
+          enrollments: [enrollment({ organizationUser: memberAt([south]), facility: north })],
+        })}
+      />,
+    );
+
+    const row = screen.getByRole('row', { name: /Frank Doe/ });
+    expect(within(row).getByText('Southside Clinic')).toBeInTheDocument();
+    expect(within(row).getByText('Assigned at Northside Clinic')).toBeInTheDocument();
+  });
+
+  it('shows only the first current facility when the member holds several', () => {
+    render(
+      <TrainingDetails
+        course={baseCourse({
+          enrollments: [
+            enrollment({ organizationUser: memberAt([south, north]), facility: south }),
+          ],
+        })}
+      />,
+    );
+
+    const row = screen.getByRole('row', { name: /Frank Doe/ });
+    expect(within(row).getByText('Southside Clinic')).toBeInTheDocument();
+    expect(within(row).queryByText('Northside Clinic')).not.toBeInTheDocument();
+    expect(within(row).queryByText(/Assigned at/)).not.toBeInTheDocument();
+  });
+
+  it('falls back to a dash with no current facility, still noting where it was assigned', () => {
+    render(
+      <TrainingDetails
+        course={baseCourse({
+          enrollments: [enrollment({ organizationUser: memberAt([]), facility: north })],
+        })}
+      />,
     );
 
     const row = screen.getByRole('row', { name: /Frank Doe/ });
     expect(within(row).getAllByText('-').length).toBeGreaterThan(0);
+    expect(within(row).getByText('Assigned at Northside Clinic')).toBeInTheDocument();
+  });
+
+  it('adds no note when the enrollment carries no stamped facility', () => {
+    render(
+      <TrainingDetails
+        course={baseCourse({
+          enrollments: [enrollment({ organizationUser: memberAt([south]), facility: null })],
+        })}
+      />,
+    );
+
+    const row = screen.getByRole('row', { name: /Frank Doe/ });
+    expect(within(row).getByText('Southside Clinic')).toBeInTheDocument();
+    expect(within(row).queryByText(/Assigned at/)).not.toBeInTheDocument();
+  });
+
+  it('renders a dash and no note when neither facility is known', () => {
+    render(
+      <TrainingDetails
+        course={baseCourse({
+          enrollments: [enrollment({ organizationUser: memberAt([]), facility: null })],
+        })}
+      />,
+    );
+
+    const row = screen.getByRole('row', { name: /Frank Doe/ });
+    expect(within(row).getAllByText('-').length).toBeGreaterThan(0);
+    expect(within(row).queryByText(/Assigned at/)).not.toBeInTheDocument();
+  });
+});
+
+describe('TrainingDetails — roster Passed/Failed uses the course’s passing bar', () => {
+  const finishedWith = (score: number) =>
+    baseCourse({ enrollments: [enrollment({ status: 'completed', score })] });
+
+  it('an 80% bar fails a 75 that the old fixed 70 would have passed', () => {
+    render(<TrainingDetails course={finishedWith(75)} passingScore={80} />);
+
+    const row = screen.getByRole('row', { name: /Frank Doe/ });
+    expect(within(row).getByText('Failed')).toBeInTheDocument();
+    expect(within(row).queryByText('Passed')).not.toBeInTheDocument();
+  });
+
+  it('passes a score exactly on the bar', () => {
+    render(<TrainingDetails course={finishedWith(80)} passingScore={80} />);
+
+    const row = screen.getByRole('row', { name: /Frank Doe/ });
+    expect(within(row).getByText('Passed')).toBeInTheDocument();
+  });
+
+  it('a 60% bar passes a 65', () => {
+    render(<TrainingDetails course={finishedWith(65)} passingScore={60} />);
+
+    const row = screen.getByRole('row', { name: /Frank Doe/ });
+    expect(within(row).getByText('Passed')).toBeInTheDocument();
+  });
+
+  it('defaults to 70 when no bar is passed', () => {
+    render(<TrainingDetails course={finishedWith(69)} />);
+
+    const row = screen.getByRole('row', { name: /Frank Doe/ });
+    expect(within(row).getByText('Failed')).toBeInTheDocument();
+  });
+});
+
+describe('TrainingDetails — Certificates tab (Q-29)', () => {
+  const certificateOf = (fullName: string, active: boolean) => ({
+    id: `cert-${fullName}`,
+    issuedAt: new Date('2026-09-01T00:00:00.000Z'),
+    organizationUser: {
+      role: 'nurse',
+      active,
+      user: { email: `${fullName}@example.com`, fullName },
+    },
+  });
+
+  function openCertificatesTab() {
+    fireEvent.click(screen.getByRole('button', { name: 'Certificates Issued' }));
+  }
+
+  it('lists a departed member’s certificate with a "Former staff" badge, and an active member’s without', () => {
+    render(
+      <TrainingDetails
+        course={baseCourse()}
+        certificates={[certificateOf('Dana Departed', false), certificateOf('Ari Active', true)]}
+      />,
+    );
+    openCertificatesTab();
+
+    const departed = screen.getByRole('row', { name: /Dana Departed/ });
+    expect(within(departed).getByText('Former staff')).toBeInTheDocument();
+    const active = screen.getByRole('row', { name: /Ari Active/ });
+    expect(within(active).queryByText('Former staff')).not.toBeInTheDocument();
+  });
+
+  it('reads its rows from the certificates prop, not the roster — the roster omits departed staff', () => {
+    render(
+      <TrainingDetails
+        course={baseCourse({ enrollments: [] })}
+        certificates={[certificateOf('Dana Departed', false)]}
+      />,
+    );
+    openCertificatesTab();
+
+    expect(screen.getByRole('row', { name: /Dana Departed/ })).toBeInTheDocument();
+    expect(screen.queryByText(/No certificates have been issued/)).not.toBeInTheDocument();
+  });
+
+  it('shows the empty state with no certificates', () => {
+    render(<TrainingDetails course={baseCourse({ enrollments: [enrollment()] })} />);
+    openCertificatesTab();
+
+    expect(screen.getByText(/No certificates have been issued/)).toBeInTheDocument();
   });
 });
 

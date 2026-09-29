@@ -37,7 +37,11 @@ import { defaultRetakeDueAt, parseRetakeDueDate } from '@/lib/course/retake-dead
 import { notifyLearnersCourseCancelled } from '@/lib/course/notify-archived';
 import { resolveDashboardScope } from '@/lib/dashboard/scope';
 import { coveragePercentages, passingScoreFor } from '@/lib/dashboard/metrics';
-import { computeFacilityView, sliceSnapshot } from '@/lib/dashboard/definitions';
+import {
+  computeFacilityView,
+  sliceSnapshot,
+  supersededEnrollmentIds,
+} from '@/lib/dashboard/definitions';
 import { loadDashboardSnapshot } from '@/lib/dashboard/snapshot';
 import { computeCompletionPercent } from '@/lib/facility/metrics';
 import { buildCourseThumbnailUrl, firstLessonThumbnailSelect } from '@/lib/video/thumbnail';
@@ -192,9 +196,40 @@ export async function getCourses(): Promise<CourseWithStats[]> {
   // organisation-wide "42 enrolled / 61% complete" over a roster they cannot
   // open — the detail page's roster is narrowed the same way, and a headline
   // figure that disagrees with the list beneath it is still leaked information.
+  //
+  // BUG-37: attributed by CURRENT roster (`staffFacilityWhere`), never by the
+  // `Enrollment.facilityId` assignment stamp — the dashboards' rule (BUG-36), so
+  // a transferred worker counts at the facility they work at now. Both halves
+  // live in ONE `organizationUser` object: spreading two predicates that each
+  // set that key would silently keep only the last.
+  //
+  // `active: true`, as in the dashboards' `enrollmentWhere`: the cards report on
+  // the CURRENT workforce. A removed member's enrolments are retained for
+  // compliance (founder Q23) and belong to the auditor pack, not these figures.
   const dataFacilityIds = await resolveDataFacilityIds(session);
-  const facilityFilter: Prisma.EnrollmentWhereInput =
-    dataFacilityIds === null ? {} : { facilityId: { in: dataFacilityIds } };
+  const learnerWhere: Prisma.OrganizationUserWhereInput = {
+    ...(organizationId ? { organizationId } : {}),
+    active: true,
+    ...staffFacilityWhere(dataFacilityIds),
+  };
+  const cardEnrollmentWhere: Prisma.EnrollmentWhereInput = {
+    courseId: { in: courses.map((course) => course.id) },
+    organizationUser: learnerWhere,
+  };
+
+  // Retake-superseded enrolments leave the tallies, as they leave every
+  // dashboard figure (BUG-38): once a retake is assigned it carries the
+  // obligation, and counting the locked original too would enrol the learner
+  // twice. A retake shares its original's member and course, so the same
+  // predicate finds it — one lookup for every card.
+  const retakes =
+    courses.length === 0
+      ? []
+      : await prisma.enrollment.findMany({
+          where: { ...cardEnrollmentWhere, retakeOf: { not: null } },
+          select: { retakeOf: true },
+        });
+  const superseded = supersededEnrollmentIds(retakes);
 
   const counts =
     courses.length === 0
@@ -202,9 +237,8 @@ export async function getCourses(): Promise<CourseWithStats[]> {
       : await prisma.enrollment.groupBy({
           by: ['courseId', 'status'],
           where: {
-            courseId: { in: courses.map((course) => course.id) },
-            ...(organizationId ? { organizationUser: { organizationId } } : {}),
-            ...facilityFilter,
+            ...cardEnrollmentWhere,
+            ...(superseded.size > 0 ? { id: { notIn: [...superseded] } } : {}),
           },
           _count: { _all: true },
         });
@@ -293,12 +327,27 @@ async function narrowRosterToFacilityScope(
     select: { id: true },
   });
   const allowed = new Set(inScope.map((member) => member.id));
+  const scoped = new Set(dataFacilityIds);
 
+  // A kept member's OTHER current facilities stay hidden, as on the Status
+  // Tracker: a supervisor of facility A is not told the worker also works at C.
   return {
     ...course,
-    enrollments: course.enrollments.filter(
-      (enrollment) => allowed.has(enrollment.organizationUserId) || isSelf(enrollment),
-    ),
+    enrollments: course.enrollments
+      .filter((enrollment) => allowed.has(enrollment.organizationUserId) || isSelf(enrollment))
+      .map((enrollment) =>
+        isSelf(enrollment)
+          ? enrollment
+          : {
+              ...enrollment,
+              organizationUser: {
+                ...enrollment.organizationUser,
+                facilities: enrollment.organizationUser.facilities.filter((row) =>
+                  scoped.has(row.facility.id),
+                ),
+              },
+            },
+      ),
   };
 }
 
@@ -319,9 +368,19 @@ export async function getCourseById(courseId: string): Promise<CourseWithRelatio
   // theirs is never a disclosure. Without an active organisation there is no
   // tenant to scope to, so the roster collapses to exactly that — fail closed,
   // never `organizationId: undefined`, which Prisma would read as "no filter".
+  //
+  // `active: true` on the colleague branch: a removed member's enrolments are
+  // retained for compliance (founder Q23), but this roster is the course's
+  // operational view — its figures, withdraw and retake actions all address the
+  // current workforce, as the dashboards and the course cards do. The compliance
+  // copy of a departed member's training is the auditor pack.
   const organizationId = session.user.organizationId;
   const rosterWhere: Prisma.EnrollmentWhereInput = organizationId
-    ? { organizationUser: { OR: [{ organizationId }, { userId: session.user.id }] } }
+    ? {
+        organizationUser: {
+          OR: [{ organizationId, active: true }, { userId: session.user.id }],
+        },
+      }
     : { organizationUser: { userId: session.user.id } };
 
   // ⛔ `rawPrisma`, deliberately — paired with the archive rule below, which is
@@ -453,10 +512,11 @@ export async function getCourseForOrgView(courseId: string): Promise<CourseWithR
     where: { id: courseId, type: 'video', isGlobal: true, status: 'published' },
     select: {
       ...courseDetailSelect,
-      // Scope enrolled staff to the caller's org — never leak other orgs' users.
+      // Scope enrolled staff to the caller's org — never leak other orgs' users —
+      // and to its current workforce, as getCourseById's roster is.
       enrollments: {
         ...courseDetailSelect.enrollments,
-        where: { organizationUser: { organizationId } },
+        where: { organizationUser: { organizationId, active: true } },
       },
     },
   });
