@@ -10,7 +10,6 @@ import {
   RotateCcw,
   ShieldAlert,
   UserPlus,
-  XCircle,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -66,8 +65,6 @@ export function getNotificationVisual(type?: string | null): NotificationVisual 
       return { Icon: BookOpen, iconClass: 'text-blue-600', ringClass: 'bg-blue-50' };
     case 'COURSE_PASSED':
       return { Icon: CheckCircle2, iconClass: 'text-emerald-600', ringClass: 'bg-emerald-50' };
-    case 'COURSE_FAILED':
-      return { Icon: XCircle, iconClass: 'text-red-600', ringClass: 'bg-red-50' };
     case 'COURSE_RETRY_REQUESTED':
       return { Icon: RefreshCw, iconClass: 'text-amber-600', ringClass: 'bg-amber-50' };
     case 'QUIZ_RETRY_LIMIT_REACHED':
