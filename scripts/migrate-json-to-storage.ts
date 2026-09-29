@@ -20,6 +20,7 @@
 import { prisma } from '@/db/index';
 import { uploadFile } from '../src/lib/storage';
 import { Prisma } from '@/generated/prisma/client';
+import { logger } from '@/lib/logger';
 
 const JSON_FIELDS: { column: string; artifactType: string }[] = [
   { column: 'rawCourseJson', artifactType: 'course_json' },
@@ -93,9 +94,9 @@ async function migrateCourseJsonToStorage(
         }
 
         if (dryRun) {
-          console.log(
-            `[DRY RUN] Would migrate ${field.artifactType} for course ${course.id} (${JSON.stringify(value).length} bytes)`,
-          );
+          logger.info({
+            msg: `[migrate-json-to-storage] [DRY RUN] Would migrate ${field.artifactType} for course ${course.id} (${JSON.stringify(value).length} bytes)`,
+          });
           stats.artifactsCreated++;
           continue;
         }
@@ -119,10 +120,12 @@ async function migrateCourseJsonToStorage(
           });
 
           stats.artifactsCreated++;
-          console.log(`✓ Migrated ${field.artifactType} for course ${course.id} → ${storageUri}`);
+          logger.info({
+            msg: `[migrate-json-to-storage] ✓ Migrated ${field.artifactType} for course ${course.id} → ${storageUri}`,
+          });
         } catch (error) {
           const msg = `Failed to migrate ${field.artifactType} for course ${course.id}: ${error instanceof Error ? error.message : String(error)}`;
-          console.error(msg);
+          logger.error({ msg: `[migrate-json-to-storage] ${msg}`, err: error });
           stats.errors.push(msg);
         }
       }
@@ -140,19 +143,21 @@ async function migrateCourseJsonToStorage(
               rawSlidesJson: Prisma.DbNull,
             },
           });
-          console.log(`✓ Cleaned up legacy JSON for course ${course.id}`);
+          logger.info({
+            msg: `[migrate-json-to-storage] ✓ Cleaned up legacy JSON for course ${course.id}`,
+          });
         } catch (error) {
           const msg = `Failed to cleanup course ${course.id}: ${error instanceof Error ? error.message : String(error)}`;
-          console.error(msg);
+          logger.error({ msg: `[migrate-json-to-storage] ${msg}`, err: error });
           stats.errors.push(msg);
         }
       }
     }
 
     offset += courses.length;
-    console.log(
-      `Processed ${offset} courses... (${stats.artifactsCreated} artifacts created, ${stats.errors.length} errors)`,
-    );
+    logger.info({
+      msg: `[migrate-json-to-storage] Processed ${offset} courses... (${stats.artifactsCreated} artifacts created, ${stats.errors.length} errors)`,
+    });
   }
 
   return stats;
@@ -165,26 +170,23 @@ async function main() {
   const batchSizeArg = args.find((a) => a.startsWith('--batch-size='));
   const batchSize = batchSizeArg ? parseInt(batchSizeArg.split('=')[1], 10) : 50;
 
-  console.log('=== Course JSON → Object Storage Migration ===');
-  console.log(`Mode: ${dryRun ? 'DRY RUN' : 'LIVE'}`);
-  console.log(`Cleanup legacy columns: ${cleanup}`);
-  console.log(`Batch size: ${batchSize}`);
-  console.log('');
+  logger.info({ msg: '[migrate-json-to-storage] === Course JSON → Object Storage Migration ===' });
+  logger.info({ msg: `[migrate-json-to-storage] Mode: ${dryRun ? 'DRY RUN' : 'LIVE'}` });
+  logger.info({ msg: `[migrate-json-to-storage] Cleanup legacy columns: ${cleanup}` });
+  logger.info({ msg: `[migrate-json-to-storage] Batch size: ${batchSize}` });
 
   try {
     const stats = await migrateCourseJsonToStorage(dryRun, batchSize, cleanup);
 
-    console.log('');
-    console.log('=== Migration Summary ===');
-    console.log(`Courses processed: ${stats.coursesProcessed}`);
-    console.log(`Artifacts created: ${stats.artifactsCreated}`);
-    console.log(`Skipped (already exist): ${stats.skipped}`);
-    console.log(`Errors: ${stats.errors.length}`);
+    logger.info({ msg: '[migrate-json-to-storage] === Migration Summary ===' });
+    logger.info({ msg: `[migrate-json-to-storage] Courses processed: ${stats.coursesProcessed}` });
+    logger.info({ msg: `[migrate-json-to-storage] Artifacts created: ${stats.artifactsCreated}` });
+    logger.info({ msg: `[migrate-json-to-storage] Skipped (already exist): ${stats.skipped}` });
+    logger.info({ msg: `[migrate-json-to-storage] Errors: ${stats.errors.length}` });
 
     if (stats.errors.length > 0) {
-      console.log('');
-      console.log('Errors:');
-      stats.errors.forEach((e) => console.log(`  - ${e}`));
+      logger.info({ msg: '[migrate-json-to-storage] Errors' });
+      stats.errors.forEach((e) => logger.info({ msg: `[migrate-json-to-storage] - ${e}` }));
     }
   } finally {
     await prisma.$disconnect();
@@ -192,6 +194,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error('Migration failed:', err);
+  logger.error({ msg: '[migrate-json-to-storage] Migration failed', err });
   process.exit(1);
 });

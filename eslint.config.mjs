@@ -86,6 +86,16 @@ const eslintConfig = defineConfig([
       'no-restricted-syntax': ['error', ...GEMINI_HOST_SELECTORS, BCRYPT_COST_SELECTOR],
     },
   },
+  // CLAUDE.md bans console.* outside the logger, which is its transport. Scripts
+  // that cannot import @/lib/logger (self-contained or child-process workers)
+  // write JSON lines or CLI text to process.stdout/stderr instead.
+  {
+    files: ['src/**/*.{ts,tsx}', 'scripts/**/*.{ts,mts,cts,js,mjs,cjs}'],
+    ignores: ['src/lib/logger.ts'],
+    rules: {
+      'no-console': 'error',
+    },
+  },
   // Tests legitimately hash at a LOW cost on purpose: a real bcrypt hash is
   // sometimes needed (to exercise unmocked verification) but cost 12 makes the
   // suite crawl, so e.g. mfa.test.ts uses 4 deliberately. Forcing BCRYPT_COST

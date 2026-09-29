@@ -296,12 +296,14 @@ const targets = isCli ? process.argv.slice(2) : [];
 
 if (isCli) {
   if (targets.length === 0) {
-    console.error('Usage: node scripts/render-qa-report-docx.mjs <file.md | directory> [...]');
+    process.stderr.write(
+      'Usage: node scripts/render-qa-report-docx.mjs <file.md | directory> [...]\n',
+    );
     process.exit(1);
   }
   const files = collect(targets);
   if (files.length === 0) {
-    console.error('No .md files found (README.md is skipped when scanning a directory).');
+    process.stderr.write('No .md files found (README.md is skipped when scanning a directory).\n');
     process.exit(1);
   }
 
@@ -329,12 +331,12 @@ if (isCli) {
       const buf = await Packer.toBuffer(doc);
       const outPath = join(dirname(file), `${basename(file, '.md')}.docx`);
       writeFileSync(outPath, buf);
-      console.log(`  ok  ${basename(outPath)}`);
+      process.stdout.write(`  ok  ${basename(outPath)}\n`);
     } catch (err) {
       failed++;
-      console.error(`  FAIL ${basename(file)} — ${err.message}`);
+      process.stderr.write(`  FAIL ${basename(file)} — ${err.message}\n`);
     }
   }
-  console.log(`\n${files.length - failed}/${files.length} rendered.`);
+  process.stdout.write(`\n${files.length - failed}/${files.length} rendered.\n`);
   if (failed) process.exit(1);
 }

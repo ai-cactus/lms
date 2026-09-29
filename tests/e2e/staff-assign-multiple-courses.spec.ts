@@ -11,20 +11,12 @@
  * tables — there is no MailHog HTTP helper in this repo, so `sendMailTracked`'s
  * `email_messages` row (kind = 'course_launch') is the email assertion.
  *
- * Deliberate deviation from a literal "reopen and select the pre-enrolled
- * course" reading of the zero-newly-assigned scenario: `AssignCoursesModal`
- * intentionally renders an already-enrolled course's checkbox DISABLED with an
- * "Assigned" badge (see the component's own docstring), so a course that was
- * already-enrolled BEFORE the page loaded can never be selected through the
- * UI — that disabled state is itself the product's primary defense. To still
- * exercise the server's "0 newly assigned ⇒ no email" branch through a real
- * browser round-trip (not just the unit/RTL suites), this spec reopens the
- * modal WITHOUT an intervening page reload right after Scenario 1: the
- * `enrolledCourseIds` prop `AssignCoursesModal` receives is computed once at
- * the server-rendered page load and does not refresh itself without a
- * navigation, so courses 1-3 (just enrolled by Scenario 1) still render
- * selectable — letting the admin re-select one and hit the server's genuine
- * already-enrolled/zero-assigned path, exactly as a slow-reacting client would.
+ * The zero-newly-assigned scenario relies on `AssignCoursesModal` listing a
+ * course the member already has as an ordinary, selectable checkbox — the
+ * server is what skips it (see the component's own docstring). Scenario 2
+ * submits a just-enrolled course from a second tab opened before Scenario 1,
+ * modelling two admins racing, and asserts the server's genuine
+ * already-enrolled / zero-assigned branch sends nothing.
  *
  * Pre-conditions:
  *   - App running on http://localhost:3005 (Playwright webServer).
@@ -381,13 +373,9 @@ test.describe('Staff profile — assign multiple courses in one action', () => {
 
       // A second tab in the SAME authenticated session (same BrowserContext,
       // so it shares cookies — no second login needed), opened and loaded
-      // BEFORE Scenario 1 assigns anything. Its `enrolledCourseIds` server
-      // prop is captured at this pre-assignment moment and — unlike `page`,
-      // whose Server Action calls auto-revalidate this route's Server
-      // Components live — never refreshes without an explicit navigation.
-      // Scenario 2 reuses it to model two admins racing: one submits the
-      // assignment, the other's already-open tab still shows the course as
-      // selectable and submits the exact same course afterward.
+      // BEFORE Scenario 1 assigns anything. Scenario 2 reuses it to model two
+      // admins racing: one submits the assignment, the other's already-open
+      // tab submits the exact same course afterward.
       const stalePage = await page.context().newPage();
       await stalePage.goto(`/dashboard/staff/${seeded.workerOrgUserId}`);
       await stalePage.waitForLoadState('networkidle');
@@ -446,10 +434,9 @@ test.describe('Staff profile — assign multiple courses in one action', () => {
       }
 
       // ── Scenario 2: zero newly assigned ⇒ no additional email/notification ─
-      // `stalePage` never navigated since before Scenario 1 ran, so course A's
-      // checkbox still renders selectable there even though it is now truly
-      // enrolled. Selecting and submitting it reproduces the server's genuine
-      // already-enrolled / zero-newly-assigned branch through a real request.
+      // Course A is now truly enrolled; the modal still lists it as selectable,
+      // so submitting it reproduces the server's genuine already-enrolled /
+      // zero-newly-assigned branch through a real request.
       const t1 = new Date();
       await stalePage.getByRole('button', { name: 'Assign Course', exact: true }).click();
       const staleDialog = stalePage.getByRole('dialog');
@@ -473,8 +460,6 @@ test.describe('Staff profile — assign multiple courses in one action', () => {
       await stalePage.close();
 
       // ── Scenario 3: single course through the same path ────────────────────
-      // Reload for honest `enrolledCourseIds` before picking a genuinely fresh
-      // course.
       await page.reload();
       await page.waitForLoadState('networkidle');
       const t2 = new Date();
