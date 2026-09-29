@@ -51,10 +51,10 @@ import { VertexBudgetExceededError } from '@/lib/ai-client';
 import { quizOutputTokenBudget } from '@/lib/ai/course-pipeline-v46';
 import { generateSingleQuestion, regenerateQuiz } from './quiz-ai';
 
-const OWN_ORG = 'ou-mine';
-const OTHER_ORG = 'ou-theirs';
+const OWN_ORG = 'org-mine';
+const OTHER_ORG = 'org-theirs';
 
-const session = { user: { id: 'user-1', organizationUserId: OWN_ORG } };
+const session = { user: { id: 'user-1', organizationUserId: 'ou-mine', organizationId: OWN_ORG } };
 
 const RAW_VERTEX_ERROR =
   'Vertex AI 404 Not Found: <!DOCTYPE html><html><body>Not Found</body></html>';
@@ -83,13 +83,17 @@ function aiQuestion(overrides: Record<string, unknown> = {}) {
 
 const VALID_AI_RESPONSE = JSON.stringify(aiQuestion());
 
-function courseOwnedBy(orgUserId: string) {
+/** Owned by `organizationId` (Q25); authored by a colleague, never the caller. */
+function courseOwnedBy(organizationId: string, overrides: Record<string, unknown> = {}) {
   return {
     id: 'course-1',
     title: 'Incident Response',
     description: 'Internal policy course',
-    createdByOrgUserId: orgUserId,
+    organizationId,
+    isGlobal: false,
+    createdByOrgUserId: 'ou-colleague',
     lessons: [{ title: 'Module 1', content: '<p>Escalate within 72 hours.</p>' }],
+    ...overrides,
   };
 }
 
@@ -131,6 +135,30 @@ describe('generateSingleQuestion — access control', () => {
     expect(result.success).toBe(true);
     expect(result.question?.options[result.question.answer]).toBe('72h');
     expect(mockCallVertexAI).toHaveBeenCalledTimes(1);
+  });
+
+  // BUG-11: the fixture's author is a colleague, so this passing at all proves
+  // the gate reads organisation ownership. This one pins authorship explicitly
+  // as irrelevant in the other direction too: the caller's own authorship of a
+  // course another org now owns buys nothing.
+  it('refuses a course the caller authored but another organization owns', async () => {
+    prismaMock.course.findUnique.mockResolvedValue(
+      courseOwnedBy(OTHER_ORG, { createdByOrgUserId: 'ou-mine' }),
+    );
+
+    const result = await generateSingleQuestion({ courseId: 'course-1' });
+
+    expect(result).toEqual({ success: false, error: 'Course not found' });
+    expect(mockCallVertexAI).not.toHaveBeenCalled();
+  });
+
+  it('refuses a global catalogue course even when its owner id matches', async () => {
+    prismaMock.course.findUnique.mockResolvedValue(courseOwnedBy(OWN_ORG, { isGlobal: true }));
+
+    const result = await generateSingleQuestion({ courseId: 'course-1' });
+
+    expect(result).toEqual({ success: false, error: 'Course not found' });
+    expect(mockCallVertexAI).not.toHaveBeenCalled();
   });
 
   it('stops at the rate limit before reaching Vertex', async () => {

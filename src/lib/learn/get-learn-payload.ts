@@ -6,6 +6,7 @@ import { getPortalSessions } from '@/lib/auth/portal-sessions';
 import { logger } from '@/lib/logger';
 import { ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
 import { parseStoredOptionExplanations } from '@/lib/quiz/options';
+import { isCourseEditableByOrganization } from '@/lib/course/edit-access';
 import type { Role } from '@/types/next-auth';
 
 /**
@@ -45,10 +46,10 @@ function mayReviewWithoutEnrollment(role: Role | null | undefined): boolean {
 function mayEditCourseContent(
   role: Role | null | undefined,
   callerOrganizationId: string | null | undefined,
-  courseOrganizationId: string | null | undefined,
+  course: { organizationId: string; isGlobal: boolean },
 ): boolean {
   if (!role || !can(dbRoleToRoleKey(role), 'course.edit')) return false;
-  return Boolean(callerOrganizationId) && callerOrganizationId === courseOrganizationId;
+  return isCourseEditableByOrganization(course, callerOrganizationId);
 }
 
 const QUIZ_SELECT = {
@@ -282,6 +283,7 @@ export async function getLearnPayload(courseId: string): Promise<LearnPayload | 
         title: true,
         description: true,
         duration: true,
+        organizationId: true,
         isGlobal: true,
         status: true,
         archivedAt: true,
@@ -424,11 +426,7 @@ export async function getLearnPayload(courseId: string): Promise<LearnPayload | 
     // course's. Anything outside the admin view is never offered the editor.
     const canEditContent =
       isAdmin &&
-      mayEditCourseContent(
-        adminSession?.user?.role,
-        adminSession?.user?.organizationId,
-        course.creator?.organizationId,
-      );
+      mayEditCourseContent(adminSession?.user?.role, adminSession?.user?.organizationId, course);
 
     // `answers` is a Prisma `Json` column the quiz endpoints always write as an
     // answer array; the client still guards with Array.isArray before reading it.
