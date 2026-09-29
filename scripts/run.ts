@@ -29,7 +29,7 @@ import { spawnSync } from 'node:child_process';
 const [env, script, ...args] = process.argv.slice(2);
 
 if ((env !== 'staging' && env !== 'production') || !script) {
-  console.error('Usage: npm run script <staging|production> <script-file> [args...]');
+  process.stderr.write('Usage: npm run script <staging|production> <script-file> [args...]\n');
   process.exit(1);
 }
 
@@ -44,9 +44,9 @@ const scriptPath = `scripts/${script.replace(/^scripts\//, '')}`;
 // the flag. Erring toward a preview is always the safe direction.
 const forwarded = [...args];
 if (process.env.npm_config_dry_run === 'true' && !forwarded.includes('--dry-run')) {
-  console.warn(
+  process.stderr.write(
     'note: npm consumed your --dry-run flag; forwarding it anyway. ' +
-      'Use `npm run script -- <env> <file> --dry-run` to pass flags directly.',
+      'Use `npm run script -- <env> <file> --dry-run` to pass flags directly.\n',
   );
   forwarded.push('--dry-run');
 }
@@ -56,7 +56,7 @@ const result = spawnSync('docker', ['exec', container, 'npx', 'tsx', scriptPath,
 });
 
 if (result.error) {
-  console.error(`Failed to run docker: ${result.error.message}`);
+  process.stderr.write(`Failed to run docker: ${result.error.message}\n`);
   process.exit(1);
 }
 process.exit(result.status ?? 1);

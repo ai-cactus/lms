@@ -7,9 +7,10 @@
  * every role — including read-only Supervisor — holds as a self-service
  * permission), not-found/not-locked guards, the "one active retake at a time"
  * guard, and facility stamping — the new retake is resolved FRESH via
- * resolveMemberFacilityId rather than inherited from the locked enrollment.
+ * resolveMemberFacilityId rather than inherited from the locked enrollment —
+ * and the retake's due date (Q-26): picked, defaulted, or refused.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const { prismaMock, mockAdminAuth, mockWorkerAuth, mockRevalidatePath, mockCreateNotification } =
   vi.hoisted(() => {
@@ -240,6 +241,83 @@ describe('assignRetake — retake enrollment shape', () => {
 
     const { data } = prismaMock.enrollment.create.mock.calls[0][0];
     expect(data).not.toHaveProperty('lastActivityAt');
+  });
+});
+
+/**
+ * Q-26 (ruled 2026-09-28): the admin picks the retake's due date, pre-filled 14
+ * days out, and the retake then gets the normal reminder/escalation ladder —
+ * which selects on `dueAt`, so a retake without one was invisible to it.
+ */
+describe('assignRetake — due date (Q-26)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-09-28T15:00:00.000Z'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('stores the picked date as the retake deadline, due at the end of that UTC day', async () => {
+    const result = await assignRetake(ENROLLMENT_ID, 'Second chance', '2026-10-05');
+
+    expect(result.success).toBe(true);
+    expect(prismaMock.enrollment.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ dueAt: new Date('2026-10-05T23:59:00.000Z') }),
+    });
+  });
+
+  it('accepts today — the deadline has not passed yet', async () => {
+    await assignRetake(ENROLLMENT_ID, '', '2026-09-28');
+
+    expect(prismaMock.enrollment.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ dueAt: new Date('2026-09-28T23:59:00.000Z') }),
+    });
+  });
+
+  it('defaults to 14 days out when the caller passes no date, so no retake escapes the ladder', async () => {
+    await assignRetake(ENROLLMENT_ID);
+
+    expect(prismaMock.enrollment.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ dueAt: new Date('2026-10-12T23:59:00.000Z') }),
+    });
+  });
+
+  it.each([
+    ['a past date', '2026-09-27', 'The retake due date must be today or later.'],
+    [
+      'an impossible date',
+      '2026-02-31',
+      "That due date couldn't be read. Please pick the date again.",
+    ],
+    ['garbage', 'not-a-date', "That due date couldn't be read. Please pick the date again."],
+    ['an empty string', '', "That due date couldn't be read. Please pick the date again."],
+  ])(
+    'refuses %s by return, before reading or writing anything',
+    async (_label, dueDate, reason) => {
+      const result = await assignRetake(ENROLLMENT_ID, '', dueDate);
+
+      expect(result).toEqual({ success: false, refusedReason: reason });
+      expect(prismaMock.enrollment.findUnique).not.toHaveBeenCalled();
+      expect(prismaMock.enrollment.create).not.toHaveBeenCalled();
+      expect(mockCreateNotification).not.toHaveBeenCalled();
+    },
+  );
+
+  it('refuses a non-string due date smuggled through the Server Action boundary', async () => {
+    const result = await assignRetake(ENROLLMENT_ID, '', 12345 as unknown as string);
+
+    expect(result.success).toBe(false);
+    expect(prismaMock.enrollment.create).not.toHaveBeenCalled();
+  });
+
+  it('still checks permissions before validating the date', async () => {
+    mockAdminAuth.mockResolvedValue(makeSession('finance'));
+
+    await expect(assignRetake(ENROLLMENT_ID, '', 'not-a-date')).rejects.toThrow(
+      'Insufficient permissions',
+    );
   });
 });
 

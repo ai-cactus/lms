@@ -17,6 +17,10 @@ figure (`withoutSuperseded` in `src/lib/dashboard/definitions.ts`), kept ONLY fo
 Pass Rate. A locked row with no retake still counts.
 
 **How to apply:** any new dashboard figure goes through `withoutSuperseded(slice)` (or the
-tracker's lookup). The reminder sweep does NOT honour the rule yet — Track A keeps laddering a
-superseded locked row that has a `dueAt`, and Track B's ADMIN_REASSIGN only skips when the
-retake is still non-terminal. See [[gotcha-sweep-test-mock-queue-coupling]] before touching it.
+tracker's lookup). The reminder side honours it through `src/lib/reminders/eligibility.ts`
+(`findSupersededIds`; `findIneligibleEnrollmentIds` = finished OR superseded OR archived): Track
+A/B, the email retry pre-pass, and the cycle summary's compose AND retry all re-check through it
+(BUG-44/45). `resolveOnCompletion` walks the `retakeOf` chain one hop per query (BUG-46). A
+retake now carries a `dueAt` (Q-26) and no `assignmentId`, so Track A ladders it on the DEFAULT
+stages — an assignment's `remindersEnabled:false` does not reach it. See
+[[gotcha-sweep-test-mock-queue-coupling]] before touching the sweep.

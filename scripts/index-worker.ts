@@ -49,7 +49,8 @@ const manualId = args['manual-id'];
 const storagePath = args['storage-path'];
 
 if (!manualId || !storagePath) {
-  console.error('[index-worker] Missing --manual-id or --storage-path');
+  // stderr, not the stdout JSON stream: the parent surfaces stderr as the exit reason.
+  process.stderr.write('[index-worker] Missing --manual-id or --storage-path\n');
   process.exit(1);
 }
 
@@ -310,6 +311,6 @@ async function main() {
 
 main().catch((err) => {
   const e = err instanceof Error ? err : new Error(String(err));
-  console.error('[index-worker] Fatal:', e.name, e.message);
+  process.stderr.write(`[index-worker] Fatal: ${e.name} ${e.message}\n`);
   process.exit(1);
 });

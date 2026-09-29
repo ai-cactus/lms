@@ -24,7 +24,7 @@ const {
   mockCaptureServer,
 } = vi.hoisted(() => ({
   prismaMock: {
-    enrollment: { findUnique: vi.fn(), update: vi.fn() },
+    enrollment: { findUnique: vi.fn(), updateMany: vi.fn() },
   },
   mockAdminAuth: vi.fn(),
   mockWorkerAuth: vi.fn(),
@@ -71,9 +71,9 @@ function makeEnrollment(overrides: Record<string, unknown> = {}) {
 }
 
 function updateData(): Record<string, unknown> {
-  const call = prismaMock.enrollment.update.mock.calls[0]?.[0] as
+  const call = prismaMock.enrollment.updateMany.mock.calls[0]?.[0] as
     { data: Record<string, unknown> } | undefined;
-  if (!call) throw new Error('enrollment.update was never called');
+  if (!call) throw new Error('enrollment.updateMany was never called');
   return call.data;
 }
 
@@ -82,7 +82,7 @@ beforeEach(() => {
   mockAdminAuth.mockResolvedValue(null);
   mockWorkerAuth.mockResolvedValue({ user: { id: WORKER_ID } });
   prismaMock.enrollment.findUnique.mockResolvedValue(makeEnrollment());
-  prismaMock.enrollment.update.mockResolvedValue({});
+  prismaMock.enrollment.updateMany.mockResolvedValue({ count: 1 });
   mockNotifyOrganizationAdmins.mockResolvedValue(undefined);
   mockResolveOnCompletion.mockResolvedValue(undefined);
 });
@@ -156,7 +156,7 @@ describe('attestCourse — guards still hold', () => {
     mockWorkerAuth.mockResolvedValue(null);
 
     await expect(attestCourse(ENROLLMENT_ID, SIGNATURE, 'Nurse')).rejects.toThrow('Unauthorized');
-    expect(prismaMock.enrollment.update).not.toHaveBeenCalled();
+    expect(prismaMock.enrollment.updateMany).not.toHaveBeenCalled();
   });
 
   it('throws when neither session owns the enrollment, leaving completedAt unwritten', async () => {
@@ -171,13 +171,90 @@ describe('attestCourse — guards still hold', () => {
     );
 
     await expect(attestCourse(ENROLLMENT_ID, SIGNATURE, 'Nurse')).rejects.toThrow('Unauthorized');
-    expect(prismaMock.enrollment.update).not.toHaveBeenCalled();
+    expect(prismaMock.enrollment.updateMany).not.toHaveBeenCalled();
   });
 
   it('refuses a blank signature without recording a completion', async () => {
     await expect(attestCourse(ENROLLMENT_ID, '   ', 'Nurse')).rejects.toThrow(
       'Signature is required.',
     );
-    expect(prismaMock.enrollment.update).not.toHaveBeenCalled();
+    expect(prismaMock.enrollment.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * RISK-10 (ruled 2026-09-28: refuse, no side effects). `attestedAt` dates the
+ * compliance record and `completedAt` starts the renewal clock, so replaying the
+ * action must move neither — and must not re-notify admins or re-fire analytics.
+ */
+describe('attestCourse — an existing attestation is never re-stamped (RISK-10)', () => {
+  const ALREADY_ATTESTED = {
+    success: false,
+    refusedReason: 'This course has already been attested.',
+    alreadyAttested: true,
+  };
+
+  it('refuses an already-attested enrollment with zero writes and zero side effects', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue(
+      makeEnrollment({ status: 'attested', attestedAt: new Date('2026-01-01') }),
+    );
+
+    await expect(attestCourse(ENROLLMENT_ID, SIGNATURE, 'Nurse')).resolves.toEqual(
+      ALREADY_ATTESTED,
+    );
+
+    expect(prismaMock.enrollment.updateMany).not.toHaveBeenCalled();
+    expect(mockNotifyOrganizationAdmins).not.toHaveBeenCalled();
+    expect(mockCaptureServer).not.toHaveBeenCalled();
+    expect(mockResolveOnCompletion).not.toHaveBeenCalled();
+    expect(mockRevalidatePath).not.toHaveBeenCalled();
+  });
+
+  it('writes conditionally, so the row cannot be stamped once it is attested', async () => {
+    await attestCourse(ENROLLMENT_ID, SIGNATURE, 'Nurse');
+
+    expect(prismaMock.enrollment.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: ENROLLMENT_ID, status: { not: 'attested' } } }),
+    );
+  });
+
+  // Both calls pass the pre-read before either writes — the interleaving the
+  // conditional write exists for. The fake row flips on the first write, as
+  // Postgres would, so the second write matches nothing.
+  it('two concurrent calls produce exactly one attestation and one set of side effects', async () => {
+    let attested = false;
+    prismaMock.enrollment.updateMany.mockImplementation(async () => {
+      if (attested) return { count: 0 };
+      attested = true;
+      return { count: 1 };
+    });
+
+    const results = await Promise.all([
+      attestCourse(ENROLLMENT_ID, SIGNATURE, 'Nurse'),
+      attestCourse(ENROLLMENT_ID, SIGNATURE, 'Nurse'),
+    ]);
+
+    expect(results).toContainEqual({ success: true });
+    expect(results).toContainEqual(ALREADY_ATTESTED);
+    expect(mockNotifyOrganizationAdmins).toHaveBeenCalledTimes(1);
+    expect(mockCaptureServer).toHaveBeenCalledTimes(1);
+    expect(mockResolveOnCompletion).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * BUG-28: a course with no quiz reaches `lessons_complete` when its last lesson
+ * is done and has nowhere further to go. Attestation is the completion act, so
+ * that status must be attestable — this pins that the action accepts it.
+ */
+describe('attestCourse — a no-quiz course at lessons_complete (BUG-28)', () => {
+  it('attests an enrollment whose lessons are complete', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue(
+      makeEnrollment({ status: 'lessons_complete', progress: 100 }),
+    );
+
+    await expect(attestCourse(ENROLLMENT_ID, SIGNATURE, '')).resolves.toEqual({ success: true });
+    expect(updateData()).toMatchObject({ status: 'attested', attestationSignature: SIGNATURE });
+    expect(mockNotifyOrganizationAdmins).toHaveBeenCalledTimes(1);
   });
 });

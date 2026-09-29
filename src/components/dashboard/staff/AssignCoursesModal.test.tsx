@@ -188,6 +188,20 @@ describe('AssignCoursesModal — deadline step', () => {
     await screen.findByText('Set Completion Deadline');
   }
 
+  // Mirrors production exactly: the chip yields the LOCAL calendar date as
+  // `YYYY-MM-DD`, which `new Date(str)` parses as UTC midnight before the time
+  // is applied in UTC. A local `setDate` + `setUTCHours` disagrees with this
+  // whenever the local and UTC calendar days differ (near midnight off-UTC).
+  function expectedDueAt(daysAhead: number, utcHours: number, utcMinutes: number): Date {
+    const local = new Date();
+    local.setDate(local.getDate() + daysAhead);
+    const month = String(local.getMonth() + 1).padStart(2, '0');
+    const day = String(local.getDate()).padStart(2, '0');
+    const dueAt = new Date(`${local.getFullYear()}-${month}-${day}`);
+    dueAt.setUTCHours(utcHours, utcMinutes, 0, 0);
+    return dueAt;
+  }
+
   it('sets the due date from a suggested chip', async () => {
     const user = userEvent.setup();
     await advanceToDeadline(user);
@@ -235,9 +249,7 @@ describe('AssignCoursesModal — deadline step', () => {
     await user.click(screen.getByRole('button', { name: 'Assign Course' }));
 
     await screen.findByText('Courses Assigned Successfully');
-    const expected = new Date();
-    expected.setDate(expected.getDate() + 30);
-    expected.setUTCHours(23, 59, 0, 0);
+    const expected = expectedDueAt(30, 23, 59);
     // `assignCoursesToStaffMember` already accepts `string | Date | null` — no
     // action-signature change here. A preset chip now means the same deadline
     // (end of that day, UTC) however the date got picked: from the calendar or
@@ -259,9 +271,7 @@ describe('AssignCoursesModal — deadline step', () => {
     await user.click(screen.getByRole('button', { name: 'Assign Course' }));
 
     await screen.findByText('Courses Assigned Successfully');
-    const expected = new Date();
-    expected.setDate(expected.getDate() + 30);
-    expected.setUTCHours(8, 0, 0, 0);
+    const expected = expectedDueAt(30, 8, 0);
     expect(mockAssignCoursesToStaffMember).toHaveBeenCalledWith('ou-1', ['vid-1'], {
       dueAt: expected,
     });

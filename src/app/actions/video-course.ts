@@ -58,14 +58,24 @@ export interface UpdateVideoCourseInput {
   quiz?: ParsedQuiz;
 }
 
+/**
+ * Refusals are RETURNED, never thrown: production redacts a thrown Server
+ * Action message to React error #441, which leaves the admin with nothing to
+ * act on.
+ */
+export type VideoCourseActionResult = { success: true } | { success: false; error: string };
+
+const UNAUTHORIZED = { success: false, error: 'Unauthorized' } as const;
+const COURSE_NOT_FOUND = { success: false, error: 'Course not found' } as const;
+
 async function assertSystemAdmin() {
   if (!(await verifySystemAdminCookie())) throw new Error('Unauthorized');
 }
 
 export async function createVideoCourse(
   input: CreateVideoCourseInput,
-): Promise<{ courseId: string }> {
-  await assertSystemAdmin();
+): Promise<{ success: true; courseId: string } | { success: false; error: string }> {
+  if (!(await verifySystemAdminCookie())) return UNAUTHORIZED;
   const system = await getOrCreateSystemUser();
 
   const passingScore = input.quiz.passingScore ?? input.passingScore;
@@ -197,14 +207,14 @@ export async function createVideoCourse(
   revalidatePath('/system/video-courses');
   // A new published global course changes the org-facing catalog for every org.
   expireVideoCatalog();
-  return { courseId };
+  return { success: true, courseId };
 }
 
 export async function updateVideoCourse(
   courseId: string,
   input: UpdateVideoCourseInput,
-): Promise<void> {
-  await assertSystemAdmin();
+): Promise<VideoCourseActionResult> {
+  if (!(await verifySystemAdminCookie())) return UNAUTHORIZED;
 
   const videoTargets: {
     targetType: 'lesson' | 'course-preview';
@@ -212,154 +222,162 @@ export async function updateVideoCourse(
     storageUri: string;
   }[] = [];
 
-  await prisma.$transaction(async (tx) => {
-    const existing = await tx.course.findUnique({
-      where: { id: courseId },
-      select: {
-        id: true,
-        previewVideoStorageUri: true,
-        // The course video is the first lesson by order (the module-less lesson
-        // created for single-video courses; for legacy multi-lecture courses we
-        // treat the first lecture as the course video and leave the rest intact).
-        lessons: {
-          orderBy: { order: 'asc' },
-          take: 1,
-          select: { id: true, videoStorageUri: true },
+  let found: boolean;
+  try {
+    found = await prisma.$transaction(async (tx) => {
+      const existing = await tx.course.findUnique({
+        where: { id: courseId },
+        select: {
+          id: true,
+          previewVideoStorageUri: true,
+          // The course video is the first lesson by order (the module-less lesson
+          // created for single-video courses; for legacy multi-lecture courses we
+          // treat the first lecture as the course video and leave the rest intact).
+          lessons: {
+            orderBy: { order: 'asc' },
+            take: 1,
+            select: { id: true, videoStorageUri: true },
+          },
         },
-      },
-    });
-    if (!existing) throw new Error('Course not found');
-
-    // ── Course fields ─────────────────────────────────────────────
-    const previewChanged =
-      input.previewVideoStorageUri != null &&
-      input.previewVideoStorageUri !== existing.previewVideoStorageUri;
-
-    await tx.course.update({
-      where: { id: courseId },
-      data: {
-        title: input.title,
-        description: input.description ?? null,
-        overview: input.overview ?? null,
-        skillLevel: input.skillLevel ?? null,
-        category: input.category ?? null,
-        duration: input.duration ?? null,
-        ...(input.previewVideoStorageUri != null
-          ? {
-              previewVideoStorageUri: input.previewVideoStorageUri,
-              previewVideoDurationSeconds: input.previewVideoDurationSeconds ?? null,
-              ...(previewChanged ? { previewMediaStatus: 'processing' as const } : {}),
-            }
-          : {}),
-      },
-    });
-    if (previewChanged) {
-      videoTargets.push({
-        targetType: 'course-preview',
-        targetId: courseId,
-        storageUri: input.previewVideoStorageUri!,
       });
-    }
+      if (!existing) return false;
 
-    // A replacement quiz file may carry its own passing score / attempts; when
-    // present those win over the form fields (parity with createVideoCourse).
-    const passingScore = input.quiz?.passingScore ?? input.passingScore;
-    const allowedAttempts = input.quiz?.allowedAttempts ?? input.allowedAttempts;
+      // ── Course fields ─────────────────────────────────────────────
+      const previewChanged =
+        input.previewVideoStorageUri != null &&
+        input.previewVideoStorageUri !== existing.previewVideoStorageUri;
 
-    // Course-level quiz scoring (updateMany never throws if the row is absent).
-    if (passingScore != null || allowedAttempts != null) {
-      await tx.quiz.updateMany({
-        where: { courseId },
+      await tx.course.update({
+        where: { id: courseId },
         data: {
-          ...(passingScore != null ? { passingScore } : {}),
-          ...(allowedAttempts != null ? { allowedAttempts } : {}),
+          title: input.title,
+          description: input.description ?? null,
+          overview: input.overview ?? null,
+          skillLevel: input.skillLevel ?? null,
+          category: input.category ?? null,
+          duration: input.duration ?? null,
+          ...(input.previewVideoStorageUri != null
+            ? {
+                previewVideoStorageUri: input.previewVideoStorageUri,
+                previewVideoDurationSeconds: input.previewVideoDurationSeconds ?? null,
+                ...(previewChanged ? { previewMediaStatus: 'processing' as const } : {}),
+              }
+            : {}),
         },
       });
-    }
+      if (previewChanged) {
+        videoTargets.push({
+          targetType: 'course-preview',
+          targetId: courseId,
+          storageUri: input.previewVideoStorageUri!,
+        });
+      }
 
-    // ── Quiz questions (full replace) ─────────────────────────────
-    // When a new quiz file is uploaded we wipe and recreate every question.
-    // Past QuizAttempt rows reference the quiz (not individual questions) and
-    // are preserved, so attempt history and certificates stay intact.
-    if (input.quiz) {
-      const quizRow = await tx.quiz.findUnique({
-        where: { courseId },
-        select: { id: true },
-      });
-      const quizId =
-        quizRow?.id ??
-        (
-          await tx.quiz.create({
+      // A replacement quiz file may carry its own passing score / attempts; when
+      // present those win over the form fields (parity with createVideoCourse).
+      const passingScore = input.quiz?.passingScore ?? input.passingScore;
+      const allowedAttempts = input.quiz?.allowedAttempts ?? input.allowedAttempts;
+
+      // Course-level quiz scoring (updateMany never throws if the row is absent).
+      if (passingScore != null || allowedAttempts != null) {
+        await tx.quiz.updateMany({
+          where: { courseId },
+          data: {
+            ...(passingScore != null ? { passingScore } : {}),
+            ...(allowedAttempts != null ? { allowedAttempts } : {}),
+          },
+        });
+      }
+
+      // ── Quiz questions (full replace) ─────────────────────────────
+      // When a new quiz file is uploaded we wipe and recreate every question.
+      // Past QuizAttempt rows reference the quiz (not individual questions) and
+      // are preserved, so attempt history and certificates stay intact.
+      if (input.quiz) {
+        const quizRow = await tx.quiz.findUnique({
+          where: { courseId },
+          select: { id: true },
+        });
+        const quizId =
+          quizRow?.id ??
+          (
+            await tx.quiz.create({
+              data: {
+                courseId,
+                title: `${input.title} Quiz`,
+                passingScore: passingScore ?? 70,
+                allowedAttempts: allowedAttempts ?? 1,
+              },
+              select: { id: true },
+            })
+          ).id;
+
+        if (quizRow) {
+          await tx.question.deleteMany({ where: { quizId } });
+        }
+        await tx.question.createMany({
+          data: input.quiz.questions.map((q) => ({
+            quizId,
+            text: q.text,
+            type: 'multiple-choice',
+            options: q.options,
+            correctAnswer: q.correctAnswer,
+            explanation: q.explanation ?? null,
+            order: q.order,
+          })),
+        });
+      }
+
+      // ── Course video (single module-less lesson) ─────────────────
+      // Only touched when a new video was uploaded. Any other lessons/chapters
+      // belonging to legacy multi-lecture courses are intentionally left intact.
+      if (input.courseVideo?.storageUri) {
+        const newUri = input.courseVideo.storageUri;
+        const durationSeconds = input.courseVideo.durationSeconds ?? null;
+        const lessonDuration =
+          durationSeconds != null ? Math.max(1, Math.round(durationSeconds / 60)) : null;
+        const primary = existing.lessons[0];
+
+        if (primary) {
+          const videoChanged = newUri !== primary.videoStorageUri;
+          await tx.lesson.update({
+            where: { id: primary.id },
+            data: {
+              title: input.title,
+              videoStorageUri: newUri,
+              videoDurationSeconds: durationSeconds,
+              duration: lessonDuration,
+              ...(videoChanged ? { mediaStatus: 'processing' as const } : {}),
+            },
+          });
+          if (videoChanged) {
+            videoTargets.push({ targetType: 'lesson', targetId: primary.id, storageUri: newUri });
+          }
+        } else {
+          const created = await tx.lesson.create({
             data: {
               courseId,
-              title: `${input.title} Quiz`,
-              passingScore: passingScore ?? 70,
-              allowedAttempts: allowedAttempts ?? 1,
+              moduleId: null,
+              title: input.title,
+              content: '',
+              order: 0,
+              videoProvider: 'self',
+              videoStorageUri: newUri,
+              videoDurationSeconds: durationSeconds,
+              duration: lessonDuration,
+              mediaStatus: 'processing',
             },
-            select: { id: true },
-          })
-        ).id;
-
-      if (quizRow) {
-        await tx.question.deleteMany({ where: { quizId } });
-      }
-      await tx.question.createMany({
-        data: input.quiz.questions.map((q) => ({
-          quizId,
-          text: q.text,
-          type: 'multiple-choice',
-          options: q.options,
-          correctAnswer: q.correctAnswer,
-          explanation: q.explanation ?? null,
-          order: q.order,
-        })),
-      });
-    }
-
-    // ── Course video (single module-less lesson) ─────────────────
-    // Only touched when a new video was uploaded. Any other lessons/chapters
-    // belonging to legacy multi-lecture courses are intentionally left intact.
-    if (input.courseVideo?.storageUri) {
-      const newUri = input.courseVideo.storageUri;
-      const durationSeconds = input.courseVideo.durationSeconds ?? null;
-      const lessonDuration =
-        durationSeconds != null ? Math.max(1, Math.round(durationSeconds / 60)) : null;
-      const primary = existing.lessons[0];
-
-      if (primary) {
-        const videoChanged = newUri !== primary.videoStorageUri;
-        await tx.lesson.update({
-          where: { id: primary.id },
-          data: {
-            title: input.title,
-            videoStorageUri: newUri,
-            videoDurationSeconds: durationSeconds,
-            duration: lessonDuration,
-            ...(videoChanged ? { mediaStatus: 'processing' as const } : {}),
-          },
-        });
-        if (videoChanged) {
-          videoTargets.push({ targetType: 'lesson', targetId: primary.id, storageUri: newUri });
+          });
+          videoTargets.push({ targetType: 'lesson', targetId: created.id, storageUri: newUri });
         }
-      } else {
-        const created = await tx.lesson.create({
-          data: {
-            courseId,
-            moduleId: null,
-            title: input.title,
-            content: '',
-            order: 0,
-            videoProvider: 'self',
-            videoStorageUri: newUri,
-            videoDurationSeconds: durationSeconds,
-            duration: lessonDuration,
-            mediaStatus: 'processing',
-          },
-        });
-        videoTargets.push({ targetType: 'lesson', targetId: created.id, storageUri: newUri });
       }
-    }
-  });
+      return true;
+    });
+  } catch (err) {
+    logger.error({ msg: '[video-course] update failed', err, courseId });
+    return { success: false, error: 'Failed to save the video course.' };
+  }
+  if (!found) return COURSE_NOT_FOUND;
 
   // Every entry here is a media repoint that just committed, so the video
   // proxy's cached meta names the previous storage URI. Evict before the
@@ -400,6 +418,7 @@ export async function updateVideoCourse(
   // Title/description/category/duration/question-count edits are reflected in the
   // org-facing catalog.
   expireVideoCatalog();
+  return { success: true };
 }
 
 export async function listGlobalVideoCourses() {
@@ -430,20 +449,46 @@ export async function listGlobalVideoCourses() {
  * Setting `inactive` removes the course from the platform (the offering and
  * enrollment paths filter `status: 'published'`) while keeping every row.
  */
-export async function setVideoCourseStatus(courseId: string, status: 'inactive' | 'published') {
-  await assertSystemAdmin();
-  await prisma.course.update({ where: { id: courseId }, data: { status } });
+export async function setVideoCourseStatus(
+  courseId: string,
+  status: 'inactive' | 'published',
+): Promise<VideoCourseActionResult> {
+  if (!(await verifySystemAdminCookie())) return UNAUTHORIZED;
+  // Server Action arguments are unchecked; `status` must not become a way to
+  // write `draft` (or anything else) onto a live catalogue course.
+  if (status !== 'inactive' && status !== 'published') {
+    return { success: false, error: 'Invalid course status' };
+  }
+
+  let updated: number;
+  try {
+    // Scoped to global video courses, the only rows this screen manages.
+    ({ count: updated } = await prisma.course.updateMany({
+      where: { id: courseId, type: 'video', isGlobal: true },
+      data: { status },
+    }));
+  } catch (err) {
+    logger.error({ msg: '[video-course] status change failed', err, courseId, status });
+    return { success: false, error: 'Failed to change the course status.' };
+  }
+  if (updated === 0) return COURSE_NOT_FOUND;
+
+  logger.info({ msg: '[video-course] status changed', courseId, status });
   revalidatePath('/system/video-courses');
   // Publishing / deactivating adds or removes the course from the org catalog.
   expireVideoCatalog();
+  return { success: true };
 }
 
-export interface VerifyMediaResult {
-  /** Lessons for which storage returned a definitive answer (present or missing). */
-  checked: number;
-  /** Lessons whose storage object is confirmed gone and were flagged unavailable. */
-  missing: number;
-}
+export type VerifyMediaResult =
+  | {
+      success: true;
+      /** Lessons for which storage returned a definitive answer (present or missing). */
+      checked: number;
+      /** Lessons whose storage object is confirmed gone and were flagged unavailable. */
+      missing: number;
+    }
+  | { success: false; error: string };
 
 /**
  * Proactively reconcile every global video lesson's DB status with storage
@@ -456,7 +501,7 @@ export interface VerifyMediaResult {
  * ready here — re-seeding a missing object is a separate infra concern.
  */
 export async function verifyGlobalVideoMedia(): Promise<VerifyMediaResult> {
-  await assertSystemAdmin();
+  if (!(await verifySystemAdminCookie())) return UNAUTHORIZED;
 
   const lessons = await prisma.lesson.findMany({
     where: {
@@ -502,10 +547,8 @@ export async function verifyGlobalVideoMedia(): Promise<VerifyMediaResult> {
 
   logger.info({ msg: '[video] verify media complete', checked, missing });
   revalidatePath('/system/video-courses');
-  return { checked, missing };
+  return { success: true, checked, missing };
 }
-
-export type VideoCourseThumbnailResult = { success: true } | { success: false; error: string };
 
 /**
  * ffmpeg budget for a regenerate. It reads one keyframe over a signed URL, so
@@ -520,11 +563,11 @@ const REGENERATE_TIMEOUT_MS = 45_000;
  */
 export async function regenerateVideoCourseThumbnail(
   courseId: string,
-): Promise<VideoCourseThumbnailResult> {
-  if (!(await verifySystemAdminCookie())) return { success: false, error: 'Unauthorized' };
+): Promise<VideoCourseActionResult> {
+  if (!(await verifySystemAdminCookie())) return UNAUTHORIZED;
 
   const course = await findManagedVideoCourse(courseId);
-  if (!course) return { success: false, error: 'Course not found' };
+  if (!course) return COURSE_NOT_FOUND;
 
   const lesson = await prisma.lesson.findFirst({
     where: { courseId },
@@ -575,11 +618,11 @@ export async function regenerateVideoCourseThumbnail(
 /** Drops a video course's custom thumbnail, restoring the automatic chain. */
 export async function removeCustomVideoCourseThumbnail(
   courseId: string,
-): Promise<VideoCourseThumbnailResult> {
-  if (!(await verifySystemAdminCookie())) return { success: false, error: 'Unauthorized' };
+): Promise<VideoCourseActionResult> {
+  if (!(await verifySystemAdminCookie())) return UNAUTHORIZED;
 
   const course = await findManagedVideoCourse(courseId);
-  if (!course) return { success: false, error: 'Course not found' };
+  if (!course) return COURSE_NOT_FOUND;
   if (!course.thumbnailStorageUri) return { success: true };
 
   try {

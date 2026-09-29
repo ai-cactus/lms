@@ -219,7 +219,8 @@ describe('getGcs() credential-decode algorithm [Bug 2 regression — replicated 
 });
 
 // ── Secret hygiene, on the REAL worker ───────────────────────────────────────
-// The worker writes JSON lines through console.log. This drives the actual
+// The worker writes JSON lines to process.stdout (and its fatal line to
+// process.stderr). This drives the actual
 // scripts/transcode-worker.ts getGcs() failure path (a gcs:// download with a
 // malformed GCS_KEY_BASE64) and asserts the key never reaches any log line —
 // neither the base64 value nor the decoded text. (It replaced a test that ran
@@ -248,14 +249,20 @@ describe('transcode-worker — a malformed GCS_KEY_BASE64 is never logged', () =
     ];
     workerMocks.unlink.mockResolvedValue(undefined);
     workerMocks.disconnect.mockResolvedValue(undefined);
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const written: string[] = [];
+    const capture = (chunk: unknown) => {
+      written.push(String(chunk));
+      return true;
+    };
+    vi.spyOn(process.stdout, 'write').mockImplementation(capture as typeof process.stdout.write);
+    vi.spyOn(process.stderr, 'write').mockImplementation(capture as typeof process.stderr.write);
     const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
 
     vi.resetModules();
     await import('./transcode-worker');
     await vi.waitFor(() => expect(exitSpy).toHaveBeenCalledWith(1));
 
-    const allLogs = logSpy.mock.calls.map((args) => args.join(' ')).join('\n');
+    const allLogs = written.join('');
     // The real path ran: the malformed-key branch logged, then main() failed.
     expect(allLogs).toContain('GCS_KEY_BASE64 is malformed (decode/parse failed)');
     expect(allLogs).toContain('[transcode-worker] Fatal');

@@ -6,6 +6,7 @@
  */
 import { Client as MinioClient } from 'minio';
 import { prisma } from '@/db/index';
+import { logger } from '@/lib/logger';
 
 function errText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -22,10 +23,12 @@ const MINIO_ACCESS_KEY = process.env.MINIO_ACCESS_KEY ?? 'lms_minio_dev';
 const MINIO_SECRET_KEY = process.env.MINIO_SECRET_KEY ?? 'lms_minio_secret_dev';
 const MINIO_BUCKET = process.env.MINIO_BUCKET ?? 'lms-documents';
 
-console.log('\n─── MinIO Config ───────────────────────────────────');
-console.log(`  Endpoint : ${MINIO_ENDPOINT}:${MINIO_PORT} (SSL: ${MINIO_USE_SSL})`);
-console.log(`  Bucket   : ${MINIO_BUCKET}`);
-console.log(`  AccessKey: ${MINIO_ACCESS_KEY.slice(0, 4)}****`);
+logger.info({ msg: '[diagnose-rag] ─── MinIO Config ───────────────────────────────────' });
+logger.info({
+  msg: `[diagnose-rag] Endpoint : ${MINIO_ENDPOINT}:${MINIO_PORT} (SSL: ${MINIO_USE_SSL})`,
+});
+logger.info({ msg: `[diagnose-rag] Bucket   : ${MINIO_BUCKET}` });
+logger.info({ msg: `[diagnose-rag] AccessKey: ${MINIO_ACCESS_KEY.slice(0, 4)}****` });
 
 const client = new MinioClient({
   endPoint: MINIO_ENDPOINT,
@@ -36,51 +39,55 @@ const client = new MinioClient({
 });
 
 async function run() {
-  console.log('\n─── Step 1: Bucket check ───────────────────────────');
+  logger.info({ msg: '[diagnose-rag] ─── Step 1: Bucket check ───────────────────────────' });
   try {
     const exists = await client.bucketExists(MINIO_BUCKET);
-    console.log(`  Bucket "${MINIO_BUCKET}" exists: ${exists}`);
+    logger.info({ msg: `[diagnose-rag] Bucket "${MINIO_BUCKET}" exists: ${exists}` });
     if (!exists) {
-      console.error('  ✗ Bucket does not exist — check MINIO_BUCKET env var');
+      logger.error({ msg: '[diagnose-rag] ✗ Bucket does not exist — check MINIO_BUCKET env var' });
       return;
     }
   } catch (err) {
-    console.error('  ✗ bucketExists failed:', errText(err), errCode(err));
+    logger.error({
+      msg: '[diagnose-rag] ✗ bucketExists failed',
+      errMessage: errText(err),
+      code: errCode(err),
+    });
     return;
   }
 
-  console.log('\n─── Step 2: Active manual in DB ────────────────────');
+  logger.info({ msg: '[diagnose-rag] ─── Step 2: Active manual in DB ────────────────────' });
   const manual = await prisma.standardManual.findFirst({
     where: { isActive: true },
     orderBy: { createdAt: 'desc' },
   });
   if (!manual) {
-    console.log('  ✗ No active standard manual found in DB');
+    logger.info({ msg: '[diagnose-rag] ✗ No active standard manual found in DB' });
     return;
   }
-  console.log(`  ✓ Found: ${manual.filename} (id: ${manual.id})`);
-  console.log(`    storagePath: ${manual.storagePath}`);
-  console.log(`    processedAt: ${manual.processedAt ?? 'null (not indexed)'}`);
-  console.log(`    chunkCount : ${manual.chunkCount}`);
+  logger.info({ msg: `[diagnose-rag] ✓ Found: ${manual.filename} (id: ${manual.id})` });
+  logger.info({ msg: `[diagnose-rag] storagePath: ${manual.storagePath}` });
+  logger.info({ msg: `[diagnose-rag] processedAt: ${manual.processedAt ?? 'null (not indexed)'}` });
+  logger.info({ msg: `[diagnose-rag] chunkCount : ${manual.chunkCount}` });
 
-  console.log('\n─── Step 3: Parse storage URI ──────────────────────');
+  logger.info({ msg: '[diagnose-rag] ─── Step 3: Parse storage URI ──────────────────────' });
   const uri = manual.storagePath;
   const match = uri.match(/^(gcs|minio):\/\/([^/]+)\/(.+)$/);
   if (!match) {
-    console.error(`  ✗ Cannot parse storageUri: ${uri}`);
+    logger.error({ msg: `[diagnose-rag] ✗ Cannot parse storageUri: ${uri}` });
     return;
   }
   const [, backend, bucket, key] = match;
-  console.log(`  backend: ${backend}`);
-  console.log(`  bucket : ${bucket}`);
-  console.log(`  key    : ${key}`);
+  logger.info({ msg: `[diagnose-rag] backend: ${backend}` });
+  logger.info({ msg: `[diagnose-rag] bucket : ${bucket}` });
+  logger.info({ msg: `[diagnose-rag] key    : ${key}` });
 
   if (backend !== 'minio') {
-    console.log(`  ⚠ Backend is "${backend}" — skipping MinIO download test`);
+    logger.info({ msg: `[diagnose-rag] ⚠ Backend is "${backend}" — skipping MinIO download test` });
     return;
   }
 
-  console.log('\n─── Step 4: Download test ──────────────────────────');
+  logger.info({ msg: '[diagnose-rag] ─── Step 4: Download test ──────────────────────────' });
   try {
     const stream = await client.getObject(bucket, key);
     const chunks: Buffer[] = [];
@@ -90,28 +97,33 @@ async function run() {
       stream.on('error', reject);
     });
     const buf = Buffer.concat(chunks);
-    console.log(`  ✓ Downloaded ${buf.length} bytes`);
+    logger.info({ msg: `[diagnose-rag] ✓ Downloaded ${buf.length} bytes` });
     const magic = buf.subarray(0, 4).toString('ascii');
-    console.log(
-      `  PDF magic bytes: "${magic}" — ${magic === '%PDF' ? '✓ valid PDF' : '✗ NOT a valid PDF'}`,
-    );
+    logger.info({
+      msg: `[diagnose-rag] PDF magic bytes: "${magic}" — ${magic === '%PDF' ? '✓ valid PDF' : '✗ NOT a valid PDF'}`,
+    });
   } catch (err) {
-    console.error(`  ✗ getObject failed: [${errCode(err) || 'error'}] ${errText(err)}`);
+    logger.error({
+      msg: `[diagnose-rag] ✗ getObject failed: [${errCode(err) || 'error'}] ${errText(err)}`,
+    });
   }
 
-  console.log('\n─── Step 5: ManualChunk count in DB ───────────────');
+  logger.info({ msg: '[diagnose-rag] ─── Step 5: ManualChunk count in DB ───────────────' });
   try {
     const count = await prisma.manualChunk.count({ where: { manualId: manual.id } });
-    console.log(`  ManualChunk rows for this manual: ${count}`);
+    logger.info({ msg: `[diagnose-rag] ManualChunk rows for this manual: ${count}` });
   } catch (err) {
-    console.error('  ✗ ManualChunk count query failed:', errText(err));
+    logger.error({
+      msg: '[diagnose-rag] ✗ ManualChunk count query failed',
+      errMessage: errText(err),
+    });
   }
 
   await prisma.$disconnect();
-  console.log('\n─── Diagnosis complete ─────────────────────────────\n');
+  logger.info({ msg: '[diagnose-rag] ─── Diagnosis complete ─────────────────────────────' });
 }
 
 run().catch((err) => {
-  console.error('Fatal:', err);
+  logger.error({ msg: '[diagnose-rag] Fatal', err });
   process.exit(1);
 });

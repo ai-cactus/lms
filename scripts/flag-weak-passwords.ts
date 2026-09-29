@@ -21,13 +21,14 @@
  */
 
 import { prisma } from '@/db/index';
+import { logger } from '@/lib/logger';
 
 const DRY_RUN = process.argv.includes('--dry-run');
 
 async function main() {
-  console.log('=== Flag Weak Passwords Migration ===');
+  logger.info({ msg: '[flag-weak-passwords] === Flag Weak Passwords Migration ===' });
   if (DRY_RUN) {
-    console.log('[DRY RUN] No changes will be written.\n');
+    logger.info({ msg: '[flag-weak-passwords] [DRY RUN] No changes will be written.' });
   }
 
   // Find all credential-based users.
@@ -50,17 +51,23 @@ async function main() {
   });
 
   if (affectedUsers.length === 0) {
-    console.log('No users require password reset — all passwords are up to date.');
+    logger.info({
+      msg: '[flag-weak-passwords] No users require password reset — all passwords are up to date.',
+    });
     return;
   }
 
-  console.log(`Found ${affectedUsers.length} user(s) to flag for password reset:\n`);
+  logger.info({
+    msg: `[flag-weak-passwords] Found ${affectedUsers.length} user(s) to flag for password reset`,
+  });
   for (const user of affectedUsers) {
-    console.log(`  - ${user.email} (last updated: ${user.updatedAt.toISOString()})`);
+    logger.info({
+      msg: `[flag-weak-passwords] - ${user.email} (last updated: ${user.updatedAt.toISOString()})`,
+    });
   }
 
   if (DRY_RUN) {
-    console.log('\n[DRY RUN] Exiting without writing changes.');
+    logger.info({ msg: '[flag-weak-passwords] [DRY RUN] Exiting without writing changes.' });
     return;
   }
 
@@ -76,23 +83,29 @@ async function main() {
   //   },
   //   data: { passwordResetRequired: true },
   // });
-  // console.log(`\n✓ Flagged ${count} user(s) for forced password reset on next login.`);
+  // logger.info({ msg: `[flag-weak-passwords] ✓ Flagged ${count} user(s) for forced password reset` });
 
-  console.log('\n⚠️  Action required:');
-  console.log('   1. Add `passwordResetRequired Boolean @default(false)` to the User model');
-  console.log('   2. Run `npx prisma migrate dev --name add_password_reset_required`');
-  console.log('   3. Re-run this script to apply the flags (without --dry-run)');
-  console.log(
-    '   4. Update the authorize() callback in create-auth-instance.ts to check this flag',
-  );
-  console.log(
-    '      and redirect to /reset-password if set, clearing the flag after a successful reset.',
-  );
+  logger.info({ msg: '[flag-weak-passwords] ⚠️  Action required' });
+  logger.info({
+    msg: '[flag-weak-passwords] 1. Add `passwordResetRequired Boolean @default(false)` to the User model',
+  });
+  logger.info({
+    msg: '[flag-weak-passwords] 2. Run `npx prisma migrate dev --name add_password_reset_required`',
+  });
+  logger.info({
+    msg: '[flag-weak-passwords] 3. Re-run this script to apply the flags (without --dry-run)',
+  });
+  logger.info({
+    msg: '[flag-weak-passwords] 4. Update the authorize() callback in create-auth-instance.ts to check this flag',
+  });
+  logger.info({
+    msg: '[flag-weak-passwords] and redirect to /reset-password if set, clearing the flag after a successful reset.',
+  });
 }
 
 main()
   .catch((err) => {
-    console.error('Script failed:', err);
+    logger.error({ msg: '[flag-weak-passwords] Script failed', err });
     process.exit(1);
   })
   .finally(() => prisma.$disconnect());

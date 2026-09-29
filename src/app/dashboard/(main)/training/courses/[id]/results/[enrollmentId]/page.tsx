@@ -42,7 +42,11 @@ export default async function QuizResultsPage({
       (lesson) => lesson.quiz?.questions || [],
     );
 
-    const answers = latestAttempt.answers as { questionId: string; selectedAnswer: string }[];
+    const answers = latestAttempt.answers as {
+      questionId: string;
+      selectedAnswer: string;
+      explanation?: string;
+    }[];
 
     let correctCount = 0;
     let wrongCount = 0;
@@ -90,7 +94,11 @@ export default async function QuizResultsPage({
           })),
           selectedAnswer: selectedLetter,
           correctAnswer: correctLetter,
-          explanation: `The correct answer is ${correctLetter}. ${q.correctAnswer}`,
+          // BUG-29: the stored rationale, resolved exactly as the learner's own
+          // results view resolves it (`getLearnPayload`). This used to be a
+          // sentence manufactured from the answer key, so a manager reviewing an
+          // attempt never saw the explanation the learner was shown.
+          explanation: q.explanation || userAnswer?.explanation || '',
         };
       }),
       userName: enrollment.organizationUser.user.fullName || enrollment.organizationUser.user.email,

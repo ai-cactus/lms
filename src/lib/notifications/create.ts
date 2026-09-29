@@ -3,6 +3,7 @@ import 'server-only';
 import prisma from '@/lib/prisma';
 import { logger } from '@/lib/logger';
 import { ADMIN_ROLES } from '@/lib/rbac/role-utils';
+import { permissionForLink, roleHolds } from '@/lib/notifications/link-audience';
 import {
   isInAppEnabledForMembership,
   isNotificationChannelEnabled,
@@ -55,9 +56,15 @@ export async function createNotification(data: {
 }
 
 /**
- * Create notification for all admins of a specific organization, skipping the
- * whole send when the organization has switched the type's category off in-app,
- * and skipping any admin who has opted out of this notification type.
+ * Create notification for the admins of a specific organization who can open
+ * its link, skipping the whole send when the organization has switched the
+ * type's category off in-app, and skipping any admin who has opted out of this
+ * notification type.
+ *
+ * "Can open its link" is Q-25: a `/dashboard/staff/{id}` notice goes only to
+ * holders of `user.read`, a Status Tracker one only to holders of
+ * `assignment.read` (see `link-audience.ts`). If that leaves nobody, the miss is
+ * logged — a notice nobody receives must not be silent.
  */
 export async function notifyOrganizationAdmins(
   organizationId: string,
@@ -78,22 +85,33 @@ export async function notifyOrganizationAdmins(
         active: true,
         role: { in: [...ADMIN_ROLES] },
       },
-      select: { id: true },
+      select: { id: true, role: true },
     });
 
-    if (admins.length === 0) return;
+    const permission = permissionForLink(data.linkUrl);
+    const audience = admins.filter((a) => roleHolds(a.role, permission));
+    if (audience.length === 0) {
+      logger.warn({
+        msg: '[notifications] No admin can open this notice — nobody notified',
+        orgId: organizationId,
+        type: data.type,
+        requiredPermission: permission,
+        adminCount: admins.length,
+      });
+      return;
+    }
 
     // Exclude admins who have explicitly opted out of this type.
     const optedOut = await prisma.notificationPreference.findMany({
       where: {
-        organizationUserId: { in: admins.map((a) => a.id) },
+        organizationUserId: { in: audience.map((a) => a.id) },
         type: data.type,
         enabled: false,
       },
       select: { organizationUserId: true },
     });
     const optedOutIds = new Set(optedOut.map((p) => p.organizationUserId));
-    const recipients = admins.filter((a) => !optedOutIds.has(a.id));
+    const recipients = audience.filter((a) => !optedOutIds.has(a.id));
 
     if (recipients.length === 0) return;
 

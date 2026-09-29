@@ -11,6 +11,7 @@
  *   --dry-run   Report what would be deleted, write nothing.
  */
 import { prisma } from '@/db/index';
+import { logger } from '@/lib/logger';
 
 const DRY_RUN = process.argv.includes('--dry-run');
 
@@ -24,7 +25,7 @@ async function main() {
       where: { email },
     });
   }
-  console.log(`${prefix} ${inviteCount} invite(s) for ${email}`);
+  logger.info({ msg: `[delete-user] ${prefix} ${inviteCount} invite(s) for ${email}` });
 
   const user = await prisma.user.findUnique({
     where: { email },
@@ -47,18 +48,18 @@ async function main() {
         where: { createdByOrgUserId: { in: organizationUserIds } },
       });
     }
-    console.log(`${prefix} ${courseCount} course(s) for ${email}`);
+    logger.info({ msg: `[delete-user] ${prefix} ${courseCount} course(s) for ${email}` });
 
     if (!DRY_RUN) {
       await prisma.user.delete({
         where: { email },
       });
     }
-    console.log(
-      `${prefix} user ${email} (cascading ${organizationUserIds.length} membership(s), enrollments, and documents)`,
-    );
+    logger.info({
+      msg: `[delete-user] ${prefix} user ${email} (cascading ${organizationUserIds.length} membership(s), enrollments, and documents)`,
+    });
   } else {
-    console.log(`User ${email} not found`);
+    logger.info({ msg: `[delete-user] User ${email} not found` });
   }
 
   const tokenCount = await prisma.verificationToken.count({ where: { identifier: email } });
@@ -67,12 +68,12 @@ async function main() {
       where: { identifier: email },
     });
   }
-  console.log(`${prefix} ${tokenCount} verification token(s) for ${email}`);
+  logger.info({ msg: `[delete-user] ${prefix} ${tokenCount} verification token(s) for ${email}` });
 }
 
 main()
   .catch((e) => {
-    console.error(e);
+    logger.error({ msg: '[delete-user] Failed', err: e });
     process.exit(1);
   })
   .finally(async () => {

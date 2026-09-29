@@ -801,13 +801,15 @@ export default function StaffProfileClient({
         staffName={user.name}
       />
 
-      <AssignRetakeModal
-        isOpen={!!retakeEnrollment}
-        onClose={() => setRetakeEnrollment(null)}
-        enrollmentId={retakeEnrollment?.id || ''}
-        courseName={retakeEnrollment?.courseName || ''}
-        userName={user.name}
-      />
+      {retakeEnrollment && (
+        <AssignRetakeModal
+          isOpen
+          onClose={() => setRetakeEnrollment(null)}
+          enrollmentId={retakeEnrollment.id}
+          courseName={retakeEnrollment.courseName}
+          userName={user.name}
+        />
+      )}
 
       {viewingCertificateId && (
         <CertificateModal

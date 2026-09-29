@@ -11,11 +11,14 @@
  *   --dry-run   Report the organizations that would change, write nothing.
  */
 import { prisma } from '@/db/index';
+import { logger } from '@/lib/logger';
 
 const DRY_RUN = process.argv.includes('--dry-run');
 
 async function main() {
-  console.log(`Starting auditor access synchronization...${DRY_RUN ? ' [DRY RUN]' : ''}`);
+  logger.info({
+    msg: `[sync-auditor-access] Starting auditor access synchronization...${DRY_RUN ? ' [DRY RUN]' : ''}`,
+  });
 
   // 1. Find organizations that SHOULD have access but don't
   const toGrant = await prisma.organization.findMany({
@@ -28,12 +31,14 @@ async function main() {
     select: { id: true, name: true },
   });
 
-  console.log(`Found ${toGrant.length} organizations to grant access to.`);
+  logger.info({
+    msg: `[sync-auditor-access] Found ${toGrant.length} organizations to grant access to.`,
+  });
 
   for (const org of toGrant) {
-    console.log(
-      `${DRY_RUN ? '[DRY RUN] Would grant' : 'Granting'} access to: ${org.name} (${org.id})`,
-    );
+    logger.info({
+      msg: `[sync-auditor-access] ${DRY_RUN ? '[DRY RUN] Would grant' : 'Granting'} access to: ${org.name} (${org.id})`,
+    });
     if (DRY_RUN) continue;
     await prisma.organization.update({
       where: { id: org.id },
@@ -50,12 +55,14 @@ async function main() {
     select: { id: true, name: true },
   });
 
-  console.log(`Found ${toRevoke.length} organizations to revoke access from.`);
+  logger.info({
+    msg: `[sync-auditor-access] Found ${toRevoke.length} organizations to revoke access from.`,
+  });
 
   for (const org of toRevoke) {
-    console.log(
-      `${DRY_RUN ? '[DRY RUN] Would revoke' : 'Revoking'} access from: ${org.name} (${org.id})`,
-    );
+    logger.info({
+      msg: `[sync-auditor-access] ${DRY_RUN ? '[DRY RUN] Would revoke' : 'Revoking'} access from: ${org.name} (${org.id})`,
+    });
     if (DRY_RUN) continue;
     await prisma.organization.update({
       where: { id: org.id },
@@ -63,10 +70,14 @@ async function main() {
     });
   }
 
-  console.log(DRY_RUN ? 'Dry run complete — nothing was written.' : 'Synchronization complete.');
+  logger.info({
+    msg: DRY_RUN
+      ? '[sync-auditor-access] Dry run complete — nothing was written.'
+      : '[sync-auditor-access] Synchronization complete.',
+  });
 
   if (toGrant.length === 0) {
-    console.log('\n--- Debug Info: All Organizations ---');
+    logger.info({ msg: '[sync-auditor-access] --- Debug Info: All Organizations ---' });
     const allOrgs = await prisma.organization.findMany({
       select: {
         id: true,
@@ -75,17 +86,17 @@ async function main() {
         subscription: { select: { status: true } },
       },
     });
-    console.log(JSON.stringify(allOrgs, null, 2));
-    console.log('--------------------------------------');
-    console.log(
-      'TIP: If you see "subscription": null, it means the Stripe webhook never successfully saved the subscription to your database.',
-    );
+    logger.info({ msg: '[sync-auditor-access] Organizations', organizations: allOrgs });
+    logger.info({ msg: '[sync-auditor-access] --------------------------------------' });
+    logger.info({
+      msg: '[sync-auditor-access] TIP: If you see "subscription": null, it means the Stripe webhook never successfully saved the subscription to your database.',
+    });
   }
 }
 
 main()
   .catch((e) => {
-    console.error(e);
+    logger.error({ msg: '[sync-auditor-access] Failed', err: e });
     process.exit(1);
   })
   .finally(async () => {

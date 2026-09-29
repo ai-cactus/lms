@@ -25,7 +25,7 @@
 - [Offline migrations](project_offline_migrations.md): dev DB often unreachable; scaffold via `migrate diff --from-schema/--to-schema`
 - [migrate dev destructive diff](project_migrate_dev_destructive_diff.md): autogen drops pgvector/HNSW/defaults; a RENAME comes out as DROP+CREATE
 - [prisma format runs in pre-commit](gotcha_prisma_format_churn.md): lint-staged formats staged .prisma, so schemas ARE canonical
-- [MinIO dev port mismatch](gotcha_minio_dev_port_mismatch.md): compose publishes 9005, .env.example says 9000; set MINIO_PORT=9005
+- [MinIO dev port](gotcha_minio_dev_port_mismatch.md): compose publishes 9005; an old .env may still say 9000
 - [Vitest @/generated alias](project_vitest_generated_alias.md): vitest.config.mts must alias @/generated & @/db, most-specific first
 - [vi.mock of node builtins needs `default`](gotcha_vitest_node_builtin_mock_default.md): fs/promises & child_process mocks must export default too
 - [Email delivery tracking](project_email_delivery_tracking.md): two disjoint recording paths; reminder senders bypass sendMailTracked by design
@@ -122,3 +122,6 @@
 - [origin/dev moves under a worktree](gotcha_worktree_bash_guard_and_shared_refs.md): refs are shared; never revert a file from origin/dev
 - [User delete = asset custody transfer](gotcha_user_delete_asset_custody.md): courses/documents are REASSIGNED, never deleted
 - [Scratchpad shared across agents](gotcha_scratchpad_shared_across_agents.md): parallel worktree agents share one scratchpad; use a unique log subdir
+- [Tracker items may already be fixed](gotcha_tracker_items_may_already_be_fixed.md): git log -S before fixing; no-ffmpeg fixture recipe
+- [Self-service actions take a realm](project_self_service_actions_take_a_realm.md): no referer/fallback; a client storage URI signs ANY object
+- [Attestation status writers](gotcha_attestation_status_writers.md): quiz pass stays in_progress; attestCourse has no pass check; progress route can clobber `attested`

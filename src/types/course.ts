@@ -193,6 +193,8 @@ export const courseDetailSelect = {
   status: true,
   /** Splits `draft` into "Needs Review" (F-051 gate) vs a plain unpublished draft. */
   reviewRequired: true,
+  /** The approver's name snapshot, shown once `approvedBy` is gone (BUG-25). */
+  approvedByName: true,
   updatedAt: true,
   overview: true,
   objectives: true,

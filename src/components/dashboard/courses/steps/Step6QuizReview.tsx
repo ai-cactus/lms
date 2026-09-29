@@ -341,6 +341,7 @@ export default function Step6QuizReview({
               <input
                 type="text"
                 className={formInputClass}
+                aria-label={`Option ${i + 1}`}
                 value={opt}
                 onChange={(e) => updateOption(i, e.target.value)}
                 placeholder={`Option ${i + 1}`}
@@ -415,6 +416,7 @@ export default function Step6QuizReview({
                   <input
                     type="text"
                     className={formInputClass}
+                    aria-label={`Option ${i + 1}`}
                     value={opt}
                     onChange={(e) =>
                       setEditingQuestion(withOptionTextEdited(editingQuestion, i, e.target.value))

@@ -16,6 +16,9 @@
  *     score wins) — over the organisation's courses, not the viewer's, and
  *     attributes a transferred member to their CURRENT facility, never to the
  *     facility stamped on their enrolment.
+ *   - Finance sees exactly the Owner's tile values for the same scope, never
+ *     the Courses table or the Status Tracker, and the Global View once the
+ *     organisation has 2+ facilities.
  *
  * Pre-conditions:
  *   - App running on http://localhost:3005.
@@ -353,6 +356,55 @@ async function addSecondFacilityWithTransferredMember(
   }
 }
 
+const FINANCE_PASSWORD = 'FacDash!Finance9';
+
+interface SeededMember {
+  userId: string;
+  orgUserId: string;
+  email: string;
+}
+
+/** A Finance member of the org — org-wide, so bound to facility A like the owner. */
+async function addFinanceMember(seeded: SeededSingleFacility): Promise<SeededMember> {
+  const client = await db();
+  try {
+    const email = uid('finance');
+    const userId = crypto.randomUUID();
+    const orgUserId = crypto.randomUUID();
+    await client.query(
+      `INSERT INTO users (id, email, password, email_verified, auth_provider, first_name, last_name, full_name, created_at, updated_at)
+       VALUES ($1, $2, $3, true, 'credentials', 'Facility', 'Finance', 'Facility Finance', NOW(), NOW())`,
+      [userId, email, await bcrypt.hash(FINANCE_PASSWORD, 10)],
+    );
+    await client.query(
+      `INSERT INTO organization_users (id, user_id, organization_id, role, active, joined_at, role_assigned_at, created_at, updated_at)
+       VALUES ($1, $2, $3, 'finance'::"UserRole", true, NOW(), NOW(), NOW(), NOW())`,
+      [orgUserId, userId, seeded.orgId],
+    );
+    await client.query(
+      `INSERT INTO organization_user_facilities (id, organization_user_id, facility_id, active, joined_at)
+       VALUES ($1, $2, $3, true, NOW())`,
+      [crypto.randomUUID(), orgUserId, seeded.facilityAId],
+    );
+    return { userId, orgUserId, email };
+  } finally {
+    await client.end();
+  }
+}
+
+async function removeMember(member: SeededMember): Promise<void> {
+  const client = await db();
+  try {
+    await client.query(`DELETE FROM organization_user_facilities WHERE organization_user_id = $1`, [
+      member.orgUserId,
+    ]);
+    await client.query(`DELETE FROM organization_users WHERE id = $1`, [member.orgUserId]);
+    await client.query(`DELETE FROM users WHERE id = $1`, [member.userId]);
+  } finally {
+    await client.end();
+  }
+}
+
 async function cleanupSingleFacility(
   seeded: SeededSingleFacility,
   transfer: SeededTransfer | null,
@@ -528,6 +580,77 @@ test.describe('Facility dashboard: founder tiles over the organisation, by curre
       await expect(cardValue(page, 'Total Assigned Learners')).toHaveText('1');
       await expect(cardValue(page, 'Average Grade')).toHaveText('0%');
     } finally {
+      await cleanupSingleFacility(seeded, transfer);
+    }
+  });
+
+  // TOOL-19: the owner test above cannot catch a Finance-only predicate drift
+  // (BUG-01) — the owner's predicate never changed. Finance reaches this page on
+  // `billing.read`, so it must see the owner's figures and nothing roster-level.
+  test('Finance sees the same tiles as the Owner for the same scope, no Courses table or Status Tracker, and the Global View once there are 2 facilities', async ({
+    browser,
+  }) => {
+    const seeded = await seedOrgWithOneFacilityAndKnownData();
+    const finance = await addFinanceMember(seeded);
+    let transfer: SeededTransfer | null = null;
+    const ownerContext = await browser.newContext();
+    const financeContext = await browser.newContext();
+    try {
+      const ownerPage = await ownerContext.newPage();
+      const financePage = await financeContext.newPage();
+      await login(ownerPage, seeded.ownerEmail, seeded.ownerPassword);
+      await login(financePage, finance.email, FINANCE_PASSWORD);
+
+      const tiles = ['Total Active Courses', 'Total Assigned Learners', 'Average Grade'];
+      const expected = ['1', '1', `${seeded.bestScore}%`];
+
+      async function expectSameTiles() {
+        for (const [index, label] of tiles.entries()) {
+          await expect(cardValue(ownerPage, label)).toHaveText(expected[index]);
+          await expect(cardValue(financePage, label)).toHaveText(expected[index]);
+        }
+      }
+
+      // One facility: the classic dashboard for both.
+      await expectSameTiles();
+
+      // The owner sees both roster-level sections, so their absence for
+      // Finance below is the gate and not an empty page.
+      await expect(ownerPage.getByRole('heading', { name: 'Courses', exact: true })).toBeVisible();
+      await expect(
+        ownerPage.getByRole('heading', { name: 'Status Tracker', exact: true }),
+      ).toBeVisible();
+      await expect(financePage.getByRole('heading', { name: 'Courses', exact: true })).toHaveCount(
+        0,
+      );
+      await expect(
+        financePage.getByRole('heading', { name: 'Status Tracker', exact: true }),
+      ).toHaveCount(0);
+
+      // A second facility: Finance oversees the organisation, so it lands on
+      // the Global View like the owner.
+      transfer = await addSecondFacilityWithTransferredMember(seeded);
+      await financePage.goto('/dashboard');
+      await expect(
+        financePage.getByText('Here is an overview across all your facilities'),
+      ).toBeVisible();
+      await expect(cardValue(financePage, 'Total Number of Facilities')).toHaveText('2');
+
+      // Same scope, same tiles: Facility A for both.
+      await ownerPage.goto(`/dashboard?facility=${seeded.facilityAId}`);
+      await financePage.goto(`/dashboard?facility=${seeded.facilityAId}`);
+      await expect(financePage.getByText('Here is an overview of your facility')).toBeVisible();
+      await expectSameTiles();
+      await expect(financePage.getByRole('heading', { name: 'Courses', exact: true })).toHaveCount(
+        0,
+      );
+      await expect(
+        financePage.getByRole('heading', { name: 'Status Tracker', exact: true }),
+      ).toHaveCount(0);
+    } finally {
+      await ownerContext.close();
+      await financeContext.close();
+      await removeMember(finance);
       await cleanupSingleFacility(seeded, transfer);
     }
   });

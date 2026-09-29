@@ -8,6 +8,7 @@ import { Client as MinioClient } from 'minio';
 import pdfParse from 'pdf-parse';
 import { prisma } from '@/db/index';
 import { generateBatchEmbeddings } from '@/lib/ai-client';
+import { logger } from '@/lib/logger';
 
 const client = new MinioClient({
   endPoint: process.env.MINIO_ENDPOINT ?? 'localhost',
@@ -36,37 +37,38 @@ async function run() {
     orderBy: { createdAt: 'desc' },
   });
   if (!manual) {
-    console.error('No active manual in DB');
+    logger.error({ msg: '[test-indexer] No active manual in DB' });
     return;
   }
-  console.log(`\nTesting against: ${manual.filename} (${manual.id})`);
-  console.log(`storagePath: ${manual.storagePath}`);
+  logger.info({ msg: `[test-indexer] Testing against: ${manual.filename} (${manual.id})` });
+  logger.info({ msg: `[test-indexer] storagePath: ${manual.storagePath}` });
 
-  console.log('\n─── Downloading PDF...');
+  logger.info({ msg: '[test-indexer] ─── Downloading PDF...' });
   const buf = await downloadBuffer(manual.storagePath);
-  console.log(`✓ Downloaded ${buf.length} bytes`);
+  logger.info({ msg: `[test-indexer] ✓ Downloaded ${buf.length} bytes` });
 
-  console.log('\n─── Parsing PDF with pdf-parse...');
+  logger.info({ msg: '[test-indexer] ─── Parsing PDF with pdf-parse...' });
   let pdfData;
   try {
     pdfData = await pdfParse(buf);
-    console.log(`✓ Extracted ${pdfData.text?.length ?? 0} characters`);
-    console.log(`  Pages: ${pdfData.numpages}`);
-    console.log(`  First 200 chars: ${JSON.stringify(pdfData.text?.slice(0, 200))}`);
+    logger.info({ msg: `[test-indexer] ✓ Extracted ${pdfData.text?.length ?? 0} characters` });
+    logger.info({ msg: `[test-indexer] Pages: ${pdfData.numpages}` });
+    logger.info({
+      msg: `[test-indexer] First 200 chars: ${JSON.stringify(pdfData.text?.slice(0, 200))}`,
+    });
   } catch (err) {
     const e = err instanceof Error ? err : new Error(String(err));
-    console.error(`✗ pdf-parse FAILED: [${e.name}] ${e.message}`);
-    console.error(e.stack);
+    logger.error({ msg: '[test-indexer] ✗ pdf-parse FAILED', err: e });
     return;
   }
 
-  console.log('\n─── Testing embedding API...');
+  logger.info({ msg: '[test-indexer] ─── Testing embedding API...' });
   const GOOGLE_VERTEX_PROJECT = process.env.GOOGLE_PROJECT_ID || process.env.GCP_PROJECT_ID;
-  console.log(`  GOOGLE_PROJECT_ID: ${GOOGLE_VERTEX_PROJECT ?? 'NOT SET'}`);
+  logger.info({ msg: `[test-indexer] GOOGLE_PROJECT_ID: ${GOOGLE_VERTEX_PROJECT ?? 'NOT SET'}` });
 
   const testChunk = (pdfData.text || '').slice(0, 300).trim();
   if (!testChunk) {
-    console.log('  ⚠ No text to embed');
+    logger.info({ msg: '[test-indexer] ⚠ No text to embed' });
     return;
   }
 
@@ -79,16 +81,18 @@ async function run() {
   // the app does not use. See the PHI egress guard in eslint.config.mjs.
   try {
     const [embedding] = await generateBatchEmbeddings([testChunk]);
-    console.log(`  ✓ Embedding OK — ${embedding?.length ?? 0} dimensions`);
+    logger.info({ msg: `[test-indexer] ✓ Embedding OK — ${embedding?.length ?? 0} dimensions` });
   } catch (err) {
-    console.error(`  ✗ Embedding failed: ${err instanceof Error ? err.message : String(err)}`);
+    logger.error({
+      msg: `[test-indexer] ✗ Embedding failed: ${err instanceof Error ? err.message : String(err)}`,
+    });
   }
 
   await prisma.$disconnect();
-  console.log('\n─── Test complete ──────────────────────────────────\n');
+  logger.info({ msg: '[test-indexer] ─── Test complete ──────────────────────────────────' });
 }
 
 run().catch((err) => {
-  console.error('Fatal:', err);
+  logger.error({ msg: '[test-indexer] Fatal', err });
   process.exit(1);
 });

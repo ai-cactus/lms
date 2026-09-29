@@ -5,6 +5,7 @@ import {
   CYCLE_SUMMARY_EMAIL_KIND,
   ENROLLMENT_CONTEXT_SELECT,
   noopCycleSummarySender,
+  partitionByEnrollmentEligibility,
   periodKeyForDay,
   toSourceRow,
   toSummaryItem,
@@ -40,7 +41,10 @@ import { buildCycleSummarySections, countSectionItems, type ReminderSummaryItem 
  *   * PARTIAL DEGRADATION, NOT FAILURE. An item whose source row is gone (an
  *     enrollment deleted, an event purged) is dropped from the rebuild and
  *     counted; the rest of the email still goes out. Only an email with nothing
- *     left to say is given up on.
+ *     left to say is given up on. A reminder line whose enrolment has since been
+ *     finished, superseded by a retake or archived is dropped the same way
+ *     (BUG-45), and an email left with nothing BUT such lines is `cancelled` —
+ *     it is not broken, it is simply no longer owed.
  *   * BOUNDED. `attempts`/`maxAttempts` cap the re-sends exactly as they do for
  *     any other message, and a backoff floor keeps a transient outage from being
  *     hammered on back-to-back runs.
@@ -74,11 +78,23 @@ export interface CycleSummaryRetrySummary {
   unreconstructable: number;
   /** Individual source rows that could not be reconstructed but whose email could. */
   itemsUnavailable: number;
+  /** Reminder lines left out because their enrolment is no longer owed (BUG-45). */
+  itemsDropped: number;
+  /** Emails retired as `cancelled` because every line they carried was dropped. */
+  cancelled: number;
   /** Failed emails past their attempt cap; counted, never retried again. */
   exhausted: number;
   /** Re-sends a dry run would have made. Always 0 outside dry-run. */
   wouldResend: number;
   errors: number;
+}
+
+/** One line a failed email was supposed to carry, as `CycleSummaryItem` recorded it. */
+interface RecordedItem {
+  itemType: string;
+  itemId: string;
+  /** `worker` | `escalation` for a reminder line; `''` for an event or a pre-BUG-21 row. */
+  recipientRole: string;
 }
 
 /** One recipient's failed email, with the rows it was supposed to carry. */
@@ -88,7 +104,7 @@ interface RetryCandidate {
   toName: string | null;
   organizationId: string | null;
   createdAt: Date;
-  items: { itemType: string; itemId: string }[];
+  items: RecordedItem[];
 }
 
 export async function runCycleSummaryRetry(
@@ -103,6 +119,8 @@ export async function runCycleSummaryRetry(
     failed: 0,
     unreconstructable: 0,
     itemsUnavailable: 0,
+    itemsDropped: 0,
+    cancelled: 0,
     exhausted: 0,
     wouldResend: 0,
     errors: 0,
@@ -144,14 +162,14 @@ export async function runCycleSummaryRetry(
   const messageIds = retryable.map((m) => m.id);
   const itemRows = await prisma.cycleSummaryItem.findMany({
     where: { emailMessageId: { in: messageIds } },
-    select: { emailMessageId: true, itemType: true, itemId: true },
+    select: { emailMessageId: true, itemType: true, itemId: true, recipientRole: true },
   });
 
-  const itemsByMessage = new Map<string, { itemType: string; itemId: string }[]>();
-  for (const row of itemRows) {
-    const bucket = itemsByMessage.get(row.emailMessageId);
-    if (bucket) bucket.push({ itemType: row.itemType, itemId: row.itemId });
-    else itemsByMessage.set(row.emailMessageId, [{ itemType: row.itemType, itemId: row.itemId }]);
+  const itemsByMessage = new Map<string, RecordedItem[]>();
+  for (const { emailMessageId, ...item } of itemRows) {
+    const bucket = itemsByMessage.get(emailMessageId);
+    if (bucket) bucket.push(item);
+    else itemsByMessage.set(emailMessageId, [item]);
   }
 
   const candidates: RetryCandidate[] = retryable.map((message) => ({
@@ -187,6 +205,8 @@ interface SourceContext {
   logs: Map<string, ReminderSourceRow>;
   nudges: Map<string, ReminderSourceRow>;
   events: Map<string, PendingEvent>;
+  /** Reminder rows (by id) whose enrolment is no longer owed a line. */
+  droppedRowIds: Set<string>;
   facilityNames: Map<string, string>;
   organizationNames: Map<string, string>;
 }
@@ -256,22 +276,21 @@ async function loadSourceContext(candidates: RetryCandidate[]): Promise<SourceCo
       })
     : [];
 
+  const logRows = logs.map((log) =>
+    toSourceRow(log.id, 'reminder_log', log.enrollment, { stage: log.stage }),
+  );
+  const nudgeRows = nudges.map((nudge) =>
+    toSourceRow(nudge.id, 'reminder_nudge', nudge.enrollment, {
+      kind: nudge.kind,
+      attemptsRemaining: nudge.attemptsRemaining ?? undefined,
+    }),
+  );
+  const { ineligible } = await partitionByEnrollmentEligibility([...logRows, ...nudgeRows]);
+
   return {
-    logs: new Map(
-      logs.map((log) => [
-        log.id,
-        toSourceRow(log.id, 'reminder_log', log.enrollment, { stage: log.stage }),
-      ]),
-    ),
-    nudges: new Map(
-      nudges.map((nudge) => [
-        nudge.id,
-        toSourceRow(nudge.id, 'reminder_nudge', nudge.enrollment, {
-          kind: nudge.kind,
-          attemptsRemaining: nudge.attemptsRemaining ?? undefined,
-        }),
-      ]),
-    ),
+    logs: new Map(logRows.map((row) => [row.id, row])),
+    nudges: new Map(nudgeRows.map((row) => [row.id, row])),
+    droppedRowIds: new Set(ineligible.map((row) => row.id)),
     events: new Map(events.map((event) => [event.id, event as PendingEvent])),
     facilityNames: new Map(facilities.map((f) => [f.id, f.name])),
     organizationNames: new Map(organizations.map((o) => [o.id, o.name])),
@@ -291,6 +310,7 @@ async function retryOne(params: {
   const reminders: ReminderSummaryItem[] = [];
   const events: PendingEvent[] = [];
   let unavailable = 0;
+  let dropped = 0;
 
   for (const item of candidate.items) {
     if (item.itemType === 'notification_event') {
@@ -308,22 +328,33 @@ async function retryOne(params: {
       unavailable += 1;
       continue;
     }
+    if (context.droppedRowIds.has(row.id)) {
+      dropped += 1;
+      continue;
+    }
 
-    // The item rows record WHAT the email carried, not which audience each line
-    // was written for. The learner's own address is the discriminator, exactly
-    // as the per-stage retry derived it: anyone else holding this row is an
-    // escalation recipient.
-    const recipientRole =
-      row.workerEmail === candidate.toEmail ? ('worker' as const) : ('escalation' as const);
-    reminders.push(toSummaryItem(row, recipientRole, now));
+    reminders.push(toSummaryItem(row, recordedRecipientRole(item, row, candidate), now));
   }
 
   summary.itemsUnavailable += unavailable;
+  summary.itemsDropped += dropped;
 
   const sections = buildCycleSummarySections({
     reminders,
     organizationUpdates: buildSections(events, context.facilityNames),
   });
+
+  if (sections.length === 0 && dropped > 0 && unavailable === 0) {
+    summary.cancelled += 1;
+    logger.info({
+      msg: '[cycle-summary] Failed summary no longer owed — every line it carried was dropped',
+      emailMessageId: candidate.id,
+      itemsDropped: dropped,
+      dryRun,
+    });
+    if (!dryRun) await recordCancelled(candidate.id);
+    return;
+  }
 
   if (sections.length === 0) {
     summary.unreconstructable += 1;
@@ -398,6 +429,24 @@ async function retryOne(params: {
   });
 }
 
+/**
+ * The audience a reminder line was written for. Recorded on the item since
+ * BUG-21, which is what lets a self-escalating admin's retry carry both copies
+ * of their own row. A row recorded before that has no role, so the learner's own
+ * address is the discriminator, exactly as the per-stage retry derived it:
+ * anyone else holding the row is an escalation recipient.
+ */
+function recordedRecipientRole(
+  item: RecordedItem,
+  row: ReminderSourceRow,
+  candidate: RetryCandidate,
+): 'worker' | 'escalation' {
+  if (item.recipientRole === 'worker' || item.recipientRole === 'escalation') {
+    return item.recipientRole;
+  }
+  return row.workerEmail === candidate.toEmail ? 'worker' : 'escalation';
+}
+
 /** Trim an unknown transport error down to a persistable message string. */
 function describeError(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -420,6 +469,23 @@ async function recordSent(id: string): Promise<void> {
   } catch (err) {
     logger.error({
       msg: '[cycle-summary] Re-sent summary but failed to stamp it delivered',
+      emailMessageId: id,
+      err,
+    });
+  }
+}
+
+/**
+ * Retire a failed summary that has nothing left to say. `cancelled` takes it out
+ * of the `failed` retry query for good. Never throws — a bookkeeping failure
+ * must not abort the rest of the pass.
+ */
+async function recordCancelled(id: string): Promise<void> {
+  try {
+    await prisma.emailMessage.update({ where: { id }, data: { status: 'cancelled' } });
+  } catch (err) {
+    logger.error({
+      msg: '[cycle-summary] Failed to record retry outcome',
       emailMessageId: id,
       err,
     });

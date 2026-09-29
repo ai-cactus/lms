@@ -14,7 +14,14 @@ imports newer upstream commits into your branch. Revert with
 
 The Bash guard ([[gotcha-worktree-generated-symlink-breaks-build]] lists what it
 refuses) also rejects `for` loops and runtime `$VAR`s that feed psql, and
-`cd … && git …`. Use `git -C <worktree>` one command per call, and put multi-step
+`cd … && git …`, a quoted `src/app/api/quiz/[id]/…` path or `$(cat list)` fed to
+`npx`, a `> log; echo $?` tail, a heredoc writing a test file (`cat > f <<EOF`),
+any `python3 - <<EOF` heredoc (especially one editing a file or mentioning git),
+`sed -i '147r /abs/path' f`, `sed` on a `$f` variable, and ANY command mixing a
+`(main)`/`[id]` route path with `&&`/`;`/pipes. Write edit scripts to the
+scratchpad and run `python3 <script>` (or use Write/Edit for file bodies); pass
+bracketed paths unquoted, one plain command per call. Use `git -C <worktree>` one
+command per call, and put multi-step
 shell (applying all migrations via psql to a throwaway Postgres, seeding, sharded
 vitest) in a script under the scratchpad and run `bash <script>`. Also refused
 (2026-09-29): `cat >> file <<'EOF'` appends (use the Edit tool), anything through

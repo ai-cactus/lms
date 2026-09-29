@@ -248,6 +248,7 @@ function makeCourseRow(
     previewPosterStorageUri: null,
     previewVideoStorageUri: null,
     isGlobal: false,
+    organizationId: ORG_ID,
     createdAt: new Date('2026-01-01'),
     updatedAt: new Date('2026-01-01'),
     createdByOrgUserId: CREATOR_ORG_USER_ID,
@@ -348,19 +349,16 @@ describe('an archived course disappears from every catalogue and admin surface',
     expect(ids).not.toContain('archived-1');
   });
 
-  it('an offering cannot smuggle it back in: the adopted-courses join carries the archive predicate itself', async () => {
-    // The extension is a query extension on Course's OWN reads and cannot reach
-    // a nested traversal, so the offering read has to state the predicate.
-    await getCourses();
+  // RISK-11: adopted courses are no longer read through the offering relation
+  // (a nested traversal the archive extension cannot reach) but by id in the
+  // same top-level Course read, which the extension DOES filter.
+  it('an offering cannot smuggle it back in: an adopted archived course stays out', async () => {
+    mockOfferingFindMany.mockResolvedValue([{ courseId: 'archived-1' }]);
 
-    expect(mockOfferingFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          organizationId: ORG_ID,
-          course: { archivedAt: null },
-        }),
-      }),
-    );
+    const titles = (await getCourses()).map((course) => course.title);
+
+    expect(titles).toContain('Live Course');
+    expect(titles).not.toContain('Archived Course');
   });
 
   it('every list read goes through the ARCHIVE-FILTERING client, never the raw one', async () => {
