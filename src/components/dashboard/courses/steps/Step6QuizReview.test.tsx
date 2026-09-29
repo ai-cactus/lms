@@ -431,3 +431,39 @@ describe('Step6QuizReview', () => {
     });
   });
 });
+
+/**
+ * BUG-32: the edit form's option inputs had no accessible name at all (no
+ * label, no placeholder), so a screen reader announced four identical "edit
+ * text" fields. Named as in `AdminQuizEditor` (BUG-03): "Option N" beside
+ * "Mark option N correct", under the labelled "Question Text".
+ */
+describe('Step6QuizReview — accessible names (BUG-32)', () => {
+  it('names every control in the edit-question form', async () => {
+    const user = userEvent.setup();
+    renderStep(TAGGED_QUIZ);
+
+    await user.click(within(questionCard('Security Q1')).getByRole('button', { name: 'Edit' }));
+
+    expect(screen.getByRole('textbox', { name: 'Question Text' })).toHaveValue('Security Q1');
+    for (const n of [1, 2, 3, 4]) {
+      expect(screen.getByRole('textbox', { name: `Option ${n}` })).toHaveValue(`Option ${n}`);
+      expect(screen.getByRole('radio', { name: `Mark option ${n} correct` })).toBeInTheDocument();
+    }
+    expect(screen.getByRole('radio', { name: 'Mark option 1 correct' })).toBeChecked();
+  });
+
+  it('names the option inputs of the add-question form by label, not only by placeholder', async () => {
+    const user = userEvent.setup();
+    renderStep(TAGGED_QUIZ);
+
+    await user.click(screen.getByRole('button', { name: 'Add new question' }));
+
+    for (const n of [1, 2, 3, 4]) {
+      expect(screen.getByRole('textbox', { name: `Option ${n}` })).toHaveAttribute(
+        'aria-label',
+        `Option ${n}`,
+      );
+    }
+  });
+});

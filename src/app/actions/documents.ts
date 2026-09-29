@@ -22,6 +22,7 @@ import { Prisma } from '@/generated/prisma/client';
 import type { AuthSession } from '@/types/next-auth';
 import { captureServer } from '@/lib/analytics/server';
 import { analyticsContextFrom } from '@/lib/analytics/identity';
+import { resolveAttributionName } from '@/lib/attribution-name';
 
 // Spec: only .pdf and .docx are accepted. The upload modal enforces this
 // client-side; these mirror that server-side so a crafted request can't slip
@@ -555,6 +556,7 @@ export async function deleteDocument(
     data: {
       archivedAt: new Date(),
       archivedByOrgUserId: session.user.organizationUserId,
+      archivedByName: await resolveAttributionName(session.user.organizationUserId),
     },
   });
 

@@ -1,5 +1,6 @@
 import prisma from '@/lib/prisma';
 import { logger } from '@/lib/logger';
+import { resolveAttributionName } from '@/lib/attribution-name';
 
 /**
  * A course staff can actually take is not a draft — and now the assign paths
@@ -66,7 +67,12 @@ export async function publishCourseOnAssignment(
   try {
     await prisma.course.update({
       where: { id: course.id },
-      data: { status: 'published', approvedByOrgUserId, approvedAt: new Date() },
+      data: {
+        status: 'published',
+        approvedByOrgUserId,
+        approvedByName: await resolveAttributionName(approvedByOrgUserId),
+        approvedAt: new Date(),
+      },
     });
     logger.info({
       msg: '[course] Draft published because it was assigned to staff',

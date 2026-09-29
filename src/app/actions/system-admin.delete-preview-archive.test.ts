@@ -26,6 +26,10 @@ const {
   mockOrgUserFindMany,
   mockEnrollmentCount,
   mockCount,
+  mockPreferenceCount,
+  mockOrgUserCount,
+  mockRawCourseCount,
+  mockRawDocumentCount,
 } = vi.hoisted(() => ({
   mockVerifyCookie: vi.fn(),
   mockRawCourseFindMany: vi.fn(),
@@ -37,6 +41,10 @@ const {
   mockOrgUserFindMany: vi.fn(),
   mockEnrollmentCount: vi.fn(),
   mockCount: vi.fn(),
+  mockPreferenceCount: vi.fn(),
+  mockOrgUserCount: vi.fn(),
+  mockRawCourseCount: vi.fn(),
+  mockRawDocumentCount: vi.fn(),
 }));
 
 vi.mock('@/lib/system-auth', () => ({
@@ -46,12 +54,13 @@ vi.mock('@/lib/system-auth', () => ({
 vi.mock('@/lib/prisma', () => {
   const prisma = {
     user: { findUnique: mockUserFindUnique },
-    organizationUser: { findMany: mockOrgUserFindMany },
+    organizationUser: { findMany: mockOrgUserFindMany, count: mockOrgUserCount },
     course: { findMany: mockFilteredCourseFindMany },
     document: { findMany: mockFilteredDocumentFindMany },
     enrollment: { count: mockEnrollmentCount },
     certificate: { count: mockCount },
     notification: { count: mockCount },
+    notificationPreference: { count: mockPreferenceCount },
     job: { count: mockCount },
     invite: { count: mockCount },
     verificationToken: { count: mockCount },
@@ -61,8 +70,8 @@ vi.mock('@/lib/prisma', () => {
 });
 vi.mock('@/db/index', () => ({
   rawPrisma: {
-    course: { findMany: mockRawCourseFindMany },
-    document: { findMany: mockRawDocumentFindMany },
+    course: { findMany: mockRawCourseFindMany, count: mockRawCourseCount },
+    document: { findMany: mockRawDocumentFindMany, count: mockRawDocumentCount },
     organizationUser: { findMany: mockRawOrgUserFindMany },
   },
 }));
@@ -101,6 +110,10 @@ beforeEach(() => {
     },
   ]);
   mockCount.mockResolvedValue(0);
+  mockPreferenceCount.mockResolvedValue(0);
+  mockOrgUserCount.mockResolvedValue(0);
+  mockRawCourseCount.mockResolvedValue(0);
+  mockRawDocumentCount.mockResolvedValue(0);
   mockEnrollmentCount.mockResolvedValue(0);
   // 3 courses and 2 documents exist; one course and one document are archived.
   mockRawCourseFindMany.mockResolvedValue([
@@ -161,5 +174,50 @@ describe('getUserDeletePreview — reports what the delete really does', () => {
 
     expect(preview?.retained.organizationsWithoutCustodian).toEqual([]);
     expect(mockRawOrgUserFindMany).not.toHaveBeenCalled();
+  });
+});
+
+// BUG-27: two effects of the delete the preview used to leave out entirely.
+describe('getUserDeletePreview — cascades and SetNulls the old preview missed', () => {
+  it('counts the notification preferences that cascade away with the memberships', async () => {
+    mockPreferenceCount.mockResolvedValue(4);
+
+    const preview = await getUserDeletePreview('u1');
+
+    expect(preview?.counts.notificationPreferences).toBe(4);
+    expect(mockPreferenceCount).toHaveBeenCalledExactlyOnceWith({
+      where: { organizationUserId: { in: ['ou-1'] } },
+    });
+  });
+
+  it("counts the other members whose manager pointer the delete nulls, excluding the user's own memberships", async () => {
+    mockOrgUserCount.mockResolvedValue(3);
+
+    const preview = await getUserDeletePreview('u1');
+
+    expect(preview?.retained.directReports).toBe(3);
+    expect(mockOrgUserCount).toHaveBeenCalledExactlyOnceWith({
+      where: { managerId: { in: ['ou-1'] }, id: { notIn: ['ou-1'] } },
+    });
+  });
+});
+
+// BUG-25: approver/archiver FKs are SetNull; the preview says the name is kept.
+describe('getUserDeletePreview — attributions that keep the name snapshot', () => {
+  it('counts courses approved or archived and documents archived by the user, archived rows included', async () => {
+    mockRawCourseCount.mockResolvedValue(2);
+    mockRawDocumentCount.mockResolvedValue(1);
+
+    const preview = await getUserDeletePreview('u1');
+
+    expect(preview?.retained.attributions).toBe(3);
+    expect(mockRawCourseCount).toHaveBeenCalledWith({
+      where: {
+        OR: [{ approvedByOrgUserId: { in: ['ou-1'] } }, { archivedByOrgUserId: { in: ['ou-1'] } }],
+      },
+    });
+    expect(mockRawDocumentCount).toHaveBeenCalledWith({
+      where: { archivedByOrgUserId: { in: ['ou-1'] } },
+    });
   });
 });

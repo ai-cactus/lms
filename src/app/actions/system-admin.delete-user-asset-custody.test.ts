@@ -20,11 +20,14 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockVerifyCookie, mockUserFindUnique, mockTransaction } = vi.hoisted(() => ({
-  mockVerifyCookie: vi.fn(),
-  mockUserFindUnique: vi.fn(),
-  mockTransaction: vi.fn(),
-}));
+const { mockVerifyCookie, mockUserFindUnique, mockTransaction, mockAuditCritical } = vi.hoisted(
+  () => ({
+    mockAuditCritical: vi.fn(),
+    mockVerifyCookie: vi.fn(),
+    mockUserFindUnique: vi.fn(),
+    mockTransaction: vi.fn(),
+  }),
+);
 
 vi.mock('@/lib/system-auth', () => ({
   verifySystemAdminCookie: mockVerifyCookie,
@@ -48,7 +51,7 @@ vi.mock('@/lib/logger', () => ({
 }));
 vi.mock('@/lib/audit', () => ({
   audit: vi.fn(),
-  auditCritical: vi.fn(),
+  auditCritical: mockAuditCritical,
   getClientContext: () => ({}),
 }));
 vi.mock('@/lib/rate-limit', () => ({ checkRateLimit: vi.fn() }));
@@ -59,7 +62,8 @@ type Membership = { id: string; organizationId: string };
 type Candidate = { id: string; role: string; active: boolean; joinedAt: Date };
 
 interface TxMock {
-  organizationUser: { findMany: ReturnType<typeof vi.fn> };
+  organizationUser: { findMany: ReturnType<typeof vi.fn>; count: ReturnType<typeof vi.fn> };
+  notificationPreference: { count: ReturnType<typeof vi.fn> };
   course: {
     count: ReturnType<typeof vi.fn>;
     updateMany: ReturnType<typeof vi.fn>;
@@ -96,7 +100,9 @@ function buildTx(options: {
       findMany: vi.fn(async (args: { where: { userId?: string } }) =>
         args.where.userId !== undefined ? options.memberships : options.survivors,
       ),
+      count: vi.fn().mockResolvedValue(2),
     },
+    notificationPreference: { count: vi.fn().mockResolvedValue(5) },
     course: {
       count: vi.fn().mockResolvedValue(options.courses),
       updateMany: vi.fn().mockResolvedValue({ count: options.courses }),
@@ -268,5 +274,34 @@ describe('deleteUserWithRelations — courses survive their author', () => {
     expect(result.success).toBe(true);
     expect(tx.user.delete).toHaveBeenCalledWith({ where: { id: 'u1' } });
     expect(tx.organizationUser.findMany).toHaveBeenCalledTimes(1);
+  });
+});
+
+// BUG-27: neither is deleted explicitly — preferences cascade with the
+// memberships and direct reports survive with `managerId` nulled — so both are
+// counted before the delete and land in the audit row.
+describe('deleteUserWithRelations — audit records the cascades and SetNulls', () => {
+  it('counts notification preferences and unassigned direct reports into the audit metadata', async () => {
+    const tx = buildTx({
+      memberships: [{ id: 'ou-worker', organizationId: 'org-1' }],
+      survivors: [],
+      courses: 0,
+      documents: 0,
+    });
+
+    const result = await deleteUserWithRelations('u1');
+
+    expect(result.success).toBe(true);
+    expect(result.deletedCounts).toMatchObject({ notificationPreferences: 5 });
+    expect(tx.organizationUser.count).toHaveBeenCalledWith({
+      where: { managerId: { in: ['ou-worker'] }, id: { notIn: ['ou-worker'] } },
+    });
+    expect(mockAuditCritical.mock.calls[0][0].metadata).toMatchObject({
+      deletedCounts: expect.objectContaining({ notificationPreferences: 5 }),
+      unassignedDirectReports: 2,
+    });
+    expect(tx.organizationUser.count.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.user.delete.mock.invocationCallOrder[0],
+    );
   });
 });

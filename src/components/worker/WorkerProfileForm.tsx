@@ -133,7 +133,7 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
     data.append('file', file);
 
     try {
-      const result = await uploadAvatar(data);
+      const result = await uploadAvatar('worker', data);
       if (result.success && result.url) {
         setAvatarUrl(result.url);
         // We don't save immediately, we wait for "Save Changes"
@@ -154,10 +154,12 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
     setMessage(null);
 
     try {
-      const result = await updateProfile({
+      const result = await updateProfile('worker', {
         first_name: formData.first_name,
         last_name: formData.last_name,
-        avatarUrl: avatarUrl || undefined,
+        // Only a changed photo is sent, and a removed one as an explicit null —
+        // `undefined` means "leave unchanged", so it can never express a clear.
+        avatarUrl: avatarUrl !== baseAvatarUrl ? avatarUrl : undefined,
       });
 
       if (result.success) {
@@ -337,7 +339,7 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
         {activeTab === 'password' && (
           <div className="flex flex-col gap-6">
             <h2 className="text-xl font-semibold text-foreground">Change Password</h2>
-            <ChangePasswordTab authProvider={user.authProvider} />
+            <ChangePasswordTab realm="worker" authProvider={user.authProvider} />
           </div>
         )}
 

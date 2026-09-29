@@ -15,14 +15,18 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockUpdate, mockLoggerInfo, mockLoggerError } = vi.hoisted(() => ({
+const { mockUpdate, mockOrgUserFindUnique, mockLoggerInfo, mockLoggerError } = vi.hoisted(() => ({
   mockUpdate: vi.fn(),
+  mockOrgUserFindUnique: vi.fn(),
   mockLoggerInfo: vi.fn(),
   mockLoggerError: vi.fn(),
 }));
 
 vi.mock('@/lib/prisma', () => {
-  const prisma = { course: { update: mockUpdate } };
+  const prisma = {
+    course: { update: mockUpdate },
+    organizationUser: { findUnique: mockOrgUserFindUnique },
+  };
   return { prisma, default: prisma };
 });
 vi.mock('@/lib/logger', () => ({
@@ -37,6 +41,7 @@ const draft = { id: 'c1', status: 'draft', isGlobal: false, reviewRequired: fals
 beforeEach(() => {
   vi.clearAllMocks();
   mockUpdate.mockResolvedValue({});
+  mockOrgUserFindUnique.mockResolvedValue({ user: { fullName: 'Pat Publisher' } });
 });
 
 describe('publishCourseOnAssignment', () => {
@@ -50,6 +55,8 @@ describe('publishCourseOnAssignment', () => {
       data: {
         status: 'published',
         approvedByOrgUserId: 'ou-1',
+        // BUG-25: the approver FK is SetNull, so the name is snapshotted with it.
+        approvedByName: 'Pat Publisher',
         approvedAt: expect.any(Date),
       },
     });
@@ -117,9 +124,11 @@ describe('publishCourseOnAssignment', () => {
       data: {
         status: 'published',
         approvedByOrgUserId: null,
+        approvedByName: null,
         approvedAt: expect.any(Date),
       },
     });
+    expect(mockOrgUserFindUnique).not.toHaveBeenCalled();
   });
 
   it('logs the transition, so a silent skip cannot hide again', async () => {

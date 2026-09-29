@@ -19,8 +19,9 @@ valid `'@/auth'` session:
   page), carries an implicit admin-tier fence. A bare worker-held verb there is
   ugly but not reachable by a worker.
 - `resolveSession()` (the local admin-then-worker helper in course.ts,
-  offering.ts, enrollment.ts, certificate.ts, user.ts) and `getPortalSessions()`
-  have **no** tier fence. These are the only genuinely exposed surfaces.
+  offering.ts, enrollment.ts, certificate.ts, notifications.ts, mfa.ts) and
+  `getPortalSessions()` have **no** tier fence. user.ts dropped its copy for
+  BUG-05 — see [[project-self-service-actions-take-a-realm]]. These are the only genuinely exposed surfaces.
 - `src/auth.worker.ts` sets `sessionAllowedRoles: ALL_ROLES`, so a manager
   bridged into Learn mode carries an admin role on the worker cookie — the
   worker instance is not a worker-tier fence either.

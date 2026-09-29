@@ -117,6 +117,7 @@ export default function VideoCoursesClient({ courses }: Props) {
   } | null>(null);
 
   const [, startStatusTransition] = useTransition();
+  const [statusError, setStatusError] = useState<string | null>(null);
 
   const [isVerifying, startVerifyTransition] = useTransition();
   const [verifyResult, setVerifyResult] = useState<{
@@ -131,7 +132,12 @@ export default function VideoCoursesClient({ courses }: Props) {
     setVerifyResult(null);
     startVerifyTransition(async () => {
       try {
-        const { checked, missing } = await verifyGlobalVideoMedia();
+        const result = await verifyGlobalVideoMedia();
+        if (!result.success) {
+          setVerifyResult({ variant: 'error', title: 'Media check failed', message: result.error });
+          return;
+        }
+        const { checked, missing } = result;
         const noun = checked === 1 ? 'video' : 'videos';
         setVerifyResult({
           variant: missing > 0 ? 'warning' : 'success',
@@ -153,6 +159,24 @@ export default function VideoCoursesClient({ courses }: Props) {
     });
   };
 
+  const changeStatus = (course: VideoCourseRow, status: 'inactive' | 'published') => {
+    const verb = status === 'inactive' ? 'deactivate' : 'reactivate';
+    setStatusError(null);
+    startStatusTransition(async () => {
+      try {
+        const result = await setVideoCourseStatus(course.id, status);
+        if (!result.success) {
+          setStatusError(`Could not ${verb} "${course.title}": ${result.error}`);
+          return;
+        }
+        router.refresh();
+      } catch (err) {
+        logger.error({ msg: `[VideoCoursesClient] ${verb} failed`, err, courseId: course.id });
+        setStatusError(`Could not ${verb} "${course.title}". Please try again.`);
+      }
+    });
+  };
+
   const handleDeactivate = (course: VideoCourseRow) => {
     if (
       !confirm(
@@ -161,25 +185,11 @@ export default function VideoCoursesClient({ courses }: Props) {
     ) {
       return;
     }
-    startStatusTransition(async () => {
-      try {
-        await setVideoCourseStatus(course.id, 'inactive');
-        router.refresh();
-      } catch (err) {
-        logger.error({ msg: '[VideoCoursesClient] deactivate failed', err, courseId: course.id });
-      }
-    });
+    changeStatus(course, 'inactive');
   };
 
   const handleReactivate = (course: VideoCourseRow) => {
-    startStatusTransition(async () => {
-      try {
-        await setVideoCourseStatus(course.id, 'published');
-        router.refresh();
-      } catch (err) {
-        logger.error({ msg: '[VideoCoursesClient] reactivate failed', err, courseId: course.id });
-      }
-    });
+    changeStatus(course, 'published');
   };
 
   const handleCreate = async (
@@ -326,6 +336,13 @@ export default function VideoCoursesClient({ courses }: Props) {
             <div className="mt-4">
               <Alert variant={verifyResult.variant} title={verifyResult.title}>
                 {verifyResult.message}
+              </Alert>
+            </div>
+          )}
+          {statusError && (
+            <div className="mt-4">
+              <Alert variant="error" title="Status change failed">
+                {statusError}
               </Alert>
             </div>
           )}

@@ -1136,3 +1136,108 @@ describe('AdminSlideEditor — module navigation is unreachable while the editor
     expect(screen.queryByText('Leave without saving?')).toBeNull();
   });
 });
+
+/**
+ * BUG-28: attestation is the completion act, and it was reachable ONLY from the
+ * quiz results screen — so a course with no quiz could never be completed. The
+ * end of a no-quiz course now leads to the same AttestationModal, gated exactly
+ * like "Proceed to Quiz" (every module worked through) and only for a viewer the
+ * server says may attest.
+ */
+describe('LearnClient — no-quiz course completes through attestation (BUG-28)', () => {
+  const ATTEST_BUTTON = 'Complete Course & Attest';
+  const ATTEST_DIALOG_TITLE = 'Training Attestation of Understanding and Compliance';
+
+  const noQuizPayload = (overrides: Partial<LearnPayload> = {}) => {
+    const payload = makePayload(overrides);
+    payload.course.quiz = null;
+    payload.course.lessons = [
+      textLesson('lesson-1', 'Module 1: Intro'),
+      textLesson('lesson-2', 'Module 2: Hazards'),
+    ];
+    return payload;
+  };
+
+  beforeEach(() => {
+    if (!Element.prototype.scrollIntoView) {
+      Element.prototype.scrollIntoView = function scrollIntoViewNoop() {};
+    }
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      cb(0);
+      return 0;
+    });
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ success: true }) });
+  });
+
+  it('offers the attestation once every module is worked through, and opens it after saving progress', async () => {
+    render(<LearnClient initialData={noQuizPayload()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next' })); // module 1 -> 2 (last), earned
+    const attest = screen.getByRole('button', { name: ATTEST_BUTTON });
+    expect(attest).not.toBeDisabled();
+
+    fireEvent.click(attest);
+
+    expect(await screen.findByText(ATTEST_DIALOG_TITLE)).toBeInTheDocument();
+    // Progress lands (status -> lessons_complete) BEFORE the attestation can
+    // write `attested`, so it can never overwrite it.
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/enrollments/enr-1/progress',
+      expect.objectContaining({ body: JSON.stringify({ progress: 100 }) }),
+    );
+  });
+
+  it('keeps the attestation gated when the last module was reached by browsing, not by Next', () => {
+    render(<LearnClient initialData={noQuizPayload()} />);
+
+    const toc = screen.getByText('Table of Contents').parentElement!;
+    fireEvent.click(within(toc).getAllByRole('button')[1]);
+
+    expect(screen.getByRole('button', { name: ATTEST_BUTTON })).toBeDisabled();
+    expect(screen.getByText('Work through every module to finish the course')).toBeInTheDocument();
+  });
+
+  it('the last lesson’s Next leads to the attestation instead of dead-ending', async () => {
+    render(<LearnClient initialData={noQuizPayload()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    const next = screen.getByRole('button', { name: 'Next' });
+    expect(next).not.toBeDisabled();
+
+    fireEvent.click(next);
+
+    expect(await screen.findByText(ATTEST_DIALOG_TITLE)).toBeInTheDocument();
+  });
+
+  it('offers nothing to a viewer the server says may not attest (already attested, or not theirs)', () => {
+    render(<LearnClient initialData={noQuizPayload({ attestEligible: false })} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+
+    expect(screen.queryByRole('button', { name: ATTEST_BUTTON })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+  });
+
+  it('never offers the attestation in the admin review', () => {
+    const payload = noQuizPayload();
+    payload.user.isAdminView = true;
+
+    render(<LearnClient initialData={payload} />);
+
+    expect(screen.queryByRole('button', { name: ATTEST_BUTTON })).toBeNull();
+  });
+
+  it('leaves a course WITH a quiz on Proceed to Quiz (regression guard)', () => {
+    const payload = makePayload();
+    payload.course.lessons = [
+      textLesson('lesson-1', 'Module 1: Intro'),
+      textLesson('lesson-2', 'Module 2: Hazards'),
+    ];
+
+    render(<LearnClient initialData={payload} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+
+    expect(screen.getByRole('button', { name: 'Proceed to Quiz' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: ATTEST_BUTTON })).toBeNull();
+  });
+});
