@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { isDeletedIdentity } from '@/lib/auth/deleted-identity';
-import { verifyUserMfaCode } from '@/app/actions/mfa';
+import { verifyUserMfaCode } from '@/lib/auth/mfa-login-code';
 import { peekMfaChallenge, redeemMfaChallenge } from '@/lib/mfa-challenge';
 import { stampSessionMfaVerified } from '@/lib/auth/mfa-session-stamp';
 import { logger } from '@/lib/logger';

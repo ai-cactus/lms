@@ -77,6 +77,7 @@ vi.mock('@/lib/mfa', async () => {
   return { ...actual, hashRecoveryCode: mockHashRecoveryCode };
 });
 
+import * as mfaActions from './mfa';
 import { verifyMfaSetup, regenerateRecoveryCodes, disableMfa } from './mfa';
 import { encryptOtpPayload } from '@/lib/mfa';
 
@@ -393,5 +394,16 @@ describe('disableMfa — regression: gate on verification.valid, not object trut
       where: { id: 'rc-1' },
       data: { usedAt: expect.any(Date) },
     });
+  });
+});
+
+/**
+ * SEC-13: every export of a `'use server'` module is an HTTP-callable action.
+ * The raw-userId login helpers must never be reachable from here again.
+ */
+describe('mfa actions module — SEC-13 export surface', () => {
+  it('does not export the raw-userId login helpers', () => {
+    expect(mfaActions).not.toHaveProperty('sendLoginMfaCode');
+    expect(mfaActions).not.toHaveProperty('verifyUserMfaCode');
   });
 });
