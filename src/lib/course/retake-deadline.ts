@@ -22,18 +22,16 @@ const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
 const UNREADABLE_DUE_DATE = "That due date couldn't be read. Please pick the date again.";
 
-/** `YYYY-MM-DD` for `date` in the viewer's own calendar — the DatePicker's value format. */
-function toLocalDateInput(date: Date): string {
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${date.getFullYear()}-${month}-${day}`;
-}
-
-/** The dialog's pre-filled due date: {@link DEFAULT_RETAKE_DUE_DAYS} after `today`. */
-export function defaultRetakeDueDate(today: Date): string {
-  const due = new Date(today);
-  due.setDate(due.getDate() + DEFAULT_RETAKE_DUE_DAYS);
-  return toLocalDateInput(due);
+/**
+ * The default due date as `YYYY-MM-DD` (the DatePicker's value format):
+ * {@link DEFAULT_RETAKE_DUE_DAYS} after the learner's today in their facility
+ * zone. The dialog pre-fills it and the server falls back to it, so the two
+ * agree however far the admin is from the learner.
+ */
+export function defaultRetakeDueDate(now: Date, timeZone: string): string {
+  const due = new Date(`${localDateKey(now, timeZone)}T00:00:00.000Z`);
+  due.setUTCDate(due.getUTCDate() + DEFAULT_RETAKE_DUE_DAYS);
+  return due.toISOString().slice(0, 10);
 }
 
 export type RetakeDueDateResult = { dueDate: string } | { refusedReason: string };
@@ -81,12 +79,7 @@ export function retakeDueAtIfNotPast(
   return { dueAt };
 }
 
-/**
- * The deadline a retake gets when the caller supplied none:
- * {@link DEFAULT_RETAKE_DUE_DAYS} after today's date in the learner's zone.
- */
+/** The deadline a retake gets when the caller supplied none: {@link defaultRetakeDueDate}. */
 export function defaultRetakeDueAt(now: Date, timeZone: string): Date {
-  const today = new Date(`${localDateKey(now, timeZone)}T00:00:00.000Z`);
-  today.setUTCDate(today.getUTCDate() + DEFAULT_RETAKE_DUE_DAYS);
-  return retakeDueAt(today.toISOString().slice(0, 10), timeZone);
+  return retakeDueAt(defaultRetakeDueDate(now, timeZone), timeZone);
 }

@@ -19,12 +19,26 @@ const UNREADABLE = "That due date couldn't be read. Please pick the date again."
 const PAST = 'The retake due date must be today or later.';
 
 describe('defaultRetakeDueDate', () => {
-  it(`is ${DEFAULT_RETAKE_DUE_DAYS} calendar days after today, in the viewer's own calendar`, () => {
-    expect(defaultRetakeDueDate(new Date(2026, 8, 28, 12))).toBe('2026-10-12');
+  it(`is ${DEFAULT_RETAKE_DUE_DAYS} calendar days after the learner's today`, () => {
+    expect(defaultRetakeDueDate(NOW, 'America/New_York')).toBe('2026-10-12');
+  });
+
+  // 15:00 UTC on 28 Sept is still the 28th in Honolulu, already the 29th in Kiritimati.
+  it("counts from a UTC+14 learner's today, a day ahead of a UTC−10 one", () => {
+    expect(defaultRetakeDueDate(NOW, 'Pacific/Kiritimati')).toBe('2026-10-13');
+    expect(defaultRetakeDueDate(NOW, 'Pacific/Honolulu')).toBe('2026-10-12');
   });
 
   it('rolls across a month and a year end', () => {
-    expect(defaultRetakeDueDate(new Date(2026, 11, 25, 12))).toBe('2027-01-08');
+    expect(defaultRetakeDueDate(new Date('2026-12-25T12:00:00Z'), 'UTC')).toBe('2027-01-08');
+  });
+
+  it('is the date the server default ends on, so dialog and server agree', () => {
+    for (const zone of ['Pacific/Kiritimati', 'Pacific/Honolulu', 'America/New_York']) {
+      expect(defaultRetakeDueAt(NOW, zone)).toEqual(
+        retakeDueAt(defaultRetakeDueDate(NOW, zone), zone),
+      );
+    }
   });
 });
 

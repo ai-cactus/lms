@@ -818,6 +818,7 @@ export default function StaffProfileClient({
           enrollmentId={retakeEnrollment.id}
           courseName={retakeEnrollment.courseName}
           userName={user.name}
+          learnerTimeZone={user.timeZone}
         />
       )}
 

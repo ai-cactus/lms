@@ -15,6 +15,7 @@ import { RowActionsMenu } from '@/components/ui';
 import Link from 'next/link';
 import CertificateModal from './CertificateModal';
 import AssignRetakeModal from './AssignRetakeModal';
+import { DEFAULT_TZ } from '@/lib/reminders/time';
 import { removeWorkerAssignment } from '@/app/actions/enrollment';
 import {
   AlertDialog,
@@ -127,6 +128,7 @@ export default function TrainingDetails({
   const [retakeEnrollment, setRetakeEnrollment] = useState<{
     id: string;
     courseName: string;
+    learnerTimeZone: string;
   } | null>(null);
 
   const [targetRoles, setTargetRoles] = useState<UserRole[]>(assignmentSettings?.targetRoles ?? []);
@@ -518,6 +520,9 @@ export default function TrainingDetails({
                                 setRetakeEnrollment({
                                   id: enrollment.id,
                                   courseName: course.title,
+                                  learnerTimeZone:
+                                    enrollment.organizationUser.facilities[0]?.facility.timezone ??
+                                    DEFAULT_TZ,
                                 }),
                             },
                             // Offered only to the course creator, matching the
@@ -631,6 +636,7 @@ export default function TrainingDetails({
           enrollmentId={retakeEnrollment.id}
           courseName={retakeEnrollment.courseName}
           userName=""
+          learnerTimeZone={retakeEnrollment.learnerTimeZone}
         />
       )}
 

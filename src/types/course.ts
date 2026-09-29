@@ -264,6 +264,14 @@ export const courseDetailSelect = {
           userId: true,
           role: true,
           user: { select: { email: true, fullName: true } },
+          // The zone a retake's due date is picked in (BUG-12.3): the oldest
+          // active roster facility, as every deadline writer resolves it.
+          facilities: {
+            where: { active: true },
+            orderBy: [{ joinedAt: 'asc' as const }, { id: 'asc' as const }],
+            take: 1,
+            select: { facility: { select: { timezone: true } } },
+          },
         },
       },
       /**

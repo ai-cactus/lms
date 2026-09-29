@@ -22,6 +22,12 @@ interface AssignRetakeModalProps {
   enrollmentId: string;
   courseName: string;
   userName: string;
+  /**
+   * The learner's facility zone, supplied by the page's server query. The due
+   * date is theirs (BUG-12.3), so it is pre-filled from their today, not the
+   * admin's.
+   */
+  learnerTimeZone: string;
 }
 
 /**
@@ -34,9 +40,10 @@ export default function AssignRetakeModal({
   enrollmentId,
   courseName,
   userName,
+  learnerTimeZone,
 }: AssignRetakeModalProps) {
   const [reason, setReason] = useState('');
-  const [dueDate, setDueDate] = useState(() => defaultRetakeDueDate(new Date()));
+  const [dueDate, setDueDate] = useState(() => defaultRetakeDueDate(new Date(), learnerTimeZone));
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
