@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Layers, Clock, AlertCircle } from 'lucide-react';
+import { Layers, Clock } from 'lucide-react';
 import EmptyTableState from '@/components/ui/EmptyTableState';
 import WorkerCourseList from '@/components/worker/WorkerCourseList';
 import CancelledCourseBadge from '@/components/worker/CancelledCourseBadge';
@@ -16,23 +16,20 @@ function formatCategory(category: string): string {
     .join(' ');
 }
 
-/** Human-readable deadline with overdue styling, mirroring the dashboard table. */
+/**
+ * Deadline line for the Completed tab. Every card there is finished, so a past
+ * due date is never shown as overdue (BUG-41) — the course was done, not late.
+ */
 function DeadlineMeta({ deadline }: { deadline?: Date | string | null }) {
   if (!deadline) {
     return <span className="text-xs text-[#cbd5e1]">No deadline</span>;
   }
-  const d = new Date(deadline);
-  const isOverdue = d < new Date();
-  const text = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const text = new Date(deadline).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
 
-  if (isOverdue) {
-    return (
-      <span className="flex items-center gap-1 text-xs font-medium text-[#dc2626]">
-        <AlertCircle className="size-3.5" aria-hidden="true" />
-        Due {text}
-      </span>
-    );
-  }
   return (
     <span className="flex items-center gap-1 text-xs text-[#718096]">
       <Clock className="size-3.5" aria-hidden="true" />

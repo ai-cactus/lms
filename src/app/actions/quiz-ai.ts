@@ -10,6 +10,9 @@ import {
 import prisma from '@/lib/prisma';
 import { auth } from '@/auth';
 import { logger } from '@/lib/logger';
+import { can, type Permission } from '@/lib/rbac/permissions';
+import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
+import type { Role } from '@/types/next-auth';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { assertNoPhi, PhiBlockedError } from '@/lib/documents/phiGate';
 import { quizOutputTokenBudget } from '@/lib/ai/course-pipeline-v46';
@@ -148,6 +151,33 @@ function extractJsonFromResponse(text: string): string {
 }
 
 /**
+ * SEC-10: both actions author quiz content, which is course authoring. Against
+ * an existing course that is `course.edit` — the gate `updateCourse` uses. The
+ * wizard also calls them before its draft course exists, passing only the
+ * uploaded document's text, and generating content for a course that does not
+ * exist yet is `course.create`.
+ *
+ * Checked before the rate limit so a caller without the permission cannot
+ * drain another action's budget, and before any course or Vertex read.
+ */
+function hasQuizAuthoringPermission(
+  options: { courseId?: string },
+  actor: { userId: string; role: Role },
+  actionName: string,
+): boolean {
+  const permission: Permission = options.courseId ? 'course.edit' : 'course.create';
+  if (can(dbRoleToRoleKey(actor.role), permission)) return true;
+
+  logger.warn({
+    msg: `[quiz] ${actionName} denied — missing ${permission}`,
+    courseId: options.courseId,
+    userId: actor.userId,
+    role: actor.role,
+  });
+  return false;
+}
+
+/**
  * Resolves the prompt context for a quiz AI action and applies the two guards
  * both of them share: a course may only be read by the organization that owns
  * it (the F-009/F-010 IDOR class), and raw client-supplied text is PHI-gated
@@ -236,6 +266,16 @@ export async function generateSingleQuestion(options: {
     const session = await auth();
     if (!session?.user?.id) {
       return { success: false, error: 'Unauthorized' };
+    }
+
+    if (
+      !hasQuizAuthoringPermission(
+        options,
+        { userId: session.user.id, role: session.user.role },
+        'generateSingleQuestion',
+      )
+    ) {
+      return { success: false, error: 'Insufficient permissions' };
     }
 
     // F-018: billable AI endpoint — cap per-user replay of a directly
@@ -374,6 +414,16 @@ export async function regenerateQuiz(options: {
     const session = await auth();
     if (!session?.user?.id) {
       return { success: false, error: 'Unauthorized' };
+    }
+
+    if (
+      !hasQuizAuthoringPermission(
+        options,
+        { userId: session.user.id, role: session.user.role },
+        'regenerateQuiz',
+      )
+    ) {
+      return { success: false, error: 'Insufficient permissions' };
     }
 
     const { allowed, resetInSeconds } = await checkRateLimit(

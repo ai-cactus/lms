@@ -66,14 +66,16 @@ export default async function LearnerDashboard() {
     courseArchived: picked.course.archivedAt !== null,
   }));
 
-  const totalCourses = courses.length;
-  const completedCourses = courses.filter(
+  // Q-22 (ruled 2026-09-28): a cancelled course stays in the list as history but
+  // no longer counts toward the tiles — the learner was told to stop that training.
+  const tileCourses = courses.filter((c) => !c.courseArchived);
+
+  const totalCourses = tileCourses.length;
+  const completedCourses = tileCourses.filter(
     (c) => c.status === 'attested' || c.status === 'completed',
   ).length;
-  const badgeCount = completedCourses;
 
-  // Calculate Average Grade (from deduplicated courses)
-  const coursesWithScores = courses.filter((c) => {
+  const coursesWithScores = tileCourses.filter((c) => {
     const enrollment = allEnrollments.find((e) => e.id === c.enrollmentId);
     return enrollment?.score !== null;
   });
@@ -134,7 +136,7 @@ export default async function LearnerDashboard() {
       <WorkerCourseList courses={courses} />
 
       <WorkerAchievements
-        badgeCount={badgeCount}
+        certificateCount={allCertificates.length}
         recentCertificates={recentCertificates.map((cert) => ({
           id: cert.id,
           courseTitle: cert.course.title,

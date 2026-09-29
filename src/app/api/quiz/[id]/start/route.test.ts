@@ -296,3 +296,37 @@ describe('POST /api/quiz/[id]/start — draft resume vs. new attempt', () => {
     expect(txMock.enrollment.updateMany).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * BUG-53: opening an attempt on signed-off training led straight to a submit
+ * that rewrote its score and dropped it back to in_progress. A finished
+ * enrolment is closed to the learner; a new cycle arrives as a new enrolment.
+ */
+describe('POST /api/quiz/[id]/start — finished enrolments (BUG-53)', () => {
+  it.each(['completed', 'attested'])(
+    '403s QUIZ_ALREADY_COMPLETED on a "%s" enrolment and opens no attempt',
+    async (status) => {
+      prismaMock.enrollment.findUnique.mockResolvedValue({ ...ENROLLMENT, status });
+
+      const res = await POST(makeReq({ enrollmentId: 'enr-1' }), { params });
+      const body = await res.json();
+
+      expect(res.status).toBe(403);
+      expect(body.error).toBe('QUIZ_ALREADY_COMPLETED');
+      expect(body.message).toEqual(expect.any(String));
+      expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['enrolled', 'assigned', 'in_progress', 'lessons_complete'])(
+    'CONTROL: opens an attempt on a "%s" enrolment',
+    async (status) => {
+      prismaMock.enrollment.findUnique.mockResolvedValue({ ...ENROLLMENT, status });
+
+      const res = await POST(makeReq({ enrollmentId: 'enr-1' }), { params });
+
+      expect(res.status).toBe(200);
+      expect(txMock.quizAttempt.create).toHaveBeenCalled();
+    },
+  );
+});
