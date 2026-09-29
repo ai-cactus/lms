@@ -71,10 +71,10 @@ export default function DeleteUserModal({ preview, onClose, onSuccess }: DeleteU
 
   const emailMatches = confirmEmail === preview.user.email;
 
-  const { user, revoked, retained } = preview;
+  const { user, revoked, retained, blockedReason } = preview;
 
   async function handleDelete() {
-    if (!emailMatches) return;
+    if (!emailMatches || blockedReason) return;
     setLoading(true);
     setError('');
 
@@ -150,6 +150,12 @@ export default function DeleteUserModal({ preview, onClose, onSuccess }: DeleteU
             </Alert>
           )}
 
+          {blockedReason && (
+            <Alert variant="error" className="w-full">
+              {blockedReason}
+            </Alert>
+          )}
+
           <div className="rounded-[10px] bg-background-secondary px-4 py-3">
             <div className="font-semibold text-foreground">{user.name}</div>
             <div className="text-sm text-text-secondary">{user.email}</div>
@@ -203,7 +209,7 @@ export default function DeleteUserModal({ preview, onClose, onSuccess }: DeleteU
             variant="destructive"
             type="button"
             onClick={handleDelete}
-            disabled={!emailMatches || loading}
+            disabled={!emailMatches || loading || Boolean(blockedReason)}
             loading={loading}
           >
             Delete

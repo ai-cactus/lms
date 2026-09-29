@@ -16,11 +16,13 @@ function preview(
   overrides: {
     revoked?: Partial<DeletePreview['revoked']>;
     retained?: Partial<DeletePreview['retained']>;
+    blockedReason?: string | null;
   } = {},
 ): DeletePreview {
   return {
     user: { id: 'u1', email: 'manager@acme.com', role: 'supervisor', name: 'Mia Manager' },
     deletedAt: null,
+    blockedReason: overrides.blockedReason ?? null,
     revoked: { organizations: ['Acme'], pendingInvites: 0, ...overrides.revoked },
     retained: {
       enrollments: 0,
@@ -133,5 +135,24 @@ describe('DeleteUserModal — confirm flow', () => {
     await user.click(screen.getByRole('button', { name: 'Delete' }));
 
     expect(await screen.findByText('This user was already deleted on 2026-09-28.')).toBeVisible();
+  });
+});
+
+describe('DeleteUserModal — Q-30 ownership refusal', () => {
+  it('shows the reason and keeps Delete disabled even once the email is typed', async () => {
+    const user = userEvent.setup();
+    render(
+      <DeleteUserModal
+        preview={preview({
+          blockedReason: 'Transfer ownership of Acme before deleting this user.',
+        })}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Transfer ownership of Acme before deleting this user.')).toBeVisible();
+    await user.type(screen.getByRole('textbox'), 'manager@acme.com');
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeDisabled();
+    expect(mockDelete).not.toHaveBeenCalled();
   });
 });

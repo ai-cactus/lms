@@ -19,6 +19,7 @@ interface MembershipRow {
   id: string;
   userId: string;
   organizationId: string;
+  role: string;
   active: boolean;
   deactivatedAt: Date | null;
 }
@@ -33,7 +34,8 @@ interface TokenRow {
   token: string;
 }
 
-const { db, mockAuditCritical, mockInvalidate, mockLogger } = vi.hoisted(() => ({
+const { db, lockedOrgs, mockAuditCritical, mockInvalidate, mockLogger } = vi.hoisted(() => ({
+  lockedOrgs: [] as string[][],
   db: {
     users: [] as UserRow[],
     memberships: [] as MembershipRow[],
@@ -78,10 +80,30 @@ vi.mock('@/lib/prisma', () => {
       },
     }),
     organizationUser: strict('organizationUser', {
-      findMany: async ({ where }: { where: { userId: string } }) =>
+      findMany: async ({ where }: { where: { userId: string; active?: boolean } }) =>
         db.memberships
-          .filter((m) => m.userId === where.userId)
-          .map((m) => ({ organizationId: m.organizationId })),
+          .filter(
+            (m) =>
+              m.userId === where.userId &&
+              (where.active === undefined || m.active === where.active),
+          )
+          .map((m) => ({
+            organizationId: m.organizationId,
+            role: m.role,
+            organization: { name: m.organizationId.toUpperCase() },
+          })),
+      count: async ({
+        where,
+      }: {
+        where: { organizationId: string; active: true; userId: { not: string }; role?: string };
+      }) =>
+        db.memberships.filter(
+          (m) =>
+            m.organizationId === where.organizationId &&
+            m.active &&
+            m.userId !== where.userId.not &&
+            (where.role === undefined || m.role === where.role),
+        ).length,
       updateMany: async ({
         where,
         data,
@@ -123,6 +145,10 @@ vi.mock('@/lib/prisma', () => {
         return { count: before - db.tokens.length };
       },
     }),
+    $queryRaw: async (_sql: TemplateStringsArray, orgIds: string[]) => {
+      lockedOrgs.push(orgIds);
+      return orgIds.map((id) => ({ id }));
+    },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     $transaction: async (fn: (tx: any) => Promise<unknown>) => fn(client),
   });
@@ -145,13 +171,37 @@ function seed() {
     { id: 'u-other', email: 'other@example.com', deletedAt: null, sessionVersion: 0 },
   ];
   db.memberships = [
-    { id: 'm-a', userId: 'u-del', organizationId: 'org-a', active: true, deactivatedAt: null },
-    { id: 'm-b', userId: 'u-del', organizationId: 'org-b', active: true, deactivatedAt: null },
+    {
+      id: 'm-a',
+      userId: 'u-del',
+      organizationId: 'org-a',
+      role: 'nurse',
+      active: true,
+      deactivatedAt: null,
+    },
+    // A co-owner of org-b survives, so deleting this owner is allowed (Q-30).
+    {
+      id: 'm-b',
+      userId: 'u-del',
+      organizationId: 'org-b',
+      role: 'owner',
+      active: true,
+      deactivatedAt: null,
+    },
+    {
+      id: 'm-co',
+      userId: 'u-co',
+      organizationId: 'org-b',
+      role: 'owner',
+      active: true,
+      deactivatedAt: null,
+    },
     // Already removed from org-c by removeStaff earlier: must stay as it was.
     {
       id: 'm-c',
       userId: 'u-del',
       organizationId: 'org-c',
+      role: 'owner',
       active: false,
       deactivatedAt: new Date('2026-01-01T00:00:00Z'),
     },
@@ -159,6 +209,7 @@ function seed() {
       id: 'm-other',
       userId: 'u-other',
       organizationId: 'org-a',
+      role: 'owner',
       active: true,
       deactivatedAt: null,
     },
@@ -179,6 +230,7 @@ function seed() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  lockedOrgs.length = 0;
   seed();
 });
 
@@ -283,5 +335,84 @@ describe('softDeleteUser — Q-23 soft delete', () => {
 
     await expect(softDeleteUser('u-del', ACTOR)).rejects.toThrow('audit sink down');
     expect(mockInvalidate).not.toHaveBeenCalled();
+  });
+});
+
+describe('softDeleteUser — Q-30 never orphan an organization', () => {
+  const membership = (id: string, userId: string, org: string, role: string, active = true) => ({
+    id,
+    userId,
+    organizationId: org,
+    role,
+    active,
+    deactivatedAt: null,
+  });
+
+  it('refuses a sole owner, names the organization and changes nothing', async () => {
+    db.memberships = [
+      membership('m1', 'u-del', 'org-a', 'owner'),
+      membership('m2', 'u-other', 'org-a', 'nurse'),
+      // A deactivated co-owner does not count as an owner left behind.
+      membership('m3', 'u-gone', 'org-a', 'owner', false),
+    ];
+    const snapshot = JSON.stringify(db);
+
+    const result = await softDeleteUser('u-del', ACTOR);
+
+    expect(result).toEqual({
+      status: 'blocked',
+      blocks: [{ organizationId: 'org-a', organizationName: 'ORG-A', reason: 'sole_owner' }],
+      message: 'Transfer ownership of ORG-A before deleting this user.',
+    });
+    expect(JSON.stringify(db)).toBe(snapshot);
+    expect(mockAuditCritical).not.toHaveBeenCalled();
+    expect(mockInvalidate).not.toHaveBeenCalled();
+  });
+
+  it('allows deleting an owner when an active co-owner remains', async () => {
+    db.memberships = [
+      membership('m1', 'u-del', 'org-a', 'owner'),
+      membership('m2', 'u-other', 'org-a', 'owner'),
+    ];
+
+    await expect(softDeleteUser('u-del', ACTOR)).resolves.toMatchObject({ status: 'deleted' });
+  });
+
+  it('refuses deleting the last active member of an organization', async () => {
+    db.memberships = [
+      membership('m1', 'u-del', 'org-a', 'nurse'),
+      membership('m2', 'u-other', 'org-a', 'owner', false),
+    ];
+
+    const result = await softDeleteUser('u-del', ACTOR);
+
+    expect(result).toMatchObject({
+      status: 'blocked',
+      blocks: [{ organizationId: 'org-a', reason: 'last_member' }],
+    });
+    expect(db.users.find((u) => u.id === 'u-del')?.deletedAt).toBeNull();
+  });
+
+  it('names every blocked organization in one refusal', async () => {
+    db.memberships = [
+      membership('m1', 'u-del', 'org-a', 'owner'),
+      membership('m2', 'u-other', 'org-a', 'nurse'),
+      membership('m3', 'u-del', 'org-b', 'owner'),
+      membership('m4', 'u-del', 'org-c', 'nurse'),
+      membership('m5', 'u-other', 'org-c', 'owner'),
+    ];
+
+    const result = await softDeleteUser('u-del', ACTOR);
+
+    expect(result.status === 'blocked' && result.message).toBe(
+      'Transfer ownership of ORG-A before deleting this user. ' +
+        'ORG-B has no other active member. Add an owner there before deleting this user.',
+    );
+  });
+
+  it("locks the person's organizations before checking, so concurrent co-owner deletes serialise", async () => {
+    await softDeleteUser('u-del', ACTOR);
+
+    expect(lockedOrgs).toEqual([['org-a', 'org-b', 'org-c']]);
   });
 });

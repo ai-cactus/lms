@@ -61,13 +61,23 @@ async function main() {
   }
 
   let deleted = 0;
+  let refused = 0;
   for (const userId of workerUserIds) {
     const result = await softDeleteUser(userId, { actorRole: 'script:delete-workers' });
     if (result.status === 'deleted') deleted += 1;
+    if (result.status === 'blocked') {
+      // Q-30: this identity was left untouched; the rest of the batch continues.
+      refused += 1;
+      logger.warn({ msg: `[delete-workers] Refused: ${result.message}`, userId });
+      continue;
+    }
     logger.info({ msg: '[delete-workers] Processed identity', userId, status: result.status });
   }
 
-  logger.info({ msg: `[delete-workers] Done: ${deleted} identities soft-deleted` });
+  logger.info({
+    msg: `[delete-workers] Done: ${deleted} identities soft-deleted, ${refused} refused`,
+  });
+  if (refused > 0) process.exitCode = 1;
 }
 
 main()

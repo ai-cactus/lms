@@ -13,26 +13,40 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockPrisma, mockRawPrisma, mockSoftDelete, mockVerifyCookie, mockRevalidatePath } =
-  vi.hoisted(() => ({
-    mockPrisma: {
-      user: { findUnique: vi.fn(), findMany: vi.fn(), count: vi.fn() },
-      organizationUser: { findMany: vi.fn(), findFirst: vi.fn(), count: vi.fn() },
-      organization: { findMany: vi.fn() },
-      enrollment: { count: vi.fn() },
-      quizAttempt: { count: vi.fn() },
-      certificate: { count: vi.fn() },
-      invite: { count: vi.fn() },
-    },
-    mockRawPrisma: { course: { count: vi.fn() }, document: { count: vi.fn() } },
-    mockSoftDelete: vi.fn(),
-    mockVerifyCookie: vi.fn(),
-    mockRevalidatePath: vi.fn(),
-  }));
+const {
+  mockPrisma,
+  mockRawPrisma,
+  mockSoftDelete,
+  mockFindOwnershipBlocks,
+  mockVerifyCookie,
+  mockRevalidatePath,
+} = vi.hoisted(() => ({
+  mockPrisma: {
+    user: { findUnique: vi.fn(), findMany: vi.fn(), count: vi.fn() },
+    organizationUser: { findMany: vi.fn(), findFirst: vi.fn(), count: vi.fn() },
+    organization: { findMany: vi.fn() },
+    enrollment: { count: vi.fn() },
+    quizAttempt: { count: vi.fn() },
+    certificate: { count: vi.fn() },
+    invite: { count: vi.fn() },
+  },
+  mockRawPrisma: { course: { count: vi.fn() }, document: { count: vi.fn() } },
+  mockSoftDelete: vi.fn(),
+  mockFindOwnershipBlocks: vi.fn(),
+  mockVerifyCookie: vi.fn(),
+  mockRevalidatePath: vi.fn(),
+}));
 
 vi.mock('@/lib/prisma', () => ({ prisma: mockPrisma, default: mockPrisma }));
 vi.mock('@/db/index', () => ({ rawPrisma: mockRawPrisma }));
-vi.mock('@/lib/system/delete-user', () => ({ softDeleteUser: mockSoftDelete }));
+vi.mock('@/lib/system/delete-user', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/system/delete-user')>();
+  return {
+    softDeleteUser: mockSoftDelete,
+    findOwnershipBlocks: mockFindOwnershipBlocks,
+    describeOwnershipBlocks: actual.describeOwnershipBlocks,
+  };
+});
 vi.mock('@/lib/system-auth', () => ({
   verifySystemAdminCookie: mockVerifyCookie,
   SYSTEM_ADMIN_COOKIE: 'system_admin_auth',
@@ -92,6 +106,20 @@ describe('deleteUserWithRelations — delegates to the shared soft delete', () =
     expect(mockRevalidatePath).toHaveBeenCalledWith('/system');
   });
 
+  it('returns the Q-30 ownership refusal without revalidating', async () => {
+    mockSoftDelete.mockResolvedValueOnce({
+      status: 'blocked',
+      blocks: [{ organizationId: 'org-a', organizationName: 'Acme', reason: 'sole_owner' }],
+      message: 'Transfer ownership of Acme before deleting this user.',
+    });
+
+    await expect(deleteUserWithRelations('u1')).resolves.toEqual({
+      success: false,
+      error: 'Transfer ownership of Acme before deleting this user.',
+    });
+    expect(mockRevalidatePath).not.toHaveBeenCalled();
+  });
+
   it('returns a clear "already deleted" refusal on a second delete', async () => {
     mockSoftDelete.mockResolvedValueOnce({ status: 'already_deleted', deletedAt: DELETED_AT });
 
@@ -149,6 +177,18 @@ describe('getUserDeletePreview — nothing destroyed, records retained', () => {
     mockPrisma.invite.count.mockResolvedValue(1);
     mockRawPrisma.course.count.mockResolvedValue(2);
     mockRawPrisma.document.count.mockResolvedValue(4);
+    mockFindOwnershipBlocks.mockResolvedValue([]);
+  });
+
+  it('carries the Q-30 refusal when the delete would orphan an organization', async () => {
+    mockFindOwnershipBlocks.mockResolvedValueOnce([
+      { organizationId: 'org-a', organizationName: 'Acme', reason: 'sole_owner' },
+    ]);
+
+    const preview = await getUserDeletePreview('u1');
+
+    expect(preview?.blockedReason).toBe('Transfer ownership of Acme before deleting this user.');
+    expect(mockFindOwnershipBlocks).toHaveBeenCalledWith(mockPrisma, 'u1');
   });
 
   it('reports revoked access and retained records', async () => {
@@ -157,6 +197,7 @@ describe('getUserDeletePreview — nothing destroyed, records retained', () => {
     expect(preview).toEqual({
       user: { id: 'u1', email: 'dana@example.com', role: 'hr', name: 'Dana Delete' },
       deletedAt: null,
+      blockedReason: null,
       revoked: { organizations: ['Acme'], pendingInvites: 1 },
       retained: {
         enrollments: 5,

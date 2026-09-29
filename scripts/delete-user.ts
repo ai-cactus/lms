@@ -64,6 +64,12 @@ async function main() {
   }
 
   const result = await softDeleteUser(user.id, { actorRole: 'script:delete-user' });
+  if (result.status === 'blocked') {
+    // Q-30: nothing was changed. Same refusal the /system console shows.
+    logger.error({ msg: `[delete-user] Refused: ${result.message}`, userId: user.id });
+    process.exitCode = 1;
+    return;
+  }
   logger.info({ msg: '[delete-user] Done', userId: user.id, result });
 }
 

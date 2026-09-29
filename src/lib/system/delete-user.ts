@@ -7,6 +7,8 @@
  * no second, destructive path (RISK-14).
  *
  * What it does, in one transaction:
+ *  - refuses, changing nothing, when an organization the person is active in
+ *    would be left with no active owner or no active member at all (Q-30);
  *  - stamps `User.deletedAt` and bumps `sessionVersion` (every live session dies
  *    on its next JWT decode);
  *  - deactivates EVERY membership, in every organization — the same state
@@ -30,12 +32,20 @@
  * Restoring a deleted identity is out of scope.
  */
 import prisma from '@/lib/prisma';
+import type { DbTransactionClient } from '@/db/index';
 import { auditCritical, type AuditEntry } from '@/lib/audit';
 import { invalidateRevalidationCache } from '@/lib/auth/session-revalidation-cache';
 import { logger } from '@/lib/logger';
 
 /** Who is deleting, for the audit row. Never an email or a name. */
 export type SoftDeleteActor = Pick<AuditEntry, 'actorId' | 'actorRole' | 'ip' | 'userAgent'>;
+
+/** An organization the delete would leave without an owner or without anyone (Q-30). */
+export interface OwnershipBlock {
+  organizationId: string;
+  organizationName: string;
+  reason: 'sole_owner' | 'last_member';
+}
 
 export type SoftDeleteUserResult =
   | {
@@ -46,7 +56,62 @@ export type SoftDeleteUserResult =
       verificationTokensRevoked: number;
     }
   | { status: 'not_found' }
-  | { status: 'already_deleted'; deletedAt: Date };
+  | { status: 'already_deleted'; deletedAt: Date }
+  | { status: 'blocked'; blocks: OwnershipBlock[]; message: string };
+
+type MembershipReader = Pick<DbTransactionClient, 'organizationUser'>;
+
+/**
+ * Q-30 (ruled 2026-09-29): which of the person's organizations the delete would
+ * orphan. Only organizations where the person is ACTIVE count — deleting them
+ * cannot take away an owner an org has already lost some other way.
+ */
+export async function findOwnershipBlocks(
+  client: MembershipReader,
+  userId: string,
+): Promise<OwnershipBlock[]> {
+  const memberships = await client.organizationUser.findMany({
+    where: { userId, active: true },
+    select: { organizationId: true, role: true, organization: { select: { name: true } } },
+    orderBy: { joinedAt: 'asc' },
+  });
+
+  const blocks: OwnershipBlock[] = [];
+  for (const membership of memberships) {
+    const othersWhere = {
+      organizationId: membership.organizationId,
+      active: true,
+      userId: { not: userId },
+    };
+    const otherMembers = await client.organizationUser.count({ where: othersWhere });
+    const otherOwners =
+      membership.role === 'owner' && otherMembers > 0
+        ? await client.organizationUser.count({ where: { ...othersWhere, role: 'owner' } })
+        : null;
+
+    const reason =
+      otherMembers === 0 ? 'last_member' : otherOwners === 0 ? 'sole_owner' : undefined;
+    if (reason) {
+      blocks.push({
+        organizationId: membership.organizationId,
+        organizationName: membership.organization.name,
+        reason,
+      });
+    }
+  }
+  return blocks;
+}
+
+/** The refusal shown to whoever asked for the delete, naming every blocked organization. */
+export function describeOwnershipBlocks(blocks: readonly OwnershipBlock[]): string {
+  return blocks
+    .map((block) =>
+      block.reason === 'sole_owner'
+        ? `Transfer ownership of ${block.organizationName} before deleting this user.`
+        : `${block.organizationName} has no other active member. Add an owner there before deleting this user.`,
+    )
+    .join(' ');
+}
 
 export async function softDeleteUser(
   userId: string,
@@ -63,19 +128,29 @@ export async function softDeleteUser(
   const deletedAt = new Date();
 
   const outcome = await prisma.$transaction(async (tx) => {
+    const memberships = await tx.organizationUser.findMany({
+      where: { userId },
+      select: { organizationId: true },
+    });
+    const memberOrganizationIds = [...new Set(memberships.map((m) => m.organizationId))];
+
+    // Lock the person's organizations before the Q-30 check, so two co-owners
+    // deleted at the same moment are serialised: the second sees the first's
+    // deactivation and is refused instead of both passing and orphaning the org.
+    if (memberOrganizationIds.length > 0) {
+      await tx.$queryRaw`SELECT id FROM organizations WHERE id = ANY(${memberOrganizationIds}::text[]) ORDER BY id FOR UPDATE`;
+    }
+
+    const blocks = await findOwnershipBlocks(tx, userId);
+    if (blocks.length > 0) return { kind: 'blocked' as const, blocks };
+
     // Guarded on `deletedAt: null` so two concurrent deletes cannot both
     // succeed and double-audit: the loser matches no row.
     const stamped = await tx.user.updateMany({
       where: { id: userId, deletedAt: null },
       data: { deletedAt, sessionVersion: { increment: 1 } },
     });
-    if (stamped.count === 0) return null;
-
-    const memberships = await tx.organizationUser.findMany({
-      where: { userId },
-      select: { organizationId: true },
-    });
-    const memberOrganizationIds = memberships.map((m) => m.organizationId);
+    if (stamped.count === 0) return { kind: 'raced' as const };
 
     const deactivated = await tx.organizationUser.updateMany({
       where: { userId, active: true },
@@ -118,10 +193,24 @@ export async function softDeleteUser(
       tx,
     );
 
-    return counts;
+    return { kind: 'deleted' as const, counts };
   });
 
-  if (!outcome) {
+  if (outcome.kind === 'blocked') {
+    logger.warn({
+      msg: '[system] User delete refused: would leave an organization without an owner',
+      userId,
+      orgIds: outcome.blocks.map((block) => block.organizationId),
+      reasons: outcome.blocks.map((block) => block.reason),
+    });
+    return {
+      status: 'blocked',
+      blocks: outcome.blocks,
+      message: describeOwnershipBlocks(outcome.blocks),
+    };
+  }
+
+  if (outcome.kind === 'raced') {
     const current = await prisma.user.findUnique({
       where: { id: userId },
       select: { deletedAt: true },
@@ -135,7 +224,7 @@ export async function softDeleteUser(
   // reads the bumped sessionVersion instead of waiting out the Redis TTL.
   await invalidateRevalidationCache(userId);
 
-  logger.info({ msg: '[system] User soft-deleted', userId, ...outcome });
+  logger.info({ msg: '[system] User soft-deleted', userId, ...outcome.counts });
 
-  return { status: 'deleted', deletedAt, ...outcome };
+  return { status: 'deleted', deletedAt, ...outcome.counts };
 }

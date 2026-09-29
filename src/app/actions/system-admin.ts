@@ -6,7 +6,11 @@ import { cookies, headers } from 'next/headers';
 import crypto from 'crypto';
 import { revalidatePath } from 'next/cache';
 import { logger } from '@/lib/logger';
-import { softDeleteUser } from '@/lib/system/delete-user';
+import {
+  describeOwnershipBlocks,
+  findOwnershipBlocks,
+  softDeleteUser,
+} from '@/lib/system/delete-user';
 import { audit, getClientContext } from '@/lib/audit';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { verifySystemAdminCookie, SYSTEM_ADMIN_COOKIE } from '@/lib/system-auth';
@@ -515,6 +519,11 @@ export interface DeletePreview {
   };
   /** Set when the identity is already deleted — the console offers no delete then. */
   deletedAt: Date | null;
+  /**
+   * Q-30: why the delete would be refused — the organizations it would leave
+   * with no active owner or no active member. Null when the delete may proceed.
+   */
+  blockedReason: string | null;
   /** Access the delete removes. */
   revoked: {
     /** Organizations whose active membership is deactivated. */
@@ -592,6 +601,7 @@ export async function getUserDeletePreview(userId: string): Promise<DeletePrevie
     rawPrisma.course.count({ where: { createdByOrgUserId: { in: orgUserIds } } }),
     rawPrisma.document.count({ where: { organizationUserId: { in: orgUserIds } } }),
   ]);
+  const ownershipBlocks = await findOwnershipBlocks(prisma, userId);
 
   return {
     user: {
@@ -601,6 +611,7 @@ export async function getUserDeletePreview(userId: string): Promise<DeletePrevie
       name: user.fullName || user.email.split('@')[0],
     },
     deletedAt: user.deletedAt,
+    blockedReason: ownershipBlocks.length > 0 ? describeOwnershipBlocks(ownershipBlocks) : null,
     revoked: {
       organizations: orgUsers.filter((ou) => ou.active).map((ou) => ou.organization.name),
       pendingInvites,
@@ -636,6 +647,9 @@ export async function deleteUserWithRelations(userId: string): Promise<{
         success: false,
         error: `This user was already deleted on ${result.deletedAt.toISOString().slice(0, 10)}.`,
       };
+    }
+    if (result.status === 'blocked') {
+      return { success: false, error: result.message };
     }
 
     revalidatePath('/system');
