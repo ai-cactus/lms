@@ -13,7 +13,8 @@ import { formatCertificateId } from '@/lib/certificate-id';
 import { logger } from '@/lib/logger';
 import { audit, getClientContext } from '@/lib/audit';
 import { headers } from 'next/headers';
-import type { Certificate } from '@/generated/prisma/client';
+import type { Certificate, Prisma } from '@/generated/prisma/client';
+import type { CourseCertificateRow } from '@/types/course';
 
 async function resolveSession() {
   const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
@@ -266,6 +267,73 @@ export async function getAdminWorkerCertificates(organizationUserId: string) {
   });
 
   return certificates;
+}
+
+/**
+ * The certificates issued on one course, for the course page's Certificates tab.
+ *
+ * Deliberately NOT read from the course roster. The roster lists the current
+ * workforce only, but Q-29 (ruled 2026-09-29) keeps a departed member's
+ * certificate on this tab — their training record outlives their access
+ * (founder Q23) — so this includes inactive memberships and reports `active`
+ * for the "Former staff" label.
+ *
+ * Same gate and predicate as {@link getAdminWorkerCertificates} and
+ * {@link getCertificateDetails}, so every certificate listed here can be opened:
+ * the caller's own certificate always; otherwise an admin-tier role holding
+ * `certificate.read`, over its organisation narrowed by `staffFacilityWhere`.
+ * That predicate matches ACTIVE facility rows only, which is what keeps a
+ * supervisor inside their facility for departed staff too: `removeStaff`
+ * deactivates the membership but leaves its facility rows untouched, so a
+ * departed member stays attributed to where they last worked. A row that WAS
+ * deactivated records a transfer OUT of that facility, and the enrolment stamp
+ * records where training was assigned — honouring either would show a
+ * supervisor staff who left their facility for another. A departed member with
+ * no active facility row is therefore visible only to org-wide roles.
+ */
+export async function getCourseCertificates(courseId: string): Promise<CourseCertificateRow[]> {
+  const session = await adminAuth();
+  if (!session?.user?.id) {
+    throw new Error('Unauthorized');
+  }
+
+  const ownOnly: Prisma.OrganizationUserWhereInput = session.user.organizationUserId
+    ? { id: session.user.organizationUserId }
+    : { id: { in: [] } };
+
+  const { organizationId } = session.user;
+  const roleKey = dbRoleToRoleKey(session.user.role);
+  const mayReadOthers =
+    !!roleKey && isAdminRole(session.user.role) && can(roleKey, 'certificate.read');
+
+  const learnerWhere: Prisma.OrganizationUserWhereInput =
+    mayReadOthers && organizationId
+      ? {
+          OR: [
+            {
+              organizationId,
+              ...staffFacilityWhere(await resolveDataFacilityIds(session)),
+            },
+            ownOnly,
+          ],
+        }
+      : ownOnly;
+
+  return prisma.certificate.findMany({
+    where: { courseId, organizationUser: learnerWhere },
+    select: {
+      id: true,
+      issuedAt: true,
+      organizationUser: {
+        select: {
+          role: true,
+          active: true,
+          user: { select: { email: true, fullName: true } },
+        },
+      },
+    },
+    orderBy: { issuedAt: 'desc' },
+  });
 }
 
 export async function getCertificateDetails(certificateId: string) {

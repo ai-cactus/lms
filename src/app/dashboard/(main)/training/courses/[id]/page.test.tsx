@@ -17,6 +17,7 @@ const {
   mockAuth,
   mockGetCourseAssignmentSettings,
   mockGetRoleHolderCounts,
+  mockGetCourseCertificates,
 } = vi.hoisted(() => ({
   mockLoadCourseDetail: vi.fn(),
   mockAuth: vi.fn(),
@@ -28,6 +29,7 @@ const {
   }),
   mockGetCourseAssignmentSettings: vi.fn(async () => null),
   mockGetRoleHolderCounts: vi.fn(async () => ({})),
+  mockGetCourseCertificates: vi.fn(async (): Promise<unknown[]> => []),
 }));
 
 vi.mock('@/lib/course/load-course-detail', () => ({ loadCourseDetail: mockLoadCourseDetail }));
@@ -37,6 +39,9 @@ vi.mock('@/lib/course/load-course-detail', () => ({ loadCourseDetail: mockLoadCo
 vi.mock('@/app/actions/enrollment', () => ({
   getCourseAssignmentSettings: mockGetCourseAssignmentSettings,
   getRoleHolderCounts: mockGetRoleHolderCounts,
+}));
+vi.mock('@/app/actions/certificate', () => ({
+  getCourseCertificates: mockGetCourseCertificates,
 }));
 vi.mock('next/navigation', () => ({ notFound: mockNotFound, redirect: mockRedirect }));
 vi.mock('@/auth', () => ({ auth: mockAuth }));
@@ -53,16 +58,19 @@ vi.mock('@/components/dashboard/training/TrainingDetails', () => ({
     canWithdrawAssignments,
     backHref,
     passingScore,
+    certificates,
   }: {
     canWithdrawAssignments?: boolean;
     backHref?: string;
     passingScore?: number;
+    certificates?: unknown[];
   }) => (
     <div
       data-testid="training-details"
       data-can-withdraw={String(!!canWithdrawAssignments)}
       data-back-href={backHref}
       data-passing-score={String(passingScore)}
+      data-certificate-count={String(certificates?.length ?? 'none')}
     />
   ),
 }));
@@ -97,6 +105,27 @@ beforeEach(() => {
 
 // The roster's Passed/Failed must use the bar the dashboards use, resolved here
 // on the server from the payload rather than fetched by the client.
+// Q-29: the Certificates tab has its own read, which keeps departed staff the
+// roster drops — so the page must pass it through, and only once the course
+// itself has been granted.
+describe('CourseDetailsPage — certificates', () => {
+  it('passes the course’s certificate read through to the tab', async () => {
+    mockGetCourseCertificates.mockResolvedValue([{ id: 'cert-1' }, { id: 'cert-2' }]);
+
+    render(await CourseDetailsPage({ params }));
+
+    expect(mockGetCourseCertificates).toHaveBeenCalledWith('course-1');
+    expect(screen.getByTestId('training-details')).toHaveAttribute('data-certificate-count', '2');
+  });
+
+  it('never reads certificates for a course the viewer cannot open', async () => {
+    mockLoadCourseDetail.mockResolvedValue(null);
+
+    await expect(CourseDetailsPage({ params })).rejects.toThrow('NEXT_NOT_FOUND');
+    expect(mockGetCourseCertificates).not.toHaveBeenCalled();
+  });
+});
+
 describe('CourseDetailsPage — passing bar', () => {
   it('passes the course’s strictest quiz bar down to the roster', async () => {
     mockLoadCourseDetail.mockResolvedValue({

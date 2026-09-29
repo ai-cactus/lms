@@ -288,7 +288,6 @@ export const courseDetailSelect = {
        * had no active facility row at the time.
        */
       facility: { select: { id: true, name: true } },
-      certificate: { select: { id: true, issuedAt: true } },
     },
   },
   /**
@@ -318,6 +317,20 @@ export const courseDetailSelect = {
 } satisfies Prisma.CourseSelect;
 
 export type CourseWithRelations = Prisma.CourseGetPayload<{ select: typeof courseDetailSelect }>;
+
+/**
+ * One row of a course's Certificates tab (`getCourseCertificates`). `active` is
+ * false for a departed member, whose certificate stays listed (Q-29).
+ */
+export type CourseCertificateRow = {
+  id: string;
+  issuedAt: Date;
+  organizationUser: {
+    role: string;
+    active: boolean;
+    user: { email: string; fullName: string | null };
+  };
+};
 
 export type EnrollmentWithRelations = Prisma.EnrollmentGetPayload<{
   include: {

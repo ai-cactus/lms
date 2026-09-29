@@ -11,7 +11,7 @@
  *   - the Facility column: the member's CURRENT facility, with the facility the
  *     training was assigned at as a note once they have moved (BUG-37).
  */
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
@@ -266,6 +266,57 @@ describe('TrainingDetails — roster Passed/Failed uses the course’s passing b
 
     const row = screen.getByRole('row', { name: /Frank Doe/ });
     expect(within(row).getByText('Failed')).toBeInTheDocument();
+  });
+});
+
+describe('TrainingDetails — Certificates tab (Q-29)', () => {
+  const certificateOf = (fullName: string, active: boolean) => ({
+    id: `cert-${fullName}`,
+    issuedAt: new Date('2026-09-01T00:00:00.000Z'),
+    organizationUser: {
+      role: 'nurse',
+      active,
+      user: { email: `${fullName}@example.com`, fullName },
+    },
+  });
+
+  function openCertificatesTab() {
+    fireEvent.click(screen.getByRole('button', { name: 'Certificates Issued' }));
+  }
+
+  it('lists a departed member’s certificate with a "Former staff" badge, and an active member’s without', () => {
+    render(
+      <TrainingDetails
+        course={baseCourse()}
+        certificates={[certificateOf('Dana Departed', false), certificateOf('Ari Active', true)]}
+      />,
+    );
+    openCertificatesTab();
+
+    const departed = screen.getByRole('row', { name: /Dana Departed/ });
+    expect(within(departed).getByText('Former staff')).toBeInTheDocument();
+    const active = screen.getByRole('row', { name: /Ari Active/ });
+    expect(within(active).queryByText('Former staff')).not.toBeInTheDocument();
+  });
+
+  it('reads its rows from the certificates prop, not the roster — the roster omits departed staff', () => {
+    render(
+      <TrainingDetails
+        course={baseCourse({ enrollments: [] })}
+        certificates={[certificateOf('Dana Departed', false)]}
+      />,
+    );
+    openCertificatesTab();
+
+    expect(screen.getByRole('row', { name: /Dana Departed/ })).toBeInTheDocument();
+    expect(screen.queryByText(/No certificates have been issued/)).not.toBeInTheDocument();
+  });
+
+  it('shows the empty state with no certificates', () => {
+    render(<TrainingDetails course={baseCourse({ enrollments: [enrollment()] })} />);
+    openCertificatesTab();
+
+    expect(screen.getByText(/No certificates have been issued/)).toBeInTheDocument();
   });
 });
 
