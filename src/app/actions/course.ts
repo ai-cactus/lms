@@ -796,7 +796,10 @@ export async function publishCourse(courseId: string, opts?: { acknowledgeWarnin
   }
 
   revalidatePath('/dashboard/training');
-  return { ...course, assignmentFailed, assignmentDeadlineExpired };
+  // BUG-51: `success` makes the result a discriminated union with the refusal
+  // arms above. Without it a caller testing `!result.success` read every
+  // successful publish as a refusal.
+  return { ...course, success: true as const, assignmentFailed, assignmentDeadlineExpired };
 }
 
 /**
