@@ -65,7 +65,8 @@ beforeEach(() => {
   prismaMock.course.findUnique.mockResolvedValue({
     id: 'course-1',
     createdByOrgUserId: 'ou-1',
-    creator: { organizationId: ORG },
+    organizationId: ORG,
+    isGlobal: false,
     lessons: [{ id: 'lesson-1', quiz: { id: 'quiz-1' } }],
   });
   prismaMock.$transaction.mockImplementation(async (arg: unknown) =>

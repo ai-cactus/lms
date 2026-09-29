@@ -14,6 +14,12 @@ interface CourseArticleProps {
   proceedDisabled?: boolean;
   /** Optional helper hint shown near a disabled "Proceed to Quiz" control. */
   proceedHint?: React.ReactNode;
+  /**
+   * BUG-28: the end-of-course action for a course with NO quiz, whose only way
+   * to completion is the attestation. Rendered where "Proceed to Quiz" would
+   * be, gated by the same `proceedDisabled`/`proceedHint`.
+   */
+  onAttest?: () => void;
   onNext?: () => void;
   onPrev?: () => void;
   isFirst?: boolean;
@@ -32,6 +38,7 @@ export default function CourseArticle({
   hasQuiz,
   proceedDisabled = false,
   proceedHint,
+  onAttest,
   onNext,
   onPrev,
   isFirst,
@@ -89,11 +96,17 @@ export default function CourseArticle({
               {children}
             </div>
 
-            {hasQuiz && onProceedToQuiz && (
+            {((hasQuiz && onProceedToQuiz) || (!hasQuiz && onAttest)) && (
               <div className="mt-12 flex flex-col items-center gap-2 border-t border-border-default pt-8">
-                <Button variant="default" onClick={onProceedToQuiz} disabled={proceedDisabled}>
-                  Proceed to Quiz
-                </Button>
+                {hasQuiz ? (
+                  <Button variant="default" onClick={onProceedToQuiz} disabled={proceedDisabled}>
+                    Proceed to Quiz
+                  </Button>
+                ) : (
+                  <Button variant="default" onClick={onAttest} disabled={proceedDisabled}>
+                    Complete Course &amp; Attest
+                  </Button>
+                )}
                 {proceedDisabled && proceedHint && (
                   <p className="text-sm text-text-muted">{proceedHint}</p>
                 )}
