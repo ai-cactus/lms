@@ -9,9 +9,10 @@
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockAuth, mockGetWorkerCertificates, prismaMock } = vi.hoisted(() => ({
+const { mockAuth, mockGetWorkerCertificates, mockLoggerError, prismaMock } = vi.hoisted(() => ({
   mockAuth: vi.fn(),
   mockGetWorkerCertificates: vi.fn(),
+  mockLoggerError: vi.fn(),
   prismaMock: {
     enrollment: { findMany: vi.fn() },
     user: { findUnique: vi.fn() },
@@ -34,9 +35,22 @@ vi.mock('@/components/worker/WorkerDashboardMetrics', () => ({
   ),
 }));
 vi.mock('@/components/worker/WorkerAchievements', () => ({
-  default: ({ certificateCount }: { certificateCount: number }) => (
-    <div data-testid="achievements" data-count={certificateCount} />
+  default: ({
+    certificateCount,
+    loadFailed,
+  }: {
+    certificateCount: number;
+    loadFailed: boolean;
+  }) => (
+    <div
+      data-testid="achievements"
+      data-count={certificateCount}
+      data-load-failed={String(loadFailed)}
+    />
   ),
+}));
+vi.mock('@/lib/logger', () => ({
+  logger: { info: vi.fn(), warn: vi.fn(), error: mockLoggerError, debug: vi.fn() },
 }));
 vi.mock('@/components/worker/WorkerEmptyState', () => ({ default: () => null }));
 vi.mock('@/components/worker/WorkerCourseList', () => ({
@@ -172,5 +186,30 @@ describe('LearnerDashboard — tiles (Q-22) and certificate count (BUG-41)', () 
 
     expect(screen.getByTestId('achievements')).toHaveAttribute('data-count', '1');
     expect(screen.getByTestId('metrics')).toHaveAttribute('data-completed', '2');
+  });
+});
+
+describe('LearnerDashboard — a failed certificate load (BUG-57)', () => {
+  it('logs the failure and flags it, instead of reporting zero certificates', async () => {
+    prismaMock.enrollment.findMany.mockResolvedValue([enrollment()]);
+    mockGetWorkerCertificates.mockRejectedValue(new Error('db down'));
+
+    render(await LearnerDashboard());
+
+    expect(screen.getByTestId('achievements')).toHaveAttribute('data-load-failed', 'true');
+    expect(mockLoggerError).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'worker-1', err: expect.any(Error) }),
+    );
+    // The rest of the dashboard still renders.
+    expect(screen.getByTestId('course-list')).toBeInTheDocument();
+  });
+
+  it('does not flag a successful load, even one with no certificates', async () => {
+    prismaMock.enrollment.findMany.mockResolvedValue([enrollment()]);
+
+    render(await LearnerDashboard());
+
+    expect(screen.getByTestId('achievements')).toHaveAttribute('data-load-failed', 'false');
+    expect(mockLoggerError).not.toHaveBeenCalled();
   });
 });
