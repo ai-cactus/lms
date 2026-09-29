@@ -27,7 +27,7 @@ const { mockAuth, mockSendInviteEmail, mockLoggerWarn, mockCreateMembership, txM
       facilityDocument: { createMany: vi.fn() },
       // Every new org is seeded with the default Document Hub vocabulary.
       documentCategory: { createMany: vi.fn() },
-      user: { findUnique: vi.fn() },
+      user: { findUnique: vi.fn(), findFirst: vi.fn() },
       invite: { create: vi.fn() },
     };
     return {
@@ -58,6 +58,7 @@ vi.mock('@/lib/auth/membership', () => ({ createMembership: mockCreateMembership
 vi.mock('@/lib/email', () => ({ sendInviteEmail: mockSendInviteEmail }));
 vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), warn: mockLoggerWarn, error: vi.fn(), debug: vi.fn() },
+  maskEmail: (email: string) => `${email.slice(0, 2)}***@masked`,
 }));
 
 import { completeOnboarding, type OnboardingData } from './onboarding-complete';
@@ -107,6 +108,7 @@ beforeEach(() => {
   txMock.facility.create.mockResolvedValue({ id: 'facility-1' });
   txMock.facilityDocument.createMany.mockResolvedValue({ count: 0 });
   txMock.user.findUnique.mockResolvedValue(null); // no existing user for invite emails
+  txMock.user.findFirst.mockResolvedValue(null); // Q-31: no deleted identities
   txMock.invite.create.mockResolvedValue({});
   mockSendInviteEmail.mockResolvedValue(undefined);
 });
@@ -644,5 +646,42 @@ describe('completeOnboarding — step3 business type / services storage shape', 
     const orgData = txMock.organization.create.mock.calls[0][0].data;
     expect(orgData.additionalBusinessTypes).toEqual([]);
     expect(orgData.primaryBusinessType).toBeUndefined();
+  });
+});
+
+describe('completeOnboarding — Q-31 deleted identity', () => {
+  it('skips an invite to a deleted identity (no row, no email) and still invites the rest', async () => {
+    txMock.user.findFirst.mockImplementation(
+      async ({ where }: { where: { email: { equals: string } } }) =>
+        where.email.equals === 'deleted@acme.com' ? { id: 'user-deleted' } : null,
+    );
+
+    const result = await completeOnboarding({
+      ...BASE_DATA,
+      step5: {
+        workerInvites: [
+          { email: 'deleted@acme.com', role: 'nurse' },
+          { email: 'worker@acme.com', role: 'nurse' },
+        ],
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(txMock.user.findFirst).toHaveBeenCalledWith({
+      where: {
+        email: { equals: 'deleted@acme.com', mode: 'insensitive' },
+        deletedAt: { not: null },
+      },
+      select: { id: true },
+    });
+    const invitedEmails = txMock.invite.create.mock.calls.map(
+      (call) => (call[0] as { data: { email: string } }).data.email,
+    );
+    expect(invitedEmails).toEqual(['worker@acme.com']);
+    expect(mockSendInviteEmail).toHaveBeenCalledTimes(1);
+    expect(mockSendInviteEmail.mock.calls[0][0]).toBe('worker@acme.com');
+    expect(mockLoggerWarn).toHaveBeenCalledWith(
+      expect.objectContaining({ source: 'completeOnboarding' }),
+    );
   });
 });

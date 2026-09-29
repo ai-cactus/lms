@@ -14,6 +14,7 @@ import { enrollInviteCourses } from '@/lib/enrollment/invite-courses';
 import { emitNotificationEvent } from '@/lib/notifications/emit';
 import { getRoleDisplayName } from '@/lib/rbac/role-utils';
 import { createMembership } from '@/lib/auth/membership';
+import { isDeletedIdentity } from '@/lib/auth/deleted-identity';
 import { captureServer } from '@/lib/analytics/server';
 
 const acceptInviteSchema = z.object({
@@ -98,8 +99,26 @@ export async function POST(req: Request) {
 
     const existingUser = await prisma.user.findUnique({
       where: { email: invite.email },
-      select: { id: true },
+      select: { id: true, deletedAt: true },
     });
+
+    // Q-23: accepting would reset a deleted identity's password and reactivate
+    // its membership — undoing the delete. Its email is not freed either, so
+    // there is no fresh account to create in its place.
+    if (isDeletedIdentity(existingUser)) {
+      logger.warn({
+        msg: '[invite] Accept refused: invitee identity was deleted',
+        inviteId: invite.id,
+        orgId: invite.organizationId,
+      });
+      return NextResponse.json(
+        {
+          error:
+            'This invite can no longer be accepted. Please contact the organization that invited you.',
+        },
+        { status: 403 },
+      );
+    }
 
     // An identity may already exist (in this org or another — multi-org
     // membership is the point of this model). Only an ACTIVE membership in

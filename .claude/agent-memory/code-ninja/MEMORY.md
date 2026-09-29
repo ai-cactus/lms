@@ -120,7 +120,7 @@
 - [Archiving cancels learner actions](project_archived_course_cancels_learner_actions.md): Q-04/05/06: 11 write paths refuse, reminders skip
 - [Notification linkUrl is portal-bound](gotcha_notification_linkurl_is_portal_bound.md): the assignee may be a manager; /learn/[id] is the only both-realm route
 - [origin/dev moves under a worktree](gotcha_worktree_bash_guard_and_shared_refs.md): refs are shared; never revert a file from origin/dev
-- [User delete = asset custody transfer](gotcha_user_delete_asset_custody.md): courses/documents are REASSIGNED, never deleted
+- [User delete is a soft delete (Q-23)](project_user_soft_delete_q23.md): deletedAt + memberships off; every auth entry point must check it
 - [Scratchpad shared across agents](gotcha_scratchpad_shared_across_agents.md): parallel worktree agents share one scratchpad; use a unique log subdir
 - [minio audit overrides break it](gotcha_minio_transitive_audit_overrides_break_it.md): stream-json/decode-uri-component fixes are ESM-only; unreachable paths
 - [Tracker items may already be fixed](gotcha_tracker_items_may_already_be_fixed.md): git log -S before fixing; no-ffmpeg fixture recipe

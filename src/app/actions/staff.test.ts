@@ -97,7 +97,7 @@ const {
       findMany: mockOrgUserFindMany,
       update: mockOrgUserUpdate,
     },
-    user: { update: mockUserUpdate },
+    user: { update: mockUserUpdate, findMany: vi.fn().mockResolvedValue([]) },
     invite: {
       findUnique: mockInviteFindUnique,
       update: mockInviteUpdate,
@@ -228,6 +228,7 @@ beforeEach(() => {
   mockOrgUserUpdate.mockResolvedValue({});
   mockUserUpdate.mockResolvedValue({ id: 'target-user-1', email: 'target@acme.com' });
   mockInviteFindUnique.mockResolvedValue(PENDING_INVITE);
+  prismaMock.user.findMany.mockResolvedValue([]); // Q-31: no deleted identities by default
   mockInviteUpdate.mockResolvedValue({});
   mockInviteUpdateMany.mockResolvedValue({ count: 0 });
   mockInviteDelete.mockResolvedValue({});
@@ -1025,6 +1026,22 @@ describe('resendInvite — already-accepted invite', () => {
     expect(result).toEqual({
       success: false,
       error: 'This invite has already been accepted.',
+    });
+    expect(prismaMock.invite.update).not.toHaveBeenCalled();
+    expect(mockSendInviteEmail).not.toHaveBeenCalled();
+  });
+});
+
+describe('resendInvite — Q-31 deleted identity', () => {
+  it('refuses to revive an invite for a deleted identity, with the generic message', async () => {
+    prismaMock.invite.findUnique.mockResolvedValue({ ...PENDING_INVITE, status: 'expired' });
+    prismaMock.user.findMany.mockResolvedValue([{ email: PENDING_INVITE.email }]);
+
+    const result = await resendInvite('invite-1');
+
+    expect(result).toEqual({
+      success: false,
+      error: "This email can't be invited. Contact support.",
     });
     expect(prismaMock.invite.update).not.toHaveBeenCalled();
     expect(mockSendInviteEmail).not.toHaveBeenCalled();
