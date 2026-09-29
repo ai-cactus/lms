@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Check, ListFilter, Settings2, Trash2 } from 'lucide-react';
@@ -45,6 +45,9 @@ export default function NotificationsView({ backHref, audience }: NotificationsV
   const [showPrefs, setShowPrefs] = useState(false);
   const [prefs, setPrefs] = useState<Record<string, boolean>>({});
   const [prefError, setPrefError] = useState<string | null>(null);
+  // Latest request per preference: a slow refusal must not undo, or report an
+  // error over, a newer toggle of the same switch that has already been sent.
+  const latestPrefRequest = useRef<Record<string, number>>({});
 
   useEffect(() => {
     getNotificationPreferences().then((res) => {
@@ -61,6 +64,8 @@ export default function NotificationsView({ backHref, audience }: NotificationsV
   const togglePref = async (type: string) => {
     const previous = prefs[type] ?? true;
     const next = !previous;
+    const requestId = (latestPrefRequest.current[type] ?? 0) + 1;
+    latestPrefRequest.current[type] = requestId;
     setPrefError(null);
     setPrefs((current) => ({ ...current, [type]: next }));
 
@@ -72,12 +77,10 @@ export default function NotificationsView({ backHref, audience }: NotificationsV
       refusal = PREF_SAVE_FAILED;
     }
     if (refusal === null) return;
+    if (latestPrefRequest.current[type] !== requestId) return;
 
     // The flip was optimistic; put the switch back so it shows what is stored.
-    // Only if nothing has flipped it since, or a later click would be undone.
-    setPrefs((current) =>
-      (current[type] ?? true) === next ? { ...current, [type]: previous } : current,
-    );
+    setPrefs((current) => ({ ...current, [type]: previous }));
     setPrefError(refusal);
   };
 

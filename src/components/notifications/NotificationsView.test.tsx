@@ -8,7 +8,7 @@
  * (drives `setNotificationPreference` with an optimistic UI flip, reverted with
  * the error shown when the save is refused — BUG-50).
  */
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -195,10 +195,12 @@ describe('NotificationsView preference toggles', () => {
     await waitFor(() => expect(mockSetNotificationPreference).toHaveBeenCalledTimes(2));
     expect(assignedSwitch).toHaveAttribute('aria-checked', 'true');
 
-    // The stale first save now comes back refused. It must not revert the
-    // switch away from the later, successful value.
-    resolveFirst({ success: false, error: 'Failed to update preference' });
-    await screen.findByText('Failed to update preference');
+    // The stale first save now comes back refused. The later save already
+    // succeeded, so it must neither revert the switch nor report an error.
+    await act(async () => {
+      resolveFirst({ success: false, error: 'Failed to update preference' });
+    });
+    expect(screen.queryByText('Failed to update preference')).not.toBeInTheDocument();
     expect(assignedSwitch).toHaveAttribute('aria-checked', 'true');
   });
 
