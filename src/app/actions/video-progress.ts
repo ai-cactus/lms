@@ -5,6 +5,10 @@ import { getPortalSessions } from '@/lib/auth/portal-sessions';
 import { isQuizUnlocked } from '@/lib/video/gating';
 import { logger } from '@/lib/logger';
 import { ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
+import { AuthzError, requireActionSession } from '@/lib/auth-guard';
+import { hasActiveBilling, TRAINING_ACCESS_PAUSED_MESSAGE } from '@/lib/billing';
+
+const MFA_REQUIRED_MESSAGE = 'Please complete two-factor verification to continue.';
 
 /**
  * Resolves the current session's ACTIVE membership id from either the admin or
@@ -81,21 +85,27 @@ export async function getVideoPlaybackUrl(lessonId: string): Promise<string> {
  * - Returns { unlocked: boolean } so the client can reveal the quiz button
  *   without a separate fetch.
  *
+ * Guarded like the lesson-progress route (`/api/enrollments/[id]/progress`):
+ * session, ownership, MFA step-up, billing, archive. The first two keep this
+ * action's existing throw contract:
+ *
  * Throws 'Unauthorized'        when no session is present.
  * Throws 'Enrollment not found' when the enrollment doesn't exist or belongs
- *                               to a different user.
+ *                               to neither session.
  *
- * An archived course is refused by RETURN (`refusedReason`), not thrown: it is
- * a policy decision the learner can be told about, and Next.js redacts thrown
- * Server Action messages in production.
+ * The policy refusals after them — MFA pending, billing inactive, course
+ * archived — are RETURNED (`refusedReason`): the learner can be told about
+ * them, and Next.js redacts thrown Server Action messages in production.
  */
 export async function saveVideoProgress(
   enrollmentId: string,
   positionSeconds: number,
   watchedPct: number,
 ): Promise<{ unlocked: boolean; refusedReason?: string }> {
-  const organizationUserId = await currentOrganizationUserId();
-  if (!organizationUserId) throw new Error('Unauthorized');
+  const { admin, worker } = await getPortalSessions();
+  if (!admin?.user?.organizationUserId && !worker?.user?.organizationUserId) {
+    throw new Error('Unauthorized');
+  }
 
   const enr = await prisma.enrollment.findUnique({
     where: { id: enrollmentId },
@@ -105,11 +115,49 @@ export async function saveVideoProgress(
       progress: true,
       // Nested, so the archive query extension does not hide the row.
       course: { select: { archivedAt: true } },
+      organizationUser: {
+        select: {
+          organization: {
+            select: { subscription: { select: { status: true, pausedAt: true } } },
+          },
+        },
+      },
     },
   });
 
-  if (!enr || enr.organizationUserId !== organizationUserId) {
+  // Either portal may own the enrolment (one browser can hold both), so the
+  // write is made as — and MFA-checked against — the session that owns it.
+  const owner = enr
+    ? [admin, worker].find(
+        (session) => session?.user?.organizationUserId === enr.organizationUserId,
+      )
+    : undefined;
+  if (!enr || !owner) {
     throw new Error('Enrollment not found');
+  }
+
+  // SEC-08 (F-012): MFA step-up at the data-access layer. proxy.ts only
+  // redirects page navigations; a Server Action POST never passes through it.
+  try {
+    requireActionSession(owner);
+  } catch (err) {
+    if (!(err instanceof AuthzError)) throw err;
+    logger.warn({
+      msg: '[enrollment] Video progress blocked — session not authorised',
+      enrollmentId,
+      code: err.code,
+    });
+    return { unlocked: false, refusedReason: MFA_REQUIRED_MESSAGE };
+  }
+
+  // SEC-08: the portal layout blocks a lapsed organisation, but a direct call
+  // to this action never renders the layout.
+  if (!hasActiveBilling(enr.organizationUser.organization.subscription)) {
+    logger.warn({
+      msg: '[enrollment] Video progress blocked — organization lacks active billing',
+      enrollmentId,
+    });
+    return { unlocked: false, refusedReason: TRAINING_ACCESS_PAUSED_MESSAGE };
   }
 
   // Q-04: watching on is the learner advancing through the course. Fail closed —

@@ -5,7 +5,7 @@ import { auth as workerAuth } from '@/auth.worker';
 import { z } from 'zod';
 import { logger } from '@/lib/logger';
 import { guardApiSession } from '@/lib/auth-guard';
-import { hasActiveBilling } from '@/lib/billing';
+import { hasActiveBilling, TRAINING_ACCESS_PAUSED_MESSAGE } from '@/lib/billing';
 import { touchEnrollmentActivity } from '@/lib/enrollment/activity';
 import { statusAfterProgress } from '@/lib/enrollment/status-guards';
 import { ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
@@ -74,13 +74,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
         msg: '[enrollment] Progress update blocked — organization lacks active billing',
         enrollmentId,
       });
-      return NextResponse.json(
-        {
-          error:
-            'Your organization’s training access is paused. Please contact your administrator.',
-        },
-        { status: 403 },
-      );
+      return NextResponse.json({ error: TRAINING_ACCESS_PAUSED_MESSAGE }, { status: 403 });
     }
 
     // Q-04: progress is the learner advancing through the course, which stops

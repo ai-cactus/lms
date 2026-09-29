@@ -148,11 +148,16 @@ describe('saveVideoProgress', () => {
     status = 'enrolled',
     archivedAt: Date | null = null,
     progress = 0,
+    subscription: { status: string; pausedAt: Date | null } | null = {
+      status: 'active',
+      pausedAt: null,
+    },
   ) => ({
     organizationUserId,
     status,
     progress,
     course: { archivedAt },
+    organizationUser: { organization: { subscription } },
   });
 
   it('updates videoPositionSeconds and progress', async () => {
@@ -312,6 +317,87 @@ describe('saveVideoProgress', () => {
       unlocked: false,
       refusedReason: ARCHIVED_COURSE_LEARNER_MESSAGE,
     });
+    expect(mockEnrollmentUpdate).not.toHaveBeenCalled();
+  });
+
+  /**
+   * SEC-08 item 4: the same guards #700 gave the lesson-progress route — MFA
+   * step-up and the billing gate — refused by return, before any write.
+   */
+  it('refuses a session whose MFA step-up is incomplete, writing nothing', async () => {
+    mockAdminAuth.mockResolvedValue({
+      user: { ...makeAdminSession('ou-1').user, mfaEnabled: true, mfaVerified: false },
+    });
+    mockEnrollmentFindUnique.mockResolvedValue(makeEnrollment('ou-1', 'enrolled'));
+
+    const result = await saveVideoProgress('enr-1', 580, 99);
+
+    expect(result).toEqual({
+      unlocked: false,
+      refusedReason: 'Please complete two-factor verification to continue.',
+    });
+    expect(mockEnrollmentUpdate).not.toHaveBeenCalled();
+  });
+
+  it('accepts a session that has completed its MFA step-up', async () => {
+    mockAdminAuth.mockResolvedValue({
+      user: { ...makeAdminSession('ou-1').user, mfaEnabled: true, mfaVerified: true },
+    });
+    mockEnrollmentFindUnique.mockResolvedValue(makeEnrollment('ou-1', 'enrolled'));
+
+    await expect(saveVideoProgress('enr-1', 120, 40)).resolves.toEqual({ unlocked: false });
+    expect(mockEnrollmentUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['a paused subscription', { status: 'active', pausedAt: new Date('2026-09-01') }],
+    ['a cancelled subscription', { status: 'canceled', pausedAt: null }],
+    ['no subscription at all', null],
+  ])('refuses %s by return, writing nothing', async (_label, subscription) => {
+    mockAdminAuth.mockResolvedValue(makeAdminSession('ou-1'));
+    mockEnrollmentFindUnique.mockResolvedValue(
+      makeEnrollment('ou-1', 'enrolled', null, 0, subscription),
+    );
+
+    const result = await saveVideoProgress('enr-1', 580, 99);
+
+    expect(result).toEqual({
+      unlocked: false,
+      refusedReason:
+        'Your organization’s training access is paused. Please contact your administrator.',
+    });
+    expect(mockEnrollmentUpdate).not.toHaveBeenCalled();
+  });
+
+  it('writes as the worker session when it, not the admin session, owns the enrolment', async () => {
+    // One browser can hold both portals for two different accounts.
+    mockAdminAuth.mockResolvedValue(makeAdminSession('ou-admin'));
+    mockWorkerAuth.mockResolvedValue({
+      user: { id: 'user-2', organizationUserId: 'ou-worker', organizationId: 'org-1' },
+    });
+    mockEnrollmentFindUnique.mockResolvedValue(makeEnrollment('ou-worker', 'enrolled'));
+
+    await saveVideoProgress('enr-1', 120, 40);
+
+    expect(mockEnrollmentUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it('checks MFA on the owning session, not on the other portal', async () => {
+    mockAdminAuth.mockResolvedValue(makeAdminSession('ou-admin'));
+    mockWorkerAuth.mockResolvedValue({
+      user: {
+        id: 'user-2',
+        organizationUserId: 'ou-worker',
+        organizationId: 'org-1',
+        mfaEnabled: true,
+        mfaVerified: false,
+      },
+    });
+    mockEnrollmentFindUnique.mockResolvedValue(makeEnrollment('ou-worker', 'enrolled'));
+
+    const result = await saveVideoProgress('enr-1', 120, 40);
+
+    expect(result.refusedReason).toBe('Please complete two-factor verification to continue.');
     expect(mockEnrollmentUpdate).not.toHaveBeenCalled();
   });
 });
