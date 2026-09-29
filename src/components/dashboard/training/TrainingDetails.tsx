@@ -624,13 +624,15 @@ export default function TrainingDetails({
         />
       )}
 
-      <AssignRetakeModal
-        isOpen={!!retakeEnrollment}
-        onClose={() => setRetakeEnrollment(null)}
-        enrollmentId={retakeEnrollment?.id || ''}
-        courseName={retakeEnrollment?.courseName || ''}
-        userName=""
-      />
+      {retakeEnrollment && (
+        <AssignRetakeModal
+          isOpen
+          onClose={() => setRetakeEnrollment(null)}
+          enrollmentId={retakeEnrollment.id}
+          courseName={retakeEnrollment.courseName}
+          userName=""
+        />
+      )}
 
       <AlertDialog
         open={!!withdrawTarget}

@@ -40,5 +40,13 @@ Two facts worth keeping:
   Clinical Director, not Finance). `/dashboard` itself is the only universal
   admin landing — which is why a multi-course notice falls back to it.
 
+Role-audience notices are now narrowed by PERMISSION too (Q-25):
+`src/lib/notifications/link-audience.ts` maps `/dashboard/staff` → `user.read`
+and `/dashboard/status-tracker` → `assignment.read`; `notifyOrganizationAdmins`
+derives it from `linkUrl`, `resolveEscalationRecipients` REQUIRES a
+`requiredPermission`. A new admin notice linking to another gated page must add
+its path to that table. `getNotifications` also re-points a `/learn/<id>` link
+whose course is archived at `trainingNoticeLink(role, [])` (BUG-24, read time).
+
 See [[rbac_role_model]], [[auth_instance_vs_role]],
 [[gotcha_admin_auth_instance_is_the_tier_check]].

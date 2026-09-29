@@ -33,6 +33,7 @@ import {
   ARCHIVED_COURSE_ADMIN_MESSAGE,
   ARCHIVED_COURSE_LEARNER_MESSAGE,
 } from '@/lib/course/archived';
+import { defaultRetakeDueAt, parseRetakeDueDate } from '@/lib/course/retake-deadline';
 import { notifyLearnersCourseCancelled } from '@/lib/course/notify-archived';
 import { resolveDashboardScope } from '@/lib/dashboard/scope';
 import { coveragePercentages, passingScoreFor } from '@/lib/dashboard/metrics';
@@ -2187,9 +2188,16 @@ export interface AssignRetakeResult {
   refusedReason?: string;
 }
 
+/**
+ * Assign a retake of a `locked` enrolment. `dueDate` (`YYYY-MM-DD`, from the
+ * dialog) becomes the retake's deadline so it gets the normal reminder and
+ * escalation ladder (Q-26); omitted, it takes the same 14-day default the
+ * dialog pre-fills, so no caller can mint a retake the ladder cannot see.
+ */
 export async function assignRetake(
   enrollmentId: string,
   retakeReason?: string,
+  dueDate?: string,
 ): Promise<AssignRetakeResult> {
   const session = await resolveSession();
   if (!session?.user?.id) {
@@ -2209,6 +2217,20 @@ export async function assignRetake(
       enrollmentId,
     });
     throw new Error('Insufficient permissions');
+  }
+
+  // Validated before anything is read or written: the dialog shows this to the
+  // admin, so it is returned rather than thrown (production redacts throws).
+  const now = new Date();
+  const deadline =
+    dueDate === undefined ? { dueAt: defaultRetakeDueAt(now) } : parseRetakeDueDate(dueDate, now);
+  if ('refusedReason' in deadline) {
+    logger.warn({
+      msg: '[course] assignRetake refused — invalid due date',
+      enrollmentId,
+      userId: session.user.id,
+    });
+    return { success: false, refusedReason: deadline.refusedReason };
   }
 
   const lockedEnrollment = await prisma.enrollment.findUnique({
@@ -2284,6 +2306,9 @@ export async function assignRetake(
       retakeOf: lockedEnrollment.id,
       retakeReason: retakeReason || null,
       assignedByAdminId: session.user.id,
+      // Track A selects on `dueAt`; the retake has no assignment, so the ladder
+      // runs it on the default stage schedule.
+      dueAt: deadline.dueAt,
     },
   });
 
@@ -2317,6 +2342,7 @@ export async function assignRetake(
     retakeEnrollmentId: retakeEnrollment.id,
     parentEnrollmentId: enrollmentId,
     courseId: lockedEnrollment.courseId,
+    dueAt: deadline.dueAt.toISOString(),
     assignedBy: session.user.id,
     targetOrganizationUserId: lockedEnrollment.organizationUserId,
   });

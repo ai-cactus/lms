@@ -9,6 +9,7 @@ import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { logger } from '@/lib/logger';
 import { categoryForNotificationType } from '@/lib/notifications/catalog';
+import { withLiveCourseLinks } from '@/lib/notifications/live-course-links';
 
 // Helper: resolve the active session from either auth instance
 async function resolveSession() {
@@ -59,7 +60,8 @@ export async function getNotifications(options?: {
   limit?: number;
   type?: string | null;
 }) {
-  const organizationUserId = await resolveOrganizationUserId();
+  const session = await resolveSession();
+  const organizationUserId = session?.user?.organizationUserId ?? null;
   if (!organizationUserId) {
     return { success: false as const, error: 'Unauthorized' };
   }
@@ -77,8 +79,9 @@ export async function getNotifications(options?: {
     });
 
     const hasMore = rows.length > limit;
-    const notifications = hasMore ? rows.slice(0, limit) : rows;
-    const nextCursor = hasMore ? notifications[notifications.length - 1].id : null;
+    const page = hasMore ? rows.slice(0, limit) : rows;
+    const nextCursor = hasMore ? page[page.length - 1].id : null;
+    const notifications = await withLiveCourseLinks(page, session?.user?.role);
 
     const unreadCount = await prisma.notification.count({
       where: { organizationUserId, isRead: false },

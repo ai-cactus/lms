@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { callVertexAI, interactiveBudget, VertexBudgetExceededError } from '@/lib/ai-client';
 import { logger, maskEmail } from '@/lib/logger';
 import { ADMIN_ROLES } from '@/lib/rbac/role-utils';
+import { roleMayOpenLink } from '@/lib/notifications/link-audience';
 import { guardApiSession } from '@/lib/auth-guard';
 import { hasActiveBilling } from '@/lib/billing';
 import { checkRateLimit } from '@/lib/rate-limit';
@@ -349,19 +350,30 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
         });
 
         if (!existingNotification) {
-          const admins = await prisma.organizationUser.findMany({
+          const staffProfileLink = `/dashboard/staff/${organizationUser.id}`;
+          // Q-25: the notice and the email both open the learner's staff
+          // profile, so they go only to admins who can open it (`user.read`).
+          const tier = await prisma.organizationUser.findMany({
             where: { organizationId: orgId, active: true, role: { in: [...ADMIN_ROLES] } },
-            select: { id: true, user: { select: { email: true } } },
+            select: { id: true, role: true, user: { select: { email: true } } },
           });
+          const admins = tier.filter((admin) => roleMayOpenLink(admin.role, staffProfileLink));
 
-          if (admins.length > 0) {
+          if (admins.length === 0) {
+            logger.warn({
+              msg: '[quiz] Attempts exhausted but no admin can open the staff profile — nobody notified',
+              enrollmentId,
+              orgId,
+              adminCount: tier.length,
+            });
+          } else {
             await prisma.notification.createMany({
               data: admins.map((admin) => ({
                 organizationUserId: admin.id,
                 type: 'QUIZ_RETRY_LIMIT_REACHED',
                 title: 'Quiz Attempts Exhausted',
                 message: `${workerName} has used all ${currentAttemptCount} attempts on "${quizTitle}" in course "${courseName}" and requires a retake assignment.`,
-                linkUrl: `/dashboard/staff/${organizationUser.id}`,
+                linkUrl: staffProfileLink,
                 metadata: {
                   enrollmentId,
                   organizationUserId: organizationUser.id,
@@ -386,7 +398,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
                 quizTitle,
                 courseName,
                 currentAttemptCount,
-                `${appUrl}/dashboard/staff/${organizationUser.id}`,
+                `${appUrl}${staffProfileLink}`,
               ).catch((err) =>
                 logger.error({
                   msg: '[quiz] Failed to send quiz locked email',
