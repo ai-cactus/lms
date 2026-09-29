@@ -39,6 +39,7 @@ interface FakeUser {
   firstName: string | null;
   lastName: string | null;
   fullName: string | null;
+  deletedAt?: Date | null;
 }
 /** Post multi-org split: an identity's per-organization seat. */
 interface FakeMembership {
@@ -595,6 +596,37 @@ describe('createEnrollmentsForUsers — deadline in each learner facility zone',
     postMembersInZones();
     await createEnrollmentsForUsers(entries, ZONED_CTX, new Set());
     expect(dueAtByMembership()).toEqual(expected);
+  });
+});
+
+describe('createEnrollmentsForUsers — Q-31 deleted identity', () => {
+  it('fails a deleted identity with no invite or email, identically on both paths', async () => {
+    const seed: Seed = {
+      users: [
+        { ...identity('u-deleted', 'deleted@example.com'), deletedAt: new Date('2026-09-28') },
+      ],
+    };
+    const entries: StaffEntry[] = [{ email: 'deleted@example.com' }, { email: 'new@example.com' }];
+
+    seedDb(seed);
+    const seqOutcomes = await runSequential(entries, CTX, new Set());
+    const seqInviteEmails = inviteCreateEmails();
+
+    vi.clearAllMocks();
+    mockSendCourseInviteEmail.mockResolvedValue(undefined);
+    seedDb(seed);
+    const batchOutcomes = await createEnrollmentsForUsers(entries, CTX, new Set());
+
+    expect(batchOutcomes.map((o) => o.status)).toEqual(['failed', 'invited']);
+    expect(seqOutcomes.map((o) => o.status)).toEqual(['failed', 'invited']);
+    expect(inviteCreateEmails()).toEqual(['new@example.com']);
+    expect(seqInviteEmails).toEqual(['new@example.com']);
+    expect(mockSendCourseInviteEmail).not.toHaveBeenCalledWith(
+      'deleted@example.com',
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+    );
   });
 });
 

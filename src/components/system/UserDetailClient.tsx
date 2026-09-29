@@ -9,6 +9,7 @@ import { getUserDeletePreview } from '@/app/actions/system-admin';
 import type { SystemUserDetail, DeletePreview } from '@/app/actions/system-admin';
 import DeleteUserModal from './DeleteUserModal';
 import { Button } from '@/components/ui/button';
+import { Alert } from '@/components/ui/alert';
 import {
   Table,
   TableBody,
@@ -124,9 +125,21 @@ export default function UserDetailClient({ user }: UserDetailClientProps) {
               </span>
             )}
             <span className="text-xs text-text-secondary">Joined {formatDate(user.createdAt)}</span>
+            {user.deletedAt && (
+              <span className="inline-flex rounded-full bg-error/10 px-2.5 py-0.5 text-xs font-semibold text-error">
+                Deleted {formatDate(user.deletedAt)}
+              </span>
+            )}
           </div>
         </div>
       </div>
+
+      {user.deletedAt && (
+        <Alert variant="warning" className="mb-6 w-full">
+          This user was deleted on {formatDateTime(user.deletedAt)}. They can no longer sign in to
+          any organization; the records below are retained for compliance.
+        </Alert>
+      )}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div className="rounded-xl border border-border bg-background p-6">
@@ -339,26 +352,28 @@ export default function UserDetailClient({ user }: UserDetailClientProps) {
         </div>
       </div>
 
-      <div className="mt-6 rounded-xl border border-error/30 bg-error/10 p-6">
-        <div className="flex items-center gap-2 font-semibold text-error">
-          <AlertTriangle className="size-5" aria-hidden="true" />
-          Danger Zone
+      {!user.deletedAt && (
+        <div className="mt-6 rounded-xl border border-error/30 bg-error/10 p-6">
+          <div className="flex items-center gap-2 font-semibold text-error">
+            <AlertTriangle className="size-5" aria-hidden="true" />
+            Danger Zone
+          </div>
+          <p className="mt-2 text-sm text-text-secondary">
+            Remove this user&apos;s access to every organization. Certificates, quiz history and
+            completion records are retained for compliance and are not deleted.
+          </p>
+          <Button
+            variant="destructive"
+            onClick={handleDeleteClick}
+            disabled={deleteLoading}
+            loading={deleteLoading}
+            className="mt-4"
+          >
+            <Trash2 className="size-4" aria-hidden="true" />
+            Delete This User
+          </Button>
         </div>
-        <p className="mt-2 text-sm text-text-secondary">
-          Permanently delete this user and all associated records including courses, enrollments,
-          documents, notifications, and profile data. This action cannot be undone.
-        </p>
-        <Button
-          variant="destructive"
-          onClick={handleDeleteClick}
-          disabled={deleteLoading}
-          loading={deleteLoading}
-          className="mt-4"
-        >
-          <Trash2 className="size-4" aria-hidden="true" />
-          Delete This User
-        </Button>
-      </div>
+      )}
 
       {deletePreview && (
         <DeleteUserModal

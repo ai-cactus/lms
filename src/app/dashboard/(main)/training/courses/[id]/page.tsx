@@ -2,10 +2,12 @@ import React from 'react';
 import { notFound } from 'next/navigation';
 import TrainingDetails from '@/components/dashboard/training/TrainingDetails';
 import { loadCourseDetail } from '@/lib/course/load-course-detail';
+import { coursePassingScore } from '@/lib/course/passing-score';
 import { can } from '@/lib/rbac/permissions';
 import { isAdminRole } from '@/lib/rbac/role-utils';
 import { requirePermission } from '@/lib/rbac/require-permission';
 import { getCourseAssignmentSettings, getRoleHolderCounts } from '@/app/actions/enrollment';
+import { getCourseCertificates } from '@/app/actions/certificate';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,9 +51,15 @@ export default async function CourseDetailsPage(props: PageProps) {
   // caught: a rejected promise here would take the whole page down. No settings
   // means no role picker, which is the correct outcome anyway.
   const canReadAssignments = can(roleKey, 'assignment.read');
-  const [assignmentSettings, roleHolderCounts] = canReadAssignments
-    ? await Promise.all([getCourseAssignmentSettings(params.id), getRoleHolderCounts()])
-    : [null, {}];
+  const [[assignmentSettings, roleHolderCounts], certificates] = await Promise.all([
+    canReadAssignments
+      ? Promise.all([getCourseAssignmentSettings(params.id), getRoleHolderCounts()])
+      : Promise.resolve([null, {}] as const),
+    // Its own read, never the roster's rows: the roster drops departed staff,
+    // whose certificates stay on this tab (Q-29). Read only after
+    // loadCourseDetail has granted access to the course.
+    getCourseCertificates(params.id),
+  ]);
 
   return (
     <TrainingDetails
@@ -62,6 +70,8 @@ export default async function CourseDetailsPage(props: PageProps) {
       roleHolderCounts={roleHolderCounts}
       canCreateRoleTargets={can(roleKey, 'assignment.create')}
       canRevokeRoleTargets={can(roleKey, 'assignment.delete')}
+      passingScore={coursePassingScore(course)}
+      certificates={certificates}
     />
   );
 }

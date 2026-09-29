@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { sendLoginMfaCode } from '@/app/actions/mfa';
+import { sendLoginMfaCode } from '@/lib/auth/mfa-login-code';
 import { peekMfaChallenge } from '@/lib/mfa-challenge';
 import { checkRateLimitOnly, recordRateLimitAttempt } from '@/lib/rate-limit';
 import { logger } from '@/lib/logger';

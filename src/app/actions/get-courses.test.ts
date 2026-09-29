@@ -6,6 +6,7 @@ const {
   mockCourseFindMany,
   mockOfferingFindMany,
   mockEnrollmentGroupBy,
+  mockEnrollmentFindMany,
   mockFacilityFindMany,
 } = vi.hoisted(() => ({
   mockAuth: vi.fn(),
@@ -13,6 +14,7 @@ const {
   mockCourseFindMany: vi.fn(),
   mockOfferingFindMany: vi.fn(),
   mockEnrollmentGroupBy: vi.fn(),
+  mockEnrollmentFindMany: vi.fn(),
   mockFacilityFindMany: vi.fn(),
 }));
 
@@ -22,7 +24,7 @@ vi.mock('@/lib/prisma', () => {
     // Read by `orgCourseWhere` / `listAdoptedCourseIds` (the REAL module — the
     // point of RISK-11 is that getCourses goes through it).
     orgCourseOffering: { findMany: mockOfferingFindMany },
-    enrollment: { groupBy: mockEnrollmentGroupBy },
+    enrollment: { groupBy: mockEnrollmentGroupBy, findMany: mockEnrollmentFindMany },
     // getCourses facility-scopes its enrollment tallies, which resolves the
     // caller's accessible facilities for anything but an org-wide role.
     facility: { findMany: mockFacilityFindMany },
@@ -75,6 +77,7 @@ beforeEach(() => {
   mockCourseFindMany.mockResolvedValue([]);
   mockOfferingFindMany.mockResolvedValue([]);
   mockEnrollmentGroupBy.mockResolvedValue([]);
+  mockEnrollmentFindMany.mockResolvedValue([]);
   mockFacilityFindMany.mockResolvedValue([]);
 });
 
@@ -232,7 +235,7 @@ describe('getCourses — org-manager visibility (#15, RISK-11)', () => {
     // enrollments.
     expect(mockEnrollmentGroupBy.mock.calls[0][0].where).toEqual({
       courseId: { in: ['c-1', 'c-2'] },
-      organizationUser: { organizationId: 'org-1' },
+      organizationUser: { organizationId: 'org-1', active: true },
     });
   });
 
@@ -266,16 +269,24 @@ describe('getCourses — facility-scoped enrollment tallies', () => {
 
     const where = mockEnrollmentGroupBy.mock.calls[0][0].where;
     expect(where.facilityId).toBeUndefined();
+    expect(where.organizationUser).toEqual({ organizationId: 'org-1', active: true });
   });
 
-  it('a FACILITY-BOUND role (supervisor) narrows the enrollment tally to their accessible facilities', async () => {
+  // BUG-37: by CURRENT roster, never by the `Enrollment.facilityId` stamp — and
+  // merged into the one `organizationUser` object, so the org pin survives.
+  it('a FACILITY-BOUND role (supervisor) narrows the tally by current roster, keeping the org pin', async () => {
     mockAuth.mockResolvedValue(sessionFor('supervisor'));
     mockFacilityFindMany.mockResolvedValue([{ id: 'fac-1' }]);
 
     await getCourses();
 
     const where = mockEnrollmentGroupBy.mock.calls[0][0].where;
-    expect(where.facilityId).toEqual({ in: ['fac-1'] });
+    expect(where.facilityId).toBeUndefined();
+    expect(where.organizationUser).toEqual({
+      organizationId: 'org-1',
+      active: true,
+      facilities: { some: { facilityId: { in: ['fac-1'] }, active: true } },
+    });
   });
 
   it('FAIL-CLOSED: a facility-bound role with no accessible facilities narrows the tally to an impossible `in: []`', async () => {
@@ -285,7 +296,207 @@ describe('getCourses — facility-scoped enrollment tallies', () => {
     await getCourses();
 
     const where = mockEnrollmentGroupBy.mock.calls[0][0].where;
-    expect(where.facilityId).toEqual({ in: [] });
+    expect(where.organizationUser.facilities).toEqual({
+      some: { facilityId: { in: [] }, active: true },
+    });
+  });
+
+  it('looks retakes up once, over the same predicate as the tally', async () => {
+    mockAuth.mockResolvedValue(sessionFor('supervisor'));
+    mockFacilityFindMany.mockResolvedValue([{ id: 'fac-1' }]);
+    mockCourseFindMany.mockResolvedValue([courseRow('c-1'), courseRow('c-2')]);
+
+    await getCourses();
+
+    expect(mockEnrollmentFindMany).toHaveBeenCalledTimes(1);
+    const { where } = mockEnrollmentFindMany.mock.calls[0][0];
+    const { where: tallyWhere } = mockEnrollmentGroupBy.mock.calls[0][0];
+    expect(where).toEqual({ ...tallyWhere, retakeOf: { not: null } });
+  });
+});
+
+/**
+ * BUG-37 behaviour over an in-memory roster: the card figures follow where a
+ * member works NOW (active `OrganizationUserFacility` rows), as the dashboards
+ * do, and drop retake-superseded enrolments (BUG-38).
+ */
+describe('getCourses — card counts by current-facility attribution (BUG-37)', () => {
+  type Member = {
+    id: string;
+    organizationId: string;
+    active?: boolean;
+    activeFacilityIds: string[];
+  };
+  type Row = {
+    id: string;
+    courseId: string;
+    status: string;
+    organizationUserId: string;
+    /** The assignment-time stamp — must never decide attribution. */
+    facilityId: string | null;
+    retakeOf: string | null;
+  };
+  type TallyWhere = {
+    courseId: { in: string[] };
+    organizationUser: {
+      organizationId?: string;
+      active?: true;
+      facilities?: { some: { facilityId: { in: string[] }; active: true } };
+    };
+    id?: { notIn: string[] };
+    retakeOf?: { not: null };
+  };
+
+  let members: Member[] = [];
+  let rows: Row[] = [];
+
+  function matches(where: TallyWhere, row: Row): boolean {
+    const member = members.find((m) => m.id === row.organizationUserId);
+    if (!member) return false;
+    if (!where.courseId.in.includes(row.courseId)) return false;
+    const { organizationId, active, facilities } = where.organizationUser;
+    if (organizationId !== undefined && member.organizationId !== organizationId) return false;
+    if (active && member.active === false) return false;
+    if (
+      facilities &&
+      !member.activeFacilityIds.some((id) => facilities.some.facilityId.in.includes(id))
+    ) {
+      return false;
+    }
+    if (where.id && where.id.notIn.includes(row.id)) return false;
+    if (where.retakeOf && row.retakeOf === null) return false;
+    return true;
+  }
+
+  const sessionFor = (role: string) => ({
+    user: { id: 'u-viewer', role, organizationUserId: 'ou-viewer', organizationId: 'org-1' },
+  });
+
+  async function cardFor(role: string, accessibleFacilityIds: string[]) {
+    mockAuth.mockResolvedValue(sessionFor(role));
+    mockFacilityFindMany.mockResolvedValue(accessibleFacilityIds.map((id) => ({ id })));
+    const [card] = await getCourses();
+    return { enrolled: card.enrollmentsCount, completion: card.completionRate };
+  }
+
+  beforeEach(() => {
+    // Tom enrolled while at facility A and has since TRANSFERRED to B; Bea has
+    // always been at B; Ada is at A. Only Tom's stamp disagrees with his roster.
+    members = [
+      { id: 'ou-tom', organizationId: 'org-1', activeFacilityIds: ['fac-b'] },
+      { id: 'ou-bea', organizationId: 'org-1', activeFacilityIds: ['fac-b'] },
+      { id: 'ou-ada', organizationId: 'org-1', activeFacilityIds: ['fac-a'] },
+      { id: 'ou-other-tenant', organizationId: 'org-2', activeFacilityIds: ['fac-b'] },
+    ];
+    rows = [
+      {
+        id: 'e-tom',
+        courseId: 'c-1',
+        status: 'completed',
+        organizationUserId: 'ou-tom',
+        facilityId: 'fac-a',
+        retakeOf: null,
+      },
+      {
+        id: 'e-bea',
+        courseId: 'c-1',
+        status: 'in_progress',
+        organizationUserId: 'ou-bea',
+        facilityId: 'fac-b',
+        retakeOf: null,
+      },
+      {
+        id: 'e-ada',
+        courseId: 'c-1',
+        status: 'attested',
+        organizationUserId: 'ou-ada',
+        facilityId: 'fac-a',
+        retakeOf: null,
+      },
+      {
+        id: 'e-other-tenant',
+        courseId: 'c-1',
+        status: 'completed',
+        organizationUserId: 'ou-other-tenant',
+        facilityId: 'fac-b',
+        retakeOf: null,
+      },
+    ];
+
+    mockCourseFindMany.mockResolvedValue([courseRow('c-1')]);
+    mockEnrollmentFindMany.mockImplementation(({ where }: { where: TallyWhere }) =>
+      Promise.resolve(
+        rows.filter((row) => matches(where, row)).map(({ retakeOf }) => ({ retakeOf })),
+      ),
+    );
+    mockEnrollmentGroupBy.mockImplementation(({ where }: { where: TallyWhere }) => {
+      const buckets = new Map<
+        string,
+        { courseId: string; status: string; _count: { _all: number } }
+      >();
+      for (const row of rows.filter((r) => matches(where, r))) {
+        const key = `${row.courseId}|${row.status}`;
+        const bucket = buckets.get(key) ?? {
+          courseId: row.courseId,
+          status: row.status,
+          _count: { _all: 0 },
+        };
+        bucket._count._all += 1;
+        buckets.set(key, bucket);
+      }
+      return Promise.resolve([...buckets.values()]);
+    });
+  });
+
+  it('the NEW facility’s supervisor counts a transferred member', async () => {
+    expect(await cardFor('supervisor', ['fac-b'])).toEqual({ enrolled: 2, completion: 50 });
+  });
+
+  it('the OLD facility’s supervisor no longer counts them, whatever the stamp says', async () => {
+    expect(await cardFor('supervisor', ['fac-a'])).toEqual({ enrolled: 1, completion: 100 });
+  });
+
+  it('a multi-facility supervisor counts every member of either facility, still inside the org', async () => {
+    // Guards the spread-merge pitfall: had the facility predicate overwritten
+    // the org pin, the other tenant's learner would make this 4.
+    expect(await cardFor('supervisor', ['fac-a', 'fac-b'])).toEqual({
+      enrolled: 3,
+      completion: 67,
+    });
+  });
+
+  it('an org-wide role is unaffected — the whole organisation, no other tenant', async () => {
+    expect(await cardFor('owner', [])).toEqual({ enrolled: 3, completion: 67 });
+  });
+
+  it('drops a retake-superseded enrolment, counting the retake in its place', async () => {
+    rows = rows.map((row) => (row.id === 'e-bea' ? { ...row, status: 'locked' } : row));
+    rows.push({
+      id: 'e-bea-retake',
+      courseId: 'c-1',
+      status: 'completed',
+      organizationUserId: 'ou-bea',
+      facilityId: 'fac-b',
+      retakeOf: 'e-bea',
+    });
+
+    expect(await cardFor('supervisor', ['fac-b'])).toEqual({ enrolled: 2, completion: 100 });
+    expect(mockEnrollmentGroupBy.mock.calls[0][0].where.id).toEqual({ notIn: ['e-bea'] });
+  });
+
+  // Removed from the organisation (founder Q23 keeps their enrolments): the
+  // dashboards count the current workforce only, and so do the cards.
+  it('drops a deactivated member’s retained enrolment, for scoped and org-wide viewers alike', async () => {
+    members = members.map((m) => (m.id === 'ou-bea' ? { ...m, active: false } : m));
+
+    expect(await cardFor('supervisor', ['fac-b'])).toEqual({ enrolled: 1, completion: 100 });
+    expect(await cardFor('owner', [])).toEqual({ enrolled: 2, completion: 100 });
+  });
+
+  it('adds no id exclusion when nothing was retaken', async () => {
+    await cardFor('supervisor', ['fac-b']);
+
+    expect(mockEnrollmentGroupBy.mock.calls[0][0].where.id).toBeUndefined();
   });
 });
 

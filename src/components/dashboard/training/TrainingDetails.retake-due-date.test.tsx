@@ -1,7 +1,7 @@
 /**
  * The course roster's "Assign Retake" hands the dialog the LEARNER's facility
- * zone, read from the roster's own server query, so the pre-filled due date is
- * 14 days from the learner's today rather than the admin's (BUG-12.3).
+ * zone (`learnerTimeZone`, attached by the server query), so the pre-filled due
+ * date is 14 days from the learner's today rather than the admin's (BUG-12.3).
  */
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -32,7 +32,7 @@ vi.mock('@/components/ui', () => ({
 import TrainingDetails from './TrainingDetails';
 import type { CourseWithRelations } from '@/types/course';
 
-function courseWithLockedLearner(timezone: string | null): CourseWithRelations {
+function courseWithLockedLearner(timezone: string): CourseWithRelations {
   return {
     id: 'course-1',
     title: 'Infection Control',
@@ -54,8 +54,12 @@ function courseWithLockedLearner(timezone: string | null): CourseWithRelations {
         status: 'locked',
         organizationUser: {
           user: { fullName: 'Nina Nurse', email: 'nina@example.com' },
-          facilities: timezone === null ? [] : [{ facility: { timezone } }],
+          facilities: [],
         },
+        // Attached server-side from the learner's oldest facility, before any
+        // scope narrowing (see withLearnerTimeZones).
+        learnerTimeZone: timezone,
+        facility: null,
       },
     ],
   } as unknown as CourseWithRelations;
@@ -74,7 +78,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-function openRetakeDialog(timezone: string | null) {
+function openRetakeDialog(timezone: string) {
   render(<TrainingDetails course={courseWithLockedLearner(timezone)} />);
   fireEvent.click(screen.getByRole('button', { name: 'Assign Retake' }));
   return screen.getByRole('button', { name: 'Retake due date' });
@@ -89,7 +93,18 @@ describe('TrainingDetails — retake due date follows the learner zone', () => {
     expect(openRetakeDialog('Pacific/Honolulu')).toHaveTextContent('October 12, 2026');
   });
 
-  it('falls back to America/New_York for a learner with no facility', () => {
-    expect(openRetakeDialog(null)).toHaveTextContent('October 12, 2026');
+  it("uses the server's learnerTimeZone, never a facility row a supervisor's scope left", () => {
+    const course = courseWithLockedLearner('Pacific/Kiritimati');
+    // The only row left after narrowing a supervisor of the learner's newer
+    // facility to their scope — not the learner's own (oldest) facility.
+    course.enrollments[0].organizationUser.facilities = [
+      { facility: { id: 'fac-b', name: 'Facility B', timezone: 'Pacific/Honolulu' } },
+    ];
+    render(<TrainingDetails course={course} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Assign Retake' }));
+
+    expect(screen.getByRole('button', { name: 'Retake due date' })).toHaveTextContent(
+      'October 13, 2026',
+    );
   });
 });

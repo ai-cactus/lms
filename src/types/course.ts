@@ -133,6 +133,7 @@ export interface RenderableModule extends GeneratedLesson {
 
 import { Prisma } from '@/generated/prisma/client';
 import { QuizQuestion } from './quiz';
+import { OLDEST_ASSIGNMENT_FIRST } from '@/lib/facility/assignment-order';
 
 /**
  * One wizard module's share of a generated course: the lessons and questions
@@ -264,23 +265,32 @@ export const courseDetailSelect = {
           userId: true,
           role: true,
           user: { select: { email: true, fullName: true } },
-          // The zone a retake's due date is picked in (BUG-12.3): the oldest
-          // active roster facility, as every deadline writer resolves it.
+          /**
+           * The member's CURRENT facilities, in the enrolment stamp's pick order
+           * — the roster shows the first as its primary Facility value (BUG-37),
+           * attributing training the way the dashboards do. Every active row, not
+           * `take: 1`: a facility-scoped viewer's roster drops the rows outside
+           * their scope first, so the pick must survive that narrowing. Empty for
+           * a member with no active assignment.
+           *
+           * `timezone` is for the learner's own zone (BUG-12.3), which must be
+           * read from the oldest row BEFORE that narrowing — see `learnerTimeZone`.
+           */
           facilities: {
             where: { active: true },
-            orderBy: [{ joinedAt: 'asc' as const }, { id: 'asc' as const }],
-            take: 1,
-            select: { facility: { select: { timezone: true } } },
+            orderBy: OLDEST_ASSIGNMENT_FIRST,
+            select: { facility: { select: { id: true, name: true, timezone: true } } },
           },
         },
       },
       /**
-       * The facility snapshot taken when the enrollment was created — not the
-       * membership's current assignments, which a later transfer would rewrite.
-       * Null for a member who had no active facility row at the time.
+       * The facility stamped when the enrolment was created — where the training
+       * was ASSIGNED, which a later transfer does not rewrite. The roster shows it
+       * only as a secondary "Assigned at" note when it differs from the member's
+       * current facility; it never attributes the training. Null for a member who
+       * had no active facility row at the time.
        */
-      facility: { select: { name: true } },
-      certificate: { select: { id: true, issuedAt: true } },
+      facility: { select: { id: true, name: true } },
     },
   },
   /**
@@ -309,7 +319,31 @@ export const courseDetailSelect = {
   },
 } satisfies Prisma.CourseSelect;
 
-export type CourseWithRelations = Prisma.CourseGetPayload<{ select: typeof courseDetailSelect }>;
+type CourseDetailPayload = Prisma.CourseGetPayload<{ select: typeof courseDetailSelect }>;
+
+export type CourseWithRelations = Omit<CourseDetailPayload, 'enrollments'> & {
+  enrollments: (CourseDetailPayload['enrollments'][number] & {
+    /**
+     * The learner's own facility zone (BUG-12.3), from their oldest active
+     * facility before any scope narrowing — see `withLearnerTimeZones`.
+     */
+    learnerTimeZone: string;
+  })[];
+};
+
+/**
+ * One row of a course's Certificates tab (`getCourseCertificates`). `active` is
+ * false for a departed member, whose certificate stays listed (Q-29).
+ */
+export type CourseCertificateRow = {
+  id: string;
+  issuedAt: Date;
+  organizationUser: {
+    role: string;
+    active: boolean;
+    user: { email: string; fullName: string | null };
+  };
+};
 
 export type EnrollmentWithRelations = Prisma.EnrollmentGetPayload<{
   include: {

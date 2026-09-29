@@ -1,6 +1,8 @@
 import prisma from '@/lib/prisma';
 import { DEFAULT_SELF_SERVE_WORKER_ROLE } from '@/lib/rbac/role-utils';
 import { logger, maskEmail } from '@/lib/logger';
+import { isDeletedIdentity } from '@/lib/auth/deleted-identity';
+import { logDeletedEmailRefusal } from '@/lib/auth/deleted-email-guard';
 import { createNotification } from '@/lib/notifications/create';
 import { trainingNoticeLink } from '@/lib/notifications/portal-link';
 import { computeDueAt, isDeadlinePassedFor, resolveStartDate } from '@/lib/reminders/deadline';
@@ -119,6 +121,7 @@ interface PrefetchedUser {
   firstName: string | null;
   lastName: string | null;
   fullName: string | null;
+  deletedAt: Date | null;
 }
 
 /**
@@ -184,7 +187,7 @@ export async function createEnrollmentForUser(
     ? prefetch.user
     : await prisma.user.findUnique({
         where: { email: normalizedEmail },
-        select: { id: true, firstName: true, lastName: true, fullName: true },
+        select: { id: true, firstName: true, lastName: true, fullName: true, deletedAt: true },
       });
 
   // Tenancy is now structural: we only ever look for a membership in the
@@ -205,6 +208,14 @@ export async function createEnrollmentForUser(
   // accepted (see enrollInviteCourses). Unifies the assign flow with the
   // staff-invite flow; no premature accounts, no temporary passwords.
   if (!user || !membership) {
+    // Q-31: a deleted identity is never invited — accepting would be refused
+    // anyway. Reported as an ordinary failure so the caller cannot tell the
+    // account was deleted.
+    if (isDeletedIdentity(user)) {
+      logDeletedEmailRefusal('createEnrollmentForUser', normalizedEmail, ctx.organizationId);
+      return { status: 'failed', email: normalizedEmail };
+    }
+
     // Team QA C8: a supervisor "can assign existing courses to existing staff"
     // but "can't add staff". This branch INVITES an unknown address, which is
     // adding staff — so it is gated on the caller's `invite.create`, not on the
@@ -573,7 +584,14 @@ export async function createEnrollmentsForUsers(
   // Batch read 1: resolve every candidate identity in one query.
   const users = await prisma.user.findMany({
     where: { email: { in: uniqueEmails } },
-    select: { id: true, email: true, firstName: true, lastName: true, fullName: true },
+    select: {
+      id: true,
+      email: true,
+      firstName: true,
+      lastName: true,
+      fullName: true,
+      deletedAt: true,
+    },
   });
   const userByEmail = new Map(users.map((u) => [u.email.toLowerCase(), u]));
 

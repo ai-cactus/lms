@@ -5,16 +5,8 @@
  * which facility a member belongs to.
  */
 import prisma from '@/lib/prisma';
+import { OLDEST_ASSIGNMENT_FIRST } from '@/lib/facility/assignment-order';
 import type { Prisma } from '@/generated/prisma/client';
-
-/**
- * A member may hold several active facility assignments (supervisors routinely
- * do). Oldest-first makes the pick deterministic; `id` breaks a same-instant tie.
- */
-const OLDEST_ASSIGNMENT_FIRST: Prisma.OrganizationUserFacilityOrderByWithRelationInput[] = [
-  { joinedAt: 'asc' },
-  { id: 'asc' },
-];
 
 /**
  * The Prisma delegate this module needs. Both the base client and a

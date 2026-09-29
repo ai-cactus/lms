@@ -174,6 +174,15 @@ describe('SettingsPageRoute — data shaping for the owner path', () => {
     expect(screen.getByTestId('settings-client')).toHaveTextContent('members 2');
   });
 
+  it('lists only ACTIVE admin-tier members — a removed or deleted (Q-23) manager keeps a deactivated row', async () => {
+    const element = await SettingsPageRoute();
+    render(element);
+
+    expect(prismaMock.organizationUser.findMany.mock.calls[0][0].where).toEqual(
+      expect.objectContaining({ organizationId: expect.any(String), active: true }),
+    );
+  });
+
   it('derives planLimit/planName only for a non-canceled subscription', async () => {
     prismaMock.subscription.findUnique.mockResolvedValueOnce({
       plan: 'growth',

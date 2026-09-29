@@ -22,7 +22,7 @@ const {
   mockRecordRateLimitAttempt: vi.fn(),
 }));
 
-vi.mock('@/app/actions/mfa', () => ({ sendLoginMfaCode: mockSendLoginMfaCode }));
+vi.mock('@/lib/auth/mfa-login-code', () => ({ sendLoginMfaCode: mockSendLoginMfaCode }));
 vi.mock('@/lib/mfa-challenge', () => ({ peekMfaChallenge: mockPeekMfaChallenge }));
 vi.mock('@/lib/rate-limit', () => ({
   checkRateLimitOnly: mockCheckRateLimitOnly,

@@ -347,7 +347,8 @@ export default function InviteStaffModal({
       const existed = result.results.filter((r) => r.status === 'exists').length;
       const forbidden = result.results.filter((r) => r.status === 'forbidden').length;
       const errored = result.results.filter((r) => r.status === 'error').length;
-      const issues = existed + forbidden + errored;
+      const refused = result.results.filter((r) => r.status === 'refused').length;
+      const issues = existed + forbidden + errored + refused;
 
       if (sent > 0) router.refresh();
 
@@ -364,6 +365,7 @@ export default function InviteStaffModal({
       if (existed > 0) parts.push(`${existed} already a member or invited`);
       if (forbidden > 0) parts.push(`${forbidden} could not be granted the selected role`);
       if (errored > 0) parts.push(`${errored} failed to send`);
+      if (refused > 0) parts.push(`${refused} can't be invited. Contact support`);
       setMessage({
         type: sent > 0 ? 'success' : 'error',
         text: parts.join(' • ') || 'No changes were made.',
