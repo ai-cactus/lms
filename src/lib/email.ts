@@ -3,6 +3,7 @@ import prisma from './prisma';
 import { logger, maskEmail } from './logger';
 import { getRoleDisplayName } from '@/lib/rbac/role-utils';
 import { OTP_EXPIRY_MINUTES } from '@/lib/mfa';
+import { formatDateInTz } from '@/lib/reminders/time';
 import type { Role } from '@/types/next-auth';
 
 /**
@@ -25,16 +26,16 @@ function escapeHtml(value: unknown): string {
  * "June 30, 2026"). Mirrors the locale formatting used by the PDF report
  * emails. Returns an empty string for missing/invalid dates so callers never
  * surface "Invalid Date" to recipients.
+ *
+ * `timeZone` is the learner's facility zone: a deadline ends at 23:59 there
+ * (BUG-12.3), which is already the next day in UTC for any US zone, so the date
+ * must be read in that zone to be the date the admin picked.
  */
-function formatDueDate(date: Date | string | null | undefined): string {
+function formatDueDate(date: Date | string | null | undefined, timeZone: string): string {
   if (!date) return '';
   const parsed = date instanceof Date ? date : new Date(date);
   if (Number.isNaN(parsed.getTime())) return '';
-  return parsed.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
+  return formatDateInTz(parsed, timeZone);
 }
 
 const user = process.env.SMTP_USER || process.env.ZOHO_MAIL_USER;
@@ -762,6 +763,7 @@ export async function sendCoursesAssignedEmail(
   userName: string,
   courses: AssignedCourseLine[],
   orgName: string,
+  timeZone: string,
 ): Promise<{ success: boolean; messageId?: string; error?: unknown }> {
   if (!to) {
     logger.warn({ msg: '[email] Course launch email skipped — missing recipient' });
@@ -793,7 +795,7 @@ export async function sendCoursesAssignedEmail(
     : 'Please review the details and log in to begin these courses.';
 
   const dueLine = (course: AssignedCourseLine, margin: string): string => {
-    const formatted = formatDueDate(course.dueAt);
+    const formatted = formatDueDate(course.dueAt, timeZone);
     return formatted
       ? `<p style="margin: ${margin}; color: #4a5568; font-size: 15px;">Due by <strong>${escapeHtml(formatted)}</strong></p>`
       : '';
@@ -880,8 +882,9 @@ export async function sendCourseLaunchEmail(
   courseName: string,
   orgName: string,
   dueAt: Date | string | null,
+  timeZone: string,
 ): Promise<{ success: boolean; messageId?: string; error?: unknown }> {
-  return sendCoursesAssignedEmail(to, userName, [{ title: courseName, dueAt }], orgName);
+  return sendCoursesAssignedEmail(to, userName, [{ title: courseName, dueAt }], orgName, timeZone);
 }
 
 /** Deadline reminder stages (CSV stages 2–4). */
@@ -898,6 +901,7 @@ export async function sendDeadlineReminderEmail(
   courseName: string,
   dueAt: Date | string | null,
   stage: DeadlineReminderStage,
+  timeZone: string,
 ): Promise<{ success: boolean; messageId?: string; error?: unknown }> {
   if (!to) {
     logger.warn({ msg: '[email] Deadline reminder email skipped — missing recipient', stage });
@@ -906,7 +910,7 @@ export async function sendDeadlineReminderEmail(
 
   const appName = 'Theraptly';
   const trainingsLink = `${reminderBaseUrl()}/worker/trainings`;
-  const formattedDue = formatDueDate(dueAt);
+  const formattedDue = formatDueDate(dueAt, timeZone);
 
   const copy: Record<
     DeadlineReminderStage,
@@ -1003,6 +1007,7 @@ export async function sendDeadlineOverdueWorkerEmail(
   courseName: string,
   dueAt: Date | string | null,
   daysOverdue: number,
+  timeZone: string,
 ): Promise<{ success: boolean; messageId?: string; error?: unknown }> {
   if (!to) {
     logger.warn({ msg: '[email] Overdue worker email skipped — missing recipient' });
@@ -1011,7 +1016,7 @@ export async function sendDeadlineOverdueWorkerEmail(
 
   const appName = 'Theraptly';
   const trainingsLink = `${reminderBaseUrl()}/worker/trainings`;
-  const formattedDue = formatDueDate(dueAt);
+  const formattedDue = formatDueDate(dueAt, timeZone);
 
   const html = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
@@ -1080,6 +1085,7 @@ export async function sendEscalationEmail(
   daysOverdue: number,
   stageLabel: string,
   actionLink: string,
+  timeZone: string,
 ): Promise<{ success: boolean; messageId?: string; error?: unknown }> {
   if (!to) {
     logger.warn({ msg: '[email] Escalation email skipped — missing recipient' });
@@ -1087,7 +1093,7 @@ export async function sendEscalationEmail(
   }
 
   const appName = 'Theraptly';
-  const formattedDue = formatDueDate(dueAt);
+  const formattedDue = formatDueDate(dueAt, timeZone);
   const resolvedActionLink = /^https?:\/\//i.test(actionLink)
     ? actionLink
     : `${reminderBaseUrl()}${actionLink.startsWith('/') ? '' : '/'}${actionLink}`;
@@ -1161,6 +1167,7 @@ export async function sendPreDeadlineEscalationEmail(
   courseName: string,
   dueAt: Date | string | null,
   actionLink: string,
+  timeZone: string,
 ): Promise<{ success: boolean; messageId?: string; error?: unknown }> {
   if (!to) {
     logger.warn({ msg: '[email] Pre-deadline escalation email skipped — missing recipient' });
@@ -1168,7 +1175,7 @@ export async function sendPreDeadlineEscalationEmail(
   }
 
   const appName = 'Theraptly';
-  const formattedDue = formatDueDate(dueAt);
+  const formattedDue = formatDueDate(dueAt, timeZone);
   const resolvedActionLink = /^https?:\/\//i.test(actionLink)
     ? actionLink
     : `${reminderBaseUrl()}${actionLink.startsWith('/') ? '' : '/'}${actionLink}`;

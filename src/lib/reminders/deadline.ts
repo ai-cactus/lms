@@ -1,4 +1,4 @@
-import { addDays } from './time';
+import { addDays, zonedWallClockToInstant } from './time';
 
 /**
  * Deadline resolution for enrollments.
@@ -37,14 +37,20 @@ export function resolveStartDate(
  * Compute the effective deadline. An explicit `assignmentDueAt` always wins;
  * otherwise the window is `assignmentWindowDays ?? orgWindowDays ?? default`,
  * applied to `start`.
+ *
+ * `assignmentDueAt` is the picked date and time as UTC wall-clock fields (see
+ * {@link combineDateAndTime}); it is resolved in `timeZone`, the learner's
+ * facility zone, so "due 30 Sept" ends at 23:59 there (BUG-12.3). The window is
+ * a duration from an instant, not a picked date, so it needs no zone.
  */
 export function computeDueAt(args: {
   assignmentDueAt: Date | null;
   assignmentWindowDays: number | null;
   orgWindowDays: number | null;
   start: Date;
+  timeZone: string;
 }): Date {
-  if (args.assignmentDueAt) return args.assignmentDueAt;
+  if (args.assignmentDueAt) return zonedWallClockToInstant(args.assignmentDueAt, args.timeZone);
   const windowDays =
     args.assignmentWindowDays ?? args.orgWindowDays ?? resolveDefaultDueWindowDays();
   return addDays(args.start, windowDays);
@@ -128,11 +134,15 @@ export function formatTimeOfDay(date: Date): string {
 }
 
 /**
- * Combine the course wizard's separate date and time-of-day inputs into a single
- * absolute deadline. Returns `null` when no date is given (the caller then falls
- * back to a computed window). The date is interpreted in UTC — `dueDate` arrives
- * as a UTC-midnight `Date` (from `new Date("YYYY-MM-DD")`) — so a missing or
- * unparseable `dueTime` leaves the deadline at 00:00 UTC on that day.
+ * Combine the course wizard's separate date and time-of-day inputs into one
+ * `Date` whose UTC fields hold the picked wall-clock date and time. Returns
+ * `null` when no date is given (the caller then falls back to a computed window).
+ * `dueDate` arrives as a UTC-midnight `Date` (from `new Date("YYYY-MM-DD")`), so
+ * a missing or unparseable `dueTime` leaves it at 00:00 on that day.
+ *
+ * This is the organisation-wide `CourseAssignment.dueAt`. It is not yet an
+ * instant: {@link computeDueAt} resolves it in each learner's facility zone
+ * when their `Enrollment.dueAt` is written (BUG-12.3).
  */
 export function combineDateAndTime(
   dueDate: Date | null | undefined,

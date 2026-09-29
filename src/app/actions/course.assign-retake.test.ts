@@ -174,7 +174,7 @@ describe('assignRetake — facility stamping', () => {
     expect(prismaMock.organizationUserFacility.findFirst).toHaveBeenCalledWith({
       where: { organizationUserId: 'ou-worker-1', active: true },
       orderBy: [{ joinedAt: 'asc' }, { id: 'asc' }],
-      select: { facilityId: true },
+      select: { facilityId: true, facility: { select: { timezone: true } } },
     });
     expect(prismaMock.enrollment.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ facilityId: 'fac-current' }),
@@ -259,20 +259,55 @@ describe('assignRetake — due date (Q-26)', () => {
     vi.useRealTimers();
   });
 
-  it('stores the picked date as the retake deadline, due at the end of that UTC day', async () => {
+  function postLearnerAt(timeZone: string | null) {
+    prismaMock.organizationUserFacility.findFirst.mockResolvedValue({
+      facilityId: 'fac-1',
+      facility: { timezone: timeZone },
+    });
+  }
+
+  it("stores the picked date as the retake deadline, due at 11:59 PM in the learner's facility zone", async () => {
+    postLearnerAt('America/Chicago');
+
     const result = await assignRetake(ENROLLMENT_ID, 'Second chance', '2026-10-05');
 
     expect(result.success).toBe(true);
     expect(prismaMock.enrollment.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ dueAt: new Date('2026-10-05T23:59:00.000Z') }),
+      data: expect.objectContaining({ dueAt: new Date('2026-10-06T04:59:00.000Z') }),
     });
+  });
+
+  // BUG-12.3: the same picked date ends at 23:59 wherever the learner's facility is.
+  it.each([
+    ['UTC+14 (Pacific/Kiritimati)', 'Pacific/Kiritimati', '2026-10-05T09:59:00.000Z'],
+    ['UTC−10 (Pacific/Honolulu)', 'Pacific/Honolulu', '2026-10-06T09:59:00.000Z'],
+  ])('ends the picked date at 23:59 local for a facility at %s', async (_label, zone, expected) => {
+    postLearnerAt(zone);
+
+    await assignRetake(ENROLLMENT_ID, '', '2026-10-05');
+
+    expect(prismaMock.enrollment.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ dueAt: new Date(expected) }),
+    });
+  });
+
+  it('uses America/New_York for a learner with no facility, or a facility with no zone', async () => {
+    await assignRetake(ENROLLMENT_ID, '', '2026-10-05');
+    postLearnerAt(null);
+    await assignRetake(ENROLLMENT_ID, '', '2026-10-05');
+
+    const dueAts = prismaMock.enrollment.create.mock.calls.map(([{ data }]) => data.dueAt);
+    expect(dueAts).toEqual([
+      new Date('2026-10-06T03:59:00.000Z'),
+      new Date('2026-10-06T03:59:00.000Z'),
+    ]);
   });
 
   it('accepts today — the deadline has not passed yet', async () => {
     await assignRetake(ENROLLMENT_ID, '', '2026-09-28');
 
     expect(prismaMock.enrollment.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ dueAt: new Date('2026-09-28T23:59:00.000Z') }),
+      data: expect.objectContaining({ dueAt: new Date('2026-09-29T03:59:00.000Z') }),
     });
   });
 
@@ -280,12 +315,28 @@ describe('assignRetake — due date (Q-26)', () => {
     await assignRetake(ENROLLMENT_ID);
 
     expect(prismaMock.enrollment.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ dueAt: new Date('2026-10-12T23:59:00.000Z') }),
+      data: expect.objectContaining({ dueAt: new Date('2026-10-13T03:59:00.000Z') }),
     });
   });
 
   it.each([
-    ['a past date', '2026-09-27', 'The retake due date must be today or later.'],
+    ['yesterday', '2026-09-27'],
+    // 15:00 UTC on 28 Sept is already 29 Sept in Kiritimati, so "today" has ended there.
+    ["today, once the learner's day has ended", '2026-09-28'],
+  ])('refuses %s by return, before writing anything', async (_label, dueDate) => {
+    postLearnerAt('Pacific/Kiritimati');
+
+    const result = await assignRetake(ENROLLMENT_ID, '', dueDate);
+
+    expect(result).toEqual({
+      success: false,
+      refusedReason: 'The retake due date must be today or later.',
+    });
+    expect(prismaMock.enrollment.create).not.toHaveBeenCalled();
+    expect(mockCreateNotification).not.toHaveBeenCalled();
+  });
+
+  it.each([
     [
       'an impossible date',
       '2026-02-31',

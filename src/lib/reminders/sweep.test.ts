@@ -310,6 +310,7 @@ describe('runReminderSweep — Track A (deadline ladder)', () => {
     const call = prismaMock.enrollment.findMany.mock.calls[0][0];
     expect(call.select.organizationUser.select.facilities).toEqual({
       where: { active: true },
+      orderBy: { joinedAt: 'asc' },
       take: 1,
       select: { facility: { select: { timezone: true } } },
     });

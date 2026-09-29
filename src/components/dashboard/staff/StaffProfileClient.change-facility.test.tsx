@@ -42,6 +42,7 @@ function makeStaff(role = 'nurse') {
       firstName: 'Target',
       lastName: 'User',
       facilityName: 'Akobo branch',
+      timeZone: 'UTC',
     },
     stats: { totalCourses: 0, completedCourses: 0, failedCourses: 0, activeCourses: 0 },
     enrollments: [],

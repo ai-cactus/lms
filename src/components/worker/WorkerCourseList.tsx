@@ -20,6 +20,7 @@ import { RowActionsMenu, type RowAction } from '@/components/ui/RowActionsMenu';
 import CancelledCourseBadge from '@/components/worker/CancelledCourseBadge';
 import { logger } from '@/lib/logger';
 import { ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
+import { formatDateInTz } from '@/lib/reminders/time';
 import type { LearnerCourseAttempt, LearnerCourseRow } from '@/types/enrollment';
 
 interface WorkerCourseListProps {
@@ -245,11 +246,11 @@ export default function WorkerCourseList({ courses, showHeading = true }: Worker
     }
   };
 
-  const formatDate = (date: Date | string | null | undefined) => {
+  const formatDate = (date: Date | string | null | undefined, timeZone: string) => {
     if (!date) return <span className="text-sm text-[#cbd5e1]">No deadline</span>;
     const d = new Date(date);
     const isOverdue = d < new Date();
-    const text = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const text = formatDateInTz(d, timeZone, { month: 'short', day: 'numeric', year: 'numeric' });
 
     if (isOverdue) {
       return (
@@ -366,7 +367,7 @@ export default function WorkerCourseList({ courses, showHeading = true }: Worker
                       </div>
                     </td>
                     <td className="px-6 py-4 align-middle text-[#1a202c] max-md:mr-3 max-md:inline-flex max-md:border-none max-md:px-0 max-md:py-1 max-md:text-xs">
-                      {formatDate(course.deadline)}
+                      {formatDate(course.deadline, course.deadlineTimeZone)}
                     </td>
                     <td className="px-6 py-4 align-middle text-[#1a202c] max-md:mr-3 max-md:inline-flex max-md:border-none max-md:px-0 max-md:py-1 max-md:text-xs">
                       {getStatusBadge(course, rowState)}

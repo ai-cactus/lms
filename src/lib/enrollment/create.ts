@@ -4,7 +4,12 @@ import { logger, maskEmail } from '@/lib/logger';
 import { createNotification } from '@/lib/notifications/create';
 import { trainingNoticeLink } from '@/lib/notifications/portal-link';
 import { computeDueAt, resolveStartDate } from '@/lib/reminders/deadline';
-import { resolveMemberFacilityId, resolveMemberFacilityIds } from '@/lib/facility/member-facility';
+import { DEFAULT_TZ } from '@/lib/reminders/time';
+import {
+  resolveMemberFacilities,
+  resolveMemberFacility,
+  type MemberFacility,
+} from '@/lib/facility/member-facility';
 import type { StaffEntry } from '@/types/enrollment';
 import type { UserRole } from '@/generated/prisma/enums';
 import type { Invite } from '@/generated/prisma/client';
@@ -67,6 +72,8 @@ export interface DeferredWorkerNotification {
   organizationName: string;
   /** The deadline actually persisted on the enrollment row. */
   dueAt: Date;
+  /** The member's facility zone, which `dueAt`'s date is written in (BUG-12.3). */
+  timeZone: string;
 }
 
 /**
@@ -115,8 +122,8 @@ export interface EnrollmentPrefetch {
   alreadyEnrolled: boolean;
   /** The most recent outstanding pending invite for this email, or null. */
   existingInvite: Invite | null;
-  /** The membership's facility, or null when it holds no active assignment. */
-  memberFacilityId: string | null;
+  /** The membership's facility and its zone, or null when it holds no active assignment. */
+  memberFacility: MemberFacility | null;
 }
 
 /**
@@ -338,9 +345,17 @@ export async function createEnrollmentForUser(
     return { status: 'alreadyEnrolled', email: normalizedEmail };
   }
 
-  // The effective deadline: an explicit assignment `dueAt` wins; otherwise
+  // The member's OWN facility, not ctx.facilityId — the latter is the invite
+  // target for an address with no membership yet, which this branch is not.
+  const memberFacility = prefetch
+    ? prefetch.memberFacility
+    : await resolveMemberFacility(prisma, membership.id);
+
+  // The effective deadline: an explicit assignment `dueAt` wins, ending at the
+  // picked time in the member's facility zone (BUG-12.3); otherwise
   // `start + window`, where the window falls through to the system default when
   // no org default exists (`Organization.defaultDueWindowDays` is not modeled).
+  const timeZone = memberFacility?.timezone ?? DEFAULT_TZ;
   const computedDueAt = computeDueAt({
     assignmentDueAt: ctx.assignmentDueAt,
     assignmentWindowDays: ctx.assignmentWindowDays,
@@ -349,17 +364,14 @@ export async function createEnrollmentForUser(
       { scheduleAt: ctx.scheduleAt },
       { accessAt: ctx.scheduleAt ?? null, startedAt: new Date() },
     ),
+    timeZone,
   });
 
   const enrollment = await prisma.enrollment.create({
     data: {
       organizationUserId: membership.id,
       courseId: ctx.courseId,
-      // The member's OWN facility, not ctx.facilityId — the latter is the invite
-      // target for an address with no membership yet, which this branch is not.
-      facilityId: prefetch
-        ? prefetch.memberFacilityId
-        : await resolveMemberFacilityId(prisma, membership.id),
+      facilityId: memberFacility?.facilityId ?? null,
       status: 'enrolled',
       progress: 0,
       assignmentId: ctx.assignmentId ?? undefined,
@@ -409,6 +421,7 @@ export async function createEnrollmentForUser(
       courseTitle: ctx.courseTitle,
       organizationName: ctx.organizationName,
       dueAt: computedDueAt,
+      timeZone,
     };
   } else {
     await createNotification({
@@ -427,6 +440,7 @@ export async function createEnrollmentForUser(
         ctx.courseTitle,
         ctx.organizationName,
         computedDueAt,
+        timeZone,
       );
     } catch (emailErr) {
       logger.error({
@@ -550,7 +564,7 @@ export async function createEnrollmentsForUsers(
           orderBy: { createdAt: 'desc' },
         })
       : Promise.resolve([]),
-    resolveMemberFacilityIds(prisma, membershipIds),
+    resolveMemberFacilities(prisma, membershipIds),
   ]);
 
   const enrolledMembershipIds = new Set(existingEnrollments.map((e) => e.organizationUserId));
@@ -587,7 +601,7 @@ export async function createEnrollmentsForUsers(
         membership,
         alreadyEnrolled: membership ? enrolledMembershipIds.has(membership.id) : false,
         existingInvite: inviteByEmail.get(email) ?? null,
-        memberFacilityId: membership ? (facilityByMembership.get(membership.id) ?? null) : null,
+        memberFacility: membership ? (facilityByMembership.get(membership.id) ?? null) : null,
       };
       try {
         for (let i = 0; i < items.length; i++) {

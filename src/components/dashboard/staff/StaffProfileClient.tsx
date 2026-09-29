@@ -40,6 +40,7 @@ import { getAdminWorkerCertificates } from '@/app/actions/certificate';
 import { logger } from '@/lib/logger';
 import { cn } from '@/lib/utils';
 import { DUE_SOON_WINDOW_DAYS } from '@/lib/facility/metrics';
+import { formatDateInTz } from '@/lib/reminders/time';
 import {
   ArrowLeft,
   Building2,
@@ -73,6 +74,8 @@ interface StaffProfileClientProps {
       firstName: string;
       lastName: string;
       facilityName: string | null;
+      /** The member's facility zone; deadlines are shown as they fall there (BUG-12.3). */
+      timeZone: string;
     };
     stats: {
       totalCourses: number;
@@ -129,6 +132,11 @@ function formatDate(value: Date | string): string {
     year: 'numeric',
     timeZone: 'UTC',
   });
+}
+
+/** A deadline's date in the learner's facility zone — the date that was picked for them. */
+function formatDueDate(value: string, timeZone: string): string {
+  return formatDateInTz(value, timeZone, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 /** Same window as the Status Tracker's "at risk" — one shared constant, Prisma-free. */
@@ -563,10 +571,12 @@ export default function StaffProfileClient({
                     ) : showDueChip ? (
                       <span className={cn(statusPillCls, 'bg-[#fff1f1] text-[#d31616]')}>
                         <Clock className="size-4 shrink-0" aria-hidden="true" />
-                        Due {formatDate(enrollment.dueAt)}
+                        Due {formatDueDate(enrollment.dueAt, user.timeZone)}
                       </span>
                     ) : (
-                      <span className="text-[#525252]">{formatDate(enrollment.dueAt)}</span>
+                      <span className="text-[#525252]">
+                        {formatDueDate(enrollment.dueAt, user.timeZone)}
+                      </span>
                     )}
                   </TableCell>
 

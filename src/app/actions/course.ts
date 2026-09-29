@@ -20,7 +20,7 @@ import {
 } from '@/lib/quiz/options';
 import type { StaffEntry } from '@/types/enrollment';
 import { logger } from '@/lib/logger';
-import { resolveMemberFacilityId } from '@/lib/facility/member-facility';
+import { resolveMemberFacility } from '@/lib/facility/member-facility';
 import {
   resolveDataFacilityIds,
   staffFacilityWhere,
@@ -33,7 +33,11 @@ import {
   ARCHIVED_COURSE_ADMIN_MESSAGE,
   ARCHIVED_COURSE_LEARNER_MESSAGE,
 } from '@/lib/course/archived';
-import { defaultRetakeDueAt, parseRetakeDueDate } from '@/lib/course/retake-deadline';
+import {
+  defaultRetakeDueAt,
+  parseRetakeDueDate,
+  retakeDueAtIfNotPast,
+} from '@/lib/course/retake-deadline';
 import { notifyLearnersCourseCancelled } from '@/lib/course/notify-archived';
 import { resolveDashboardScope } from '@/lib/dashboard/scope';
 import { coveragePercentages, passingScoreFor } from '@/lib/dashboard/metrics';
@@ -43,6 +47,7 @@ import { computeCompletionPercent } from '@/lib/facility/metrics';
 import { buildCourseThumbnailUrl, firstLessonThumbnailSelect } from '@/lib/video/thumbnail';
 import { resolveOnCompletion } from '@/lib/reminders/sweep';
 import { combineDateAndTime, isPastDeadlineChange } from '@/lib/reminders/deadline';
+import { DEFAULT_TZ } from '@/lib/reminders/time';
 import { assignCourseToRoles, enrollUsers } from './enrollment';
 import {
   buildPendingAssignment,
@@ -2219,18 +2224,19 @@ export async function assignRetake(
     throw new Error('Insufficient permissions');
   }
 
-  // Validated before anything is read or written: the dialog shows this to the
-  // admin, so it is returned rather than thrown (production redacts throws).
+  // An unreadable date is refused before anything is read or written: the
+  // dialog shows this to the admin, so it is returned rather than thrown
+  // (production redacts throws). Whether the date has already passed depends on
+  // the learner's zone, so that is checked once they are known.
   const now = new Date();
-  const deadline =
-    dueDate === undefined ? { dueAt: defaultRetakeDueAt(now) } : parseRetakeDueDate(dueDate, now);
-  if ('refusedReason' in deadline) {
+  const pickedDueDate = dueDate === undefined ? null : parseRetakeDueDate(dueDate);
+  if (pickedDueDate && 'refusedReason' in pickedDueDate) {
     logger.warn({
       msg: '[course] assignRetake refused — invalid due date',
       enrollmentId,
       userId: session.user.id,
     });
-    return { success: false, refusedReason: deadline.refusedReason };
+    return { success: false, refusedReason: pickedDueDate.refusedReason };
   }
 
   const lockedEnrollment = await prisma.enrollment.findUnique({
@@ -2294,13 +2300,28 @@ export async function assignRetake(
     };
   }
 
+  // Resolved fresh rather than inherited from the locked enrollment: a retake is
+  // new training, so it belongs to wherever the learner is posted now — and its
+  // deadline ends at 11:59 PM in that facility's zone (BUG-12.3).
+  const memberFacility = await resolveMemberFacility(prisma, lockedEnrollment.organizationUserId);
+  const timeZone = memberFacility?.timezone ?? DEFAULT_TZ;
+  const deadline = pickedDueDate
+    ? retakeDueAtIfNotPast(pickedDueDate.dueDate, timeZone, now)
+    : { dueAt: defaultRetakeDueAt(now, timeZone) };
+  if ('refusedReason' in deadline) {
+    logger.warn({
+      msg: '[course] assignRetake refused — due date has passed',
+      enrollmentId,
+      userId: session.user.id,
+    });
+    return { success: false, refusedReason: deadline.refusedReason };
+  }
+
   const retakeEnrollment = await prisma.enrollment.create({
     data: {
       organizationUserId: lockedEnrollment.organizationUserId,
       courseId: lockedEnrollment.courseId,
-      // Resolved fresh rather than inherited from the locked enrollment: a retake
-      // is new training, so it belongs to wherever the learner is posted now.
-      facilityId: await resolveMemberFacilityId(prisma, lockedEnrollment.organizationUserId),
+      facilityId: memberFacility?.facilityId ?? null,
       status: 'enrolled',
       progress: 100,
       retakeOf: lockedEnrollment.id,

@@ -13,6 +13,7 @@ import {
   combineDateAndTime,
   formatTimeOfDay,
 } from './deadline';
+import { localDateKey } from './time';
 
 // Snap-shot the original value so we can restore it.
 const ORIGINAL_ENV = process.env.REMINDER_DEFAULT_DUE_WINDOW_DAYS;
@@ -84,15 +85,45 @@ describe('resolveStartDate', () => {
 describe('computeDueAt', () => {
   const START = new Date('2024-06-01T00:00:00Z');
 
-  it('returns assignmentDueAt directly when it is provided (highest priority)', () => {
-    const dueAt = new Date('2024-07-15T00:00:00Z');
+  it('uses assignmentDueAt when it is provided (highest priority), as wall-clock time in the zone', () => {
     const result = computeDueAt({
-      assignmentDueAt: dueAt,
+      assignmentDueAt: new Date('2024-07-15T23:59:00Z'),
       assignmentWindowDays: 10,
       orgWindowDays: 20,
       start: START,
+      timeZone: 'America/New_York',
     });
-    expect(result).toBe(dueAt);
+    // 11:59 PM EDT (UTC−4) on July 15.
+    expect(result.toISOString()).toBe('2024-07-16T03:59:00.000Z');
+  });
+
+  // BUG-12.3: "due 30 Sept" ends at 23:59 on 30 Sept in the learner's facility zone.
+  it.each([
+    ['UTC+14 (Pacific/Kiritimati)', 'Pacific/Kiritimati', '2026-09-30T09:59:00.000Z'],
+    ['UTC−10 (Pacific/Honolulu)', 'Pacific/Honolulu', '2026-10-01T09:59:00.000Z'],
+    ['UTC (an explicit UTC facility)', 'UTC', '2026-09-30T23:59:00.000Z'],
+  ])('ends a picked date at 23:59 local for a facility at %s', (_label, timeZone, expected) => {
+    const result = computeDueAt({
+      assignmentDueAt: combineDateAndTime(new Date('2026-09-30'), '11:59 PM'),
+      assignmentWindowDays: null,
+      orgWindowDays: null,
+      start: START,
+      timeZone,
+    });
+
+    expect(result.toISOString()).toBe(expected);
+    expect(localDateKey(result, timeZone)).toBe('2026-09-30');
+  });
+
+  it('falls back to America/New_York for an unknown facility zone', () => {
+    const result = computeDueAt({
+      assignmentDueAt: new Date('2026-09-30T23:59:00Z'),
+      assignmentWindowDays: null,
+      orgWindowDays: null,
+      start: START,
+      timeZone: 'Not/AZone',
+    });
+    expect(result.toISOString()).toBe('2026-10-01T03:59:00.000Z');
   });
 
   it('uses assignmentWindowDays when assignmentDueAt is null', () => {
@@ -101,6 +132,7 @@ describe('computeDueAt', () => {
       assignmentWindowDays: 7,
       orgWindowDays: 14,
       start: START,
+      timeZone: 'America/New_York',
     });
     // start + 7 days = 2024-06-08
     expect(result.toISOString()).toBe('2024-06-08T00:00:00.000Z');
@@ -112,6 +144,7 @@ describe('computeDueAt', () => {
       assignmentWindowDays: null,
       orgWindowDays: 14,
       start: START,
+      timeZone: 'America/New_York',
     });
     // start + 14 days = 2024-06-15
     expect(result.toISOString()).toBe('2024-06-15T00:00:00.000Z');
@@ -124,6 +157,7 @@ describe('computeDueAt', () => {
       assignmentWindowDays: null,
       orgWindowDays: null,
       start: START,
+      timeZone: 'America/New_York',
     });
     // start + DEFAULT_DUE_WINDOW_DAYS (30) = 2024-07-01
     expect(result.toISOString()).toBe('2024-07-01T00:00:00.000Z');
@@ -136,6 +170,7 @@ describe('computeDueAt', () => {
       assignmentWindowDays: null,
       orgWindowDays: null,
       start: START,
+      timeZone: 'America/New_York',
     });
     // start + 60 days = 2024-07-31
     expect(result.toISOString()).toBe('2024-07-31T00:00:00.000Z');

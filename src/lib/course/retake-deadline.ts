@@ -1,4 +1,4 @@
-import { combineDateAndTime } from '@/lib/reminders/deadline';
+import { localDateKey, zonedWallClockToInstant } from '@/lib/reminders/time';
 
 /**
  * The retake deadline (Q-26, ruled 2026-09-28): the admin picks it in the
@@ -11,14 +11,16 @@ import { combineDateAndTime } from '@/lib/reminders/deadline';
 export const DEFAULT_RETAKE_DUE_DAYS = 14;
 
 /**
- * The time of day a picked date is due, matching the assign-courses modal's
- * default. Deadlines are UTC wall-clock across the product (BUG-12), and the
- * end of the day keeps a picked date from landing on the previous evening in a
- * US timezone.
+ * The time of day a picked date is due: the assign-courses modal's 11:59 PM
+ * default. Written as UTC fields only to carry the wall-clock time —
+ * {@link zonedWallClockToInstant} reads it in the learner's facility zone
+ * (BUG-12.3).
  */
-const RETAKE_DUE_TIME = '11:59 PM';
+const RETAKE_DUE_TIME = 'T23:59:00.000Z';
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+const UNREADABLE_DUE_DATE = "That due date couldn't be read. Please pick the date again.";
 
 /** `YYYY-MM-DD` for `date` in the viewer's own calendar — the DatePicker's value format. */
 function toLocalDateInput(date: Date): string {
@@ -34,34 +36,57 @@ export function defaultRetakeDueDate(today: Date): string {
   return toLocalDateInput(due);
 }
 
-export type RetakeDueAtResult = { dueAt: Date } | { refusedReason: string };
+export type RetakeDueDateResult = { dueDate: string } | { refusedReason: string };
 
 /**
- * Turn the dialog's `YYYY-MM-DD` into the retake's `dueAt`, refusing anything
- * that is not a real calendar date or whose deadline has already passed. The
- * value arrives through a Server Action, so its type is checked here too.
+ * Check the dialog's `YYYY-MM-DD` is a real calendar date. The value arrives
+ * through a Server Action, so its type is checked here too. Whether it has
+ * already passed depends on the learner's zone, so that is
+ * {@link retakeDueAtIfNotPast}'s call, once the learner is known.
  */
-export function parseRetakeDueDate(value: unknown, now: Date): RetakeDueAtResult {
+export function parseRetakeDueDate(value: unknown): RetakeDueDateResult {
   if (typeof value !== 'string' || !DATE_ONLY.test(value)) {
-    return { refusedReason: "That due date couldn't be read. Please pick the date again." };
+    return { refusedReason: UNREADABLE_DUE_DATE };
   }
   const date = new Date(`${value}T00:00:00.000Z`);
   // `new Date` rolls an impossible day (2026-02-31) into the next month rather
   // than failing, so a round trip is what proves the date was real.
   if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) {
-    return { refusedReason: "That due date couldn't be read. Please pick the date again." };
+    return { refusedReason: UNREADABLE_DUE_DATE };
   }
-  const dueAt = combineDateAndTime(date, RETAKE_DUE_TIME);
-  if (!dueAt || dueAt.getTime() < now.getTime()) {
+  return { dueDate: value };
+}
+
+/** A retake due 11:59 PM on `dueDate` (`YYYY-MM-DD`) in the learner's `timeZone`. */
+export function retakeDueAt(dueDate: string, timeZone: string): Date {
+  return zonedWallClockToInstant(new Date(`${dueDate}${RETAKE_DUE_TIME}`), timeZone);
+}
+
+export type RetakeDueAtResult = { dueAt: Date } | { refusedReason: string };
+
+/**
+ * The retake's `dueAt` for a validated `dueDate`, refused when that deadline has
+ * already passed where the learner is — "today" stays pickable until 11:59 PM
+ * in their facility zone.
+ */
+export function retakeDueAtIfNotPast(
+  dueDate: string,
+  timeZone: string,
+  now: Date,
+): RetakeDueAtResult {
+  const dueAt = retakeDueAt(dueDate, timeZone);
+  if (dueAt.getTime() < now.getTime()) {
     return { refusedReason: 'The retake due date must be today or later.' };
   }
   return { dueAt };
 }
 
-/** The deadline a retake gets when the caller supplied none. */
-export function defaultRetakeDueAt(now: Date): Date {
-  const date = new Date(now);
-  date.setUTCHours(0, 0, 0, 0);
-  date.setUTCDate(date.getUTCDate() + DEFAULT_RETAKE_DUE_DAYS);
-  return combineDateAndTime(date, RETAKE_DUE_TIME) ?? date;
+/**
+ * The deadline a retake gets when the caller supplied none:
+ * {@link DEFAULT_RETAKE_DUE_DAYS} after today's date in the learner's zone.
+ */
+export function defaultRetakeDueAt(now: Date, timeZone: string): Date {
+  const today = new Date(`${localDateKey(now, timeZone)}T00:00:00.000Z`);
+  today.setUTCDate(today.getUTCDate() + DEFAULT_RETAKE_DUE_DAYS);
+  return retakeDueAt(today.toISOString().slice(0, 10), timeZone);
 }

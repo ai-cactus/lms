@@ -524,6 +524,68 @@ describe('createEnrollmentsForUsers — equivalence with the sequential referenc
   });
 });
 
+/**
+ * BUG-12.3: a picked deadline ends at 11:59 PM in each learner's facility zone.
+ * The batched path resolves every member's facility (and zone) in one query; it
+ * must land each enrollment where the sequential path's per-member look-up does.
+ */
+describe('createEnrollmentsForUsers — deadline in each learner facility zone', () => {
+  const ZONED_CTX: CreateEnrollmentContext = {
+    ...CTX,
+    assignmentDueAt: new Date('2026-09-30T23:59:00.000Z'),
+  };
+  const ZONE_BY_MEMBERSHIP: Record<string, string> = {
+    'ou-u-east': 'Pacific/Kiritimati',
+    'ou-u-west': 'Pacific/Honolulu',
+  };
+
+  function postMembersInZones() {
+    prismaMock.organizationUserFacility.findFirst.mockImplementation(async ({ where }: any) => ({
+      facilityId: `fac-${where.organizationUserId}`,
+      facility: { timezone: ZONE_BY_MEMBERSHIP[where.organizationUserId] },
+    }));
+    prismaMock.organizationUserFacility.findMany.mockImplementation(async ({ where }: any) =>
+      (where.organizationUserId.in as string[]).map((organizationUserId) => ({
+        organizationUserId,
+        facilityId: `fac-${organizationUserId}`,
+        facility: { timezone: ZONE_BY_MEMBERSHIP[organizationUserId] },
+      })),
+    );
+  }
+
+  function dueAtByMembership() {
+    return Object.fromEntries(
+      prismaMock.enrollment.create.mock.calls.map(([args]: any[]) => [
+        args.data.organizationUserId,
+        (args.data.dueAt as Date).toISOString(),
+      ]),
+    );
+  }
+
+  it('stores 23:59 local for a UTC+14 and a UTC−10 facility, on both paths', async () => {
+    const seed = membersSeed([
+      existingMember('u-east', 'east@example.com'),
+      existingMember('u-west', 'west@example.com'),
+    ]);
+    const entries: StaffEntry[] = [{ email: 'east@example.com' }, { email: 'west@example.com' }];
+    const expected = {
+      'ou-u-east': '2026-09-30T09:59:00.000Z',
+      'ou-u-west': '2026-10-01T09:59:00.000Z',
+    };
+
+    seedDb(seed);
+    postMembersInZones();
+    await runSequential(entries, ZONED_CTX, new Set());
+    expect(dueAtByMembership()).toEqual(expected);
+
+    vi.clearAllMocks();
+    seedDb(seed);
+    postMembersInZones();
+    await createEnrollmentsForUsers(entries, ZONED_CTX, new Set());
+    expect(dueAtByMembership()).toEqual(expected);
+  });
+});
+
 describe('createEnrollmentsForUsers — bounded concurrency', () => {
   it('never runs more than ENROLLMENT_BATCH_CONCURRENCY (10) enrollment writes in flight at once', async () => {
     const holderCount = 25;

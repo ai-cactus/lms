@@ -65,8 +65,8 @@ const DEADLINE_PRESETS = [
  * refuses a deadline that is not in the future. Deadlines only ever move later
  * than they used to, so nobody becomes overdue who wasn't already.
  *
- * Like every other deadline on the platform this is a UTC wall clock — the same
- * clock `combineDateAndTime` writes and the reminder sweep reads.
+ * It is submitted as wall-clock fields (`combineDateAndTime`); the server ends
+ * the deadline at this time in the staff member's facility zone (BUG-12.3).
  */
 const DEFAULT_DEADLINE_TIME = '11:59 PM';
 

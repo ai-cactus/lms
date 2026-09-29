@@ -361,16 +361,21 @@ describe('createEnrollmentForUser — existing org member', () => {
       { ...BASE_CTX, assignmentDueAt: new Date('2026-09-01T00:00:00Z') },
     );
 
+    // No facility: the picked wall-clock time is read in America/New_York.
+    const expectedDueAt = new Date('2026-09-01T04:00:00Z');
     expect(outcome.status).toBe('enrolled');
     expect(prismaMock.enrollment.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ organizationUserId: 'ou-1' }) }),
+      expect.objectContaining({
+        data: expect.objectContaining({ organizationUserId: 'ou-1', dueAt: expectedDueAt }),
+      }),
     );
     expect(mockSendCourseLaunchEmail).toHaveBeenCalledWith(
       'staff@example.com',
       'Staff One',
       'Safety Training',
       'Acme Corp',
-      new Date('2026-09-01T00:00:00Z'),
+      expectedDueAt,
+      'America/New_York',
     );
     expect(mockSendCourseInviteEmail).not.toHaveBeenCalled();
   });
@@ -428,6 +433,86 @@ describe('createEnrollmentForUser — existing org member', () => {
     expect(prismaMock.enrollment.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ facilityId: null }) }),
     );
+  });
+});
+
+/**
+ * BUG-12.3 (ruled: facility time zone): a "due 30 Sept" deadline ends at 11:59 PM
+ * on 30 Sept in the learner's facility zone — not at 23:59 UTC.
+ */
+describe('createEnrollmentForUser — deadline in the learner facility zone', () => {
+  // What every assign surface submits for "30 Sept" with the default 11:59 PM.
+  const PICKED_30_SEPT = new Date('2026-09-30T23:59:00.000Z');
+
+  beforeEach(() => {
+    prismaMock.user.findUnique.mockResolvedValue({
+      id: 'user-1',
+      email: 'staff@example.com',
+      firstName: null,
+      lastName: null,
+      fullName: 'Staff One',
+    });
+    prismaMock.organizationUser.findFirst.mockResolvedValue({ id: 'ou-1', role: 'nurse' });
+  });
+
+  it.each([
+    ['UTC+14 (Pacific/Kiritimati)', 'Pacific/Kiritimati', '2026-09-30T09:59:00.000Z'],
+    ['UTC−10 (Pacific/Honolulu)', 'Pacific/Honolulu', '2026-10-01T09:59:00.000Z'],
+  ])('stores 23:59 local for a facility at %s', async (_label, timezone, expected) => {
+    prismaMock.organizationUserFacility.findFirst.mockResolvedValue({
+      facilityId: 'fac-own',
+      facility: { timezone },
+    });
+
+    await createEnrollmentForUser(
+      { email: 'staff@example.com' },
+      { ...BASE_CTX, assignmentDueAt: PICKED_30_SEPT },
+    );
+
+    expect(prismaMock.enrollment.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ facilityId: 'fac-own', dueAt: new Date(expected) }),
+    });
+    expect(mockSendCourseLaunchEmail).toHaveBeenCalledWith(
+      'staff@example.com',
+      'Staff One',
+      'Safety Training',
+      'Acme Corp',
+      new Date(expected),
+      timezone,
+    );
+  });
+
+  it('uses America/New_York for a facility with no zone set, as the Status Tracker does', async () => {
+    prismaMock.organizationUserFacility.findFirst.mockResolvedValue({
+      facilityId: 'fac-own',
+      facility: { timezone: null },
+    });
+
+    await createEnrollmentForUser(
+      { email: 'staff@example.com' },
+      { ...BASE_CTX, assignmentDueAt: PICKED_30_SEPT },
+    );
+
+    expect(prismaMock.enrollment.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ dueAt: new Date('2026-10-01T03:59:00.000Z') }),
+    });
+  });
+
+  it('leaves a window-computed deadline alone — it is a duration, not a picked date', async () => {
+    prismaMock.organizationUserFacility.findFirst.mockResolvedValue({
+      facilityId: 'fac-own',
+      facility: { timezone: 'Pacific/Kiritimati' },
+    });
+    const scheduleAt = new Date('2026-09-01T15:00:00.000Z');
+
+    await createEnrollmentForUser(
+      { email: 'staff@example.com' },
+      { ...BASE_CTX, scheduleAt, assignmentWindowDays: 10 },
+    );
+
+    expect(prismaMock.enrollment.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ dueAt: new Date('2026-09-11T15:00:00.000Z') }),
+    });
   });
 });
 
@@ -491,12 +576,21 @@ describe('createEnrollmentForUser — deferWorkerNotification', () => {
       fullName: 'Staff One',
     });
     prismaMock.organizationUser.findFirst.mockResolvedValue({ id: 'ou-1', role: 'nurse' });
-    const dueAt = new Date('2026-09-01T00:00:00Z');
+    prismaMock.organizationUserFacility.findFirst.mockResolvedValue({
+      facilityId: 'fac-own',
+      facility: { timezone: 'Pacific/Honolulu' },
+    });
 
     const outcome = await createEnrollmentForUser(
       { email: 'staff@example.com' },
-      { ...BASE_CTX, assignmentDueAt: dueAt, deferWorkerNotification: true },
+      {
+        ...BASE_CTX,
+        assignmentDueAt: new Date('2026-09-01T23:59:00Z'),
+        deferWorkerNotification: true,
+      },
     );
+    // 11:59 PM on 1 Sept in Honolulu (UTC−10).
+    const dueAt = new Date('2026-09-02T09:59:00Z');
 
     expect(mockCreateNotification).not.toHaveBeenCalled();
     expect(mockSendCourseLaunchEmail).not.toHaveBeenCalled();
@@ -517,6 +611,7 @@ describe('createEnrollmentForUser — deferWorkerNotification', () => {
         courseTitle: 'Safety Training',
         organizationName: 'Acme Corp',
         dueAt,
+        timeZone: 'Pacific/Honolulu',
       },
     });
   });

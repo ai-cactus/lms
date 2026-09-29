@@ -7,6 +7,7 @@ import EmptyTableState from '@/components/ui/EmptyTableState';
 import WorkerCourseList from '@/components/worker/WorkerCourseList';
 import CancelledCourseBadge from '@/components/worker/CancelledCourseBadge';
 import { ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
+import { formatDateInTz } from '@/lib/reminders/time';
 import type { LearnerCourseRow } from '@/types/enrollment';
 
 function formatCategory(category: string): string {
@@ -17,13 +18,19 @@ function formatCategory(category: string): string {
 }
 
 /** Human-readable deadline with overdue styling, mirroring the dashboard table. */
-function DeadlineMeta({ deadline }: { deadline?: Date | string | null }) {
+function DeadlineMeta({
+  deadline,
+  timeZone,
+}: {
+  deadline?: Date | string | null;
+  timeZone: string;
+}) {
   if (!deadline) {
     return <span className="text-xs text-[#cbd5e1]">No deadline</span>;
   }
   const d = new Date(deadline);
   const isOverdue = d < new Date();
-  const text = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const text = formatDateInTz(d, timeZone, { month: 'short', day: 'numeric', year: 'numeric' });
 
   if (isOverdue) {
     return (
@@ -134,7 +141,7 @@ export default function WorkerTrainingList({ courses }: WorkerTrainingListProps)
                       <p className="text-sm text-[#718096]">
                         {course.category ? formatCategory(course.category) : 'General'}
                       </p>
-                      <DeadlineMeta deadline={course.deadline} />
+                      <DeadlineMeta deadline={course.deadline} timeZone={course.deadlineTimeZone} />
                     </div>
                   </div>
                   <div className="flex flex-col items-end gap-2 max-md:w-full max-md:items-start">

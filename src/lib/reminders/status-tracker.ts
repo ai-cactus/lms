@@ -89,6 +89,8 @@ export interface StatusTrackerRow {
   /** The member's current facility (in scope), comma-joined if several; null when none. */
   facilityName: string | null;
   dueAt: Date;
+  /** The IANA zone `dueAt` is read in — its date is shown as it falls there (BUG-12.3). */
+  timeZone: string;
   daysOverdue: number;
   status: string;
   managerName: string | null;
@@ -107,6 +109,8 @@ export interface NearDeadlineRow {
   /** The member's current facility (in scope), comma-joined if several; null when none. */
   facilityName: string | null;
   dueAt: Date;
+  /** The IANA zone `dueAt` is read in — its date is shown as it falls there (BUG-12.3). */
+  timeZone: string;
   /** Whole days from now until the deadline (0 = due today, tz-aware). */
   daysUntilDue: number;
   status: string;
@@ -228,6 +232,7 @@ export async function getStatusTrackerSummaryForOrg({
       courseTitle: enrollment.course.title,
       facilityName: rosterFacilityName(facilities),
       dueAt,
+      timeZone: tz,
       daysOverdue,
       status: enrollment.status,
       managerName: enrollment.organizationUser.manager?.user.fullName ?? null,
@@ -251,6 +256,7 @@ export async function getStatusTrackerSummaryForOrg({
       courseTitle: enrollment.course.title,
       facilityName: rosterFacilityName(facilities),
       dueAt,
+      timeZone: tz,
       daysUntilDue: diffInDaysInTz(dueAt, now, tz),
       status: enrollment.status,
       managerName: enrollment.organizationUser.manager?.user.fullName ?? null,

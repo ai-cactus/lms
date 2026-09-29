@@ -36,6 +36,7 @@ const STAFF = {
     firstName: 'Target',
     lastName: 'User',
     facilityName: 'Northside Clinic',
+    timeZone: 'UTC',
   },
   stats: { totalCourses: 0, completedCourses: 0, failedCourses: 0, activeCourses: 0 },
   enrollments: [],

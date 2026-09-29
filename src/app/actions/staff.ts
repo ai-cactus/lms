@@ -35,6 +35,7 @@ import type { ActivityReportEnrollment } from '@/lib/pdf-reports';
 import { captureServer } from '@/lib/analytics/server';
 import { buildCourseThumbnailUrl } from '@/lib/video/thumbnail';
 import { parseStoredOptionExplanations } from '@/lib/quiz/options';
+import { DEFAULT_TZ } from '@/lib/reminders/time';
 
 // Caller-facing copy for each role-change denial. `target_not_reachable` and
 // `role_not_grantable` are only reachable when an owner is involved (owner is in
@@ -102,10 +103,13 @@ export async function getStaffDetails(organizationUserId: string) {
           },
         },
         manager: { select: { user: { select: { email: true, fullName: true } } } },
+        // Oldest active roster facility first — the facility (and zone) every
+        // enrollment write attributes this member to (`resolveMemberFacility`).
         facilities: {
           where: { active: true },
+          orderBy: [{ joinedAt: 'asc' }, { id: 'asc' }],
           take: 1,
-          select: { facility: { select: { name: true } } },
+          select: { facility: { select: { name: true, timezone: true } } },
         },
         enrollments: {
           orderBy: { startedAt: 'desc' },
@@ -204,6 +208,9 @@ export async function getStaffDetails(organizationUserId: string) {
         firstName: orgUser.user.firstName ?? '',
         lastName: orgUser.user.lastName ?? '',
         facilityName: orgUser.facilities[0]?.facility.name ?? null,
+        // The zone this member's deadlines end in (BUG-12.3), so a due date is
+        // shown as the date that was picked.
+        timeZone: orgUser.facilities[0]?.facility.timezone ?? DEFAULT_TZ,
         managerId: orgUser.managerId ?? null,
         managerName: orgUser.manager
           ? (orgUser.manager.user.fullName ?? orgUser.manager.user.email)

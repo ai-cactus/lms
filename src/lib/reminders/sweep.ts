@@ -5,7 +5,7 @@ import { trainingNoticeLink } from '@/lib/notifications/portal-link';
 import { runRetentionPurge, type RetentionPurgeSummary } from '@/lib/retention';
 import { createEnrollmentForUser, type CreateEnrollmentContext } from '@/lib/enrollment/create';
 import { assignmentAdmitsHolder } from '@/lib/enrollment/assignment-facility-scope';
-import { resolveMemberFacilityIds } from '@/lib/facility/member-facility';
+import { resolveMemberFacilities } from '@/lib/facility/member-facility';
 import { isCycleSummaryEnabled } from '@/lib/cycle-summary/flag';
 import type { UserRole } from '@/generated/prisma/enums';
 import { SWEEP_LADDER_STAGES, REMINDER_STAGE_DEFAULTS } from './stages';
@@ -153,6 +153,7 @@ const RETRY_ENROLLMENT_SELECT = {
       user: { select: { email: true, fullName: true } },
       facilities: {
         where: { active: true },
+        orderBy: { joinedAt: 'asc' },
         take: 1,
         select: { facility: { select: { timezone: true } } },
       },
@@ -619,7 +620,7 @@ async function runRenewalRetriggerPrePass(
 
     // Batched (the file's no-N+1 contract): the renewal is stamped with where the
     // learner is posted NOW, which may differ from the completed enrollment.
-    const facilityByMember = await resolveMemberFacilityIds(prisma, organizationUserIds);
+    const facilityByMember = await resolveMemberFacilities(prisma, organizationUserIds);
 
     // Guards against renewing the same (user, course) twice within one run.
     const renewedThisRun = new Set<string>();
@@ -651,12 +652,14 @@ async function runRenewalRetriggerPrePass(
       const renewalEligibleAt = addDays(renewalDueAt, -leadDays);
       if (now < renewalEligibleAt) continue;
 
+      const memberFacility = facilityByMember.get(candidate.organizationUserId);
+
       try {
         const renewal = await prisma.enrollment.create({
           data: {
             organizationUserId: candidate.organizationUserId,
             courseId: candidate.courseId,
-            facilityId: facilityByMember.get(candidate.organizationUserId) ?? null,
+            facilityId: memberFacility?.facilityId ?? null,
             status: 'enrolled',
             progress: 0,
             assignmentId: candidate.assignmentId ?? undefined,
@@ -705,6 +708,7 @@ async function runRenewalRetriggerPrePass(
             assignment.course.title,
             assignment.organization?.name || 'Your Organization',
             renewalDueAt,
+            memberFacility?.timezone ?? DEFAULT_TZ,
           );
         } catch (emailErr) {
           logger.error({
@@ -797,6 +801,7 @@ async function runTrackA(
           user: { select: { email: true, fullName: true } },
           facilities: {
             where: { active: true },
+            orderBy: { joinedAt: 'asc' },
             take: 1,
             select: { facility: { select: { timezone: true } } },
           },

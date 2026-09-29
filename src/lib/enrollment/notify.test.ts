@@ -40,6 +40,7 @@ function deferred(overrides: Partial<DeferredWorkerNotification> = {}): Deferred
     courseTitle: 'Safety Training',
     organizationName: 'Acme Corp',
     dueAt: new Date('2026-09-01T00:00:00Z'),
+    timeZone: 'America/Chicago',
     ...overrides,
   };
 }
@@ -130,6 +131,7 @@ function notice(
     recipientName: 'Staff One',
     recipientRole,
     organizationName: 'Acme Corp',
+    timeZone: 'America/Chicago',
     courses,
   };
 }
@@ -232,6 +234,7 @@ describe('notifyCoursesAssigned', () => {
         { title: 'Fire Safety', dueAt: null },
       ],
       'Acme Corp',
+      'America/Chicago',
     );
     expect(result).toEqual({ emailSent: true, notificationCreated: true, courseCount: 3 });
   });

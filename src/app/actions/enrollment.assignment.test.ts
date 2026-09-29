@@ -279,12 +279,13 @@ describe('enrollUsers — settings tri-state (Phase 1 sink hardening): an indivi
     // No cadence controls at all on this surface — the org's ladder stands untouched.
     expect(mockStageUpsert).not.toHaveBeenCalled();
     // The row is still linked (not skipped) and the worker's own enrollment
-    // still gets the admin's chosen deadline.
+    // still gets the admin's chosen deadline — as that wall-clock time in their
+    // facility zone (BUG-12.3); a worker with no facility falls back to New York.
     expect(mockEnrollmentCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           assignmentId: 'existing-assignment-1',
-          dueAt: new Date(chosenDeadline),
+          dueAt: new Date('2027-01-01T05:00:00.000Z'),
         }),
       }),
     );
