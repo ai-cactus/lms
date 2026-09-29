@@ -542,4 +542,26 @@ describe('VideoPlayer — progress refusals', () => {
     expect(mockSave.mock.calls.length).toBeGreaterThanOrEqual(3);
     expect(screen.queryByTestId('video-progress-refusal')).not.toBeInTheDocument();
   });
+
+  // The outer wrapper renders unconditionally so the refusal Alert appearing
+  // (and disappearing again on the MFA path) never changes the tree above
+  // <video> — remounting it would drop playback position and re-buffer.
+  it('never remounts the <video> element when a refusal notice appears or clears', async () => {
+    mockSave.mockResolvedValueOnce({
+      unlocked: false,
+      refusedReason: MFA_MESSAGE,
+      refusedCode: 'MFA_REQUIRED',
+    });
+    const { container, video } = renderPlayer(1000);
+
+    tick(video, 0.25);
+    await act(async () => {});
+    expect(screen.getByTestId('video-progress-refusal')).toBeInTheDocument();
+    expect(container.querySelector('video')).toBe(video);
+
+    await playWindows(video, 2);
+
+    expect(screen.queryByTestId('video-progress-refusal')).not.toBeInTheDocument();
+    expect(container.querySelector('video')).toBe(video);
+  });
 });
