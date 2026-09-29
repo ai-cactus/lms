@@ -58,7 +58,14 @@ function courseWithLockedLearner(user: { fullName: string | null; email: string 
       user: { email: 'author@example.com', fullName: 'Ada Author' },
     },
     approvedBy: null,
-    enrollments: [{ id: 'enr-1', status: 'locked', organizationUser: { user } }],
+    enrollments: [
+      {
+        id: 'enr-1',
+        status: 'locked',
+        facility: null,
+        organizationUser: { user, facilities: [] },
+      },
+    ],
   } as unknown as CourseWithRelations;
 }
 
