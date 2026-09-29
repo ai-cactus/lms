@@ -661,6 +661,7 @@ describe('getCourseById', () => {
       skillLevel: null,
       previewVideoStorageUri: null,
       createdByOrgUserId: CREATOR_ORG_USER_ID,
+      organizationId: ORG_ID,
       modules: [],
       quiz: null,
       lessons: [],
@@ -961,6 +962,41 @@ describe('getCourseById', () => {
     mockWorkerAuth.mockResolvedValue(null);
 
     await expect(getCourseById('course-1')).rejects.toThrow('Unauthorized');
+  });
+
+  // RISK-15: read access follows the course's owning organisation
+  // (`Course.organizationId`), not the author's current membership.
+  describe('RISK-15 — a course whose author has moved to another organisation', () => {
+    const movedAuthorCourse = (enrollments: ReturnType<typeof makeEnrollment>[] = []) =>
+      makeCourse(enrollments, {
+        organizationId: ORG_ID,
+        creator: {
+          userId: CREATOR_USER_ID,
+          organizationId: 'org-2',
+          user: { email: 'creator@example.com', fullName: 'Course Creator' },
+        },
+      });
+
+    it('stays open to a manager of the organisation that owns it', async () => {
+      mockRawCourseFindUnique.mockResolvedValue(movedAuthorCourse());
+      setAdminSession('manager-viewer', 'admin');
+
+      await expect(getCourseById('course-1')).resolves.toMatchObject({ id: 'course-1' });
+    });
+
+    it('is closed to a manager of the organisation the author moved to', async () => {
+      mockRawCourseFindUnique.mockResolvedValue(movedAuthorCourse());
+      setAdminSession('manager-elsewhere', 'owner', 'org-2');
+
+      await expect(getCourseById('course-1')).rejects.toThrow('Course not found');
+    });
+
+    it('is closed to the author themselves once they act for the other organisation', async () => {
+      mockRawCourseFindUnique.mockResolvedValue(movedAuthorCourse());
+      setAdminSession(CREATOR_USER_ID, 'owner', 'org-2');
+
+      await expect(getCourseById('course-1')).rejects.toThrow('Course not found');
+    });
   });
 
   it('throws "Course not found" when the course does not exist', async () => {

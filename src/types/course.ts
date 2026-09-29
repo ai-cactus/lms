@@ -19,9 +19,9 @@ export type CourseWithStats = {
   sourceDocumentId?: string | null;
   /**
    * True for rows sourced from the platform-wide published video catalog that
-   * this organization has not adopted. Such a course is authored by another
-   * tenant, so it is view-only here: rename/delete would mutate it for every
-   * organization and the assign action rejects it on its creator-org check.
+   * this organization has not offered yet. Every organization inherits these,
+   * so the row may be assigned (the assignment creates the offering) but
+   * never renamed or deleted: either would change it for every organization.
    */
   isGlobalCatalog?: boolean;
   /**

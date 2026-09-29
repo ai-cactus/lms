@@ -47,7 +47,8 @@ describe('attestCourse — learner activity', () => {
       courseId: 'course-1',
       organizationUserId: 'ou-1',
       organizationUser: { userId: USER_ID, organizationId: 'org-1', user: { fullName: 'Ada' } },
-      course: { title: 'HIPAA', archivedAt: null },
+      progress: 100,
+      course: { title: 'HIPAA', archivedAt: null, quiz: null, lessons: [] },
     });
 
     await attestCourse('enr-1', 'Ada Lovelace', '');

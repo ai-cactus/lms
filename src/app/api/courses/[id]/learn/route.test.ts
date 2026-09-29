@@ -55,7 +55,8 @@ const QUESTION = {
 };
 
 const makeCourse = (opts?: {
-  creatorOrgId?: string;
+  /** The course's OWNING organisation (Q25, RISK-15). */
+  organizationId?: string;
   isGlobal?: boolean;
   status?: string;
   quiz?: unknown;
@@ -68,7 +69,7 @@ const makeCourse = (opts?: {
   isGlobal: opts?.isGlobal ?? false,
   status: opts?.status ?? 'published',
   _count: { modules: opts?.moduleCount ?? 3 },
-  creator: { organizationId: opts?.creatorOrgId ?? 'org-1' },
+  organizationId: opts?.organizationId ?? 'org-1',
   quiz: opts && 'quiz' in opts ? opts.quiz : null,
   lessons: [
     {
@@ -137,7 +138,7 @@ describe('GET /api/courses/[id]/learn — auth resolution', () => {
     mockAdminAuth.mockResolvedValue({
       user: { id: 'a1', organizationUserId: 'ou-admin', role: 'admin', organizationId: 'org-1' },
     });
-    mockCourseFindUnique.mockResolvedValue(makeCourse({ creatorOrgId: 'org-1' }));
+    mockCourseFindUnique.mockResolvedValue(makeCourse({ organizationId: 'org-1' }));
 
     const res = await GET(makeReq(), { params });
 
@@ -287,7 +288,7 @@ describe('GET /api/courses/[id]/learn — quiz answer-key gating', () => {
     mockAdminAuth.mockResolvedValue({
       user: { id: 'a1', organizationUserId: 'ou-admin', role: 'admin', organizationId: 'org-1' },
     });
-    mockCourseFindUnique.mockResolvedValue(makeCourse({ creatorOrgId: 'org-1' }));
+    mockCourseFindUnique.mockResolvedValue(makeCourse({ organizationId: 'org-1' }));
 
     const res = await GET(makeReq(), { params });
     const body = await res.json();

@@ -51,13 +51,14 @@ function nextCourseId(): string {
 const makeReq = () => new Request('http://localhost/api/courses/x/preview-poster');
 
 const makeCourse = (opts?: {
-  createdByOrgUserId?: string;
+  /** The course's OWNING organisation (RISK-15). */
+  organizationId?: string;
   previewPosterStorageUri?: string | null;
   isGlobal?: boolean;
 }) => ({
   previewPosterStorageUri:
     opts && 'previewPosterStorageUri' in opts ? opts.previewPosterStorageUri : POSTER_URI,
-  createdByOrgUserId: opts?.createdByOrgUserId ?? 'other-org-user',
+  organizationId: opts?.organizationId ?? 'org-other',
   isGlobal: opts?.isGlobal ?? false,
   status: 'published',
   type: 'video',
@@ -97,7 +98,7 @@ describe('GET /api/courses/[id]/preview-poster', () => {
     expect(res.status).toBe(404);
   });
 
-  it('403 for a private course the caller neither created nor is enrolled in', async () => {
+  it('403 for a private course the caller neither manages nor is enrolled in', async () => {
     mockAdminAuth.mockResolvedValue({ user: { id: 'x', organizationUserId: 'ou-outsider' } });
     mockCourseFindUnique.mockResolvedValue(makeCourse());
     mockEnrollmentFindFirst.mockResolvedValue(null);
@@ -106,6 +107,30 @@ describe('GET /api/courses/[id]/preview-poster', () => {
 
     expect(res.status).toBe(403);
     expect(mockSign).not.toHaveBeenCalled();
+  });
+
+  // RISK-15: access follows the course's owning organisation, not its author.
+  it('allows a manager of the organisation that owns the course', async () => {
+    mockAdminAuth.mockResolvedValue({
+      user: { id: 'm1', organizationUserId: 'ou-m1', organizationId: 'org-1', role: 'admin' },
+    });
+    mockCourseFindUnique.mockResolvedValue(makeCourse({ organizationId: 'org-1' }));
+
+    const res = await GET(makeReq(), { params: Promise.resolve({ id: nextCourseId() }) });
+
+    expect(res.status).toBe(200);
+    expect(mockEnrollmentFindFirst).not.toHaveBeenCalled();
+  });
+
+  it('refuses a manager of another organisation, such as the one the author moved to', async () => {
+    mockAdminAuth.mockResolvedValue({
+      user: { id: 'm2', organizationUserId: 'ou-m2', organizationId: 'org-2', role: 'owner' },
+    });
+    mockCourseFindUnique.mockResolvedValue(makeCourse({ organizationId: 'org-1' }));
+
+    const res = await GET(makeReq(), { params: Promise.resolve({ id: nextCourseId() }) });
+
+    expect(res.status).toBe(403);
   });
 
   it('allows any signed-in user for the published global catalog', async () => {

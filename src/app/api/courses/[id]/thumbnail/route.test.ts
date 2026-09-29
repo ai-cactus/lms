@@ -70,7 +70,8 @@ const makeCourse = (
     isGlobal?: boolean;
     status?: string;
     type?: string;
-    createdByOrgUserId?: string;
+    /** The course's OWNING organisation (RISK-15). */
+    organizationId?: string;
     archivedAt?: Date | null;
   } = {},
 ) => ({
@@ -79,7 +80,7 @@ const makeCourse = (
   isGlobal: opts.isGlobal ?? true,
   status: opts.status ?? 'published',
   type: opts.type ?? 'video',
-  createdByOrgUserId: opts.createdByOrgUserId ?? 'system-org-user',
+  organizationId: opts.organizationId ?? 'org-system',
   archivedAt: opts.archivedAt ?? null,
   lessons: opts.lessonPoster === undefined ? [] : [{ videoPosterStorageUri: opts.lessonPoster }],
 });
@@ -103,8 +104,11 @@ afterEach(() => {
   else process.env.VIDEO_PLAYBACK_CACHE_TTL_SECONDS = ORIGINAL_TTL;
 });
 
+/** An admin of org-1 — the owning-org manager whenever a course is org-1's. */
 const signIn = (organizationUserId = 'ou-1') =>
-  mockAdminAuth.mockResolvedValue({ user: { id: 'u1', organizationUserId } });
+  mockAdminAuth.mockResolvedValue({
+    user: { id: 'u1', organizationUserId, organizationId: 'org-1', role: 'admin' },
+  });
 
 describe('GET /api/courses/[id]/thumbnail — access', () => {
   it('401 without a portal session', async () => {
@@ -114,8 +118,11 @@ describe('GET /api/courses/[id]/thumbnail — access', () => {
     expect(mockCourseFindUnique).not.toHaveBeenCalled();
   });
 
-  it('403 for a course the caller neither created nor is enrolled in, when it is not the global catalog', async () => {
-    signIn('ou-outsider');
+  it('403 for a course the caller neither manages nor is enrolled in, when it is not the global catalog', async () => {
+    // A learner, so Q-15's org-admin widening (covered below) stays out of it.
+    mockWorkerAuth.mockResolvedValue({
+      user: { id: 'w1', organizationUserId: 'ou-outsider', organizationId: 'org-1', role: 'nurse' },
+    });
     mockCourseFindUnique.mockResolvedValue(
       makeCourse({ status: 'inactive', lessonPoster: LESSON_URI }),
     );
@@ -153,10 +160,10 @@ describe('GET /api/courses/[id]/thumbnail — access', () => {
     });
   });
 
-  it('allows the course creator', async () => {
-    signIn('ou-creator');
+  it('allows a manager of the organisation that owns the course', async () => {
+    signIn('ou-manager');
     mockCourseFindUnique.mockResolvedValue(
-      makeCourse({ isGlobal: false, createdByOrgUserId: 'ou-creator', lessonPoster: LESSON_URI }),
+      makeCourse({ isGlobal: false, organizationId: 'org-1', lessonPoster: LESSON_URI }),
     );
 
     const res = await call(nextCourseId());
@@ -378,7 +385,7 @@ describe('GET /api/courses/[id]/thumbnail — source chain', () => {
       makeCourse({
         type: 'text',
         isGlobal: false,
-        createdByOrgUserId: 'ou-1',
+        organizationId: 'org-1',
         lessonPoster: LESSON_URI,
       }),
     );
