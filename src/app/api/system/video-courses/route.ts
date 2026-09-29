@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
     }
     const quiz = parseQuizFile(body.quizFileName, body.quizFileText);
 
-    const { courseId } = await createVideoCourse({
+    const result = await createVideoCourse({
       title,
       description: body.description?.trim() || undefined,
       overview: isEmptyHtml(body.overview) ? undefined : body.overview,
@@ -61,8 +61,14 @@ export async function POST(req: NextRequest) {
       },
       quiz,
     });
+    if (!result.success) {
+      return NextResponse.json({ error: result.error }, { status: 403 });
+    }
 
-    return NextResponse.json({ message: 'Video course created', courseId }, { status: 201 });
+    return NextResponse.json(
+      { message: 'Video course created', courseId: result.courseId },
+      { status: 201 },
+    );
   } catch (err) {
     if (err instanceof QuizImportError)
       return NextResponse.json({ error: err.message, rows: err.rows }, { status: 400 });

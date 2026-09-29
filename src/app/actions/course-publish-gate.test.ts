@@ -16,6 +16,9 @@ vi.mock('@/lib/prisma', () => {
       findUnique: mockCourseFindUnique,
       update: mockCourseUpdate,
     },
+    organizationUser: {
+      findUnique: vi.fn().mockResolvedValue({ user: { fullName: 'Rae Reviewer' } }),
+    },
   };
   return { prisma, default: prisma };
 });
@@ -258,6 +261,8 @@ describe('D8 — reviewer attribution on publish', () => {
     expect(result.reviewRequired).toBe(false);
     const createArgs = mockCourseCreate.mock.calls[0][0];
     expect(createArgs.data.approvedByOrgUserId).toBe(ORG_USER_ID);
+    // BUG-25: the approver FK is SetNull, so the name is snapshotted with it.
+    expect(createArgs.data.approvedByName).toBe('Rae Reviewer');
     expect(createArgs.data.approvedAt).toBeInstanceOf(Date);
   });
 
@@ -273,6 +278,7 @@ describe('D8 — reviewer attribution on publish', () => {
     const createArgs = mockCourseCreate.mock.calls[0][0];
     expect(createArgs.data.status).toBe('draft');
     expect('approvedByOrgUserId' in createArgs.data).toBe(false);
+    expect('approvedByName' in createArgs.data).toBe(false);
     expect('approvedAt' in createArgs.data).toBe(false);
   });
 
@@ -291,6 +297,7 @@ describe('D8 — reviewer attribution on publish', () => {
 
     const updateArgs = mockCourseUpdate.mock.calls[0][0];
     expect(updateArgs.data.approvedByOrgUserId).toBe(ORG_USER_ID);
+    expect(updateArgs.data.approvedByName).toBe('Rae Reviewer');
     expect(updateArgs.data.approvedAt).toBeInstanceOf(Date);
   });
 

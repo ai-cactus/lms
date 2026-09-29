@@ -25,6 +25,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const { prismaMock, mockAdminAuth, mockNotifyLearnersCourseCancelled } = vi.hoisted(() => ({
   prismaMock: {
     course: { findUnique: vi.fn(), update: vi.fn(), delete: vi.fn() },
+    organizationUser: { findUnique: vi.fn() },
   },
   mockAdminAuth: vi.fn(),
   mockNotifyLearnersCourseCancelled: vi.fn(),
@@ -134,6 +135,9 @@ describe('deleteCourse — scoped to the organisation, not the author', () => {
     // The reported case: the caller did not author it, and previously this
     // refused with a thrown "Course not found" → React error #441.
     mockAdminAuth.mockResolvedValue(session('admin', 'ou-someone-else'));
+    prismaMock.organizationUser.findUnique.mockResolvedValue({
+      user: { fullName: '  Sam Colleague ' },
+    });
 
     const result = await deleteCourse('course-1');
 
@@ -143,8 +147,13 @@ describe('deleteCourse — scoped to the organisation, not the author', () => {
       data: {
         archivedAt: expect.any(Date),
         archivedByOrgUserId: 'ou-someone-else',
+        // BUG-25: the archiver FK is SetNull, so the name is snapshotted with it.
+        archivedByName: 'Sam Colleague',
       },
     });
+    expect(prismaMock.organizationUser.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'ou-someone-else' } }),
+    );
     // Q24: the row is RETAINED. A hard delete here would destroy the course,
     // its enrollments, its certificates and its stored video.
     expect(prismaMock.course.delete).not.toHaveBeenCalled();
