@@ -367,19 +367,41 @@ export async function startModuleGenerationJobs(
     modules.length,
   );
 
+  const moduleForms = modules.map((mod, batchIndex) => ({
+    mod,
+    formData: buildModuleGenerationFormData(
+      courseData,
+      mod,
+      mod.quizQuestionCount ?? shares[batchIndex],
+    ),
+  }));
+
+  // RISK-01: this loop runs while the browser waits, and it is only inside the
+  // ~100s gateway window because every module names a stored `documentId`. A
+  // `file` would send each module through the fresh-upload PHI scan, which
+  // spends up to INTERACTIVE_VERTEX_BUDGET_MS (45s) of the browser's time —
+  // per module, sequentially — so two modules already blow the window and the
+  // user sees a bare 524. Refuse the whole batch before any Job exists rather
+  // than let that ship silently; routing files here needs the budget hoisted
+  // to span the loop first.
+  if (moduleForms.some(({ formData }) => formData.has('file'))) {
+    logger.error({
+      msg: '[v4.6] Module generation refused — a module carried a file upload',
+      modules: modules.length,
+    });
+    return {
+      jobs: [],
+      error: 'Course generation could not start. Please try again.',
+    };
+  }
+
   const jobs: ModuleGenerationJob[] = [];
 
   // Sequential rather than parallel: each call creates a Job row and schedules
   // its own background pipeline, and the per-user generation rate limit is
   // consumed one module at a time.
-  for (const [batchIndex, mod] of modules.entries()) {
-    const moduleFormData = buildModuleGenerationFormData(
-      courseData,
-      mod,
-      mod.quizQuestionCount ?? shares[batchIndex],
-    );
-
-    const { jobId, error } = await generateCourseAndQuizV46(moduleFormData);
+  for (const { mod, formData } of moduleForms) {
+    const { jobId, error } = await generateCourseAndQuizV46(formData);
     jobs.push({ moduleIndex: mod.moduleIndex, jobId, error });
   }
 

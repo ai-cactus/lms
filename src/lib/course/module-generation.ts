@@ -13,6 +13,12 @@ export interface ModuleGenerationRequest {
   /** Position of the module in the wizard — also its position in the course. */
   moduleIndex: number;
   documentId: string;
+  /**
+   * Never a raw upload: `startModuleGenerationJobs` runs every module inside the
+   * browser's gateway window, which only fits because stored documents skip the
+   * PHI scan (RISK-01). The action also refuses a file at runtime.
+   */
+  file?: never;
   title: string;
   objective?: string | null;
   /**
