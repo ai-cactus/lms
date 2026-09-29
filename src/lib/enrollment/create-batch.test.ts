@@ -31,7 +31,7 @@
  * create.ts and was rock solid under the same concurrent load in every check
  * performed while building this suite (verified up to 60-way concurrency).
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 interface FakeUser {
   id: string;
@@ -131,6 +131,7 @@ const CTX: CreateEnrollmentContext = {
   scheduleAt: null,
   assignmentDueAt: new Date('2026-09-01T00:00:00Z'), // fixed — avoids new Date() drift in assertions
   assignmentWindowDays: null,
+  onPassedDeadline: 'skip',
   enrolledByUserId: 'admin-1',
 };
 
@@ -295,6 +296,17 @@ function enrollmentCreateMembershipIds() {
 function inviteCreateEmails() {
   return prismaMock.invite.create.mock.calls.map(([args]: any[]) => args.data.email);
 }
+
+// Q-32 skips a learner whose deadline has already passed, so the fixed deadlines
+// below only mean what they say against a pinned clock.
+const PINNED_NOW = new Date('2026-08-15T12:00:00.000Z');
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(PINNED_NOW);
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 beforeEach(() => {
   vi.clearAllMocks();

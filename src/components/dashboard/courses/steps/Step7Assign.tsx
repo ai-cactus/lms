@@ -14,6 +14,7 @@ import { wizardDividerClass, wizardSubtitleClass, wizardTitleClass } from './wiz
 
 import { CourseWizardData } from '@/types/course';
 import { searchStaffUsers } from '@/app/actions/user';
+import { earliestPickableDueDate } from '@/lib/reminders/deadline';
 
 interface Step7AssignProps {
   data: CourseWizardData;
@@ -131,6 +132,7 @@ export default function Step7Assign({ data, onChange }: Step7AssignProps) {
               <DatePicker
                 value={data.dueDate || ''}
                 onChange={(val) => onChange('dueDate', val)}
+                minDate={earliestPickableDueDate(new Date())}
                 placeholder="Due date"
                 label="Due date"
                 iconPosition="start"

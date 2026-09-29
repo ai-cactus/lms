@@ -17,7 +17,12 @@ import {
   DEFAULT_WIZARD_REMINDER_DAYS,
   stageRowsToReminderDays,
 } from '@/lib/enrollment/reminder-ladder';
-import { combineDateAndTime, formatTimeOfDay } from '@/lib/reminders/deadline';
+import {
+  combineDateAndTime,
+  describeDeadlinePassed,
+  earliestPickableDueDate,
+  formatTimeOfDay,
+} from '@/lib/reminders/deadline';
 import AssigneesInput, {
   type AssigneesInputHandle,
 } from '@/components/dashboard/enrollment/AssigneesInput';
@@ -134,6 +139,9 @@ export default function AssignPublishClient({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
+  // Q-32: learners the server left out because the due date had already passed
+  // where they are. Everyone else was assigned, so this rides on the success.
+  const [deadlineNotice, setDeadlineNotice] = useState<string | null>(null);
 
   // Commits whatever is typed when the host's own "Invite" button is pressed.
   const assigneesRef = useRef<AssigneesInputHandle>(null);
@@ -239,6 +247,13 @@ export default function AssignPublishClient({
           setError(res.refusedReason);
           return;
         }
+
+        const passed = describeDeadlinePassed(res.deadlinePassed ?? []);
+        if (passed && res.enrolled === 0 && res.alreadyEnrolled === 0) {
+          setError(passed);
+          return;
+        }
+        setDeadlineNotice(passed);
       } else {
         // `enrollUsers` takes a single absolute `dueAt`, so the halves are joined
         // here. Combining client-side needs no action-signature change:
@@ -261,6 +276,16 @@ export default function AssignPublishClient({
           setError(`Could not assign: ${res.failed.join(', ')}`);
           return;
         }
+
+        const passed = describeDeadlinePassed(res.deadlinePassed ?? []);
+        if (
+          passed &&
+          res.success.length + res.newInvited.length + res.alreadyEnrolled.length === 0
+        ) {
+          setError(passed);
+          return;
+        }
+        setDeadlineNotice(passed);
       }
 
       // Assigning already publishes an unheld draft server-side
@@ -452,6 +477,7 @@ export default function AssignPublishClient({
             <DatePicker
               value={dueDate}
               onChange={handleDueDateChange}
+              minDate={earliestPickableDueDate(new Date())}
               placeholder="Select due date"
               clearLabel="Clear due date"
             />
@@ -537,6 +563,11 @@ export default function AssignPublishClient({
               Existing workers are now enrolled. Anyone who hasn&apos;t joined yet will be enrolled
               when they accept their invite.
             </p>
+            {deadlineNotice && (
+              <Alert variant="warning" className="text-left">
+                {deadlineNotice}
+              </Alert>
+            )}
             <div className="mt-4 flex w-full flex-col gap-3">
               <Button onClick={() => router.push('/dashboard')}>Back to Dashboard</Button>
               <Button variant="outline" onClick={() => router.push('/dashboard/courses')}>

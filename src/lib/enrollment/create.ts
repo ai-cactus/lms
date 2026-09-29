@@ -3,7 +3,7 @@ import { DEFAULT_SELF_SERVE_WORKER_ROLE } from '@/lib/rbac/role-utils';
 import { logger, maskEmail } from '@/lib/logger';
 import { createNotification } from '@/lib/notifications/create';
 import { trainingNoticeLink } from '@/lib/notifications/portal-link';
-import { computeDueAt, resolveStartDate } from '@/lib/reminders/deadline';
+import { computeDueAt, isDeadlinePassedFor, resolveStartDate } from '@/lib/reminders/deadline';
 import { DEFAULT_TZ } from '@/lib/reminders/time';
 import {
   resolveMemberFacilities,
@@ -34,6 +34,21 @@ export interface CreateEnrollmentContext {
   scheduleAt: Date | null;
   assignmentDueAt: Date | null;
   assignmentWindowDays: number | null;
+  /**
+   * What to do when {@link assignmentDueAt}, resolved in a learner's facility
+   * zone, has already passed for them (Q-32):
+   *
+   * - `'skip'` — enrol nobody and report the learner back
+   *   (`status: 'deadlinePassed'`). For an admin assigning now: nobody receives
+   *   an assignment that is overdue on arrival, and the admin, who is told, can
+   *   pick a later date for them.
+   * - `'useWindow'` — enrol them on their own completion window instead, as if
+   *   no date had been picked. For the automatic paths (role-target join, its
+   *   sweep backstop, invite acceptance): a new hire must still get required
+   *   training, nobody is there to be told, and skipping would leave them
+   *   untrained for good — the sweep would re-skip them every day.
+   */
+  onPassedDeadline: 'skip' | 'useWindow';
   /** Actor (identity id) recorded on the structured enrollment log. */
   enrolledByUserId: string;
   /**
@@ -86,6 +101,8 @@ export interface DeferredWorkerNotification {
 export type EnrollmentOutcome =
   | { status: 'failed'; email: string }
   | { status: 'alreadyEnrolled'; email: string }
+  /** Q-32: the picked deadline had already passed in the learner's zone, so nothing was written. */
+  | { status: 'deadlinePassed'; email: string; timeZone: string }
   | { status: 'invited'; email: string }
   | {
       status: 'enrolled';
@@ -358,16 +375,36 @@ export async function createEnrollmentForUser(
   // `start + window`, where the window falls through to the system default when
   // no org default exists (`Organization.defaultDueWindowDays` is not modeled).
   const timeZone = memberFacility?.timezone ?? DEFAULT_TZ;
-  const computedDueAt = computeDueAt({
-    assignmentDueAt: ctx.assignmentDueAt,
+  const now = new Date();
+  const deadlineInputs = {
     assignmentWindowDays: ctx.assignmentWindowDays,
     orgWindowDays: null,
     start: resolveStartDate(
       { scheduleAt: ctx.scheduleAt },
-      { accessAt: ctx.scheduleAt ?? null, startedAt: new Date() },
+      { accessAt: ctx.scheduleAt ?? null, startedAt: now },
     ),
     timeZone,
-  });
+  };
+  let computedDueAt = computeDueAt({ ...deadlineInputs, assignmentDueAt: ctx.assignmentDueAt });
+
+  if (ctx.assignmentDueAt && isDeadlinePassedFor(computedDueAt, now)) {
+    if (ctx.onPassedDeadline === 'skip') {
+      logger.info({
+        msg: '[enrollment] Learner skipped — due date already passed in their zone',
+        organizationUserId: membership.id,
+        courseId: ctx.courseId,
+        timeZone,
+      });
+      return { status: 'deadlinePassed', email: normalizedEmail, timeZone };
+    }
+    computedDueAt = computeDueAt({ ...deadlineInputs, assignmentDueAt: null });
+    logger.info({
+      msg: '[enrollment] Due date already passed in learner zone — completion window used',
+      organizationUserId: membership.id,
+      courseId: ctx.courseId,
+      timeZone,
+    });
+  }
 
   const enrollment = await prisma.enrollment.create({
     data: {

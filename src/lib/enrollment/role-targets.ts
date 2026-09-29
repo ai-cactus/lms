@@ -123,6 +123,8 @@ export async function enrollUserForRoleTargets(
         scheduleAt: membership.roleAssignedAt,
         assignmentDueAt: assignment.dueAt,
         assignmentWindowDays: assignment.dueWindowDays,
+        // Q-32: automatic — a passed date falls back to the learner's own window.
+        onPassedDeadline: 'useWindow',
         enrolledByUserId: organizationUserId,
       };
 

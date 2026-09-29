@@ -4,14 +4,18 @@
  * Pure functions — no mocks required, except for env-var manipulation in
  * resolveDefaultDueWindowDays tests (restored after each test via afterEach).
  */
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import {
   DEFAULT_DUE_WINDOW_DAYS,
   resolveDefaultDueWindowDays,
   resolveStartDate,
   computeDueAt,
   combineDateAndTime,
+  describeDeadlinePassed,
+  earliestPickableDueDate,
   formatTimeOfDay,
+  isDeadlinePassedFor,
+  isPastDeadlineChange,
 } from './deadline';
 import { localDateKey } from './time';
 
@@ -286,5 +290,57 @@ describe('formatTimeOfDay', () => {
     expect(unusable).toBe('');
     const day = new Date('2026-08-01T00:00:00.000Z');
     expect(combineDateAndTime(day, unusable)?.toISOString()).toBe('2026-08-01T00:00:00.000Z');
+  });
+});
+
+describe('Q-32 — judging "already past"', () => {
+  const NOW = new Date('2026-09-30T12:00:00.000Z');
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('isPastDeadlineChange refuses only a date that has passed even in the westernmost zone', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    // 30 Sept 11:59 PM has ended in Kiritimati but not in Honolulu or UTC−12.
+    expect(isPastDeadlineChange(new Date('2026-09-30T23:59:00.000Z'), null)).toBe(false);
+    // 29 Sept 11:59 PM ended in UTC−12 at 11:59 UTC on the 30th.
+    expect(isPastDeadlineChange(new Date('2026-09-29T23:59:00.000Z'), null)).toBe(true);
+    // Restating the stored deadline is never refused.
+    const stored = new Date('2026-09-29T23:59:00.000Z');
+    expect(isPastDeadlineChange(stored, stored)).toBe(false);
+  });
+
+  it("isDeadlinePassedFor compares the learner's own instant with now", () => {
+    expect(isDeadlinePassedFor(new Date('2026-09-30T09:59:00.000Z'), NOW)).toBe(true);
+    expect(isDeadlinePassedFor(new Date('2026-10-01T09:59:00.000Z'), NOW)).toBe(false);
+  });
+
+  it('describeDeadlinePassed states the skipped count and their zones, or null', () => {
+    expect(describeDeadlinePassed([])).toBeNull();
+    expect(describeDeadlinePassed([{ timeZone: 'Pacific/Kiritimati' }])).toBe(
+      'Due date already passed for 1 learner (Pacific/Kiritimati), so they were not assigned.',
+    );
+    expect(
+      describeDeadlinePassed([
+        { timeZone: 'Pacific/Kiritimati' },
+        { timeZone: 'Pacific/Auckland' },
+        { timeZone: 'Pacific/Kiritimati' },
+      ]),
+    ).toBe(
+      'Due date already passed for 3 learners (Pacific/Auckland, Pacific/Kiritimati), so they were not assigned.',
+    );
+  });
+
+  it('earliestPickableDueDate is the date still current in UTC−12', () => {
+    // 12:00 UTC on 30 Sept is 00:00 on the 30th in UTC−12.
+    const earliest = earliestPickableDueDate(NOW);
+    expect([earliest.getFullYear(), earliest.getMonth(), earliest.getDate()]).toEqual([
+      2026, 8, 30,
+    ]);
+    // 11:00 UTC on 30 Sept is still the 29th there.
+    const before = earliestPickableDueDate(new Date('2026-09-30T11:00:00.000Z'));
+    expect(before.getDate()).toBe(29);
   });
 });

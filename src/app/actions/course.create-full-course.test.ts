@@ -110,6 +110,7 @@ describe('createFullCourse — assignment delegation to enrollUsers', () => {
       newInvited: 1,
       failed: [],
       skipped: [],
+      deadlinePassed: [],
     });
   });
 
@@ -130,6 +131,7 @@ describe('createFullCourse — assignment delegation to enrollUsers', () => {
       newInvited: 0,
       failed: [],
       skipped: [],
+      deadlinePassed: [],
     });
   });
 });

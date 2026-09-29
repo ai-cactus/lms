@@ -133,6 +133,7 @@ export default function TrainingDetails({
 
   const [targetRoles, setTargetRoles] = useState<UserRole[]>(assignmentSettings?.targetRoles ?? []);
   const [roleTargetError, setRoleTargetError] = useState<string | null>(null);
+  const [roleTargetNotice, setRoleTargetNotice] = useState<string | null>(null);
 
   const enrollments = course.enrollments || [];
 
@@ -161,6 +162,7 @@ export default function TrainingDetails({
   const handleRoleTargetsChange = (roles: UserRole[]) => {
     setTargetRoles(roles);
     setRoleTargetError(null);
+    setRoleTargetNotice(null);
     router.refresh();
   };
 
@@ -265,6 +267,11 @@ export default function TrainingDetails({
               {roleTargetError}
             </Alert>
           )}
+          {roleTargetNotice && (
+            <Alert variant="warning" className="mt-4">
+              {roleTargetNotice}
+            </Alert>
+          )}
 
           <div className="mt-4">
             <RoleTargetPicker
@@ -273,6 +280,7 @@ export default function TrainingDetails({
               mode={pickerMode}
               roleHolderCounts={roleHolderCounts}
               onLiveUpdateError={setRoleTargetError}
+              onLiveUpdateNotice={setRoleTargetNotice}
             />
           </div>
         </div>

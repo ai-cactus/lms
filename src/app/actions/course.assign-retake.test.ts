@@ -330,7 +330,8 @@ describe('assignRetake — due date (Q-26)', () => {
 
     expect(result).toEqual({
       success: false,
-      refusedReason: 'The retake due date must be today or later.',
+      refusedReason:
+        'That due date has already passed where this learner is (Pacific/Kiritimati). Please pick a later date.',
     });
     expect(prismaMock.enrollment.create).not.toHaveBeenCalled();
     expect(mockCreateNotification).not.toHaveBeenCalled();

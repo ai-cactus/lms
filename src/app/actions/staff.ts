@@ -36,6 +36,7 @@ import { captureServer } from '@/lib/analytics/server';
 import { buildCourseThumbnailUrl } from '@/lib/video/thumbnail';
 import { parseStoredOptionExplanations } from '@/lib/quiz/options';
 import { DEFAULT_TZ } from '@/lib/reminders/time';
+import { isPastDeadlineChange } from '@/lib/reminders/deadline';
 
 // Caller-facing copy for each role-change denial. `target_not_reachable` and
 // `role_not_grantable` are only reachable when an owner is involved (owner is in
@@ -768,6 +769,11 @@ export interface AssignCoursesToStaffResult {
   alreadyAssigned: { courseId: string; courseTitle: string }[];
   /** `courseTitle` is null for an id that resolves to no course at all. */
   failed: { courseId: string; courseTitle: string | null }[];
+  /**
+   * Q-32: courses not assigned because the picked deadline had already passed
+   * in this staff member's facility zone (`timeZone`).
+   */
+  deadlinePassed: { courseId: string; courseTitle: string; timeZone: string }[];
   invited: boolean;
   emailSent: boolean;
   error?: string;
@@ -798,6 +804,7 @@ export async function assignCoursesToStaffMember(
     assigned: [],
     alreadyAssigned: [],
     failed: [],
+    deadlinePassed: [],
     invited: false,
     emailSent: false,
   };
@@ -836,7 +843,10 @@ export async function assignCoursesToStaffMember(
     if (Number.isNaN(parsed.getTime())) {
       return { ...result, error: 'The deadline is not a valid date.' };
     }
-    if (parsed.getTime() <= Date.now()) {
+    // Whether the date has passed for THIS staff member depends on their
+    // facility zone, which enrollUsers resolves (Q-32); only a date that has
+    // passed everywhere is refused up front.
+    if (isPastDeadlineChange(parsed, null)) {
       return { ...result, error: 'The deadline must be in the future.' };
     }
     dueAt = parsed;
@@ -912,7 +922,13 @@ export async function assignCoursesToStaffMember(
         continue;
       }
 
-      if (outcome.success.length > 0) {
+      if (outcome.deadlinePassed && outcome.deadlinePassed.length > 0) {
+        result.deadlinePassed.push({
+          courseId,
+          courseTitle,
+          timeZone: outcome.deadlinePassed[0].timeZone,
+        });
+      } else if (outcome.success.length > 0) {
         result.assigned.push({ courseId, courseTitle });
         if (outcome.deferred) {
           deferred.push(...outcome.deferred);
@@ -955,6 +971,7 @@ export async function assignCoursesToStaffMember(
     assigned: result.assigned.length,
     alreadyAssigned: result.alreadyAssigned.length,
     failed: result.failed.length,
+    deadlinePassed: result.deadlinePassed.length,
     emailSent: result.emailSent,
   });
 

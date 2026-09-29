@@ -74,7 +74,9 @@ export function retakeDueAtIfNotPast(
 ): RetakeDueAtResult {
   const dueAt = retakeDueAt(dueDate, timeZone);
   if (dueAt.getTime() < now.getTime()) {
-    return { refusedReason: 'The retake due date must be today or later.' };
+    return {
+      refusedReason: `That due date has already passed where this learner is (${timeZone}). Please pick a later date.`,
+    };
   }
   return { dueAt };
 }

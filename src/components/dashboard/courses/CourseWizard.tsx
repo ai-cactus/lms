@@ -51,6 +51,7 @@ import {
   stepTitle,
   type WizardStepKey,
 } from './wizardSteps';
+import { describeDeadlinePassed } from '@/lib/reminders/deadline';
 
 const INITIAL_FORM_DATA: CourseWizardData = {
   categoryId: '',
@@ -431,6 +432,9 @@ export default function CourseWizard() {
         // once the warnings are acknowledged.
         let roleAssignmentFailed = false;
         let roleAssignmentReason: string | null = null;
+        // Q-32: learners the server left out because the due date had already
+        // passed where they are; everyone else was assigned.
+        const deadlinePassed = [...(result.inviteResults?.deadlinePassed ?? [])];
         if (!result.reviewRequired && targetsRoles) {
           try {
             const assignResult = await assignCourseToRoles(result.courseId, roleTargets, {
@@ -441,6 +445,7 @@ export default function CourseWizard() {
             // A refusal (billing gate, invalid deadline) is returned rather than
             // thrown, so it carries a reason worth showing instead of the
             // generic banner.
+            deadlinePassed.push(...(assignResult.deadlinePassed ?? []));
             if (assignResult.refusedReason) {
               roleAssignmentFailed = true;
               roleAssignmentReason = assignResult.refusedReason;
@@ -488,6 +493,8 @@ export default function CourseWizard() {
           setCreatedCourseId(result.courseId);
         }
 
+        setWizardNotice(describeDeadlinePassed(deadlinePassed));
+
         if (roleAssignmentFailed) {
           setWizardError(
             roleAssignmentReason
@@ -531,6 +538,8 @@ export default function CourseWizard() {
         setWizardNotice(
           'Course published and assigned. The completion deadline you set had already passed, so each recipient gets the standard completion window instead.',
         );
+      } else {
+        setWizardNotice(describeDeadlinePassed(result.assignmentDeadlinePassed ?? []));
       }
     } catch (error) {
       logger.error({ msg: 'Error publishing course with warnings:', err: error });

@@ -137,3 +137,42 @@ describe('enrollUsers — unparseable dueAt (BUG-12.2)', () => {
     expect(result.success).toContain(STAFF_EMAIL);
   });
 });
+
+/**
+ * Q-32: the call is not refused for a date that has passed somewhere; each
+ * learner is judged in their own zone, and those it had passed for are returned
+ * so the admin is told, while everyone else is enrolled.
+ */
+describe('enrollUsers — per-learner "already past" (Q-32)', () => {
+  it('reports the Kiritimati learner it skipped and enrols the Honolulu one', async () => {
+    mockCreateEnrollmentForUser.mockImplementation(async (entry: { email: string }) =>
+      entry.email === 'east@example.com'
+        ? { status: 'deadlinePassed' as const, email: entry.email, timeZone: 'Pacific/Kiritimati' }
+        : { status: 'enrolled' as const, email: entry.email, userId: 'u', enrollmentId: 'e' },
+    );
+
+    const result = await enrollUsers(
+      COURSE_ID,
+      [{ email: 'east@example.com' }, { email: 'west@example.com' }],
+      { dueAt: '2099-09-30T23:59:00.000Z' },
+    );
+
+    expect(result.refusedReason).toBeUndefined();
+    expect(result.success).toEqual(['west@example.com']);
+    expect(result.deadlinePassed).toEqual([
+      { email: 'east@example.com', timeZone: 'Pacific/Kiritimati' },
+    ]);
+    expect(mockCreateEnrollmentForUser).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ onPassedDeadline: 'skip' }),
+    );
+  });
+
+  it('omits deadlinePassed when nobody was skipped', async () => {
+    const result = await enrollUsers(COURSE_ID, [{ email: STAFF_EMAIL }], {
+      dueAt: '2099-09-30T23:59:00.000Z',
+    });
+
+    expect(result).not.toHaveProperty('deadlinePassed');
+  });
+});

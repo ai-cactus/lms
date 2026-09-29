@@ -46,7 +46,11 @@ import { loadDashboardSnapshot } from '@/lib/dashboard/snapshot';
 import { computeCompletionPercent } from '@/lib/facility/metrics';
 import { buildCourseThumbnailUrl, firstLessonThumbnailSelect } from '@/lib/video/thumbnail';
 import { resolveOnCompletion } from '@/lib/reminders/sweep';
-import { combineDateAndTime, isPastDeadlineChange } from '@/lib/reminders/deadline';
+import {
+  combineDateAndTime,
+  isPastDeadlineChange,
+  type DeadlinePassedLearner,
+} from '@/lib/reminders/deadline';
 import { DEFAULT_TZ } from '@/lib/reminders/time';
 import { assignCourseToRoles, enrollUsers } from './enrollment';
 import {
@@ -597,12 +601,13 @@ export async function updateCourse(
 /**
  * Publish a course, replaying any assignment the F-051 quality gate deferred.
  *
- * The published course is returned with two advisory flags, neither of which
- * fails the publish: `assignmentFailed` when the deferred assignment could not
- * be replayed at all, and `assignmentDeadlineExpired` when it WAS replayed but
- * its parked deadline had already elapsed and was dropped in favour of each
- * recipient's completion window. Both are for the admin to see — the course is
- * published either way.
+ * The published course is returned with advisory fields, none of which fails
+ * the publish: `assignmentFailed` when the deferred assignment could not be
+ * replayed at all; `assignmentDeadlineExpired` when it WAS replayed but its
+ * parked deadline had passed everywhere and was dropped in favour of each
+ * recipient's completion window; and `assignmentDeadlinePassed`, the recipients
+ * the replay left out because that deadline had passed in their zone only
+ * (Q-32). All are for the admin to see — the course is published either way.
  */
 export async function publishCourse(courseId: string, opts?: { acknowledgeWarnings?: boolean }) {
   const session = await resolveSession();
@@ -682,6 +687,9 @@ export async function publishCourse(courseId: string, opts?: { acknowledgeWarnin
   // it is reported back and the admin re-assigns from the training dashboard.
   let assignmentFailed = false;
   let assignmentDeadlineExpired = false;
+  // Q-32: recipients the replay left out because the parked deadline had passed
+  // where they are, though not everywhere.
+  let assignmentDeadlinePassed: DeadlinePassedLearner[] = [];
   if (existing.reviewRequired && opts?.acknowledgeWarnings && existing.pendingAssignment !== null) {
     const pending = parsePendingAssignment(existing.pendingAssignment, { courseId });
     assignmentFailed = pending === null;
@@ -752,6 +760,7 @@ export async function publishCourse(courseId: string, opts?: { acknowledgeWarnin
             reason: replay.refusedReason,
           });
         } else {
+          assignmentDeadlinePassed = replay.deadlinePassed ?? [];
           logger.info({
             msg: '[course] Deferred assignment replayed on publish',
             courseId,
@@ -800,7 +809,7 @@ export async function publishCourse(courseId: string, opts?: { acknowledgeWarnin
   }
 
   revalidatePath('/dashboard/training');
-  return { ...course, assignmentFailed, assignmentDeadlineExpired };
+  return { ...course, assignmentFailed, assignmentDeadlineExpired, assignmentDeadlinePassed };
 }
 
 /**
@@ -1471,6 +1480,8 @@ export async function createFullCourse(data: {
     newInvited: 0,
     failed: [] as string[],
     skipped: [] as string[],
+    /** Q-32: left out because the due date had already passed where they are. */
+    deadlinePassed: [] as DeadlinePassedLearner[],
   };
 
   // Deferred while the quality gate holds the course: publishCourse replays the
@@ -1488,6 +1499,7 @@ export async function createFullCourse(data: {
       inviteResults.newInvited = enrollResults.newInvited.length;
       inviteResults.failed = enrollResults.failed;
       inviteResults.skipped = enrollResults.alreadyEnrolled;
+      inviteResults.deadlinePassed = enrollResults.deadlinePassed ?? [];
     } catch (enrollError) {
       logger.error({
         msg: '[course] Failed to assign workers during course creation',
@@ -1509,6 +1521,7 @@ export async function createFullCourse(data: {
     invited: inviteResults.newInvited,
     failed: inviteResults.failed.length,
     skipped: inviteResults.skipped.length,
+    deadlinePassed: inviteResults.deadlinePassed.length,
   });
   revalidatePath('/dashboard/training');
   return {

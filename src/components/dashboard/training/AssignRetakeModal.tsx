@@ -15,6 +15,7 @@ import { Alert } from '@/components/ui/alert';
 import DatePicker from '@/components/ui/DatePicker';
 import { assignRetake } from '@/app/actions/course';
 import { defaultRetakeDueDate } from '@/lib/course/retake-deadline';
+import { earliestPickableDueDate } from '@/lib/reminders/deadline';
 
 interface AssignRetakeModalProps {
   isOpen: boolean;
@@ -93,6 +94,7 @@ export default function AssignRetakeModal({
           <DatePicker
             value={dueDate}
             onChange={setDueDate}
+            minDate={earliestPickableDueDate(new Date())}
             placeholder="Select retake due date"
             label="Retake due date"
             placement="top-end"

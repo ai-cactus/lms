@@ -1,6 +1,6 @@
 ---
 name: project-deadline-zone-semantics
-description: BUG-12.3 (2026-09-29) — CourseAssignment.dueAt is a zone-free wall clock, Enrollment.dueAt is a real instant in the learner's facility zone; every display must format in that zone
+description: BUG-12.3/Q-32 (2026-09-29) — assignment dueAt is a wall clock, enrollment dueAt a learner-zone instant; 'already past' is judged per learner (skip vs window)
 metadata:
   type: project
 ---
@@ -31,7 +31,10 @@ the learner's zone next to it and use `formatDateInTz` (`src/lib/reminders/time.
 client-safe). Emails take a required `timeZone` arg; `LearnerCourseRow` has
 `deadlineTimeZone`; Status Tracker rows carry `timeZone`; the retake dialog takes
 `learnerTimeZone` (roster select / `getStaffDetails`) and pre-fills
-`defaultRetakeDueDate(now, tz)`, the same date the server defaults to. Known leftover: the
-D-F "past deadline" refusal (`isPastDeadlineChange`, staff-modal `<= Date.now()`)
-still judges the UTC wall clock, so "today" can be refused early for a
-Hawaii/Alaska learner late in their day — reported, not changed.
+`defaultRetakeDueDate(now, tz)`, the same date the server defaults to. Q-32 (ruled 2026-09-29): "already past" is judged per learner inside
+`createEnrollmentForUser` via `ctx.onPassedDeadline` (required): `'skip'` for
+admin-initiated assigns (outcome `deadlinePassed`, surfaced with
+`describeDeadlinePassed`), `'useWindow'` for the automatic paths (role-join hook,
+sweep backstop, invite accept) so a new hire is never left untrained.
+`isPastDeadlineChange` now only refuses a date past even in UTC−12; pickers use
+`earliestPickableDueDate`. Tests with fixed 2026 deadlines must pin the clock.

@@ -20,7 +20,11 @@ import { getAssignableCourses } from '@/app/actions/offering';
 import { assignCoursesToStaffMember } from '@/app/actions/staff';
 import type { CourseWithStats } from '@/types/course';
 import { logger } from '@/lib/logger';
-import { combineDateAndTime } from '@/lib/reminders/deadline';
+import {
+  combineDateAndTime,
+  describeDeadlinePassed,
+  earliestPickableDueDate,
+} from '@/lib/reminders/deadline';
 import { cn } from '@/lib/utils';
 
 interface AssignCoursesModalProps {
@@ -190,6 +194,9 @@ export default function AssignCoursesModal({
       if (result.assigned.length === 0) {
         setError(
           result.error ??
+            // Q-32: the server judged the picked date in this person's facility
+            // zone. The deadline is theirs, so one entry says it for every course.
+            describeDeadlinePassed(result.deadlinePassed.slice(0, 1)) ??
             (result.alreadyAssigned.length > 0
               ? `${staffName} is already assigned to the selected course${
                   result.alreadyAssigned.length === 1 ? '' : 's'
@@ -380,6 +387,7 @@ export default function AssignCoursesModal({
                 <DatePicker
                   value={dueDate}
                   onChange={handleDueDateChange}
+                  minDate={earliestPickableDueDate(new Date())}
                   placeholder="Select due date"
                   label="Completion deadline"
                   iconPosition="start"

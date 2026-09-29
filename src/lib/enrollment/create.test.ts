@@ -13,7 +13,7 @@
  * invite branch (create vs reuse-and-refresh, CSV role mapping, email-failure
  * isolation, DB-failure isolation), and the existing-org-member branch.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const { prismaMock, mockCreateNotification, mockSendCourseInviteEmail, mockSendCourseLaunchEmail } =
   vi.hoisted(() => {
@@ -58,8 +58,20 @@ const BASE_CTX: CreateEnrollmentContext = {
   scheduleAt: null,
   assignmentDueAt: null,
   assignmentWindowDays: null,
+  onPassedDeadline: 'skip',
   enrolledByUserId: 'admin-1',
 };
+
+// Q-32 skips a learner whose deadline has already passed, so the fixed deadlines
+// below only mean what they say against a pinned clock.
+const PINNED_NOW = new Date('2026-08-15T12:00:00.000Z');
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(PINNED_NOW);
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -513,6 +525,97 @@ describe('createEnrollmentForUser — deadline in the learner facility zone', ()
     expect(prismaMock.enrollment.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ dueAt: new Date('2026-09-11T15:00:00.000Z') }),
     });
+  });
+});
+
+/**
+ * Q-32 (ruled 2026-09-29): "already past" is judged per learner. The same picked
+ * date — 30 Sept, 11:59 PM — has ended in Kiritimati (UTC+14) by 12:00 UTC on the
+ * 30th, but still has most of a day to run in Honolulu (UTC−10).
+ */
+describe('createEnrollmentForUser — deadline already passed for this learner (Q-32)', () => {
+  const PICKED_30_SEPT = new Date('2026-09-30T23:59:00.000Z');
+
+  beforeEach(() => {
+    vi.setSystemTime(new Date('2026-09-30T12:00:00.000Z'));
+    prismaMock.user.findUnique.mockResolvedValue({
+      id: 'user-1',
+      email: 'staff@example.com',
+      firstName: null,
+      lastName: null,
+      fullName: 'Staff One',
+    });
+    prismaMock.organizationUser.findFirst.mockResolvedValue({ id: 'ou-1', role: 'nurse' });
+  });
+
+  function postAt(timezone: string) {
+    prismaMock.organizationUserFacility.findFirst.mockResolvedValue({
+      facilityId: 'fac-own',
+      facility: { timezone },
+    });
+  }
+
+  it('skips a Kiritimati learner — nothing written, nobody told — and reports their zone', async () => {
+    postAt('Pacific/Kiritimati');
+
+    const outcome = await createEnrollmentForUser(
+      { email: 'staff@example.com' },
+      { ...BASE_CTX, assignmentDueAt: PICKED_30_SEPT, onPassedDeadline: 'skip' },
+    );
+
+    expect(outcome).toEqual({
+      status: 'deadlinePassed',
+      email: 'staff@example.com',
+      timeZone: 'Pacific/Kiritimati',
+    });
+    expect(prismaMock.enrollment.create).not.toHaveBeenCalled();
+    expect(prismaMock.reminderLog.create).not.toHaveBeenCalled();
+    expect(mockCreateNotification).not.toHaveBeenCalled();
+    expect(mockSendCourseLaunchEmail).not.toHaveBeenCalled();
+  });
+
+  it('enrols a Honolulu learner for the same picked date, due 23:59 there', async () => {
+    postAt('Pacific/Honolulu');
+
+    const outcome = await createEnrollmentForUser(
+      { email: 'staff@example.com' },
+      { ...BASE_CTX, assignmentDueAt: PICKED_30_SEPT, onPassedDeadline: 'skip' },
+    );
+
+    expect(outcome.status).toBe('enrolled');
+    expect(prismaMock.enrollment.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ dueAt: new Date('2026-10-01T09:59:00.000Z') }),
+    });
+  });
+
+  it("'useWindow' (automatic paths) enrols on the learner's completion window instead", async () => {
+    postAt('Pacific/Kiritimati');
+
+    const outcome = await createEnrollmentForUser(
+      { email: 'staff@example.com' },
+      {
+        ...BASE_CTX,
+        assignmentDueAt: PICKED_30_SEPT,
+        assignmentWindowDays: 14,
+        onPassedDeadline: 'useWindow',
+      },
+    );
+
+    expect(outcome.status).toBe('enrolled');
+    expect(prismaMock.enrollment.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ dueAt: new Date('2026-10-14T12:00:00.000Z') }),
+    });
+  });
+
+  it('never skips a window-computed deadline — only a picked date can be already past', async () => {
+    postAt('Pacific/Kiritimati');
+
+    const outcome = await createEnrollmentForUser(
+      { email: 'staff@example.com' },
+      { ...BASE_CTX, assignmentDueAt: null, assignmentWindowDays: 14, onPassedDeadline: 'skip' },
+    );
+
+    expect(outcome.status).toBe('enrolled');
   });
 });
 

@@ -350,7 +350,10 @@ describe('enrollUsers — D-F: a past deadline is refused only when it CHANGES t
     vi.useRealTimers();
   });
 
-  it('re-submitting the SAME past deadline is allowed — a late joiner can still be added to an already-overdue course', async () => {
+  // Q-32 (ruled 2026-09-29): the call is no longer refused, but nobody is
+  // enrolled into a deadline that has already passed for them — the late joiner
+  // is left out and reported, so the admin can give them a date they can meet.
+  it('re-submitting the SAME past deadline is not refused; the late joiner is reported, not enrolled overdue', async () => {
     mockAssignmentFindFirst.mockResolvedValue({
       id: 'existing-assignment-1',
       dueAt: STORED_PAST_DUE_AT,
@@ -367,7 +370,8 @@ describe('enrollUsers — D-F: a past deadline is refused only when it CHANGES t
 
     expect(result.refusedReason).toBeUndefined();
     expect(mockAssignmentUpdate).toHaveBeenCalled();
-    expect(mockEnrollmentCreate).toHaveBeenCalled();
+    expect(mockEnrollmentCreate).not.toHaveBeenCalled();
+    expect(result.deadlinePassed).toEqual([{ email: 'w@x.com', timeZone: 'America/New_York' }]);
   });
 
   it('submitting a DIFFERENT past deadline is refused, by return, before any write', async () => {

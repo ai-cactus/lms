@@ -16,7 +16,8 @@ import {
 
 const NOW = new Date('2026-09-28T15:00:00.000Z');
 const UNREADABLE = "That due date couldn't be read. Please pick the date again.";
-const PAST = 'The retake due date must be today or later.';
+const PAST = (zone: string) =>
+  `That due date has already passed where this learner is (${zone}). Please pick a later date.`;
 
 describe('defaultRetakeDueDate', () => {
   it(`is ${DEFAULT_RETAKE_DUE_DAYS} calendar days after the learner's today`, () => {
@@ -92,13 +93,13 @@ describe('retakeDueAtIfNotPast', () => {
   it("refuses today once the learner's day has ended, though it has not ended in UTC", () => {
     // 15:00 UTC on 28 Sept is already 29 Sept 05:00 in Kiritimati.
     expect(retakeDueAtIfNotPast('2026-09-28', 'Pacific/Kiritimati', NOW)).toEqual({
-      refusedReason: PAST,
+      refusedReason: PAST('Pacific/Kiritimati'),
     });
   });
 
   it('refuses a date in the past', () => {
     expect(retakeDueAtIfNotPast('2026-09-27', 'America/New_York', NOW)).toEqual({
-      refusedReason: PAST,
+      refusedReason: PAST('America/New_York'),
     });
   });
 });
