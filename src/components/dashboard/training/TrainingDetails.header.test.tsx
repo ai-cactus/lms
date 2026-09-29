@@ -235,6 +235,40 @@ describe('TrainingDetails — enrolled staff Facility column (BUG-37)', () => {
   });
 });
 
+describe('TrainingDetails — roster Passed/Failed uses the course’s passing bar', () => {
+  const finishedWith = (score: number) =>
+    baseCourse({ enrollments: [enrollment({ status: 'completed', score })] });
+
+  it('an 80% bar fails a 75 that the old fixed 70 would have passed', () => {
+    render(<TrainingDetails course={finishedWith(75)} passingScore={80} />);
+
+    const row = screen.getByRole('row', { name: /Frank Doe/ });
+    expect(within(row).getByText('Failed')).toBeInTheDocument();
+    expect(within(row).queryByText('Passed')).not.toBeInTheDocument();
+  });
+
+  it('passes a score exactly on the bar', () => {
+    render(<TrainingDetails course={finishedWith(80)} passingScore={80} />);
+
+    const row = screen.getByRole('row', { name: /Frank Doe/ });
+    expect(within(row).getByText('Passed')).toBeInTheDocument();
+  });
+
+  it('a 60% bar passes a 65', () => {
+    render(<TrainingDetails course={finishedWith(65)} passingScore={60} />);
+
+    const row = screen.getByRole('row', { name: /Frank Doe/ });
+    expect(within(row).getByText('Passed')).toBeInTheDocument();
+  });
+
+  it('defaults to 70 when no bar is passed', () => {
+    render(<TrainingDetails course={finishedWith(69)} />);
+
+    const row = screen.getByRole('row', { name: /Frank Doe/ });
+    expect(within(row).getByText('Failed')).toBeInTheDocument();
+  });
+});
+
 describe('TrainingDetails — stat cards', () => {
   // The design labels this card "Average Duration"; the value is the per-course
   // ESTIMATE, because nothing in the schema records time-on-task. Pinned so the

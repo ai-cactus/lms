@@ -52,14 +52,17 @@ vi.mock('@/components/dashboard/training/TrainingDetails', () => ({
   default: ({
     canWithdrawAssignments,
     backHref,
+    passingScore,
   }: {
     canWithdrawAssignments?: boolean;
     backHref?: string;
+    passingScore?: number;
   }) => (
     <div
       data-testid="training-details"
       data-can-withdraw={String(!!canWithdrawAssignments)}
       data-back-href={backHref}
+      data-passing-score={String(passingScore)}
     />
   ),
 }));
@@ -87,6 +90,31 @@ beforeEach(() => {
   mockLoadCourseDetail.mockResolvedValue({
     id: 'course-1',
     creator: { organizationId: 'org-1' },
+    quiz: null,
+    lessons: [],
+  });
+});
+
+// The roster's Passed/Failed must use the bar the dashboards use, resolved here
+// on the server from the payload rather than fetched by the client.
+describe('CourseDetailsPage — passing bar', () => {
+  it('passes the course’s strictest quiz bar down to the roster', async () => {
+    mockLoadCourseDetail.mockResolvedValue({
+      id: 'course-1',
+      creator: { organizationId: 'org-1' },
+      quiz: { passingScore: 80 },
+      lessons: [{ quiz: { passingScore: 75 } }, { quiz: null }],
+    });
+
+    render(await CourseDetailsPage({ params }));
+
+    expect(screen.getByTestId('training-details')).toHaveAttribute('data-passing-score', '80');
+  });
+
+  it('falls back to the default bar for a course with no quiz', async () => {
+    render(await CourseDetailsPage({ params }));
+
+    expect(screen.getByTestId('training-details')).toHaveAttribute('data-passing-score', '70');
   });
 });
 
@@ -183,6 +211,8 @@ describe('CourseDetailsPage — withdraw gate', () => {
       id: 'course-1',
       createdByOrgUserId: 'ou-1',
       creator: { organizationId: 'org-1' },
+      quiz: null,
+      lessons: [],
     });
 
     render(await CourseDetailsPage({ params }));
@@ -196,6 +226,8 @@ describe('CourseDetailsPage — withdraw gate', () => {
       id: 'course-1',
       createdByOrgUserId: 'ou-other',
       creator: { organizationId: 'org-1' },
+      quiz: null,
+      lessons: [],
     });
 
     render(await CourseDetailsPage({ params }));
@@ -211,6 +243,8 @@ describe('CourseDetailsPage — withdraw gate', () => {
       id: 'course-1',
       createdByOrgUserId: 'ou-other',
       creator: { organizationId: 'org-1' },
+      quiz: null,
+      lessons: [],
     });
 
     render(await CourseDetailsPage({ params }));
@@ -230,6 +264,8 @@ describe('CourseDetailsPage — withdraw gate', () => {
       id: 'course-1',
       createdByOrgUserId: 'ou-system',
       creator: { organizationId: 'org-theraptly' },
+      quiz: null,
+      lessons: [],
     });
 
     render(await CourseDetailsPage({ params }));

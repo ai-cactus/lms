@@ -51,6 +51,7 @@ import RoleTargetPicker, {
 } from '@/components/dashboard/enrollment/RoleTargetPicker';
 import { courseStatusBadge } from '@/lib/course/course-status-label';
 import { courseSourceDocument } from '@/lib/course/source-document';
+import { DEFAULT_PASSING_SCORE } from '@/lib/dashboard/metrics';
 import { CourseWithRelations } from '@/types/course';
 import type { CourseAssignmentSettings } from '@/app/actions/enrollment';
 import type { UserRole } from '@/generated/prisma/enums';
@@ -82,6 +83,11 @@ interface TrainingDetailsProps {
   canCreateRoleTargets?: boolean;
   /** The viewer holds `assignment.delete`, so roles may be revoked (D6). */
   canRevokeRoleTargets?: boolean;
+  /**
+   * The course's passing bar, resolved on the server by the dashboards' rule
+   * (`coursePassingScore`) so the roster's Passed/Failed agrees with them.
+   */
+  passingScore?: number;
 }
 
 const headCls =
@@ -125,6 +131,7 @@ export default function TrainingDetails({
   roleHolderCounts = {},
   canCreateRoleTargets = false,
   canRevokeRoleTargets = false,
+  passingScore = DEFAULT_PASSING_SCORE,
 }: TrainingDetailsProps) {
   const router = useRouter();
   const [withdrawTarget, setWithdrawTarget] = useState<{ id: string; name: string } | null>(null);
@@ -495,7 +502,7 @@ export default function TrainingDetails({
                     </TableCell>
                     <TableCell className={cn(cellCls, 'hidden px-2 md:table-cell')}>
                       {(enrollment.status === 'completed' || enrollment.status === 'attested') &&
-                      (enrollment.score ?? 0) >= 70 ? (
+                      (enrollment.score ?? 0) >= passingScore ? (
                         <span className={cn(tagCls, 'bg-[#e4fdf2] text-[#59904b]')}>
                           <CheckCircle2 className="size-[22px] shrink-0" aria-hidden="true" />
                           Passed

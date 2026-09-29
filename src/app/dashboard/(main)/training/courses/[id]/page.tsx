@@ -2,6 +2,7 @@ import React from 'react';
 import { notFound } from 'next/navigation';
 import TrainingDetails from '@/components/dashboard/training/TrainingDetails';
 import { loadCourseDetail } from '@/lib/course/load-course-detail';
+import { coursePassingScore } from '@/lib/course/passing-score';
 import { can } from '@/lib/rbac/permissions';
 import { isAdminRole } from '@/lib/rbac/role-utils';
 import { requirePermission } from '@/lib/rbac/require-permission';
@@ -62,6 +63,7 @@ export default async function CourseDetailsPage(props: PageProps) {
       roleHolderCounts={roleHolderCounts}
       canCreateRoleTargets={can(roleKey, 'assignment.create')}
       canRevokeRoleTargets={can(roleKey, 'assignment.delete')}
+      passingScore={coursePassingScore(course)}
     />
   );
 }
