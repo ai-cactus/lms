@@ -24,8 +24,21 @@ vi.mock('@/lib/prisma', () => ({ prisma: prismaMock, default: prismaMock }));
 vi.mock('@/app/actions/certificate', () => ({
   getWorkerCertificates: mockGetWorkerCertificates,
 }));
-vi.mock('@/components/worker/WorkerDashboardMetrics', () => ({ default: () => null }));
-vi.mock('@/components/worker/WorkerAchievements', () => ({ default: () => null }));
+vi.mock('@/components/worker/WorkerDashboardMetrics', () => ({
+  default: (props: { totalCourses: number; completedCourses: number; averageGrade: number }) => (
+    <div
+      data-testid="metrics"
+      data-total={props.totalCourses}
+      data-completed={props.completedCourses}
+      data-average={props.averageGrade}
+    />
+  ),
+}));
+vi.mock('@/components/worker/WorkerAchievements', () => ({
+  default: ({ certificateCount }: { certificateCount: number }) => (
+    <div data-testid="achievements" data-count={certificateCount} />
+  ),
+}));
 vi.mock('@/components/worker/WorkerEmptyState', () => ({ default: () => null }));
 vi.mock('@/components/worker/WorkerCourseList', () => ({
   default: ({ courses }: { courses: { id: string; courseArchived?: boolean }[] }) => (
@@ -114,5 +127,51 @@ describe('LearnerDashboard — archived courses', () => {
     const modal = screen.getByTestId('welcome-modal');
     expect(modal).toHaveAttribute('data-count', '0');
     expect(modal).toHaveAttribute('data-first', '');
+  });
+});
+
+function certificate(id: string) {
+  return { id, issuedAt: new Date('2026-09-10T00:00:00Z'), course: { title: `Course ${id}` } };
+}
+
+describe('LearnerDashboard — tiles (Q-22) and certificate count (BUG-41)', () => {
+  it('excludes a cancelled course from Total, Completed and Average Grade', async () => {
+    prismaMock.enrollment.findMany.mockResolvedValue([
+      enrollment({ id: 'enr-live', courseId: 'course-live', status: 'attested', score: 80 }),
+      archived({ id: 'enr-gone', courseId: 'course-gone', status: 'completed', score: 20 }),
+    ]);
+
+    render(await LearnerDashboard());
+
+    const metrics = screen.getByTestId('metrics');
+    expect(metrics).toHaveAttribute('data-total', '1');
+    expect(metrics).toHaveAttribute('data-completed', '1');
+    expect(metrics).toHaveAttribute('data-average', '80');
+    // The cancelled row stays in the list as history.
+    expect(screen.getByTestId('course-list')).toHaveAttribute('data-archived', 'false,true');
+  });
+
+  it('shows zeroed tiles when every course is cancelled', async () => {
+    prismaMock.enrollment.findMany.mockResolvedValue([archived({ status: 'attested', score: 90 })]);
+
+    render(await LearnerDashboard());
+
+    const metrics = screen.getByTestId('metrics');
+    expect(metrics).toHaveAttribute('data-total', '0');
+    expect(metrics).toHaveAttribute('data-completed', '0');
+    expect(metrics).toHaveAttribute('data-average', '0');
+  });
+
+  it('counts real certificates, not completed courses', async () => {
+    prismaMock.enrollment.findMany.mockResolvedValue([
+      enrollment({ id: 'enr-1', courseId: 'course-1', status: 'attested', score: 90 }),
+      enrollment({ id: 'enr-2', courseId: 'course-2', status: 'completed', score: 90 }),
+    ]);
+    mockGetWorkerCertificates.mockResolvedValue([certificate('c1')]);
+
+    render(await LearnerDashboard());
+
+    expect(screen.getByTestId('achievements')).toHaveAttribute('data-count', '1');
+    expect(screen.getByTestId('metrics')).toHaveAttribute('data-completed', '2');
   });
 });

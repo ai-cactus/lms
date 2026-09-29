@@ -88,7 +88,7 @@
 - [RBAC actor lists vs permissions](gotcha_rbac_actor_lists_vs_permissions.md): a ruling finer than a verb ships as a role-utils list, not a grant
 - [Self-service verbs pollute the matrix](gotcha_self_service_verbs_pollute_the_matrix.md): a matrix `R` cell reads as `CR`; quiz authoring is `course.edit`
 - [NOT NULL column needs its writer in the same PR](gotcha_required_column_needs_its_writer_same_pr.md): land it nullable
-- [Archive filter + rawPrisma](project_archive_filter_and_raw_prisma.md): 7 files MUST use rawPrisma; a restated `course:` key SHADOWS the predicate
+- [Archive filter + rawPrisma](project_archive_filter_and_raw_prisma.md): 9 files MUST use rawPrisma; a restated `course:` key SHADOWS the predicate
 - [Authorship is not ownership](gotcha_authorship_is_not_ownership.md): a `createdBy… === me` gate revoked HR's granted `assessment.read`
 - [$extends breaks TransactionClient](gotcha_prisma_extension_breaks_transactionclient_type.md): invalidates `Prisma.TransactionClient` types
 - [e2e specs raw-SQL-insert courses](gotcha_e2e_specs_raw_sql_insert_courses.md): 13 specs bypass Prisma, so a new NOT NULL column breaks them silently
@@ -122,6 +122,7 @@
 - [origin/dev moves under a worktree](gotcha_worktree_bash_guard_and_shared_refs.md): refs are shared; never revert a file from origin/dev
 - [User delete = asset custody transfer](gotcha_user_delete_asset_custody.md): courses/documents are REASSIGNED, never deleted
 - [Scratchpad shared across agents](gotcha_scratchpad_shared_across_agents.md): parallel worktree agents share one scratchpad; use a unique log subdir
+- [minio audit overrides break it](gotcha_minio_transitive_audit_overrides_break_it.md): stream-json/decode-uri-component fixes are ESM-only; unreachable paths
 - [Tracker items may already be fixed](gotcha_tracker_items_may_already_be_fixed.md): git log -S before fixing; no-ffmpeg fixture recipe
 - [Self-service actions take a realm](project_self_service_actions_take_a_realm.md): no referer/fallback; a client storage URI signs ANY object
 - [Attestation status writers](gotcha_attestation_status_writers.md): quiz pass stays in_progress; attestCourse has no pass check; progress route can clobber `attested`

@@ -147,9 +147,11 @@ describe('saveVideoProgress', () => {
     organizationUserId = 'ou-1',
     status = 'enrolled',
     archivedAt: Date | null = null,
+    progress = 0,
   ) => ({
     organizationUserId,
     status,
+    progress,
     course: { archivedAt },
   });
 
@@ -241,6 +243,33 @@ describe('saveVideoProgress', () => {
 
     const updateCall = mockEnrollmentUpdate.mock.calls[0][0];
     expect(updateCall.data.progress).toBe(0);
+  });
+
+  // BUG-53: the watch gate may only lift an unstarted enrolment into the
+  // reading phase's last step. Everything past that is owned by the quiz, the
+  // attestation or an admin.
+  it.each(['in_progress', 'completed', 'attested', 'locked', 'failed', 'retry_requested'])(
+    'never writes a status over "%s", even when the watch gate is met',
+    async (status) => {
+      mockAdminAuth.mockResolvedValue(makeAdminSession('ou-1'));
+      mockEnrollmentFindUnique.mockResolvedValue(makeEnrollment('ou-1', status, null, 100));
+
+      await saveVideoProgress('enr-1', 600, 100);
+
+      const updateCall = mockEnrollmentUpdate.mock.calls[0][0];
+      expect(updateCall.data).not.toHaveProperty('status');
+    },
+  );
+
+  it('never pulls progress below its high-water mark (the quiz submit stamps 100)', async () => {
+    mockAdminAuth.mockResolvedValue(makeAdminSession('ou-1'));
+    mockEnrollmentFindUnique.mockResolvedValue(makeEnrollment('ou-1', 'attested', null, 100));
+
+    await saveVideoProgress('enr-1', 30, 12);
+
+    const updateCall = mockEnrollmentUpdate.mock.calls[0][0];
+    expect(updateCall.data.progress).toBe(100);
+    expect(updateCall.data.videoPositionSeconds).toBe(30);
   });
 
   it('throws "Enrollment not found" when the enrollment belongs to another user', async () => {

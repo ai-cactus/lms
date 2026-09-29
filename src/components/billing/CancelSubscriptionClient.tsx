@@ -182,7 +182,7 @@ export default function CancelSubscriptionClient({
             disabled={!acknowledged}
             onClick={() => setCancelModal({ open: true, loading: false, error: '' })}
           >
-            Cancel
+            Cancel subscription
           </Button>
         </div>
       </div>

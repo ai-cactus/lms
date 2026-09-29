@@ -7,6 +7,13 @@ import { logger } from '@/lib/logger';
 import { guardApiSession } from '@/lib/auth-guard';
 import { hasActiveBilling } from '@/lib/billing';
 import { touchEnrollmentActivity } from '@/lib/enrollment/activity';
+import {
+  learnerQuizClosedReason,
+  QUIZ_ALREADY_COMPLETED_ERROR_CODE,
+  QUIZ_ALREADY_COMPLETED_MESSAGE,
+  QUIZ_LOCKED_ERROR_CODE,
+  QUIZ_LOCKED_MESSAGE,
+} from '@/lib/enrollment/status-guards';
 import { ARCHIVED_COURSE_ERROR_CODE, ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
 
 const startQuizSchema = z.object({
@@ -98,14 +105,24 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       );
     }
 
-    // Guard: block if enrollment is locked (attempts exhausted)
-    if (enrollment.status === 'locked') {
+    // A locked enrolment waits on an admin retake; a finished one (BUG-53) must
+    // not be reopened, or the next submit would rewrite the score behind its
+    // attestation and drop the status back to in_progress.
+    const closedReason = learnerQuizClosedReason(enrollment.status);
+    if (closedReason === 'locked') {
       return NextResponse.json(
-        {
-          error: 'QUIZ_LOCKED_MAX_ATTEMPTS',
-          message:
-            'You have used all allowed attempts for this quiz. An admin must assign a retake.',
-        },
+        { error: QUIZ_LOCKED_ERROR_CODE, message: QUIZ_LOCKED_MESSAGE },
+        { status: 403 },
+      );
+    }
+    if (closedReason === 'finished') {
+      logger.warn({
+        msg: '[quiz] Start blocked — enrollment is already finished',
+        enrollmentId,
+        status: enrollment.status,
+      });
+      return NextResponse.json(
+        { error: QUIZ_ALREADY_COMPLETED_ERROR_CODE, message: QUIZ_ALREADY_COMPLETED_MESSAGE },
         { status: 403 },
       );
     }
