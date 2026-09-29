@@ -10,6 +10,7 @@ import { Prisma } from '@/generated/prisma/client';
 import { EnrollmentStatus, UserRole } from '@/generated/prisma/enums';
 import bcrypt from 'bcryptjs';
 import { BCRYPT_COST } from '@/lib/bcrypt-config';
+import { logger } from '@/lib/logger';
 
 interface QuizOption {
   id: string;
@@ -30,7 +31,7 @@ interface EnrollmentPattern {
 }
 
 async function main() {
-  console.log('Starting improved seed with quiz data...');
+  logger.info({ msg: '[seed-courses] Starting improved seed with quiz data...' });
 
   // Legacy `admin` role was retired by the RBAC rollout; the founding/primary
   // admin of an org is now the `owner`. Seed courses under that membership.
@@ -40,24 +41,26 @@ async function main() {
   });
 
   if (!admin) {
-    console.log('No owner membership found! Please sign up via the app first.');
+    logger.info({
+      msg: '[seed-courses] No owner membership found! Please sign up via the app first.',
+    });
     return;
   }
 
-  console.log(`Seeding for admin: ${admin.user.email}`);
+  logger.info({ msg: `[seed-courses] Seeding for admin: ${admin.user.email}` });
 
   const facility = await prisma.facility.findFirst({
     where: { organizationId: admin.organizationId },
   });
 
   if (!facility) {
-    console.log(
-      "No facility found for the owner's organization! Please complete onboarding first.",
-    );
+    logger.info({
+      msg: "[seed-courses] No facility found for the owner's organization! Please complete onboarding first.",
+    });
     return;
   }
 
-  console.log('Cleaning up old seed data...');
+  logger.info({ msg: '[seed-courses] Cleaning up old seed data...' });
   await prisma.quizAttempt.deleteMany({});
   await prisma.enrollment.deleteMany({
     where: { organizationUser: { user: { email: { contains: '@company.com' } } } },
@@ -92,7 +95,7 @@ async function main() {
   const staffUsers: { id: string }[] = [];
 
   for (const s of staffData) {
-    console.log(`Creating staff: ${s.firstName} ${s.lastName}`);
+    logger.info({ msg: `[seed-courses] Creating staff: ${s.firstName} ${s.lastName}` });
     const user = await prisma.user.create({
       data: {
         email: s.email,
@@ -380,7 +383,9 @@ async function main() {
   const coursesToCreate = coursesData.filter((c) => !courseMap.has(c.title));
 
   if (coursesToCreate.length > 0) {
-    console.log(`Creating ${coursesToCreate.length} missing courses concurrently...`);
+    logger.info({
+      msg: `[seed-courses] Creating ${coursesToCreate.length} missing courses concurrently...`,
+    });
     const createdCourses = await Promise.all(
       coursesToCreate.map((c) => {
         const questions = quizQuestions[c.title] || [];
@@ -424,7 +429,7 @@ async function main() {
 
     createdCourses.forEach((c) => courseMap.set(c.title, c));
   } else {
-    console.log('All courses already exist. Skipping creation.');
+    logger.info({ msg: '[seed-courses] All courses already exist. Skipping creation.' });
   }
 
   // Reconstruct the courses array in the original order for the enrollment steps
@@ -466,7 +471,7 @@ async function main() {
     existingEnrollments.map((e) => `${e.organizationUserId}:${e.courseId}`),
   );
 
-  console.log('Creating enrollments with quiz attempts...');
+  logger.info({ msg: '[seed-courses] Creating enrollments with quiz attempts...' });
   for (const pattern of enrollmentPatterns) {
     const staff = staffUsers[pattern.staffIndex];
     for (const courseIndex of pattern.courseIndices) {
@@ -546,28 +551,28 @@ async function main() {
   });
   const quizAttemptCount = await prisma.quizAttempt.count();
 
-  console.log('\n=== Seed Summary ===');
-  console.log(`Staff Users Created: ${staffUsers.length}`);
-  console.log(`Courses: ${courses.length}`);
-  console.log(`Total Enrollments: ${totalEnrollments}`);
-  console.log(
-    `  - Completed: ${completedCount} (${Math.round((completedCount / totalEnrollments) * 100)}%)`,
-  );
-  console.log(
-    `  - In Progress: ${inProgressCount} (${Math.round((inProgressCount / totalEnrollments) * 100)}%)`,
-  );
-  console.log(
-    `  - Not Started: ${enrolledCount} (${Math.round((enrolledCount / totalEnrollments) * 100)}%)`,
-  );
-  console.log(`Quiz Attempts: ${quizAttemptCount}`);
-  console.log('====================\n');
+  logger.info({ msg: '[seed-courses] === Seed Summary ===' });
+  logger.info({ msg: `[seed-courses] Staff Users Created: ${staffUsers.length}` });
+  logger.info({ msg: `[seed-courses] Courses: ${courses.length}` });
+  logger.info({ msg: `[seed-courses] Total Enrollments: ${totalEnrollments}` });
+  logger.info({
+    msg: `[seed-courses] - Completed: ${completedCount} (${Math.round((completedCount / totalEnrollments) * 100)}%)`,
+  });
+  logger.info({
+    msg: `[seed-courses] - In Progress: ${inProgressCount} (${Math.round((inProgressCount / totalEnrollments) * 100)}%)`,
+  });
+  logger.info({
+    msg: `[seed-courses] - Not Started: ${enrolledCount} (${Math.round((enrolledCount / totalEnrollments) * 100)}%)`,
+  });
+  logger.info({ msg: `[seed-courses] Quiz Attempts: ${quizAttemptCount}` });
+  logger.info({ msg: '[seed-courses] ====================' });
 
-  console.log('Seeding complete!');
+  logger.info({ msg: '[seed-courses] Seeding complete!' });
 }
 
 main()
   .catch((e) => {
-    console.error(e);
+    logger.error({ msg: '[seed-courses] Failed', err: e });
     process.exit(1);
   })
   .finally(async () => {

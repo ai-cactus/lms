@@ -81,6 +81,7 @@ vi.mock('@/lib/logger', () => ({
 // ---------------------------------------------------------------------------
 import { POST } from './route';
 import { ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
+import { sendQuizLockedEmail } from '@/lib/email';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -431,6 +432,60 @@ describe('POST /api/quiz/[id]/submit — append-history + attempt limit', () => 
       where: { id: 'enr-1' },
       data: expect.objectContaining({ status: 'in_progress', lastActivityAt: expect.any(Date) }),
     });
+  });
+});
+
+describe('POST /api/quiz/[id]/submit — attempts-exhausted audience (Q-25)', () => {
+  const DETAILS = {
+    id: 'enr-1',
+    courseId: 'course-1',
+    organizationUser: {
+      id: 'ou-1',
+      organizationId: 'org-1',
+      user: { fullName: 'Dana Learner', email: 'dana@acme.com' },
+    },
+    course: { title: 'Safety', lessons: [] },
+  };
+
+  beforeEach(() => {
+    prismaMock.quiz.findUnique.mockResolvedValue(
+      makeQuiz({ allowedAttempts: 2, passingScore: 90, questions: makeQuestions(2) }),
+    );
+    txMock.quizAttempt.count.mockResolvedValue(1); // the final attempt
+    // The second read — the one that includes the course's lessons — loads the
+    // context for the admin notice.
+    prismaMock.enrollment.findUnique.mockImplementation(
+      async (args: { include?: { course?: { include?: unknown } } }) =>
+        args.include?.course?.include ? DETAILS : ENROLLMENT,
+    );
+    prismaMock.organizationUser.findMany.mockResolvedValue([
+      { id: 'owner-1', role: 'owner', user: { email: 'owner@acme.com' } },
+      { id: 'cd-1', role: 'clinical_director', user: { email: 'cd@acme.com' } },
+      { id: 'fin-1', role: 'finance', user: { email: 'fin@acme.com' } },
+    ]);
+  });
+
+  it('notifies and emails only the admins who can open the staff profile it links to', async () => {
+    await POST(makeReq({ enrollmentId: 'enr-1', answers: makeAnswers(2, 0) }), { params });
+
+    const [args] = prismaMock.notification.createMany.mock.calls[0];
+    expect(args.data.map((row: { organizationUserId: string }) => row.organizationUserId)).toEqual([
+      'owner-1',
+    ]);
+    expect(args.data[0].linkUrl).toBe('/dashboard/staff/ou-1');
+    await vi.waitFor(() => expect(sendQuizLockedEmail).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(sendQuizLockedEmail).mock.calls[0][0]).toBe('owner@acme.com');
+  });
+
+  it('writes nothing, and warns, when no admin can open the staff profile', async () => {
+    prismaMock.organizationUser.findMany.mockResolvedValue([
+      { id: 'fin-1', role: 'finance', user: { email: 'fin@acme.com' } },
+    ]);
+
+    await POST(makeReq({ enrollmentId: 'enr-1', answers: makeAnswers(2, 0) }), { params });
+
+    expect(prismaMock.notification.createMany).not.toHaveBeenCalled();
+    expect(sendQuizLockedEmail).not.toHaveBeenCalled();
   });
 });
 

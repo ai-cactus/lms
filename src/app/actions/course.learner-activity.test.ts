@@ -52,7 +52,8 @@ describe('attestCourse — learner activity', () => {
 
     await attestCourse('enr-1', 'Ada Lovelace', '');
 
-    const { data } = prismaMock.enrollment.update.mock.calls[0][0];
+    // Conditional write (RISK-10): `updateMany` so a replay cannot re-stamp.
+    const { data } = prismaMock.enrollment.updateMany.mock.calls[0][0];
     expect(data.status).toBe('attested');
     expect(data.attestedAt).toBeInstanceOf(Date);
     expect(data.lastActivityAt).toBe(data.attestedAt);

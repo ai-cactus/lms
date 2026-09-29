@@ -84,12 +84,11 @@ describe('getCourses — org-scoping sourced from the session', () => {
 
     await getCourses();
 
+    // The adoption lookup (`listAdoptedCourseIds`) is where tenancy is decided
+    // for adopted courses: it returns ids only, which the archive-filtered
+    // top-level Course read then resolves.
     expect(mockOrgCourseOfferingFindMany).toHaveBeenCalledExactlyOnceWith(
-      // The archive predicate rides along because the query extension cannot
-      // reach a nested traversal; the tenancy half is still asserted exactly.
-      expect.objectContaining({
-        where: { organizationId: 'org-A', course: { archivedAt: null } },
-      }),
+      expect.objectContaining({ where: { organizationId: 'org-A' } }),
     );
   });
 
@@ -102,11 +101,7 @@ describe('getCourses — org-scoping sourced from the session', () => {
     await getCourses();
 
     expect(mockOrgCourseOfferingFindMany).toHaveBeenCalledExactlyOnceWith(
-      // The archive predicate rides along because the query extension cannot
-      // reach a nested traversal; the tenancy half is still asserted exactly.
-      expect.objectContaining({
-        where: { organizationId: 'org-B', course: { archivedAt: null } },
-      }),
+      expect.objectContaining({ where: { organizationId: 'org-B' } }),
     );
   });
 

@@ -71,6 +71,10 @@ model Course {
   rawJudgeJson                Json?                    @map("raw_judge_json")
   rawSlidesJson               Json?                    @map("raw_slides_json")
   approvedByOrgUserId         String?                  @map("approved_by_org_user_id")
+  /// The approver's name, snapshotted whenever `approvedByOrgUserId` is written
+  /// (BUG-25). The FK is SetNull, so once that member is deleted this is the only
+  /// record of who signed the course off.
+  approvedByName              String?                  @map("approved_by_name")
   approvedAt                  DateTime?                @map("approved_at")
   type                        CourseType               @default(text)
   isGlobal                    Boolean                  @default(false) @map("is_global")
@@ -89,6 +93,9 @@ model Course {
   /// means live; non-null hides it from every list, with recovery via ops only.
   archivedAt                  DateTime?                @map("archived_at")
   archivedByOrgUserId         String?                  @map("archived_by_org_user_id")
+  /// The archiver's name, snapshotted with `archivedByOrgUserId` — see
+  /// `approvedByName`.
+  archivedByName              String?                  @map("archived_by_name")
   courseCategory              CourseCategory?          @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   approvedBy                  OrganizationUser?        @relation("CourseApprover", fields: [approvedByOrgUserId], references: [id], onDelete: SetNull)
   /// ⚠️ `onDelete: Restrict` blocks hard-deleting an OrganizationUser that

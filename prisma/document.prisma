@@ -20,6 +20,10 @@ model Document {
   /// means live; non-null hides it from every list, with recovery via ops only.
   archivedAt          DateTime?         @map("archived_at")
   archivedByOrgUserId String?           @map("archived_by_org_user_id")
+  /// The archiver's name, snapshotted with `archivedByOrgUserId` (BUG-25). The
+  /// FK is SetNull, so once that member is deleted this is the only record of
+  /// who archived the document.
+  archivedByName      String?           @map("archived_by_name")
   createdAt           DateTime          @default(now()) @map("created_at")
   updatedAt           DateTime          @updatedAt @map("updated_at")
   /// ⚠️ `onDelete: Cascade` destroys this document — and every version of it —

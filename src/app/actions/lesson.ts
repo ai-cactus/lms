@@ -10,6 +10,7 @@ import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
 import type { Role } from '@/types/next-auth';
 import { assertNoPhi } from '@/lib/documents/phiGate';
 import { interactiveBudget } from '@/lib/ai-client';
+import { isCourseEditableByOrganization } from '@/lib/course/edit-access';
 
 /**
  * F-034: every mutator in this file previously checked only that SOME session
@@ -23,6 +24,10 @@ import { interactiveBudget } from '@/lib/ai-client';
  * them.
  *
  * Throws rather than returning an error object, matching this file's style.
+ *
+ * The ownership half is ORGANISATION ownership (BUG-11,
+ * `isCourseEditableByOrganization`), so a colleague holding the verb may edit a
+ * course they did not author.
  */
 function assertCanEditCourseContent(
   session: { user: { id: string; role: Role } },
@@ -68,7 +73,7 @@ export async function createLesson(data: {
     where: { id: data.courseId },
     include: { lessons: { select: { order: true } } },
   });
-  if (!course || course.createdByOrgUserId !== session.user.organizationUserId) {
+  if (!course || !isCourseEditableByOrganization(course, session.user.organizationId)) {
     throw new Error('Course not found');
   }
 
@@ -118,7 +123,7 @@ export async function updateLesson(
     where: { id: lessonId },
     include: { course: true },
   });
-  if (!existing || existing.course.createdByOrgUserId !== session.user.organizationUserId) {
+  if (!existing || !isCourseEditableByOrganization(existing.course, session.user.organizationId)) {
     throw new Error('Lesson not found');
   }
 
@@ -143,7 +148,7 @@ export async function deleteLesson(lessonId: string) {
     where: { id: lessonId },
     include: { course: true },
   });
-  if (!existing || existing.course.createdByOrgUserId !== session.user.organizationUserId) {
+  if (!existing || !isCourseEditableByOrganization(existing.course, session.user.organizationId)) {
     throw new Error('Lesson not found');
   }
 
@@ -178,7 +183,7 @@ export async function reorderLessons(
   assertCanEditCourseContent(session, 'reorderLessons', { courseId });
 
   const course = await prisma.course.findUnique({ where: { id: courseId } });
-  if (!course || course.createdByOrgUserId !== session.user.organizationUserId) {
+  if (!course || !isCourseEditableByOrganization(course, session.user.organizationId)) {
     throw new Error('Course not found');
   }
 
@@ -233,7 +238,7 @@ export async function createLessonWithQuiz(data: {
     where: { id: data.courseId },
     include: { lessons: { select: { order: true } } },
   });
-  if (!course || course.createdByOrgUserId !== session.user.organizationUserId) {
+  if (!course || !isCourseEditableByOrganization(course, session.user.organizationId)) {
     throw new Error('Course not found');
   }
 

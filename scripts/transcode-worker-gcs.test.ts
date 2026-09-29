@@ -188,13 +188,12 @@ describe('getGcs() credential-decode algorithm [Bug 2 regression — replicated 
   });
 
   // ── Secret hygiene assertion ─────────────────────────────────────────────────
-  // The worker's log() helper writes to stdout via console.log. This test verifies
-  // that the raw key value never leaks into a log call — the worker logs only a
-  // non-sensitive message string. We spy on console.log here since the worker uses
-  // it directly (unlike the app, which uses the structured logger).
+  // The worker's log() helper writes JSON lines to process.stdout. NOTE: the
+  // replicated algorithm above omits the worker's log calls, so this spy can only
+  // catch a leak introduced into replicatedGetGcs itself, not one in the worker.
 
-  it('does not leak the raw malformed key into any console output', () => {
-    const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
+  it('does not leak the raw malformed key into any stdout output', () => {
+    const spy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     const MALFORMED = '!!!SENSITIVE-KEY-VALUE-MUST-NOT-APPEAR-IN-LOG!!!';
 
     try {

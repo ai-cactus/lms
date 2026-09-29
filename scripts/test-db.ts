@@ -1,13 +1,14 @@
 import { prisma } from '@/db/index';
+import { logger } from '@/lib/logger';
 
 async function main() {
   try {
     await prisma.$connect();
-    console.log('Successfully connected to the database!');
+    logger.info({ msg: '[test-db] Successfully connected to the database!' });
     const users = await prisma.user.findMany();
-    console.log(`Found ${users.length} users.`);
+    logger.info({ msg: `[test-db] Found ${users.length} users.` });
   } catch (error) {
-    console.error('Failed to connect to the database:', error);
+    logger.error({ msg: '[test-db] Failed to connect to the database', err: error });
   } finally {
     await prisma.$disconnect();
   }

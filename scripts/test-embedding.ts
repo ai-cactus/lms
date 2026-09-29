@@ -10,6 +10,7 @@ import {
   resolveVertexEmbeddingLocation,
   VERTEX_EMBEDDING_MODEL,
 } from '@/lib/ai/vertex-config';
+import { logger } from '@/lib/logger';
 
 interface EmbeddingResponse {
   predictions?: Array<{ embeddings?: { values?: number[] } }>;
@@ -19,15 +20,17 @@ const auth = new GoogleAuth({ scopes: 'https://www.googleapis.com/auth/cloud-pla
 
 const projectId = process.env.GOOGLE_PROJECT_ID;
 if (!projectId) {
-  console.error(
-    'GOOGLE_PROJECT_ID is not set — refusing to call Vertex AI (no production fallback).',
-  );
+  logger.error({
+    msg: '[test-embedding] GOOGLE_PROJECT_ID is not set — refusing to call Vertex AI (no production fallback).',
+  });
   process.exit(1);
 }
 const location = resolveVertexEmbeddingLocation();
 const model = VERTEX_EMBEDDING_MODEL;
 
-console.log(`\nProject: ${projectId} | Location: ${location} | Model: ${model}`);
+logger.info({
+  msg: `[test-embedding] Project: ${projectId} | Location: ${location} | Model: ${model}`,
+});
 
 const text = 'This is a test sentence for embedding generation.';
 const url = buildVertexModelUrl({ projectId, location, model, method: 'predict' });
@@ -38,9 +41,9 @@ const body = JSON.stringify({
 
 try {
   const token = await auth.getAccessToken();
-  console.log(`Token: ✓ (${token?.slice(0, 12)}...)`);
+  logger.info({ msg: `[test-embedding] Token: ✓ (${token?.slice(0, 12)}...)` });
 
-  console.log(`\nPOST ${url}`);
+  logger.info({ msg: `[test-embedding] POST ${url}` });
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -49,13 +52,14 @@ try {
 
   const json = (await res.json()) as EmbeddingResponse;
   if (!res.ok) {
-    console.error(`\n✗ HTTP ${res.status}:`, JSON.stringify(json, null, 2));
+    logger.error({
+      msg: `[test-embedding] ✗ HTTP ${res.status}`,
+      response: json,
+    });
   } else {
     const values = json.predictions?.[0]?.embeddings?.values;
-    console.log(`\n✓ Embedding OK — ${values?.length ?? 0} dimensions`);
+    logger.info({ msg: `[test-embedding] ✓ Embedding OK — ${values?.length ?? 0} dimensions` });
   }
 } catch (err) {
-  const e = err instanceof Error ? err : new Error(String(err));
-  console.error(`\n✗ ${e.name}: ${e.message}`);
-  console.error(e.stack);
+  logger.error({ msg: '[test-embedding] ✗ Embedding call failed', err });
 }

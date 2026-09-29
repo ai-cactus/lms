@@ -45,7 +45,10 @@ export default function AttestationModal({
 
     try {
       const attested = await attestCourse(enrollmentId, signature, '');
-      if (!attested.success) {
+      // An earlier attestation stands (RISK-10 refuses to re-stamp it), so carry
+      // on to the certificate rather than stranding a learner whose first
+      // attempt was signed but never reached issuance.
+      if (!attested.success && !attested.alreadyAttested) {
         setError(attested.refusedReason ?? 'Failed to attest. Please try again.');
         return;
       }

@@ -5,6 +5,7 @@
  *   npx tsx scripts/test-vector-upsert.ts
  */
 import { prisma } from '@/db/index';
+import { logger } from '@/lib/logger';
 
 function errInfo(e: unknown): { name: string; message: string; code?: string; meta?: unknown } {
   if (e instanceof Error) {
@@ -17,8 +18,10 @@ function errInfo(e: unknown): { name: string; message: string; code?: string; me
 const fakeEmbedding = Array.from({ length: 768 }, (_, i) => Math.sin(i * 0.1).toFixed(6));
 const embeddingString = `[${fakeEmbedding.join(',')}]`;
 
-console.log(`\nEmbedding string length: ${embeddingString.length} chars`);
-console.log(`First 60 chars: ${embeddingString.slice(0, 60)}...`);
+logger.info({
+  msg: `[test-vector-upsert] Embedding string length: ${embeddingString.length} chars`,
+});
+logger.info({ msg: `[test-vector-upsert] First 60 chars: ${embeddingString.slice(0, 60)}...` });
 
 async function run() {
   const manual = await prisma.standardManual.findFirst({
@@ -26,12 +29,12 @@ async function run() {
     orderBy: { createdAt: 'desc' },
   });
   if (!manual) {
-    console.error('\n✗ No active manual in DB');
+    logger.error({ msg: '[test-vector-upsert] ✗ No active manual in DB' });
     return;
   }
-  console.log(`\nUsing manual: ${manual.filename} (${manual.id})`);
+  logger.info({ msg: `[test-vector-upsert] Using manual: ${manual.filename} (${manual.id})` });
 
-  console.log('\n─── Step 1: Create ManualChunk record...');
+  logger.info({ msg: '[test-vector-upsert] ─── Step 1: Create ManualChunk record...' });
   let chunk;
   try {
     chunk = await prisma.manualChunk.create({
@@ -42,81 +45,96 @@ async function run() {
         content: 'TEST CHUNK — safe to delete',
       },
     });
-    console.log(`✓ Created chunk: ${chunk.id}`);
+    logger.info({ msg: `[test-vector-upsert] ✓ Created chunk: ${chunk.id}` });
   } catch (err) {
     const info = errInfo(err);
-    console.error('✗ manualChunk.create FAILED:', info.message);
-    console.error('  code:', info.code);
+    logger.error({
+      msg: '[test-vector-upsert] ✗ manualChunk.create FAILED',
+      errMessage: info.message,
+      code: info.code,
+    });
     return;
   }
 
-  console.log('\n─── Step 2A: $executeRaw tagged template...');
+  logger.info({ msg: '[test-vector-upsert] ─── Step 2A: $executeRaw tagged template...' });
   try {
     const result = await prisma.$executeRaw`
       UPDATE "ManualChunk"
       SET embedding = ${embeddingString}::vector
       WHERE id = ${chunk.id}
     `;
-    console.log(`✓ Tagged template OK — rows affected: ${result}`);
+    logger.info({ msg: `[test-vector-upsert] ✓ Tagged template OK — rows affected: ${result}` });
   } catch (err) {
     const info = errInfo(err);
-    console.error('✗ Tagged template FAILED:');
-    console.error('  name   :', info.name);
-    console.error('  message:', info.message);
-    console.error('  code   :', info.code);
-    console.error('  meta   :', JSON.stringify(info.meta));
+    logger.error({
+      msg: '[test-vector-upsert] ✗ Tagged template FAILED',
+      errName: info.name,
+      errMessage: info.message,
+      code: info.code,
+      meta: info.meta,
+    });
 
-    console.log('\n─── Step 2B: $executeRawUnsafe...');
+    logger.info({ msg: '[test-vector-upsert] ─── Step 2B: $executeRawUnsafe...' });
     try {
       const result2 = await prisma.$executeRawUnsafe(
         `UPDATE "ManualChunk" SET embedding = '${embeddingString}'::vector WHERE id = $1`,
         chunk.id,
       );
-      console.log(`✓ $executeRawUnsafe OK — rows affected: ${result2}`);
+      logger.info({
+        msg: `[test-vector-upsert] ✓ $executeRawUnsafe OK — rows affected: ${result2}`,
+      });
     } catch (err2) {
       const info2 = errInfo(err2);
-      console.error('✗ $executeRawUnsafe FAILED:');
-      console.error('  name   :', info2.name);
-      console.error('  message:', info2.message);
-      console.error('  code   :', info2.code);
+      logger.error({
+        msg: '[test-vector-upsert] ✗ $executeRawUnsafe FAILED',
+        errName: info2.name,
+        errMessage: info2.message,
+        code: info2.code,
+      });
     }
   }
 
-  console.log('\n─── Step 3: Verify embedding stored...');
+  logger.info({ msg: '[test-vector-upsert] ─── Step 3: Verify embedding stored...' });
   try {
     const rows = await prisma.$queryRaw`
       SELECT id, (embedding IS NOT NULL) as has_embedding,
              array_length(embedding::text::varchar[], 1) as dims
       FROM "ManualChunk" WHERE id = ${chunk.id}
     `;
-    console.log('Query result:', JSON.stringify(rows));
+    logger.info({ msg: '[test-vector-upsert] Query result', rows });
   } catch {
     try {
       const rows2 = await prisma.$queryRawUnsafe(
         `SELECT id, (embedding IS NOT NULL) as has_embedding FROM "ManualChunk" WHERE id = $1`,
         chunk.id,
       );
-      console.log('Check result:', JSON.stringify(rows2));
+      logger.info({ msg: '[test-vector-upsert] Check result', rows: rows2 });
     } catch (e2) {
-      console.error('✗ Verify query failed:', errInfo(e2).message);
+      logger.error({
+        msg: '[test-vector-upsert] ✗ Verify query failed',
+        errMessage: errInfo(e2).message,
+      });
     }
   }
 
-  console.log('\n─── Step 4: Cleaning up test chunk...');
+  logger.info({ msg: '[test-vector-upsert] ─── Step 4: Cleaning up test chunk...' });
   try {
     await prisma.manualChunk.delete({ where: { id: chunk.id } });
-    console.log('✓ Cleaned up');
+    logger.info({ msg: '[test-vector-upsert] ✓ Cleaned up' });
   } catch (err) {
-    console.warn('⚠ Cleanup failed (not critical):', errInfo(err).message);
+    logger.warn({
+      msg: '[test-vector-upsert] ⚠ Cleanup failed (not critical)',
+      errMessage: errInfo(err).message,
+    });
   }
 
   await prisma.$disconnect();
-  console.log('\n─── Vector upsert test complete ─────────────────────\n');
+  logger.info({
+    msg: '[test-vector-upsert] ─── Vector upsert test complete ─────────────────────',
+  });
 }
 
 run().catch((err) => {
-  const info = errInfo(err);
-  console.error('\nFatal:', info.name, info.message);
-  if (err instanceof Error) console.error(err.stack);
+  logger.error({ msg: '[test-vector-upsert] Fatal', err, code: errInfo(err).code });
   process.exit(1);
 });

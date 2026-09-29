@@ -125,9 +125,9 @@ To verify MinIO is running locally:
 
 ```bash
 # MinIO S3-compatible health endpoint
-curl http://localhost:9000/minio/health/live
+curl http://localhost:9005/minio/health/live
 
 # Browser console (dev only)
-open http://localhost:9001
+open http://localhost:9006
 # Login: lms_minio_dev / lms_minio_secret_dev
 ```

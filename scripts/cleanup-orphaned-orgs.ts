@@ -29,11 +29,14 @@
  * through console like the other container-run scripts (sync-auditor-access).
  */
 import { prisma } from '@/db/index';
+import { logger } from '@/lib/logger';
 
 const DRY_RUN = process.argv.includes('--dry-run');
 
 async function main() {
-  console.log(`Scanning for organizations with no members...${DRY_RUN ? ' [DRY RUN]' : ''}`);
+  logger.info({
+    msg: `[cleanup-orphaned-orgs] Scanning for organizations with no members...${DRY_RUN ? ' [DRY RUN]' : ''}`,
+  });
 
   // "Orphaned" means NO membership row at all — not merely no ACTIVE one. An org
   // whose members were all deactivated still has an owner who can be restored,
@@ -50,17 +53,19 @@ async function main() {
   });
 
   for (const org of orphans) {
-    console.log(
-      `  - ${org.id}  "${org.name}"  facilities=${org._count.facilities}  created=${org.createdAt.toISOString()}`,
-    );
+    logger.info({
+      msg: `[cleanup-orphaned-orgs] - ${org.id}  "${org.name}"  facilities=${org._count.facilities}  created=${org.createdAt.toISOString()}`,
+    });
   }
 
-  console.log(`Orphaned organizations found: ${orphans.length}`);
+  logger.info({ msg: `[cleanup-orphaned-orgs] Orphaned organizations found: ${orphans.length}` });
 
   if (orphans.length === 0) return;
 
   if (DRY_RUN) {
-    console.log('Dry run — nothing deleted. Re-run without --dry-run to delete.');
+    logger.info({
+      msg: '[cleanup-orphaned-orgs] Dry run — nothing deleted. Re-run without --dry-run to delete.',
+    });
     return;
   }
 
@@ -68,12 +73,12 @@ async function main() {
     where: { id: { in: orphans.map((org) => org.id) } },
   });
 
-  console.log(`Orphaned organizations deleted: ${deleted.count}`);
+  logger.info({ msg: `[cleanup-orphaned-orgs] Orphaned organizations deleted: ${deleted.count}` });
 }
 
 main()
   .catch((e) => {
-    console.error('Cleanup failed:', e);
+    logger.error({ msg: '[cleanup-orphaned-orgs] Cleanup failed', err: e });
     process.exitCode = 1;
   })
   .finally(async () => {

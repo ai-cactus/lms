@@ -1,11 +1,12 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Check, ListFilter, Settings2, Trash2 } from 'lucide-react';
 import EmptyTableState from '@/components/ui/EmptyTableState';
 import { Switch } from '@/components/ui/switch';
+import { Alert } from '@/components/ui/alert';
 import { getNotificationPreferences, setNotificationPreference } from '@/app/actions/notifications';
 import NotificationItem from '@/components/notifications/NotificationItem';
 import { useNotifications } from '@/components/notifications/useNotifications';
@@ -19,6 +20,8 @@ interface NotificationsViewProps {
   backHref: string;
   audience: NotificationAudience;
 }
+
+const PREF_SAVE_FAILED = "Couldn't save that preference. Please try again.";
 
 /** Full-page notifications list: filtering, pagination, delete, and preferences. */
 export default function NotificationsView({ backHref, audience }: NotificationsViewProps) {
@@ -41,6 +44,10 @@ export default function NotificationsView({ backHref, audience }: NotificationsV
   const [showFilters, setShowFilters] = useState(true);
   const [showPrefs, setShowPrefs] = useState(false);
   const [prefs, setPrefs] = useState<Record<string, boolean>>({});
+  const [prefError, setPrefError] = useState<string | null>(null);
+  // Latest request per preference: a slow refusal must not undo, or report an
+  // error over, a newer toggle of the same switch that has already been sent.
+  const latestPrefRequest = useRef<Record<string, number>>({});
 
   useEffect(() => {
     getNotificationPreferences().then((res) => {
@@ -54,10 +61,27 @@ export default function NotificationsView({ backHref, audience }: NotificationsV
     if (href) router.push(href);
   };
 
-  const togglePref = (type: string) => {
-    const next = !(prefs[type] ?? true);
-    setPrefs((prev) => ({ ...prev, [type]: next }));
-    setNotificationPreference(type, next);
+  const togglePref = async (type: string) => {
+    const previous = prefs[type] ?? true;
+    const next = !previous;
+    const requestId = (latestPrefRequest.current[type] ?? 0) + 1;
+    latestPrefRequest.current[type] = requestId;
+    setPrefError(null);
+    setPrefs((current) => ({ ...current, [type]: next }));
+
+    let refusal: string | null = null;
+    try {
+      const result = await setNotificationPreference(type, next);
+      if (!result.success) refusal = result.error ?? PREF_SAVE_FAILED;
+    } catch {
+      refusal = PREF_SAVE_FAILED;
+    }
+    if (refusal === null) return;
+    if (latestPrefRequest.current[type] !== requestId) return;
+
+    // The flip was optimistic; put the switch back so it shows what is stored.
+    setPrefs((current) => ({ ...current, [type]: previous }));
+    setPrefError(refusal);
   };
 
   const handleClearAll = () => {
@@ -119,6 +143,7 @@ export default function NotificationsView({ backHref, audience }: NotificationsV
       {showPrefs && (
         <div className="flex flex-col gap-3 rounded-2xl border border-border bg-background-secondary p-5">
           <h2 className="m-0 text-sm font-semibold text-foreground">Notify me about</h2>
+          {prefError && <Alert variant="error">{prefError}</Alert>}
           <div className="flex flex-col divide-y divide-border">
             {types.map((t) => {
               const enabled = prefs[t.key] ?? true;

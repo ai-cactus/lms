@@ -54,6 +54,7 @@ import {
   updateQuizQuestions,
   updateLessonContent,
   updateLessonSlideContent,
+  updateCourse,
 } from './course';
 
 const ORG = 'org-1';
@@ -72,7 +73,8 @@ function session(role: string) {
 const colleaguesCourse = {
   id: 'course-1',
   createdByOrgUserId: COLLEAGUE_OU,
-  creator: { organizationId: ORG },
+  organizationId: ORG,
+  isGlobal: false,
   lessons: [{ id: 'lesson-1', quiz: { id: 'quiz-1' } }],
 };
 
@@ -98,7 +100,7 @@ beforeEach(() => {
     id: 'lesson-1',
     courseId: 'course-1',
     title: 'Lesson 1',
-    course: { id: 'course-1', creator: { organizationId: ORG } },
+    course: { id: 'course-1', organizationId: ORG, isGlobal: false },
   });
   prismaMock.lesson.update.mockResolvedValue({ id: 'lesson-1' });
   prismaMock.$transaction.mockImplementation(async (arg: unknown) =>
@@ -122,30 +124,143 @@ describe('createFullCourse — requires course.create', () => {
   });
 });
 
+/**
+ * `updateQuizQuestions` RETURNS its refusals (production redacts a thrown
+ * Server Action message to React #441), so `resolves` is load-bearing here.
+ */
 describe('updateQuizQuestions — requires course.edit', () => {
   it.each(DENIED_ROLES)('%s is denied before the database is touched', async (role) => {
     mockAdminAuth.mockResolvedValue(session(role));
 
-    await expect(updateQuizQuestions('course-1', [])).rejects.toThrow('Insufficient permissions');
+    await expect(updateQuizQuestions('course-1', [])).resolves.toEqual({
+      success: false,
+      error: 'Your role does not have permission to edit course content.',
+    });
 
     expect(prismaMock.course.findUnique).not.toHaveBeenCalled();
     expect(prismaMock.question.deleteMany).not.toHaveBeenCalled();
   });
 
-  it('COU-004: a colleague’s course in the caller’s own org is editable', async () => {
-    await expect(updateQuizQuestions('course-1', [])).resolves.toMatchObject({ success: true });
+  it('an unauthenticated caller is told so rather than throwing', async () => {
+    mockAdminAuth.mockResolvedValue(null);
+
+    const result = await updateQuizQuestions('course-1', []);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBeTruthy();
+    expect(prismaMock.course.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('BUG-11: a colleague’s course in the caller’s own org is editable', async () => {
+    await expect(updateQuizQuestions('course-1', [])).resolves.toEqual({ success: true });
   });
 
   it('a course owned by another organisation is refused', async () => {
     prismaMock.course.findUnique.mockResolvedValue({
       ...colleaguesCourse,
-      creator: { organizationId: OTHER_ORG },
+      organizationId: OTHER_ORG,
     });
 
-    await expect(updateQuizQuestions('course-1', [])).rejects.toThrow(
-      'Unauthorized or Course not found',
-    );
+    await expect(updateQuizQuestions('course-1', [])).resolves.toEqual({
+      success: false,
+      error: 'Course not found.',
+    });
     expect(prismaMock.question.deleteMany).not.toHaveBeenCalled();
+  });
+
+  // Authorship buys nothing: the caller wrote this course, but another
+  // organisation owns it now.
+  it('a course the caller authored but another organisation owns is refused', async () => {
+    prismaMock.course.findUnique.mockResolvedValue({
+      ...colleaguesCourse,
+      createdByOrgUserId: CALLER_OU,
+      organizationId: OTHER_ORG,
+    });
+
+    const result = await updateQuizQuestions('course-1', []);
+
+    expect(result.success).toBe(false);
+    expect(prismaMock.question.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('a global catalogue course is refused even in the organisation that owns it', async () => {
+    prismaMock.course.findUnique.mockResolvedValue({ ...colleaguesCourse, isGlobal: true });
+
+    const result = await updateQuizQuestions('course-1', []);
+
+    expect(result).toEqual({ success: false, error: 'Course not found.' });
+    expect(prismaMock.question.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('a course with no quiz is refused by return, not thrown', async () => {
+    prismaMock.course.findUnique.mockResolvedValue({
+      ...colleaguesCourse,
+      lessons: [{ id: 'lesson-1', quiz: null }],
+    });
+
+    const result = await updateQuizQuestions('course-1', []);
+
+    expect(result.success).toBe(false);
+    expect(prismaMock.question.deleteMany).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * BUG-30: an `answer` index outside `options` made `findIndex` return -1 and
+ * `correctAnswer` undefined, which Prisma rejected INSIDE the transaction that
+ * had already begun replacing the question set. The index is now validated up
+ * front and refused before anything is read or written.
+ */
+describe('updateQuizQuestions — BUG-30 correct-answer index validation', () => {
+  const question = (answer: number, options = ['A', 'B', 'C', 'D']) => ({
+    question: 'Q?',
+    options,
+    answer,
+  });
+
+  it.each([
+    ['past the last option', 4],
+    ['negative', -1],
+    ['fractional', 1.5],
+    ['NaN', Number.NaN],
+  ])('an answer index that is %s is refused before any database access', async (_label, answer) => {
+    const result = await updateQuizQuestions('course-1', [question(0), question(answer)]);
+
+    expect(result).toEqual({
+      success: false,
+      error:
+        'Question 2 has no valid correct answer. Mark one of its options as correct and save again.',
+    });
+    expect(prismaMock.course.findUnique).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(prismaMock.question.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('a question with no options is refused', async () => {
+    const result = await updateQuizQuestions('course-1', [question(0, [])]);
+
+    expect(result.success).toBe(false);
+    expect(prismaMock.question.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('a non-array payload is refused rather than throwing', async () => {
+    const result = await updateQuizQuestions(
+      'course-1',
+      'not-an-array' as unknown as Parameters<typeof updateQuizQuestions>[1],
+    );
+
+    expect(result.success).toBe(false);
+    expect(prismaMock.question.deleteMany).not.toHaveBeenCalled();
+  });
+
+  // Positive control: every in-range index saves, and the stored correct
+  // answer is the TEXT of the option the author marked, whatever the shuffle.
+  it.each([0, 3])('an in-range index (%i) saves the marked option as correct', async (answer) => {
+    const result = await updateQuizQuestions('course-1', [question(answer)]);
+
+    expect(result).toEqual({ success: true });
+    const rows = prismaMock.question.createMany.mock.calls[0][0].data;
+    expect(rows[0].correctAnswer).toBe(['A', 'B', 'C', 'D'][answer]);
   });
 });
 
@@ -194,7 +309,7 @@ describe('updateLessonContent — requires course.edit', () => {
       id: 'lesson-1',
       courseId: 'course-1',
       title: 'Lesson 1',
-      course: { id: 'course-1', creator: { organizationId: OTHER_ORG } },
+      course: { id: 'course-1', organizationId: OTHER_ORG, isGlobal: false },
     });
 
     await expect(updateLessonContent('lesson-1', 'new content')).resolves.toEqual({
@@ -213,7 +328,7 @@ describe('updateLessonContent — requires course.edit', () => {
       id: 'lesson-1',
       courseId: 'course-1',
       title: 'Lesson 1',
-      course: { id: 'course-1', isGlobal: true, creator: { organizationId: OTHER_ORG } },
+      course: { id: 'course-1', organizationId: OTHER_ORG, isGlobal: true },
     });
 
     const result = await updateLessonContent('lesson-1', 'new content');
@@ -345,7 +460,7 @@ describe('updateLessonSlideContent — requires course.edit', () => {
       id: 'lesson-1',
       courseId: 'course-1',
       title: 'Lesson 1',
-      course: { id: 'course-1', creator: { organizationId: OTHER_ORG } },
+      course: { id: 'course-1', organizationId: OTHER_ORG, isGlobal: false },
     });
 
     await expect(updateLessonSlideContent('lesson-1', SLIDES)).resolves.toEqual({
@@ -391,5 +506,82 @@ describe('updateLessonSlideContent — requires course.edit', () => {
     await expect(updateLessonSlideContent('lesson-1', SLIDES)).rejects.toThrow(
       'vertex unreachable',
     );
+  });
+});
+
+/**
+ * BUG-11: `updateCourse` required AUTHORSHIP, so a colleague who could assign,
+ * withdraw and archive a course could not rename it. It is now authorised by
+ * `course.edit` plus ownership by the caller's organisation, excluding the
+ * global catalogue — and, like the content writers above, it RETURNS refusals.
+ */
+describe('updateCourse — course.edit + organisation ownership', () => {
+  beforeEach(() => {
+    prismaMock.course.update.mockResolvedValue({ id: 'course-1' });
+  });
+
+  it.each(['owner', 'hr'])('%s renames a colleague’s course in their own org', async (role) => {
+    mockAdminAuth.mockResolvedValue(session(role));
+
+    await expect(updateCourse('course-1', { title: 'Renamed' })).resolves.toEqual({
+      success: true,
+    });
+    expect(prismaMock.course.update).toHaveBeenCalledWith({
+      where: { id: 'course-1' },
+      data: { title: 'Renamed' },
+    });
+  });
+
+  it.each(DENIED_ROLES)('%s is refused before the database is touched', async (role) => {
+    mockAdminAuth.mockResolvedValue(session(role));
+
+    await expect(updateCourse('course-1', { title: 'Renamed' })).resolves.toEqual({
+      success: false,
+      error: 'Your role does not have permission to edit courses.',
+    });
+    expect(prismaMock.course.findUnique).not.toHaveBeenCalled();
+    expect(prismaMock.course.update).not.toHaveBeenCalled();
+  });
+
+  it('a course owned by another organisation is refused, even one the caller authored', async () => {
+    prismaMock.course.findUnique.mockResolvedValue({
+      ...colleaguesCourse,
+      createdByOrgUserId: CALLER_OU,
+      organizationId: OTHER_ORG,
+    });
+
+    await expect(updateCourse('course-1', { title: 'Renamed' })).resolves.toEqual({
+      success: false,
+      error: 'Course not found.',
+    });
+    expect(prismaMock.course.update).not.toHaveBeenCalled();
+  });
+
+  it('a global catalogue course is refused', async () => {
+    prismaMock.course.findUnique.mockResolvedValue({ ...colleaguesCourse, isGlobal: true });
+
+    await expect(updateCourse('course-1', { title: 'Renamed' })).resolves.toEqual({
+      success: false,
+      error: 'Course not found.',
+    });
+    expect(prismaMock.course.update).not.toHaveBeenCalled();
+  });
+
+  it('a missing course is refused in exactly the same words as a foreign one', async () => {
+    prismaMock.course.findUnique.mockResolvedValue(null);
+
+    await expect(updateCourse('missing', { title: 'Renamed' })).resolves.toEqual({
+      success: false,
+      error: 'Course not found.',
+    });
+  });
+
+  it('an unauthenticated caller is told so rather than throwing', async () => {
+    mockAdminAuth.mockResolvedValue(null);
+
+    const result = await updateCourse('course-1', { title: 'Renamed' });
+
+    expect(result.success).toBe(false);
+    expect(prismaMock.course.findUnique).not.toHaveBeenCalled();
   });
 });

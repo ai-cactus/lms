@@ -95,7 +95,7 @@ async function runWorker(targetType: 'lesson' | 'course-preview', targetId: stri
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.spyOn(console, 'log').mockImplementation(() => {});
+  vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
   probedDuration = '120';
   posterFfmpegError = null;
 

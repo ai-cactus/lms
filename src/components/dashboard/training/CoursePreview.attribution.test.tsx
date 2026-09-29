@@ -79,6 +79,30 @@ describe('CoursePreview — attribution line (D10)', () => {
     expect(screen.queryByText(/Created by/)).not.toBeInTheDocument();
   });
 
+  // BUG-25: `approvedBy` is SetNull, so a deleted approver leaves only the
+  // name snapshot — still an approval, never re-labelled as the creator.
+  it('shows "Approved by: {snapshot} (removed user)" when the approver was deleted', () => {
+    render(
+      <CoursePreview course={baseCourse({ approvedBy: null, approvedByName: 'Rita Reviewer' })} />,
+    );
+
+    expect(screen.getByText('Approved by: Rita Reviewer (removed user)')).toBeInTheDocument();
+    expect(screen.queryByText(/Created by/)).not.toBeInTheDocument();
+  });
+
+  it('prefers the live approver over the snapshot while the member exists', () => {
+    render(
+      <CoursePreview
+        course={baseCourse({
+          approvedBy: { role: 'hr', user: { email: 'r@example.com', fullName: 'Rita Renamed' } },
+          approvedByName: 'Rita Reviewer',
+        })}
+      />,
+    );
+
+    expect(screen.getByText('Approved by: Rita Renamed (HR)')).toBeInTheDocument();
+  });
+
   it('falls back to "Created by: {creator fullName} ({role})" when approvedBy is null', () => {
     render(<CoursePreview course={baseCourse({ approvedBy: null })} />);
 

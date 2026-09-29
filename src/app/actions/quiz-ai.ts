@@ -23,6 +23,7 @@ import {
   quizOptionExplanationRules,
 } from '@/lib/prompts-v4.6';
 import { adaptQuizOptions } from '@/lib/quiz/options';
+import { isCourseEditableByOrganization } from '@/lib/course/edit-access';
 import type { QuizExplanation } from '@/types/quiz';
 
 // Single user-facing failure message. Raw internal error detail (Vertex AI
@@ -187,7 +188,7 @@ function hasQuizAuthoringPermission(
  */
 async function resolveQuizContext(
   options: { courseId?: string; context?: string },
-  actor: { userId: string; organizationUserId?: string | null; organizationId?: string | null },
+  actor: { userId: string; organizationId?: string | null },
   actionName: string,
   budget: RetryBudget,
 ): Promise<{ ok: true; context: string } | { ok: false; error: string }> {
@@ -204,7 +205,9 @@ async function resolveQuizContext(
       },
     });
 
-    if (course && course.createdByOrgUserId !== actor.organizationUserId) {
+    // BUG-11: the owning ORGANISATION, not the author — a colleague editing a
+    // course their org owns must be able to generate questions for it.
+    if (course && !isCourseEditableByOrganization(course, actor.organizationId)) {
       logger.warn({
         msg: `[quiz] ${actionName}: cross-organization course access blocked`,
         courseId: options.courseId,
@@ -300,7 +303,6 @@ export async function generateSingleQuestion(options: {
       options,
       {
         userId: session.user.id,
-        organizationUserId: session.user.organizationUserId,
         organizationId: session.user.organizationId,
       },
       'generateSingleQuestion',
@@ -444,7 +446,6 @@ export async function regenerateQuiz(options: {
       options,
       {
         userId: session.user.id,
-        organizationUserId: session.user.organizationUserId,
         organizationId: session.user.organizationId,
       },
       'regenerateQuiz',

@@ -41,9 +41,12 @@ function sessionWithRole(role: string) {
   };
 }
 
+/** Owned by the caller's org but authored by a colleague (BUG-11). */
 const OWNED_COURSE = {
   id: 'course-1',
-  createdByOrgUserId: ORG_USER_ID,
+  createdByOrgUserId: 'ou-colleague',
+  organizationId: 'org-1',
+  isGlobal: false,
   lessons: [{ order: 1 }],
 };
 
@@ -127,6 +130,42 @@ describe('lesson mutators — allow a role with course.edit', () => {
     ).resolves.toMatchObject({ id: 'lesson-new' });
 
     expect(prismaMock.lesson.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('updateLesson saves a colleague’s lesson in the caller’s own organisation', async () => {
+    mockAuth.mockResolvedValue(sessionWithRole('hr'));
+
+    await expect(updateLesson('lesson-1', { title: 'T' })).resolves.toMatchObject({
+      id: 'lesson-1',
+    });
+  });
+});
+
+describe('lesson mutators — BUG-11 organisation ownership', () => {
+  beforeEach(() => mockAuth.mockResolvedValue(sessionWithRole('owner')));
+
+  it('refuses a course another organisation owns, even one the caller authored', async () => {
+    prismaMock.course.findUnique.mockResolvedValue({
+      ...OWNED_COURSE,
+      createdByOrgUserId: ORG_USER_ID,
+      organizationId: 'org-2',
+    });
+
+    await expect(reorderLessons('course-1', [{ id: 'lesson-1', order: 2 }])).rejects.toThrow(
+      'Course not found',
+    );
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('refuses a global catalogue course', async () => {
+    prismaMock.lesson.findUnique.mockResolvedValue({
+      id: 'lesson-1',
+      courseId: 'course-1',
+      course: { ...OWNED_COURSE, isGlobal: true },
+    });
+
+    await expect(deleteLesson('lesson-1')).rejects.toThrow('Lesson not found');
+    expect(prismaMock.lesson.delete).not.toHaveBeenCalled();
   });
 });
 
