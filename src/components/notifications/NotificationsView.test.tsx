@@ -169,6 +169,39 @@ describe('NotificationsView preference toggles', () => {
     expect(assignedSwitch).toHaveAttribute('aria-checked', 'false');
   });
 
+  it('does not stomp a later successful toggle when an earlier refusal resolves after it', async () => {
+    const user = userEvent.setup();
+    let resolveFirst!: (value: { success: boolean; error?: string }) => void;
+    mockSetNotificationPreference
+      .mockImplementationOnce(
+        () =>
+          new Promise<{ success: boolean; error?: string }>((resolve) => {
+            resolveFirst = resolve;
+          }),
+      )
+      .mockResolvedValueOnce({ success: true });
+
+    render(<NotificationsView backHref="/dashboard" audience="worker" />);
+    await waitFor(() => expect(mockGetNotificationPreferences).toHaveBeenCalled());
+    await user.click(screen.getByRole('button', { name: 'Notification preferences' }));
+
+    const assignedSwitch = screen.getByRole('switch', { name: /When a course is assigned to you/ });
+    // First toggle: true -> false, save left pending.
+    await user.click(assignedSwitch);
+    expect(assignedSwitch).toHaveAttribute('aria-checked', 'false');
+
+    // Second toggle before the first resolves: false -> true, saves successfully.
+    await user.click(assignedSwitch);
+    await waitFor(() => expect(mockSetNotificationPreference).toHaveBeenCalledTimes(2));
+    expect(assignedSwitch).toHaveAttribute('aria-checked', 'true');
+
+    // The stale first save now comes back refused. It must not revert the
+    // switch away from the later, successful value.
+    resolveFirst({ success: false, error: 'Failed to update preference' });
+    await screen.findByText('Failed to update preference');
+    expect(assignedSwitch).toHaveAttribute('aria-checked', 'true');
+  });
+
   it('respects a stored disabled preference as the initial switch state', async () => {
     const user = userEvent.setup();
     mockGetNotificationPreferences.mockResolvedValue({
