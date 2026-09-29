@@ -6,6 +6,9 @@
  *   run `main()`, which would fail in the test environment (no real FFmpeg/storage)
  *   and would eagerly construct the shared Prisma client. Neither is desirable in a
  *   focused unit test, so the credential logic is exercised via a replica below.
+ *   The exception is the secret-hygiene test at the end: the replica has no log
+ *   calls, so that property can only be checked on the real worker, which it
+ *   imports with every I/O boundary mocked (as transcode-worker-encode.test.ts does).
  *
  * APPROACH — replicated algorithm:
  *   The worker's getGcs() comment explicitly states it "Mirrors GCSProvider in
@@ -21,7 +24,34 @@
  *   the orchestrator's notes for follow-up.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+// I/O boundaries for the one test below that runs the REAL worker. The
+// replicated-algorithm tests above it never import the worker, so these mocks
+// are inert for them. Node builtins need a `default` export too.
+const workerMocks = vi.hoisted(() => ({
+  execFile: vi.fn(),
+  stat: vi.fn(),
+  unlink: vi.fn(),
+  gcsCtor: vi.fn(),
+  disconnect: vi.fn(),
+}));
+vi.mock('child_process', () => ({
+  execFile: workerMocks.execFile,
+  default: { execFile: workerMocks.execFile },
+}));
+vi.mock('fs/promises', () => ({
+  stat: workerMocks.stat,
+  unlink: workerMocks.unlink,
+  default: { stat: workerMocks.stat, unlink: workerMocks.unlink },
+}));
+vi.mock('minio', () => ({ Client: function MinioClient() {} }));
+vi.mock('@google-cloud/storage', () => ({
+  Storage: function Storage(...args: unknown[]) {
+    workerMocks.gcsCtor(...args);
+  },
+}));
+vi.mock('@/db/index', () => ({ prisma: { $disconnect: workerMocks.disconnect } }));
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -186,27 +216,58 @@ describe('getGcs() credential-decode algorithm [Bug 2 regression — replicated 
 
     expect(MockStorageCtor).not.toHaveBeenCalled();
   });
+});
 
-  // ── Secret hygiene assertion ─────────────────────────────────────────────────
-  // The worker's log() helper writes JSON lines to process.stdout. NOTE: the
-  // replicated algorithm above omits the worker's log calls, so this spy can only
-  // catch a leak introduced into replicatedGetGcs itself, not one in the worker.
+// ── Secret hygiene, on the REAL worker ───────────────────────────────────────
+// The worker writes JSON lines to process.stdout (and its fatal line to
+// process.stderr). This drives the actual
+// scripts/transcode-worker.ts getGcs() failure path (a gcs:// download with a
+// malformed GCS_KEY_BASE64) and asserts the key never reaches any log line —
+// neither the base64 value nor the decoded text. (It replaced a test that ran
+// the log-free replica above, and so could never have failed.)
+describe('transcode-worker — a malformed GCS_KEY_BASE64 is never logged', () => {
+  const SECRET = 'SENSITIVE-KEY-VALUE-MUST-NOT-APPEAR-IN-LOG';
+  const originalArgv = process.argv;
+  const originalKey = process.env.GCS_KEY_BASE64;
 
-  it('does not leak the raw malformed key into any stdout output', () => {
-    const spy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
-    const MALFORMED = '!!!SENSITIVE-KEY-VALUE-MUST-NOT-APPEAR-IN-LOG!!!';
+  afterEach(() => {
+    process.argv = originalArgv;
+    if (originalKey === undefined) delete process.env.GCS_KEY_BASE64;
+    else process.env.GCS_KEY_BASE64 = originalKey;
+    vi.restoreAllMocks();
+  });
 
-    try {
-      replicatedGetGcs(
-        Buffer.from(MALFORMED).toString('base64'),
-        MockStorageCtor as unknown as StorageCtor,
-      );
-    } catch {
-      // Expected to throw — we only care about what was logged.
-    }
+  it('fails the run with a generic message and no trace of the key', async () => {
+    const encoded = Buffer.from(`{not json ${SECRET}`).toString('base64');
+    process.env.GCS_KEY_BASE64 = encoded;
+    process.argv = [
+      'node',
+      'transcode-worker.ts',
+      '--target-type=lesson',
+      '--target-id=lesson-1',
+      '--storage-uri=gcs://bucket/system/videos/raw/source.mov',
+    ];
+    workerMocks.unlink.mockResolvedValue(undefined);
+    workerMocks.disconnect.mockResolvedValue(undefined);
+    const written: string[] = [];
+    const capture = (chunk: unknown) => {
+      written.push(String(chunk));
+      return true;
+    };
+    vi.spyOn(process.stdout, 'write').mockImplementation(capture as typeof process.stdout.write);
+    vi.spyOn(process.stderr, 'write').mockImplementation(capture as typeof process.stderr.write);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
 
-    const allLogs = spy.mock.calls.map((args) => JSON.stringify(args)).join('\n');
-    expect(allLogs).not.toContain(MALFORMED);
-    spy.mockRestore();
+    vi.resetModules();
+    await import('./transcode-worker');
+    await vi.waitFor(() => expect(exitSpy).toHaveBeenCalledWith(1));
+
+    const allLogs = written.join('');
+    // The real path ran: the malformed-key branch logged, then main() failed.
+    expect(allLogs).toContain('GCS_KEY_BASE64 is malformed (decode/parse failed)');
+    expect(allLogs).toContain('[transcode-worker] Fatal');
+    expect(allLogs).not.toContain(SECRET);
+    expect(allLogs).not.toContain(encoded);
+    expect(workerMocks.gcsCtor).not.toHaveBeenCalled();
   });
 });
