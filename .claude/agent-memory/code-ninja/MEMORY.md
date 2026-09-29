@@ -127,3 +127,4 @@
 - [Self-service actions take a realm](project_self_service_actions_take_a_realm.md): no referer/fallback; a client storage URI signs ANY object
 - [Attestation status writers](gotcha_attestation_status_writers.md): quiz pass stays in_progress; no-quiz attest must await its progress write
 - [Attest gate + read access](project_attest_gate_and_read_access.md): Q-27 judges the SERVED quiz's latest attempt; RISK-15 = isCourseOrganizationReviewer
+- [Realm-session tests arm the admin mock](gotcha_realm_session_tests_arm_admin_mock.md): BUG-47: admin-only actions read only `@/auth`; dual-portal actions take `realm` first
