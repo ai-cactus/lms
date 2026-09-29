@@ -5,7 +5,7 @@ import { rawPrisma } from '@/db/index';
 import { cookies, headers } from 'next/headers';
 import crypto from 'crypto';
 import { revalidatePath } from 'next/cache';
-import { logger } from '@/lib/logger';
+import { logger, maskEmail } from '@/lib/logger';
 import { audit, auditCritical, getClientContext } from '@/lib/audit';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { verifySystemAdminCookie, SYSTEM_ADMIN_COOKIE } from '@/lib/system-auth';
@@ -353,7 +353,7 @@ export interface SystemUserDetail {
     score: number | null;
     startedAt: Date;
     completedAt: Date | null;
-    course: { id: string; title: string; thumbnail: string | null };
+    course: { id: string; title: string };
   }>;
   documents: Array<{
     id: string;
@@ -419,7 +419,7 @@ export async function getUserDetail(userId: string): Promise<SystemUserDetail | 
           score: true,
           startedAt: true,
           completedAt: true,
-          course: { select: { id: true, title: true, thumbnail: true } },
+          course: { select: { id: true, title: true } },
         },
         orderBy: { startedAt: 'desc' },
       },
@@ -554,6 +554,8 @@ export interface DeletePreview {
     /** Compliance records, destroyed with the enrollments they hang off. */
     certificates: number;
     notifications: number;
+    /** Per-type notification opt-outs, cascaded away with each membership. */
+    notificationPreferences: number;
     jobs: number;
     invites: number;
     verificationTokens: number;
@@ -566,6 +568,16 @@ export interface DeletePreview {
     documents: number;
     /** Enrollments other members hold in courses this user authored. */
     otherEnrollments: number;
+    /**
+     * Other members who report to this user. They are kept, but
+     * `OrganizationUser.managerId` is `SetNull`, so each one loses their manager.
+     */
+    directReports: number;
+    /**
+     * Courses this user approved or archived, and documents they archived. The
+     * FKs are SetNull, but each record keeps the actor's name snapshot (BUG-25).
+     */
+    attributions: number;
     /**
      * Organizations where this account holds assets but no other member
      * survives to inherit them. Non-empty means the delete will be refused.
@@ -604,6 +616,8 @@ export async function getUserDeletePreview(userId: string): Promise<DeletePrevie
     enrollmentCount,
     certificateCount,
     notificationCount,
+    notificationPreferenceCount,
+    directReportCount,
     jobCount,
     inviteCount,
     verificationTokenCount,
@@ -612,6 +626,10 @@ export async function getUserDeletePreview(userId: string): Promise<DeletePrevie
     prisma.enrollment.count({ where: { organizationUserId: { in: orgUserIds } } }),
     prisma.certificate.count({ where: { organizationUserId: { in: orgUserIds } } }),
     prisma.notification.count({ where: { organizationUserId: { in: orgUserIds } } }),
+    prisma.notificationPreference.count({ where: { organizationUserId: { in: orgUserIds } } }),
+    prisma.organizationUser.count({
+      where: { managerId: { in: orgUserIds }, id: { notIn: orgUserIds } },
+    }),
     prisma.job.count({ where: { userId } }),
     prisma.invite.count({ where: { email: user.email } }),
     prisma.verificationToken.count({ where: { identifier: user.email } }),
@@ -624,16 +642,26 @@ export async function getUserDeletePreview(userId: string): Promise<DeletePrevie
   // and documents, and the delete moves custody of those too. Counting through
   // the filtered client would under-report what changes hands on the very
   // screen whose job is to report exactly that.
-  const [authoredCourses, uploadedDocuments] = await Promise.all([
-    rawPrisma.course.findMany({
-      where: { createdByOrgUserId: { in: orgUserIds } },
-      select: { id: true, createdByOrgUserId: true },
-    }),
-    rawPrisma.document.findMany({
-      where: { organizationUserId: { in: orgUserIds } },
-      select: { organizationUserId: true },
-    }),
-  ]);
+  const [authoredCourses, uploadedDocuments, attributedCourses, attributedDocuments] =
+    await Promise.all([
+      rawPrisma.course.findMany({
+        where: { createdByOrgUserId: { in: orgUserIds } },
+        select: { id: true, createdByOrgUserId: true },
+      }),
+      rawPrisma.document.findMany({
+        where: { organizationUserId: { in: orgUserIds } },
+        select: { organizationUserId: true },
+      }),
+      rawPrisma.course.count({
+        where: {
+          OR: [
+            { approvedByOrgUserId: { in: orgUserIds } },
+            { archivedByOrgUserId: { in: orgUserIds } },
+          ],
+        },
+      }),
+      rawPrisma.document.count({ where: { archivedByOrgUserId: { in: orgUserIds } } }),
+    ]);
 
   const courseIds = authoredCourses.map((c) => c.id);
 
@@ -666,6 +694,7 @@ export async function getUserDeletePreview(userId: string): Promise<DeletePrevie
       quizAttempts: quizAttemptCount,
       certificates: certificateCount,
       notifications: notificationCount,
+      notificationPreferences: notificationPreferenceCount,
       jobs: jobCount,
       invites: inviteCount,
       verificationTokens: verificationTokenCount,
@@ -674,6 +703,8 @@ export async function getUserDeletePreview(userId: string): Promise<DeletePrevie
       courses: authoredCourses.length,
       documents: uploadedDocuments.length,
       otherEnrollments,
+      directReports: directReportCount,
+      attributions: attributedCourses + attributedDocuments,
       organizationsWithoutCustodian,
     },
   };
@@ -701,7 +732,11 @@ export async function deleteUserWithRelations(userId: string): Promise<{
       return { success: false, error: 'User not found' };
     }
 
-    logger.info({ msg: 'System admin: deleting user', email: user.email, userId: user.id });
+    logger.info({
+      msg: '[system] Deleting user',
+      email: maskEmail(user.email),
+      userId: user.id,
+    });
 
     // Resolved before opening the transaction: headers() is request-scoped and
     // must not be awaited inside a transaction callback.
@@ -822,7 +857,18 @@ export async function deleteUserWithRelations(userId: string): Promise<{
       });
       deleted.verificationTokens = tokens.count;
 
-      // 7. Delete the user — cascades every OrganizationUser membership (now
+      // 7. Counted before the delete because neither is deleted explicitly:
+      // preferences cascade with the memberships, and direct reports survive
+      // with `managerId` nulled by the SetNull relation. The audit row should
+      // still say what the delete did to them.
+      deleted.notificationPreferences = await tx.notificationPreference.count({
+        where: { organizationUserId: { in: orgUserIds } },
+      });
+      const unassignedDirectReports = await tx.organizationUser.count({
+        where: { managerId: { in: orgUserIds }, id: { notIn: orgUserIds } },
+      });
+
+      // 8. Delete the user — cascades every OrganizationUser membership (now
       // safe: the courses and documents they authored point at a surviving
       // member), MfaFactor and MfaRecoveryCode rows.
       await tx.user.delete({ where: { id: userId } });
@@ -841,7 +887,11 @@ export async function deleteUserWithRelations(userId: string): Promise<{
           targetId: userId,
           // Counts only — no email, no names. The logger redacts PII anyway,
           // but the audit row is long-lived so it carries even less.
-          metadata: { deletedCounts: deleted, transferredCounts: transferred },
+          metadata: {
+            deletedCounts: deleted,
+            transferredCounts: transferred,
+            unassignedDirectReports,
+          },
           ...clientContext,
         },
         tx,
@@ -851,8 +901,8 @@ export async function deleteUserWithRelations(userId: string): Promise<{
     });
 
     logger.info({
-      msg: 'System admin: user deleted',
-      email: user.email,
+      msg: '[system] User deleted',
+      userId,
       counts: result.deleted,
       transferred: result.transferred,
     });
@@ -866,7 +916,7 @@ export async function deleteUserWithRelations(userId: string): Promise<{
       transferredCounts: result.transferred,
     };
   } catch (error) {
-    logger.error({ msg: 'System admin: failed to delete user', userId, error });
+    logger.error({ msg: '[system] Failed to delete user', userId, err: error });
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to delete user',

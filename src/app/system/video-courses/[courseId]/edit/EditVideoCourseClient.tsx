@@ -23,9 +23,9 @@ interface Props {
     passingScore: number;
     allowedAttempts: number;
     questionCount: number;
-    previewExistingUri: string | null;
+    hasExistingPreview: boolean;
     previewDurationSeconds: number | null;
-    courseVideoExistingUri: string | null;
+    hasExistingCourseVideo: boolean;
     courseVideoDurationSeconds: number | null;
   };
   thumbnail: ThumbnailPanelProps;
@@ -65,7 +65,7 @@ export default function EditVideoCourseClient({ initial, thumbnail }: Props) {
         ? parseQuizFile(values.quizFile.name, await values.quizFile.text())
         : undefined;
 
-      await updateVideoCourse(initial.courseId, {
+      const result = await updateVideoCourse(initial.courseId, {
         title: values.title.trim(),
         description: values.description.trim() || undefined,
         overview: isEmptyHtml(values.overview) ? undefined : values.overview,
@@ -79,6 +79,10 @@ export default function EditVideoCourseClient({ initial, thumbnail }: Props) {
         courseVideo,
         quiz,
       });
+      if (!result.success) {
+        setAlert({ variant: 'error', title: 'Update failed', message: result.error });
+        return;
+      }
 
       router.push('/system/video-courses');
       router.refresh();
@@ -130,10 +134,10 @@ export default function EditVideoCourseClient({ initial, thumbnail }: Props) {
           passingScore: initial.passingScore,
           allowedAttempts: initial.allowedAttempts,
           duration: initial.duration,
-          previewExistingUri: initial.previewExistingUri,
+          hasExistingPreview: initial.hasExistingPreview,
           previewFile: null,
           previewDurationSeconds: initial.previewDurationSeconds,
-          courseVideoExistingUri: initial.courseVideoExistingUri,
+          hasExistingCourseVideo: initial.hasExistingCourseVideo,
           courseVideoFile: null,
           courseVideoDurationSeconds: initial.courseVideoDurationSeconds,
         }}

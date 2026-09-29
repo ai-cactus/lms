@@ -152,7 +152,14 @@ export default function AdminQuizEditor({ courseId, initialQuestions }: AdminQui
     try {
       setStatus(null);
       setIsSaving(true);
-      await updateQuizQuestions(courseId, questions);
+      const result = await updateQuizQuestions(courseId, questions);
+      if (!result.success) {
+        setStatus({
+          variant: 'error',
+          message: result.error ?? 'Failed to save quiz. Please try again.',
+        });
+        return;
+      }
       setStatus({ variant: 'success', message: 'Quiz updated successfully.' });
       router.refresh();
     } catch (error) {

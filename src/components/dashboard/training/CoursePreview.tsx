@@ -189,6 +189,10 @@ export default function CoursePreview({
    * assigned, and every video course, which is uploaded system-wide and never
    * goes through approval at all. It falls back to the creator under a
    * DIFFERENT label, so the line never implies a review that did not happen.
+   *
+   * BUG-25: the approver FK is SetNull, so a deleted approver leaves only the
+   * name snapshot. That is still an approval, so it keeps its own label rather
+   * than falling through to the creator.
    */
   const approver = course.approvedBy;
   const creator = course.creator;
@@ -198,13 +202,15 @@ export default function CoursePreview({
         name: approver.user.fullName || approver.user.email,
         role: getRoleDisplayName(approver.role),
       }
-    : creator
-      ? {
-          label: 'Created by',
-          name: creator.user.fullName || creator.user.email,
-          role: getRoleDisplayName(creator.role),
-        }
-      : null;
+    : course.approvedByName
+      ? { label: 'Approved by', name: course.approvedByName, role: 'removed user' }
+      : creator
+        ? {
+            label: 'Created by',
+            name: creator.user.fullName || creator.user.email,
+            role: getRoleDisplayName(creator.role),
+          }
+        : null;
 
   const statusBadge = courseStatusBadge(course.status, course.reviewRequired);
 
