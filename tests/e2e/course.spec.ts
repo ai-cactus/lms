@@ -54,6 +54,8 @@ test.describe('Course Flows', () => {
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
     await expect(dialog.getByRole('heading', { name: 'Assign Retake' })).toBeVisible();
+    // BUG-54: the dialog names the learner the row was opened from.
+    await expect(dialog).toContainText(/retake attempt for test worker/i);
 
     // Q-26: the retake carries a due date, pre-filled 14 days out, so the ladder
     // reminds the learner. The picker's accessible name is its `label`; its
