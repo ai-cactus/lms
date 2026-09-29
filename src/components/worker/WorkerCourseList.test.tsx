@@ -22,6 +22,7 @@ function baseCourse(overrides: Record<string, unknown> = {}) {
   return {
     id: 'course-1',
     title: 'Bloodborne Pathogens',
+    deadlineTimeZone: 'America/New_York',
     status: 'in_progress',
     progress: 40,
     enrollmentId: 'enr-1',

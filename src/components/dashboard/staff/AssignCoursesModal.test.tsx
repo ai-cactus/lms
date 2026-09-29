@@ -85,6 +85,7 @@ function assignResult(overrides: Record<string, unknown> = {}) {
     assigned: [{ courseId: 'vid-1', courseTitle: 'Workplace Safety' }],
     alreadyAssigned: [],
     failed: [],
+    deadlinePassed: [],
     invited: false,
     emailSent: true,
     ...overrides,
@@ -316,6 +317,29 @@ describe('AssignCoursesModal — deadline step', () => {
     // Nothing was assigned, so the un-sent email is not a warning — it is simply
     // the absence of an announcement, and must not muddy the refusal.
     expect(screen.queryByText(/couldn’t email them/)).not.toBeInTheDocument();
+  });
+
+  // Q-32: the server judged the date in this person's facility zone.
+  it('says the due date had already passed where they are when every course was skipped', async () => {
+    const user = userEvent.setup();
+    mockAssignCoursesToStaffMember.mockResolvedValue(
+      assignResult({
+        assigned: [],
+        deadlinePassed: [
+          { courseId: 'vid-1', courseTitle: 'Workplace Safety', timeZone: 'Pacific/Kiritimati' },
+        ],
+        emailSent: false,
+      }),
+    );
+    await advanceToDeadline(user);
+
+    await user.click(screen.getByRole('button', { name: 'Assign Course' }));
+
+    expect(
+      await screen.findByText(
+        'Due date already passed for 1 learner (Pacific/Kiritimati), so they were not assigned.',
+      ),
+    ).toBeInTheDocument();
   });
 
   it("the DialogContent onInteractOutside guard covers the TimePicker's portalled clock, not just the DatePicker's calendar", async () => {

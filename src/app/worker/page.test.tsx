@@ -15,6 +15,7 @@ const { mockAuth, mockGetWorkerCertificates, prismaMock } = vi.hoisted(() => ({
   prismaMock: {
     enrollment: { findMany: vi.fn() },
     user: { findUnique: vi.fn() },
+    organizationUserFacility: { findFirst: vi.fn().mockResolvedValue(null) },
   },
 }));
 

@@ -1,18 +1,11 @@
 /**
- * Pins a pre-existing gap in `enrollUsers`'s due-date handling, surfaced (not
- * fixed) by Phase 3 of the assign-surface consolidation (c42c6f9).
+ * `enrollUsers` refuses an unparseable deadline (BUG-12.2).
  *
- * `enrollUsers` does `new Date(assignmentSettings.dueAt)` with no
- * `Number.isNaN` guard — an unparseable deadline string silently becomes an
- * Invalid Date rather than a returned refusal. The retired courses-list
- * action (`assignCourseToUsers`) DID refuse it; that check was never carried
- * over when the surviving action (`enrollUsers`) picked up the same
- * responsibility, and this PR did not touch this code path.
- *
- * This test PINS current behaviour as a regression marker for whenever this
- * gap is fixed — it does not assert the Invalid Date is correct or desired.
- * When the guard is added, this test will need to be rewritten to assert a
- * returned refusal instead.
+ * It used to do `new Date(assignmentSettings.dueAt)` with no `Number.isNaN`
+ * guard, so an unparseable string became an Invalid Date written to the
+ * organisation-wide CourseAssignment. `assignCourseToRoles` already refused it;
+ * this pins the same refusal here — returned, never thrown, and before any
+ * write.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -103,25 +96,83 @@ beforeEach(() => {
   }));
 });
 
-describe('enrollUsers — unparseable dueAt (pre-existing gap, not fixed here)', () => {
-  it('does NOT refuse the call — it proceeds and writes an Invalid Date to the assignment', async () => {
+describe('enrollUsers — unparseable dueAt (BUG-12.2)', () => {
+  it('refuses the call by return and writes nothing', async () => {
+    const result = await enrollUsers(COURSE_ID, [{ email: STAFF_EMAIL }], {
+      dueAt: 'not-a-real-date',
+    });
+
+    expect(result).toEqual({
+      success: [],
+      alreadyEnrolled: [],
+      newInvited: [],
+      failed: [],
+      refusedReason: "That completion deadline couldn't be read. Please pick the date again.",
+    });
+    expect(prismaMock.orgCourseOffering.upsert).not.toHaveBeenCalled();
+    expect(prismaMock.courseAssignment.create).not.toHaveBeenCalled();
+    expect(prismaMock.courseAssignment.update).not.toHaveBeenCalled();
+    expect(mockCreateEnrollmentForUser).not.toHaveBeenCalled();
+  });
+
+  it('keeps the batched-caller shape: a deferred list is still returned', async () => {
     const result = await enrollUsers(
       COURSE_ID,
       [{ email: STAFF_EMAIL }],
-      { dueAt: 'not-a-real-date' }, // unparseable deadline
+      { dueAt: 'not-a-real-date' },
+      { deferWorkerNotification: true, deadlineScope: 'enrollment' },
     );
 
-    // Pin: no refusal is returned for this input today.
+    expect(result.refusedReason).toBeDefined();
+    expect(result.deferred).toEqual([]);
+    expect(mockCreateEnrollmentForUser).not.toHaveBeenCalled();
+  });
+
+  it('still accepts a readable deadline', async () => {
+    const result = await enrollUsers(COURSE_ID, [{ email: STAFF_EMAIL }], {
+      dueAt: '2099-01-01T23:59:00.000Z',
+    });
+
     expect(result.refusedReason).toBeUndefined();
     expect(result.success).toContain(STAFF_EMAIL);
+  });
+});
 
-    // Pin: the value actually reaching persistence is an Invalid Date, not a
-    // rejected/normalized one.
-    expect(prismaMock.courseAssignment.create).toHaveBeenCalledTimes(1);
-    const written = prismaMock.courseAssignment.create.mock.calls[0][0] as {
-      data: { dueAt: Date };
-    };
-    expect(written.data.dueAt).toBeInstanceOf(Date);
-    expect(Number.isNaN(written.data.dueAt.getTime())).toBe(true);
+/**
+ * Q-32: the call is not refused for a date that has passed somewhere; each
+ * learner is judged in their own zone, and those it had passed for are returned
+ * so the admin is told, while everyone else is enrolled.
+ */
+describe('enrollUsers — per-learner "already past" (Q-32)', () => {
+  it('reports the Kiritimati learner it skipped and enrols the Honolulu one', async () => {
+    mockCreateEnrollmentForUser.mockImplementation(async (entry: { email: string }) =>
+      entry.email === 'east@example.com'
+        ? { status: 'deadlinePassed' as const, email: entry.email, timeZone: 'Pacific/Kiritimati' }
+        : { status: 'enrolled' as const, email: entry.email, userId: 'u', enrollmentId: 'e' },
+    );
+
+    const result = await enrollUsers(
+      COURSE_ID,
+      [{ email: 'east@example.com' }, { email: 'west@example.com' }],
+      { dueAt: '2099-09-30T23:59:00.000Z' },
+    );
+
+    expect(result.refusedReason).toBeUndefined();
+    expect(result.success).toEqual(['west@example.com']);
+    expect(result.deadlinePassed).toEqual([
+      { email: 'east@example.com', timeZone: 'Pacific/Kiritimati' },
+    ]);
+    expect(mockCreateEnrollmentForUser).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ onPassedDeadline: 'skip' }),
+    );
+  });
+
+  it('omits deadlinePassed when nobody was skipped', async () => {
+    const result = await enrollUsers(COURSE_ID, [{ email: STAFF_EMAIL }], {
+      dueAt: '2099-09-30T23:59:00.000Z',
+    });
+
+    expect(result).not.toHaveProperty('deadlinePassed');
   });
 });

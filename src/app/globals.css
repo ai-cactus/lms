@@ -179,8 +179,8 @@
 
 /* =====================================================
    FONT SYSTEM — Suisse Int'l + JetBrains Mono
-   Suisse Int'l is self-hosted via next/font/local.
-   JetBrains Mono is loaded via next/font/google.
+   Every font is self-hosted via next/font/local (files in
+   public/fonts and src/app/fonts) — never next/font/google.
    Do NOT add @import or @font-face here for these fonts.
    ===================================================== */
 

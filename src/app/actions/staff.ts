@@ -35,6 +35,8 @@ import type { ActivityReportEnrollment } from '@/lib/pdf-reports';
 import { captureServer } from '@/lib/analytics/server';
 import { buildCourseThumbnailUrl } from '@/lib/video/thumbnail';
 import { parseStoredOptionExplanations } from '@/lib/quiz/options';
+import { DEFAULT_TZ } from '@/lib/reminders/time';
+import { isPastDeadlineChange } from '@/lib/reminders/deadline';
 import {
   DELETED_EMAIL_REFUSAL,
   findDeletedIdentityEmails,
@@ -107,10 +109,13 @@ export async function getStaffDetails(organizationUserId: string) {
           },
         },
         manager: { select: { user: { select: { email: true, fullName: true } } } },
+        // Oldest active roster facility first — the facility (and zone) every
+        // enrollment write attributes this member to (`resolveMemberFacility`).
         facilities: {
           where: { active: true },
+          orderBy: [{ joinedAt: 'asc' }, { id: 'asc' }],
           take: 1,
-          select: { facility: { select: { name: true } } },
+          select: { facility: { select: { name: true, timezone: true } } },
         },
         enrollments: {
           orderBy: { startedAt: 'desc' },
@@ -209,6 +214,9 @@ export async function getStaffDetails(organizationUserId: string) {
         firstName: orgUser.user.firstName ?? '',
         lastName: orgUser.user.lastName ?? '',
         facilityName: orgUser.facilities[0]?.facility.name ?? null,
+        // The zone this member's deadlines end in (BUG-12.3), so a due date is
+        // shown as the date that was picked.
+        timeZone: orgUser.facilities[0]?.facility.timezone ?? DEFAULT_TZ,
         managerId: orgUser.managerId ?? null,
         managerName: orgUser.manager
           ? (orgUser.manager.user.fullName ?? orgUser.manager.user.email)
@@ -766,6 +774,11 @@ export interface AssignCoursesToStaffResult {
   alreadyAssigned: { courseId: string; courseTitle: string }[];
   /** `courseTitle` is null for an id that resolves to no course at all. */
   failed: { courseId: string; courseTitle: string | null }[];
+  /**
+   * Q-32: courses not assigned because the picked deadline had already passed
+   * in this staff member's facility zone (`timeZone`).
+   */
+  deadlinePassed: { courseId: string; courseTitle: string; timeZone: string }[];
   invited: boolean;
   emailSent: boolean;
   error?: string;
@@ -796,6 +809,7 @@ export async function assignCoursesToStaffMember(
     assigned: [],
     alreadyAssigned: [],
     failed: [],
+    deadlinePassed: [],
     invited: false,
     emailSent: false,
   };
@@ -834,7 +848,10 @@ export async function assignCoursesToStaffMember(
     if (Number.isNaN(parsed.getTime())) {
       return { ...result, error: 'The deadline is not a valid date.' };
     }
-    if (parsed.getTime() <= Date.now()) {
+    // Whether the date has passed for THIS staff member depends on their
+    // facility zone, which enrollUsers resolves (Q-32); only a date that has
+    // passed everywhere is refused up front.
+    if (isPastDeadlineChange(parsed, null)) {
       return { ...result, error: 'The deadline must be in the future.' };
     }
     dueAt = parsed;
@@ -910,7 +927,13 @@ export async function assignCoursesToStaffMember(
         continue;
       }
 
-      if (outcome.success.length > 0) {
+      if (outcome.deadlinePassed && outcome.deadlinePassed.length > 0) {
+        result.deadlinePassed.push({
+          courseId,
+          courseTitle,
+          timeZone: outcome.deadlinePassed[0].timeZone,
+        });
+      } else if (outcome.success.length > 0) {
         result.assigned.push({ courseId, courseTitle });
         if (outcome.deferred) {
           deferred.push(...outcome.deferred);
@@ -953,6 +976,7 @@ export async function assignCoursesToStaffMember(
     assigned: result.assigned.length,
     alreadyAssigned: result.alreadyAssigned.length,
     failed: result.failed.length,
+    deadlinePassed: result.deadlinePassed.length,
     emailSent: result.emailSent,
   });
 

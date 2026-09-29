@@ -117,6 +117,8 @@ export async function enrollInviteCourses(
         scheduleAt: assignment?.scheduleAt ?? null,
         assignmentDueAt: assignment?.dueAt ?? null,
         assignmentWindowDays: assignment?.dueWindowDays ?? null,
+        // Q-32: automatic — a passed date falls back to the learner's own window.
+        onPassedDeadline: 'useWindow',
         enrolledByUserId: organizationUserId,
         // An invite can park several courses; batch them into one notice rather
         // than emailing the new member once per course.

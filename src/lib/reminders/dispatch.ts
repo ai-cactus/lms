@@ -51,6 +51,11 @@ export interface ReminderEmailMessage {
   /** The enrollment deadline, for copy; null for Track B nudges. */
   dueAt: Date | null;
   /**
+   * The learner's facility zone, which `dueAt`'s date is written in (BUG-12.3).
+   * Set wherever `dueAt` is; a nudge has no deadline and so no zone.
+   */
+  timeZone?: string;
+  /**
    * The worker's display name. On escalation emails the worker is the *subject*
    * of the copy (not the recipient), so this is carried separately from
    * `toName` (which is the recipient's name).
@@ -236,6 +241,7 @@ export async function retryReminderEmail(input: ReminderEmailRetryInput): Promis
     recipientRole,
     courseTitle,
     dueAt,
+    timeZone: timezone,
     workerName,
     daysOverdue,
   };
@@ -445,7 +451,7 @@ export interface LadderStageInput {
   targetDate: Date;
   /** The enrollment deadline, passed through to email copy. */
   dueAt: Date | null;
-  /** Organization timezone (informational; copy/formatting in Phase 4). */
+  /** The learner's facility zone — day math and the deadline's date in email copy. */
   timezone: string;
   dryRun: boolean;
   /** Injected email sender; defaults to {@link noopEmailSender}. */
@@ -537,6 +543,7 @@ export async function dispatchLadderStage(input: LadderStageInput): Promise<Disp
             recipientRole: 'worker',
             courseTitle,
             dueAt,
+            timeZone: timezone,
             workerName: worker.name ?? worker.email,
             daysOverdue,
           },
@@ -582,6 +589,7 @@ export async function dispatchLadderStage(input: LadderStageInput): Promise<Disp
               recipientRole: 'escalation',
               courseTitle,
               dueAt,
+              timeZone: timezone,
               workerName,
               daysOverdue,
             },

@@ -1,5 +1,6 @@
 import type { ReminderNudgeKind, ReminderStage } from '@/generated/prisma/enums';
 import { REMINDER_STAGE_DEFAULTS } from '@/lib/reminders/stages';
+import { formatDateInTz } from '@/lib/reminders/time';
 import type { DigestSection } from '@/lib/notifications/digest';
 
 /**
@@ -47,6 +48,8 @@ export interface ReminderSummaryItem {
   recipientRole: 'worker' | 'escalation';
   courseTitle: string;
   dueAt: Date | null;
+  /** The learner's facility zone, which `dueAt`'s date is written in (BUG-12.3). */
+  timeZone: string;
   /** Display name of the learner the item is about. */
   workerName: string;
   /** Whole days past `dueAt` at compose time; 0 when not overdue. */
@@ -86,14 +89,12 @@ export const SECTION_TITLES: Record<CycleSummarySectionId, string> = {
   organization_updates: 'Organization updates',
 };
 
-/** Render a deadline in the same friendly form the reminder templates use, in UTC. */
-function formatDate(date: Date): string {
-  return date.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    timeZone: 'UTC',
-  });
+/**
+ * Render a deadline in the same friendly form the reminder templates use, in the
+ * learner's facility zone — the zone the deadline ends in (BUG-12.3).
+ */
+function formatDate(date: Date, timeZone: string): string {
+  return formatDateInTz(date, timeZone);
 }
 
 /**
@@ -133,10 +134,10 @@ function detailFor(item: ReminderSummaryItem): string {
   }
   if (item.daysOverdue > 0) {
     const overdue = `${item.daysOverdue} day${item.daysOverdue === 1 ? '' : 's'} overdue`;
-    return item.dueAt ? `${overdue} (due ${formatDate(item.dueAt)})` : overdue;
+    return item.dueAt ? `${overdue} (due ${formatDate(item.dueAt, item.timeZone)})` : overdue;
   }
   if (item.stage === 'DAY_OF_DEADLINE') return 'Due today';
-  return item.dueAt ? `Due ${formatDate(item.dueAt)}` : 'Action needed';
+  return item.dueAt ? `Due ${formatDate(item.dueAt, item.timeZone)}` : 'Action needed';
 }
 
 /**

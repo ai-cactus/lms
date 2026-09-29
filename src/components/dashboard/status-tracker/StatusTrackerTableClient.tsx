@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { DUE_SOON_WINDOW_DAYS } from '@/lib/facility/metrics';
+import { formatDateInTz } from '@/lib/reminders/time';
 
 /**
  * A single assignment shown in the status tracker. `dueAt` is serialized to an
@@ -38,6 +39,8 @@ export interface StatusTrackerRowView {
   /** The member's current roster facilities in the viewer's scope, comma-joined; null when none. */
   facilityName: string | null;
   dueAt: string;
+  /** The learner's facility zone — the deadline's date is shown as it falls there. */
+  timeZone: string;
   daysOverdue: number | null;
   daysUntilDue: number | null;
 }
@@ -49,12 +52,8 @@ interface Props {
 export const tableHeadClass =
   'h-[41px] truncate bg-[#f8f9fb] text-[13px] font-medium tracking-[0.31px] whitespace-nowrap text-[#666d80] sm:text-[15.5px]';
 
-export function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
+export function formatDate(iso: string, timeZone: string): string {
+  return formatDateInTz(iso, timeZone, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function overdueLabel(daysOverdue: number): string {
@@ -182,7 +181,7 @@ export default function StatusTrackerTableClient({ rows }: Props) {
                       </span>
                       <span className="truncate text-[12px] font-normal tracking-[0.27px] text-[#666d80] sm:text-[13.5px]">
                         <span className="xl:hidden">
-                          {row.courseTitle} · {formatDate(row.dueAt)}
+                          {row.courseTitle} · {formatDate(row.dueAt, row.timeZone)}
                         </span>
                         <span className="hidden xl:inline">{row.workerEmail}</span>
                       </span>
@@ -199,7 +198,7 @@ export default function StatusTrackerTableClient({ rows }: Props) {
                 </TableCell>
 
                 <TableCell className="hidden px-5 py-0 text-[17.5px] font-normal whitespace-nowrap text-[#667085] xl:table-cell">
-                  {formatDate(row.dueAt)}
+                  {formatDate(row.dueAt, row.timeZone)}
                 </TableCell>
 
                 <TableCell className="hidden px-[18px] py-0 xl:table-cell">

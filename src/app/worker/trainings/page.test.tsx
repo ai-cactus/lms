@@ -9,7 +9,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const { mockAuth, prismaMock } = vi.hoisted(() => ({
   mockAuth: vi.fn(),
-  prismaMock: { enrollment: { findMany: vi.fn() } },
+  prismaMock: {
+    enrollment: { findMany: vi.fn() },
+    organizationUserFacility: { findFirst: vi.fn().mockResolvedValue(null) },
+  },
 }));
 
 vi.mock('@/auth.worker', () => ({ auth: mockAuth }));

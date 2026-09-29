@@ -284,6 +284,8 @@ function ownEnrollment() {
       userId: LEARNER_USER_ID,
       role: 'nurse',
       user: { email: 'learner@example.com', fullName: 'Learner One' },
+      // The roster select always returns the member's active facilities.
+      facilities: [],
     },
     certificate: null,
   };

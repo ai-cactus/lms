@@ -5,8 +5,13 @@ import { isDeletedIdentity } from '@/lib/auth/deleted-identity';
 import { logDeletedEmailRefusal } from '@/lib/auth/deleted-email-guard';
 import { createNotification } from '@/lib/notifications/create';
 import { trainingNoticeLink } from '@/lib/notifications/portal-link';
-import { computeDueAt, resolveStartDate } from '@/lib/reminders/deadline';
-import { resolveMemberFacilityId, resolveMemberFacilityIds } from '@/lib/facility/member-facility';
+import { computeDueAt, isDeadlinePassedFor, resolveStartDate } from '@/lib/reminders/deadline';
+import { DEFAULT_TZ } from '@/lib/reminders/time';
+import {
+  resolveMemberFacilities,
+  resolveMemberFacility,
+  type MemberFacility,
+} from '@/lib/facility/member-facility';
 import type { StaffEntry } from '@/types/enrollment';
 import type { UserRole } from '@/generated/prisma/enums';
 import type { Invite } from '@/generated/prisma/client';
@@ -31,6 +36,21 @@ export interface CreateEnrollmentContext {
   scheduleAt: Date | null;
   assignmentDueAt: Date | null;
   assignmentWindowDays: number | null;
+  /**
+   * What to do when {@link assignmentDueAt}, resolved in a learner's facility
+   * zone, has already passed for them (Q-32):
+   *
+   * - `'skip'` — enrol nobody and report the learner back
+   *   (`status: 'deadlinePassed'`). For an admin assigning now: nobody receives
+   *   an assignment that is overdue on arrival, and the admin, who is told, can
+   *   pick a later date for them.
+   * - `'useWindow'` — enrol them on their own completion window instead, as if
+   *   no date had been picked. For the automatic paths (role-target join, its
+   *   sweep backstop, invite acceptance): a new hire must still get required
+   *   training, nobody is there to be told, and skipping would leave them
+   *   untrained for good — the sweep would re-skip them every day.
+   */
+  onPassedDeadline: 'skip' | 'useWindow';
   /** Actor (identity id) recorded on the structured enrollment log. */
   enrolledByUserId: string;
   /**
@@ -69,6 +89,8 @@ export interface DeferredWorkerNotification {
   organizationName: string;
   /** The deadline actually persisted on the enrollment row. */
   dueAt: Date;
+  /** The member's facility zone, which `dueAt`'s date is written in (BUG-12.3). */
+  timeZone: string;
 }
 
 /**
@@ -81,6 +103,8 @@ export interface DeferredWorkerNotification {
 export type EnrollmentOutcome =
   | { status: 'failed'; email: string }
   | { status: 'alreadyEnrolled'; email: string }
+  /** Q-32: the picked deadline had already passed in the learner's zone, so nothing was written. */
+  | { status: 'deadlinePassed'; email: string; timeZone: string }
   | { status: 'invited'; email: string }
   | {
       status: 'enrolled';
@@ -118,8 +142,8 @@ export interface EnrollmentPrefetch {
   alreadyEnrolled: boolean;
   /** The most recent outstanding pending invite for this email, or null. */
   existingInvite: Invite | null;
-  /** The membership's facility, or null when it holds no active assignment. */
-  memberFacilityId: string | null;
+  /** The membership's facility and its zone, or null when it holds no active assignment. */
+  memberFacility: MemberFacility | null;
 }
 
 /**
@@ -351,28 +375,53 @@ export async function createEnrollmentForUser(
     return { status: 'alreadyEnrolled', email: normalizedEmail };
   }
 
-  // The effective deadline: an explicit assignment `dueAt` wins; otherwise
+  // The member's OWN facility, not ctx.facilityId — the latter is the invite
+  // target for an address with no membership yet, which this branch is not.
+  const memberFacility = prefetch
+    ? prefetch.memberFacility
+    : await resolveMemberFacility(prisma, membership.id);
+
+  // The effective deadline: an explicit assignment `dueAt` wins, ending at the
+  // picked time in the member's facility zone (BUG-12.3); otherwise
   // `start + window`, where the window falls through to the system default when
   // no org default exists (`Organization.defaultDueWindowDays` is not modeled).
-  const computedDueAt = computeDueAt({
-    assignmentDueAt: ctx.assignmentDueAt,
+  const timeZone = memberFacility?.timezone ?? DEFAULT_TZ;
+  const now = new Date();
+  const deadlineInputs = {
     assignmentWindowDays: ctx.assignmentWindowDays,
     orgWindowDays: null,
     start: resolveStartDate(
       { scheduleAt: ctx.scheduleAt },
-      { accessAt: ctx.scheduleAt ?? null, startedAt: new Date() },
+      { accessAt: ctx.scheduleAt ?? null, startedAt: now },
     ),
-  });
+    timeZone,
+  };
+  let computedDueAt = computeDueAt({ ...deadlineInputs, assignmentDueAt: ctx.assignmentDueAt });
+
+  if (ctx.assignmentDueAt && isDeadlinePassedFor(computedDueAt, now)) {
+    if (ctx.onPassedDeadline === 'skip') {
+      logger.info({
+        msg: '[enrollment] Learner skipped — due date already passed in their zone',
+        organizationUserId: membership.id,
+        courseId: ctx.courseId,
+        timeZone,
+      });
+      return { status: 'deadlinePassed', email: normalizedEmail, timeZone };
+    }
+    computedDueAt = computeDueAt({ ...deadlineInputs, assignmentDueAt: null });
+    logger.info({
+      msg: '[enrollment] Due date already passed in learner zone — completion window used',
+      organizationUserId: membership.id,
+      courseId: ctx.courseId,
+      timeZone,
+    });
+  }
 
   const enrollment = await prisma.enrollment.create({
     data: {
       organizationUserId: membership.id,
       courseId: ctx.courseId,
-      // The member's OWN facility, not ctx.facilityId — the latter is the invite
-      // target for an address with no membership yet, which this branch is not.
-      facilityId: prefetch
-        ? prefetch.memberFacilityId
-        : await resolveMemberFacilityId(prisma, membership.id),
+      facilityId: memberFacility?.facilityId ?? null,
       status: 'enrolled',
       progress: 0,
       assignmentId: ctx.assignmentId ?? undefined,
@@ -422,6 +471,7 @@ export async function createEnrollmentForUser(
       courseTitle: ctx.courseTitle,
       organizationName: ctx.organizationName,
       dueAt: computedDueAt,
+      timeZone,
     };
   } else {
     await createNotification({
@@ -440,6 +490,7 @@ export async function createEnrollmentForUser(
         ctx.courseTitle,
         ctx.organizationName,
         computedDueAt,
+        timeZone,
       );
     } catch (emailErr) {
       logger.error({
@@ -581,7 +632,7 @@ export async function createEnrollmentsForUsers(
           orderBy: { createdAt: 'desc' },
         })
       : Promise.resolve([]),
-    resolveMemberFacilityIds(prisma, membershipIds),
+    resolveMemberFacilities(prisma, membershipIds),
   ]);
 
   const enrolledMembershipIds = new Set(existingEnrollments.map((e) => e.organizationUserId));
@@ -618,7 +669,7 @@ export async function createEnrollmentsForUsers(
         membership,
         alreadyEnrolled: membership ? enrolledMembershipIds.has(membership.id) : false,
         existingInvite: inviteByEmail.get(email) ?? null,
-        memberFacilityId: membership ? (facilityByMembership.get(membership.id) ?? null) : null,
+        memberFacility: membership ? (facilityByMembership.get(membership.id) ?? null) : null,
       };
       try {
         for (let i = 0; i < items.length; i++) {

@@ -7,6 +7,7 @@ import EmptyTableState from '@/components/ui/EmptyTableState';
 import WorkerCourseList from '@/components/worker/WorkerCourseList';
 import CancelledCourseBadge from '@/components/worker/CancelledCourseBadge';
 import { ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
+import { formatDateInTz } from '@/lib/reminders/time';
 import type { LearnerCourseRow } from '@/types/enrollment';
 
 function formatCategory(category: string): string {
@@ -19,12 +20,19 @@ function formatCategory(category: string): string {
 /**
  * Deadline line for the Completed tab. Every card there is finished, so a past
  * due date is never shown as overdue (BUG-41) — the course was done, not late.
+ * The date is shown in the learner's facility time zone (BUG-12.3).
  */
-function DeadlineMeta({ deadline }: { deadline?: Date | string | null }) {
+function DeadlineMeta({
+  deadline,
+  timeZone,
+}: {
+  deadline?: Date | string | null;
+  timeZone: string;
+}) {
   if (!deadline) {
     return <span className="text-xs text-[#cbd5e1]">No deadline</span>;
   }
-  const text = new Date(deadline).toLocaleDateString('en-US', {
+  const text = formatDateInTz(new Date(deadline), timeZone, {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
@@ -131,7 +139,7 @@ export default function WorkerTrainingList({ courses }: WorkerTrainingListProps)
                       <p className="text-sm text-[#718096]">
                         {course.category ? formatCategory(course.category) : 'General'}
                       </p>
-                      <DeadlineMeta deadline={course.deadline} />
+                      <DeadlineMeta deadline={course.deadline} timeZone={course.deadlineTimeZone} />
                     </div>
                   </div>
                   <div className="flex flex-col items-end gap-2 max-md:w-full max-md:items-start">
