@@ -235,7 +235,7 @@ describe('getCourses — org-manager visibility (#15, RISK-11)', () => {
     // enrollments.
     expect(mockEnrollmentGroupBy.mock.calls[0][0].where).toEqual({
       courseId: { in: ['c-1', 'c-2'] },
-      organizationUser: { organizationId: 'org-1' },
+      organizationUser: { organizationId: 'org-1', active: true },
     });
   });
 
@@ -269,7 +269,7 @@ describe('getCourses — facility-scoped enrollment tallies', () => {
 
     const where = mockEnrollmentGroupBy.mock.calls[0][0].where;
     expect(where.facilityId).toBeUndefined();
-    expect(where.organizationUser).toEqual({ organizationId: 'org-1' });
+    expect(where.organizationUser).toEqual({ organizationId: 'org-1', active: true });
   });
 
   // BUG-37: by CURRENT roster, never by the `Enrollment.facilityId` stamp — and
@@ -284,6 +284,7 @@ describe('getCourses — facility-scoped enrollment tallies', () => {
     expect(where.facilityId).toBeUndefined();
     expect(where.organizationUser).toEqual({
       organizationId: 'org-1',
+      active: true,
       facilities: { some: { facilityId: { in: ['fac-1'] }, active: true } },
     });
   });
@@ -320,7 +321,12 @@ describe('getCourses — facility-scoped enrollment tallies', () => {
  * do, and drop retake-superseded enrolments (BUG-38).
  */
 describe('getCourses — card counts by current-facility attribution (BUG-37)', () => {
-  type Member = { id: string; organizationId: string; activeFacilityIds: string[] };
+  type Member = {
+    id: string;
+    organizationId: string;
+    active?: boolean;
+    activeFacilityIds: string[];
+  };
   type Row = {
     id: string;
     courseId: string;
@@ -334,6 +340,7 @@ describe('getCourses — card counts by current-facility attribution (BUG-37)', 
     courseId: { in: string[] };
     organizationUser: {
       organizationId?: string;
+      active?: true;
       facilities?: { some: { facilityId: { in: string[] }; active: true } };
     };
     id?: { notIn: string[] };
@@ -347,8 +354,9 @@ describe('getCourses — card counts by current-facility attribution (BUG-37)', 
     const member = members.find((m) => m.id === row.organizationUserId);
     if (!member) return false;
     if (!where.courseId.in.includes(row.courseId)) return false;
-    const { organizationId, facilities } = where.organizationUser;
+    const { organizationId, active, facilities } = where.organizationUser;
     if (organizationId !== undefined && member.organizationId !== organizationId) return false;
+    if (active && member.active === false) return false;
     if (
       facilities &&
       !member.activeFacilityIds.some((id) => facilities.some.facilityId.in.includes(id))
@@ -474,6 +482,15 @@ describe('getCourses — card counts by current-facility attribution (BUG-37)', 
 
     expect(await cardFor('supervisor', ['fac-b'])).toEqual({ enrolled: 2, completion: 100 });
     expect(mockEnrollmentGroupBy.mock.calls[0][0].where.id).toEqual({ notIn: ['e-bea'] });
+  });
+
+  // Removed from the organisation (founder Q23 keeps their enrolments): the
+  // dashboards count the current workforce only, and so do the cards.
+  it('drops a deactivated member’s retained enrolment, for scoped and org-wide viewers alike', async () => {
+    members = members.map((m) => (m.id === 'ou-bea' ? { ...m, active: false } : m));
+
+    expect(await cardFor('supervisor', ['fac-b'])).toEqual({ enrolled: 1, completion: 100 });
+    expect(await cardFor('owner', [])).toEqual({ enrolled: 2, completion: 100 });
   });
 
   it('adds no id exclusion when nothing was retaken', async () => {

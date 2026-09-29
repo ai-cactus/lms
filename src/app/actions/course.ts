@@ -197,9 +197,14 @@ export async function getCourses(): Promise<CourseWithStats[]> {
   // a transferred worker counts at the facility they work at now. Both halves
   // live in ONE `organizationUser` object: spreading two predicates that each
   // set that key would silently keep only the last.
+  //
+  // `active: true`, as in the dashboards' `enrollmentWhere`: the cards report on
+  // the CURRENT workforce. A removed member's enrolments are retained for
+  // compliance (founder Q23) and belong to the auditor pack, not these figures.
   const dataFacilityIds = await resolveDataFacilityIds(session);
   const learnerWhere: Prisma.OrganizationUserWhereInput = {
     ...(organizationId ? { organizationId } : {}),
+    active: true,
     ...staffFacilityWhere(dataFacilityIds),
   };
   const cardEnrollmentWhere: Prisma.EnrollmentWhereInput = {
@@ -358,9 +363,19 @@ export async function getCourseById(courseId: string): Promise<CourseWithRelatio
   // theirs is never a disclosure. Without an active organisation there is no
   // tenant to scope to, so the roster collapses to exactly that — fail closed,
   // never `organizationId: undefined`, which Prisma would read as "no filter".
+  //
+  // `active: true` on the colleague branch: a removed member's enrolments are
+  // retained for compliance (founder Q23), but this roster is the course's
+  // operational view — its figures, withdraw and retake actions all address the
+  // current workforce, as the dashboards and the course cards do. The compliance
+  // copy of a departed member's training is the auditor pack.
   const organizationId = session.user.organizationId;
   const rosterWhere: Prisma.EnrollmentWhereInput = organizationId
-    ? { organizationUser: { OR: [{ organizationId }, { userId: session.user.id }] } }
+    ? {
+        organizationUser: {
+          OR: [{ organizationId, active: true }, { userId: session.user.id }],
+        },
+      }
     : { organizationUser: { userId: session.user.id } };
 
   // ⛔ `rawPrisma`, deliberately — paired with the archive rule below, which is
@@ -492,10 +507,11 @@ export async function getCourseForOrgView(courseId: string): Promise<CourseWithR
     where: { id: courseId, type: 'video', isGlobal: true, status: 'published' },
     select: {
       ...courseDetailSelect,
-      // Scope enrolled staff to the caller's org — never leak other orgs' users.
+      // Scope enrolled staff to the caller's org — never leak other orgs' users —
+      // and to its current workforce, as getCourseById's roster is.
       enrollments: {
         ...courseDetailSelect.enrollments,
-        where: { organizationUser: { organizationId } },
+        where: { organizationUser: { organizationId, active: true } },
       },
     },
   });

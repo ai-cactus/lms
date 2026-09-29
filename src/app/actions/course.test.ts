@@ -987,7 +987,7 @@ describe('getCourseById', () => {
       const callArgs = mockRawCourseFindUnique.mock.calls[0][0];
       expect(callArgs.where).toEqual({ id: 'course-1' });
       expect(callArgs.select.enrollments.where).toEqual({
-        organizationUser: { OR: [{ organizationId: ORG_ID }, { userId: selfId }] },
+        organizationUser: { OR: [{ organizationId: ORG_ID, active: true }, { userId: selfId }] },
       });
     });
 
@@ -1238,7 +1238,7 @@ describe('getCourseForOrgView', () => {
       status: 'published',
     });
     expect(callArgs.select.enrollments.where).toEqual({
-      organizationUser: { organizationId: ORG_ID },
+      organizationUser: { organizationId: ORG_ID, active: true },
     });
   });
 });
