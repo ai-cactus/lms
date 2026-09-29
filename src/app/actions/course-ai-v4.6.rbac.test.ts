@@ -138,6 +138,20 @@ describe('generateCourseAndQuizV46 — course.create enforcement', () => {
     },
   );
 
+  // SEC-14: the poll hands the generated course back only to a caller signed in
+  // to the organisation the job was started for.
+  it('stamps the job with the organisation it generates for', async () => {
+    mockAuth.mockResolvedValue({
+      user: { id: 'user-1', role: 'owner', organizationUserId: 'ou-1', organizationId: 'org-1' },
+    });
+
+    await generateCourseAndQuizV46(buildFormData());
+
+    expect(prismaMock.job.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ userId: 'user-1', payload: { organizationId: 'org-1' } }),
+    });
+  });
+
   // An unknown/stale role on a JWT minted before a role was renamed must deny,
   // not throw and not pass — `can()` is least-privilege by construction.
   it('denies an unknown role rather than throwing', async () => {
