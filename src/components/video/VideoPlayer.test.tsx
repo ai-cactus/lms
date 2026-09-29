@@ -27,6 +27,8 @@ vi.mock('@/app/actions/video-progress', () => ({
 }));
 
 import { getVideoPlaybackUrl, saveVideoProgress } from '@/app/actions/video-progress';
+import { ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
+import { TRAINING_ACCESS_PAUSED_MESSAGE } from '@/lib/billing';
 import { WATCH_GATE_PCT } from '@/lib/video/gating';
 import { VideoPlayer } from './VideoPlayer';
 
@@ -301,7 +303,7 @@ describe('VideoPlayer — responsive shell', () => {
   it('renders the video inside a fixed-ratio, height-capped box', () => {
     const { container } = renderPlayer(100);
 
-    const box = container.querySelector('div');
+    const box = container.querySelector('video')?.parentElement;
     expect(box?.className).toContain('aspect-video');
     expect(box?.className).toContain('max-h-[70svh]');
   });
@@ -426,5 +428,118 @@ describe('VideoPlayer — progress persistence', () => {
     });
 
     expect(mockSave).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * BUG-58: since SEC-08 `saveVideoProgress` RETURNS its policy refusals instead of
+ * throwing, and the player used to discard the result — the learner's progress
+ * silently stopped saving.
+ */
+describe('VideoPlayer — progress refusals', () => {
+  const MFA_MESSAGE = 'Please complete two-factor verification to continue.';
+
+  /** Drives `windows` debounce windows of real-time playback from 0s. */
+  async function playWindows(video: HTMLVideoElement, windows: number) {
+    for (let i = 1; i <= (windows * DEBOUNCE_MS) / 250; i += 1) tick(video, i * 0.25);
+    await act(async () => {});
+  }
+
+  it.each([
+    ['a paused subscription', 'BILLING_INACTIVE', TRAINING_ACCESS_PAUSED_MESSAGE],
+    ['an archived course', 'COURSE_ARCHIVED', ARCHIVED_COURSE_LEARNER_MESSAGE],
+  ] as const)(
+    'shows %s once and stops sending heartbeats after it',
+    async (_label, refusedCode, refusedReason) => {
+      mockSave.mockResolvedValue({ unlocked: false, refusedReason, refusedCode });
+      const { video } = renderPlayer(1000);
+
+      tick(video, 0.25);
+      await act(async () => {});
+      expect(mockSave).toHaveBeenCalledTimes(1);
+
+      await playWindows(video, 3);
+      fireEvent.pause(video);
+      video.currentTime = 1000;
+      fireEvent.ended(video);
+      await act(async () => {
+        vi.advanceTimersByTime(DEBOUNCE_MS * 2);
+      });
+
+      expect(mockSave).toHaveBeenCalledTimes(1);
+      expect(screen.getAllByTestId('video-progress-refusal')).toHaveLength(1);
+      expect(screen.getByText(refusedReason)).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: 'Sign in again' })).not.toBeInTheDocument();
+      // Playback itself is not blocked — only the persistence is.
+      expect(video).toBeInTheDocument();
+    },
+  );
+
+  it('cancels a deferred save already armed when the terminal refusal lands', async () => {
+    let resolveFirst: (value: Awaited<ReturnType<typeof saveVideoProgress>>) => void = () => {};
+    mockSave.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveFirst = resolve;
+        }),
+    );
+    const { video } = renderPlayer(1000);
+
+    tick(video, 0.25);
+    tick(video, 0.5);
+    await act(async () => {
+      resolveFirst({
+        unlocked: false,
+        refusedReason: ARCHIVED_COURSE_LEARNER_MESSAGE,
+        refusedCode: 'COURSE_ARCHIVED',
+      });
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(DEBOUNCE_MS * 2);
+    });
+
+    expect(mockSave).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the MFA refusal once with a sign-in path, and keeps trying to save', async () => {
+    mockSave.mockResolvedValue({
+      unlocked: false,
+      refusedReason: MFA_MESSAGE,
+      refusedCode: 'MFA_REQUIRED',
+    });
+    const { video } = renderPlayer(1000);
+
+    await playWindows(video, 3);
+
+    expect(mockSave.mock.calls.length).toBeGreaterThan(1);
+    expect(screen.getAllByTestId('video-progress-refusal')).toHaveLength(1);
+    expect(screen.getAllByText(MFA_MESSAGE)).toHaveLength(1);
+    expect(screen.getByRole('link', { name: 'Sign in again' })).toHaveAttribute('href', '/login');
+  });
+
+  it('clears the MFA notice once a later save goes through', async () => {
+    mockSave.mockResolvedValueOnce({
+      unlocked: false,
+      refusedReason: MFA_MESSAGE,
+      refusedCode: 'MFA_REQUIRED',
+    });
+    const { video } = renderPlayer(1000);
+
+    tick(video, 0.25);
+    await act(async () => {});
+    expect(screen.getByTestId('video-progress-refusal')).toBeInTheDocument();
+
+    await playWindows(video, 2);
+
+    expect(screen.queryByTestId('video-progress-refusal')).not.toBeInTheDocument();
+  });
+
+  it('shows no notice and keeps saving while saves succeed', async () => {
+    const { video } = renderPlayer(1000);
+
+    await playWindows(video, 3);
+
+    expect(mockSave.mock.calls.length).toBeGreaterThanOrEqual(3);
+    expect(screen.queryByTestId('video-progress-refusal')).not.toBeInTheDocument();
   });
 });

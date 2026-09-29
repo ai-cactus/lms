@@ -12,6 +12,13 @@ import { hasActiveBilling, TRAINING_ACCESS_PAUSED_MESSAGE } from '@/lib/billing'
 const MFA_REQUIRED_MESSAGE = 'Please complete two-factor verification to continue.';
 
 /**
+ * Why `saveVideoProgress` declined to write. The player needs this, not the
+ * prose: a billing or archive refusal cannot lift mid-session so it stops
+ * sending heartbeats, while an MFA refusal lifts on a fresh sign-in.
+ */
+export type VideoProgressRefusalCode = 'MFA_REQUIRED' | 'BILLING_INACTIVE' | 'COURSE_ARCHIVED';
+
+/**
  * The session whose ACTIVE membership acts here — the admin session's, else the
  * worker session's. Video access is owned by the OrganizationUser, not the
  * identity, so the membership id (not the identity id) is what the enrolment
@@ -114,7 +121,11 @@ export async function saveVideoProgress(
   enrollmentId: string,
   positionSeconds: number,
   watchedPct: number,
-): Promise<{ unlocked: boolean; refusedReason?: string }> {
+): Promise<{
+  unlocked: boolean;
+  refusedReason?: string;
+  refusedCode?: VideoProgressRefusalCode;
+}> {
   const { admin, worker } = await getPortalSessions();
   if (!admin?.user?.organizationUserId && !worker?.user?.organizationUserId) {
     throw new Error('Unauthorized');
@@ -160,7 +171,7 @@ export async function saveVideoProgress(
       enrollmentId,
       code: err.code,
     });
-    return { unlocked: false, refusedReason: MFA_REQUIRED_MESSAGE };
+    return { unlocked: false, refusedReason: MFA_REQUIRED_MESSAGE, refusedCode: 'MFA_REQUIRED' };
   }
 
   // SEC-08: the portal layout blocks a lapsed organisation, but a direct call
@@ -170,7 +181,11 @@ export async function saveVideoProgress(
       msg: '[enrollment] Video progress blocked — organization lacks active billing',
       enrollmentId,
     });
-    return { unlocked: false, refusedReason: TRAINING_ACCESS_PAUSED_MESSAGE };
+    return {
+      unlocked: false,
+      refusedReason: TRAINING_ACCESS_PAUSED_MESSAGE,
+      refusedCode: 'BILLING_INACTIVE',
+    };
   }
 
   // Q-04: watching on is the learner advancing through the course. Fail closed —
@@ -180,7 +195,11 @@ export async function saveVideoProgress(
       msg: '[enrollment] Video progress blocked — course is archived',
       enrollmentId,
     });
-    return { unlocked: false, refusedReason: ARCHIVED_COURSE_LEARNER_MESSAGE };
+    return {
+      unlocked: false,
+      refusedReason: ARCHIVED_COURSE_LEARNER_MESSAGE,
+      refusedCode: 'COURSE_ARCHIVED',
+    };
   }
 
   const pct = Math.max(0, Math.min(100, Math.round(watchedPct)));
