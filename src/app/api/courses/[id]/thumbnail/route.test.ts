@@ -310,6 +310,19 @@ describe('GET /api/courses/[id]/thumbnail — Q-15 org-admin widening', () => {
 
     expect(res.status).toBe(403);
   });
+
+  it('does not widen for a global, non-video (retired) course even when offered', async () => {
+    signInOrgAdmin();
+    mockCourseFindUnique.mockResolvedValue(
+      makeCourse({ type: 'text', status: 'inactive', lessonPoster: LESSON_URI }),
+    );
+    mockOfferingFindUnique.mockResolvedValue({ id: 'off-1' });
+
+    const res = await call(nextCourseId());
+
+    expect(res.status).toBe(403);
+    expect(mockOfferingFindUnique).not.toHaveBeenCalled();
+  });
 });
 
 describe('GET /api/courses/[id]/thumbnail — source chain', () => {
