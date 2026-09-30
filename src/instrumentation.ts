@@ -74,7 +74,7 @@ export async function register() {
     // disabled sweep returns null and starts nothing.
     //
     // NOTE: this boots the workers *inside the web process*. The proper fix is a
-    // dedicated worker service (tracked in docs/rebuild/); until then this at
+    // dedicated worker service; until then this at
     // least decouples worker liveness from page loads.
     const startedWorkers: Worker[] = [];
     try {
