@@ -21,10 +21,3 @@ export interface QuizQuestion {
   moduleIndex?: number;
   qualityFlags?: string[];
 }
-
-export interface QuizAttemptResult {
-  score: number;
-  passed: boolean;
-  correctCount: number;
-  totalQuestions: number;
-}

@@ -1,24 +1,29 @@
 import prisma from '@/lib/prisma';
 import { logger } from '@/lib/logger';
 import { createNotification } from '@/lib/notifications/create';
+import { trainingNoticeLink } from '@/lib/notifications/portal-link';
 import { runRetentionPurge, type RetentionPurgeSummary } from '@/lib/retention';
 import { createEnrollmentForUser, type CreateEnrollmentContext } from '@/lib/enrollment/create';
 import { assignmentAdmitsHolder } from '@/lib/enrollment/assignment-facility-scope';
 import { resolveMemberFacilityIds } from '@/lib/facility/member-facility';
 import { isCycleSummaryEnabled } from '@/lib/cycle-summary/flag';
-import type { UserRole, RenewalCycle } from '@/generated/prisma/enums';
+import type { UserRole } from '@/generated/prisma/enums';
 import { SWEEP_LADDER_STAGES, REMINDER_STAGE_DEFAULTS } from './stages';
 import { DEFAULT_TZ, startOfDayInTz, addDays, diffInDaysInTz } from './time';
+import { cycleLengthDays } from './renewal-cycle';
 import {
   dispatchLadderStage,
   dispatchNudge,
   noopEmailSender,
+  retryNudgeEmail,
   retryReminderEmail,
   LEGACY_REMINDER_EMAIL_KINDS,
   type DispatchResult,
   type ReminderEmailSender,
 } from './dispatch';
+import { REASSIGN_ESCALATION_PERMISSION } from '@/lib/notifications/link-audience';
 import { resolveEscalationRecipients, NO_ESCALATION_RECIPIENTS } from './recipients';
+import { findIneligibleEnrollmentIds, findSupersededIds } from './eligibility';
 
 /**
  * Reminder sweep — pure, unit-testable orchestration (mirrors `runVideoSweep`).
@@ -29,8 +34,8 @@ import { resolveEscalationRecipients, NO_ESCALATION_RECIPIENTS } from './recipie
  * failures change underneath it, and is resilient to a missed cron day.
  *
  * Bulk queries only (no N+1): one query per track plus one batched lookup each
- * for existing logs, quiz attempts, and active retakes. Per-enrollment failures
- * are isolated so one bad row never aborts the run.
+ * for retakes, existing logs, and quiz attempts. Per-enrollment failures are
+ * isolated so one bad row never aborts the run.
  *
  * Note: `renewalCycle` is out of scope for v1 — the deadline is always the
  * current enrollment's `dueAt`.
@@ -136,15 +141,36 @@ export async function runReminderSweep(opts: ReminderSweepOptions): Promise<Remi
   return summary;
 }
 
+/** Enrolment context both retry sources rebuild their copy from. */
+const RETRY_ENROLLMENT_SELECT = {
+  id: true,
+  organizationUserId: true,
+  status: true,
+  dueAt: true,
+  course: { select: { title: true, archivedAt: true } },
+  organizationUser: {
+    select: {
+      user: { select: { email: true, fullName: true } },
+      facilities: {
+        where: { active: true },
+        take: 1,
+        select: { facility: { select: { timezone: true } } },
+      },
+    },
+  },
+} as const;
+
 /**
  * Re-attempt reminder emails that failed to deliver on an earlier sweep.
  *
  * Runs before the ladder/nudge tracks. Selects `EmailMessage` rows that are
  * still `failed`, whose last attempt is older than {@link RETRY_BACKOFF_MS}, and
- * that remain under their per-row `maxAttempts` cap. Only ladder sends carry a
- * `reminderLogId`, so they alone are reconstructable from the claimed
- * ReminderLog + enrollment context; each is rebuilt and re-sent via the injected
- * sender. A no-op under `dryRun` (it would otherwise mutate delivery state).
+ * that remain under their per-row `maxAttempts` cap. A send is reconstructable
+ * from the row it was claimed under — a ladder send's `reminderLogId`, a
+ * nudge send's `reminderNudgeId` (BUG-22) — plus that row's enrolment context;
+ * each is rebuilt and re-sent via the injected sender. A row with neither
+ * pointer (a nudge send written before BUG-22, or any other kind) is left
+ * alone. A no-op under `dryRun` (it would otherwise mutate delivery state).
  *
  * Narrowed, not stood down, while CYCLE_SUMMARY_ENABLED is on. The flag stops
  * NEW per-stage email at the dispatch site, so from the flip onward this pass
@@ -156,6 +182,11 @@ export async function runReminderSweep(opts: ReminderSweepOptions): Promise<Remi
  * the two retry passes off each other's rows, and the unchanged attempt cap and
  * backoff floor bound the drain: every candidate ends `sent` or exhausted, after
  * which this costs one indexed query per sweep that returns nothing.
+ *
+ * Re-checks the enrolment before re-sending (BUG-45 / BUG-31): an email about
+ * training that has since been finished, superseded by a retake, or archived is
+ * not re-sent but stamped `cancelled`, which takes it out of this query for
+ * good. One batched lookup covers the whole backlog.
  */
 async function runRetryPrePass(
   opts: ReminderSweepOptions,
@@ -176,67 +207,102 @@ async function runRetryPrePass(
       updatedAt: { lt: backoffFloor },
       ...(drainingLegacyBacklog ? { kind: { in: [...LEGACY_REMINDER_EMAIL_KINDS] } } : {}),
     },
-    select: { id: true, toEmail: true, attempts: true, maxAttempts: true, reminderLogId: true },
+    select: {
+      id: true,
+      toEmail: true,
+      attempts: true,
+      maxAttempts: true,
+      reminderLogId: true,
+      reminderNudgeId: true,
+    },
   });
 
   const retryable = candidates.filter(
-    (m): m is typeof m & { reminderLogId: string } =>
-      m.attempts < m.maxAttempts && m.reminderLogId !== null,
+    (m) => m.attempts < m.maxAttempts && (m.reminderLogId !== null || m.reminderNudgeId !== null),
   );
   if (retryable.length === 0) return;
 
-  // One batched lookup of the claimed logs + their enrollment context.
-  const logIds = [...new Set(retryable.map((m) => m.reminderLogId))];
-  const logs = await prisma.reminderLog.findMany({
-    where: { id: { in: logIds } },
-    select: {
-      id: true,
-      stage: true,
-      targetDate: true,
-      enrollment: {
-        select: {
-          dueAt: true,
-          course: { select: { title: true } },
-          organizationUser: {
-            select: {
-              user: { select: { email: true, fullName: true } },
-              facilities: {
-                where: { active: true },
-                take: 1,
-                select: { facility: { select: { timezone: true } } },
-              },
-            },
+  // One batched lookup per source table, then one eligibility check for all.
+  const logIds = [...new Set(retryable.flatMap((m) => m.reminderLogId ?? []))];
+  const nudgeIds = [...new Set(retryable.flatMap((m) => m.reminderNudgeId ?? []))];
+  const [logs, nudges] = await Promise.all([
+    logIds.length
+      ? prisma.reminderLog.findMany({
+          where: { id: { in: logIds } },
+          select: {
+            id: true,
+            stage: true,
+            targetDate: true,
+            enrollment: { select: RETRY_ENROLLMENT_SELECT },
           },
-        },
-      },
-    },
-  });
+        })
+      : Promise.resolve([]),
+    nudgeIds.length
+      ? prisma.reminderNudge.findMany({
+          where: { id: { in: nudgeIds } },
+          select: {
+            id: true,
+            kind: true,
+            attemptsRemaining: true,
+            enrollment: { select: RETRY_ENROLLMENT_SELECT },
+          },
+        })
+      : Promise.resolve([]),
+  ]);
   const logById = new Map(logs.map((l) => [l.id, l]));
+  const nudgeById = new Map(nudges.map((n) => [n.id, n]));
+  const ineligible = await findIneligibleEnrollmentIds(
+    [...logs, ...nudges].map(({ enrollment }) => ({
+      id: enrollment.id,
+      organizationUserId: enrollment.organizationUserId,
+      status: enrollment.status,
+      courseArchivedAt: enrollment.course.archivedAt,
+    })),
+  );
 
   for (const message of retryable) {
     try {
-      const log = logById.get(message.reminderLogId);
-      if (!log) {
-        // The linked ReminderLog is gone (e.g. enrollment deleted) — nothing to
+      const log = message.reminderLogId ? logById.get(message.reminderLogId) : undefined;
+      const nudge = message.reminderNudgeId ? nudgeById.get(message.reminderNudgeId) : undefined;
+      const source = log ?? nudge;
+      if (!source) {
+        // The claimed row is gone (e.g. enrollment deleted) — nothing to
         // reconstruct from; leave the row as-is rather than guess.
         summary.skipped += 1;
         continue;
       }
+      const { enrollment } = source;
+      if (ineligible.has(enrollment.id)) {
+        await cancelStaleReminderEmail(message.id, enrollment.id);
+        summary.skipped += 1;
+        continue;
+      }
 
-      const tz = log.enrollment.organizationUser.facilities[0]?.facility.timezone ?? DEFAULT_TZ;
-      const resent = await retryReminderEmail({
-        sendEmail,
-        emailMessage: { id: message.id, toEmail: message.toEmail },
-        stage: log.stage,
-        targetDate: log.targetDate,
-        courseTitle: log.enrollment.course.title,
-        dueAt: log.enrollment.dueAt,
-        timezone: tz,
-        worker: {
-          email: log.enrollment.organizationUser.user.email,
-          name: log.enrollment.organizationUser.user.fullName,
-        },
-      });
+      const emailMessage = { id: message.id, toEmail: message.toEmail };
+      const worker = {
+        email: enrollment.organizationUser.user.email,
+        name: enrollment.organizationUser.user.fullName,
+      };
+      const resent =
+        'stage' in source
+          ? await retryReminderEmail({
+              sendEmail,
+              emailMessage,
+              stage: source.stage,
+              targetDate: source.targetDate,
+              courseTitle: enrollment.course.title,
+              dueAt: enrollment.dueAt,
+              timezone: enrollment.organizationUser.facilities[0]?.facility.timezone ?? DEFAULT_TZ,
+              worker,
+            })
+          : await retryNudgeEmail({
+              sendEmail,
+              emailMessage,
+              kind: source.kind,
+              courseTitle: enrollment.course.title,
+              attemptsRemaining: source.attemptsRemaining,
+              worker,
+            });
 
       if (resent) summary.retriesSent += 1;
     } catch (err) {
@@ -244,6 +310,24 @@ async function runRetryPrePass(
       logger.error({ msg: '[reminders] Email retry failed', emailMessageId: message.id, err });
     }
   }
+}
+
+/**
+ * Retire a failed reminder email whose enrolment no longer warrants it. Stamped
+ * `cancelled` rather than left `failed`: the retry query selects `failed`, so
+ * this is what stops it being re-examined every sweep. `lastError` is left as
+ * the original delivery failure — the trail should still say why it never went.
+ */
+async function cancelStaleReminderEmail(emailMessageId: string, enrollmentId: string) {
+  await prisma.emailMessage.update({
+    where: { id: emailMessageId },
+    data: { status: 'cancelled' },
+  });
+  logger.info({
+    msg: '[reminders] Failed reminder email cancelled — enrolment finished, superseded or archived',
+    emailMessageId,
+    enrollmentId,
+  });
 }
 
 /**
@@ -440,27 +524,6 @@ async function runRoleTargetReconcilePrePass(
 const RENEWAL_LEAD_DAYS = 14;
 
 /**
- * Length of a renewal cycle in days. Approximate calendar spans (monthly ≈ 30,
- * quarterly ≈ 90, semiannual ≈ 180, annual ≈ 365) — only a consistent interval
- * from completion to the next deadline is required, not an exact anniversary.
- * `none` is 0 (the assignment never renews) and is filtered out before this runs.
- */
-function cycleLengthDays(cycle: RenewalCycle): number {
-  switch (cycle) {
-    case 'monthly':
-      return 30;
-    case 'quarterly':
-      return 90;
-    case 'semiannual':
-      return 180;
-    case 'annual':
-      return 365;
-    case 'none':
-      return 0;
-  }
-}
-
-/**
  * Re-trigger recurring training before the reminder tracks (Issue #6 / TC-019).
  *
  * For every course assignment on a renewal cycle, find its terminal
@@ -531,7 +594,9 @@ async function runRenewalRetriggerPrePass(
         courseId: true,
         completedAt: true,
         assignmentId: true,
-        organizationUser: { select: { user: { select: { email: true, fullName: true } } } },
+        organizationUser: {
+          select: { role: true, user: { select: { email: true, fullName: true } } },
+        },
       },
     });
     if (candidates.length === 0) return;
@@ -628,7 +693,7 @@ async function runRenewalRetriggerPrePass(
           type: 'COURSE_ASSIGNED',
           title: 'Training due for renewal',
           message: `Your training "${assignment.course.title}" is due for renewal. Please complete it again before the deadline.`,
-          linkUrl: '/worker/trainings',
+          linkUrl: trainingNoticeLink(candidate.organizationUser.role, [candidate.courseId]),
           metadata: { courseId: candidate.courseId, enrollmentId: renewal.id },
         });
 
@@ -698,11 +763,18 @@ async function runTrackA(
   // decision Q23) instead of deleting them, so without this predicate every
   // removal would start mailing "your training is overdue" to someone whose
   // access was just revoked. getStatusTrackerSummaryForOrg filters the same way.
-  const enrollments = await prisma.enrollment.findMany({
+  const candidates = await prisma.enrollment.findMany({
     where: {
       dueAt: { not: null },
       status: { notIn: [...TERMINAL_STATUSES] },
       organizationUser: { is: { active: true } },
+      // Founder Q-06: no reminders for an archived course. Without this the
+      // ladder keeps mailing "your training is overdue" about a course the
+      // learner can no longer open and no manager action can clear — the same
+      // dead-end the status-tracker page already avoids. Restated here because
+      // the Q24 archive filter is a query extension over top-level Course reads
+      // and cannot reach this nested relation.
+      course: { archivedAt: null },
       OR: [{ assignmentId: null }, { assignment: { is: { remindersEnabled: true } } }],
     },
     select: {
@@ -721,6 +793,7 @@ async function runTrackA(
       organizationUser: {
         select: {
           id: true,
+          role: true,
           user: { select: { email: true, fullName: true } },
           facilities: {
             where: { active: true },
@@ -732,6 +805,19 @@ async function runTrackA(
     },
   });
 
+  if (candidates.length === 0) return;
+
+  const superseded = await findSupersededIds(candidates);
+  const enrollments = candidates.filter((e) => !superseded.has(e.id));
+  const supersededCount = candidates.length - enrollments.length;
+  if (supersededCount > 0) {
+    summary.scanned += supersededCount;
+    summary.skipped += supersededCount;
+    logger.debug({
+      msg: '[reminders] Track A skipped superseded enrollments',
+      count: supersededCount,
+    });
+  }
   if (enrollments.length === 0) return;
 
   // One batched lookup of already-sent stages.
@@ -754,6 +840,7 @@ async function runTrackA(
         id: enrollment.organizationUser.id,
         email: enrollment.organizationUser.user.email,
         name: enrollment.organizationUser.user.fullName,
+        role: enrollment.organizationUser.role,
       };
 
       for (const stage of SWEEP_LADDER_STAGES) {
@@ -829,6 +916,10 @@ async function runTrackB(
     where: {
       status: { in: ['in_progress', 'locked'] },
       organizationUser: { is: { active: true } },
+      // Founder Q-06, same rule as Track A. Sharper here: every nudge this
+      // track sends asks the learner to resume or retake, and Q-04 refuses
+      // both on an archived course.
+      course: { archivedAt: null },
     },
     select: {
       id: true,
@@ -844,6 +935,7 @@ async function runTrackB(
       organizationUser: {
         select: {
           id: true,
+          role: true,
           user: { select: { email: true, fullName: true } },
         },
       },
@@ -869,17 +961,13 @@ async function runTrackB(
     }
   }
 
-  // One batched lookup of active (non-terminal) retakes for locked enrollments.
-  const lockedIds = enrollments.filter((e) => e.status === 'locked').map((e) => e.id);
-  const activeRetakes = lockedIds.length
-    ? await prisma.enrollment.findMany({
-        where: { retakeOf: { in: lockedIds }, status: { notIn: [...TERMINAL_STATUSES] } },
-        select: { retakeOf: true },
-      })
-    : [];
-  const hasActiveRetake = new Set(
-    activeRetakes.map((r) => r.retakeOf).filter((id): id is string => id !== null),
-  );
+  const superseded = await findSupersededIds(enrollments.filter((e) => e.status === 'locked'));
+  if (superseded.size > 0) {
+    logger.debug({
+      msg: '[reminders] Track B skipped superseded enrollments',
+      count: superseded.size,
+    });
+  }
 
   for (const enrollment of enrollments) {
     summary.scanned += 1;
@@ -888,6 +976,7 @@ async function runTrackB(
         id: enrollment.organizationUser.id,
         email: enrollment.organizationUser.user.email,
         name: enrollment.organizationUser.user.fullName,
+        role: enrollment.organizationUser.role,
       };
 
       if (enrollment.status === 'in_progress') {
@@ -926,14 +1015,16 @@ async function runTrackB(
         });
         tally(result);
       } else {
-        // status === 'locked': ADMIN_REASSIGN unless a retake is already active.
-        if (hasActiveRetake.has(enrollment.id)) {
+        if (superseded.has(enrollment.id)) {
           summary.skipped += 1;
           continue;
         }
 
+        // The nudge's notice opens the learner's staff profile, so its email
+        // goes to the same `user.read` audience (Q-25).
         const recipients = await resolveEscalationRecipients({
           organizationUserId: enrollment.organizationUserId,
+          requiredPermission: REASSIGN_ESCALATION_PERMISSION,
         });
         const result = await dispatchNudge({
           kind: 'ADMIN_REASSIGN',
@@ -961,18 +1052,51 @@ async function runTrackB(
 }
 
 /**
+ * Longest `retakeOf` chain {@link resolveOnCompletion} will follow. A chain is
+ * one hop per retake an admin assigned; this bound only guards against a cycle
+ * or corrupt data turning a completion into an unbounded loop.
+ */
+const MAX_RETAKE_CHAIN = 25;
+
+/**
+ * The enrolment and every enrolment it supersedes, newest first: its original,
+ * that original's original, and so on up the `retakeOf` chain. One lookup per
+ * hop — `retakeOf` is a bare column with no relation to join through, and a
+ * chain is almost always a single hop.
+ */
+async function retakeLineage(enrollmentId: string): Promise<string[]> {
+  const lineage = [enrollmentId];
+  let cursor: string | null = enrollmentId;
+  while (cursor && lineage.length <= MAX_RETAKE_CHAIN) {
+    const row: { retakeOf: string | null } | null = await prisma.enrollment.findUnique({
+      where: { id: cursor },
+      select: { retakeOf: true },
+    });
+    cursor = row?.retakeOf ?? null;
+    if (!cursor || lineage.includes(cursor)) break;
+    lineage.push(cursor);
+  }
+  return lineage;
+}
+
+/**
  * Stamp `resolvedAt`/`isRead` on the open reminder/escalation notifications for
  * an enrollment once it completes, so the status-tracker banner/page self-clear.
  * Called wherever an enrollment transitions to completed/attested (Phase 8).
- * Never throws.
+ *
+ * Also resolves those of every enrolment it supersedes (BUG-46): finishing a
+ * retake meets the obligation the locked original's overdue and escalation
+ * alerts were about, so leaving them open would keep chasing a met deadline in
+ * every admin's notification list. Never throws.
  */
 export async function resolveOnCompletion(enrollmentId: string): Promise<void> {
   try {
+    const lineage = await retakeLineage(enrollmentId);
     await prisma.notification.updateMany({
       where: {
         type: { in: ['COURSE_OVERDUE', 'COMPLIANCE_ESCALATION', 'COURSE_RETAKE_REMINDER'] },
         resolvedAt: null,
-        metadata: { path: ['enrollmentId'], equals: enrollmentId },
+        OR: lineage.map((id) => ({ metadata: { path: ['enrollmentId'], equals: id } })),
       },
       data: { resolvedAt: new Date(), isRead: true },
     });

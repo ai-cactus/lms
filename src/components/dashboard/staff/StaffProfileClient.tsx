@@ -39,6 +39,7 @@ import type { Role } from '@/types/next-auth';
 import { getAdminWorkerCertificates } from '@/app/actions/certificate';
 import { logger } from '@/lib/logger';
 import { cn } from '@/lib/utils';
+import { DUE_SOON_WINDOW_DAYS } from '@/lib/facility/metrics';
 import {
   ArrowLeft,
   Building2,
@@ -118,13 +119,6 @@ const searchInputCls =
 const rowLinkCls = 'h-auto p-0 text-[15.5px] font-medium';
 
 /**
- * Mirrors `AT_RISK_WINDOW_DAYS` in `src/lib/reminders/status-tracker.ts` — a
- * deadline flagged red here is the same one the Status Tracker calls "at risk".
- * Duplicated rather than imported because that module pulls in Prisma.
- */
-const DUE_SOON_WINDOW_DAYS = 7;
-
-/**
  * Pins a fixed timeZone so the server (UTC) and the browser (local) render the
  * same string — otherwise React reports a hydration mismatch (#418).
  */
@@ -137,6 +131,7 @@ function formatDate(value: Date | string): string {
   });
 }
 
+/** Same window as the Status Tracker's "at risk" — one shared constant, Prisma-free. */
 function isDueUrgent(dueAt: string): boolean {
   const msUntilDue = new Date(dueAt).getTime() - Date.now();
   return msUntilDue <= DUE_SOON_WINDOW_DAYS * 24 * 60 * 60 * 1000;
@@ -806,13 +801,15 @@ export default function StaffProfileClient({
         staffName={user.name}
       />
 
-      <AssignRetakeModal
-        isOpen={!!retakeEnrollment}
-        onClose={() => setRetakeEnrollment(null)}
-        enrollmentId={retakeEnrollment?.id || ''}
-        courseName={retakeEnrollment?.courseName || ''}
-        userName={user.name}
-      />
+      {retakeEnrollment && (
+        <AssignRetakeModal
+          isOpen
+          onClose={() => setRetakeEnrollment(null)}
+          enrollmentId={retakeEnrollment.id}
+          courseName={retakeEnrollment.courseName}
+          userName={user.name}
+        />
+      )}
 
       {viewingCertificateId && (
         <CertificateModal

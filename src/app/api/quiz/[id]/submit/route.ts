@@ -7,9 +7,19 @@ import { z } from 'zod';
 import { callVertexAI, interactiveBudget, VertexBudgetExceededError } from '@/lib/ai-client';
 import { logger, maskEmail } from '@/lib/logger';
 import { ADMIN_ROLES } from '@/lib/rbac/role-utils';
+import { roleMayOpenLink } from '@/lib/notifications/link-audience';
 import { guardApiSession } from '@/lib/auth-guard';
 import { hasActiveBilling } from '@/lib/billing';
 import { checkRateLimit } from '@/lib/rate-limit';
+import { ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
+import { parseStoredOptionExplanations } from '@/lib/quiz/options';
+import {
+  learnerQuizClosedReason,
+  QUIZ_ALREADY_COMPLETED_ERROR_CODE,
+  QUIZ_ALREADY_COMPLETED_MESSAGE,
+  QUIZ_LOCKED_ERROR_CODE,
+  QUIZ_LOCKED_MESSAGE,
+} from '@/lib/enrollment/status-guards';
 const submitQuizSchema = z.object({
   enrollmentId: z.string().min(1, 'Enrollment ID is required'),
   answers: z.array(
@@ -203,6 +213,36 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       );
     }
 
+    // Q-04: no submission is graded once the course is archived. `course` comes
+    // back through a nested include, which the archive query extension does not
+    // filter, so `archivedAt` is readable here without an extra query.
+    if (enrollment.course.archivedAt) {
+      logger.warn({
+        msg: '[quiz] Submit blocked — course is archived',
+        enrollmentId,
+        courseId: enrollment.courseId,
+      });
+      return NextResponse.json({ error: ARCHIVED_COURSE_LEARNER_MESSAGE }, { status: 403 });
+    }
+
+    // BUG-53: grading writes the enrolment's status and score, so a submission
+    // against a locked or already-signed-off enrolment would reopen it. /start
+    // refuses both; this stops a direct POST that skips /start.
+    const closedReason = learnerQuizClosedReason(enrollment.status);
+    if (closedReason) {
+      logger.warn({
+        msg: '[quiz] Submit blocked — enrollment is closed to new attempts',
+        enrollmentId,
+        status: enrollment.status,
+      });
+      return NextResponse.json(
+        closedReason === 'locked'
+          ? { error: QUIZ_LOCKED_ERROR_CODE, message: QUIZ_LOCKED_MESSAGE }
+          : { error: QUIZ_ALREADY_COMPLETED_ERROR_CODE, message: QUIZ_ALREADY_COMPLETED_MESSAGE },
+        { status: 403 },
+      );
+    }
+
     const quiz = await prisma.quiz.findUnique({
       where: { id: quizId },
       include: { questions: true, lesson: { select: { courseId: true } } },
@@ -297,13 +337,15 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     // CORE LOGIC: Passing the quiz does NOT complete the course. Attestation required.
     const isLocked = !passed && quiz.allowedAttempts && currentAttemptCount >= quiz.allowedAttempts;
 
+    const now = new Date();
     await prisma.enrollment.update({
       where: { id: enrollmentId },
       data: {
         status: isLocked ? 'locked' : 'in_progress',
         score,
         progress: 100,
-        ...(isLocked ? { lockedAt: new Date() } : {}),
+        lastActivityAt: now,
+        ...(isLocked ? { lockedAt: now } : {}),
       },
     });
 
@@ -333,19 +375,30 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
         });
 
         if (!existingNotification) {
-          const admins = await prisma.organizationUser.findMany({
+          const staffProfileLink = `/dashboard/staff/${organizationUser.id}`;
+          // Q-25: the notice and the email both open the learner's staff
+          // profile, so they go only to admins who can open it (`user.read`).
+          const tier = await prisma.organizationUser.findMany({
             where: { organizationId: orgId, active: true, role: { in: [...ADMIN_ROLES] } },
-            select: { id: true, user: { select: { email: true } } },
+            select: { id: true, role: true, user: { select: { email: true } } },
           });
+          const admins = tier.filter((admin) => roleMayOpenLink(admin.role, staffProfileLink));
 
-          if (admins.length > 0) {
+          if (admins.length === 0) {
+            logger.warn({
+              msg: '[quiz] Attempts exhausted but no admin can open the staff profile — nobody notified',
+              enrollmentId,
+              orgId,
+              adminCount: tier.length,
+            });
+          } else {
             await prisma.notification.createMany({
               data: admins.map((admin) => ({
                 organizationUserId: admin.id,
                 type: 'QUIZ_RETRY_LIMIT_REACHED',
                 title: 'Quiz Attempts Exhausted',
                 message: `${workerName} has used all ${currentAttemptCount} attempts on "${quizTitle}" in course "${courseName}" and requires a retake assignment.`,
-                linkUrl: `/dashboard/staff/${organizationUser.id}`,
+                linkUrl: staffProfileLink,
                 metadata: {
                   enrollmentId,
                   organizationUserId: organizationUser.id,
@@ -370,7 +423,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
                 quizTitle,
                 courseName,
                 currentAttemptCount,
-                `${appUrl}/dashboard/staff/${organizationUser.id}`,
+                `${appUrl}${staffProfileLink}`,
               ).catch((err) =>
                 logger.error({
                   msg: '[quiz] Failed to send quiz locked email',
@@ -416,12 +469,17 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
         const correctIdx = optionTexts.findIndex((t: string) => t === correctText);
         const correctLetter = correctIdx >= 0 ? String.fromCharCode(65 + correctIdx) : '';
 
+        // Only ever returned AFTER the attempt is graded, so naming the wrong
+        // options costs nothing — this response IS the review screen.
+        const optionExplanations = parseStoredOptionExplanations(q.incorrectOptionExplanations);
+
         return {
           id: q.id,
           text: q.text,
           options: optionsArray.map((opt: unknown, idx: number) => ({
             id: String.fromCharCode(65 + idx),
             text: typeof opt === 'string' ? opt : (opt as { text?: string })?.text || String(opt),
+            explanation: optionExplanations?.[String(idx)],
           })),
           selectedAnswer: selectedLetter,
           correctAnswer: correctLetter,

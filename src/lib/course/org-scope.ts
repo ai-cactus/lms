@@ -12,15 +12,12 @@
  * bypasses — and it builds its queries from this predicate. Baking the filter in
  * here would re-exclude them at the one call site that most needs them.
  *
- * `getCourses` (`src/app/actions/course.ts`) builds the same union in row form
- * because it needs each offering's course payload; this module is the predicate
- * form, for callers that only need to match.
+ * `getCourses` (`src/app/actions/course.ts`) lists a manager's courses with this
+ * predicate too (RISK-11), so the courses list and the dashboards cannot
+ * disagree about which courses the organisation has.
  */
 import prisma from '@/lib/prisma';
 import type { Prisma } from '@/generated/prisma/client';
-import { can } from '@/lib/rbac/permissions';
-import { dbRoleToRoleKey, isAdminRole } from '@/lib/rbac/role-utils';
-import type { Role } from '@/types/next-auth';
 
 /** Ids of the courses this organisation adopted from another tenant's catalogue. */
 export async function listAdoptedCourseIds(organizationId: string): Promise<string[]> {
@@ -41,33 +38,4 @@ export async function orgCourseWhere(organizationId: string): Promise<Prisma.Cou
   const adoptedCourseIds = await listAdoptedCourseIds(organizationId);
   if (adoptedCourseIds.length === 0) return { organizationId };
   return { OR: [{ organizationId }, { id: { in: adoptedCourseIds } }] };
-}
-
-/**
- * The "authored in-house" half of {@link orgCourseWhere}, at the breadth the
- * caller's role actually has.
- *
- * A manager sees every course authored inside the organisation — Team QA #15/C1
- * ruled that a course is organisation property, not its author's, so an
- * HR-written course must be visible to the Owner. Anyone else keeps the original
- * creator scope, which matters because the callers are `'use server'` exports a
- * worker can POST to directly.
- *
- * `isAdminRole` is load-bearing alongside the permission check: worker roles also
- * hold `course.read` (for their own enrolled courses), so the permission alone
- * would widen this to every worker.
- *
- * Extracted because `getCourses` and the two dashboard actions each derived this
- * separately and only `getCourses` was ever widened — twice.
- */
-export function authoredCourseWhere(input: {
-  role: Role;
-  organizationId: string | null;
-  organizationUserId: string;
-}): Prisma.CourseWhereInput {
-  const { role, organizationId, organizationUserId } = input;
-  const isOrgManager =
-    !!organizationId && isAdminRole(role) && can(dbRoleToRoleKey(role), 'course.read');
-
-  return isOrgManager ? { organizationId } : { createdByOrgUserId: organizationUserId };
 }

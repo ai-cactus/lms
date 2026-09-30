@@ -29,6 +29,7 @@ const {
     cycleSummaryRun: { create: vi.fn(), update: vi.fn() },
     reminderLog: { findMany: vi.fn(), updateMany: vi.fn() },
     reminderNudge: { findMany: vi.fn(), updateMany: vi.fn() },
+    enrollment: { findMany: vi.fn() },
     emailMessage: { create: vi.fn(), update: vi.fn() },
     cycleSummaryItem: { createMany: vi.fn() },
     $transaction: vi.fn(),
@@ -89,12 +90,21 @@ function enrollmentContext(
     fullName?: string | null;
     dueAt?: Date | null;
     title?: string;
+    enrollmentId?: string;
+    status?: 'in_progress' | 'locked' | 'completed' | 'attested';
+    archivedAt?: Date | null;
   } = {},
 ) {
+  const organizationUserId = overrides.organizationUserId ?? 'worker-ou-1';
   return {
+    id: overrides.enrollmentId ?? `enrollment-${organizationUserId}`,
+    status: overrides.status ?? 'in_progress',
     dueAt: overrides.dueAt === undefined ? new Date('2026-09-25T00:00:00.000Z') : overrides.dueAt,
-    organizationUserId: overrides.organizationUserId ?? 'worker-ou-1',
-    course: { title: overrides.title ?? 'Bloodborne Pathogens' },
+    organizationUserId,
+    course: {
+      title: overrides.title ?? 'Bloodborne Pathogens',
+      archivedAt: overrides.archivedAt ?? null,
+    },
     organizationUser: {
       organizationId: ORG.id,
       user: {
@@ -154,6 +164,7 @@ beforeEach(() => {
   prismaMock.reminderLog.updateMany.mockResolvedValue({ count: 0 });
   prismaMock.reminderNudge.findMany.mockResolvedValue([]);
   prismaMock.reminderNudge.updateMany.mockResolvedValue({ count: 0 });
+  prismaMock.enrollment.findMany.mockResolvedValue([]); // superseded lookup: no retakes
   prismaMock.emailMessage.create.mockResolvedValue({ id: 'email-1' });
   prismaMock.emailMessage.update.mockResolvedValue({});
   prismaMock.cycleSummaryItem.createMany.mockResolvedValue({ count: 0 });
@@ -342,6 +353,22 @@ describe('runCycleSummary — per-recipient grouping', () => {
       'training_due',
       'team_compliance',
     ]);
+    // Both copies are recorded — one per audience — so a retry can rebuild both
+    // sections rather than collapsing them into one (BUG-21).
+    expect(prismaMock.cycleSummaryItem.createMany.mock.calls[0][0].data).toEqual([
+      {
+        emailMessageId: 'email-1',
+        itemType: 'reminder_log',
+        itemId: 'log-a',
+        recipientRole: 'worker',
+      },
+      {
+        emailMessageId: 'email-1',
+        itemType: 'reminder_log',
+        itemId: 'log-a',
+        recipientRole: 'escalation',
+      },
+    ]);
   });
 
   it('records the email with the summary kind, the org and the recipient name', async () => {
@@ -370,7 +397,14 @@ describe('runCycleSummary — per-recipient grouping', () => {
     await runCycleSummary({ now: WEDNESDAY, dryRun: false });
 
     expect(prismaMock.cycleSummaryItem.createMany).toHaveBeenCalledWith({
-      data: [{ emailMessageId: 'email-1', itemType: 'reminder_log', itemId: 'log-a' }],
+      data: [
+        {
+          emailMessageId: 'email-1',
+          itemType: 'reminder_log',
+          itemId: 'log-a',
+          recipientRole: 'worker',
+        },
+      ],
       skipDuplicates: true,
     });
   });
@@ -519,6 +553,117 @@ describe('runCycleSummary — recipient fan-out', () => {
     const upcoming = message.sections.find((s: { id: string }) => s.id === 'training_upcoming');
     expect(due.items.map((i: { courseTitle: string }) => i.courseTitle)).toEqual(['Course A']);
     expect(upcoming.items.map((i: { courseTitle: string }) => i.courseTitle)).toEqual(['Course B']);
+  });
+});
+
+describe('runCycleSummary — re-checks the enrolment before a line (BUG-45)', () => {
+  it.each([
+    ['completed', { status: 'completed' as const }],
+    ['attested', { status: 'attested' as const }],
+    ['on an archived course', { archivedAt: new Date('2026-09-22T00:00:00.000Z') }],
+  ])(
+    'drops and stamps a row whose enrolment is %s, sending nothing about it',
+    async (_l, state) => {
+      prismaMock.reminderLog.findMany.mockResolvedValue([
+        reminderLogRow({ id: 'log-stale', enrollment: enrollmentContext(state) }),
+      ]);
+      prismaMock.organization.findMany.mockResolvedValue([ORG]);
+      const sendEmail = vi.fn().mockResolvedValue({ ok: true });
+
+      const summary = await runCycleSummary({ now: WEDNESDAY, dryRun: false, sendEmail });
+
+      expect(sendEmail).not.toHaveBeenCalled();
+      expect(prismaMock.reminderLog.updateMany).toHaveBeenCalledWith({
+        where: { id: { in: ['log-stale'] }, summarizedAt: null },
+        data: { summarizedAt: WEDNESDAY },
+      });
+      expect(summary.remindersDropped).toBe(1);
+      expect(summary.remindersSummarized).toBe(0);
+      // No live content left, so the organization is never even claimed.
+      expect(prismaMock.cycleSummaryRun.create).not.toHaveBeenCalled();
+    },
+  );
+
+  it('drops a row a retake has superseded, in ONE lookup, and keeps the owed one', async () => {
+    prismaMock.reminderLog.findMany.mockResolvedValue([
+      reminderLogRow({
+        id: 'log-superseded',
+        stage: 'HARD_ESCALATION',
+        enrollment: enrollmentContext({ enrollmentId: 'locked-1', status: 'locked' }),
+      }),
+      reminderLogRow({ id: 'log-owed' }),
+    ]);
+    prismaMock.reminderNudge.findMany.mockResolvedValue([
+      {
+        id: 'nudge-superseded',
+        kind: 'ADMIN_REASSIGN',
+        attemptsRemaining: null,
+        enrollment: enrollmentContext({ enrollmentId: 'locked-1', status: 'locked' }),
+      },
+    ]);
+    prismaMock.enrollment.findMany.mockResolvedValue([{ retakeOf: 'locked-1' }]);
+    prismaMock.organization.findMany.mockResolvedValue([ORG]);
+    const sendEmail = vi.fn().mockResolvedValue({ ok: true });
+
+    const summary = await runCycleSummary({ now: WEDNESDAY, dryRun: false, sendEmail });
+
+    expect(prismaMock.enrollment.findMany).toHaveBeenCalledTimes(1);
+    expect(prismaMock.enrollment.findMany.mock.calls[0][0].where).toEqual({
+      retakeOf: { in: ['locked-1', 'enrollment-worker-ou-1'] },
+      organizationUserId: { in: ['worker-ou-1'] },
+    });
+    expect(prismaMock.reminderNudge.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['nudge-superseded'] }, summarizedAt: null },
+      data: { summarizedAt: WEDNESDAY },
+    });
+    const recordedIds = prismaMock.cycleSummaryItem.createMany.mock.calls.flatMap(([args]) =>
+      args.data.map((item: { itemId: string }) => item.itemId),
+    );
+    expect(recordedIds).toContain('log-owed');
+    expect(recordedIds).not.toContain('log-superseded');
+    expect(recordedIds).not.toContain('nudge-superseded');
+    expect(summary.remindersDropped).toBe(2);
+    expect(summary.remindersSummarized).toBe(1);
+  });
+
+  it('stamps nothing under dry-run', async () => {
+    prismaMock.reminderLog.findMany.mockResolvedValue([
+      reminderLogRow({ enrollment: enrollmentContext({ status: 'completed' }) }),
+    ]);
+
+    const summary = await runCycleSummary({ now: WEDNESDAY, dryRun: true });
+
+    expect(prismaMock.reminderLog.updateMany).not.toHaveBeenCalled();
+    expect(summary.remindersDropped).toBe(1);
+  });
+});
+
+describe('runCycleSummary — escalation audience follows the in-app notice (Q-25)', () => {
+  it('resolves a ladder escalation for the Status Tracker audience and ADMIN_REASSIGN for the staff-profile one', async () => {
+    prismaMock.reminderLog.findMany.mockResolvedValue([
+      reminderLogRow({ id: 'log-a', stage: 'HARD_ESCALATION' }),
+    ]);
+    prismaMock.reminderNudge.findMany.mockResolvedValue([
+      {
+        id: 'nudge-a',
+        kind: 'ADMIN_REASSIGN',
+        attemptsRemaining: null,
+        enrollment: enrollmentContext({ enrollmentId: 'locked-1', status: 'locked' }),
+      },
+    ]);
+    prismaMock.organization.findMany.mockResolvedValue([ORG]);
+
+    await runCycleSummary({ now: WEDNESDAY, dryRun: false });
+
+    expect(mockResolveEscalationRecipients).toHaveBeenCalledTimes(2);
+    expect(mockResolveEscalationRecipients).toHaveBeenCalledWith({
+      organizationUserId: 'worker-ou-1',
+      requiredPermission: 'assignment.read',
+    });
+    expect(mockResolveEscalationRecipients).toHaveBeenCalledWith({
+      organizationUserId: 'worker-ou-1',
+      requiredPermission: 'user.read',
+    });
   });
 });
 

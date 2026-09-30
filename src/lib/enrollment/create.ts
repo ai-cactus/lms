@@ -1,7 +1,10 @@
 import prisma from '@/lib/prisma';
 import { DEFAULT_SELF_SERVE_WORKER_ROLE } from '@/lib/rbac/role-utils';
 import { logger, maskEmail } from '@/lib/logger';
+import { isDeletedIdentity } from '@/lib/auth/deleted-identity';
+import { logDeletedEmailRefusal } from '@/lib/auth/deleted-email-guard';
 import { createNotification } from '@/lib/notifications/create';
+import { trainingNoticeLink } from '@/lib/notifications/portal-link';
 import { computeDueAt, resolveStartDate } from '@/lib/reminders/deadline';
 import { resolveMemberFacilityId, resolveMemberFacilityIds } from '@/lib/facility/member-facility';
 import type { StaffEntry } from '@/types/enrollment';
@@ -59,6 +62,8 @@ export interface DeferredWorkerNotification {
   userId: string;
   email: string;
   recipientName: string;
+  /** The recipient's role in this org — it decides which portal the notice links into. */
+  recipientRole: UserRole;
   courseId: string;
   courseTitle: string;
   organizationName: string;
@@ -92,6 +97,7 @@ interface PrefetchedUser {
   firstName: string | null;
   lastName: string | null;
   fullName: string | null;
+  deletedAt: Date | null;
 }
 
 /**
@@ -107,7 +113,7 @@ export interface EnrollmentPrefetch {
   /** The identity for this email, or null if none exists. */
   user: PrefetchedUser | null;
   /** The caller-org membership for that identity, or null when it has none. */
-  membership: { id: string } | null;
+  membership: { id: string; role: UserRole } | null;
   /** Whether an enrollment already exists for that membership on `ctx.courseId`. */
   alreadyEnrolled: boolean;
   /** The most recent outstanding pending invite for this email, or null. */
@@ -125,8 +131,10 @@ export interface EnrollmentPrefetch {
  * instead when {@link CreateEnrollmentContext.deferWorkerNotification} is set.
  * For an unknown or org-less email: send a `/join` invite and park
  * the course on it (materialised into an enrollment on accept) rather than
- * creating an account. Never throws for an individual entry — a failure is
- * reported via the returned {@link EnrollmentOutcome}.
+ * creating an account. Validation, permission and invite failures are reported
+ * as a `failed` {@link EnrollmentOutcome}, and a failed email or reminder-log
+ * write is logged without failing the entry; a database error on the member
+ * branch (name backfill, facility read, enrollment write) propagates.
  *
  * When `prefetch` is supplied the three per-user read queries are served from that
  * snapshot instead of the database; the write/notification/email side-effects are
@@ -155,7 +163,7 @@ export async function createEnrollmentForUser(
     ? prefetch.user
     : await prisma.user.findUnique({
         where: { email: normalizedEmail },
-        select: { id: true, firstName: true, lastName: true, fullName: true },
+        select: { id: true, firstName: true, lastName: true, fullName: true, deletedAt: true },
       });
 
   // Tenancy is now structural: we only ever look for a membership in the
@@ -166,7 +174,7 @@ export async function createEnrollmentForUser(
     : user && ctx.organizationId
       ? await prisma.organizationUser.findFirst({
           where: { userId: user.id, organizationId: ctx.organizationId, active: true },
-          select: { id: true },
+          select: { id: true, role: true },
         })
       : null;
 
@@ -176,6 +184,14 @@ export async function createEnrollmentForUser(
   // accepted (see enrollInviteCourses). Unifies the assign flow with the
   // staff-invite flow; no premature accounts, no temporary passwords.
   if (!user || !membership) {
+    // Q-31: a deleted identity is never invited — accepting would be refused
+    // anyway. Reported as an ordinary failure so the caller cannot tell the
+    // account was deleted.
+    if (isDeletedIdentity(user)) {
+      logDeletedEmailRefusal('createEnrollmentForUser', normalizedEmail, ctx.organizationId);
+      return { status: 'failed', email: normalizedEmail };
+    }
+
     // Team QA C8: a supervisor "can assign existing courses to existing staff"
     // but "can't add staff". This branch INVITES an unknown address, which is
     // adding staff — so it is gated on the caller's `invite.create`, not on the
@@ -401,6 +417,7 @@ export async function createEnrollmentForUser(
       userId: user.id,
       email: normalizedEmail,
       recipientName,
+      recipientRole: membership.role,
       courseId: ctx.courseId,
       courseTitle: ctx.courseTitle,
       organizationName: ctx.organizationName,
@@ -412,7 +429,7 @@ export async function createEnrollmentForUser(
       type: 'COURSE_ASSIGNED',
       title: 'New Required Training Assigned',
       message: `You have been assigned a new course: ${ctx.courseTitle}`,
-      linkUrl: `/worker/trainings`,
+      linkUrl: trainingNoticeLink(membership.role, [ctx.courseId]),
       metadata: { courseId: ctx.courseId },
     });
 
@@ -458,26 +475,37 @@ export async function createEnrollmentForUser(
 const ENROLLMENT_BATCH_CONCURRENCY = 10;
 
 /**
- * Batched, behaviour-preserving counterpart to {@link createEnrollmentForUser},
- * gated behind the `ENROLLMENT_BATCH_ENABLED` kill-switch at the call sites.
+ * Batched counterpart to {@link createEnrollmentForUser}, gated behind the
+ * `ENROLLMENT_BATCH_ENABLED` kill-switch at the call sites.
  *
- * Equivalent to calling `createEnrollmentForUser` once per entry in array order,
- * but it (a) collapses the per-user identity / membership / enrollment / invite /
- * facility reads into batched look-ups up front and (b) runs the independent per-user
- * side-effects with bounded concurrency instead of awaiting each serially. It
- * chooses the *implementation*, never the outcome: seat-limit rejection, skip
- * logic, which users get enrolled/invited, and the emails sent are all identical
- * to the sequential path.
+ * It (a) collapses the per-user identity / membership / enrollment / invite /
+ * facility reads into batched look-ups up front and (b) runs the independent
+ * per-email groups with bounded concurrency instead of awaiting each serially.
  *
- * Returns one {@link EnrollmentOutcome} per input entry, in input order. Emails in
- * `skipEmails` (already normalised — the seat-limit rejections) are force-failed
- * without any DB work, mirroring the caller's per-entry seat guard. Duplicate
- * emails within the batch are processed sequentially inside their own group, so a
- * repeat occurrence observes the first's writes exactly as the sequential loop
- * does. Partial-failure semantics are inherited unchanged from
- * `createEnrollmentForUser`: a committed enrollment is never rolled back by a
- * later reminder-log or email failure, and a hard failure (e.g. the in-app
- * notification throwing) aborts the run — no per-entry outcome is transactional.
+ * When every database call succeeds it is equivalent to calling
+ * `createEnrollmentForUser` once per entry in array order: seat-limit rejection,
+ * skip logic, which users get enrolled/invited, the returned outcomes (one per
+ * entry, in input order) and the emails sent are identical. Only the ORDER in
+ * which different emails' side-effects happen differs. Emails in `skipEmails`
+ * (already normalised — the seat-limit rejections) are force-failed without any
+ * DB work. Duplicate emails run sequentially inside their own group, so a repeat
+ * occurrence observes the first's writes exactly as the sequential loop does.
+ *
+ * ⚠️ RISK-09 — it is NOT equivalent when a database call throws. Both paths
+ * reject and neither rolls anything back, but they leave different rows behind:
+ *  - A throw inside one entry (e.g. `enrollment.create`): the sequential loop
+ *    never touches the entries after it; here every group already in flight —
+ *    all of them, for a batch of at most {@link ENROLLMENT_BATCH_CONCURRENCY}
+ *    distinct emails — runs to completion and commits.
+ *  - A throw in the up-front batched reads: nothing is written at all, whereas
+ *    the sequential loop would already have committed the entries before the
+ *    one whose read failed.
+ *  - With several failures, the error rethrown is the first one OBSERVED, not
+ *    necessarily the lowest-index entry's.
+ * This is inherent to running groups concurrently; matching the sequential
+ * path would mean serialising the groups, which is the cost this path exists to
+ * avoid. `create-batch.test.ts` pins each difference. Anyone enabling the flag
+ * is accepting them.
  */
 export async function createEnrollmentsForUsers(
   entries: StaffEntry[],
@@ -505,7 +533,14 @@ export async function createEnrollmentsForUsers(
   // Batch read 1: resolve every candidate identity in one query.
   const users = await prisma.user.findMany({
     where: { email: { in: uniqueEmails } },
-    select: { id: true, email: true, firstName: true, lastName: true, fullName: true },
+    select: {
+      id: true,
+      email: true,
+      firstName: true,
+      lastName: true,
+      fullName: true,
+      deletedAt: true,
+    },
   });
   const userByEmail = new Map(users.map((u) => [u.email.toLowerCase(), u]));
 
@@ -517,10 +552,12 @@ export async function createEnrollmentsForUsers(
     ctx.organizationId && userIds.length > 0
       ? await prisma.organizationUser.findMany({
           where: { userId: { in: userIds }, organizationId: ctx.organizationId, active: true },
-          select: { id: true, userId: true },
+          select: { id: true, userId: true, role: true },
         })
       : [];
-  const membershipByUserId = new Map(memberships.map((m) => [m.userId, { id: m.id }]));
+  const membershipByUserId = new Map(
+    memberships.map((m) => [m.userId, { id: m.id, role: m.role }]),
+  );
   const membershipIds = memberships.map((m) => m.id);
 
   // Batch reads 3, 4 & 5: existing enrollments for those memberships on this

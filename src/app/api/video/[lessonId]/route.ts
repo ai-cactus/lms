@@ -1,5 +1,6 @@
 import prisma from '@/lib/prisma';
 import { getPortalSessions } from '@/lib/auth/portal-sessions';
+import { isCourseOrganizationReviewer } from '@/lib/course/read-access';
 import { resolveVideoSource } from '@/lib/video';
 import {
   LESSON_VIDEO_MAX_AGE_SECONDS,
@@ -28,12 +29,22 @@ export const dynamic = 'force-dynamic';
  * forwarded both ways so the <video> element can seek/stream (206 Partial).
  */
 
+interface MediaCaller {
+  organizationUserId: string | null;
+  organizationId: string | null;
+  role: string | null;
+}
+
 /** Resolves null only when neither session is authenticated. */
-async function currentOrganizationUserId(): Promise<{ organizationUserId: string | null } | null> {
+async function currentCaller(): Promise<MediaCaller | null> {
   const { admin: a, worker: w } = await getPortalSessions();
   const session = a?.user?.id ? a : w?.user?.id ? w : null;
   if (!session?.user?.id) return null;
-  return { organizationUserId: session.user.organizationUserId };
+  return {
+    organizationUserId: session.user.organizationUserId,
+    organizationId: session.user.organizationId ?? null,
+    role: session.user.role ?? null,
+  };
 }
 
 /** True when a fetch rejected because the caller's connection went away. */
@@ -99,12 +110,13 @@ function forwardedRequestHeaders(request: Request): Record<string, string> {
 }
 
 export async function GET(request: Request, { params }: { params: Promise<{ lessonId: string }> }) {
-  const current = await currentOrganizationUserId();
+  const current = await currentCaller();
   if (!current) return new Response('Unauthorized', { status: 401 });
 
   const { lessonId } = await params;
 
-  // Access: creator of the lesson's course OR enrolled in it (mirrors
+  // Access: a manager of the organisation that owns the lesson's course
+  // (RISK-15) OR enrolled in it OR a global catalogue course (mirrors
   // getVideoPlaybackUrl in actions/video-progress.ts).
   // Explicitly selected: `include: { course: true }` would pull every Course
   // scalar — including the AI-pipeline artifacts (rawCourseJson, rawQuizJson,
@@ -122,7 +134,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ less
             isGlobal: true,
             status: true,
             type: true,
-            createdByOrgUserId: true,
+            organizationId: true,
+            archivedAt: true,
           },
         },
       },
@@ -134,14 +147,21 @@ export async function GET(request: Request, { params }: { params: Promise<{ less
   // Global published video courses are a shared catalog any signed-in user may
   // watch (e.g. an org admin previewing before assigning).
   const c = lesson.course;
+
+  // Q-04: an archived course is cancelled — nobody keeps watching it, whatever
+  // would otherwise have granted access. Evaluated on the cached meta, so an
+  // archive that lands mid-playback takes effect within the meta TTL (60s by
+  // default) rather than instantly; that is the same revocation-latency trade
+  // this route already accepts for unenrollment, and it is documented in
+  // `playback-cache.ts`.
+  if (c.archivedAt) return new Response('Forbidden', { status: 403 });
+
   const isGlobalCatalog = c.isGlobal && c.status === 'published' && c.type === 'video';
-  const isCreator = current.organizationUserId
-    ? c.createdByOrgUserId === current.organizationUserId
-    : false;
+  const isOrgReviewer = isCourseOrganizationReviewer(c, current);
 
   let isEnrolled = false;
   const organizationUserId = current.organizationUserId;
-  if (!isGlobalCatalog && !isCreator && organizationUserId) {
+  if (!isGlobalCatalog && !isOrgReviewer && organizationUserId) {
     isEnrolled = await resolvePlaybackAuthz(organizationUserId, c.id, async () => {
       const enrollment = await prisma.enrollment.findFirst({
         where: { courseId: c.id, organizationUserId },
@@ -151,7 +171,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ less
     });
   }
 
-  const allowed = isCreator || isEnrolled || isGlobalCatalog;
+  const allowed = isOrgReviewer || isEnrolled || isGlobalCatalog;
   if (!allowed) return new Response('Forbidden', { status: 403 });
 
   const storageUri = lesson.videoStorageUri;

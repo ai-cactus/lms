@@ -32,6 +32,37 @@ interface DeleteUserModalProps {
   onSuccess?: () => void;
 }
 
+interface CountRow {
+  label: string;
+  count: number;
+}
+
+function CountTable({ heading, rows }: { heading: string; rows: CountRow[] }) {
+  return (
+    <div>
+      <h4 className="mb-2 text-sm font-semibold text-foreground">{heading}</h4>
+      <div className="rounded-[10px] border border-border">
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead>Record Type</TableHead>
+              <TableHead className="text-right">Count</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((row) => (
+              <TableRow key={row.label}>
+                <TableCell>{row.label}</TableCell>
+                <TableCell className="text-right">{row.count}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}
+
 export default function DeleteUserModal({ preview, onClose, onSuccess }: DeleteUserModalProps) {
   const [confirmEmail, setConfirmEmail] = useState('');
   const [loading, setLoading] = useState(false);
@@ -40,8 +71,10 @@ export default function DeleteUserModal({ preview, onClose, onSuccess }: DeleteU
 
   const emailMatches = confirmEmail === preview.user.email;
 
+  const { user, revoked, retained, blockedReason } = preview;
+
   async function handleDelete() {
-    if (!emailMatches) return;
+    if (!emailMatches || blockedReason) return;
     setLoading(true);
     setError('');
 
@@ -63,20 +96,18 @@ export default function DeleteUserModal({ preview, onClose, onSuccess }: DeleteU
     }
   }
 
-  const { user, counts, affectedEnrollments } = preview;
+  const revokedRows: CountRow[] = [
+    { label: 'Organization memberships (deactivated)', count: revoked.organizations.length },
+    { label: 'Pending invites (expired)', count: revoked.pendingInvites },
+  ].filter((row) => row.count > 0);
 
-  const impactRows = [
-    { label: 'User Account', count: 1 },
-    { label: 'Courses Created', count: counts.courses },
-    { label: 'Lessons (in courses)', count: counts.lessons },
-    { label: 'Quizzes (in courses)', count: counts.quizzes },
-    { label: 'Enrollments', count: counts.enrollments },
-    { label: 'Quiz Attempts', count: counts.quizAttempts },
-    { label: 'Documents', count: counts.documents },
-    { label: 'Notifications', count: counts.notifications },
-    { label: 'Jobs', count: counts.jobs },
-    { label: 'Invites', count: counts.invites },
-    { label: 'Verification Tokens', count: counts.verificationTokens },
+  const retainedRows: CountRow[] = [
+    { label: 'Certificates', count: retained.certificates },
+    { label: 'Enrollments', count: retained.enrollments },
+    { label: 'Quiz Attempts', count: retained.quizAttempts },
+    { label: 'Courses authored', count: retained.courses },
+    { label: 'Documents uploaded', count: retained.documents },
+    { label: 'Direct reports (manager link kept)', count: retained.directReports },
   ].filter((row) => row.count > 0);
 
   if (success) {
@@ -85,8 +116,8 @@ export default function DeleteUserModal({ preview, onClose, onSuccess }: DeleteU
         <DialogContent showCloseButton={false} className="sm:max-w-md">
           <DialogTitle className="sr-only">User deleted</DialogTitle>
           <Alert variant="success" title="User deleted">
-            User <strong>{user.email}</strong> has been permanently deleted with all related
-            records. Redirecting...
+            <strong>{user.email}</strong> can no longer sign in to any organization. Their
+            certificates, quiz history and completion records are retained. Redirecting...
           </Alert>
         </DialogContent>
       </Dialog>
@@ -104,10 +135,11 @@ export default function DeleteUserModal({ preview, onClose, onSuccess }: DeleteU
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <AlertTriangle className="size-5 text-error" aria-hidden="true" />
-            Delete User Permanently
+            Delete User
           </DialogTitle>
           <DialogDescription>
-            This action cannot be undone. All related data will be permanently removed.
+            This removes {user.name}&apos;s access to every organization. Certificates, quiz history
+            and completion records are retained for compliance and are not deleted.
           </DialogDescription>
         </DialogHeader>
 
@@ -115,6 +147,12 @@ export default function DeleteUserModal({ preview, onClose, onSuccess }: DeleteU
           {error && (
             <Alert variant="error" className="w-full">
               {error}
+            </Alert>
+          )}
+
+          {blockedReason && (
+            <Alert variant="error" className="w-full">
+              {blockedReason}
             </Alert>
           )}
 
@@ -134,40 +172,23 @@ export default function DeleteUserModal({ preview, onClose, onSuccess }: DeleteU
             </div>
           </div>
 
-          {affectedEnrollments > 0 && (
-            <Alert variant="warning" className="w-full">
-              <strong>{affectedEnrollments}</strong> enrollment(s) from other users in courses
-              created by this user will also be deleted.
-            </Alert>
+          {revoked.organizations.length > 0 && (
+            <p className="text-sm text-text-secondary">
+              Access removed from:{' '}
+              <strong className="text-foreground">{revoked.organizations.join(', ')}</strong>
+            </p>
           )}
 
-          <div>
-            <h4 className="mb-2 text-sm font-semibold text-foreground">Records to be deleted:</h4>
-            <div className="rounded-[10px] border border-border">
-              <Table>
-                <TableHeader>
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead>Record Type</TableHead>
-                    <TableHead className="text-right">Count</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {impactRows.map((row) => (
-                    <TableRow key={row.label}>
-                      <TableCell>{row.label}</TableCell>
-                      <TableCell className="text-right">{row.count}</TableCell>
-                    </TableRow>
-                  ))}
-                  <TableRow>
-                    <TableCell className="font-bold">Total Records</TableCell>
-                    <TableCell className="text-right font-bold">
-                      {impactRows.reduce((sum, row) => sum + row.count, 0)}
-                    </TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
-            </div>
-          </div>
+          <Alert variant="warning" className="w-full">
+            The email address stays reserved: it cannot be used to sign up or accept an invite
+            again.
+          </Alert>
+
+          {revokedRows.length > 0 && <CountTable heading="Access removed:" rows={revokedRows} />}
+
+          {retainedRows.length > 0 && (
+            <CountTable heading="Records retained:" rows={retainedRows} />
+          )}
 
           <Field label="To confirm deletion, type the email address below:" helperText={user.email}>
             <Input
@@ -188,10 +209,10 @@ export default function DeleteUserModal({ preview, onClose, onSuccess }: DeleteU
             variant="destructive"
             type="button"
             onClick={handleDelete}
-            disabled={!emailMatches || loading}
+            disabled={!emailMatches || loading || Boolean(blockedReason)}
             loading={loading}
           >
-            Delete Permanently
+            Delete
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -115,3 +115,81 @@ describe('WorkerTrainingList — tabs', () => {
     expect(screen.getByRole('button', { name: /^My Courses/ })).toHaveTextContent('2');
   });
 });
+
+/**
+ * The Completed tab keeps its own card list, so the cancelled treatment the
+ * shared table gained (Q-04/Q-05/Q-06, founder ruling 2026-09-24) has to be
+ * stated here too: a course archived after the learner completed it still shows
+ * in their history, but "View Result" now dead-ends on the player's refusal.
+ */
+describe('WorkerTrainingList — Completed tab, archived course', () => {
+  beforeEach(() => {
+    mockPush.mockClear();
+  });
+
+  function openCompletedTab() {
+    fireEvent.click(screen.getByRole('button', { name: /^Completed/ }));
+  }
+
+  it('marks a completed archived course "Cancelled" and disables View Result', () => {
+    render(
+      <WorkerTrainingList
+        courses={[baseCourse({ status: 'completed', progress: 100, courseArchived: true })]}
+      />,
+    );
+    openCompletedTab();
+
+    expect(screen.getByText('Cancelled')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'View Result' })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'View Result' }));
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it('keeps the completed archived course in the list — history must not vanish', () => {
+    render(
+      <WorkerTrainingList
+        courses={[baseCourse({ status: 'completed', progress: 100, courseArchived: true })]}
+      />,
+    );
+    openCompletedTab();
+
+    expect(screen.getByText('Bloodborne Pathogens')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Completed/ })).toHaveTextContent('1');
+  });
+
+  it('leaves a live completed course untouched', () => {
+    render(
+      <WorkerTrainingList
+        courses={[baseCourse({ status: 'completed', progress: 100, courseArchived: false })]}
+      />,
+    );
+    openCompletedTab();
+
+    expect(screen.queryByText('Cancelled')).not.toBeInTheDocument();
+
+    const action = screen.getByRole('button', { name: 'View Result' });
+    expect(action).toBeEnabled();
+    fireEvent.click(action);
+
+    expect(mockPush).toHaveBeenCalledWith('/worker/courses/course-1');
+  });
+
+  it("never renders a finished course's past deadline as overdue (BUG-41)", () => {
+    const { container } = render(
+      <WorkerTrainingList
+        courses={[
+          baseCourse({
+            status: 'attested',
+            progress: 100,
+            deadline: new Date('2020-01-15T12:00:00Z'),
+          }),
+        ]}
+      />,
+    );
+    openCompletedTab();
+
+    expect(screen.getByText(/Due Jan 15, 2020/)).toBeInTheDocument();
+    expect(container.querySelector('.text-\\[\\#dc2626\\]')).toBeNull();
+  });
+});

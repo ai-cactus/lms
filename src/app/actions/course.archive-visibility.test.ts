@@ -1,15 +1,17 @@
 /**
- * Q24 archive visibility, per SURFACE.
+ * Archive visibility, per SURFACE.
  *
- * Archiving retires a course for new assignment; it does not erase what someone
- * already did. That splits the course reads in two, and both halves need
+ * Archiving retires a course from every list (Q24) and, since founder rulings
+ * Q-04/Q-05 (2026-09-23), CANCELS it for learners as well. Two halves need
  * proving:
  *
  *   • every catalogue/admin LIST — the courses page (and the search box that
  *     filters it client-side), the assign picker, the prebuilt video catalogue —
  *     must stop showing an archived course;
  *   • the learner's own entry point, `/worker/courses/[id]` → `getCourseById`,
- *     must keep showing it, because they hold an enrollment in it.
+ *     must refuse it too. An enrollment used to be an exemption here; it is not
+ *     any more. What survives archiving is the RECORD — the enrolment row, the
+ *     certificate and the compliance export — not the ability to carry on.
  *
  * The filter itself is a query extension on the shared client (`db/index.ts`),
  * which a unit test cannot observe through a plain `vi.fn()`. So the mocked
@@ -54,7 +56,9 @@ interface EnrollmentTableRow {
   courseId: string;
   organizationUserId: string;
   status: string;
+  /** Materialised as one submitted quiz attempt for the dashboard snapshot. */
   score: number | null;
+  startedAt: Date;
   completedAt: Date | null;
   dueAt: Date | null;
   assignment: null;
@@ -110,18 +114,54 @@ vi.mock('@/lib/prisma', async () => {
     course: {
       findMany: (args: object) => {
         filteredFindManyCalls.push(args);
-        const where = (liveRowsOnly(args) as { where: { archivedAt: null } }).where;
-        // Only the archive predicate is simulated — the tenancy/catalogue
-        // predicates these actions also pass are proven by their own suites,
-        // and re-implementing them here would test the mock, not the filter.
-        return Promise.resolve(courseTable.filter((row) => row.archivedAt === where.archivedAt));
+        const where = (liveRowsOnly(args) as { where: { archivedAt: null; status?: string } })
+          .where;
+        // Only the archive (and, for the published-course read, status)
+        // predicates are simulated — the tenancy/catalogue predicates these
+        // actions also pass are proven by their own suites, and re-implementing
+        // them here would test the mock, not the filter.
+        return Promise.resolve(
+          courseTable.filter(
+            (row) =>
+              row.archivedAt === where.archivedAt &&
+              (where.status === undefined || row.status === where.status),
+          ),
+        );
       },
       // Present so a read that wrongly moves onto the filtered client is a
       // failed assertion rather than a TypeError.
       findUnique: vi.fn(),
     },
     orgCourseOffering: { findMany: (...a: unknown[]) => mockOfferingFindMany(...a) },
-    organizationUser: { count: (...a: unknown[]) => mockOrgUserCount(...a) },
+    organizationUser: {
+      count: (...a: unknown[]) => mockOrgUserCount(...a),
+      // The dashboard population: every learner the enrolment table names.
+      findMany: () =>
+        Promise.resolve(
+          [...new Set(enrollmentTable.map((row) => row.organizationUserId))].map((id) => ({
+            id,
+            role: 'nurse',
+            joinedAt: new Date('2026-01-01'),
+            lastLoginAt: new Date('2026-09-16'),
+            facilities: [],
+          })),
+        ),
+    },
+    quizAttempt: {
+      findMany: ({ where }: { where: { enrollment?: EnrollmentWhereShape } }) =>
+        Promise.resolve(
+          enrollmentTable
+            .filter((row) => row.score !== null && matchesEnrollment(where.enrollment, row))
+            .map((row) => ({
+              enrollmentId: row.id,
+              quizId: `quiz-${row.courseId}`,
+              score: row.score as number,
+              completedAt: row.startedAt,
+            })),
+        ),
+    },
+    certificate: { findMany: () => Promise.resolve([]) },
+    quiz: { findMany: () => Promise.resolve([]) },
     enrollment: {
       findMany: ({ where }: { where?: EnrollmentWhereShape }) =>
         Promise.resolve(enrollmentTable.filter((row) => matchesEnrollment(where, row))),
@@ -208,6 +248,7 @@ function makeCourseRow(
     previewPosterStorageUri: null,
     previewVideoStorageUri: null,
     isGlobal: false,
+    organizationId: ORG_ID,
     createdAt: new Date('2026-01-01'),
     updatedAt: new Date('2026-01-01'),
     createdByOrgUserId: CREATOR_ORG_USER_ID,
@@ -308,19 +349,16 @@ describe('an archived course disappears from every catalogue and admin surface',
     expect(ids).not.toContain('archived-1');
   });
 
-  it('an offering cannot smuggle it back in: the adopted-courses join carries the archive predicate itself', async () => {
-    // The extension is a query extension on Course's OWN reads and cannot reach
-    // a nested traversal, so the offering read has to state the predicate.
-    await getCourses();
+  // RISK-11: adopted courses are no longer read through the offering relation
+  // (a nested traversal the archive extension cannot reach) but by id in the
+  // same top-level Course read, which the extension DOES filter.
+  it('an offering cannot smuggle it back in: an adopted archived course stays out', async () => {
+    mockOfferingFindMany.mockResolvedValue([{ courseId: 'archived-1' }]);
 
-    expect(mockOfferingFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          organizationId: ORG_ID,
-          course: { archivedAt: null },
-        }),
-      }),
-    );
+    const titles = (await getCourses()).map((course) => course.title);
+
+    expect(titles).toContain('Live Course');
+    expect(titles).not.toContain('Archived Course');
   });
 
   it('every list read goes through the ARCHIVE-FILTERING client, never the raw one', async () => {
@@ -362,7 +400,13 @@ describe('ISSUE-2: "View Source Document" after the source document is archived'
 });
 
 describe("getCourseById — the learner's entry point to an archived course", () => {
-  it('ISSUE-3: an enrolled worker still opens a course that was archived under them', async () => {
+  // SUPERSEDED 2026-09-23. This case used to assert the opposite — that an
+  // enrolled worker still opened a course archived under them (staging QA
+  // ISSUE-3, under Q24). Founder rulings Q-04/Q-05 narrowed that: archiving
+  // CANCELS the course, every learner action stops, and the learner is told so
+  // by the COURSE_CANCELLED notice `deleteCourse` emits. An enrollment is
+  // therefore no longer an exemption, and the refusal is now uniform.
+  it('an enrolled worker is refused too — archiving cancels the course for them', async () => {
     courseTable.push(
       makeCourseRow('archived-1', 'Archived Course', new Date('2026-09-17'), {
         enrollments: [ownEnrollment()],
@@ -370,7 +414,7 @@ describe("getCourseById — the learner's entry point to an archived course", ()
     );
     setWorkerSession(LEARNER_USER_ID);
 
-    await expect(getCourseById('archived-1')).resolves.toMatchObject({ id: 'archived-1' });
+    await expect(getCourseById('archived-1')).rejects.toThrow('Course not found');
   });
 
   it('a same-org manager who is NOT enrolled is refused — archiving retires it from their surfaces', async () => {
@@ -409,6 +453,7 @@ function makeEnrollmentRow(
     organizationUserId,
     status: 'in_progress',
     score: null,
+    startedAt: new Date('2026-09-01'),
     completedAt: null,
     dueAt: null,
     assignment: null,
@@ -450,15 +495,16 @@ describe('an archived course leaves the dashboard aggregates as well as the cata
     setAdminSession('user-owner', 'owner');
   });
 
-  it('counts Total Courses and Total Staff Assigned over the SAME population', async () => {
+  it('counts active courses, assigned learners and coverage over the SAME live population', async () => {
     const { stats } = await getDashboardData(null);
 
-    // One live course, enrolled by exactly two of the four staff. Before the fix
-    // this read 1 course / 4 staff — a course-derived figure and an
+    // One live course, enrolled by exactly two of the four staff. Before the
+    // archive fix this read 1 course / 4 staff — a course-derived figure and an
     // enrolment-derived one describing different catalogues on one screen.
-    expect(stats.totalCourses).toBe(1);
-    expect(stats.totalStaffAssigned).toBe(2);
-    expect(stats.trainingCoverage.totalStaff).toBe(2);
+    expect(stats.catalogCourseCount).toBe(1);
+    expect(stats.totalActiveCourses).toBe(1);
+    expect(stats.totalAssignedLearners).toBe(2);
+    expect(stats.trainingCoverage.totalAssignments).toBe(2);
   });
 
   it('averages the grade over live courses only', async () => {
@@ -507,14 +553,22 @@ describe('the Status Tracker stops naming a course the Courses page says does no
   });
 
   it('omits the archived course from the overdue rows and their count', async () => {
-    const summary = await getStatusTrackerSummaryForOrg(ORG_ID, NOW);
+    const summary = await getStatusTrackerSummaryForOrg({
+      organizationId: ORG_ID,
+      dataFacilityIds: null,
+      now: NOW,
+    });
 
     expect(summary.rows.map((row) => row.courseTitle)).toEqual(['Live Course']);
     expect(summary.overdueCount).toBe(1);
   });
 
   it('omits it from the at-risk rows too', async () => {
-    const summary = await getStatusTrackerSummaryForOrg(ORG_ID, NOW);
+    const summary = await getStatusTrackerSummaryForOrg({
+      organizationId: ORG_ID,
+      dataFacilityIds: null,
+      now: NOW,
+    });
 
     expect(summary.nearDeadline.rows.map((row) => row.courseTitle)).toEqual(['Live Course']);
     expect(summary.nearDeadline.count).toBe(1);

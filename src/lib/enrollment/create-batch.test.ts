@@ -39,6 +39,7 @@ interface FakeUser {
   firstName: string | null;
   lastName: string | null;
   fullName: string | null;
+  deletedAt?: Date | null;
 }
 /** Post multi-org split: an identity's per-organization seat. */
 interface FakeMembership {
@@ -524,6 +525,37 @@ describe('createEnrollmentsForUsers — equivalence with the sequential referenc
   });
 });
 
+describe('createEnrollmentsForUsers — Q-31 deleted identity', () => {
+  it('fails a deleted identity with no invite or email, identically on both paths', async () => {
+    const seed: Seed = {
+      users: [
+        { ...identity('u-deleted', 'deleted@example.com'), deletedAt: new Date('2026-09-28') },
+      ],
+    };
+    const entries: StaffEntry[] = [{ email: 'deleted@example.com' }, { email: 'new@example.com' }];
+
+    seedDb(seed);
+    const seqOutcomes = await runSequential(entries, CTX, new Set());
+    const seqInviteEmails = inviteCreateEmails();
+
+    vi.clearAllMocks();
+    mockSendCourseInviteEmail.mockResolvedValue(undefined);
+    seedDb(seed);
+    const batchOutcomes = await createEnrollmentsForUsers(entries, CTX, new Set());
+
+    expect(batchOutcomes.map((o) => o.status)).toEqual(['failed', 'invited']);
+    expect(seqOutcomes.map((o) => o.status)).toEqual(['failed', 'invited']);
+    expect(inviteCreateEmails()).toEqual(['new@example.com']);
+    expect(seqInviteEmails).toEqual(['new@example.com']);
+    expect(mockSendCourseInviteEmail).not.toHaveBeenCalledWith(
+      'deleted@example.com',
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+    );
+  });
+});
+
 describe('createEnrollmentsForUsers — bounded concurrency', () => {
   it('never runs more than ENROLLMENT_BATCH_CONCURRENCY (10) enrollment writes in flight at once', async () => {
     const holderCount = 25;
@@ -647,5 +679,70 @@ describe('createEnrollmentsForUsers — partial-failure semantics', () => {
     // "nothing after the failure point is ever touched" guarantee — see the
     // test file header / PR-7 report for the full writeup.
     expect(batchEnrolledMembershipIds.sort()).toEqual(['ou-u-1', 'ou-u-2', 'ou-u-3', 'ou-u-4']);
+  });
+
+  // RISK-09: `createNotification` swallows its own errors in production, so the
+  // realistic hard failure is a database write. Same divergence, pinned on it.
+  it('DIVERGENCE (RISK-09): an enrollment.create failure commits later groups on the batched path only', async () => {
+    const members = [
+      existingMember('u-1', 'before@example.com'),
+      existingMember('u-2', 'dbfails@example.com'),
+      existingMember('u-3', 'after@example.com'),
+    ];
+    const entries: StaffEntry[] = members.map((m) => ({ email: m.user.email }));
+
+    const failOnU2 = (state: ReturnType<typeof seedDb>) => {
+      const create = prismaMock.enrollment.create.getMockImplementation()!;
+      prismaMock.enrollment.create.mockImplementation(async (args: any) => {
+        if (args.data.organizationUserId === 'ou-u-2') throw new Error('db write failed');
+        return create(args);
+      });
+      return state;
+    };
+
+    const seqState = failOnU2(seedDb(membersSeed(members)));
+    await expect(runSequential(entries, CTX, new Set())).rejects.toThrow('db write failed');
+    expect(seqState.enrollments.map((e) => e.organizationUserId)).toEqual(['ou-u-1']);
+
+    vi.clearAllMocks();
+    mockCreateNotification.mockResolvedValue(undefined);
+    mockSendCourseLaunchEmail.mockResolvedValue(undefined);
+    const batchState = failOnU2(seedDb(membersSeed(members)));
+    await expect(createEnrollmentsForUsers(entries, CTX, new Set())).rejects.toThrow(
+      'db write failed',
+    );
+    expect(batchState.enrollments.map((e) => e.organizationUserId).sort()).toEqual([
+      'ou-u-1',
+      'ou-u-3',
+    ]);
+  });
+
+  it('DIVERGENCE (RISK-09): a failed up-front batched read writes nothing, where the sequential loop commits the entries before the failure', async () => {
+    const members = [
+      existingMember('u-1', 'first@example.com'),
+      existingMember('u-2', 'second@example.com'),
+    ];
+    const entries: StaffEntry[] = members.map((m) => ({ email: m.user.email }));
+
+    // Sequential: the SECOND entry's enrollment read fails.
+    const seqState = seedDb(membersSeed(members));
+    const findFirst = prismaMock.enrollment.findFirst.getMockImplementation()!;
+    prismaMock.enrollment.findFirst.mockImplementation(async (args: any) => {
+      if (args.where.organizationUserId === 'ou-u-2') throw new Error('db read failed');
+      return findFirst(args);
+    });
+    await expect(runSequential(entries, CTX, new Set())).rejects.toThrow('db read failed');
+    expect(seqState.enrollments.map((e) => e.organizationUserId)).toEqual(['ou-u-1']);
+
+    // Batched: the same read is one query for the whole batch, so it fails first.
+    vi.clearAllMocks();
+    mockCreateNotification.mockResolvedValue(undefined);
+    const batchState = seedDb(membersSeed(members));
+    prismaMock.enrollment.findMany.mockRejectedValue(new Error('db read failed'));
+    await expect(createEnrollmentsForUsers(entries, CTX, new Set())).rejects.toThrow(
+      'db read failed',
+    );
+    expect(batchState.enrollments).toEqual([]);
+    expect(prismaMock.enrollment.create).not.toHaveBeenCalled();
   });
 });

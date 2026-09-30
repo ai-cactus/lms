@@ -530,3 +530,41 @@ describe('POST /api/invite/accept — relinking an existing account', () => {
     expect(mockEnrollInviteCourses).toHaveBeenCalledExactlyOnceWith('ou-relink-1', 'invite-relink');
   });
 });
+
+describe('POST /api/invite/accept — Q-23 deleted identity', () => {
+  it('refuses an invite to a deleted identity: no password reset, no membership, invite left pending', async () => {
+    prismaMock.invite.findUnique.mockResolvedValueOnce({
+      id: 'invite-deleted',
+      token: 'tok-deleted',
+      email: 'deleted@acme.com',
+      organizationId: 'org-other',
+      facilityId: 'facility-1',
+      role: 'nurse',
+      expiresAt: FUTURE,
+    });
+    prismaMock.user.findUnique.mockResolvedValueOnce({
+      id: 'deleted-user-1',
+      deletedAt: new Date('2026-09-28'),
+    });
+
+    const res = await POST(
+      makeReq({
+        token: 'tok-deleted',
+        firstName: 'Dana',
+        lastName: 'Deleted',
+        password: VALID_PASSWORD,
+      }),
+    );
+
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({
+      error:
+        'This invite can no longer be accepted. Please contact the organization that invited you.',
+    });
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
+    expect(prismaMock.user.create).not.toHaveBeenCalled();
+    expect(prismaMock.invite.update).not.toHaveBeenCalled();
+    expect(mockCreateMembership).not.toHaveBeenCalled();
+  });
+});

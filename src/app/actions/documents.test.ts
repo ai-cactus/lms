@@ -684,8 +684,16 @@ describe('Document Hub — full org parity (getDocuments/renameDocument/deleteDo
       expect(result).toEqual({ success: true });
       expect(prismaMock.document.update).toHaveBeenCalledWith({
         where: { id: 'doc-1' },
-        data: { archivedAt: expect.any(Date), archivedByOrgUserId: 'ou-a2' },
+        data: {
+          archivedAt: expect.any(Date),
+          archivedByOrgUserId: 'ou-a2',
+          // BUG-25: the archiver FK is SetNull, so the name rides along.
+          archivedByName: 'Ada Owner',
+        },
       });
+      expect(prismaMock.organizationUser.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'ou-a2' } }),
+      );
     });
 
     // Q24 retains the document "for compliance". Three things must therefore

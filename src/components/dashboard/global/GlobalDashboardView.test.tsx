@@ -1,14 +1,15 @@
 /**
- * Tests for the Global View's comparison mode: which facilities the two tables
- * show, the "Comparing N of M" / "Showing N of N selected" copy, the KPIs that
- * are re-aggregated over the selection, and what the scope control is handed.
- * The unfiltered view is asserted alongside as the baseline.
+ * Tests for the Global View: the unfiltered baseline, the trend chips (only on
+ * the two tiles with an honest history), the metric help text, and comparison
+ * mode — which facilities the two tables show, the "Comparing N of M" copy, the
+ * server-counted comparison headline, and what the scope control is handed.
  */
 import type { JSX } from 'react';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { GlobalDashboardData } from '@/app/actions/dashboard-facility';
+import type { GlobalDashboardData, GlobalHeadline } from '@/app/actions/dashboard-facility';
+import { METRIC_DEFINITIONS } from '@/lib/facility/metrics';
 
 const { mockPush } = vi.hoisted(() => ({ mockPush: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: mockPush }) }));
@@ -29,8 +30,8 @@ const DATA: GlobalDashboardData = {
     { id: 'fac-c', name: 'Gamma Site', type: 'clinic', city: 'Houston' },
   ],
   enterpriseFootprint: {
-    totalFacilities: { value: 3, trendPercent: null },
-    totalStaff: { value: 60, trendPercent: null },
+    totalFacilities: { value: 3, trendPercent: 50 },
+    totalStaff: { value: 60, trendPercent: -10 },
   },
   trainingVelocity: {
     activeLearners: { value: 30, trendPercent: null },
@@ -61,8 +62,29 @@ const DATA: GlobalDashboardData = {
     auditReadinessPercent: 95,
     auditReadiness: 'audit_ready' as const,
     riskLevel: 'low' as const,
+    activeLearners: (index + 1) * 5,
+    activeCourses: 2,
+    averageGrade: 80,
   })),
-  organisationTotals: { totalCourses: 8, staffAssigned: 45, averageGrade: 82 },
+  comparison: null,
+};
+
+/** The server-counted headline for fac-a + fac-c — distinct, NOT the sum of their rows. */
+const COMPARED_HEADLINE: GlobalHeadline = {
+  enterpriseFootprint: {
+    totalFacilities: { value: 2, trendPercent: null },
+    totalStaff: { value: 37, trendPercent: null },
+  },
+  trainingVelocity: {
+    activeLearners: { value: 18, trendPercent: null },
+    ongoingCourses: { value: 5, trendPercent: null },
+    firstTimePassRate: { value: 71, trendPercent: null },
+  },
+  riskCompliance: {
+    overdueTrainings: { value: 4, trendPercent: null },
+    dormantStaff: { value: 2, trendPercent: null },
+    expiringCredentials: { value: 1, trendPercent: null },
+  },
 };
 
 function section(title: string): HTMLElement {
@@ -95,6 +117,12 @@ describe('GlobalDashboardView — unfiltered', () => {
       within(overview).getByText('Performance overview across all facilities'),
     ).toBeInTheDocument();
     expect(within(overview).getByText('Showing 1 to 3 of 3 facilities')).toBeInTheDocument();
+    // BUG-42: the risk table says how it is ordered rather than reusing the overview's line.
+    expect(
+      within(section('Priority Risks & Deadlines by Facilities')).getByText(
+        'Facilities ranked by risk, then overdue trainings',
+      ),
+    ).toBeInTheDocument();
     expect(within(overview).getByText('Beta Site')).toBeInTheDocument();
     expect(metricValue(FOOTPRINT, 'Total Staff Count')).toBe('60');
   });
@@ -111,6 +139,32 @@ describe('GlobalDashboardView — unfiltered', () => {
     expect(mockPush).toHaveBeenCalledWith('/dashboard?facility=fac-b');
   });
 
+  it('renders a trend chip only on Total Facilities and Total Staff', () => {
+    render(<GlobalDashboardView data={DATA} userName="Jane" />);
+
+    expect(screen.getAllByText('vs 30 days ago')).toHaveLength(2);
+    expect(within(section(FOOTPRINT)).getAllByText('vs 30 days ago')).toHaveLength(2);
+    expect(within(section(VELOCITY)).queryByText('vs 30 days ago')).not.toBeInTheDocument();
+    expect(within(section(RISK)).queryByText('vs 30 days ago')).not.toBeInTheDocument();
+  });
+
+  it("carries each tile's definition as its help text", () => {
+    render(<GlobalDashboardView data={DATA} userName="Jane" />);
+
+    expect(within(section(FOOTPRINT)).getByText('Total Staff Count')).toHaveAttribute(
+      'title',
+      METRIC_DEFINITIONS.totalStaff,
+    );
+    expect(within(section(VELOCITY)).getByText('Ongoing Courses')).toHaveAttribute(
+      'title',
+      METRIC_DEFINITIONS.ongoingCourses,
+    );
+    expect(within(section(RISK)).getByText('Dormant Staff')).toHaveAttribute(
+      'title',
+      METRIC_DEFINITIONS.dormantStaff,
+    );
+  });
+
   it('reports an empty scope to the switcher', () => {
     render(<GlobalDashboardView data={DATA} userName="Jane" />);
 
@@ -125,7 +179,12 @@ describe('GlobalDashboardView — unfiltered', () => {
 
 describe('GlobalDashboardView — comparison', () => {
   function renderComparison(ids = ['fac-a', 'fac-c']) {
-    render(<GlobalDashboardView data={DATA} userName="Jane" comparedFacilityIds={ids} />);
+    render(
+      <GlobalDashboardView
+        data={{ ...DATA, comparison: { facilityIds: ids, ...COMPARED_HEADLINE } }}
+        userName="Jane"
+      />,
+    );
   }
 
   it('narrows the Facilities Overview table to the selection', () => {
@@ -147,20 +206,22 @@ describe('GlobalDashboardView — comparison', () => {
     expect(within(risks).queryByText('Beta Site')).not.toBeInTheDocument();
   });
 
-  it('re-aggregates the per-facility KPIs over the selection', () => {
+  it('shows the server-counted comparison headline, not a sum of the compared rows', () => {
     renderComparison();
 
+    // Rows would sum to 10 + 30 = 40 staff and 5 + 15 = 20 learners.
     expect(metricValue(FOOTPRINT, 'Total Number of Facilities')).toBe('2');
-    expect(metricValue(FOOTPRINT, 'Total Staff Count')).toBe('40');
-    expect(metricValue(VELOCITY, 'Active Learners')).toBe('20');
+    expect(metricValue(FOOTPRINT, 'Total Staff Count')).toBe('37');
+    expect(metricValue(VELOCITY, 'Active Learners')).toBe('18');
+    expect(metricValue(VELOCITY, 'Ongoing Courses')).toBe('5');
     expect(metricValue(RISK, 'Overdue Trainings')).toBe('4');
+    expect(metricValue(RISK, 'Dormant Staff')).toBe('2');
   });
 
-  it('keeps the organisation value for metrics with no per-facility breakdown', () => {
+  it('renders no trend chip on a comparison — a subset has no history', () => {
     renderComparison();
 
-    expect(metricValue(VELOCITY, 'Ongoing Courses')).toBe('12');
-    expect(metricValue(RISK, 'Dormant Staff')).toBe('4');
+    expect(screen.queryByText('vs 30 days ago')).not.toBeInTheDocument();
   });
 
   it('reports the compared ids to the switcher', () => {
@@ -171,8 +232,8 @@ describe('GlobalDashboardView — comparison', () => {
     );
   });
 
-  it('ignores ids outside the payload and keeps the full view below two survivors', () => {
-    renderComparison(['fac-a', 'other-tenant']);
+  it('keeps the full view when the server returned no comparison', () => {
+    render(<GlobalDashboardView data={DATA} userName="Jane" />);
 
     const overview = section('Facilities Overview');
     expect(

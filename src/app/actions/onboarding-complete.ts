@@ -4,6 +4,7 @@ import { auth } from '@/auth';
 import crypto from 'crypto';
 import prisma from '@/lib/prisma';
 import { sendInviteEmail } from '@/lib/email';
+import { logDeletedEmailRefusal } from '@/lib/auth/deleted-email-guard';
 import type { UserRole } from '@/generated/prisma/enums';
 import {
   DEFAULT_SELF_SERVE_WORKER_ROLE,
@@ -253,6 +254,17 @@ export async function completeOnboarding(data: OnboardingData): Promise<Complete
       // invite here can be a duplicate. The /join acceptance flow relinks such
       // an identity instead of creating a second one.
       const queueInvite = async (email: string, role: UserRole) => {
+        // Q-31: a deleted identity is never invited. Onboarding has no per-row
+        // result to report, so the row is skipped and only logged.
+        const deletedIdentity = await tx.user.findFirst({
+          where: { email: { equals: email, mode: 'insensitive' }, deletedAt: { not: null } },
+          select: { id: true },
+        });
+        if (deletedIdentity) {
+          logDeletedEmailRefusal('completeOnboarding', email, org.id);
+          return;
+        }
+
         const token = crypto.randomUUID();
         const expiresAt = new Date();
         expiresAt.setDate(expiresAt.getDate() + 7);

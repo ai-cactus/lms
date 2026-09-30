@@ -50,7 +50,7 @@ const confirmButton = () => screen.getByRole('button', { name: 'Confirm' });
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockAttestCourse.mockResolvedValue(undefined);
+  mockAttestCourse.mockResolvedValue({ success: true });
 });
 
 describe('AttestationModal — issueCertificate ok:true', () => {
@@ -109,6 +109,45 @@ describe('AttestationModal — attestCourse throws (hard failure, unrelated to t
     fireEvent.click(confirmButton());
 
     expect(await screen.findByText('Unauthorized')).toBeInTheDocument();
+    expect(mockIssueCertificate).not.toHaveBeenCalled();
+    expect(onSuccess).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * RISK-10: the server refuses to re-stamp an existing attestation. The refusal
+ * that says so is recoverable — the attestation stands — so the modal goes on
+ * to the certificate instead of stranding a learner whose first attempt was
+ * signed but stopped before issuance. Every OTHER refusal still stops here.
+ */
+describe('AttestationModal — already attested (RISK-10)', () => {
+  it('carries on to the certificate when the enrollment is already attested', async () => {
+    mockAttestCourse.mockResolvedValue({
+      success: false,
+      refusedReason: 'This course has already been attested.',
+      alreadyAttested: true,
+    });
+    mockIssueCertificate.mockResolvedValue({ ok: true, certificate: { id: 'cert-existing' } });
+    const { onSuccess } = renderModal();
+
+    await fillValidForm();
+    fireEvent.click(confirmButton());
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledWith('cert-existing'));
+    expect(mockIssueCertificate).toHaveBeenCalledWith(ENROLLMENT_ID);
+  });
+
+  it('stops at any other refusal and shows its reason', async () => {
+    mockAttestCourse.mockResolvedValue({
+      success: false,
+      refusedReason: 'This course has been cancelled.',
+    });
+    const { onSuccess } = renderModal();
+
+    await fillValidForm();
+    fireEvent.click(confirmButton());
+
+    expect(await screen.findByText('This course has been cancelled.')).toBeInTheDocument();
     expect(mockIssueCertificate).not.toHaveBeenCalled();
     expect(onSuccess).not.toHaveBeenCalled();
   });

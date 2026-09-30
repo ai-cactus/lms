@@ -218,3 +218,71 @@ describe('issueCertificate — refusals are returned, not thrown, and fail-close
     expect(prismaMock.certificate.create).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * Founder Q-04 (2026-09-23): "Certificates already earned are RETAINED."
+ *
+ * The same ruling stops every other learner action on an archived course, so the
+ * obvious next step would be to gate this action too. That would be wrong, and
+ * this suite exists to stop someone taking it: `issueCertificate` only ever
+ * materialises a certificate for an enrollment that already reached
+ * `completed`/`attested`, and since attestation and quiz submission are both
+ * refused on an archived course, such an enrollment can only have got there
+ * BEFORE the archive. Refusing here would therefore not prevent a new award —
+ * it would confiscate one already earned.
+ *
+ * Deliberately NO archive predicate in `issueCertificate`, and none in the
+ * certificate READ paths either (`getWorkerCertificates`,
+ * `getAdminWorkerCertificates`, `getCertificateDetails`, the public verification
+ * page): each reaches Course through a nested relation the archive query
+ * extension cannot filter, so an archived course's certificate keeps resolving
+ * its title everywhere it is shown.
+ */
+describe('issueCertificate — an earned certificate survives the course being archived', () => {
+  it('still issues for an attested enrollment whose course has since been archived', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue(
+      makeEnrollment(88, {
+        status: 'attested',
+        course: { title: 'Safety 101', archivedAt: new Date('2026-09-20') },
+      }),
+    );
+
+    const result = await issueCertificate(ENROLLMENT_ID);
+
+    assert(result.ok);
+    expect(result.certificate.id).toBe('cert-1');
+    expect(prismaMock.certificate.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('still issues for a completed enrollment on an archived course, score intact', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue(
+      makeEnrollment(0, {
+        status: 'completed',
+        course: { title: 'Safety 101', archivedAt: new Date('2026-09-20') },
+      }),
+    );
+
+    const result = await issueCertificate(ENROLLMENT_ID);
+
+    assert(result.ok);
+    expect(prismaMock.certificate.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ score: 0 }) }),
+    );
+  });
+
+  it('returns the existing certificate unchanged rather than reissuing it', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue(
+      makeEnrollment(95, {
+        status: 'attested',
+        certificate: { id: 'cert-already-earned' },
+        course: { title: 'Safety 101', archivedAt: new Date('2026-09-20') },
+      }),
+    );
+
+    const result = await issueCertificate(ENROLLMENT_ID);
+
+    assert(result.ok);
+    expect(result.certificate.id).toBe('cert-already-earned');
+    expect(prismaMock.certificate.create).not.toHaveBeenCalled();
+  });
+});

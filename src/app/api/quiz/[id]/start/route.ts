@@ -6,6 +6,15 @@ import { z } from 'zod';
 import { logger } from '@/lib/logger';
 import { guardApiSession } from '@/lib/auth-guard';
 import { hasActiveBilling } from '@/lib/billing';
+import { touchEnrollmentActivity } from '@/lib/enrollment/activity';
+import {
+  learnerQuizClosedReason,
+  QUIZ_ALREADY_COMPLETED_ERROR_CODE,
+  QUIZ_ALREADY_COMPLETED_MESSAGE,
+  QUIZ_LOCKED_ERROR_CODE,
+  QUIZ_LOCKED_MESSAGE,
+} from '@/lib/enrollment/status-guards';
+import { ARCHIVED_COURSE_ERROR_CODE, ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
 
 const startQuizSchema = z.object({
   enrollmentId: z.string().min(1, 'Enrollment ID is required'),
@@ -37,6 +46,9 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     const enrollment = await prisma.enrollment.findUnique({
       where: { id: enrollmentId },
       include: {
+        // Nested, so the Q24 archive query extension does not filter it away —
+        // the archived row is exactly what the Q-04 gate below needs to see.
+        course: { select: { archivedAt: true } },
         organizationUser: {
           select: {
             organization: {
@@ -77,14 +89,40 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       );
     }
 
-    // Guard: block if enrollment is locked (attempts exhausted)
-    if (enrollment.status === 'locked') {
+    // Q-04: every learner action stops when the course is archived, so no new
+    // attempt may be opened and no draft may be resumed. Checked ahead of the
+    // lockout and attempt-limit guards because it is a fact about the COURSE,
+    // not about how far this learner got.
+    if (enrollment.course.archivedAt) {
+      logger.warn({
+        msg: '[quiz] Start blocked — course is archived',
+        enrollmentId,
+        courseId: enrollment.courseId,
+      });
       return NextResponse.json(
-        {
-          error: 'QUIZ_LOCKED_MAX_ATTEMPTS',
-          message:
-            'You have used all allowed attempts for this quiz. An admin must assign a retake.',
-        },
+        { error: ARCHIVED_COURSE_ERROR_CODE, message: ARCHIVED_COURSE_LEARNER_MESSAGE },
+        { status: 403 },
+      );
+    }
+
+    // A locked enrolment waits on an admin retake; a finished one (BUG-53) must
+    // not be reopened, or the next submit would rewrite the score behind its
+    // attestation and drop the status back to in_progress.
+    const closedReason = learnerQuizClosedReason(enrollment.status);
+    if (closedReason === 'locked') {
+      return NextResponse.json(
+        { error: QUIZ_LOCKED_ERROR_CODE, message: QUIZ_LOCKED_MESSAGE },
+        { status: 403 },
+      );
+    }
+    if (closedReason === 'finished') {
+      logger.warn({
+        msg: '[quiz] Start blocked — enrollment is already finished',
+        enrollmentId,
+        status: enrollment.status,
+      });
+      return NextResponse.json(
+        { error: QUIZ_ALREADY_COMPLETED_ERROR_CODE, message: QUIZ_ALREADY_COMPLETED_MESSAGE },
         { status: 403 },
       );
     }
@@ -101,6 +139,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       });
 
       if (activeAttempt) {
+        await touchEnrollmentActivity(tx, enrollmentId);
         return { status: 'resumed' as const, attempt: activeAttempt };
       }
 
@@ -118,6 +157,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
         return { status: 'blocked' as const };
       }
 
+      const now = new Date();
       const attempt = await tx.quizAttempt.create({
         data: {
           enrollmentId,
@@ -125,10 +165,11 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
           answers: [],
           score: 0,
           timeTaken: null, // Mark active (in-progress draft)
-          completedAt: new Date(), // Acts as StartedAt for active attempts
+          completedAt: now, // Acts as StartedAt for active attempts
           attemptCount: completedCount + 1,
         },
       });
+      await touchEnrollmentActivity(tx, enrollmentId, now);
       return {
         status: completedCount === 0 ? ('created' as const) : ('started' as const),
         attempt,

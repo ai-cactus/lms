@@ -19,6 +19,7 @@ const { mockAdminAuth, mockWorkerAuth, prismaMock, txMock } = vi.hoisted(() => {
   const txMock = {
     quizAttempt: { findFirst: vi.fn(), count: vi.fn(), create: vi.fn() },
     quiz: { findUnique: vi.fn() },
+    enrollment: { updateMany: vi.fn() },
   };
   const prismaMock = {
     enrollment: { findUnique: vi.fn() },
@@ -38,6 +39,7 @@ vi.mock('@/lib/logger', () => ({
 // Import under test AFTER all vi.mock() declarations.
 // ---------------------------------------------------------------------------
 import { POST } from './route';
+import { ARCHIVED_COURSE_ERROR_CODE, ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -54,6 +56,8 @@ const ENROLLMENT = {
   organizationUserId: 'ou-1',
   courseId: 'course-1',
   status: 'in_progress',
+  // A live course, so the Q-04 archive gate lets the attempt through.
+  course: { archivedAt: null },
   // Active billing so the defense-in-depth gate lets the attempt through.
   organizationUser: { organization: { subscription: { status: 'active', pausedAt: null } } },
 };
@@ -69,6 +73,7 @@ beforeEach(() => {
   txMock.quiz.findUnique.mockResolvedValue({ id: 'quiz-1', allowedAttempts: 2 });
   txMock.quizAttempt.count.mockResolvedValue(0);
   txMock.quizAttempt.create.mockResolvedValue({ id: 'attempt-1', timeTaken: null });
+  txMock.enrollment.updateMany.mockResolvedValue({ count: 1 });
 });
 
 describe('POST /api/quiz/[id]/start — auth', () => {
@@ -123,6 +128,42 @@ describe('POST /api/quiz/[id]/start — enrollment guards', () => {
 
     expect(res.status).toBe(403);
     expect(body.error).toBe('QUIZ_LOCKED_MAX_ATTEMPTS');
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Founder Q-04 (2026-09-23): every learner action stops when the course is
+// archived. This route is the one that OPENS an attempt, so it is where a
+// cancelled course has to stop being startable — and it must refuse resuming
+// an existing draft just as firmly as creating a new one.
+// ---------------------------------------------------------------------------
+describe('POST /api/quiz/[id]/start — archived course (Q-04)', () => {
+  it('403s with COURSE_ARCHIVED and never opens a transaction', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue({
+      ...ENROLLMENT,
+      course: { archivedAt: new Date('2026-09-20') },
+    });
+
+    const res = await POST(makeReq({ enrollmentId: 'enr-1' }), { params });
+    const body = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(body.error).toBe(ARCHIVED_COURSE_ERROR_CODE);
+    expect(body.message).toBe(ARCHIVED_COURSE_LEARNER_MESSAGE);
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('refuses even when an in-progress draft exists — the draft is not resumed', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue({
+      ...ENROLLMENT,
+      course: { archivedAt: new Date('2026-09-20') },
+    });
+    txMock.quizAttempt.findFirst.mockResolvedValue({ id: 'attempt-draft', timeTaken: null });
+
+    const res = await POST(makeReq({ enrollmentId: 'enr-1' }), { params });
+
+    expect(res.status).toBe(403);
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 });
@@ -184,6 +225,28 @@ describe('POST /api/quiz/[id]/start — draft resume vs. new attempt', () => {
     expect(txMock.quizAttempt.create).not.toHaveBeenCalled();
   });
 
+  it('stamps learner activity inside the transaction when resuming a draft', async () => {
+    txMock.quizAttempt.findFirst.mockResolvedValue({ id: 'draft-1', timeTaken: null });
+
+    await POST(makeReq({ enrollmentId: 'enr-1' }), { params });
+
+    expect(txMock.enrollment.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: 'enr-1' }),
+        data: { lastActivityAt: expect.any(Date) },
+      }),
+    );
+  });
+
+  it('stamps learner activity with the draft start time when creating a new attempt', async () => {
+    await POST(makeReq({ enrollmentId: 'enr-1' }), { params });
+
+    const startedAt = txMock.quizAttempt.create.mock.calls[0][0].data.completedAt;
+    expect(txMock.enrollment.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { lastActivityAt: startedAt } }),
+    );
+  });
+
   it('creates a new draft attempt when no draft exists and this is the first attempt', async () => {
     txMock.quizAttempt.findFirst.mockResolvedValue(null);
     txMock.quiz.findUnique.mockResolvedValue({ id: 'quiz-1', allowedAttempts: 3 });
@@ -230,5 +293,40 @@ describe('POST /api/quiz/[id]/start — draft resume vs. new attempt', () => {
     expect(res.status).toBe(403);
     expect(body.error).toBe('No attempts remaining');
     expect(txMock.quizAttempt.create).not.toHaveBeenCalled();
+    expect(txMock.enrollment.updateMany).not.toHaveBeenCalled();
   });
+});
+
+/**
+ * BUG-53: opening an attempt on signed-off training led straight to a submit
+ * that rewrote its score and dropped it back to in_progress. A finished
+ * enrolment is closed to the learner; a new cycle arrives as a new enrolment.
+ */
+describe('POST /api/quiz/[id]/start — finished enrolments (BUG-53)', () => {
+  it.each(['completed', 'attested'])(
+    '403s QUIZ_ALREADY_COMPLETED on a "%s" enrolment and opens no attempt',
+    async (status) => {
+      prismaMock.enrollment.findUnique.mockResolvedValue({ ...ENROLLMENT, status });
+
+      const res = await POST(makeReq({ enrollmentId: 'enr-1' }), { params });
+      const body = await res.json();
+
+      expect(res.status).toBe(403);
+      expect(body.error).toBe('QUIZ_ALREADY_COMPLETED');
+      expect(body.message).toEqual(expect.any(String));
+      expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['enrolled', 'assigned', 'in_progress', 'lessons_complete'])(
+    'CONTROL: opens an attempt on a "%s" enrolment',
+    async (status) => {
+      prismaMock.enrollment.findUnique.mockResolvedValue({ ...ENROLLMENT, status });
+
+      const res = await POST(makeReq({ enrollmentId: 'enr-1' }), { params });
+
+      expect(res.status).toBe(200);
+      expect(txMock.quizAttempt.create).toHaveBeenCalled();
+    },
+  );
 });

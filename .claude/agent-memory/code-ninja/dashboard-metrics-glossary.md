@@ -1,6 +1,6 @@
 ---
 name: dashboard-metrics-glossary
-description: The Dashboard Metrics Glossary (from a product PDF no longer in the repo) is canonical for dashboard metric names/formulas; code-side record is src/lib/facility/metrics.ts; two alignment-pass decisions still need product sign-off
+description: Glossary (PDF gone) governs Risk Level / Audit Readiness; the founder's 2026-09-26 definitions govern the tiles, counted in lib/dashboard/definitions.ts; two alignment-pass decisions still need sign-off
 metadata:
   type: project
 ---
@@ -14,4 +14,4 @@ The "Theraptly LMS — Dashboard Metrics Glossary (Standardized)" came from `mul
 1. Facilities Overview still shows an on-time-completion percentage above the Audit Readiness chip. The glossary defines Audit Readiness as pass/fail with failing criteria listed, not a percentage — the number was kept because removing it was outside the alignment scope.
 2. §0.2's fourth criterion (required documentation on file for all active staff) is deliberately unscored: nothing in the schema tracks it. Likewise "Offboarded Staff" has no card because offboarding is not modelled yet.
 
-Credential metrics are a proxy, not real credential records: an enrollment whose assignment carries a renewal cycle. Expired = renewal deadline passed with no completion.
+The founder's dashboard definitions + rulings of 2026-09-26 now govern every dashboard TILE (names, populations, windows); how each is counted lives in `src/lib/dashboard/definitions.ts`, and the help text in `METRIC_DEFINITIONS` must match it. Credentials are certificate-based: expiry = `Certificate.issuedAt` + the assignment's renewal cycle, superseded only by a LATER completed enrolment for the same member+course.

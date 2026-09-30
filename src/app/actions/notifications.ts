@@ -8,6 +8,8 @@ import prisma from '@/lib/prisma';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { logger } from '@/lib/logger';
+import { categoryForNotificationType } from '@/lib/notifications/catalog';
+import { withLiveCourseLinks } from '@/lib/notifications/live-course-links';
 
 // Helper: resolve the active session from either auth instance
 async function resolveSession() {
@@ -58,7 +60,8 @@ export async function getNotifications(options?: {
   limit?: number;
   type?: string | null;
 }) {
-  const organizationUserId = await resolveOrganizationUserId();
+  const session = await resolveSession();
+  const organizationUserId = session?.user?.organizationUserId ?? null;
   if (!organizationUserId) {
     return { success: false as const, error: 'Unauthorized' };
   }
@@ -76,8 +79,9 @@ export async function getNotifications(options?: {
     });
 
     const hasMore = rows.length > limit;
-    const notifications = hasMore ? rows.slice(0, limit) : rows;
-    const nextCursor = hasMore ? notifications[notifications.length - 1].id : null;
+    const page = hasMore ? rows.slice(0, limit) : rows;
+    const nextCursor = hasMore ? page[page.length - 1].id : null;
+    const notifications = await withLiveCourseLinks(page, session?.user?.role);
 
     const unreadCount = await prisma.notification.count({
       where: { organizationUserId, isRead: false },
@@ -209,6 +213,18 @@ export async function setNotificationPreference(type: string, enabled: boolean) 
   const organizationUserId = await resolveOrganizationUserId();
   if (!organizationUserId) {
     return { success: false, error: 'Unauthorized' };
+  }
+  // Server Action arguments arrive unchecked; without this a caller could park
+  // arbitrary junk rows on its own membership that no reader ever consults.
+  if (typeof type !== 'string' || categoryForNotificationType(type) === null) {
+    logger.warn({
+      msg: '[notifications] Refused a preference for an unknown notification type',
+      organizationUserId,
+    });
+    return { success: false, error: 'Unknown notification type' };
+  }
+  if (typeof enabled !== 'boolean') {
+    return { success: false, error: 'Invalid preference value' };
   }
   try {
     await prisma.notificationPreference.upsert({

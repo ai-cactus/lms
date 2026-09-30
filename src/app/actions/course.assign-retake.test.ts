@@ -7,9 +7,10 @@
  * every role — including read-only Supervisor — holds as a self-service
  * permission), not-found/not-locked guards, the "one active retake at a time"
  * guard, and facility stamping — the new retake is resolved FRESH via
- * resolveMemberFacilityId rather than inherited from the locked enrollment.
+ * resolveMemberFacilityId rather than inherited from the locked enrollment —
+ * and the retake's due date (Q-26): picked, defaulted, or refused.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const { prismaMock, mockAdminAuth, mockWorkerAuth, mockRevalidatePath, mockCreateNotification } =
   vi.hoisted(() => {
@@ -40,6 +41,7 @@ vi.mock('@/lib/notifications/create', () => ({
 }));
 
 import { assignRetake } from './course';
+import { ARCHIVED_COURSE_ADMIN_MESSAGE } from '@/lib/course/archived';
 
 const ADMIN_ID = 'admin-1';
 const ENROLLMENT_ID = 'enrollment-locked-1';
@@ -228,5 +230,146 @@ describe('assignRetake — retake enrollment shape', () => {
         }),
       }),
     );
+  });
+
+  // Regression guard for enrollments.last_activity_at (dormant-staff reporting):
+  // an admin forcing a retake is not the learner engaging, so the new
+  // enrollment must be minted with no stamp at all — `objectContaining` in the
+  // tests above would silently accept one being added, so this checks directly.
+  it('never stamps lastActivityAt — an admin-assigned retake is not learner engagement', async () => {
+    await assignRetake(ENROLLMENT_ID, 'Failed prior attempt');
+
+    const { data } = prismaMock.enrollment.create.mock.calls[0][0];
+    expect(data).not.toHaveProperty('lastActivityAt');
+  });
+});
+
+/**
+ * Q-26 (ruled 2026-09-28): the admin picks the retake's due date, pre-filled 14
+ * days out, and the retake then gets the normal reminder/escalation ladder —
+ * which selects on `dueAt`, so a retake without one was invisible to it.
+ */
+describe('assignRetake — due date (Q-26)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-09-28T15:00:00.000Z'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('stores the picked date as the retake deadline, due at the end of that UTC day', async () => {
+    const result = await assignRetake(ENROLLMENT_ID, 'Second chance', '2026-10-05');
+
+    expect(result.success).toBe(true);
+    expect(prismaMock.enrollment.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ dueAt: new Date('2026-10-05T23:59:00.000Z') }),
+    });
+  });
+
+  it('accepts today — the deadline has not passed yet', async () => {
+    await assignRetake(ENROLLMENT_ID, '', '2026-09-28');
+
+    expect(prismaMock.enrollment.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ dueAt: new Date('2026-09-28T23:59:00.000Z') }),
+    });
+  });
+
+  it('defaults to 14 days out when the caller passes no date, so no retake escapes the ladder', async () => {
+    await assignRetake(ENROLLMENT_ID);
+
+    expect(prismaMock.enrollment.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ dueAt: new Date('2026-10-12T23:59:00.000Z') }),
+    });
+  });
+
+  it.each([
+    ['a past date', '2026-09-27', 'The retake due date must be today or later.'],
+    [
+      'an impossible date',
+      '2026-02-31',
+      "That due date couldn't be read. Please pick the date again.",
+    ],
+    ['garbage', 'not-a-date', "That due date couldn't be read. Please pick the date again."],
+    ['an empty string', '', "That due date couldn't be read. Please pick the date again."],
+  ])(
+    'refuses %s by return, before reading or writing anything',
+    async (_label, dueDate, reason) => {
+      const result = await assignRetake(ENROLLMENT_ID, '', dueDate);
+
+      expect(result).toEqual({ success: false, refusedReason: reason });
+      expect(prismaMock.enrollment.findUnique).not.toHaveBeenCalled();
+      expect(prismaMock.enrollment.create).not.toHaveBeenCalled();
+      expect(mockCreateNotification).not.toHaveBeenCalled();
+    },
+  );
+
+  it('refuses a non-string due date smuggled through the Server Action boundary', async () => {
+    const result = await assignRetake(ENROLLMENT_ID, '', 12345 as unknown as string);
+
+    expect(result.success).toBe(false);
+    expect(prismaMock.enrollment.create).not.toHaveBeenCalled();
+  });
+
+  it('still checks permissions before validating the date', async () => {
+    mockAdminAuth.mockResolvedValue(makeSession('finance'));
+
+    await expect(assignRetake(ENROLLMENT_ID, '', 'not-a-date')).rejects.toThrow(
+      'Insufficient permissions',
+    );
+  });
+});
+
+/**
+ * Founder Q-04 (2026-09-23): an archived course cannot be retaken.
+ *
+ * `assignRetake` is the only surviving path that would mint a BRAND-NEW
+ * enrollment on retired training. The assignment paths reach the Course row
+ * through a top-level read that the archive query extension filters; here the
+ * course arrives on a nested include, which the extension cannot touch, so the
+ * refusal has to be stated in the action.
+ */
+describe('assignRetake — archived course', () => {
+  it('refuses, and creates no retake enrollment and no notification', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue(
+      makeLockedEnrollment({
+        course: { title: 'Infection Control', archivedAt: new Date('2026-09-20') },
+      }),
+    );
+
+    const result = await assignRetake(ENROLLMENT_ID);
+
+    expect(result).toEqual({
+      success: false,
+      refusedReason: ARCHIVED_COURSE_ADMIN_MESSAGE,
+    });
+    expect(prismaMock.enrollment.create).not.toHaveBeenCalled();
+    expect(mockCreateNotification).not.toHaveBeenCalled();
+  });
+
+  it('refuses even though the enrollment is locked — being locked is not an exemption', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue(
+      makeLockedEnrollment({
+        status: 'locked',
+        course: { title: 'Infection Control', archivedAt: new Date('2026-09-20') },
+      }),
+    );
+
+    const result = await assignRetake(ENROLLMENT_ID, 'Manager override');
+
+    expect(result.refusedReason).toBe(ARCHIVED_COURSE_ADMIN_MESSAGE);
+    expect(prismaMock.enrollment.create).not.toHaveBeenCalled();
+  });
+
+  it('CONTROL: the same retake is assigned while the course is live', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue(
+      makeLockedEnrollment({ course: { title: 'Infection Control', archivedAt: null } }),
+    );
+
+    await expect(assignRetake(ENROLLMENT_ID)).resolves.toEqual({
+      success: true,
+      retakeEnrollmentId: 'retake-enrollment-1',
+    });
   });
 });

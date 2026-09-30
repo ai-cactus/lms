@@ -5,7 +5,7 @@
  * real logic worth guarding directly:
  *   - top-5 slicing of the (already server-sorted) rows array
  *   - the "All caught up" empty state vs. the table branch
- *   - the "N at risk" pill count and the overdue/due-soon status badges
+ *   - the "N overdue or due soon" pill count and the overdue/due-soon status badges
  */
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -41,7 +41,7 @@ describe('StatusTrackerOverview', () => {
     render(<StatusTrackerOverview rows={[]} />);
 
     expect(screen.getByText('All caught up — no overdue training')).toBeInTheDocument();
-    expect(screen.queryByText(/at risk/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/overdue or due soon/)).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /view all/i })).not.toBeInTheDocument();
   });
 
@@ -69,7 +69,7 @@ describe('StatusTrackerOverview', () => {
     expect(within(table).getAllByText('Worker 0').length).toBeGreaterThan(0);
     expect(within(table).getAllByText('Worker 4').length).toBeGreaterThan(0);
     expect(within(table).queryAllByText('Worker 5')).toHaveLength(0);
-    expect(screen.getByText('8 at risk')).toBeInTheDocument();
+    expect(screen.getByText('8 overdue or due soon')).toBeInTheDocument();
   });
 
   it('shows an overdue badge for overdue rows and a due-soon badge for near-deadline rows', () => {

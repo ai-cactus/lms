@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { verifyUserMfaCode } from '@/app/actions/mfa';
+import { isDeletedIdentity } from '@/lib/auth/deleted-identity';
+import { verifyUserMfaCode } from '@/lib/auth/mfa-login-code';
 import { peekMfaChallenge, redeemMfaChallenge } from '@/lib/mfa-challenge';
 import { stampSessionMfaVerified } from '@/lib/auth/mfa-session-stamp';
 import { logger } from '@/lib/logger';
@@ -37,10 +38,10 @@ export async function POST(req: Request) {
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, mfaEnabled: true },
+      select: { id: true, mfaEnabled: true, deletedAt: true },
     });
 
-    if (!user || !user.mfaEnabled) {
+    if (!user || !user.mfaEnabled || isDeletedIdentity(user)) {
       return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
     }
 

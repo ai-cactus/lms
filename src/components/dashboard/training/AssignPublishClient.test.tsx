@@ -103,6 +103,7 @@ vi.mock('@/app/actions/course', () => ({
 }));
 
 import AssignPublishClient from './AssignPublishClient';
+import { logger } from '@/lib/logger';
 
 function existingSettings(
   overrides: Partial<CourseAssignmentSettings> = {},
@@ -731,5 +732,52 @@ describe('AssignPublishClient — Priority 4: reminder-ladder hydration and subm
     await waitFor(() => expect(mockEnrollUsers).toHaveBeenCalledTimes(1));
     const [, , settings] = mockEnrollUsers.mock.calls[0];
     expect(settings.reminderDaysBefore).toEqual([]);
+  });
+});
+
+/**
+ * BUG-51: `publishCourse` returns the published course on success, and that
+ * arm had no `success` field, so `!publishResult.success` logged every
+ * successful publish of a draft as "assigned but not published".
+ */
+describe('AssignPublishClient — reading the publish result (BUG-51)', () => {
+  async function assignDraft() {
+    const user = userEvent.setup();
+    renderClient({ courseStatus: 'draft' });
+    await user.type(screen.getByPlaceholderText('Add people, emails or names'), 'worker@test.com,');
+    await user.click(screen.getByRole('button', { name: 'Publish Course' }));
+    await waitFor(() => expect(mockPublishCourse).toHaveBeenCalledWith('course-1'));
+  }
+
+  it('treats the published-course result as a success', async () => {
+    mockPublishCourse.mockResolvedValue({
+      id: 'course-1',
+      status: 'published',
+      success: true,
+      assignmentFailed: false,
+      assignmentDeadlineExpired: false,
+    });
+
+    await assignDraft();
+
+    expect(logger.warn).not.toHaveBeenCalledWith(
+      expect.objectContaining({ msg: '[assign] Course assigned but not published' }),
+    );
+  });
+
+  it('still reports a refused publish', async () => {
+    mockPublishCourse.mockResolvedValue({
+      success: false,
+      error: 'This course has quality warnings and requires review before publishing.',
+      warnings: ['thin'],
+    });
+
+    await assignDraft();
+
+    await waitFor(() =>
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({ msg: '[assign] Course assigned but not published' }),
+      ),
+    );
   });
 });

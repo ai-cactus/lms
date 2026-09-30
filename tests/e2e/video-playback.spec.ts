@@ -423,7 +423,7 @@ test.describe('Video course playback', () => {
     }
   });
 
-  test('seeking issues a further Range request and playback resumes from the new position', async ({
+  test('seeking backward moves currentTime and playback resumes from the new position', async ({
     page,
   }) => {
     const fixture = courseFixture!;
@@ -454,15 +454,23 @@ test.describe('Video course playback', () => {
         v.pause();
       });
 
-      const seekRequestPromise = page.waitForResponse(
-        (res) => res.url().includes(`/api/video/${fixture.lessonAId}`) && res.status() === 206,
-      );
+      // Not asserted: that the seek itself provokes a NEW network request.
+      // Network-traced proof (trace.zip from a failing run against this exact
+      // fixture) showed Chromium's *initial* load already requests
+      // `Range: bytes=0-` and the proxy — correctly, per HTTP semantics —
+      // answers with the WHOLE 54 KB file in that one 206. With every byte
+      // already client-buffered, no browser has cause to re-request any of it
+      // on a seek, forward or backward; that isn't a proxy/gating defect, it's
+      // this 6-second fixture being smaller than any real range-chunking
+      // threshold. The route's Range/206 support is proven for real by the
+      // sibling test above ("returns 206 Partial Content with Content-Range");
+      // what THIS test can still prove without a bigger fixture is the
+      // behavioral contract a learner actually depends on — that seeking
+      // backward moves `currentTime` and playback resumes from there.
       await page.evaluate(() => {
         const v = document.querySelector('video') as HTMLVideoElement;
         v.currentTime = Math.max(0, v.currentTime - 1.5);
       });
-      const seekResponse = await seekRequestPromise;
-      expect(seekResponse.headers()['content-range']).toBeTruthy();
 
       await page.evaluate(() => void (document.querySelector('video') as HTMLVideoElement).play());
       const timeAfterSeek = await page.evaluate(
@@ -492,18 +500,50 @@ test.describe('Video course playback', () => {
       const proceedButton = page.getByRole('button', { name: 'Proceed to Quiz' });
       await expect(proceedButton).toBeVisible();
       await expect(proceedButton).toBeDisabled();
-      await expect(page.getByText('Watch the video to unlock the quiz')).toBeVisible();
+      // Two elements legitimately carry this exact text at once: the per-lesson
+      // hint under the active player (LearnClient.tsx's per-module block) and
+      // the bottom nav's `proceedHint`. `.first()` only disambiguates Playwright's
+      // strict-mode match — either is proof the gate copy rendered.
+      await expect(page.getByText('Watch the video to unlock the quiz').first()).toBeVisible();
 
       // Genuine playback, sped up — advanceWatchedMark's wall-clock invariant
       // (src/lib/video/gating.ts) explicitly accounts for playbackRate, so
       // this is real watch-through credit, not a shortcut around the gate.
-      await page.evaluate(() => {
-        const v = document.querySelector('video') as HTMLVideoElement;
-        v.playbackRate = 8;
-        void v.play();
-      });
+      //
+      // `courseFixture` seeds TWO video lessons (lessonA, lessonB — shared with
+      // the mobile "inactive player" test above, which needs a second lesson to
+      // prove the inactive one never mounts a byte request). `isProceedBlocked`
+      // in LearnClient.tsx is `isVideoGateBlocked || !hasCompletedAllModules`, and
+      // `hasCompletedAllModules` requires `highestUnlockedIndex` to reach the
+      // LAST lesson — so watching only lessonA's video (proven live: it reaches
+      // `ended`, `currentTime === duration`, yet the button stayed disabled)
+      // clears lessonA's own gate but never satisfies the whole-course one. Both
+      // lessons' video-watch gates must clear, in order, exactly as a learner
+      // paging through the course would. Article view mounts every lesson's
+      // player at once (LearnClient.tsx), in lesson order, so the video at DOM
+      // index `n` is always lesson `n` regardless of which one is active.
+      async function playVideoThrough(domIndex: number) {
+        await page.evaluate((i) => {
+          const v = document.querySelectorAll('video')[i] as HTMLVideoElement;
+          v.playbackRate = 2;
+          void v.play();
+        }, domIndex);
+        await expect
+          .poll(
+            () =>
+              page.evaluate(
+                (i) => (document.querySelectorAll('video')[i] as HTMLVideoElement).ended,
+                domIndex,
+              ),
+            { timeout: 20000 },
+          )
+          .toBe(true);
+      }
 
-      // ~6s of clip at 8x is under a second; a generous ceiling absorbs CI slack.
+      await playVideoThrough(0);
+      await page.getByRole('button', { name: 'Next' }).click();
+      await playVideoThrough(1);
+
       await expect(proceedButton).toBeEnabled({ timeout: 20000 });
     } finally {
       await cleanupLearner(learner);
@@ -650,9 +690,14 @@ test.describe('Video course playback — mobile viewport', () => {
     const fixture = courseFixture!;
     const learner = await seedLearner(fixture);
     try {
+      // The poster is fetched for EVERY mounted player regardless of preload
+      // (VideoPlayer.tsx paints a still frame from `/api/video/[id]/poster`
+      // independent of byte-range streaming) — that request is expected on the
+      // inactive lesson too, so it must not be captured as "requested video
+      // bytes" or this test would fail on correct, by-design behavior.
       const requestedLessonIds = new Set<string>();
       page.on('request', (req) => {
-        const match = req.url().match(/\/api\/video\/([^/?]+)/);
+        const match = req.url().match(/\/api\/video\/([^/?]+)(?:\?|$)/);
         if (match) requestedLessonIds.add(match[1]);
       });
 

@@ -280,7 +280,11 @@ function CourseRenameModal({
     setError(null);
     startTransition(async () => {
       try {
-        await updateCourse(courseId, { title: trimmed });
+        const result = await updateCourse(courseId, { title: trimmed });
+        if (!result.success) {
+          setError(result.error ?? 'Failed to rename course.');
+          return;
+        }
         onRenamed(trimmed);
         onClose();
       } catch (err) {
@@ -493,11 +497,18 @@ export default function CoursesListClient({
   };
 
   const buildRowActions = (course: CourseWithStats): RowAction[] => {
-    // A platform catalog course this org has not adopted is authored by another
-    // tenant: rename and delete would mutate it for every organization, and its
-    // source document belongs to the publishing tenant. The row stays view-only
-    // — exactly what the catalog card it replaces offered.
-    if (course.isGlobalCatalog) return [];
+    // Q-33 (ruled): every organisation inherits the video courses, so a video
+    // row — offered to this org yet or not (`isGlobalCatalog`) — is assignable
+    // but otherwise read-only here. Its source document belongs to the
+    // publishing tenant, a rename is refused server-side (a global course
+    // would change for every organisation) and it can never be deleted. The
+    // two read-only items stay listed, disabled, so the menu matches the
+    // reading rows' shape rather than silently shrinking.
+    const isVideoCourse = course.type === 'video';
+
+    // The catalogue only carries video courses; anything else flagged as a
+    // catalogue row is another tenant's and stays view-only.
+    if (course.isGlobalCatalog && !isVideoCourse) return [];
 
     const actions: RowAction[] = [];
 
@@ -518,16 +529,16 @@ export default function CoursesListClient({
       });
     }
 
-    // Always listed per the design; a course with no CourseVersion of its own
-    // (an adopted catalogue course) has no source document to open, so the item
-    // is disabled rather than hidden.
+    // Always listed per the design; a video course, or a reading course with no
+    // CourseVersion of its own, has no source document to open here, so the
+    // item is disabled rather than hidden.
     if (canReadDocuments) {
       actions.push({
         label: 'View Source Document',
         icon: <FileText className="size-4" />,
-        disabled: !course.sourceDocumentId,
+        disabled: isVideoCourse || !course.sourceDocumentId,
         onSelect: () => {
-          if (course.sourceDocumentId) {
+          if (!isVideoCourse && course.sourceDocumentId) {
             router.push(`/dashboard/documents/${course.sourceDocumentId}`);
           }
         },
@@ -539,14 +550,17 @@ export default function CoursesListClient({
         label: 'Rename',
         icon: <Pencil className="size-4" />,
         separatorBefore: actions.length > 0,
-        onSelect: () => setCourseToRename({ id: course.id, title: course.title }),
+        disabled: isVideoCourse,
+        onSelect: () => {
+          if (!isVideoCourse) setCourseToRename({ id: course.id, title: course.title });
+        },
       });
     }
 
     // A shared-catalogue row is authored by another tenant and only offered to
     // this org, so it can never be deleted from here — offering the action was
     // a guaranteed dead end.
-    if (canDeleteCourse && course.isOrgAuthored) {
+    if (canDeleteCourse && course.isOrgAuthored && !isVideoCourse) {
       actions.push({
         label: deletingId === course.id ? 'Deleting…' : 'Delete',
         icon: <Trash2 className="size-4" />,

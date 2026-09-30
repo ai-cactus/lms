@@ -11,7 +11,7 @@ interface RecentCertificate {
 }
 
 interface WorkerAchievementsProps {
-  badgeCount: number;
+  certificateCount: number;
   recentCertificates?: RecentCertificate[];
 }
 
@@ -24,14 +24,16 @@ function formatDate(date: Date) {
 }
 
 export default function WorkerAchievements({
-  badgeCount,
+  certificateCount,
   recentCertificates = [],
 }: WorkerAchievementsProps) {
+  const moreCount = certificateCount - recentCertificates.length;
+
   return (
     <section className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-bold text-[#1a202c]">Courses Completed</h2>
-        {badgeCount > 0 && (
+        {certificateCount > 0 && (
           <Link
             href="/worker/certificates"
             className="flex items-center gap-1 text-sm font-semibold text-[#4C6EF5] hover:underline"
@@ -48,7 +50,7 @@ export default function WorkerAchievements({
             <p className="text-base text-[#1a202c]">
               You have earned{' '}
               <strong>
-                {badgeCount} certificate{badgeCount !== 1 ? 's' : ''}
+                {certificateCount} certificate{certificateCount !== 1 ? 's' : ''}
               </strong>
             </p>
 
@@ -95,13 +97,13 @@ export default function WorkerAchievements({
             </div>
 
             {/* Footer CTA when there are more certificates than shown */}
-            {badgeCount > 3 && (
+            {moreCount > 0 && (
               <div className="mt-2 text-center">
                 <Link
                   href="/worker/certificates"
                   className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#4C6EF5] hover:underline"
                 >
-                  +{badgeCount - 3} more certificate{badgeCount - 4 !== 0 ? 's' : ''} — see all
+                  +{moreCount} more certificate{moreCount !== 1 ? 's' : ''} — see all
                   <ChevronRight className="size-3.5" aria-hidden="true" />
                 </Link>
               </div>

@@ -14,24 +14,29 @@ import { prisma } from '@/db/index';
 import bcrypt from 'bcryptjs';
 import { BCRYPT_COST } from '@/lib/bcrypt-config';
 import nodeCrypto from 'crypto';
+import { logger } from '@/lib/logger';
 
 const DRY_RUN = process.argv.includes('--dry-run');
 
 async function main() {
-  console.log(`Starting backfill for empty passwords...${DRY_RUN ? ' [DRY RUN]' : ''}`);
+  logger.info({
+    msg: `[backfill-oauth-passwords] Starting backfill for empty passwords...${DRY_RUN ? ' [DRY RUN]' : ''}`,
+  });
 
   const usersWithEmptyPassword = await prisma.user.findMany({
     where: { password: '' },
     select: { id: true },
   });
 
-  console.log(`Found ${usersWithEmptyPassword.length} users with empty passwords.`);
+  logger.info({
+    msg: `[backfill-oauth-passwords] Found ${usersWithEmptyPassword.length} users with empty passwords.`,
+  });
 
   if (DRY_RUN) {
     for (const user of usersWithEmptyPassword) {
-      console.log(`[DRY RUN] Would update user ${user.id}`);
+      logger.info({ msg: `[backfill-oauth-passwords] [DRY RUN] Would update user ${user.id}` });
     }
-    console.log('[DRY RUN] Exiting without writing changes.');
+    logger.info({ msg: '[backfill-oauth-passwords] [DRY RUN] Exiting without writing changes.' });
     return;
   }
 
@@ -47,15 +52,15 @@ async function main() {
         authProvider: 'microsoft-entra-id', // Assuming empty passwords were from OAuth
       },
     });
-    console.log(`Updated user ${user.id}`);
+    logger.info({ msg: `[backfill-oauth-passwords] Updated user ${user.id}` });
   }
 
-  console.log('Backfill complete.');
+  logger.info({ msg: '[backfill-oauth-passwords] Backfill complete.' });
 }
 
 main()
   .catch((e) => {
-    console.error(e);
+    logger.error({ msg: '[backfill-oauth-passwords] Failed', err: e });
     process.exit(1);
   })
   .finally(async () => {

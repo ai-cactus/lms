@@ -726,7 +726,7 @@ test.describe('Billing — cancel auto-releases a pending schedule instead of er
 
       await page.goto('/dashboard/billing/cancel');
       await page.getByRole('checkbox').click();
-      await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+      await page.getByRole('button', { name: 'Cancel subscription', exact: true }).click();
 
       const dialog = page.getByRole('dialog');
       await expect(dialog).toBeVisible();
@@ -784,7 +784,7 @@ test.describe('Billing — cancel auto-releases a pending schedule instead of er
 
       await page.goto('/dashboard/billing/cancel');
       await page.getByRole('checkbox').click();
-      await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+      await page.getByRole('button', { name: 'Cancel subscription', exact: true }).click();
 
       const dialog = page.getByRole('dialog');
       await expect(dialog).toBeVisible();

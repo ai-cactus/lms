@@ -4,6 +4,7 @@ import { getEnrollmentWithResults } from '@/app/actions/enrollment';
 import { notFound, redirect } from 'next/navigation';
 import { requirePermission } from '@/lib/rbac/require-permission';
 import { logger } from '@/lib/logger';
+import { parseStoredOptionExplanations } from '@/lib/quiz/options';
 
 export default async function QuizResultsPage({
   params,
@@ -24,8 +25,15 @@ export default async function QuizResultsPage({
   try {
     const enrollment = await getEnrollmentWithResults(enrollmentId);
 
-    const quizAttempts = enrollment.quizAttempts || [];
-    const latestAttempt = quizAttempts[quizAttempts.length - 1];
+    // The newest SUBMITTED attempt. The rows arrive unordered, and an in-progress
+    // draft (timeTaken null) has no score to show.
+    const latestAttempt = (enrollment.quizAttempts ?? [])
+      .filter((attempt) => attempt.timeTaken !== null)
+      .reduce<(typeof enrollment.quizAttempts)[number] | undefined>(
+        (latest, attempt) =>
+          !latest || attempt.completedAt > latest.completedAt ? attempt : latest,
+        undefined,
+      );
 
     if (!latestAttempt) {
       // No quiz attempt yet - show empty state or redirect
@@ -37,11 +45,15 @@ export default async function QuizResultsPage({
       );
     }
 
-    const allQuestions = enrollment.course.lessons.flatMap(
-      (lesson) => lesson.quiz?.questions || [],
-    );
+    // BUG-52: the sheet is the attempted quiz's own questions. Reading them off
+    // the lessons missed a course-level quiz (every video course) entirely.
+    const allQuestions = latestAttempt.quiz.questions;
 
-    const answers = latestAttempt.answers as { questionId: string; selectedAnswer: string }[];
+    const answers = latestAttempt.answers as {
+      questionId: string;
+      selectedAnswer: string;
+      explanation?: string;
+    }[];
 
     let correctCount = 0;
     let wrongCount = 0;
@@ -77,16 +89,23 @@ export default async function QuizResultsPage({
         const correctIdx = optionTexts.findIndex((t) => t === correctText);
         const correctLetter = correctIdx >= 0 ? String.fromCharCode(65 + correctIdx) : '';
 
+        const optionExplanations = parseStoredOptionExplanations(q.incorrectOptionExplanations);
+
         return {
           id: q.id,
           text: q.text,
           options: optionTexts.map((text, idx) => ({
             id: String.fromCharCode(65 + idx),
             text,
+            explanation: optionExplanations?.[String(idx)],
           })),
           selectedAnswer: selectedLetter,
           correctAnswer: correctLetter,
-          explanation: `The correct answer is ${correctLetter}. ${q.correctAnswer}`,
+          // BUG-29: the stored rationale, resolved exactly as the learner's own
+          // results view resolves it (`getLearnPayload`). This used to be a
+          // sentence manufactured from the answer key, so a manager reviewing an
+          // attempt never saw the explanation the learner was shown.
+          explanation: q.explanation || userAnswer?.explanation || '',
         };
       }),
       userName: enrollment.organizationUser.user.fullName || enrollment.organizationUser.user.email,

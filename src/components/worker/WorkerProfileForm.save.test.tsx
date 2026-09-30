@@ -7,10 +7,16 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { mockUpdateProfile } = vi.hoisted(() => ({ mockUpdateProfile: vi.fn() }));
+const { mockUpdateProfile, mockUploadAvatar } = vi.hoisted(() => ({
+  mockUpdateProfile: vi.fn(),
+  mockUploadAvatar: vi.fn(),
+}));
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }));
-vi.mock('@/app/actions/user', () => ({ updateProfile: mockUpdateProfile, uploadAvatar: vi.fn() }));
+vi.mock('@/app/actions/user', () => ({
+  updateProfile: mockUpdateProfile,
+  uploadAvatar: mockUploadAvatar,
+}));
 vi.mock('../dashboard/ChangePasswordTab', () => ({ ChangePasswordTab: () => null }));
 vi.mock('../dashboard/TwoFactorAuthTab', () => ({ TwoFactorAuthTab: () => null }));
 
@@ -50,10 +56,50 @@ describe('WorkerProfileForm — profile save payload', () => {
     await u.click(screen.getByRole('button', { name: 'Save Changes' }));
     await u.click(await screen.findByRole('button', { name: 'Confirm' }));
 
-    expect(mockUpdateProfile).toHaveBeenCalledExactlyOnceWith({
+    // BUG-05: the worker form names its own portal; the action never guesses it.
+    expect(mockUpdateProfile).toHaveBeenCalledExactlyOnceWith('worker', {
       first_name: 'Nina-Rose',
       last_name: 'Adeyemi',
       avatarUrl: undefined,
     });
+  });
+
+  // RISK-02: `undefined` means "leave unchanged", so the form sends the photo
+  // only when it changed — the old `avatarUrl || undefined` could never clear.
+  it('does not resend an unchanged photo', async () => {
+    const u = userEvent.setup();
+    render(
+      <WorkerProfileForm
+        user={{ ...user, avatarUrl: 'gcs://b/avatars/user-1/old.png' }}
+        organization={null}
+      />,
+    );
+
+    await u.type(screen.getByPlaceholderText('Last Name'), 'x');
+    await u.click(screen.getByRole('button', { name: 'Save Changes' }));
+    await u.click(await screen.findByRole('button', { name: 'Confirm' }));
+
+    expect(mockUpdateProfile).toHaveBeenCalledExactlyOnceWith(
+      'worker',
+      expect.objectContaining({ avatarUrl: undefined }),
+    );
+  });
+
+  it('sends a newly uploaded photo, uploaded against the worker portal', async () => {
+    mockUploadAvatar.mockResolvedValue({ success: true, url: 'gcs://b/avatars/user-1/new.png' });
+    globalThis.URL.createObjectURL = vi.fn(() => 'blob:preview');
+    const u = userEvent.setup();
+    const { container } = render(<WorkerProfileForm user={user} organization={null} />);
+
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    await u.upload(input, new File(['x'], 'me.png', { type: 'image/png' }));
+    await u.click(screen.getByRole('button', { name: 'Save Changes' }));
+    await u.click(await screen.findByRole('button', { name: 'Confirm' }));
+
+    expect(mockUploadAvatar).toHaveBeenCalledWith('worker', expect.any(FormData));
+    expect(mockUpdateProfile).toHaveBeenCalledExactlyOnceWith(
+      'worker',
+      expect.objectContaining({ avatarUrl: 'gcs://b/avatars/user-1/new.png' }),
+    );
   });
 });

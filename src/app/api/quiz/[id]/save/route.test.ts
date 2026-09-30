@@ -21,6 +21,7 @@ const { mockAdminAuth, mockWorkerAuth, prismaMock } = vi.hoisted(() => ({
   mockWorkerAuth: vi.fn(),
   prismaMock: {
     quizAttempt: { findFirst: vi.fn(), update: vi.fn() },
+    enrollment: { updateMany: vi.fn() },
   },
 }));
 
@@ -35,6 +36,7 @@ vi.mock('@/lib/logger', () => ({
 // Import under test AFTER all vi.mock() declarations.
 // ---------------------------------------------------------------------------
 import { POST } from './route';
+import { ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -55,7 +57,12 @@ function makeAttempt(overrides: Record<string, unknown> = {}) {
     enrollmentId: 'enr-1',
     quizId: 'quiz-1',
     timeTaken: null,
-    enrollment: { id: 'enr-1', organizationUserId: 'ou-1' },
+    enrollment: {
+      id: 'enr-1',
+      organizationUserId: 'ou-1',
+      course: { archivedAt: null },
+      organizationUser: { organization: { subscription: { status: 'active', pausedAt: null } } },
+    },
     ...overrides,
   };
 }
@@ -67,6 +74,7 @@ beforeEach(() => {
 
   prismaMock.quizAttempt.findFirst.mockResolvedValue(makeAttempt());
   prismaMock.quizAttempt.update.mockResolvedValue({});
+  prismaMock.enrollment.updateMany.mockResolvedValue({ count: 1 });
 });
 
 describe('POST /api/quiz/[id]/save — auth', () => {
@@ -92,7 +100,13 @@ describe('POST /api/quiz/[id]/save — auth', () => {
 
   it('403s when the latest attempt belongs to a different enrollment/user', async () => {
     prismaMock.quizAttempt.findFirst.mockResolvedValue(
-      makeAttempt({ enrollment: { id: 'enr-1', organizationUserId: 'someone-else' } }),
+      makeAttempt({
+        enrollment: {
+          id: 'enr-1',
+          organizationUserId: 'someone-else',
+          course: { archivedAt: null },
+        },
+      }),
     );
 
     const res = await POST(makeReq({ enrollmentId: 'enr-1', answers: ANSWERS }), { params });
@@ -101,6 +115,7 @@ describe('POST /api/quiz/[id]/save — auth', () => {
     expect(res.status).toBe(403);
     expect(body.error).toBe('Enrollment does not belong to active sessions');
     expect(prismaMock.quizAttempt.update).not.toHaveBeenCalled();
+    expect(prismaMock.enrollment.updateMany).not.toHaveBeenCalled();
   });
 });
 
@@ -130,6 +145,17 @@ describe('POST /api/quiz/[id]/save', () => {
     });
   });
 
+  it('stamps (throttled) learner activity on the enrollment after an autosave', async () => {
+    await POST(makeReq({ enrollmentId: 'enr-1', answers: ANSWERS }), { params });
+
+    expect(prismaMock.enrollment.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: 'enr-1' }),
+        data: { lastActivityAt: expect.any(Date) },
+      }),
+    );
+  });
+
   it('409s and does not write when the latest attempt is already completed', async () => {
     prismaMock.quizAttempt.findFirst.mockResolvedValue(makeAttempt({ timeTaken: 60 }));
 
@@ -139,6 +165,7 @@ describe('POST /api/quiz/[id]/save', () => {
     expect(res.status).toBe(409);
     expect(body.error).toBe('Attempt is already completed');
     expect(prismaMock.quizAttempt.update).not.toHaveBeenCalled();
+    expect(prismaMock.enrollment.updateMany).not.toHaveBeenCalled();
   });
 
   it('queries the latest attempt ordered by completedAt desc (append-history: pick the current draft, not an old row)', async () => {
@@ -148,6 +175,108 @@ describe('POST /api/quiz/[id]/save', () => {
       expect.objectContaining({
         where: { enrollmentId: 'enr-1', quizId: 'quiz-1' },
         orderBy: { completedAt: 'desc' },
+      }),
+    );
+  });
+});
+
+// Founder Q-04 (2026-09-23): an in-flight draft is still a learner write, so it
+// stops at the archive along with everything else.
+describe('POST /api/quiz/[id]/save — archived course (Q-04)', () => {
+  it('403s and does not write the answers', async () => {
+    prismaMock.quizAttempt.findFirst.mockResolvedValue(
+      makeAttempt({
+        enrollment: {
+          id: 'enr-1',
+          organizationUserId: 'ou-1',
+          course: { archivedAt: new Date('2026-09-20') },
+          organizationUser: {
+            organization: { subscription: { status: 'active', pausedAt: null } },
+          },
+        },
+      }),
+    );
+
+    const res = await POST(makeReq({ enrollmentId: 'enr-1', answers: ANSWERS }), { params });
+    const body = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(body.error).toBe(ARCHIVED_COURSE_LEARNER_MESSAGE);
+    expect(prismaMock.quizAttempt.update).not.toHaveBeenCalled();
+    expect(prismaMock.enrollment.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * SEC-08: /start and /submit gate on active billing; /save did not, so a
+ * direct POST kept writing quiz answers for a paused organization.
+ */
+describe('POST /api/quiz/[id]/save — billing gate (SEC-08)', () => {
+  const PAUSED_MESSAGE =
+    'Your organization’s training access is paused. Please contact your administrator.';
+
+  function attemptWithSubscription(subscription: unknown) {
+    return makeAttempt({
+      enrollment: {
+        id: 'enr-1',
+        organizationUserId: 'ou-1',
+        course: { archivedAt: null },
+        organizationUser: { organization: { subscription } },
+      },
+    });
+  }
+
+  it('403s and writes no answers when the subscription is paused', async () => {
+    prismaMock.quizAttempt.findFirst.mockResolvedValue(
+      attemptWithSubscription({ status: 'active', pausedAt: new Date('2026-09-01') }),
+    );
+
+    const res = await POST(makeReq({ enrollmentId: 'enr-1', answers: ANSWERS }), { params });
+
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: PAUSED_MESSAGE });
+    expect(prismaMock.quizAttempt.update).not.toHaveBeenCalled();
+    expect(prismaMock.enrollment.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('403s when the org has no subscription row at all', async () => {
+    prismaMock.quizAttempt.findFirst.mockResolvedValue(attemptWithSubscription(null));
+
+    const res = await POST(makeReq({ enrollmentId: 'enr-1', answers: ANSWERS }), { params });
+
+    expect(res.status).toBe(403);
+    expect(prismaMock.quizAttempt.update).not.toHaveBeenCalled();
+  });
+
+  it('403s on a canceled subscription', async () => {
+    prismaMock.quizAttempt.findFirst.mockResolvedValue(
+      attemptWithSubscription({ status: 'canceled', pausedAt: null }),
+    );
+
+    const res = await POST(makeReq({ enrollmentId: 'enr-1', answers: ANSWERS }), { params });
+
+    expect(res.status).toBe(403);
+    expect(prismaMock.quizAttempt.update).not.toHaveBeenCalled();
+  });
+
+  it("reads the subscription through the attempt's enrollment", async () => {
+    await POST(makeReq({ enrollmentId: 'enr-1', answers: ANSWERS }), { params });
+
+    expect(prismaMock.quizAttempt.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        include: {
+          enrollment: {
+            include: expect.objectContaining({
+              organizationUser: {
+                select: {
+                  organization: {
+                    select: { subscription: { select: { status: true, pausedAt: true } } },
+                  },
+                },
+              },
+            }),
+          },
+        },
       }),
     );
   });

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { ResponsiveContainer, PieChart, Pie, Cell, Label } from 'recharts';
+import { COVERAGE_LABELS } from '@/lib/dashboard/metrics';
 
 interface DashboardChartsProps {
   stats?: {
@@ -12,11 +13,12 @@ interface DashboardChartsProps {
       passCount: number;
       failCount: number;
     }[];
+    /** Percentages of ASSIGNMENTS per phase, plus the assignment count they split. */
     trainingCoverage?: {
       completed: number;
       inProgress: number;
       notStarted: number;
-      totalStaff?: number;
+      totalAssignments: number;
     };
   };
 }
@@ -25,9 +27,9 @@ const PASS_COLOR = '#16a34a';
 const FAIL_COLOR = '#ec484b';
 
 const COVERAGE_SEGMENTS = [
-  { key: 'completed', label: 'Staff who have completed required courses', color: '#14b8a6' },
-  { key: 'inProgress', label: 'Staff currently enrolled (in progress)', color: '#facc15' },
-  { key: 'notStarted', label: 'Staff yet to begin any course', color: '#ec484b' },
+  { key: 'completed', label: COVERAGE_LABELS.completed, color: '#14b8a6' },
+  { key: 'inProgress', label: COVERAGE_LABELS.inProgress, color: '#facc15' },
+  { key: 'notStarted', label: COVERAGE_LABELS.notStarted, color: '#ec484b' },
 ] as const;
 
 export default function DashboardCharts({ stats }: DashboardChartsProps) {
@@ -204,13 +206,13 @@ export default function DashboardCharts({ stats }: DashboardChartsProps) {
                       {!hasData && <Cell key="cell-empty" fill="#f1f5f9" stroke="none" />}
 
                       <Label
-                        value="Total Staff"
+                        value="Total Assignments"
                         position="center"
                         dy={-12}
                         style={{ fontSize: '13px', fill: '#737373', fontWeight: 500 }}
                       />
                       <Label
-                        value={trainingCoverage?.totalStaff || 0}
+                        value={trainingCoverage?.totalAssignments ?? 0}
                         position="center"
                         dy={10}
                         style={{ fontSize: '22px', fontWeight: 700, fill: '#0a0a0a' }}

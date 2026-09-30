@@ -225,9 +225,9 @@ test.describe('Reminders & Escalations', () => {
 
     // Summary count is non-empty since the seeded overdue worker exists.
     // (The separate "Overdue training" / "Hard escalations" stat pills from
-    // the pre-restyle widget were dropped in favor of a single "N at risk"
+    // the pre-restyle widget were dropped in favor of a single "N overdue or due soon"
     // badge — StatusTrackerOverview.tsx.)
-    await expect(section.getByText(/\d+ at risk/)).toBeVisible();
+    await expect(section.getByText(/\d+ overdue or due soon/)).toBeVisible();
 
     // Seeded overdue worker appears in the compact top-5 list. Address it by
     // row so the following cell-level assertions stay scoped to it — same

@@ -34,6 +34,13 @@ import { Storage } from '@google-cloud/storage';
 
 const PREFIX = 'system/videos/';
 
+// Script-local JSON logger: this script is self-contained, so it cannot import
+// @/lib/logger. Same line shape as scripts/index-worker.ts.
+function log(level: 'info' | 'error', msg: string, extra: Record<string, unknown> = {}): void {
+  const stream = level === 'error' ? process.stderr : process.stdout;
+  stream.write(JSON.stringify({ level, time: new Date().toISOString(), msg, ...extra }) + '\n');
+}
+
 /** Minimal .env loader — fills process.env WITHOUT overwriting real env vars. */
 function loadEnvFile(file: string): boolean {
   if (!fs.existsSync(file)) return false;
@@ -97,28 +104,38 @@ async function main(): Promise<void> {
   const dryRun = process.argv.includes('--dry-run');
   const bucketName = process.env.GCP_BUCKET_NAME;
   if (!bucketName) {
-    console.error('GCP_BUCKET_NAME is not set (env or .env file). Aborting.');
+    log(
+      'error',
+      '[restore-soft-deleted-videos] GCP_BUCKET_NAME is not set (env or .env file). Aborting.',
+    );
     process.exit(1);
   }
 
   const storage = buildStorage();
   const bucket = storage.bucket(bucketName);
 
-  console.log(`Bucket: ${bucketName}`);
-  console.log(`Prefix: ${PREFIX}`);
-  console.log(`Mode:   ${dryRun ? 'dry-run (omit --dry-run to apply)' : 'RESTORE'}\n`);
+  log('info', `[restore-soft-deleted-videos] Bucket: ${bucketName}`);
+  log('info', `[restore-soft-deleted-videos] Prefix: ${PREFIX}`);
+  log(
+    'info',
+    `[restore-soft-deleted-videos] Mode:   ${dryRun ? 'dry-run (omit --dry-run to apply)' : 'RESTORE'}`,
+  );
 
   const [liveFiles] = await bucket.getFiles({ prefix: PREFIX });
   const liveNames = new Set(liveFiles.map((f) => f.name));
-  console.log(`Live objects under prefix:        ${liveNames.size}`);
+  log('info', `[restore-soft-deleted-videos] Live objects under prefix:        ${liveNames.size}`);
 
   const [softDeletedFiles] = await bucket.getFiles({ prefix: PREFIX, softDeleted: true });
-  console.log(`Soft-deleted generations found:   ${softDeletedFiles.length}\n`);
+  log(
+    'info',
+    `[restore-soft-deleted-videos] Soft-deleted generations found:   ${softDeletedFiles.length}`,
+  );
 
   if (softDeletedFiles.length === 0) {
-    console.log(
-      'Nothing soft-deleted under the prefix. If videos are still missing, the 7-day\n' +
-        'soft-delete window has passed and re-upload is the only recovery.',
+    log(
+      'info',
+      '[restore-soft-deleted-videos] Nothing soft-deleted under the prefix. If videos are still missing, the ' +
+        '7-day soft-delete window has passed and re-upload is the only recovery.',
     );
     return;
   }
@@ -142,23 +159,29 @@ async function main(): Promise<void> {
   const toRestore = [...latestByName.values()].filter((e) => !liveNames.has(e.name));
   const skippedLive = latestByName.size - toRestore.length;
 
-  console.log('── Soft-deleted objects (latest generation per name) ──────────');
+  log(
+    'info',
+    '[restore-soft-deleted-videos] ── Soft-deleted objects (latest generation per name) ──────────',
+  );
   for (const e of [...latestByName.values()].sort((a, b) => a.name.localeCompare(b.name))) {
     const status = liveNames.has(e.name) ? 'SKIP (exists live)' : 'RESTORABLE';
-    console.log(
-      `  [${status}] ${e.name}\n` +
-        `      gen=${e.generation}  deleted=${e.softDeleteTime}  purged-after=${e.hardDeleteTime}  ${(
-          e.sizeBytes /
-          1024 /
-          1024
-        ).toFixed(1)}MB`,
-    );
+    log('info', `[restore-soft-deleted-videos] [${status}] ${e.name}`, {
+      generation: e.generation,
+      softDeleteTime: e.softDeleteTime,
+      hardDeleteTime: e.hardDeleteTime,
+      sizeMB: Number((e.sizeBytes / 1024 / 1024).toFixed(1)),
+    });
   }
-  console.log('');
-  console.log(`Restorable: ${toRestore.length}   Skipped (already live): ${skippedLive}`);
+  log(
+    'info',
+    `[restore-soft-deleted-videos] Restorable: ${toRestore.length}   Skipped (already live): ${skippedLive}`,
+  );
 
   if (dryRun) {
-    console.log('\nDry-run complete. Re-run without --dry-run to restore the objects above.');
+    log(
+      'info',
+      '[restore-soft-deleted-videos] Dry-run complete. Re-run without --dry-run to restore the objects above.',
+    );
     return;
   }
 
@@ -168,18 +191,25 @@ async function main(): Promise<void> {
     try {
       await bucket.file(e.name).restore({ generation: Number(e.generation) });
       restored += 1;
-      console.log(`  restored: ${e.name}`);
+      log('info', `[restore-soft-deleted-videos] restored: ${e.name}`);
     } catch (err) {
       failed += 1;
-      console.error(`  FAILED:   ${e.name} — ${(err as Error).message}`);
+      log('error', `[restore-soft-deleted-videos] FAILED: ${e.name}`, {
+        errMessage: (err as Error).message,
+      });
     }
   }
 
-  console.log(`\nRestore complete. restored=${restored} failed=${failed}`);
+  log(
+    'info',
+    `[restore-soft-deleted-videos] Restore complete. restored=${restored} failed=${failed}`,
+  );
   if (failed > 0) process.exitCode = 1;
 }
 
 main().catch((err) => {
-  console.error('Fatal:', err);
+  log('error', '[restore-soft-deleted-videos] Fatal', {
+    errMessage: err instanceof Error ? err.message : String(err),
+  });
   process.exit(1);
 });

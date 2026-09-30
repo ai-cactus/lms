@@ -20,7 +20,7 @@
  *  - resolves a course-level quiz when lessons have no quiz (video course),
  *  - prefers the last lesson's quiz over the course-level quiz when both exist,
  *  - resets enrollment fields (status in_progress, score/completedAt/
- *    attestedAt/attestationSignature all null),
+ *    attestedAt/attestationSignature all null) and stamps lastActivityAt,
  *  - throws on a foreign/missing enrollment before touching quizAttempt.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -47,6 +47,7 @@ vi.mock('@/lib/logger', () => ({
 }));
 
 import { retakeQuiz } from './course';
+import { ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
 
 const WORKER_ID = 'worker-1';
 const ENROLLMENT_ID = 'enrollment-1';
@@ -61,6 +62,8 @@ function makeEnrollment(overrides: Record<string, unknown> = {}) {
     // enrollment's `organizationUser` relation, not a direct `userId` column.
     organizationUser: { userId: WORKER_ID },
     courseId: COURSE_ID,
+    // A failed attempt leaves the enrolment here — the one state the UI offers a retake from.
+    status: 'in_progress',
     course: {
       lessons: [{ id: 'lesson-1', quiz: { id: LESSON_QUIZ_ID, allowedAttempts: 3 } }],
       quiz: null,
@@ -277,6 +280,7 @@ describe('retakeQuiz — enrollment reset', () => {
         completedAt: null,
         attestedAt: null,
         attestationSignature: null,
+        lastActivityAt: expect.any(Date),
       },
     });
   });
@@ -290,4 +294,103 @@ describe('retakeQuiz — enrollment reset', () => {
     expect(mockRevalidatePath).toHaveBeenCalledWith(`/learn/${COURSE_ID}`);
     expect(result).toEqual({ success: true });
   });
+});
+
+/**
+ * Founder Q-04 (2026-09-23): an archived course cannot be retaken. The refusal
+ * has to come BEFORE the enrollment reset — that reset nulls `score`,
+ * `completedAt`, `attestedAt` and `attestationSignature`, so a retake allowed
+ * on cancelled training would destroy a learner's completed record in exchange
+ * for an attempt they can never finish.
+ */
+describe('retakeQuiz — archived course', () => {
+  it('refuses with the cancellation message and writes nothing', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue(
+      makeEnrollment({ course: { archivedAt: new Date('2026-09-20'), lessons: [], quiz: null } }),
+    );
+
+    const result = await retakeQuiz(ENROLLMENT_ID);
+
+    expect(result).toEqual({
+      success: false,
+      refusedReason: ARCHIVED_COURSE_LEARNER_MESSAGE,
+    });
+    expect(prismaMock.enrollment.update).not.toHaveBeenCalled();
+    expect(prismaMock.quizAttempt.update).not.toHaveBeenCalled();
+  });
+
+  it('refuses before the attempt-limit check — archival outranks attempts remaining', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue(
+      makeEnrollment({
+        course: {
+          archivedAt: new Date('2026-09-20'),
+          lessons: [{ id: 'lesson-1', quiz: { id: LESSON_QUIZ_ID, allowedAttempts: 3 } }],
+          quiz: null,
+        },
+      }),
+    );
+
+    const result = await retakeQuiz(ENROLLMENT_ID);
+
+    expect(result.refusedReason).toBe(ARCHIVED_COURSE_LEARNER_MESSAGE);
+    expect(prismaMock.quizAttempt.count).not.toHaveBeenCalled();
+  });
+
+  it('CONTROL: the same retake succeeds while the course is live', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue(
+      makeEnrollment({
+        course: {
+          archivedAt: null,
+          lessons: [{ id: 'lesson-1', quiz: { id: LESSON_QUIZ_ID, allowedAttempts: 3 } }],
+          quiz: null,
+        },
+      }),
+    );
+
+    await expect(retakeQuiz(ENROLLMENT_ID)).resolves.toEqual({ success: true });
+    expect(prismaMock.enrollment.update).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * BUG-53: the retake reset clears the score, completedAt, attestedAt and the
+ * signature. The UI only offers it after a failed attempt, but the action
+ * accepted any owned enrolment, so a direct call could erase signed-off
+ * training. A locked enrolment reopens only through an admin retake, even if
+ * the quiz's attempt limit was raised after the lock.
+ */
+describe('retakeQuiz — closed enrolments (BUG-53)', () => {
+  it.each(['completed', 'attested'])(
+    'refuses a "%s" enrolment by return and resets nothing',
+    async (status) => {
+      prismaMock.enrollment.findUnique.mockResolvedValue(makeEnrollment({ status }));
+
+      const result = await retakeQuiz(ENROLLMENT_ID);
+
+      expect(result.success).toBe(false);
+      expect(result.refusedReason).toMatch(/already completed/i);
+      expect(prismaMock.enrollment.update).not.toHaveBeenCalled();
+    },
+  );
+
+  it('refuses a locked enrolment even when attempts remain under a raised limit', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue(makeEnrollment({ status: 'locked' }));
+    prismaMock.quizAttempt.count.mockResolvedValue(0);
+
+    const result = await retakeQuiz(ENROLLMENT_ID);
+
+    expect(result.success).toBe(false);
+    expect(result.refusedReason).toMatch(/admin must assign a retake/i);
+    expect(prismaMock.enrollment.update).not.toHaveBeenCalled();
+  });
+
+  it.each(['in_progress', 'lessons_complete'])(
+    'CONTROL: resets a "%s" enrolment after a failed attempt',
+    async (status) => {
+      prismaMock.enrollment.findUnique.mockResolvedValue(makeEnrollment({ status }));
+
+      await expect(retakeQuiz(ENROLLMENT_ID)).resolves.toEqual({ success: true });
+      expect(prismaMock.enrollment.update).toHaveBeenCalledTimes(1);
+    },
+  );
 });

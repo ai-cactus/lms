@@ -222,9 +222,10 @@ export default function WorkerOnboardingPage() {
 
       <div className="relative z-0 hidden w-1/2 overflow-hidden bg-background-secondary lg:block">
         <Image
-          src="/images/login-bg.png"
+          src="/images/login-bg.webp"
           alt="Theraptly Training"
           fill
+          sizes="50vw"
           className="object-cover"
           priority
         />

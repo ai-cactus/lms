@@ -139,6 +139,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: [gate]
     timeout-minutes: 30
+    # packages: read lets GITHUB_TOKEN pull the private MinIO mirror from GHCR.
+    permissions:
+      contents: read
+      packages: read
     # ~10.5 min per run — the single most expensive job in the repo. It runs
     # on the PRs that promote into a deploying branch, on demand via the
     # `run-e2e` label, or via workflow_dispatch. For every other PR, run it
@@ -241,12 +245,17 @@ jobs:
 
       # The app's MinIOProvider auto-creates the bucket on first use; only the
       # server needs to exist. Started first so it is warm long before tests.
+      # MinIO withdrew its public images from Docker Hub and then quay.io (TOOL-23);
+      # this is a private GHCR mirror with byte-identical layers.
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
       - name: Start MinIO
         run: |
           docker run -d --name minio -p 9000:9000 \
             -e MINIO_ROOT_USER="$MINIO_ACCESS_KEY" \
             -e MINIO_ROOT_PASSWORD="$MINIO_SECRET_KEY" \
-            quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z server /data
+            ghcr.io/ai-cactus/minio:RELEASE.2025-04-22T22-12-26Z server /data
 
       - uses: ./.github/actions/setup-node-deps
         with:

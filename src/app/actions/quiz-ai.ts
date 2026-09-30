@@ -10,6 +10,9 @@ import {
 import prisma from '@/lib/prisma';
 import { auth } from '@/auth';
 import { logger } from '@/lib/logger';
+import { can, type Permission } from '@/lib/rbac/permissions';
+import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
+import type { Role } from '@/types/next-auth';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { assertNoPhi, PhiBlockedError } from '@/lib/documents/phiGate';
 import { quizOutputTokenBudget } from '@/lib/ai/course-pipeline-v46';
@@ -20,6 +23,7 @@ import {
   quizOptionExplanationRules,
 } from '@/lib/prompts-v4.6';
 import { adaptQuizOptions } from '@/lib/quiz/options';
+import { isCourseEditableByOrganization } from '@/lib/course/edit-access';
 import type { QuizExplanation } from '@/types/quiz';
 
 // Single user-facing failure message. Raw internal error detail (Vertex AI
@@ -147,6 +151,33 @@ function extractJsonFromResponse(text: string): string {
 }
 
 /**
+ * SEC-10: both actions author quiz content, which is course authoring. Against
+ * an existing course that is `course.edit` — the gate `updateCourse` uses. The
+ * wizard also calls them before its draft course exists, passing only the
+ * uploaded document's text, and generating content for a course that does not
+ * exist yet is `course.create`.
+ *
+ * Checked before the rate limit so a caller without the permission cannot
+ * drain another action's budget, and before any course or Vertex read.
+ */
+function hasQuizAuthoringPermission(
+  options: { courseId?: string },
+  actor: { userId: string; role: Role },
+  actionName: string,
+): boolean {
+  const permission: Permission = options.courseId ? 'course.edit' : 'course.create';
+  if (can(dbRoleToRoleKey(actor.role), permission)) return true;
+
+  logger.warn({
+    msg: `[quiz] ${actionName} denied — missing ${permission}`,
+    courseId: options.courseId,
+    userId: actor.userId,
+    role: actor.role,
+  });
+  return false;
+}
+
+/**
  * Resolves the prompt context for a quiz AI action and applies the two guards
  * both of them share: a course may only be read by the organization that owns
  * it (the F-009/F-010 IDOR class), and raw client-supplied text is PHI-gated
@@ -157,7 +188,7 @@ function extractJsonFromResponse(text: string): string {
  */
 async function resolveQuizContext(
   options: { courseId?: string; context?: string },
-  actor: { userId: string; organizationUserId?: string | null; organizationId?: string | null },
+  actor: { userId: string; organizationId?: string | null },
   actionName: string,
   budget: RetryBudget,
 ): Promise<{ ok: true; context: string } | { ok: false; error: string }> {
@@ -174,7 +205,9 @@ async function resolveQuizContext(
       },
     });
 
-    if (course && course.createdByOrgUserId !== actor.organizationUserId) {
+    // BUG-11: the owning ORGANISATION, not the author — a colleague editing a
+    // course their org owns must be able to generate questions for it.
+    if (course && !isCourseEditableByOrganization(course, actor.organizationId)) {
       logger.warn({
         msg: `[quiz] ${actionName}: cross-organization course access blocked`,
         courseId: options.courseId,
@@ -235,6 +268,16 @@ export async function generateSingleQuestion(options: {
       return { success: false, error: 'Unauthorized' };
     }
 
+    if (
+      !hasQuizAuthoringPermission(
+        options,
+        { userId: session.user.id, role: session.user.role },
+        'generateSingleQuestion',
+      )
+    ) {
+      return { success: false, error: 'Insufficient permissions' };
+    }
+
     // F-018: billable AI endpoint — cap per-user replay of a directly
     // invokable server action.
     const { allowed, resetInSeconds } = await checkRateLimit(
@@ -260,7 +303,6 @@ export async function generateSingleQuestion(options: {
       options,
       {
         userId: session.user.id,
-        organizationUserId: session.user.organizationUserId,
         organizationId: session.user.organizationId,
       },
       'generateSingleQuestion',
@@ -374,6 +416,16 @@ export async function regenerateQuiz(options: {
       return { success: false, error: 'Unauthorized' };
     }
 
+    if (
+      !hasQuizAuthoringPermission(
+        options,
+        { userId: session.user.id, role: session.user.role },
+        'regenerateQuiz',
+      )
+    ) {
+      return { success: false, error: 'Insufficient permissions' };
+    }
+
     const { allowed, resetInSeconds } = await checkRateLimit(
       `quiz-regenerate:${session.user.id}`,
       5,
@@ -394,7 +446,6 @@ export async function regenerateQuiz(options: {
       options,
       {
         userId: session.user.id,
-        organizationUserId: session.user.organizationUserId,
         organizationId: session.user.organizationId,
       },
       'regenerateQuiz',

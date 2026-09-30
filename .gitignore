@@ -14,7 +14,10 @@
 /coverage
 
 # next.js
-/.next/
+# `.next*`, not `.next`: Tailwind honours .gitignore when scanning for class
+# names, so a build cache renamed aside (`.next-stale-*`) would otherwise be
+# scanned as source and emit garbage utilities that break the build.
+/.next*/
 /out/
 
 # production

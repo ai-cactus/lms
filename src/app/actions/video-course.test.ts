@@ -12,6 +12,7 @@ const {
   txQuizCreate,
   txQuestionCreateMany,
   courseUpdate,
+  courseUpdateMany,
   txLessonUpdate,
   txCourseUpdate,
   txQuizUpdateMany,
@@ -33,6 +34,7 @@ const {
   txQuizCreate: vi.fn(),
   txQuestionCreateMany: vi.fn(),
   courseUpdate: vi.fn(),
+  courseUpdateMany: vi.fn(),
   txLessonUpdate: vi.fn(),
   txCourseUpdate: vi.fn(),
   txQuizUpdateMany: vi.fn(),
@@ -53,7 +55,7 @@ vi.mock('@/lib/queue/video-transcode-queue', () => ({
 vi.mock('@/lib/prisma', () => {
   const prisma = {
     $transaction: mockTransaction,
-    course: { update: courseUpdate },
+    course: { update: courseUpdate, updateMany: courseUpdateMany },
     lesson: { update: mockLessonUpdate, findMany: mockLessonFindMany },
   };
   return { prisma, default: prisma };
@@ -97,7 +99,7 @@ describe('createVideoCourse', () => {
       quiz: { questions: [{ text: 'Q1', options: ['a', 'b'], correctAnswer: 'a', order: 0 }] },
     });
 
-    expect(result).toEqual({ courseId: 'course-1' });
+    expect(result).toEqual({ success: true, courseId: 'course-1' });
     expect(txCourseCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -136,7 +138,7 @@ describe('createVideoCourse', () => {
       storageUri: 'minio://preview.mp4',
     });
     // A new published global course must bust the cached org-facing catalog.
-    expect(mockRevalidateTag).toHaveBeenCalledWith('video-catalog', 'max');
+    expect(mockRevalidateTag).toHaveBeenCalledWith('video-catalog', { expire: 0 });
   });
 
   it('allows an unspecified skill level', async () => {
@@ -170,18 +172,20 @@ describe('createVideoCourse', () => {
     expect(quizArg.allowedAttempts).toBe(3); // from quiz file
   });
 
-  it('rejects when not a system admin', async () => {
+  // BUG-18: a thrown refusal is redacted to React error #441 in production.
+  it('returns an Unauthorized refusal (never throws) when not a system admin, writing nothing', async () => {
     mockVerify.mockResolvedValueOnce(false);
 
-    await expect(
-      createVideoCourse({
-        title: 'x',
-        passingScore: 80,
-        allowedAttempts: 1,
-        courseVideo: { storageUri: 'minio://v.mp4' },
-        quiz: { questions: [] },
-      }),
-    ).rejects.toThrow();
+    const result = await createVideoCourse({
+      title: 'x',
+      passingScore: 80,
+      allowedAttempts: 1,
+      courseVideo: { storageUri: 'minio://v.mp4' },
+      quiz: { questions: [] },
+    });
+
+    expect(result).toEqual({ success: false, error: 'Unauthorized' });
+    expect(mockTransaction).not.toHaveBeenCalled();
   });
 });
 
@@ -189,36 +193,64 @@ describe('setVideoCourseStatus', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockVerify.mockResolvedValue(true);
-    courseUpdate.mockResolvedValue({ id: 'c1', status: 'inactive' });
+    courseUpdateMany.mockResolvedValue({ count: 1 });
   });
 
   it('sets a course inactive (soft delete) without deleting the row', async () => {
     const { setVideoCourseStatus } = await import('./video-course');
-    await setVideoCourseStatus('c1', 'inactive');
-    expect(courseUpdate).toHaveBeenCalledWith({
-      where: { id: 'c1' },
+    const result = await setVideoCourseStatus('c1', 'inactive');
+    expect(result).toEqual({ success: true });
+    expect(courseUpdateMany).toHaveBeenCalledWith({
+      where: { id: 'c1', type: 'video', isGlobal: true },
       data: { status: 'inactive' },
     });
     expect(mockRevalidate).toHaveBeenCalledWith('/system/video-courses');
     // Deactivating removes the course from the org-facing catalog — bust it.
-    expect(mockRevalidateTag).toHaveBeenCalledWith('video-catalog', 'max');
+    expect(mockRevalidateTag).toHaveBeenCalledWith('video-catalog', { expire: 0 });
   });
 
   it('reactivates a course back to published', async () => {
     const { setVideoCourseStatus } = await import('./video-course');
     await setVideoCourseStatus('c1', 'published');
-    expect(courseUpdate).toHaveBeenCalledWith({
-      where: { id: 'c1' },
+    expect(courseUpdateMany).toHaveBeenCalledWith({
+      where: { id: 'c1', type: 'video', isGlobal: true },
       data: { status: 'published' },
     });
     // Publishing adds the course to the org-facing catalog — bust it too.
-    expect(mockRevalidateTag).toHaveBeenCalledWith('video-catalog', 'max');
+    expect(mockRevalidateTag).toHaveBeenCalledWith('video-catalog', { expire: 0 });
   });
 
-  it('rejects when not a system admin', async () => {
+  it('returns an Unauthorized refusal (never throws) when not a system admin', async () => {
     mockVerify.mockResolvedValue(false);
     const { setVideoCourseStatus } = await import('./video-course');
-    await expect(setVideoCourseStatus('c1', 'inactive')).rejects.toThrow('Unauthorized');
+    await expect(setVideoCourseStatus('c1', 'inactive')).resolves.toEqual({
+      success: false,
+      error: 'Unauthorized',
+    });
+    expect(courseUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it('refuses a status outside inactive/published without writing', async () => {
+    const { setVideoCourseStatus } = await import('./video-course');
+    const result = await setVideoCourseStatus('c1', 'draft' as unknown as 'inactive');
+    expect(result).toEqual({ success: false, error: 'Invalid course status' });
+    expect(courseUpdateMany).not.toHaveBeenCalled();
+    expect(mockRevalidateTag).not.toHaveBeenCalled();
+  });
+
+  it('returns Course not found when the id is not a global video course', async () => {
+    courseUpdateMany.mockResolvedValue({ count: 0 });
+    const { setVideoCourseStatus } = await import('./video-course');
+    const result = await setVideoCourseStatus('org-course', 'inactive');
+    expect(result).toEqual({ success: false, error: 'Course not found' });
+    expect(mockRevalidateTag).not.toHaveBeenCalled();
+  });
+
+  it('returns a refusal instead of throwing when the write fails', async () => {
+    courseUpdateMany.mockRejectedValue(new Error('db down'));
+    const { setVideoCourseStatus } = await import('./video-course');
+    const result = await setVideoCourseStatus('c1', 'inactive');
+    expect(result).toEqual({ success: false, error: 'Failed to change the course status.' });
   });
 });
 
@@ -269,7 +301,7 @@ describe('updateVideoCourse', () => {
     expect(mockEnqueueTranscode).not.toHaveBeenCalled();
     expect(mockRevalidate).toHaveBeenCalledWith('/system/video-courses');
     // Title/scoring edits are reflected in the org-facing catalog — bust it.
-    expect(mockRevalidateTag).toHaveBeenCalledWith('video-catalog', 'max');
+    expect(mockRevalidateTag).toHaveBeenCalledWith('video-catalog', { expire: 0 });
   });
 
   it('replaces the course video and enqueues a transcode for it', async () => {
@@ -407,10 +439,35 @@ describe('updateVideoCourse', () => {
     );
   });
 
-  it('rejects when not a system admin', async () => {
+  it('returns an Unauthorized refusal (never throws) when not a system admin', async () => {
     mockVerify.mockResolvedValue(false);
     const { updateVideoCourse } = await import('./video-course');
-    await expect(updateVideoCourse('c1', { title: 'x' })).rejects.toThrow('Unauthorized');
+    await expect(updateVideoCourse('c1', { title: 'x' })).resolves.toEqual({
+      success: false,
+      error: 'Unauthorized',
+    });
+    expect(mockTransaction).not.toHaveBeenCalled();
+  });
+
+  it('returns Course not found instead of throwing, and busts no cache', async () => {
+    txCourseFindUnique.mockResolvedValue(null);
+    const { updateVideoCourse } = await import('./video-course');
+    const result = await updateVideoCourse('missing', { title: 'x' });
+    expect(result).toEqual({ success: false, error: 'Course not found' });
+    expect(txCourseUpdate).not.toHaveBeenCalled();
+    expect(mockRevalidateTag).not.toHaveBeenCalled();
+  });
+
+  it('returns a refusal instead of throwing when the transaction fails', async () => {
+    mockTransaction.mockRejectedValue(new Error('deadlock'));
+    const { updateVideoCourse } = await import('./video-course');
+    const result = await updateVideoCourse('c1', { title: 'x' });
+    expect(result).toEqual({ success: false, error: 'Failed to save the video course.' });
+  });
+
+  it('reports success on a saved edit', async () => {
+    const { updateVideoCourse } = await import('./video-course');
+    await expect(updateVideoCourse('c1', { title: 'x' })).resolves.toEqual({ success: true });
   });
 });
 
@@ -419,10 +476,13 @@ describe('verifyGlobalVideoMedia — Issue #7/#9: HEAD-check reconciliation', ()
     mockLessonUpdate.mockResolvedValue({});
   });
 
-  it('rejects when not a system admin, without querying any lesson', async () => {
+  it('returns an Unauthorized refusal (never throws) without querying any lesson', async () => {
     mockVerify.mockResolvedValue(false);
 
-    await expect(verifyGlobalVideoMedia()).rejects.toThrow('Unauthorized');
+    await expect(verifyGlobalVideoMedia()).resolves.toEqual({
+      success: false,
+      error: 'Unauthorized',
+    });
     expect(mockLessonFindMany).not.toHaveBeenCalled();
   });
 
@@ -435,7 +495,7 @@ describe('verifyGlobalVideoMedia — Issue #7/#9: HEAD-check reconciliation', ()
 
     const result = await verifyGlobalVideoMedia();
 
-    expect(result).toEqual({ checked: 2, missing: 1 });
+    expect(result).toEqual({ success: true, checked: 2, missing: 1 });
     expect(mockLessonUpdate).toHaveBeenCalledExactlyOnceWith({
       where: { id: 'lesson-missing' },
       data: { mediaStatus: 'failed' },
@@ -450,7 +510,7 @@ describe('verifyGlobalVideoMedia — Issue #7/#9: HEAD-check reconciliation', ()
 
     const result = await verifyGlobalVideoMedia();
 
-    expect(result).toEqual({ checked: 1, missing: 1 });
+    expect(result).toEqual({ success: true, checked: 1, missing: 1 });
     expect(mockLessonUpdate).not.toHaveBeenCalled();
   });
 
@@ -462,7 +522,7 @@ describe('verifyGlobalVideoMedia — Issue #7/#9: HEAD-check reconciliation', ()
 
     const result = await verifyGlobalVideoMedia();
 
-    expect(result).toEqual({ checked: 0, missing: 0 });
+    expect(result).toEqual({ success: true, checked: 0, missing: 0 });
     expect(mockLessonUpdate).not.toHaveBeenCalled();
   });
 
@@ -471,7 +531,7 @@ describe('verifyGlobalVideoMedia — Issue #7/#9: HEAD-check reconciliation', ()
 
     const result = await verifyGlobalVideoMedia();
 
-    expect(result).toEqual({ checked: 0, missing: 0 });
+    expect(result).toEqual({ success: true, checked: 0, missing: 0 });
     expect(mockObjectExists).not.toHaveBeenCalled();
   });
 

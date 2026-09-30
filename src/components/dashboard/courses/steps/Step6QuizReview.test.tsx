@@ -286,6 +286,32 @@ describe('Step6QuizReview', () => {
     expect(updated[2].moduleTitle).toBe('Security Rule');
   });
 
+  it('drops a distractor rationale when the author rewrites that option (Q-19)', async () => {
+    const user = userEvent.setup();
+    const explained = question({
+      question: 'Explained Q',
+      explanation: {
+        correctExplanation: 'Option 1 is correct.',
+        incorrectOptions: { '1': 'Option 2 halves it (D1).', '3': 'Option 4 overshoots (D4).' },
+      },
+    });
+    const { onQuizUpdate } = renderStep([explained]);
+
+    await user.click(within(questionCard('Explained Q')).getByRole('button', { name: 'Edit' }));
+    const optionInput = screen.getByDisplayValue('Option 2');
+    await user.clear(optionInput);
+    await user.type(optionInput, 'Something else entirely');
+    await user.click(screen.getByRole('button', { name: 'Save Changes' }));
+
+    const updated = onQuizUpdate.mock.calls[0][0] as QuizQuestion[];
+    expect(updated[0].options[1]).toBe('Something else entirely');
+    // The rationale for the option that was rewritten goes with it; the one for
+    // the untouched option stays keyed where it was.
+    expect(updated[0].explanation?.incorrectOptions).toEqual({
+      '3': 'Option 4 overshoots (D4).',
+    });
+  });
+
   it('warns when fewer questions were generated than requested', () => {
     renderStep(TAGGED_QUIZ, { quizQuestionCount: '10' });
 
@@ -403,5 +429,41 @@ describe('Step6QuizReview', () => {
       expect(screen.getByText('Privacy Q1')).toBeInTheDocument();
       expect(screen.getByText('Security Q1')).toBeInTheDocument();
     });
+  });
+});
+
+/**
+ * BUG-32: the edit form's option inputs had no accessible name at all (no
+ * label, no placeholder), so a screen reader announced four identical "edit
+ * text" fields. Named as in `AdminQuizEditor` (BUG-03): "Option N" beside
+ * "Mark option N correct", under the labelled "Question Text".
+ */
+describe('Step6QuizReview — accessible names (BUG-32)', () => {
+  it('names every control in the edit-question form', async () => {
+    const user = userEvent.setup();
+    renderStep(TAGGED_QUIZ);
+
+    await user.click(within(questionCard('Security Q1')).getByRole('button', { name: 'Edit' }));
+
+    expect(screen.getByRole('textbox', { name: 'Question Text' })).toHaveValue('Security Q1');
+    for (const n of [1, 2, 3, 4]) {
+      expect(screen.getByRole('textbox', { name: `Option ${n}` })).toHaveValue(`Option ${n}`);
+      expect(screen.getByRole('radio', { name: `Mark option ${n} correct` })).toBeInTheDocument();
+    }
+    expect(screen.getByRole('radio', { name: 'Mark option 1 correct' })).toBeChecked();
+  });
+
+  it('names the option inputs of the add-question form by label, not only by placeholder', async () => {
+    const user = userEvent.setup();
+    renderStep(TAGGED_QUIZ);
+
+    await user.click(screen.getByRole('button', { name: 'Add new question' }));
+
+    for (const n of [1, 2, 3, 4]) {
+      expect(screen.getByRole('textbox', { name: `Option ${n}` })).toHaveAttribute(
+        'aria-label',
+        `Option ${n}`,
+      );
+    }
   });
 });

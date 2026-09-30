@@ -1,10 +1,12 @@
 import prisma from '@/lib/prisma';
 import { Prisma } from '@/generated/prisma/client';
-import type { ReminderStage, ReminderNudgeKind } from '@/generated/prisma/enums';
+import type { ReminderStage, ReminderNudgeKind, UserRole } from '@/generated/prisma/enums';
 import { logger, maskEmail } from '@/lib/logger';
 import { createNotification } from '@/lib/notifications/create';
+import { trainingNoticeLink } from '@/lib/notifications/portal-link';
 import { isCycleSummaryEnabled } from '@/lib/cycle-summary/flag';
 import { REMINDER_STAGE_DEFAULTS } from './stages';
+import { LADDER_ESCALATION_PERMISSION } from '@/lib/notifications/link-audience';
 import { resolveEscalationRecipients, type EscalationRecipients } from './recipients';
 import { diffInDaysInTz } from './time';
 
@@ -128,24 +130,28 @@ function describeError(error: unknown): string {
  * per-stage sends outright, so no `reminder_stage`/`reminder_nudge` row is ever
  * created once it is on. Kept because the flag-off path is still the shipped
  * default and a rollback has to land on working code. Retrying the rows this
- * function already wrote is {@link retryReminderEmail}'s job and outlives it.
+ * function already wrote is the job of {@link retryReminderEmail} and
+ * {@link retryNudgeEmail}, and outlives it.
  */
 async function deliverReminderEmail(params: {
   sendEmail: ReminderEmailSender;
   message: ReminderEmailMessage;
   kind: string;
-  /** ReminderLog id for ladder sends; null for nudges (no ReminderLog exists). */
-  reminderLogId: string | null;
+  /**
+   * The claimed row the retry pre-pass rebuilds this email from: the ladder's
+   * ReminderLog, or the nudge's ReminderNudge (BUG-22).
+   */
+  source: { reminderLogId: string } | { reminderNudgeId: string };
 }): Promise<void> {
-  const { sendEmail, message, kind, reminderLogId } = params;
+  const { sendEmail, message, kind, source } = params;
 
   let record: { id: string } | null = null;
   try {
     record = await prisma.emailMessage.create({
-      data: { toEmail: message.to, kind, reminderLogId, status: 'queued' },
+      data: { toEmail: message.to, kind, ...source, status: 'queued' },
     });
   } catch (err) {
-    logger.error({ msg: '[reminders] Failed to record queued email', kind, reminderLogId, err });
+    logger.error({ msg: '[reminders] Failed to record queued email', kind, ...source, err });
   }
 
   let delivery: EmailDeliveryResult;
@@ -233,6 +239,67 @@ export async function retryReminderEmail(input: ReminderEmailRetryInput): Promis
     workerName,
     daysOverdue,
   };
+
+  let delivery: EmailDeliveryResult;
+  try {
+    delivery = await sendEmail(message);
+  } catch (err) {
+    delivery = { ok: false, error: err };
+  }
+
+  await finalizeEmailMessage(emailMessage.id, delivery);
+  return delivery.ok;
+}
+
+/** Resolved inputs the sweep hands to {@link retryNudgeEmail} per failed row. */
+export interface NudgeEmailRetryInput {
+  sendEmail: ReminderEmailSender;
+  /** The failed EmailMessage being re-attempted. */
+  emailMessage: { id: string; toEmail: string };
+  /** Claimed nudge kind (from the linked ReminderNudge). */
+  kind: ReminderNudgeKind;
+  courseTitle: string;
+  /**
+   * The count pinned on the nudge row NOW. The row is re-pinned on every
+   * re-nudge, so a retry after a later nudge states the newer, truer count.
+   */
+  attemptsRemaining: number | null;
+  /** The subject worker — `WORKER_RETAKE` goes to them, `ADMIN_REASSIGN` names them. */
+  worker: { email: string; name: string | null };
+}
+
+/**
+ * Re-attempt a previously failed Track B nudge email (BUG-22). The counterpart
+ * of {@link retryReminderEmail} for rows keyed to a ReminderNudge rather than a
+ * ReminderLog: the audience follows from the kind, exactly as
+ * {@link dispatchNudge} addressed it. Never throws.
+ *
+ * @deprecated Same standing as {@link retryReminderEmail}: new nudge email stops
+ * at the CYCLE_SUMMARY_ENABLED flip, and this only drains the backlog before it.
+ */
+export async function retryNudgeEmail(input: NudgeEmailRetryInput): Promise<boolean> {
+  const { sendEmail, emailMessage, kind, courseTitle, attemptsRemaining, worker } = input;
+
+  const message: ReminderEmailMessage =
+    kind === 'WORKER_RETAKE'
+      ? {
+          to: emailMessage.toEmail,
+          toName: worker.name,
+          kind,
+          recipientRole: 'worker',
+          courseTitle,
+          dueAt: null,
+          attemptsRemaining: attemptsRemaining ?? undefined,
+        }
+      : {
+          to: emailMessage.toEmail,
+          toName: null,
+          kind,
+          recipientRole: 'escalation',
+          courseTitle,
+          dueAt: null,
+          workerName: worker.name ?? worker.email,
+        };
 
   let delivery: EmailDeliveryResult;
   try {
@@ -365,8 +432,12 @@ function escalationStageCopy(
 export interface LadderStageInput {
   enrollment: { id: string; organizationUserId: string; courseId: string };
   courseTitle: string;
-  /** `worker.id` is the `OrganizationUser.id` — createNotification's recipient key. */
-  worker: { id: string; email: string; name: string | null };
+  /**
+   * `worker.id` is the `OrganizationUser.id` — createNotification's recipient
+   * key. `role` is that membership's role: managers are enrolled like anyone
+   * else, and it decides which portal the in-app notice links into.
+   */
+  worker: { id: string; email: string; name: string | null; role: UserRole };
   stage: ReminderStage;
   /** Effective channels for this stage (`'email'`, `'in_app'`). */
   channels: string[];
@@ -450,7 +521,7 @@ export async function dispatchLadderStage(input: LadderStageInput): Promise<Disp
           type: stageToNotificationType(stage),
           title: copy.title,
           message: copy.message,
-          linkUrl: '/worker/trainings',
+          linkUrl: trainingNoticeLink(worker.role, [enrollment.courseId]),
           metadata,
         });
       }
@@ -458,7 +529,7 @@ export async function dispatchLadderStage(input: LadderStageInput): Promise<Disp
         await deliverReminderEmail({
           sendEmail,
           kind: EMAIL_KIND_STAGE,
-          reminderLogId: reminderLog.id,
+          source: { reminderLogId: reminderLog.id },
           message: {
             to: worker.email,
             toName: worker.name,
@@ -476,6 +547,7 @@ export async function dispatchLadderStage(input: LadderStageInput): Promise<Disp
     if (audience === 'escalation' || audience === 'worker_and_escalation') {
       const recipients = await resolveEscalationRecipients({
         organizationUserId: enrollment.organizationUserId,
+        requiredPermission: LADDER_ESCALATION_PERMISSION,
       });
       const workerName = worker.name ?? worker.email;
       const copy = escalationStageCopy(
@@ -502,7 +574,7 @@ export async function dispatchLadderStage(input: LadderStageInput): Promise<Disp
           await deliverReminderEmail({
             sendEmail,
             kind: EMAIL_KIND_STAGE,
-            reminderLogId: reminderLog.id,
+            source: { reminderLogId: reminderLog.id },
             message: {
               to: recipient.email,
               toName: recipient.name,
@@ -542,7 +614,7 @@ export interface NudgeInput {
   enrollmentId: string;
   courseId: string;
   courseTitle: string;
-  worker: { id: string; email: string; name: string | null };
+  worker: { id: string; email: string; name: string | null; role: UserRole };
   /** Escalation targets — used for `ADMIN_REASSIGN`. */
   recipients: EscalationRecipients;
   /** Minimum days between nudges of this kind for this enrollment. */
@@ -603,6 +675,7 @@ export async function dispatchNudge(input: NudgeInput): Promise<DispatchResult> 
     }
 
     const metadata = { enrollmentId, courseId, kind };
+    const workerName = worker.name ?? worker.email;
 
     if (kind === 'WORKER_RETAKE') {
       await createNotification({
@@ -610,27 +683,10 @@ export async function dispatchNudge(input: NudgeInput): Promise<DispatchResult> 
         type: 'COURSE_RETAKE_REMINDER',
         title: 'Retake your quiz',
         message: `You still have attempts remaining for "${courseTitle}". Please retake the quiz before your deadline.`,
-        linkUrl: '/worker/trainings',
+        linkUrl: trainingNoticeLink(worker.role, [courseId]),
         metadata,
       });
-      if (!deferEmailToSummary) {
-        await deliverReminderEmail({
-          sendEmail,
-          kind: EMAIL_KIND_NUDGE,
-          reminderLogId: null,
-          message: {
-            to: worker.email,
-            toName: worker.name,
-            kind,
-            recipientRole: 'worker',
-            courseTitle,
-            dueAt: null,
-            attemptsRemaining: input.attemptsRemaining,
-          },
-        });
-      }
     } else {
-      const workerName = worker.name ?? worker.email;
       for (const organizationUserId of recipients.organizationUserIds) {
         await createNotification({
           organizationUserId,
@@ -641,12 +697,52 @@ export async function dispatchNudge(input: NudgeInput): Promise<DispatchResult> 
           metadata,
         });
       }
-      if (!deferEmailToSummary) {
+    }
+
+    // Written before the emails so each can record this row's id, which is what
+    // lets the sweep rebuild and retry a failed one (BUG-22). A nudge row
+    // PERSISTS across sends (one row per enrollment+kind, upserted), so both
+    // branches must write the same two fields: a stamped `summarizedAt` left over
+    // from a previous cycle would hide every later nudge from the composer, and a
+    // stale `attemptsRemaining` would understate the count in copy that promises
+    // an exact number.
+    const summarizedAt = deferEmailToSummary ? null : now;
+    const attemptsRemaining = input.attemptsRemaining ?? null;
+    const nudge = await prisma.reminderNudge.upsert({
+      where: { enrollmentId_kind: { enrollmentId, kind } },
+      create: { enrollmentId, kind, lastSentAt: now, count: 1, summarizedAt, attemptsRemaining },
+      update: {
+        lastSentAt: now,
+        count: { increment: 1 },
+        summarizedAt,
+        attemptsRemaining,
+      },
+      select: { id: true },
+    });
+
+    if (!deferEmailToSummary) {
+      const source = { reminderNudgeId: nudge.id };
+      if (kind === 'WORKER_RETAKE') {
+        await deliverReminderEmail({
+          sendEmail,
+          kind: EMAIL_KIND_NUDGE,
+          source,
+          message: {
+            to: worker.email,
+            toName: worker.name,
+            kind,
+            recipientRole: 'worker',
+            courseTitle,
+            dueAt: null,
+            attemptsRemaining: input.attemptsRemaining,
+          },
+        });
+      } else {
         for (const recipient of recipients.emails) {
           await deliverReminderEmail({
             sendEmail,
             kind: EMAIL_KIND_NUDGE,
-            reminderLogId: null,
+            source,
             message: {
               to: recipient.email,
               toName: recipient.name,
@@ -660,25 +756,6 @@ export async function dispatchNudge(input: NudgeInput): Promise<DispatchResult> 
         }
       }
     }
-
-    // A nudge row PERSISTS across sends (one row per enrollment+kind, upserted),
-    // so both branches must write the same two fields: a stamped `summarizedAt`
-    // left over from a previous cycle would hide every later nudge from the
-    // composer, and a stale `attemptsRemaining` would understate the count in
-    // copy that promises an exact number.
-    const summarizedAt = deferEmailToSummary ? null : now;
-    const attemptsRemaining = input.attemptsRemaining ?? null;
-
-    await prisma.reminderNudge.upsert({
-      where: { enrollmentId_kind: { enrollmentId, kind } },
-      create: { enrollmentId, kind, lastSentAt: now, count: 1, summarizedAt, attemptsRemaining },
-      update: {
-        lastSentAt: now,
-        count: { increment: 1 },
-        summarizedAt,
-        attemptsRemaining,
-      },
-    });
 
     logger.info({ msg: '[reminders] Dispatched nudge', enrollmentId, kind, deferEmailToSummary });
     return { sent: true, reason: 'sent' };

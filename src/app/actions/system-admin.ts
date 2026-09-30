@@ -6,7 +6,12 @@ import { cookies, headers } from 'next/headers';
 import crypto from 'crypto';
 import { revalidatePath } from 'next/cache';
 import { logger } from '@/lib/logger';
-import { audit, auditCritical, getClientContext } from '@/lib/audit';
+import {
+  describeOwnershipBlocks,
+  findOwnershipBlocks,
+  softDeleteUser,
+} from '@/lib/system/delete-user';
+import { audit, getClientContext } from '@/lib/audit';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { verifySystemAdminCookie, SYSTEM_ADMIN_COOKIE } from '@/lib/system-auth';
 import type { Prisma } from '@/generated/prisma/client';
@@ -173,6 +178,8 @@ export interface SystemUserRow {
   authProvider: string;
   emailVerified: boolean;
   createdAt: Date;
+  /** Set when the identity has been deleted (Q-23 soft delete). */
+  deletedAt: Date | null;
   organizationId: string | null;
   organizationName: string | null;
   profile: {
@@ -189,12 +196,16 @@ export interface SystemUserRow {
   };
 }
 
+export type SystemUserStatusFilter = 'active' | 'deleted' | 'all';
+
 export async function getAllUsers(options: {
   page?: number;
   limit?: number;
   search?: string;
   roleFilter?: string;
   orgFilter?: string;
+  /** Defaults to `active`: deleted identities are hidden unless asked for. */
+  statusFilter?: SystemUserStatusFilter;
 }): Promise<{
   users: SystemUserRow[];
   total: number;
@@ -211,14 +222,19 @@ export async function getAllUsers(options: {
   const search = options.search?.trim() || '';
   const roleFilter = options.roleFilter || '';
   const orgFilter = options.orgFilter || '';
+  const statusFilter: SystemUserStatusFilter = options.statusFilter ?? 'active';
 
   const where: Prisma.UserWhereInput = {};
-  // Role/org are now membership attributes, not identity attributes — filter
-  // through the user's active memberships.
+  if (statusFilter === 'active') where.deletedAt = null;
+  if (statusFilter === 'deleted') where.deletedAt = { not: null };
+  // Role/org are membership attributes, not identity attributes — filter
+  // through the user's active memberships. A deleted identity has none left,
+  // so its deactivated memberships stand in: it must still be findable by the
+  // organization it was deleted from.
   if (roleFilter || orgFilter) {
     where.organizationMemberships = {
       some: {
-        active: true,
+        OR: [{ active: true }, { user: { is: { deletedAt: { not: null } } } }],
         ...(roleFilter ? { role: roleFilter as UserRole } : {}),
         ...(orgFilter ? { organizationId: orgFilter } : {}),
       },
@@ -244,9 +260,12 @@ export async function getAllUsers(options: {
         lastName: true,
         fullName: true,
         avatarUrl: true,
+        deletedAt: true,
+        // Every membership, not just active ones: a deleted identity has only
+        // deactivated memberships, and its retained records hang off them.
         organizationMemberships: {
-          where: { active: true },
           select: {
+            active: true,
             role: true,
             organizationId: true,
             organization: { select: { name: true } },
@@ -276,10 +295,15 @@ export async function getAllUsers(options: {
   // Every identity is listed once. Most today hold exactly one membership; a
   // multi-org identity is represented here by its most recently joined active
   // membership, with activity counts summed across all of them — a
-  // system-admin overview simplification, not an authorization decision.
+  // system-admin overview simplification, not an authorization decision. A
+  // deleted identity is represented by the memberships it was deleted from, so
+  // its retained records still show.
   const mappedUsers: SystemUserRow[] = users.map((u) => {
-    const primary = u.organizationMemberships[0];
-    const totals = u.organizationMemberships.reduce(
+    const memberships = u.deletedAt
+      ? u.organizationMemberships
+      : u.organizationMemberships.filter((m) => m.active);
+    const primary = memberships[0];
+    const totals = memberships.reduce(
       (acc, m) => ({
         courses: acc.courses + m._count.createdCourses,
         enrollments: acc.enrollments + m._count.enrollments,
@@ -296,6 +320,7 @@ export async function getAllUsers(options: {
       authProvider: u.authProvider,
       emailVerified: u.emailVerified,
       createdAt: u.createdAt,
+      deletedAt: u.deletedAt,
       organizationId: primary?.organizationId ?? null,
       organizationName: primary?.organization.name ?? null,
       profile: {
@@ -328,6 +353,8 @@ export interface SystemUserDetail {
   emailVerified: boolean;
   createdAt: Date;
   updatedAt: Date;
+  /** Set when the identity has been deleted; the console then opens read-only. */
+  deletedAt: Date | null;
   organization: {
     id: string;
     name: string;
@@ -353,7 +380,7 @@ export interface SystemUserDetail {
     score: number | null;
     startedAt: Date;
     completedAt: Date | null;
-    course: { id: string; title: string; thumbnail: string | null };
+    course: { id: string; title: string };
   }>;
   documents: Array<{
     id: string;
@@ -388,6 +415,7 @@ export async function getUserDetail(userId: string): Promise<SystemUserDetail | 
       lastName: true,
       fullName: true,
       avatarUrl: true,
+      deletedAt: true,
     },
   });
 
@@ -419,7 +447,7 @@ export async function getUserDetail(userId: string): Promise<SystemUserDetail | 
           score: true,
           startedAt: true,
           completedAt: true,
-          course: { select: { id: true, title: true, thumbnail: true } },
+          course: { select: { id: true, title: true } },
         },
         orderBy: { startedAt: 'desc' },
       },
@@ -453,6 +481,7 @@ export async function getUserDetail(userId: string): Promise<SystemUserDetail | 
     emailVerified: user.emailVerified,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
+    deletedAt: user.deletedAt,
     organization: membership?.organization ?? null,
     profile: {
       fullName: user.fullName,
@@ -476,6 +505,11 @@ export async function getUserDetail(userId: string): Promise<SystemUserDetail | 
 
 // ── Delete Preview ───────────────────────────────────────────────────────────
 
+/**
+ * What deleting a user changes (Q-23). Nothing is destroyed: the delete removes
+ * the person's ACCESS and keeps every record, so the preview reports what is
+ * revoked and what is retained.
+ */
 export interface DeletePreview {
   user: {
     id: string;
@@ -483,21 +517,32 @@ export interface DeletePreview {
     role: string;
     name: string;
   };
-  counts: {
-    courses: number;
-    enrollments: number;
-    documents: number;
-    notifications: number;
-    jobs: number;
-    invites: number;
-    verificationTokens: number;
-    // Cascade counts (not directly on User but will be removed)
-    lessons: number;
-    quizzes: number;
-    quizAttempts: number;
+  /** Set when the identity is already deleted — the console offers no delete then. */
+  deletedAt: Date | null;
+  /**
+   * Q-30: why the delete would be refused — the organizations it would leave
+   * with no active owner or no active member. Null when the delete may proceed.
+   */
+  blockedReason: string | null;
+  /** Access the delete removes. */
+  revoked: {
+    /** Organizations whose active membership is deactivated. */
+    organizations: string[];
+    /** Pending invites to this email from those organizations, expired. */
+    pendingInvites: number;
   };
-  /** Other users enrolled in courses created by this user */
-  affectedEnrollments: number;
+  /** Records the delete keeps, unchanged, for compliance. */
+  retained: {
+    enrollments: number;
+    quizAttempts: number;
+    certificates: number;
+    /** Courses this user authored — they stay the organization's, authorship unchanged. */
+    courses: number;
+    /** Documents this user uploaded — they stay the organization's, authorship unchanged. */
+    documents: number;
+    /** Other active members who report to this user; their manager link is kept. */
+    directReports: number;
+  };
 }
 
 export async function getUserDeletePreview(userId: string): Promise<DeletePreview | null> {
@@ -507,7 +552,7 @@ export async function getUserDeletePreview(userId: string): Promise<DeletePrevie
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, email: true, fullName: true },
+    select: { id: true, email: true, fullName: true, deletedAt: true },
   });
 
   if (!user) return null;
@@ -515,233 +560,105 @@ export async function getUserDeletePreview(userId: string): Promise<DeletePrevie
   // An identity's activity spans every organization it belongs to.
   const orgUsers = await prisma.organizationUser.findMany({
     where: { userId },
-    select: { id: true, role: true },
+    select: {
+      id: true,
+      role: true,
+      active: true,
+      organizationId: true,
+      organization: { select: { name: true } },
+    },
+    orderBy: [{ active: 'desc' }, { joinedAt: 'desc' }],
   });
   const orgUserIds = orgUsers.map((ou) => ou.id);
 
-  const name = user.fullName || user.email.split('@')[0];
-
-  // Count direct relations
+  // ⛔ `rawPrisma` for the two archivable models: archived courses and documents
+  // are retained records too, and the filtered client would under-report them
+  // on the screen whose job is to say what is kept.
   const [
-    courseCount,
-    enrollmentCount,
-    documentCount,
-    notificationCount,
-    jobCount,
-    inviteCount,
-    verificationTokenCount,
+    enrollments,
+    quizAttempts,
+    certificates,
+    directReports,
+    pendingInvites,
+    courses,
+    documents,
   ] = await Promise.all([
-    // ⛔ `rawPrisma` for the two archivable models: this preview tells the
-    // operator what a HARD delete is about to destroy, and the delete below
-    // destroys archived rows too. Counting through the filtered client
-    // under-reports the damage on the very screen that authorises it.
-    rawPrisma.course.count({ where: { createdByOrgUserId: { in: orgUserIds } } }),
     prisma.enrollment.count({ where: { organizationUserId: { in: orgUserIds } } }),
+    prisma.quizAttempt.count({
+      where: { enrollment: { organizationUserId: { in: orgUserIds } } },
+    }),
+    prisma.certificate.count({ where: { organizationUserId: { in: orgUserIds } } }),
+    prisma.organizationUser.count({
+      where: { managerId: { in: orgUserIds }, id: { notIn: orgUserIds }, active: true },
+    }),
+    prisma.invite.count({
+      where: {
+        email: { equals: user.email, mode: 'insensitive' },
+        organizationId: { in: orgUsers.map((ou) => ou.organizationId) },
+        status: 'pending',
+      },
+    }),
+    rawPrisma.course.count({ where: { createdByOrgUserId: { in: orgUserIds } } }),
     rawPrisma.document.count({ where: { organizationUserId: { in: orgUserIds } } }),
-    prisma.notification.count({ where: { organizationUserId: { in: orgUserIds } } }),
-    prisma.job.count({ where: { userId } }),
-    prisma.invite.count({ where: { email: user.email } }),
-    prisma.verificationToken.count({ where: { identifier: user.email } }),
   ]);
-
-  // Count cascade relations through courses
-  const userCourses = await rawPrisma.course.findMany({
-    where: { createdByOrgUserId: { in: orgUserIds } },
-    select: { id: true },
-  });
-  const courseIds = userCourses.map((c) => c.id);
-
-  const [lessonCount, quizCount, quizAttemptCount, affectedEnrollments] = await Promise.all([
-    courseIds.length > 0 ? prisma.lesson.count({ where: { courseId: { in: courseIds } } }) : 0,
-    courseIds.length > 0
-      ? prisma.quiz.count({ where: { lesson: { courseId: { in: courseIds } } } })
-      : 0,
-    enrollmentCount > 0
-      ? prisma.quizAttempt.count({
-          where: { enrollment: { organizationUserId: { in: orgUserIds } } },
-        })
-      : 0,
-    courseIds.length > 0
-      ? prisma.enrollment.count({
-          where: {
-            courseId: { in: courseIds },
-            organizationUserId: { notIn: orgUserIds },
-          },
-        })
-      : 0,
-  ]);
+  const ownershipBlocks = await findOwnershipBlocks(prisma, userId);
 
   return {
-    user: { id: user.id, email: user.email, role: orgUsers[0]?.role ?? 'n/a', name },
-    counts: {
-      courses: courseCount,
-      enrollments: enrollmentCount,
-      documents: documentCount,
-      notifications: notificationCount,
-      jobs: jobCount,
-      invites: inviteCount,
-      verificationTokens: verificationTokenCount,
-      lessons: lessonCount,
-      quizzes: quizCount,
-      quizAttempts: quizAttemptCount,
+    user: {
+      id: user.id,
+      email: user.email,
+      role: orgUsers[0]?.role ?? 'n/a',
+      name: user.fullName || user.email.split('@')[0],
     },
-    affectedEnrollments,
+    deletedAt: user.deletedAt,
+    blockedReason: ownershipBlocks.length > 0 ? describeOwnershipBlocks(ownershipBlocks) : null,
+    revoked: {
+      organizations: orgUsers.filter((ou) => ou.active).map((ou) => ou.organization.name),
+      pendingInvites,
+    },
+    retained: { enrollments, quizAttempts, certificates, courses, documents, directReports },
   };
 }
 
 // ── Delete User ──────────────────────────────────────────────────────────────
 
-export async function deleteUserWithRelations(
-  userId: string,
-): Promise<{ success: boolean; error?: string; deletedCounts?: Record<string, number> }> {
+/**
+ * Soft-deletes a user (Q-23) through the shared {@link softDeleteUser}: access
+ * to every organization is removed and sign-in is refused everywhere, while
+ * certificates, enrolments, quiz attempts and authored content are kept.
+ */
+export async function deleteUserWithRelations(userId: string): Promise<{
+  success: boolean;
+  error?: string;
+  membershipsDeactivated?: number;
+}> {
   if (!(await verifySystemAdminCookie())) {
     throw new Error('Unauthorized');
   }
 
   try {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { id: true, email: true },
-    });
+    const result = await softDeleteUser(userId, await systemClientContext());
 
-    if (!user) {
+    if (result.status === 'not_found') {
       return { success: false, error: 'User not found' };
     }
-
-    logger.info({ msg: 'System admin: deleting user', email: user.email, userId: user.id });
-
-    // Resolved before opening the transaction: headers() is request-scoped and
-    // must not be awaited inside a transaction callback.
-    const clientContext = await systemClientContext();
-
-    // ⛔ `rawPrisma.$transaction`, so every `tx.*` below is UN-filtered. This
-    // is a hard delete of an entire identity: `tx.course.deleteMany` and
-    // `tx.document.deleteMany` remove archived rows regardless (writes are
-    // never intercepted), so the `findMany` that derives `courseIds` for the
-    // cascade must see the same rows. Filtered, an archived course's
-    // enrollments and quiz attempts would survive the pass that is supposed to
-    // clear them and then block the delete on a foreign key.
-    const result = await rawPrisma.$transaction(async (tx) => {
-      const counts: Record<string, number> = {};
-
-      const orgUsers = await tx.organizationUser.findMany({
-        where: { userId },
-        select: { id: true },
-      });
-      const orgUserIds = orgUsers.map((ou) => ou.id);
-
-      // 1. Delete quiz attempts for the identity's enrollments (every org)
-      const quizAttempts = await tx.quizAttempt.deleteMany({
-        where: { enrollment: { organizationUserId: { in: orgUserIds } } },
-      });
-      counts.quizAttempts = quizAttempts.count;
-
-      // 2. Delete enrollments for the identity (every org)
-      const enrollments = await tx.enrollment.deleteMany({
-        where: { organizationUserId: { in: orgUserIds } },
-      });
-      counts.enrollments = enrollments.count;
-
-      // 3. Find courses created by any of the identity's memberships and
-      // delete enrollments in those courses from other users
-      const userCourses = await tx.course.findMany({
-        where: { createdByOrgUserId: { in: orgUserIds } },
-        select: { id: true },
-      });
-      const courseIds = userCourses.map((c) => c.id);
-
-      if (courseIds.length > 0) {
-        // Delete quiz attempts for other users' enrollments in these courses
-        const otherQuizAttempts = await tx.quizAttempt.deleteMany({
-          where: {
-            enrollment: { courseId: { in: courseIds } },
-          },
-        });
-        counts.otherQuizAttempts = otherQuizAttempts.count;
-
-        // Delete other users' enrollments in these courses
-        const otherEnrollments = await tx.enrollment.deleteMany({
-          where: { courseId: { in: courseIds } },
-        });
-        counts.otherEnrollments = otherEnrollments.count;
-
-        // 4. Delete courses (cascades: CourseArtifact, CourseVersion, Lesson→Quiz→Question)
-        const courses = await tx.course.deleteMany({
-          where: { createdByOrgUserId: { in: orgUserIds } },
-        });
-        counts.courses = courses.count;
-      }
-
-      // 5. Delete documents (cascades: DocumentVersion→PhiReport, MappingEvidence, CourseVersion)
-      const documents = await tx.document.deleteMany({
-        where: { organizationUserId: { in: orgUserIds } },
-      });
-      counts.documents = documents.count;
-
-      // 6. Delete notifications
-      const notifications = await tx.notification.deleteMany({
-        where: { organizationUserId: { in: orgUserIds } },
-      });
-      counts.notifications = notifications.count;
-
-      // 7. Delete jobs
-      const jobs = await tx.job.deleteMany({
-        where: { userId },
-      });
-      counts.jobs = jobs.count;
-
-      // 8. Delete invites for user's email
-      const invites = await tx.invite.deleteMany({
-        where: { email: user.email },
-      });
-      counts.invites = invites.count;
-
-      // 9. Delete verification tokens
-      const tokens = await tx.verificationToken.deleteMany({
-        where: { identifier: user.email },
-      });
-      counts.verificationTokens = tokens.count;
-
-      // 10. Delete the user — cascades every OrganizationUser membership (now
-      // safe: their authored courses were removed above), MfaFactor and
-      // MfaRecoveryCode rows.
-      await tx.user.delete({ where: { id: userId } });
-      counts.user = 1;
-
-      // F-094: the most destructive action in the system — an irreversible
-      // cross-organization hard delete of a person and all their enrollments,
-      // attempts, certificates and attestations. auditCritical INSIDE the
-      // transaction, so the deletion and its record commit together: there can
-      // be no unexplained disappearance of a user's compliance history. If the
-      // audit write fails, the delete correctly rolls back.
-      await auditCritical(
-        {
-          action: 'system.user.delete',
-          targetType: 'user',
-          targetId: userId,
-          // Counts only — no email, no names. The logger redacts PII anyway,
-          // but the audit row is long-lived so it carries even less.
-          metadata: { deletedCounts: counts },
-          ...clientContext,
-        },
-        tx,
-      );
-
-      return counts;
-    });
-
-    logger.info({ msg: 'System admin: user deleted', email: user.email, counts: result });
+    if (result.status === 'already_deleted') {
+      return {
+        success: false,
+        error: `This user was already deleted on ${result.deletedAt.toISOString().slice(0, 10)}.`,
+      };
+    }
+    if (result.status === 'blocked') {
+      return { success: false, error: result.message };
+    }
 
     revalidatePath('/system');
-    revalidatePath('/system/users');
+    revalidatePath(`/system/users/${userId}`);
 
-    return { success: true, deletedCounts: result };
+    return { success: true, membershipsDeactivated: result.membershipsDeactivated };
   } catch (error) {
-    logger.error({ msg: 'System admin: failed to delete user', userId, error });
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Failed to delete user',
-    };
+    logger.error({ msg: '[system] Failed to delete user', userId, err: error });
+    return { success: false, error: 'Failed to delete user. Please try again.' };
   }
 }
 

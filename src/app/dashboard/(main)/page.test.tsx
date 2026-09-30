@@ -80,8 +80,11 @@ const mockMyCoursesTable = vi.fn<(props: unknown) => JSX.Element>(() => (
 vi.mock('@/components/dashboard/MyCoursesTable', () => ({
   default: (props: unknown) => mockMyCoursesTable(props),
 }));
+const mockDashboardEmptyState = vi.fn<(props: unknown) => JSX.Element>(() => (
+  <div data-testid="empty-state" />
+));
 vi.mock('@/components/dashboard/DashboardEmptyState', () => ({
-  default: () => <div data-testid="empty-state" />,
+  default: (props: unknown) => mockDashboardEmptyState(props),
 }));
 vi.mock('@/components/dashboard/DashboardCreateCourseButton', () => ({
   default: () => <button type="button">Create course</button>,
@@ -95,6 +98,19 @@ vi.mock('@/components/dashboard/status-tracker/StatusTrackerOverview', () => ({
 }));
 
 import DashboardPage from './page';
+
+/**
+ * Deliberately non-zero and all distinct, so each figure can be found by value
+ * and `catalogCourseCount` can never be mistaken for a tile.
+ */
+const STATS = {
+  totalActiveCourses: 12,
+  totalAssignedLearners: 34,
+  averageGrade: 82,
+  catalogCourseCount: 57,
+  coursePerformance: [],
+  trainingCoverage: { completed: 50, inProgress: 25, notStarted: 25, totalAssignments: 8 },
+};
 
 // Session now carries role/organizationId directly (post multi-org refactor) —
 // the page no longer performs a separate prisma.user.findUnique lookup for them.
@@ -112,7 +128,7 @@ beforeEach(() => {
   // the 'renders the non-zero summary figures getDashboardData returned' test.
   mockGetDashboardData.mockResolvedValue({
     courses: [],
-    stats: { totalCourses: 12, totalStaffAssigned: 34, averageGrade: 82 },
+    stats: STATS,
   });
   mockHasActiveBilling.mockReturnValue(false);
   mockResolveFacilityScopeSelection.mockResolvedValue({ mode: 'all' });
@@ -179,11 +195,10 @@ describe('DashboardPage — Status Tracker data wiring', () => {
     const element = await DashboardPage(noSearchParams());
     render(element);
 
-    expect(mockGetStatusTrackerSummaryForOrg).toHaveBeenCalledWith(
-      'org-42',
-      expect.any(Date),
-      undefined,
-    );
+    expect(mockGetStatusTrackerSummaryForOrg).toHaveBeenCalledWith({
+      organizationId: 'org-42',
+      dataFacilityIds: null,
+    });
     expect(mockStatusTrackerOverview).toHaveBeenCalledWith(
       expect.objectContaining({
         rows: [
@@ -251,7 +266,7 @@ describe('DashboardPage — organisation course table', () => {
   beforeEach(() => {
     mockGetDashboardData.mockResolvedValue({
       courses: [COURSE_ROW],
-      stats: { totalCourses: 12, totalStaffAssigned: 34, averageGrade: 82 },
+      stats: STATS,
     });
     mockGetStatusTrackerSummaryForOrg.mockResolvedValue({
       overdueCount: 0,
@@ -315,7 +330,7 @@ describe('DashboardPage — facility scope wiring', () => {
   it('renders the non-zero summary figures getDashboardData returned, not a masked zero', async () => {
     mockGetDashboardData.mockResolvedValue({
       courses: [],
-      stats: { totalCourses: 12, totalStaffAssigned: 34, averageGrade: 82 },
+      stats: STATS,
     });
 
     render(await DashboardPage(noSearchParams()));
@@ -323,6 +338,25 @@ describe('DashboardPage — facility scope wiring', () => {
     expect(screen.getByText('12')).toBeInTheDocument();
     expect(screen.getByText('34')).toBeInTheDocument();
     expect(screen.getByText('82%')).toBeInTheDocument();
+  });
+
+  it('labels the tiles with the founder definitions', async () => {
+    render(await DashboardPage(noSearchParams()));
+
+    expect(screen.getByText('Total Active Courses')).toBeInTheDocument();
+    expect(screen.getByText('Total Assigned Learners')).toBeInTheDocument();
+    expect(screen.getByText('Average Grade')).toBeInTheDocument();
+    expect(screen.queryByText('Total Courses')).not.toBeInTheDocument();
+    expect(screen.queryByText('Total Staff Assigned')).not.toBeInTheDocument();
+  });
+
+  // "Total Active Courses" counts only courses with unfinished enrolments, so an
+  // organisation whose training is all complete reads 0 — which must not
+  // trigger the "create your first course" prompt.
+  it('drives the empty state from the catalogue size, not the active-course tile', async () => {
+    render(await DashboardPage(noSearchParams()));
+
+    expect(mockDashboardEmptyState).toHaveBeenCalledWith({ totalCourses: 57 });
   });
 
   it('renders the Global View with no comparison for an unscoped request', async () => {
@@ -335,8 +369,9 @@ describe('DashboardPage — facility scope wiring', () => {
     render(await DashboardPage(noSearchParams()));
 
     expect(screen.getByTestId('global-dashboard')).toBeInTheDocument();
+    expect(mockGetGlobalDashboardData).toHaveBeenCalledWith({ compareFacilityIds: [] });
     expect(mockGlobalDashboardView).toHaveBeenCalledWith(
-      expect.objectContaining({ comparedFacilityIds: [] }),
+      expect.objectContaining({ data: { facilities: [FACILITY_A, FACILITY_B] } }),
     );
   });
 
@@ -354,9 +389,11 @@ describe('DashboardPage — facility scope wiring', () => {
 
     render(await DashboardPage({ searchParams: Promise.resolve({ facility: 'fac-a,fac-b' }) }));
 
-    expect(mockGlobalDashboardView).toHaveBeenCalledWith(
-      expect.objectContaining({ comparedFacilityIds: ['fac-a', 'fac-b'] }),
-    );
+    // The comparison headline is counted server-side, so the ids go to the
+    // ACTION — the view only renders what comes back.
+    expect(mockGetGlobalDashboardData).toHaveBeenCalledWith({
+      compareFacilityIds: ['fac-a', 'fac-b'],
+    });
   });
 
   it('keeps the single-facility dashboard for a drill-down request', async () => {
@@ -501,22 +538,22 @@ describe('DashboardPage — facility scope wiring', () => {
 
       await DashboardPage(noSearchParams());
 
-      expect(mockGetStatusTrackerSummaryForOrg).toHaveBeenCalledWith('org-42', expect.any(Date), [
-        'fac-a',
-      ]);
+      expect(mockGetStatusTrackerSummaryForOrg).toHaveBeenCalledWith({
+        organizationId: 'org-42',
+        dataFacilityIds: ['fac-a'],
+      });
     });
 
-    it('an ORG-WIDE role in the single-facility-org branch still gets the unfiltered (undefined) reads — byte-identical invariant', async () => {
+    it('an ORG-WIDE role in the single-facility-org branch still gets the unfiltered (null) reads', async () => {
       mockGetGlobalDashboardData.mockResolvedValue({ facilities: [FACILITY_A] });
 
       await DashboardPage(noSearchParams());
 
       expect(mockGetDashboardData).toHaveBeenCalledWith(null);
-      expect(mockGetStatusTrackerSummaryForOrg).toHaveBeenCalledWith(
-        'org-42',
-        expect.any(Date),
-        undefined,
-      );
+      expect(mockGetStatusTrackerSummaryForOrg).toHaveBeenCalledWith({
+        organizationId: 'org-42',
+        dataFacilityIds: null,
+      });
     });
   });
 });

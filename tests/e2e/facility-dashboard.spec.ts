@@ -11,6 +11,14 @@
  *   - A tampered `?facility=<foreign-id>` (belonging to another org, or
  *     simply nonexistent) silently falls back to the Global View rather than
  *     leaking whether that facility exists or erroring.
+ *   - A facility's dashboard reports the founder's tiles — Total Active
+ *     Courses, Total Assigned Learners, Average Grade (the HIGHEST submitted
+ *     score wins) — over the organisation's courses, not the viewer's, and
+ *     attributes a transferred member to their CURRENT facility, never to the
+ *     facility stamped on their enrolment.
+ *   - Finance sees exactly the Owner's tile values for the same scope, never
+ *     the Courses table or the Status Tracker, and the Global View once the
+ *     organisation has 2+ facilities.
  *
  * Pre-conditions:
  *   - App running on http://localhost:3005.
@@ -140,16 +148,18 @@ interface SeededSingleFacility {
   facilityAName: string;
   courseId: string;
   courseTitle: string;
-  enrollmentScore: number;
+  /** The worker's BEST submitted score — their earlier 60 must not win. */
+  bestScore: number;
 }
 
 /**
- * Seed an org with exactly ONE facility and a KNOWN dataset — this is the bug
- * report itself, made concrete: the course is authored by HR, not the owner
- * who logs in. Pre-fix, `getDashboardData` filtered on
- * `createdByOrgUserId = <viewer>`, so the owner saw "Total Courses: 0" despite
- * HR having published one — invisible on a two-facility org, which took the
- * (already org-scoped) Global View branch instead.
+ * Seed an org with exactly ONE facility and a KNOWN dataset. The course is
+ * authored by HR, not the owner who logs in: pre-fix, `getDashboardData`
+ * filtered on `createdByOrgUserId = <viewer>`, so the owner saw no courses.
+ *
+ * The worker's enrolment is UNFINISHED (so the course is "active" and the
+ * worker an "assigned learner") and carries two submitted quiz attempts, 60 then
+ * 88, so Average Grade proves the highest submitted score wins.
  */
 async function seedOrgWithOneFacilityAndKnownData(): Promise<SeededSingleFacility> {
   const client = await db();
@@ -170,7 +180,8 @@ async function seedOrgWithOneFacilityAndKnownData(): Promise<SeededSingleFacilit
     const facilityAName = `Alpha Site ${slug}`;
     const courseId = crypto.randomUUID();
     const courseTitle = `HR-Authored Course ${slug}`;
-    const enrollmentScore = 88;
+    const quizId = crypto.randomUUID();
+    const enrollmentId = crypto.randomUUID();
 
     await client.query(
       `INSERT INTO organizations (id, name, slug, primary_email, is_hipaa_compliant, created_at, updated_at)
@@ -199,8 +210,8 @@ async function seedOrgWithOneFacilityAndKnownData(): Promise<SeededSingleFacilit
       [crypto.randomUUID(), ownerOrgUserId, facilityAId],
     );
 
-    // HR — the course author. Never logs in; only needs to exist so the course
-    // has a real creator.
+    // HR — the course author. Never logs in and holds no training, so it is not
+    // part of the staff population.
     await client.query(
       `INSERT INTO users (id, email, password, email_verified, auth_provider, first_name, last_name, full_name, created_at, updated_at)
        VALUES ($1, $2, $3, true, 'credentials', $4, $5, $6, NOW(), NOW())`,
@@ -212,8 +223,6 @@ async function seedOrgWithOneFacilityAndKnownData(): Promise<SeededSingleFacilit
       [hrOrgUserId, hrId, orgId],
     );
 
-    // Worker — the enrolled, scored staff member driving Total Staff Assigned
-    // and Average Grade.
     await client.query(
       `INSERT INTO users (id, email, password, email_verified, auth_provider, first_name, last_name, full_name, created_at, updated_at)
        VALUES ($1, $2, $3, true, 'credentials', $4, $5, $6, NOW(), NOW())`,
@@ -238,10 +247,26 @@ async function seedOrgWithOneFacilityAndKnownData(): Promise<SeededSingleFacilit
       [courseId, courseTitle, 'A course authored by HR, not the org owner.', hrOrgUserId, orgId],
     );
     await client.query(
-      `INSERT INTO enrollments (id, organization_user_id, course_id, facility_id, status, progress, score, started_at, completed_at)
-       VALUES ($1, $2, $3, $4, 'completed'::"EnrollmentStatus", 100, $5, NOW() - interval '2 days', NOW())`,
-      [crypto.randomUUID(), workerOrgUserId, courseId, facilityAId, enrollmentScore],
+      `INSERT INTO quizzes (id, course_id, title, passing_score, allowed_attempts, created_at)
+       VALUES ($1, $2, $3, 70, 3, NOW())`,
+      [quizId, courseId, `Quiz ${slug}`],
     );
+    await client.query(
+      `INSERT INTO enrollments (id, organization_user_id, course_id, facility_id, status, progress, started_at)
+       VALUES ($1, $2, $3, $4, 'in_progress'::"EnrollmentStatus", 50, NOW() - interval '2 days')`,
+      [enrollmentId, workerOrgUserId, courseId, facilityAId],
+    );
+    // Two SUBMITTED attempts (time_taken set): 60, then 88. Highest wins.
+    for (const [score, daysAgo] of [
+      [60, 2],
+      [88, 1],
+    ] as const) {
+      await client.query(
+        `INSERT INTO quiz_attempts (id, enrollment_id, quiz_id, answers, score, time_taken, attempt_count, completed_at)
+         VALUES ($1, $2, $3, '{}'::jsonb, $4, 120, 1, NOW() - ($5 || ' days')::interval)`,
+        [crypto.randomUUID(), enrollmentId, quizId, score, String(daysAgo)],
+      );
+    }
 
     return {
       orgId,
@@ -257,48 +282,186 @@ async function seedOrgWithOneFacilityAndKnownData(): Promise<SeededSingleFacilit
       facilityAName,
       courseId,
       courseTitle,
-      enrollmentScore,
+      bestScore: 88,
     };
   } finally {
     await client.end();
   }
 }
 
-/** A second facility with NO new data — the org's true figures must not move. */
-async function addEmptySecondFacility(
-  orgId: string,
-): Promise<{ facilityBId: string; facilityBName: string }> {
+interface SeededTransfer {
+  facilityBId: string;
+  facilityBName: string;
+  movedId: string;
+  movedOrgUserId: string;
+}
+
+/**
+ * A second facility plus a member who TRANSFERRED to it: their enrolment was
+ * stamped with facility A when assigned, but they are rostered at B today.
+ * Current-roster attribution must count them at B and not at A (BUG-36).
+ */
+async function addSecondFacilityWithTransferredMember(
+  seeded: SeededSingleFacility,
+): Promise<SeededTransfer> {
   const client = await db();
   try {
     const facilityBId = crypto.randomUUID();
     const facilityBName = `Beta Site ${crypto.randomBytes(4).toString('hex')}`;
+    const movedId = crypto.randomUUID();
+    const movedOrgUserId = crypto.randomUUID();
+
     await client.query(
       `INSERT INTO facilities (id, organization_id, name, program_services, created_at, updated_at)
        VALUES ($1, $2, $3, '{}', NOW(), NOW())`,
-      [facilityBId, orgId, facilityBName],
+      [facilityBId, seeded.orgId, facilityBName],
     );
-    return { facilityBId, facilityBName };
+    await client.query(
+      `INSERT INTO users (id, email, password, email_verified, auth_provider, first_name, last_name, full_name, created_at, updated_at)
+       VALUES ($1, $2, $3, true, 'credentials', $4, $5, $6, NOW(), NOW())`,
+      [
+        movedId,
+        uid('moved'),
+        await bcrypt.hash('FacDash!Other9', 10),
+        'Moved',
+        'Worker',
+        'Moved Worker',
+      ],
+    );
+    await client.query(
+      `INSERT INTO organization_users (id, user_id, organization_id, role, active, joined_at, role_assigned_at, created_at, updated_at)
+       VALUES ($1, $2, $3, 'nurse'::"UserRole", true, NOW(), NOW(), NOW(), NOW())`,
+      [movedOrgUserId, movedId, seeded.orgId],
+    );
+    // The A row is retired; B is where they work now.
+    await client.query(
+      `INSERT INTO organization_user_facilities (id, organization_user_id, facility_id, active, joined_at, deactivated_at)
+       VALUES ($1, $2, $3, false, NOW() - interval '30 days', NOW() - interval '1 day')`,
+      [crypto.randomUUID(), movedOrgUserId, seeded.facilityAId],
+    );
+    await client.query(
+      `INSERT INTO organization_user_facilities (id, organization_user_id, facility_id, active, joined_at)
+       VALUES ($1, $2, $3, true, NOW())`,
+      [crypto.randomUUID(), movedOrgUserId, facilityBId],
+    );
+    await client.query(
+      `INSERT INTO enrollments (id, organization_user_id, course_id, facility_id, status, progress, started_at)
+       VALUES ($1, $2, $3, $4, 'assigned'::"EnrollmentStatus", 0, NOW() - interval '1 day')`,
+      [crypto.randomUUID(), movedOrgUserId, seeded.courseId, seeded.facilityAId],
+    );
+
+    return { facilityBId, facilityBName, movedId, movedOrgUserId };
   } finally {
     await client.end();
   }
 }
 
-async function cleanupSingleFacility(seeded: SeededSingleFacility, facilityBId?: string) {
+const FINANCE_PASSWORD = 'FacDash!Finance9';
+
+interface SeededMember {
+  userId: string;
+  orgUserId: string;
+  email: string;
+}
+
+/** A Finance member of the org — org-wide, so bound to facility A like the owner. */
+async function addFinanceMember(seeded: SeededSingleFacility): Promise<SeededMember> {
   const client = await db();
   try {
+    const email = uid('finance');
+    const userId = crypto.randomUUID();
+    const orgUserId = crypto.randomUUID();
+    await client.query(
+      `INSERT INTO users (id, email, password, email_verified, auth_provider, first_name, last_name, full_name, created_at, updated_at)
+       VALUES ($1, $2, $3, true, 'credentials', 'Facility', 'Finance', 'Facility Finance', NOW(), NOW())`,
+      [userId, email, await bcrypt.hash(FINANCE_PASSWORD, 10)],
+    );
+    await client.query(
+      `INSERT INTO organization_users (id, user_id, organization_id, role, active, joined_at, role_assigned_at, created_at, updated_at)
+       VALUES ($1, $2, $3, 'finance'::"UserRole", true, NOW(), NOW(), NOW(), NOW())`,
+      [orgUserId, userId, seeded.orgId],
+    );
+    await client.query(
+      `INSERT INTO organization_user_facilities (id, organization_user_id, facility_id, active, joined_at)
+       VALUES ($1, $2, $3, true, NOW())`,
+      [crypto.randomUUID(), orgUserId, seeded.facilityAId],
+    );
+    return { userId, orgUserId, email };
+  } finally {
+    await client.end();
+  }
+}
+
+const SUPERVISOR_PASSWORD = 'FacDash!Super9';
+
+/** A supervisor bound to exactly one facility — facility-scoped, unlike the owner. */
+async function addSupervisorAt(
+  seeded: SeededSingleFacility,
+  facilityId: string,
+): Promise<SeededMember> {
+  const client = await db();
+  try {
+    const email = uid('supervisor');
+    const userId = crypto.randomUUID();
+    const orgUserId = crypto.randomUUID();
+    await client.query(
+      `INSERT INTO users (id, email, password, email_verified, auth_provider, first_name, last_name, full_name, created_at, updated_at)
+       VALUES ($1, $2, $3, true, 'credentials', 'Facility', 'Supervisor', 'Facility Supervisor', NOW(), NOW())`,
+      [userId, email, await bcrypt.hash(SUPERVISOR_PASSWORD, 10)],
+    );
+    await client.query(
+      `INSERT INTO organization_users (id, user_id, organization_id, role, active, joined_at, role_assigned_at, created_at, updated_at)
+       VALUES ($1, $2, $3, 'supervisor'::"UserRole", true, NOW(), NOW(), NOW(), NOW())`,
+      [orgUserId, userId, seeded.orgId],
+    );
+    await client.query(
+      `INSERT INTO organization_user_facilities (id, organization_user_id, facility_id, active, joined_at)
+       VALUES ($1, $2, $3, true, NOW())`,
+      [crypto.randomUUID(), orgUserId, facilityId],
+    );
+    return { userId, orgUserId, email };
+  } finally {
+    await client.end();
+  }
+}
+
+async function removeMember(member: SeededMember): Promise<void> {
+  const client = await db();
+  try {
+    await client.query(`DELETE FROM organization_user_facilities WHERE organization_user_id = $1`, [
+      member.orgUserId,
+    ]);
+    await client.query(`DELETE FROM organization_users WHERE id = $1`, [member.orgUserId]);
+    await client.query(`DELETE FROM users WHERE id = $1`, [member.userId]);
+  } finally {
+    await client.end();
+  }
+}
+
+async function cleanupSingleFacility(
+  seeded: SeededSingleFacility,
+  transfer: SeededTransfer | null,
+) {
+  const client = await db();
+  try {
+    const orgUserIds = [seeded.ownerOrgUserId, seeded.hrOrgUserId, seeded.workerOrgUserId];
+    const userIds = [seeded.ownerId, seeded.hrId, seeded.workerId];
+    if (transfer) {
+      orgUserIds.push(transfer.movedOrgUserId);
+      userIds.push(transfer.movedId);
+    }
+    // quiz_attempts and quizzes cascade from their enrolment and course.
     await client.query(`DELETE FROM enrollments WHERE course_id = $1`, [seeded.courseId]);
     await client.query(`DELETE FROM courses WHERE id = $1`, [seeded.courseId]);
     await client.query(
       `DELETE FROM organization_user_facilities WHERE organization_user_id = ANY($1)`,
-      [[seeded.ownerOrgUserId, seeded.workerOrgUserId]],
+      [orgUserIds],
     );
-    await client.query(`DELETE FROM organization_users WHERE id = ANY($1)`, [
-      [seeded.ownerOrgUserId, seeded.hrOrgUserId, seeded.workerOrgUserId],
-    ]);
-    await client.query(`DELETE FROM users WHERE id = ANY($1)`, [
-      [seeded.ownerId, seeded.hrId, seeded.workerId],
-    ]);
-    if (facilityBId) await client.query(`DELETE FROM facilities WHERE id = $1`, [facilityBId]);
+    await client.query(`DELETE FROM organization_users WHERE id = ANY($1)`, [orgUserIds]);
+    await client.query(`DELETE FROM users WHERE id = ANY($1)`, [userIds]);
+    if (transfer) {
+      await client.query(`DELETE FROM facilities WHERE id = $1`, [transfer.facilityBId]);
+    }
     await client.query(`DELETE FROM facilities WHERE id = $1`, [seeded.facilityAId]);
     await client.query(`DELETE FROM organizations WHERE id = $1`, [seeded.orgId]);
   } finally {
@@ -384,56 +547,202 @@ test.describe('Global (multi-facility) dashboard', () => {
   });
 });
 
-test.describe('Single-facility dashboard shows the organisation, not just the viewer', () => {
-  /** The value `<p>` immediately following a summary card's label `<p>`. */
-  function summaryCardValue(page: Page, label: string) {
+test.describe('Facility dashboard: founder tiles over the organisation, by current roster', () => {
+  /** The value `<p>` immediately following a card's label `<p>`. */
+  function cardValue(page: Page, label: string) {
     return page.getByText(label, { exact: true }).locator('xpath=following-sibling::p[1]');
   }
 
-  test('a one-facility org reports the true organisation totals — courses authored by HR, not the owner — and a second facility with no new data leaves them unchanged', async ({
+  function facilitiesOverview(page: Page) {
+    return page
+      .locator('section')
+      .filter({ has: page.getByRole('heading', { name: 'Facilities Overview' }) });
+  }
+
+  test('reports Total Active Courses, Total Assigned Learners and the highest-score Average Grade, and counts a transferred member at their current facility only', async ({
     page,
   }) => {
     const seeded = await seedOrgWithOneFacilityAndKnownData();
-    let facilityB: { facilityBId: string; facilityBName: string } | null = null;
+    let transfer: SeededTransfer | null = null;
     try {
       await login(page, seeded.ownerEmail, seeded.ownerPassword);
 
-      // One facility: the classic (non-Global) dashboard, never the multi-site
-      // Global View — D1 of the fix's plan.
+      // One facility: the classic dashboard, never the multi-site Global View.
       await expect(
         page.getByText('Here is an overview across all your facilities'),
       ).not.toBeVisible();
 
-      // The reported bug, made checkable: the owner did not author this course
-      // — HR did — so pre-fix `Total Courses` read 0 here.
-      await expect(summaryCardValue(page, 'Total Courses')).toHaveText('1');
-      await expect(summaryCardValue(page, 'Total Staff Assigned')).toHaveText('1');
-      await expect(summaryCardValue(page, 'Average Grade')).toHaveText(
-        `${seeded.enrollmentScore}%`,
-      );
+      // The owner did not author the course — HR did — and it still counts.
+      await expect(cardValue(page, 'Total Active Courses')).toHaveText('1');
+      await expect(cardValue(page, 'Total Assigned Learners')).toHaveText('1');
+      // 60 then 88: the highest submitted score wins.
+      await expect(cardValue(page, 'Average Grade')).toHaveText(`${seeded.bestScore}%`);
+      await expect(page.getByText('Total Courses', { exact: true })).toHaveCount(0);
+      await expect(page.getByText('Total Staff Assigned', { exact: true })).toHaveCount(0);
 
-      // Add a second facility with NO new data. The org's real numbers must not
-      // move — this is the cross-branch parity bug in its user-visible form.
-      facilityB = await addEmptySecondFacility(seeded.orgId);
+      // A second facility and a member who moved to it. Their enrolment is
+      // stamped with facility A; their roster says B.
+      transfer = await addSecondFacilityWithTransferredMember(seeded);
 
       await page.goto('/dashboard');
       await expect(page.getByText('Here is an overview across all your facilities')).toBeVisible();
-
-      const overviewSection = page
+      // Worker + moved member; the owner and HR hold no training.
+      await expect(cardValue(page, 'Total Staff Count')).toHaveText('2');
+      // "Active Learners" also heads a Priority Risks column — scope to its tile.
+      const velocity = page
         .locator('section')
-        .filter({ has: page.getByRole('heading', { name: 'Facilities Overview' }) });
-      await overviewSection.getByRole('row', { name: seeded.facilityAName }).click();
-      await page.waitForURL(`**/dashboard?facility=${seeded.facilityAId}`);
+        .filter({ has: page.getByRole('heading', { name: 'Training Velocity' }) });
+      await expect(
+        velocity
+          .getByText('Active Learners', { exact: true })
+          .locator('xpath=following-sibling::p[1]'),
+      ).toHaveText('2');
 
-      // Same literal figures as the single-facility view above — the underlying
-      // data hasn't changed, only the branch that renders it.
-      await expect(summaryCardValue(page, 'Total Courses')).toHaveText('1');
-      await expect(summaryCardValue(page, 'Total Staff Assigned')).toHaveText('1');
-      await expect(summaryCardValue(page, 'Average Grade')).toHaveText(
-        `${seeded.enrollmentScore}%`,
-      );
+      // Facility A: unchanged — the moved member's stamped enrolment is not here.
+      await facilitiesOverview(page).getByRole('row', { name: seeded.facilityAName }).click();
+      await page.waitForURL(`**/dashboard?facility=${seeded.facilityAId}`);
+      await expect(cardValue(page, 'Total Active Courses')).toHaveText('1');
+      await expect(cardValue(page, 'Total Assigned Learners')).toHaveText('1');
+      await expect(cardValue(page, 'Average Grade')).toHaveText(`${seeded.bestScore}%`);
+
+      // Facility B: the moved member counts here, where they work now.
+      await page.goto('/dashboard');
+      await facilitiesOverview(page).getByRole('row', { name: transfer.facilityBName }).click();
+      await page.waitForURL(`**/dashboard?facility=${transfer.facilityBId}`);
+      await expect(cardValue(page, 'Total Active Courses')).toHaveText('1');
+      await expect(cardValue(page, 'Total Assigned Learners')).toHaveText('1');
+      await expect(cardValue(page, 'Average Grade')).toHaveText('0%');
     } finally {
-      await cleanupSingleFacility(seeded, facilityB?.facilityBId);
+      await cleanupSingleFacility(seeded, transfer);
+    }
+  });
+
+  // TOOL-19: the owner test above cannot catch a Finance-only predicate drift
+  // (BUG-01) — the owner's predicate never changed. Finance reaches this page on
+  // `billing.read`, so it must see the owner's figures and nothing roster-level.
+  test('Finance sees the same tiles as the Owner for the same scope, no Courses table or Status Tracker, and the Global View once there are 2 facilities', async ({
+    browser,
+  }) => {
+    const seeded = await seedOrgWithOneFacilityAndKnownData();
+    const finance = await addFinanceMember(seeded);
+    let transfer: SeededTransfer | null = null;
+    const ownerContext = await browser.newContext();
+    const financeContext = await browser.newContext();
+    try {
+      const ownerPage = await ownerContext.newPage();
+      const financePage = await financeContext.newPage();
+      await login(ownerPage, seeded.ownerEmail, seeded.ownerPassword);
+      await login(financePage, finance.email, FINANCE_PASSWORD);
+
+      const tiles = ['Total Active Courses', 'Total Assigned Learners', 'Average Grade'];
+      const expected = ['1', '1', `${seeded.bestScore}%`];
+
+      async function expectSameTiles() {
+        for (const [index, label] of tiles.entries()) {
+          await expect(cardValue(ownerPage, label)).toHaveText(expected[index]);
+          await expect(cardValue(financePage, label)).toHaveText(expected[index]);
+        }
+      }
+
+      // One facility: the classic dashboard for both.
+      await expectSameTiles();
+
+      // The owner sees both roster-level sections, so their absence for
+      // Finance below is the gate and not an empty page.
+      await expect(ownerPage.getByRole('heading', { name: 'Courses', exact: true })).toBeVisible();
+      await expect(
+        ownerPage.getByRole('heading', { name: 'Status Tracker', exact: true }),
+      ).toBeVisible();
+      await expect(financePage.getByRole('heading', { name: 'Courses', exact: true })).toHaveCount(
+        0,
+      );
+      await expect(
+        financePage.getByRole('heading', { name: 'Status Tracker', exact: true }),
+      ).toHaveCount(0);
+
+      // A second facility: Finance oversees the organisation, so it lands on
+      // the Global View like the owner.
+      transfer = await addSecondFacilityWithTransferredMember(seeded);
+      await financePage.goto('/dashboard');
+      await expect(
+        financePage.getByText('Here is an overview across all your facilities'),
+      ).toBeVisible();
+      await expect(cardValue(financePage, 'Total Number of Facilities')).toHaveText('2');
+
+      // Same scope, same tiles: Facility A for both.
+      await ownerPage.goto(`/dashboard?facility=${seeded.facilityAId}`);
+      await financePage.goto(`/dashboard?facility=${seeded.facilityAId}`);
+      await expect(financePage.getByText('Here is an overview of your facility')).toBeVisible();
+      await expectSameTiles();
+      await expect(financePage.getByRole('heading', { name: 'Courses', exact: true })).toHaveCount(
+        0,
+      );
+      await expect(
+        financePage.getByRole('heading', { name: 'Status Tracker', exact: true }),
+      ).toHaveCount(0);
+    } finally {
+      await ownerContext.close();
+      await financeContext.close();
+      await removeMember(finance);
+      await cleanupSingleFacility(seeded, transfer);
+    }
+  });
+});
+
+// BUG-37: the Courses page attributes training exactly as the dashboards above
+// do — by where the member works NOW, never by the facility stamped on the
+// enrolment when it was assigned.
+test.describe('Courses page: a transferred member counts at their current facility', () => {
+  /** The Courses list's "Assigned Staff" cell for a course row. */
+  async function assignedStaff(page: Page, courseTitle: string) {
+    await page.goto('/dashboard/courses');
+    await page.getByRole('tab', { name: /Reading Courses/ }).click();
+    const row = page.getByRole('row', { name: new RegExp(courseTitle) });
+    await expect(row).toBeVisible();
+    return row.getByRole('cell').nth(1);
+  }
+
+  test('each facility’s supervisor sees the card count and roster Facility by current roster, with the assignment facility as a note', async ({
+    browser,
+  }) => {
+    const seeded = await seedOrgWithOneFacilityAndKnownData();
+    const transfer = await addSecondFacilityWithTransferredMember(seeded);
+    const supervisorA = await addSupervisorAt(seeded, seeded.facilityAId);
+    const supervisorB = await addSupervisorAt(seeded, transfer.facilityBId);
+    // Wide enough for the xl-only Facility column inside the 280px sidebar.
+    const viewport = { width: 1440, height: 900 };
+    const contextA = await browser.newContext({ viewport });
+    const contextB = await browser.newContext({ viewport });
+    try {
+      const pageA = await contextA.newPage();
+      const pageB = await contextB.newPage();
+      await login(pageA, supervisorA.email, SUPERVISOR_PASSWORD);
+      await login(pageB, supervisorB.email, SUPERVISOR_PASSWORD);
+
+      // By the enrolment stamp these would read A: 2 and B: 0.
+      await expect(await assignedStaff(pageA, seeded.courseTitle)).toHaveText('1');
+      await expect(await assignedStaff(pageB, seeded.courseTitle)).toHaveText('1');
+
+      await pageB.goto(`/dashboard/training/courses/${seeded.courseId}`);
+      const movedRow = pageB.getByRole('row', { name: /Moved Worker/ });
+      await expect(movedRow).toBeVisible();
+      await expect(movedRow.getByText(transfer.facilityBName, { exact: true })).toBeVisible();
+      await expect(movedRow.getByText(`Assigned at ${seeded.facilityAName}`)).toBeVisible();
+      await expect(pageB.getByRole('row', { name: /Worker Learner/ })).toHaveCount(0);
+
+      // A's supervisor keeps only the member who never moved, with no note.
+      await pageA.goto(`/dashboard/training/courses/${seeded.courseId}`);
+      const stayedRow = pageA.getByRole('row', { name: /Worker Learner/ });
+      await expect(stayedRow).toBeVisible();
+      await expect(stayedRow.getByText(seeded.facilityAName, { exact: true })).toBeVisible();
+      await expect(stayedRow.getByText(/Assigned at/)).toHaveCount(0);
+      await expect(pageA.getByRole('row', { name: /Moved Worker/ })).toHaveCount(0);
+    } finally {
+      await contextA.close();
+      await contextB.close();
+      await removeMember(supervisorA);
+      await removeMember(supervisorB);
+      await cleanupSingleFacility(seeded, transfer);
     }
   });
 });

@@ -80,6 +80,8 @@ vi.mock('@/lib/logger', () => ({
 // Import under test AFTER all vi.mock() declarations.
 // ---------------------------------------------------------------------------
 import { POST } from './route';
+import { ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
+import { sendQuizLockedEmail } from '@/lib/email';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -114,6 +116,9 @@ const ENROLLMENT = {
   id: 'enr-1',
   organizationUserId: 'ou-1',
   courseId: 'course-1',
+  status: 'in_progress',
+  // A live course, so the Q-04 archive gate lets the submission through.
+  course: { archivedAt: null },
   // Active billing so the defense-in-depth gate lets the attempt through.
   organizationUser: { organization: { subscription: { status: 'active', pausedAt: null } } },
 };
@@ -357,6 +362,10 @@ describe('POST /api/quiz/[id]/submit — append-history + attempt limit', () => 
       }),
     );
     expect(txMock.quizAttempt.create).not.toHaveBeenCalled();
+    // No attempts remaining is refused before the enrollment update that would
+    // stamp lastActivityAt alongside score/status — this is a learner write
+    // that must not count as engagement.
+    expect(prismaMock.enrollment.update).not.toHaveBeenCalled();
   });
 
   it('CREATEs a new completed attempt with attemptCount = completedCount + 1 when under the limit', async () => {
@@ -411,6 +420,72 @@ describe('POST /api/quiz/[id]/submit — append-history + attempt limit', () => 
       where: { id: 'enr-1' },
       data: expect.objectContaining({ status: 'locked', lockedAt: expect.any(Date) }),
     });
+    const { data } = prismaMock.enrollment.update.mock.calls[0][0];
+    expect(data.lastActivityAt).toBe(data.lockedAt);
+  });
+
+  it('stamps learner activity in the same enrollment update that records the score', async () => {
+    await POST(makeReq({ enrollmentId: 'enr-1', answers: makeAnswers(2, 2) }), { params });
+
+    expect(prismaMock.enrollment.update).toHaveBeenCalledTimes(1);
+    expect(prismaMock.enrollment.update).toHaveBeenCalledWith({
+      where: { id: 'enr-1' },
+      data: expect.objectContaining({ status: 'in_progress', lastActivityAt: expect.any(Date) }),
+    });
+  });
+});
+
+describe('POST /api/quiz/[id]/submit — attempts-exhausted audience (Q-25)', () => {
+  const DETAILS = {
+    id: 'enr-1',
+    courseId: 'course-1',
+    organizationUser: {
+      id: 'ou-1',
+      organizationId: 'org-1',
+      user: { fullName: 'Dana Learner', email: 'dana@acme.com' },
+    },
+    course: { title: 'Safety', lessons: [] },
+  };
+
+  beforeEach(() => {
+    prismaMock.quiz.findUnique.mockResolvedValue(
+      makeQuiz({ allowedAttempts: 2, passingScore: 90, questions: makeQuestions(2) }),
+    );
+    txMock.quizAttempt.count.mockResolvedValue(1); // the final attempt
+    // The second read — the one that includes the course's lessons — loads the
+    // context for the admin notice.
+    prismaMock.enrollment.findUnique.mockImplementation(
+      async (args: { include?: { course?: { include?: unknown } } }) =>
+        args.include?.course?.include ? DETAILS : ENROLLMENT,
+    );
+    prismaMock.organizationUser.findMany.mockResolvedValue([
+      { id: 'owner-1', role: 'owner', user: { email: 'owner@acme.com' } },
+      { id: 'cd-1', role: 'clinical_director', user: { email: 'cd@acme.com' } },
+      { id: 'fin-1', role: 'finance', user: { email: 'fin@acme.com' } },
+    ]);
+  });
+
+  it('notifies and emails only the admins who can open the staff profile it links to', async () => {
+    await POST(makeReq({ enrollmentId: 'enr-1', answers: makeAnswers(2, 0) }), { params });
+
+    const [args] = prismaMock.notification.createMany.mock.calls[0];
+    expect(args.data.map((row: { organizationUserId: string }) => row.organizationUserId)).toEqual([
+      'owner-1',
+    ]);
+    expect(args.data[0].linkUrl).toBe('/dashboard/staff/ou-1');
+    await vi.waitFor(() => expect(sendQuizLockedEmail).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(sendQuizLockedEmail).mock.calls[0][0]).toBe('owner@acme.com');
+  });
+
+  it('writes nothing, and warns, when no admin can open the staff profile', async () => {
+    prismaMock.organizationUser.findMany.mockResolvedValue([
+      { id: 'fin-1', role: 'finance', user: { email: 'fin@acme.com' } },
+    ]);
+
+    await POST(makeReq({ enrollmentId: 'enr-1', answers: makeAnswers(2, 0) }), { params });
+
+    expect(prismaMock.notification.createMany).not.toHaveBeenCalled();
+    expect(sendQuizLockedEmail).not.toHaveBeenCalled();
   });
 });
 
@@ -483,4 +558,94 @@ describe('POST /api/quiz/[id]/submit — legacy AI explanation fallback', () => 
     expect(json.score).toBe(100);
     expect(txMock.quizAttempt.create).toHaveBeenCalledTimes(1);
   });
+});
+
+// ---------------------------------------------------------------------------
+// Founder Q-04 (2026-09-23): no submission is graded once the course is
+// archived. Refused before the quiz is even loaded, so no attempt row is
+// written, no enrollment status moves, and no AI spend is incurred.
+// ---------------------------------------------------------------------------
+describe('POST /api/quiz/[id]/submit — archived course (Q-04)', () => {
+  it('403s with the cancellation message and persists nothing', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue({
+      ...ENROLLMENT,
+      course: { archivedAt: new Date('2026-09-20') },
+    });
+
+    const res = await POST(
+      makeReq({ enrollmentId: 'enr-1', answers: makeAnswers(2, 2), timeTaken: 30 }),
+      { params },
+    );
+    const json = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(json.error).toBe(ARCHIVED_COURSE_LEARNER_MESSAGE);
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(prismaMock.enrollment.update).not.toHaveBeenCalled();
+    expect(mockCallVertexAI).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * BUG-53: grading writes the enrolment's status (in_progress / locked) and
+ * score. Against signed-off training that rewrote the score behind the
+ * attestation and dropped the status to in_progress; against a locked one it
+ * let a direct POST skip /start's lockout. Both are refused before any write
+ * or AI spend.
+ */
+describe('POST /api/quiz/[id]/submit — closed enrolments (BUG-53)', () => {
+  it.each(['completed', 'attested'])(
+    '403s QUIZ_ALREADY_COMPLETED on a "%s" enrolment and writes nothing',
+    async (status) => {
+      prismaMock.enrollment.findUnique.mockResolvedValue({ ...ENROLLMENT, status });
+
+      const res = await POST(
+        makeReq({ enrollmentId: 'enr-1', answers: makeAnswers(2, 0), timeTaken: 30 }),
+        { params },
+      );
+      const json = await res.json();
+
+      expect(res.status).toBe(403);
+      expect(json.error).toBe('QUIZ_ALREADY_COMPLETED');
+      expect(json.message).toEqual(expect.any(String));
+      expect(prismaMock.quiz.findUnique).not.toHaveBeenCalled();
+      expect(prismaMock.$transaction).not.toHaveBeenCalled();
+      expect(prismaMock.enrollment.update).not.toHaveBeenCalled();
+      expect(mockCallVertexAI).not.toHaveBeenCalled();
+    },
+  );
+
+  it('403s QUIZ_LOCKED_MAX_ATTEMPTS on a locked enrolment even if the attempt limit was raised', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue({ ...ENROLLMENT, status: 'locked' });
+    prismaMock.quiz.findUnique.mockResolvedValue(makeQuiz({ allowedAttempts: 10 }));
+    txMock.quizAttempt.count.mockResolvedValue(2);
+
+    const res = await POST(
+      makeReq({ enrollmentId: 'enr-1', answers: makeAnswers(2, 2), timeTaken: 30 }),
+      { params },
+    );
+    const json = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(json.error).toBe('QUIZ_LOCKED_MAX_ATTEMPTS');
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(prismaMock.enrollment.update).not.toHaveBeenCalled();
+  });
+
+  it.each(['enrolled', 'assigned', 'in_progress', 'lessons_complete'])(
+    'CONTROL: grades a "%s" enrolment',
+    async (status) => {
+      prismaMock.enrollment.findUnique.mockResolvedValue({ ...ENROLLMENT, status });
+
+      const res = await POST(
+        makeReq({ enrollmentId: 'enr-1', answers: makeAnswers(2, 2), timeTaken: 30 }),
+        { params },
+      );
+
+      expect(res.status).toBe(200);
+      expect(prismaMock.enrollment.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ status: 'in_progress' }) }),
+      );
+    },
+  );
 });

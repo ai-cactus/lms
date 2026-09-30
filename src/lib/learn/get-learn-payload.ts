@@ -4,6 +4,10 @@ import prisma from '@/lib/prisma';
 import { rawPrisma } from '@/db/index';
 import { getPortalSessions } from '@/lib/auth/portal-sessions';
 import { logger } from '@/lib/logger';
+import { ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
+import { parseStoredOptionExplanations } from '@/lib/quiz/options';
+import { selectAssessmentQuiz } from '@/lib/quiz/assessment';
+import { isCourseEditableByOrganization } from '@/lib/course/edit-access';
 import type { Role } from '@/types/next-auth';
 
 /**
@@ -43,10 +47,10 @@ function mayReviewWithoutEnrollment(role: Role | null | undefined): boolean {
 function mayEditCourseContent(
   role: Role | null | undefined,
   callerOrganizationId: string | null | undefined,
-  courseOrganizationId: string | null | undefined,
+  course: { organizationId: string; isGlobal: boolean },
 ): boolean {
   if (!role || !can(dbRoleToRoleKey(role), 'course.edit')) return false;
-  return Boolean(callerOrganizationId) && callerOrganizationId === courseOrganizationId;
+  return isCourseEditableByOrganization(course, callerOrganizationId);
 }
 
 const QUIZ_SELECT = {
@@ -57,8 +61,11 @@ const QUIZ_SELECT = {
   timeLimit: true,
   questions: {
     orderBy: { order: 'asc' },
-    // correctAnswer/explanation are fetched but only surfaced to admins
-    // (the read-only answer-key review); never sent to workers.
+    // correctAnswer/explanation/incorrectOptionExplanations are fetched but
+    // only surfaced to admins (the read-only answer-key review); never sent to
+    // workers. The per-option rationale is answer key too — it names which
+    // options are WRONG, which would hand a learner the answer before they sit
+    // the quiz.
     select: {
       id: true,
       text: true,
@@ -66,6 +73,7 @@ const QUIZ_SELECT = {
       options: true,
       correctAnswer: true,
       explanation: true,
+      incorrectOptionExplanations: true,
     },
   },
 } as const;
@@ -97,6 +105,8 @@ export interface LearnPayloadQuestion {
   /** Answer key — present only for admin viewers (read-only review). */
   correctAnswer?: string;
   explanation?: string;
+  /** Why each wrong option is wrong, keyed by its index in `options`. */
+  incorrectOptionExplanations?: Record<string, string>;
 }
 
 export interface LearnPayloadQuiz {
@@ -133,7 +143,11 @@ export interface LearnPayloadQuizAttempt {
 export interface LearnPayloadQuizResultQuestion {
   id: string;
   text: string;
-  options: { id: string; text: string }[];
+  /**
+   * `explanation` is why THIS option is wrong — absent for the correct answer
+   * and for any option the author or model gave no rationale for.
+   */
+  options: { id: string; text: string; explanation?: string }[];
   selectedAnswer: string;
   correctAnswer: string;
   explanation: string;
@@ -257,12 +271,12 @@ export async function getLearnPayload(courseId: string): Promise<LearnPayload | 
     // including the AI-pipeline artifacts (rawCourseJson, rawQuizJson,
     // rawSlidesJson, …) that this handler never reads.
     //
-    // ⛔ `rawPrisma`, deliberately: archiving a course RETIRES it for new
-    // assignment, it does not erase what a learner already did. A worker who
-    // was enrolled before the archive must still be able to open it, and their
-    // certificate must still resolve. Access is decided below — an enrollment,
-    // or a manager's review right — so reading the row unfiltered widens
-    // nothing: the gate is downstream of the lookup, not the archive filter.
+    // ⛔ `rawPrisma`, deliberately: the archived row has to be READ in order to
+    // be refused with the right answer. Founder Q-04/Q-05 (2026-09-23) narrowed
+    // the earlier Q24 ruling — archiving now CANCELS the course for learners, so
+    // an enrollment no longer keeps the player open. Reading unfiltered widens
+    // nothing: the refusal is stated explicitly below, immediately after the
+    // lookup, for every caller.
     const course = await rawPrisma.course.findUnique({
       where: { id: courseId },
       select: {
@@ -270,15 +284,14 @@ export async function getLearnPayload(courseId: string): Promise<LearnPayload | 
         title: true,
         description: true,
         duration: true,
+        organizationId: true,
         isGlobal: true,
         status: true,
+        archivedAt: true,
         // A COUNT over the already-indexed course_modules.course_id, on a query
         // that is streaming every lesson body anyway — cheaper than the extra
         // round trip a separate query would cost.
         _count: { select: { modules: true } },
-        creator: {
-          select: { organizationId: true },
-        },
         // Course-level quiz (video courses attach the quiz to the course, not a lesson).
         quiz: { select: QUIZ_SELECT },
         lessons: {
@@ -301,6 +314,22 @@ export async function getLearnPayload(courseId: string): Promise<LearnPayload | 
 
     if (!course) {
       return { error: 'Course not found', status: 404 };
+    }
+
+    // Q-04/Q-05: an archived course is cancelled. Nobody continues it — not the
+    // learner who was part-way through, not a manager exercising the review
+    // right below — which keeps this in step with `getCourseById`, the entry
+    // point that fronts this player. Refused ahead of the access gate because
+    // the answer no longer depends on WHY the caller would have been let in.
+    //
+    // Certificates are untouched: they are served from the Certificate table by
+    // `getWorkerCertificates`/`getCertificateDetails`, never from this payload.
+    if (course.archivedAt) {
+      logger.warn({
+        msg: '[course] Learn payload refused — course is archived',
+        courseId,
+      });
+      return { error: ARCHIVED_COURSE_LEARNER_MESSAGE, status: 403 };
     }
 
     // Check both potential sessions for an enrollment to resolve cookie collision.
@@ -334,10 +363,12 @@ export async function getLearnPayload(courseId: string): Promise<LearnPayload | 
           })
         : null;
 
+      // RISK-15: the course's OWNING organisation (Q25), not its author's
+      // current one — an author who moves takes neither the course nor its
+      // review right with them.
       const isSameOrg = Boolean(
         adminSession.user.organizationId &&
-        course.creator?.organizationId &&
-        adminSession.user.organizationId === course.creator.organizationId,
+        adminSession.user.organizationId === course.organizationId,
       );
 
       // Global published courses are a shared catalog any org admin may open
@@ -395,11 +426,7 @@ export async function getLearnPayload(courseId: string): Promise<LearnPayload | 
     // course's. Anything outside the admin view is never offered the editor.
     const canEditContent =
       isAdmin &&
-      mayEditCourseContent(
-        adminSession?.user?.role,
-        adminSession?.user?.organizationId,
-        course.creator?.organizationId,
-      );
+      mayEditCourseContent(adminSession?.user?.role, adminSession?.user?.organizationId, course);
 
     // `answers` is a Prisma `Json` column the quiz endpoints always write as an
     // answer array; the client still guards with Array.isArray before reading it.
@@ -420,10 +447,7 @@ export async function getLearnPayload(courseId: string): Promise<LearnPayload | 
       videoPositionSeconds: null,
     };
 
-    // Quiz lives on the last lesson (text courses) or on the course itself
-    // (video courses). Prefer the lesson quiz, fall back to the course quiz.
-    const lastLesson = course.lessons[course.lessons.length - 1];
-    const quizData = lastLesson?.quiz ?? course.quiz;
+    const quizData = selectAssessmentQuiz(course.lessons, course.quiz);
 
     const quiz: LearnPayloadQuiz | null = quizData
       ? {
@@ -439,7 +463,12 @@ export async function getLearnPayload(courseId: string): Promise<LearnPayload | 
             options: Array.isArray(q.options) ? ([...q.options] as string[]) : [],
             // Answer key is exposed only to admins (read-only review).
             ...(isAdmin
-              ? { correctAnswer: q.correctAnswer ?? '', explanation: q.explanation ?? '' }
+              ? {
+                  correctAnswer: q.correctAnswer ?? '',
+                  explanation: q.explanation ?? '',
+                  incorrectOptionExplanations:
+                    parseStoredOptionExplanations(q.incorrectOptionExplanations) ?? undefined,
+                }
               : {}),
           })),
         }
@@ -513,6 +542,8 @@ export async function getLearnPayload(courseId: string): Promise<LearnPayload | 
           const correctIdx = optionTexts.findIndex((t: string) => t === correctText);
           const correctLetter = correctIdx >= 0 ? String.fromCharCode(65 + correctIdx) : '';
 
+          const optionExplanations = parseStoredOptionExplanations(q.incorrectOptionExplanations);
+
           return {
             id: q.id,
             text: q.text,
@@ -522,6 +553,7 @@ export async function getLearnPayload(courseId: string): Promise<LearnPayload | 
                 typeof opt === 'string'
                   ? opt
                   : (opt as { text?: string }).text || (opt as { text?: string }).toString(),
+              explanation: optionExplanations?.[String(idx)],
             })),
             selectedAnswer: selectedLetter,
             correctAnswer: correctLetter,

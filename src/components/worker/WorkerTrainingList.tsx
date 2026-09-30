@@ -2,9 +2,11 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Layers, Clock, AlertCircle } from 'lucide-react';
+import { Layers, Clock } from 'lucide-react';
 import EmptyTableState from '@/components/ui/EmptyTableState';
 import WorkerCourseList from '@/components/worker/WorkerCourseList';
+import CancelledCourseBadge from '@/components/worker/CancelledCourseBadge';
+import { ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
 import type { LearnerCourseRow } from '@/types/enrollment';
 
 function formatCategory(category: string): string {
@@ -14,23 +16,20 @@ function formatCategory(category: string): string {
     .join(' ');
 }
 
-/** Human-readable deadline with overdue styling, mirroring the dashboard table. */
+/**
+ * Deadline line for the Completed tab. Every card there is finished, so a past
+ * due date is never shown as overdue (BUG-41) — the course was done, not late.
+ */
 function DeadlineMeta({ deadline }: { deadline?: Date | string | null }) {
   if (!deadline) {
     return <span className="text-xs text-[#cbd5e1]">No deadline</span>;
   }
-  const d = new Date(deadline);
-  const isOverdue = d < new Date();
-  const text = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const text = new Date(deadline).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
 
-  if (isOverdue) {
-    return (
-      <span className="flex items-center gap-1 text-xs font-medium text-[#dc2626]">
-        <AlertCircle className="size-3.5" aria-hidden="true" />
-        Due {text}
-      </span>
-    );
-  }
   return (
     <span className="flex items-center gap-1 text-xs text-[#718096]">
       <Clock className="size-3.5" aria-hidden="true" />
@@ -105,41 +104,58 @@ export default function WorkerTrainingList({ courses }: WorkerTrainingListProps)
       ) : (
         <div className="flex flex-col">
           {completedCourses.length > 0 ? (
-            completedCourses.map((course) => (
-              <div
-                key={course.id + '-' + course.enrollmentId}
-                className="flex items-center justify-between border-b border-dashed border-[#e2e8f0] px-8 py-6 transition-all last:border-b-0 hover:bg-[#f8fafc] max-md:flex-col max-md:items-start max-md:gap-4 max-md:px-4 max-md:py-5"
-              >
-                <div className="flex items-center gap-5 max-md:w-full max-md:gap-3">
-                  <div className="flex size-12 flex-shrink-0 items-center justify-center rounded-[10px] bg-[#1e293b] text-white max-md:size-10 max-md:rounded-lg">
-                    <Layers className="size-6" aria-hidden="true" />
+            completedCourses.map((course) => {
+              // The course was archived after this enrollment completed, so the
+              // result behind "View Result" is refused server-side. Keep the row
+              // — the learner's history must survive — and say why it is inert.
+              const isCancelled = course.courseArchived === true;
+              return (
+                <div
+                  key={course.id + '-' + course.enrollmentId}
+                  className={[
+                    'flex items-center justify-between border-b border-dashed border-[#e2e8f0] px-8 py-6 transition-all last:border-b-0 hover:bg-[#f8fafc] max-md:flex-col max-md:items-start max-md:gap-4 max-md:px-4 max-md:py-5',
+                    isCancelled ? 'opacity-70' : '',
+                  ].join(' ')}
+                >
+                  <div className="flex items-center gap-5 max-md:w-full max-md:gap-3">
+                    <div className="flex size-12 flex-shrink-0 items-center justify-center rounded-[10px] bg-[#1e293b] text-white max-md:size-10 max-md:rounded-lg">
+                      <Layers className="size-6" aria-hidden="true" />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <h3 className="text-base font-semibold text-[#1a202c] max-md:text-sm">
+                        {course.retakeOf ? (
+                          <span className="mr-2 font-semibold text-[#E53E3E]">Retake:</span>
+                        ) : null}
+                        {course.title}
+                      </h3>
+                      <p className="text-sm text-[#718096]">
+                        {course.category ? formatCategory(course.category) : 'General'}
+                      </p>
+                      <DeadlineMeta deadline={course.deadline} />
+                    </div>
                   </div>
-                  <div className="flex flex-col gap-1">
-                    <h3 className="text-base font-semibold text-[#1a202c] max-md:text-sm">
-                      {course.retakeOf ? (
-                        <span className="mr-2 font-semibold text-[#E53E3E]">Retake:</span>
-                      ) : null}
-                      {course.title}
-                    </h3>
-                    <p className="text-sm text-[#718096]">
-                      {course.category ? formatCategory(course.category) : 'General'}
-                    </p>
-                    <DeadlineMeta deadline={course.deadline} />
+                  <div className="flex flex-col items-end gap-2 max-md:w-full max-md:items-start">
+                    {isCancelled && <CancelledCourseBadge />}
+                    <button
+                      disabled={isCancelled}
+                      title={isCancelled ? ARCHIVED_COURSE_LEARNER_MESSAGE : undefined}
+                      className={[
+                        'min-w-[120px] rounded-md px-5 py-2.5 text-center text-sm font-semibold transition-colors max-md:w-full',
+                        isCancelled
+                          ? 'cursor-not-allowed bg-[#e2e8f0] text-text-secondary'
+                          : 'bg-[#4730f7] text-white hover:bg-[#3720e3]',
+                      ].join(' ')}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleViewResultClick(course.id);
+                      }}
+                    >
+                      View Result
+                    </button>
                   </div>
                 </div>
-                <div className="flex flex-col items-end gap-1 max-md:w-full">
-                  <button
-                    className="min-w-[120px] rounded-md bg-[#4730f7] px-5 py-2.5 text-center text-sm font-semibold text-white transition-colors hover:bg-[#3720e3] max-md:w-full"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleViewResultClick(course.id);
-                    }}
-                  >
-                    View Result
-                  </button>
-                </div>
-              </div>
-            ))
+              );
+            })
           ) : (
             <EmptyTableState message="No completed courses yet." />
           )}

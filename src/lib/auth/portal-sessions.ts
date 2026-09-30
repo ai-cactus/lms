@@ -16,6 +16,25 @@ export interface PortalSessions {
   worker: Session | null;
 }
 
+/** Which portal (auth instance) a caller belongs to — NOT a DB role. */
+export type PortalRealm = 'admin' | 'worker';
+
+export function isPortalRealm(value: unknown): value is PortalRealm {
+  return value === 'admin' || value === 'worker';
+}
+
+/**
+ * The session of exactly one portal, for self-service writes whose caller
+ * states which portal it belongs to. One browser can hold both portals'
+ * sessions for two DIFFERENT accounts, so preferring one when both exist (or
+ * falling back to the other when the named one is absent) can write to the
+ * wrong account. There is deliberately no fallback here.
+ */
+export async function getRealmSession(realm: PortalRealm): Promise<Session | null> {
+  const session = realm === 'admin' ? await adminAuth() : await workerAuth();
+  return session ?? null;
+}
+
 /**
  * Reads both portal sessions, skipping the `auth()` call for a portal whose
  * session cookie isn't on the request.

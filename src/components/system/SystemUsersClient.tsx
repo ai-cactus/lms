@@ -5,7 +5,11 @@ import { isAdminRole, isWorkerRole } from '@/lib/rbac/role-utils';
 import { getRoles } from '@/lib/rbac/permissions';
 import { Eye, Trash2 } from 'lucide-react';
 import { getAllUsers, getUserDeletePreview } from '@/app/actions/system-admin';
-import type { SystemUserRow, DeletePreview } from '@/app/actions/system-admin';
+import type {
+  SystemUserRow,
+  DeletePreview,
+  SystemUserStatusFilter,
+} from '@/app/actions/system-admin';
 import DeleteUserModal from './DeleteUserModal';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -20,6 +24,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { logger } from '@/lib/logger';
+import { getUserDisplayName, getUserInitials } from '@/lib/user-display';
 
 interface SystemUsersClientProps {
   initialUsers: SystemUserRow[];
@@ -43,6 +48,7 @@ export default function SystemUsersClient({
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
   const [orgFilter, setOrgFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState<SystemUserStatusFilter>('active');
   const [loading, setLoading] = useState(false);
 
   const [deletePreview, setDeletePreview] = useState<DeletePreview | null>(null);
@@ -57,6 +63,7 @@ export default function SystemUsersClient({
         search,
         roleFilter,
         orgFilter,
+        statusFilter,
       });
       setUsers(result.users);
       setTotal(result.total);
@@ -66,7 +73,7 @@ export default function SystemUsersClient({
     } finally {
       setLoading(false);
     }
-  }, [page, search, roleFilter, orgFilter]);
+  }, [page, search, roleFilter, orgFilter, statusFilter]);
 
   useEffect(() => {
     fetchUsers();
@@ -96,19 +103,11 @@ export default function SystemUsersClient({
   const workerCount = users.filter((u) => isWorkerRole(u.role)).length;
 
   function getInitials(user: SystemUserRow): string {
-    if (user.profile?.fullName) {
-      return user.profile.fullName
-        .split(' ')
-        .map((n) => n[0])
-        .join('')
-        .toUpperCase()
-        .slice(0, 2);
-    }
-    return user.email.slice(0, 2).toUpperCase();
+    return getUserInitials(user.profile, user.email);
   }
 
   function getDisplayName(user: SystemUserRow): string {
-    return user.profile?.fullName || user.email.split('@')[0];
+    return getUserDisplayName(user.profile, user.email);
   }
 
   function formatDate(date: Date): string {
@@ -188,6 +187,19 @@ export default function SystemUsersClient({
             </option>
           ))}
         </select>
+        <select
+          aria-label="Account status"
+          value={statusFilter}
+          onChange={(e) => {
+            setStatusFilter(e.target.value as SystemUserStatusFilter);
+            setPage(1);
+          }}
+          className="h-11 rounded-[10px] border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+        >
+          <option value="active">Active users</option>
+          <option value="deleted">Deleted users</option>
+          <option value="all">All users</option>
+        </select>
       </form>
 
       <div className="rounded-xl border border-border bg-background">
@@ -222,8 +234,15 @@ export default function SystemUsersClient({
                           {getInitials(user)}
                         </div>
                         <div className="min-w-0">
-                          <div className="truncate font-medium text-foreground">
-                            {getDisplayName(user)}
+                          <div className="flex items-center gap-2">
+                            <span className="truncate font-medium text-foreground">
+                              {getDisplayName(user)}
+                            </span>
+                            {user.deletedAt && (
+                              <span className="inline-flex shrink-0 rounded-full bg-error/10 px-2 py-0.5 text-xs font-semibold text-error">
+                                Deleted
+                              </span>
+                            )}
                           </div>
                           <div className="truncate text-xs text-text-secondary">{user.email}</div>
                           <span className="mt-0.5 block text-xs capitalize text-text-secondary md:hidden">
@@ -262,13 +281,17 @@ export default function SystemUsersClient({
                             icon: <Eye className="size-4" />,
                             href: `/system/users/${user.id}`,
                           },
-                          {
-                            label: 'Delete',
-                            icon: <Trash2 className="size-4" />,
-                            variant: 'destructive',
-                            disabled: deleteLoading,
-                            onSelect: () => handleDeleteClick(user.id),
-                          },
+                          ...(user.deletedAt
+                            ? []
+                            : [
+                                {
+                                  label: 'Delete',
+                                  icon: <Trash2 className="size-4" />,
+                                  variant: 'destructive' as const,
+                                  disabled: deleteLoading,
+                                  onSelect: () => handleDeleteClick(user.id),
+                                },
+                              ]),
                         ]}
                       />
                     </TableCell>

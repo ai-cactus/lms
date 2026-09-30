@@ -22,11 +22,13 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { prismaMock, mockAdminAuth } = vi.hoisted(() => ({
+const { prismaMock, mockAdminAuth, mockNotifyLearnersCourseCancelled } = vi.hoisted(() => ({
   prismaMock: {
     course: { findUnique: vi.fn(), update: vi.fn(), delete: vi.fn() },
+    organizationUser: { findUnique: vi.fn() },
   },
   mockAdminAuth: vi.fn(),
+  mockNotifyLearnersCourseCancelled: vi.fn(),
 }));
 
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock, default: prismaMock }));
@@ -38,6 +40,9 @@ vi.mock('@/lib/logger', () => ({
   maskEmail: (e: string) => e,
 }));
 vi.mock('@/lib/notifications/create', () => ({ notifyOrganizationAdmins: vi.fn() }));
+vi.mock('@/lib/course/notify-archived', () => ({
+  notifyLearnersCourseCancelled: mockNotifyLearnersCourseCancelled,
+}));
 
 import { deleteCourse } from './course';
 
@@ -53,6 +58,7 @@ function session(role: string, organizationUserId = 'ou-caller') {
 /** Authored by SOMEONE ELSE in the caller's org — the reported scenario. */
 const colleaguesCourse = {
   id: 'course-1',
+  title: 'Infection Control',
   isGlobal: false,
   organizationId: ORG,
 };
@@ -62,6 +68,7 @@ beforeEach(() => {
   mockAdminAuth.mockResolvedValue(session('admin'));
   prismaMock.course.findUnique.mockResolvedValue(colleaguesCourse);
   prismaMock.course.update.mockResolvedValue({});
+  mockNotifyLearnersCourseCancelled.mockResolvedValue({ notifiedCount: 0 });
 });
 
 describe('deleteCourse — refusals are returned, never thrown', () => {
@@ -128,6 +135,9 @@ describe('deleteCourse — scoped to the organisation, not the author', () => {
     // The reported case: the caller did not author it, and previously this
     // refused with a thrown "Course not found" → React error #441.
     mockAdminAuth.mockResolvedValue(session('admin', 'ou-someone-else'));
+    prismaMock.organizationUser.findUnique.mockResolvedValue({
+      user: { fullName: '  Sam Colleague ' },
+    });
 
     const result = await deleteCourse('course-1');
 
@@ -137,8 +147,13 @@ describe('deleteCourse — scoped to the organisation, not the author', () => {
       data: {
         archivedAt: expect.any(Date),
         archivedByOrgUserId: 'ou-someone-else',
+        // BUG-25: the archiver FK is SetNull, so the name is snapshotted with it.
+        archivedByName: 'Sam Colleague',
       },
     });
+    expect(prismaMock.organizationUser.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'ou-someone-else' } }),
+    );
     // Q24: the row is RETAINED. A hard delete here would destroy the course,
     // its enrollments, its certificates and its stored video.
     expect(prismaMock.course.delete).not.toHaveBeenCalled();
@@ -174,4 +189,47 @@ describe('deleteCourse — scoped to the organisation, not the author', () => {
       expect(prismaMock.course.delete).not.toHaveBeenCalled();
     },
   );
+});
+
+/**
+ * Founder Q-05 (2026-09-23): archiving is never blocked by live enrolments, but
+ * the learners who still had something to do MUST be told the course is
+ * cancelled — every action they had left is refused from this moment on.
+ */
+describe('deleteCourse — active learners are told the course is cancelled (Q-05)', () => {
+  it('emits the cancellation notice, naming the course that was archived', async () => {
+    const result = await deleteCourse('course-1');
+
+    expect(result).toEqual({ success: true });
+    expect(mockNotifyLearnersCourseCancelled).toHaveBeenCalledWith({
+      id: 'course-1',
+      title: 'Infection Control',
+    });
+    // Ordered: the notice tells learners the course IS cancelled, so it must not
+    // go out ahead of the write that cancels it.
+    expect(prismaMock.course.update.mock.invocationCallOrder[0]).toBeLessThan(
+      mockNotifyLearnersCourseCancelled.mock.invocationCallOrder[0],
+    );
+  });
+
+  it.each([
+    [
+      'refused for lack of permission',
+      () => mockAdminAuth.mockResolvedValue(session('supervisor')),
+    ],
+    [
+      'refused as another organisation’s course',
+      () =>
+        prismaMock.course.findUnique.mockResolvedValue({
+          ...colleaguesCourse,
+          organizationId: OTHER_ORG,
+        }),
+    ],
+  ])('sends no notice when the archive was %s', async (_label, arrange) => {
+    arrange();
+
+    await deleteCourse('course-1');
+
+    expect(mockNotifyLearnersCourseCancelled).not.toHaveBeenCalled();
+  });
 });

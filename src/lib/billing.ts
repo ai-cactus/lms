@@ -58,6 +58,10 @@ export function hasPendingPause(subscription: BillingSubscriptionLike | null | u
 export const BILLING_GATE_ASSIGN_MESSAGE =
   'Your organization needs an active subscription to assign courses.';
 
+/** What a learner is told when {@link hasActiveBilling} stops their training. */
+export const TRAINING_ACCESS_PAUSED_MESSAGE =
+  'Your organization’s training access is paused. Please contact your administrator.';
+
 /** The longest a subscription may stay paused before a continue/cancel decision. */
 export const MAX_PAUSE_MONTHS = 3;
 

@@ -87,7 +87,7 @@ export default function MyProfileSection({ profile, organizationName }: MyProfil
     payload.append('file', file);
 
     try {
-      const result = await uploadAvatar(payload);
+      const result = await uploadAvatar('admin', payload);
       if (result.success && result.url) {
         setAvatarUrl(result.url);
       } else {
@@ -106,10 +106,12 @@ export default function MyProfileSection({ profile, organizationName }: MyProfil
     setMessage(null);
 
     try {
-      const result = await updateProfile({
+      const result = await updateProfile('admin', {
         first_name: form.first_name,
         last_name: form.last_name,
-        avatarUrl: avatarUrl || undefined,
+        // Only a changed photo is sent, and a removed one as an explicit null —
+        // `undefined` means "leave unchanged", so it can never express a clear.
+        avatarUrl: avatarUrl !== (profile.avatarUrl ?? null) ? avatarUrl : undefined,
       });
 
       if (!result.success) throw new Error(result.error);

@@ -35,7 +35,7 @@ services:
     restart: unless-stopped
     logging: *default-logging
     ports:
-      - "5433:5432"
+      - '5433:5432'
     environment:
       # These default to the values used in your local DATABASE_URL in .env
       POSTGRES_DB: ${POSTGRES_DB:-lms}
@@ -45,11 +45,7 @@ services:
       # Data persists locally in a named volume
       - dev-postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-lms}",
-        ]
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-lms}']
       interval: 5s
       timeout: 5s
       retries: 10
@@ -64,7 +60,7 @@ services:
     restart: unless-stopped
     logging: *default-logging
     ports:
-      - "6380:6379"
+      - '6380:6379'
     volumes:
       # AOF persistence
       - dev-redis-data:/data
@@ -83,7 +79,7 @@ services:
     healthcheck:
       test:
         [
-          "CMD-SHELL",
+          'CMD-SHELL',
           'if [ -n "$$REDIS_PASSWORD" ]; then redis-cli -a $$REDIS_PASSWORD ping | grep -q PONG; else redis-cli ping | grep -q PONG; fi',
         ]
       interval: 5s
@@ -96,13 +92,16 @@ services:
   # ── MinIO (GCS fallback / local object storage) ───────────────────────────────
   minio:
     container_name: lms-dev-minio
-    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+    # Private mirror in GHCR: MinIO withdrew its public images from Docker Hub and
+    # then from quay.io (TOOL-23). Layers are byte-identical to the upstream
+    # release; pulling needs `docker login ghcr.io` with a token holding read:packages.
+    image: ghcr.io/ai-cactus/minio:RELEASE.2025-04-22T22-12-26Z
     restart: unless-stopped
     logging: *default-logging
     command: server /data --console-address ":9001"
     ports:
-      - "9005:9000" # S3-compatible API  → MINIO_ENDPOINT=localhost, MINIO_PORT=9000
-      - "9006:9001" # Browser console    → http://localhost:9001
+      - '9005:9000' # S3-compatible API  → MINIO_ENDPOINT=localhost, MINIO_PORT=9005
+      - '9006:9001' # Browser console    → http://localhost:9006
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-lms_minio_dev}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-lms_minio_secret_dev}
@@ -111,8 +110,8 @@ services:
     healthcheck:
       test:
         [
-          "CMD-SHELL",
-          "mc ready local 2>/dev/null || curl -sf http://localhost:9000/minio/health/live",
+          'CMD-SHELL',
+          'mc ready local 2>/dev/null || curl -sf http://localhost:9000/minio/health/live',
         ]
       interval: 10s
       timeout: 5s

@@ -64,8 +64,10 @@ export default async function SettingsPageRoute() {
     categoryPreferences,
   ] = await Promise.all([
     // Admin-tier team members (owner + managers) shown on Users & Permissions.
+    // Active only: a removed or deleted (Q-23) manager keeps a deactivated
+    // membership row, and must not be listed as a current team member.
     prisma.organizationUser.findMany({
-      where: { organizationId, role: adminRoleFilter },
+      where: { organizationId, role: adminRoleFilter, active: true },
       select: {
         id: true,
         role: true,

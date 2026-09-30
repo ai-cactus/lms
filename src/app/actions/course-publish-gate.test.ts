@@ -16,6 +16,9 @@ vi.mock('@/lib/prisma', () => {
       findUnique: mockCourseFindUnique,
       update: mockCourseUpdate,
     },
+    organizationUser: {
+      findUnique: vi.fn().mockResolvedValue({ user: { fullName: 'Rae Reviewer' } }),
+    },
   };
   return { prisma, default: prisma };
 });
@@ -141,6 +144,8 @@ describe('publishCourse publish-review gate', () => {
     mockCourseFindUnique.mockResolvedValue({
       id: 'course-1',
       createdByOrgUserId: ORG_USER_ID,
+      organizationId: 'org-1',
+      isGlobal: false,
       reviewRequired: true,
       qualityWarnings: ['No slides were generated for this course.'],
     });
@@ -159,6 +164,8 @@ describe('publishCourse publish-review gate', () => {
     mockCourseFindUnique.mockResolvedValue({
       id: 'course-1',
       createdByOrgUserId: ORG_USER_ID,
+      organizationId: 'org-1',
+      isGlobal: false,
       reviewRequired: true,
       qualityWarnings: ['No slides were generated for this course.'],
     });
@@ -177,6 +184,8 @@ describe('publishCourse publish-review gate', () => {
     mockCourseFindUnique.mockResolvedValue({
       id: 'course-3',
       createdByOrgUserId: ORG_USER_ID,
+      organizationId: 'org-1',
+      isGlobal: false,
       reviewRequired: false,
       qualityWarnings: [],
     });
@@ -187,6 +196,73 @@ describe('publishCourse publish-review gate', () => {
     const updateArgs = mockCourseUpdate.mock.calls[0][0];
     expect(updateArgs.data.status).toBe('published');
     expect(updateArgs.data.reviewRequired).toBeUndefined();
+  });
+
+  // BUG-51: the success arm used to carry no `success` field, so a caller
+  // testing `!result.success` read every successful publish as a refusal.
+  it('reports a successful publish as success: true', async () => {
+    mockCourseFindUnique.mockResolvedValue({
+      id: 'course-3',
+      createdByOrgUserId: ORG_USER_ID,
+      organizationId: 'org-1',
+      isGlobal: false,
+      reviewRequired: false,
+      qualityWarnings: [],
+    });
+    mockCourseUpdate.mockResolvedValue({ id: 'course-3', status: 'published' });
+
+    await expect(publishCourse('course-3')).resolves.toMatchObject({
+      success: true,
+      id: 'course-3',
+      status: 'published',
+      assignmentFailed: false,
+    });
+  });
+});
+
+/**
+ * BUG-11: publishing is authorised by ORGANISATION ownership, as assigning a
+ * draft (which also publishes it) already was. The refusal is RETURNED — both
+ * callers read `success: false`, and a throw reaches them as React #441.
+ */
+describe('publishCourse — organisation ownership', () => {
+  const colleagueDraft = {
+    id: 'course-colleague',
+    createdByOrgUserId: 'ou-colleague',
+    organizationId: 'org-1',
+    isGlobal: false,
+    reviewRequired: false,
+    qualityWarnings: [],
+  };
+
+  it('publishes a colleague’s draft and records the CALLER as reviewer', async () => {
+    mockCourseFindUnique.mockResolvedValue(colleagueDraft);
+    mockCourseUpdate.mockResolvedValue({ id: 'course-colleague', status: 'published' });
+
+    const result = await publishCourse('course-colleague');
+
+    expect(result).toMatchObject({ id: 'course-colleague', status: 'published' });
+    expect(mockCourseUpdate.mock.calls[0][0].data.approvedByOrgUserId).toBe(ORG_USER_ID);
+  });
+
+  it.each([
+    ['owned by another organisation', { organizationId: 'org-2' }],
+    [
+      'authored by the caller but owned by another organisation',
+      {
+        organizationId: 'org-2',
+        createdByOrgUserId: ORG_USER_ID,
+      },
+    ],
+    ['a global catalogue course', { isGlobal: true }],
+  ])('refuses a course %s, by return', async (_label, overrides) => {
+    mockCourseFindUnique.mockResolvedValue({ ...colleagueDraft, ...overrides });
+
+    await expect(publishCourse('course-colleague')).resolves.toMatchObject({
+      success: false,
+      error: 'Course not found.',
+    });
+    expect(mockCourseUpdate).not.toHaveBeenCalled();
   });
 });
 
@@ -206,6 +282,8 @@ describe('D8 — reviewer attribution on publish', () => {
     expect(result.reviewRequired).toBe(false);
     const createArgs = mockCourseCreate.mock.calls[0][0];
     expect(createArgs.data.approvedByOrgUserId).toBe(ORG_USER_ID);
+    // BUG-25: the approver FK is SetNull, so the name is snapshotted with it.
+    expect(createArgs.data.approvedByName).toBe('Rae Reviewer');
     expect(createArgs.data.approvedAt).toBeInstanceOf(Date);
   });
 
@@ -221,6 +299,7 @@ describe('D8 — reviewer attribution on publish', () => {
     const createArgs = mockCourseCreate.mock.calls[0][0];
     expect(createArgs.data.status).toBe('draft');
     expect('approvedByOrgUserId' in createArgs.data).toBe(false);
+    expect('approvedByName' in createArgs.data).toBe(false);
     expect('approvedAt' in createArgs.data).toBe(false);
   });
 
@@ -228,6 +307,8 @@ describe('D8 — reviewer attribution on publish', () => {
     mockCourseFindUnique.mockResolvedValue({
       id: 'course-approve-3',
       createdByOrgUserId: ORG_USER_ID,
+      organizationId: 'org-1',
+      isGlobal: false,
       reviewRequired: false,
       qualityWarnings: [],
     });
@@ -237,6 +318,7 @@ describe('D8 — reviewer attribution on publish', () => {
 
     const updateArgs = mockCourseUpdate.mock.calls[0][0];
     expect(updateArgs.data.approvedByOrgUserId).toBe(ORG_USER_ID);
+    expect(updateArgs.data.approvedByName).toBe('Rae Reviewer');
     expect(updateArgs.data.approvedAt).toBeInstanceOf(Date);
   });
 
@@ -244,6 +326,8 @@ describe('D8 — reviewer attribution on publish', () => {
     mockCourseFindUnique.mockResolvedValue({
       id: 'course-approve-4',
       createdByOrgUserId: ORG_USER_ID,
+      organizationId: 'org-1',
+      isGlobal: false,
       reviewRequired: true,
       qualityWarnings: ['No slides were generated for this course.'],
     });
@@ -269,6 +353,8 @@ describe('D8 — reviewer attribution on publish', () => {
     mockCourseFindUnique.mockResolvedValue({
       id: 'course-approve-5',
       createdByOrgUserId: DIFFERENT_REVIEWER,
+      organizationId: 'org-1',
+      isGlobal: false,
       reviewRequired: false,
       qualityWarnings: [],
     });
@@ -306,6 +392,8 @@ describe('updateCourse — never touches reviewer attribution', () => {
     mockCourseFindUnique.mockResolvedValue({
       id: 'course-approve-6',
       createdByOrgUserId: ORG_USER_ID,
+      organizationId: 'org-1',
+      isGlobal: false,
     });
     mockCourseUpdate.mockResolvedValue({ id: 'course-approve-6', title: 'New title' });
 
@@ -322,6 +410,8 @@ describe('updateCourse — never touches reviewer attribution', () => {
     mockCourseFindUnique.mockResolvedValue({
       id: 'course-approve-6',
       createdByOrgUserId: ORG_USER_ID,
+      organizationId: 'org-1',
+      isGlobal: false,
     });
     mockCourseUpdate.mockResolvedValue({ id: 'course-approve-6' });
     const payload = {

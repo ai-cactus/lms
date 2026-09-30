@@ -34,6 +34,12 @@ import { invalidateRevalidationCache } from '@/lib/auth/session-revalidation-cac
 import type { ActivityReportEnrollment } from '@/lib/pdf-reports';
 import { captureServer } from '@/lib/analytics/server';
 import { buildCourseThumbnailUrl } from '@/lib/video/thumbnail';
+import { parseStoredOptionExplanations } from '@/lib/quiz/options';
+import {
+  DELETED_EMAIL_REFUSAL,
+  findDeletedIdentityEmails,
+  logDeletedEmailRefusal,
+} from '@/lib/auth/deleted-email-guard';
 
 // Caller-facing copy for each role-change denial. `target_not_reachable` and
 // `role_not_grantable` are only reachable when an owner is involved (owner is in
@@ -1093,9 +1099,11 @@ export async function getEnrollmentQuizResult(enrollmentId: string) {
         typeof opt === 'string' ? opt : (opt as { text: string }).text || String(opt),
       );
 
+      const optionExplanations = parseStoredOptionExplanations(q.incorrectOptionExplanations);
       const formattedOptions = optionTexts.map((text, idx) => ({
         id: String.fromCharCode(65 + idx),
         text: text,
+        explanation: optionExplanations?.[String(idx)],
       }));
 
       const selectedText = userAnswerObj?.selectedAnswer || '';
@@ -1360,6 +1368,14 @@ export async function resendInvite(
 
     if (invite.status === 'accepted') {
       return { success: false, error: 'This invite has already been accepted.' };
+    }
+
+    // Q-31: resending would revive an invite the user delete expired, for an
+    // account that can never accept it.
+    const deletedEmails = await findDeletedIdentityEmails([invite.email]);
+    if (deletedEmails.size > 0) {
+      logDeletedEmailRefusal('resendInvite', invite.email, session.user.organizationId);
+      return { success: false, error: DELETED_EMAIL_REFUSAL };
     }
 
     // Regenerate the token + expiry so any previously-shared (now stale) link is

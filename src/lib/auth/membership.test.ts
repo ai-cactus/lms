@@ -32,6 +32,7 @@ import {
   createMembership,
   recordMembershipLogin,
 } from './membership';
+import { DeletedIdentityError } from './deleted-identity';
 
 function membershipRow(
   overrides: Partial<{ id: string; role: string; organizationId: string }> = {},
@@ -264,6 +265,7 @@ describe('createMembership', () => {
 
   it('creates the OrganizationUser and its first OrganizationUserFacility row atomically', async () => {
     const txMock = {
+      user: { findUnique: vi.fn().mockResolvedValue({ deletedAt: null }) },
       organizationUser: { upsert: vi.fn().mockResolvedValue(membershipRow()) },
       organizationUserFacility: { upsert: vi.fn().mockResolvedValue({}) },
     };
@@ -303,6 +305,7 @@ describe('createMembership', () => {
 
   it('reactivates a deactivated membership on re-join instead of creating a duplicate row', async () => {
     const txMock = {
+      user: { findUnique: vi.fn().mockResolvedValue({ deletedAt: null }) },
       organizationUser: { upsert: vi.fn().mockResolvedValue(membershipRow({ role: 'owner' })) },
       organizationUserFacility: { upsert: vi.fn().mockResolvedValue({}) },
     };
@@ -321,6 +324,28 @@ describe('createMembership', () => {
     expect(upsertCall.update).toEqual(
       expect.objectContaining({ role: 'owner', active: true, deactivatedAt: null }),
     );
+  });
+
+  it('refuses to attach or reactivate a deleted identity (Q-23) and writes nothing', async () => {
+    const txMock = {
+      user: { findUnique: vi.fn().mockResolvedValue({ deletedAt: new Date('2026-09-28') }) },
+      organizationUser: { upsert: vi.fn() },
+      organizationUserFacility: { upsert: vi.fn() },
+    };
+    prismaMock.$transaction.mockImplementation(async (cb: (tx: typeof txMock) => unknown) =>
+      cb(txMock),
+    );
+
+    await expect(
+      createMembership({
+        userId: 'user-1',
+        organizationId: 'org-1',
+        facilityId: 'facility-1',
+        role: 'nurse',
+      }),
+    ).rejects.toBeInstanceOf(DeletedIdentityError);
+    expect(txMock.organizationUser.upsert).not.toHaveBeenCalled();
+    expect(txMock.organizationUserFacility.upsert).not.toHaveBeenCalled();
   });
 });
 

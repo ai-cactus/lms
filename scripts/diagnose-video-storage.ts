@@ -34,6 +34,7 @@ import path from 'node:path';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@/generated/prisma/client';
 import { Storage } from '@google-cloud/storage';
+import { logger } from '@/lib/logger';
 
 /** Minimal .env loader — fills process.env WITHOUT overwriting real env vars. */
 function loadEnvFile(file: string): boolean {
@@ -102,8 +103,10 @@ async function main(): Promise<void> {
   try {
     const { storage, bucket } = makeGcs();
 
-    console.log(`\nReconciling prefix "${SWEEP_PREFIX}" against the database.`);
-    console.log(`GCP_BUCKET_NAME = ${bucket}\n`);
+    logger.info({
+      msg: `[diagnose-video-storage] Reconciling prefix "${SWEEP_PREFIX}" against the database.`,
+    });
+    logger.info({ msg: `[diagnose-video-storage] GCP_BUCKET_NAME = ${bucket}` });
 
     // 1. Everything the DB references (the exact three columns the sweeper trusts).
     const [lessonVideos, previewVideos, artifacts] = await Promise.all([
@@ -136,38 +139,57 @@ async function main(): Promise<void> {
     const matched = gcsReferenced.filter((uri) => present.has(uri));
     const orphans = [...present].filter((uri) => !referenced.has(uri));
 
-    console.log('── Referenced-set health ──────────────────────────────────');
-    console.log(`  DB URIs under prefix:     ${referencedInPrefix.length}`);
-    console.log(`  ...present in storage:    ${matched.length}   (these play)`);
-    console.log(`  ...MISSING from storage:  ${missing.length}   (these are broken)`);
-    console.log('');
-    console.log('── Bucket vs DB ───────────────────────────────────────────');
-    console.log(`  Objects in storage:       ${present.size}`);
-    console.log(`  ...ORPHAN (unreferenced): ${orphans.length}   (sweeper deletion candidates)`);
-    console.log('');
+    logger.info({
+      msg: '[diagnose-video-storage] ── Referenced-set health ──────────────────────────────────',
+    });
+    logger.info({
+      msg: `[diagnose-video-storage] DB URIs under prefix:     ${referencedInPrefix.length}`,
+    });
+    logger.info({
+      msg: `[diagnose-video-storage] ...present in storage:    ${matched.length}   (these play)`,
+    });
+    logger.info({
+      msg: `[diagnose-video-storage] ...MISSING from storage:  ${missing.length}   (these are broken)`,
+    });
+    logger.info({
+      msg: '[diagnose-video-storage] ── Bucket vs DB ───────────────────────────────────────────',
+    });
+    logger.info({ msg: `[diagnose-video-storage] Objects in storage:       ${present.size}` });
+    logger.info({
+      msg: `[diagnose-video-storage] ...ORPHAN (unreferenced): ${orphans.length}   (sweeper deletion candidates)`,
+    });
 
     if (present.size > 0 && matched.length === 0) {
-      console.log('  ⚠  DANGER: objects exist but ZERO are referenced. A sweep in this');
-      console.log('     state would delete the entire prefix. Do NOT enable the sweeper.');
-      console.log('');
+      logger.info({
+        msg: '[diagnose-video-storage] ⚠  DANGER: objects exist but ZERO are referenced. A sweep in this',
+      });
+      logger.info({
+        msg: '[diagnose-video-storage] state would delete the entire prefix. Do NOT enable the sweeper.',
+      });
     }
 
     if (missing.length > 0) {
-      console.log(`── ${missing.length} MISSING object(s) — DB points at storage that is gone ──`);
-      for (const uri of sample(missing)) console.log(`  ✗ ${uri}`);
-      if (missing.length > 10) console.log(`  … and ${missing.length - 10} more`);
-      console.log('');
+      logger.info({
+        msg: `[diagnose-video-storage] ── ${missing.length} MISSING object(s) — DB points at storage that is gone ──`,
+      });
+      for (const uri of sample(missing)) logger.info({ msg: `[diagnose-video-storage] ✗ ${uri}` });
+      if (missing.length > 10)
+        logger.info({ msg: `[diagnose-video-storage] … and ${missing.length - 10} more` });
     }
 
     if (orphans.length > 0) {
-      console.log(`── ${orphans.length} ORPHAN object(s) — present but unreferenced ──`);
-      for (const uri of sample(orphans)) console.log(`  • ${uri}`);
-      if (orphans.length > 10) console.log(`  … and ${orphans.length - 10} more`);
-      console.log('');
+      logger.info({
+        msg: `[diagnose-video-storage] ── ${orphans.length} ORPHAN object(s) — present but unreferenced ──`,
+      });
+      for (const uri of sample(orphans)) logger.info({ msg: `[diagnose-video-storage] • ${uri}` });
+      if (orphans.length > 10)
+        logger.info({ msg: `[diagnose-video-storage] … and ${orphans.length - 10} more` });
     }
 
     if (missing.length === 0 && present.size > 0) {
-      console.log('✓ Every referenced video is present in storage. Playback should be healthy.\n');
+      logger.info({
+        msg: '[diagnose-video-storage] ✓ Every referenced video is present in storage. Playback should be healthy.',
+      });
     }
   } finally {
     await prisma.$disconnect();
@@ -175,6 +197,9 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  console.error('[diagnose-video-storage] Fatal:', err instanceof Error ? err.message : err);
+  logger.error({
+    msg: '[diagnose-video-storage] Fatal',
+    err,
+  });
   process.exit(1);
 });

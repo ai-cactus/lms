@@ -1,49 +1,38 @@
 /**
- * Facility risk / readiness formulas for the global (all-facilities) dashboard.
+ * Facility risk / readiness formulas and the dashboards' shared windows.
  *
  * Every threshold and every derived percentage lives here, deliberately free of
  * Prisma and React, so a product ruling on "what counts as audit ready" or "when
  * is a facility high-risk" is a one-line change in one file rather than a hunt
  * through queries and components.
  *
- * Terms, windows and formulas follow the Dashboard Metrics Glossary
- * (`multi_facility_notes.pdf`, §0 canonical terms, §0.1 Risk Level, §0.2 Audit
- * Readiness, §0.3 time windows), which is the single source of truth for metric
- * names and definitions.
+ * Metric names and definitions follow the founder's dashboard definitions and
+ * the 2026-09-26 rulings (Dashboard Metrics Glossary for risk/readiness). HOW each
+ * figure is counted lives in `@/lib/dashboard/definitions`; this module owns the
+ * thresholds it reads and the help text that quotes them.
  */
-import type { EnrollmentStatus } from '@/generated/prisma/enums';
-
-/**
- * In-flight enrollment statuses — assigned but not yet resolved. Mirrors the
- * partial-unique "active enrollment" set on `Enrollment` (see
- * `prisma/enrollment.prisma`) so "active learner" here means the same thing the
- * database means.
- */
-export const ACTIVE_ENROLLMENT_STATUSES: readonly EnrollmentStatus[] = [
-  'enrolled',
-  'assigned',
-  'in_progress',
-  'lessons_complete',
-];
-
-/**
- * Statuses that take an enrollment out of the outstanding population. Matches
- * the reminder status tracker's terminal set, so "overdue" on the dashboard and
- * "overdue" on the Status Tracker page can never disagree.
- */
-export const COMPLETED_ENROLLMENT_STATUSES: readonly EnrollmentStatus[] = ['completed', 'attested'];
 
 /** Look-back/look-ahead window shared by every trend chip and rolling metric. */
 export const TREND_WINDOW_DAYS = 30;
 
-/** Glossary §0.3: a membership is "dormant" after this many days without a login. */
-export const DORMANT_STAFF_DAYS = 30;
+/** Dormant rule R1: a member who joined this long ago and has not logged in since. */
+export const DORMANT_LOGIN_DAYS = 14;
 
-/** Glossary §0.3: how far ahead a renewal-cycle deadline counts as expiring. */
+/** Dormant rule R2: an assignment still not started this long after it opened. */
+export const DORMANT_UNSTARTED_DAYS = 7;
+
+/** Dormant rule R3: a started, unfinished enrolment with no engagement for this long. */
+export const DORMANT_STALLED_DAYS = 14;
+
+/** How far ahead a certificate's renewal-cycle expiry counts as expiring. */
 export const EXPIRING_CREDENTIALS_WINDOW_DAYS = 30;
 
-/** Glossary §0.3: how far ahead an incomplete deadline counts as approaching. */
-export const APPROACHING_DEADLINE_WINDOW_DAYS = 14;
+/**
+ * How far ahead an unfinished deadline counts as "due soon" — ONE window for the
+ * Status Tracker's "at risk" rows and the Global View's "Approaching Deadlines",
+ * which previously disagreed (7 vs 14 days, BUG-35).
+ */
+export const DUE_SOON_WINDOW_DAYS = 14;
 
 /** Glossary §0.1: past this many days overdue, a training escalates to High risk. */
 export const RISK_OVERDUE_GRACE_DAYS = 14;
@@ -68,7 +57,7 @@ export type AuditReadinessLevel = 'audit_ready' | 'needs_attention' | 'critical'
 export interface FacilityComplianceSignals {
   /** Overdue trainings more than {@link RISK_OVERDUE_GRACE_DAYS} days past due. */
   overdueBeyondGrace: number;
-  /** Overdue trainings 1–{@link RISK_OVERDUE_GRACE_DAYS} days past due. */
+  /** Overdue trainings at most {@link RISK_OVERDUE_GRACE_DAYS} days past due (minutes count). */
   overdueWithinGrace: number;
   /**
    * Training completion for the facility, or `null` when it has nothing
@@ -76,9 +65,9 @@ export interface FacilityComplianceSignals {
    * completion conditions are skipped rather than scored as 0%.
    */
   completionPercent: number | null;
-  /** Credentials already past their expiration date. */
+  /** Certificates past their renewal-cycle expiry and not renewed since. */
   expiredCredentials: number;
-  /** Credentials expiring within {@link EXPIRING_CREDENTIALS_WINDOW_DAYS} days. */
+  /** Certificates expiring within {@link EXPIRING_CREDENTIALS_WINDOW_DAYS} days. */
   expiringCredentials: number;
 }
 
@@ -169,22 +158,38 @@ export function computeTrendPercent(current: number, previous: number): number |
 }
 
 /**
- * Glossary definitions surfaced in-product as help text, so a KPI card and the
- * table column showing the same metric quote the same sentence.
+ * Definitions surfaced in-product as help text, so a KPI card and the table
+ * column showing the same metric quote the same sentence. Each one describes
+ * exactly what `@/lib/dashboard/definitions` counts — change both together.
  */
 export const METRIC_DEFINITIONS = {
+  totalFacilities: 'Every facility in your organisation that you can view.',
+  totalStaff:
+    'Active staff accounts: every active worker, plus active managers and owners who have been assigned training on a live course.',
   activeLearners:
-    'Staff who currently have at least one course in progress. Person-level count — one staff member with 3 in-progress courses counts once.',
+    'Staff with at least one assigned course they have not yet finished. Person-level count — one staff member with 3 unfinished courses counts once.',
+  ongoingCourses:
+    'Published courses with at least one unfinished enrolment by active staff. Course-level count — each course counts once.',
+  firstTimePassRate:
+    "Of each learner's first submitted attempt at each quiz, the share that met the quiz's passing score. Renewals count as first attempts; retakes do not.",
   overdueTrainings:
-    'Assigned trainings past their due date with no completion recorded. Course-level count.',
-  approachingDeadlines: `Assigned trainings not yet complete, due within the next ${APPROACHING_DEADLINE_WINDOW_DAYS} days.`,
-  dormantStaff: `Staff with active employment status but no login or activity in the last ${DORMANT_STAFF_DAYS} days.`,
-  expiringCredentials: `Staff credentials on file expiring within the next ${EXPIRING_CREDENTIALS_WINDOW_DAYS} days.`,
-  staffCount: 'Active/employed staff at this facility.',
-  activeTrainings: 'Course assignments currently in progress at this facility. Course-level count.',
-  trainingCompletion: 'Completed assignments divided by total assignments at this facility.',
+    'Individual assignments past their due date and not yet finished, across active staff. Assignment-level count; a retaken assignment counts once, as its retake.',
+  approachingDeadlines: `Individual assignments not yet finished, due within the next ${DUE_SOON_WINDOW_DAYS} days.`,
+  dormantStaff: `Active staff who have not logged in for ${DORMANT_LOGIN_DAYS} days (after their first ${DORMANT_LOGIN_DAYS} days), have an assignment not started ${DORMANT_UNSTARTED_DAYS} days after it opened, or have a started course with no activity for ${DORMANT_STALLED_DAYS} days. Having no assignments alone is not dormant.`,
+  expiringCredentials: `Certificates of active staff on recurring training whose renewal cycle ends within the next ${EXPIRING_CREDENTIALS_WINDOW_DAYS} days and that have not already been renewed.`,
+  staffCount: 'Active staff currently assigned to this facility.',
+  activeTrainings:
+    'Assignments at this facility not yet finished. Assignment-level count; a retaken assignment counts once, as its retake.',
+  trainingCompletion:
+    'Finished assignments divided by all assignments at this facility. A retaken assignment counts once, as its retake.',
+  totalActiveCourses:
+    'Published courses with at least one unfinished enrolment by staff in this facility.',
+  totalAssignedLearners:
+    'Staff in this facility with at least one assigned course they have not yet finished.',
+  averageGrade:
+    "The mean of each enrolment's grade, where an enrolment's grade is the average of its best submitted score on each quiz. A retaken assignment is graded by its retake.",
   auditReadiness: `Audit Ready only with zero overdue trainings, zero expired credentials and training completion at or above ${AUDIT_READY_MIN_COMPLETION_PERCENT}%.`,
-  riskLevel: `High when a training is over ${RISK_OVERDUE_GRACE_DAYS} days overdue, completion is below ${RISK_HIGH_COMPLETION_PERCENT}% or a credential has expired. Medium when a training is 1–${RISK_OVERDUE_GRACE_DAYS} days overdue, completion is ${RISK_HIGH_COMPLETION_PERCENT}–${RISK_LOW_COMPLETION_PERCENT - 1}% or a credential expires within ${EXPIRING_CREDENTIALS_WINDOW_DAYS} days. Low otherwise.`,
+  riskLevel: `High when a training is more than ${RISK_OVERDUE_GRACE_DAYS} days overdue, completion is below ${RISK_HIGH_COMPLETION_PERCENT}% or a credential has expired. Medium when a training is overdue by up to ${RISK_OVERDUE_GRACE_DAYS} days, completion is ${RISK_HIGH_COMPLETION_PERCENT}–${RISK_LOW_COMPLETION_PERCENT - 1}% or a credential expires within ${EXPIRING_CREDENTIALS_WINDOW_DAYS} days. Low otherwise. Completion is rounded to the nearest whole percent.`,
 } as const;
 
 /** Ordering weight for "most at risk first" — high risk sorts before low. */

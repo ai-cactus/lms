@@ -173,7 +173,7 @@ describe('POST /api/system/video-courses/[courseId]/thumbnail', () => {
       data: { thumbnailStorageUri: `gcs://lms/${key}` },
     });
     expect(mockInvalidateThumbnailMeta).toHaveBeenCalledWith(COURSE_ID);
-    expect(mockRevalidateTag).toHaveBeenCalledWith('video-catalog', 'max');
+    expect(mockRevalidateTag).toHaveBeenCalledWith('video-catalog', { expire: 0 });
     expect(mockRevalidatePath).toHaveBeenCalledWith(`/system/video-courses/${COURSE_ID}/edit`);
     expect(mockDeleteFile).not.toHaveBeenCalled();
     expect(mockLogger.info).toHaveBeenCalled();

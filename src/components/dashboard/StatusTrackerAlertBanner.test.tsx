@@ -23,11 +23,21 @@ describe('StatusTrackerAlertBanner', () => {
     expect(screen.getByRole('alert')).toHaveClass(...DASHBOARD_BANNER_SHELL.split(' '));
   });
 
-  it('pluralises the worker count', () => {
+  // BUG-42: the count is of ASSIGNMENTS and the threshold is per assignment.
+  it('counts overdue assignments past their escalation point, singular and plural', () => {
     const { rerender } = render(<StatusTrackerAlertBanner hardEscalationCount={1} />);
-    expect(screen.getByText(/1 worker has training overdue/)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        '1 overdue assignment has passed its escalation point (7+ days by default) and needs attention.',
+      ),
+    ).toBeInTheDocument();
 
     rerender(<StatusTrackerAlertBanner hardEscalationCount={4} />);
-    expect(screen.getByText(/4 workers have training overdue/)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        '4 overdue assignments have passed their escalation point (7+ days by default) and need attention.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/worker/)).not.toBeInTheDocument();
   });
 });

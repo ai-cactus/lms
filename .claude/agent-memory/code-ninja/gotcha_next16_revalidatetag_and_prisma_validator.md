@@ -1,6 +1,6 @@
 ---
 name: gotcha-next16-revalidatetag-and-prisma-validator
-description: Next 16 revalidateTag needs a 2nd arg; prisma-client has no Prisma.validator (use `satisfies`); Prisma rejects optional scalar lists (`String[]?`) so nullable-array fields need a boolean+list pair.
+description: Next 16 revalidateTag needs a 2nd arg (and 'max' does NOT purge — see [[gotcha-revalidatetag-max-does-not-expire]]); prisma-client has no Prisma.validator (use `satisfies`); Prisma rejects optional scalar lists (`String[]?`) so nullable-array fields need a boolean+list pair.
 metadata:
   type: feedback
 ---
@@ -9,7 +9,7 @@ Version-specific gotchas hit while adding cached reads / typed Prisma selects / 
 
 **1. `revalidateTag` requires a second argument in Next 16.**
 `revalidateTag(tag)` (single-arg) now emits a deprecation warning and TS errors (`Expected 2 arguments`). Signature is `revalidateTag(tag: string, profile: string | { expire?: number })`.
-- **How to apply:** pass `revalidateTag('my-tag', 'max')` to preserve the classic full-purge behavior (`'max'` is what the deprecation message itself recommends). In a Server Action you *may* instead use `updateTag('my-tag')` (single-arg, read-your-own-writes) — but `updateTag` THROWS if called from a route handler (`page.endsWith('/route')`), so `revalidateTag(tag, 'max')` is the safer, context-agnostic choice. `unstable_cache(...)`'s `tags` are still invalidated by `revalidateTag`/`updateTag` (both call the same internal `revalidate([encodeCacheTag(tag)])`). `unstable_cache` itself is still present and valid in Next 16 (see `src/lib/billing-prices.ts`, `src/app/actions/offering.ts`).
+- **How to apply:** `'max'` does NOT preserve the classic full-purge behavior — it marks the entry stale and keeps serving it while revalidating, so the next read can still return the old value. Pass `revalidateTag(tag, { expire: 0 })` when the caller needs the data gone, `'max'` only when stale-while-revalidate is acceptable. In a Server Action `updateTag(tag)` gives immediate expiry plus read-your-own-writes, but it THROWS (E872) from a route handler (`page.endsWith('/route')`), so `{ expire: 0 }` is the context-agnostic choice. Full detail in [[gotcha-revalidatetag-max-does-not-expire]]. `unstable_cache(...)`'s `tags` are still invalidated by `revalidateTag`/`updateTag` (both call the same internal `revalidate([encodeCacheTag(tag)])`). `unstable_cache` itself is still present and valid in Next 16 (see `src/lib/billing-prices.ts`, `src/app/actions/offering.ts`).
 
 **2. The `prisma-client` generator does NOT export `Prisma.validator`.**
 `generated/prisma/internal/prismaNamespace.ts` has no `validator` (nor most legacy `Prisma.*` helpers). So the classic `Prisma.validator<Prisma.XSelect>()({...})` for a reusable, literal-narrowed select is unavailable.

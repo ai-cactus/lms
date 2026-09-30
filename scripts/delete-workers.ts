@@ -1,7 +1,8 @@
 /*
- * delete-workers.ts — hard-deletes every identity holding a worker-category
- * membership, together with their quiz attempts, enrollments and authored
- * courses.
+ * delete-workers.ts — soft-deletes every identity holding an ACTIVE
+ * worker-category membership, through the same shared `softDeleteUser` the
+ * /system console uses (Q-23, RISK-14). Enrollments, quiz attempts,
+ * certificates and authored content are retained; nothing is hard-deleted.
  *
  * Usage:
  *   npx tsx scripts/delete-workers.ts --dry-run   # report only
@@ -12,6 +13,9 @@
  */
 import { prisma } from '@/db/index';
 import { WORKER_ROLES } from '@/lib/rbac/role-utils';
+import { logger, maskEmail } from '@/lib/logger';
+import { rateLimiterRedis } from '@/lib/rate-limit';
+import { softDeleteUser } from '@/lib/system/delete-user';
 
 const DRY_RUN = process.argv.includes('--dry-run');
 
@@ -19,87 +23,69 @@ async function main() {
   const orgs = await prisma.organization.findMany({
     include: {
       organizationUsers: {
-        where: { role: { in: [...WORKER_ROLES] } },
+        where: { role: { in: [...WORKER_ROLES] }, active: true, user: { deletedAt: null } },
         select: { id: true, userId: true, role: true, user: { select: { email: true } } },
       },
     },
   });
 
   for (const org of orgs) {
-    console.log(`\nOrg: ${org.name} (${org.id})`);
-    console.log(`Workers: ${org.organizationUsers.length}`);
-    org.organizationUsers.forEach((m) => console.log(`  - ${m.user.email} (${m.role})`));
+    logger.info({ msg: `[delete-workers] Org: ${org.name} (${org.id})` });
+    logger.info({ msg: `[delete-workers] Workers: ${org.organizationUsers.length}` });
+    org.organizationUsers.forEach((m) =>
+      logger.info({
+        msg: '[delete-workers] - worker',
+        email: maskEmail(m.user.email),
+        role: m.role,
+      }),
+    );
   }
 
-  const allWorkerMemberships = orgs.flatMap((o) => o.organizationUsers);
-  console.log(`\nTotal worker memberships to delete: ${allWorkerMemberships.length}`);
+  // Distinct identities behind those memberships. The soft delete is
+  // identity-wide: it deactivates EVERY membership the person holds, in every
+  // organization — not just the worker-role one found here. For a genuinely
+  // multi-org user that also removes their other, non-worker access.
+  const workerUserIds = [...new Set(orgs.flatMap((o) => o.organizationUsers).map((m) => m.userId))];
+  logger.info({ msg: `[delete-workers] Identities to delete: ${workerUserIds.length}` });
 
-  if (allWorkerMemberships.length === 0) {
-    console.log('No workers found.');
+  if (workerUserIds.length === 0) {
+    logger.info({ msg: '[delete-workers] No workers found.' });
     return;
   }
-
-  // Distinct identities behind those memberships. Deleting the User cascades
-  // EVERY membership it holds, across all orgs — not just the worker-role one
-  // found here. That matches this script's original single-org-per-user
-  // assumption, but for a genuinely multi-org user it would also remove their
-  // other, non-worker memberships.
-  const workerUserIds = [...new Set(allWorkerMemberships.map((m) => m.userId))];
 
   if (DRY_RUN) {
-    const [attempts, enrollments, courses] = await Promise.all([
-      prisma.quizAttempt.count({
-        where: { enrollment: { organizationUser: { userId: { in: workerUserIds } } } },
-      }),
-      prisma.enrollment.count({
-        where: { organizationUser: { userId: { in: workerUserIds } } },
-      }),
-      prisma.course.count({ where: { creator: { userId: { in: workerUserIds } } } }),
-    ]);
-    console.log('\n[DRY RUN] Would delete:');
-    console.log(`  quiz attempts:  ${attempts}`);
-    console.log(`  enrollments:    ${enrollments}`);
-    console.log(`  courses:        ${courses}`);
-    console.log(`  workers:        ${workerUserIds.length}`);
-    console.log('\n[DRY RUN] Nothing was deleted. Re-run without --dry-run to execute.');
+    logger.info({
+      msg: '[delete-workers] [DRY RUN] Nothing was deleted. Re-run without --dry-run to execute.',
+    });
     return;
   }
 
-  console.log('\nDeleting quiz attempts...');
-  const deletedAttempts = await prisma.quizAttempt.deleteMany({
-    where: { enrollment: { organizationUser: { userId: { in: workerUserIds } } } },
-  });
-  console.log(`  Deleted ${deletedAttempts.count} quiz attempts`);
+  let deleted = 0;
+  let refused = 0;
+  for (const userId of workerUserIds) {
+    const result = await softDeleteUser(userId, { actorRole: 'script:delete-workers' });
+    if (result.status === 'deleted') deleted += 1;
+    if (result.status === 'blocked') {
+      // Q-30: this identity was left untouched; the rest of the batch continues.
+      refused += 1;
+      logger.warn({ msg: `[delete-workers] Refused: ${result.message}`, userId });
+      continue;
+    }
+    logger.info({ msg: '[delete-workers] Processed identity', userId, status: result.status });
+  }
 
-  console.log('Deleting enrollments...');
-  const deletedEnrollments = await prisma.enrollment.deleteMany({
-    where: { organizationUser: { userId: { in: workerUserIds } } },
+  logger.info({
+    msg: `[delete-workers] Done: ${deleted} identities soft-deleted, ${refused} refused`,
   });
-  console.log(`  Deleted ${deletedEnrollments.count} enrollments`);
-
-  // Course.creator is onDelete: Restrict, so a membership that authored a
-  // course (not expected for a worker role, but not enforced at the DB level
-  // either) would otherwise abort the user deletion below.
-  console.log('Deleting authored courses...');
-  const deletedCourses = await prisma.course.deleteMany({
-    where: { creator: { userId: { in: workerUserIds } } },
-  });
-  console.log(`  Deleted ${deletedCourses.count} courses`);
-
-  console.log('Deleting workers...');
-  const deletedUsers = await prisma.user.deleteMany({
-    where: { id: { in: workerUserIds } },
-  });
-  console.log(`  Deleted ${deletedUsers.count} workers`);
-
-  console.log('\nDone!');
+  if (refused > 0) process.exitCode = 1;
 }
 
 main()
   .catch((e) => {
-    console.error(e);
-    process.exit(1);
+    logger.error({ msg: '[delete-workers] Failed', err: e });
+    process.exitCode = 1;
   })
   .finally(async () => {
     await prisma.$disconnect();
+    rateLimiterRedis.disconnect();
   });

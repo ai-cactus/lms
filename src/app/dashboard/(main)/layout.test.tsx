@@ -124,14 +124,17 @@ async function renderLayout() {
 }
 
 describe('DashboardLayout — escalation banner facility scope', () => {
-  it('an ORG-WIDE role (owner) gets the banner queried with NO facility predicate (undefined) — byte-identical to before', async () => {
+  it('an ORG-WIDE role (owner) gets the banner queried with NO facility predicate (null)', async () => {
     mockAuth.mockResolvedValue(session('owner'));
     mockResolveMembershipForActiveSession.mockResolvedValue(membership('owner'));
     mockResolveDataFacilityIds.mockResolvedValue(null);
 
     await renderLayout();
 
-    expect(mockGetStatusTrackerSummaryForOrg).toHaveBeenCalledWith(ORG_ID, undefined, undefined);
+    expect(mockGetStatusTrackerSummaryForOrg).toHaveBeenCalledWith({
+      organizationId: ORG_ID,
+      dataFacilityIds: null,
+    });
   });
 
   it('THE LEAK FIX: a FACILITY-BOUND role (supervisor) gets the banner scoped to their own facilities, never org-wide', async () => {
@@ -141,17 +144,23 @@ describe('DashboardLayout — escalation banner facility scope', () => {
 
     await renderLayout();
 
-    expect(mockGetStatusTrackerSummaryForOrg).toHaveBeenCalledWith(ORG_ID, undefined, ['fac-1']);
+    expect(mockGetStatusTrackerSummaryForOrg).toHaveBeenCalledWith({
+      organizationId: ORG_ID,
+      dataFacilityIds: ['fac-1'],
+    });
   });
 
-  it('FAIL-CLOSED: a facility-bound role with zero accessible facilities gets an empty-array scope, not undefined (org-wide)', async () => {
+  it('FAIL-CLOSED: a facility-bound role with zero accessible facilities gets an empty-array scope, not null (org-wide)', async () => {
     mockAuth.mockResolvedValue(session('supervisor'));
     mockResolveMembershipForActiveSession.mockResolvedValue(membership('supervisor'));
     mockResolveDataFacilityIds.mockResolvedValue([]);
 
     await renderLayout();
 
-    expect(mockGetStatusTrackerSummaryForOrg).toHaveBeenCalledWith(ORG_ID, undefined, []);
+    expect(mockGetStatusTrackerSummaryForOrg).toHaveBeenCalledWith({
+      organizationId: ORG_ID,
+      dataFacilityIds: [],
+    });
   });
 
   it('never queries the banner summary for a role without assignment.read (finance)', async () => {

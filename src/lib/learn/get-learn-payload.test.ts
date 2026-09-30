@@ -33,10 +33,11 @@ vi.mock('@/auth.worker', () => ({ auth: mockWorkerAuth }));
 vi.mock('next/headers', () => ({
   cookies: vi.fn().mockRejectedValue(new Error('no request scope')),
 }));
-// The course lookup comes off the UN-extended client: archiving retires a
-// course for new assignment, it does not erase a learner's own enrolment, so an
-// already-enrolled worker must still be able to open it. The two clients get
-// DIFFERENT spies so a regression that swaps them is visible.
+// The course lookup comes off the UN-extended client: an archived course has to
+// be READ before it can be refused with the cancellation message (Q-04/Q-05) —
+// through the filtered client it would come back null and the learner would see
+// a bare "not found". The two clients get DIFFERENT spies so a regression that
+// swaps them is visible.
 vi.mock('@/lib/prisma', () => {
   const prisma = {
     course: { findUnique: (...a: unknown[]) => mockFilteredCourseFindUnique(...a) },
@@ -57,6 +58,7 @@ import {
   type LearnPayload,
   type LearnPayloadError,
 } from './get-learn-payload';
+import { ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
 
 const QUESTION = {
   id: 'q1',
@@ -65,10 +67,17 @@ const QUESTION = {
   options: ['3', '4', '5'],
   correctAnswer: '4',
   explanation: 'Basic arithmetic.',
+  incorrectOptionExplanations: { '0': 'One short.', '2': 'One over.' },
 };
 
 const makeCourse = (opts?: {
+  /**
+   * The author's CURRENT organisation. The payload no longer reads it (RISK-15);
+   * it only seeds `courseOrgId`'s default, so a test can pin that it is ignored.
+   */
   creatorOrgId?: string;
+  /** The OWNING organisation (Q25); defaults to the author's. */
+  courseOrgId?: string;
   isGlobal?: boolean;
   status?: string;
   quiz?: unknown;
@@ -78,10 +87,10 @@ const makeCourse = (opts?: {
   title: 'Intro Course',
   description: 'desc',
   duration: 30,
+  organizationId: opts?.courseOrgId ?? opts?.creatorOrgId ?? 'org-1',
   isGlobal: opts?.isGlobal ?? false,
   status: opts?.status ?? 'published',
   _count: { modules: opts?.moduleCount ?? 3 },
-  creator: { organizationId: opts?.creatorOrgId ?? 'org-1' },
   quiz: opts && 'quiz' in opts ? opts.quiz : null,
   lessons: [
     {
@@ -156,11 +165,13 @@ describe('getLearnPayload — access matrix', () => {
     expect(result).toEqual({ error: 'Not enrolled in this course', status: 403 });
   });
 
-  // Q24 maintainer ruling: archiving RETIRES a course for new assignment; it
-  // does not erase what a worker already did. The course row is therefore read
-  // off the un-extended client — through the archive-filtered one this 404s and
-  // the learner loses access to training they were already enrolled in.
-  it('still serves an ARCHIVED course to the worker already enrolled in it', async () => {
+  // SUPERSEDED 2026-09-23. This case used to assert that an archived course was
+  // still SERVED to the worker already enrolled in it (Q24). Founder rulings
+  // Q-04/Q-05 narrowed that: archiving cancels the course and every learner
+  // action stops, so the player refuses it. The read stays on the un-extended
+  // client — the archived row has to be readable in order to be refused with
+  // the cancellation message rather than a bare "not found".
+  it('refuses an ARCHIVED course even to the worker already enrolled in it', async () => {
     mockWorkerAuth.mockResolvedValue({
       user: { id: 'w1', organizationUserId: 'ou-worker', role: 'nurse' },
     });
@@ -179,10 +190,27 @@ describe('getLearnPayload — access matrix', () => {
     // The filtered client would return null for an archived row.
     mockFilteredCourseFindUnique.mockResolvedValue(null);
 
-    const payload = asPayload(await getLearnPayload('course-1'));
+    const result = await getLearnPayload('course-1');
 
-    expect(payload.course.id).toBe('course-1');
+    expect(result).toEqual({ error: ARCHIVED_COURSE_LEARNER_MESSAGE, status: 403 });
     expect(mockFilteredCourseFindUnique).not.toHaveBeenCalled();
+    // Refused before the enrollment lookup: the answer no longer depends on
+    // whether this caller holds one.
+    expect(mockEnrollmentFindFirst).not.toHaveBeenCalled();
+  });
+
+  it('refuses an ARCHIVED course to a manager exercising the review right', async () => {
+    mockAdminAuth.mockResolvedValue({
+      user: { id: 'a1', organizationUserId: 'ou-admin', organizationId: 'org-1', role: 'owner' },
+    });
+    mockCourseFindUnique.mockResolvedValue({
+      ...makeCourse(),
+      archivedAt: new Date('2026-09-01T00:00:00.000Z'),
+    });
+
+    const result = await getLearnPayload('course-1');
+
+    expect(result).toEqual({ error: ARCHIVED_COURSE_LEARNER_MESSAGE, status: 403 });
   });
 
   it('403s an authenticated worker whose session carries no membership', async () => {
@@ -251,6 +279,10 @@ describe('getLearnPayload — access matrix', () => {
     const question = payload.course.quiz!.questions[0];
     expect(question).not.toHaveProperty('correctAnswer');
     expect(question).not.toHaveProperty('explanation');
+    // Q-19: the per-option rationale names which options are WRONG, so it is
+    // answer key too — sending it with the quiz would hand a learner the answer
+    // before they sit it. The graded review screen is where they get it.
+    expect(question).not.toHaveProperty('incorrectOptionExplanations');
   });
 
   it.each([0, 1, 2, 7])('carries the real module count (%i) through to the payload', async (n) => {
@@ -408,6 +440,13 @@ describe('getLearnPayload — quiz attempts', () => {
     expect(payload.quizResultsData!.totalQuestions).toBe(1);
     // options = ['3', '4', '5']; correctAnswer '4' is index 1 → letter 'B'.
     expect(payload.quizResultsData!.questions[0].correctAnswer).toBe('B');
+    // Q-19: each wrong option carries its own rationale on the review screen;
+    // the correct answer's stays in the question-level explanation.
+    expect(payload.quizResultsData!.questions[0].options).toEqual([
+      { id: 'A', text: '3', explanation: 'One short.' },
+      { id: 'B', text: '4', explanation: undefined },
+      { id: 'C', text: '5', explanation: 'One over.' },
+    ]);
   });
 
   it('leaves quizResultsData null when there are no attempts', async () => {
@@ -626,6 +665,46 @@ describe('getLearnPayload — canEditContent', () => {
 
     // The review still opens — that is the point of a shared catalogue.
     expect(payload.user.isAdminView).toBe(true);
+    expect(payload.user.canEditContent).toBe(false);
+  });
+
+  // BUG-11: the editor keys on `Course.organizationId` (Q25), the column every
+  // write path now checks — not on the author's membership. The two only differ
+  // in a fixture, which is exactly what isolates which one is read.
+  it('keys the editor on the owning organisation, not the author’s membership', async () => {
+    mockAdminAuth.mockResolvedValue(adminSession('owner', 'org-2'));
+    mockCourseFindUnique.mockResolvedValue(
+      makeCourse({ courseOrgId: 'org-2', creatorOrgId: 'org-1' }),
+    );
+
+    const payload = asPayload(await getLearnPayload('course-1'));
+
+    expect(payload.user.isAdminView).toBe(true);
+    expect(payload.user.canEditContent).toBe(true);
+  });
+
+  // RISK-15: opening the course keys on the owning organisation too. An author
+  // who moved to org-1 left the course with org-2.
+  it('refuses the review to the organisation a course’s author moved to', async () => {
+    mockAdminAuth.mockResolvedValue(adminSession('owner', 'org-1'));
+    mockCourseFindUnique.mockResolvedValue(
+      makeCourse({ courseOrgId: 'org-2', creatorOrgId: 'org-1' }),
+    );
+
+    expect(await getLearnPayload('course-1')).toEqual({
+      error: 'Not enrolled in this course',
+      status: 403,
+    });
+  });
+
+  it('a global catalogue course gets no editor even in the organisation that owns it', async () => {
+    mockAdminAuth.mockResolvedValue(adminSession('owner', 'org-1'));
+    mockCourseFindUnique.mockResolvedValue(
+      makeCourse({ courseOrgId: 'org-1', isGlobal: true, status: 'published' }),
+    );
+
+    const payload = asPayload(await getLearnPayload('course-1'));
+
     expect(payload.user.canEditContent).toBe(false);
   });
 

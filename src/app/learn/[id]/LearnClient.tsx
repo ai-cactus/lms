@@ -8,6 +8,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Menu, AlertCircle } from 'lucide-react';
 import QuizResults from '@/components/dashboard/training/QuizResults';
+import AttestationModal from '@/components/dashboard/training/AttestationModal';
+import BadgeSuccessModal from '@/components/dashboard/training/BadgeSuccessModal';
+import { formatCertificateId } from '@/lib/certificate-id';
 
 // Reusable Components
 import CourseRail from '@/components/courses/CourseRail';
@@ -47,6 +50,11 @@ interface Question {
   options: string[];
   correctAnswer: string;
   explanation?: string;
+  /**
+   * Why each wrong option is wrong, keyed by its index in `options`. Answer key,
+   * so the payload only carries it for admin viewers.
+   */
+  incorrectOptionExplanations?: Record<string, string>;
 }
 
 interface Quiz {
@@ -89,7 +97,7 @@ interface EnrollmentData {
 interface QuizQuestionResult {
   id: string;
   text: string;
-  options: { id: string; text: string }[];
+  options: { id: string; text: string; explanation?: string }[];
   selectedAnswer: string;
   correctAnswer: string;
   explanation: string;
@@ -400,6 +408,8 @@ export default function LearnClient({ initialData }: LearnClientProps) {
   // Modal State
   const [showQuizGateModal, setShowQuizGateModal] = useState(false);
   const [showIncompleteModal, setShowIncompleteModal] = useState(false);
+  const [showAttestationModal, setShowAttestationModal] = useState(false);
+  const [showBadgeModal, setShowBadgeModal] = useState(false);
 
   // Mobile Rail Toggle
   const [railOpen, setRailOpen] = useState(false);
@@ -514,6 +524,32 @@ export default function LearnClient({ initialData }: LearnClientProps) {
     return !isQuizUnlocked(watchedPct);
   };
 
+  // BUG-28: with no quiz (neither on the last lesson nor on the course) the
+  // attestation is the ONLY way to complete, and it used to be reachable solely
+  // from the quiz results screen — so such a course could never be finished.
+  // `attestEligible` is the server's verdict (owns this enrollment, not yet
+  // attested); the admin review and its preview enrollment never attest.
+  const mayAttestWithoutQuiz = () =>
+    !!course &&
+    !course.quiz &&
+    attestEligible &&
+    userData?.isAdminView !== true &&
+    !!enrollment &&
+    enrollment.id !== 'preview-mode';
+
+  const openNoQuizAttestation = async () => {
+    if (!course || isVideoQuizGateBlocked()) return;
+    const endIdx = course.lessons.length - 1;
+    if (endIdx > highestUnlockedIndex) {
+      setHighestUnlockedIndex(endIdx);
+    }
+    // Awaited on purpose: the progress route moves the status to
+    // `lessons_complete`, and that write must land before the attestation
+    // writes `attested`, never after it.
+    await updateProgress(endIdx);
+    setShowAttestationModal(true);
+  };
+
   const handleRailSelect = (index: number) => {
     if (!course) return;
 
@@ -583,6 +619,8 @@ export default function LearnClient({ initialData }: LearnClientProps) {
       } else {
         setShowQuizGateModal(true);
       }
+    } else if (activeIndex === course.lessons.length - 1 && mayAttestWithoutQuiz()) {
+      void openNoQuizAttestation();
     }
   };
 
@@ -821,6 +859,11 @@ export default function LearnClient({ initialData }: LearnClientProps) {
   // never asked to sign. Folding it back in here would strand them with no way
   // to ever attest — `attestEligible` already excludes only `attested`.
   const enrollmentIsSigned = enrollment?.status === 'attested';
+
+  const canAttestWithoutQuiz = mayAttestWithoutQuiz();
+  // The last lesson's "Next" stays live when it is the way to the attestation.
+  const isLastLesson = (idx: number) =>
+    idx === course.lessons.length - 1 && !course.quiz && !canAttestWithoutQuiz;
 
   // Attempt counters derive from the (unsorted) quizAttempts array: completed
   // attempts have timeTaken !== null; at most one in-progress draft has null.
@@ -1217,7 +1260,7 @@ export default function LearnClient({ initialData }: LearnClientProps) {
                 onNext={handleNext}
                 onPrev={handlePrev}
                 isFirst={activeIndex === 0}
-                isLast={activeIndex === course.lessons.length - 1 && !course.quiz}
+                isLast={isLastLesson(activeIndex)}
                 onToggleView={() => setViewMode('article')}
               />
             )
@@ -1244,17 +1287,22 @@ export default function LearnClient({ initialData }: LearnClientProps) {
                 setQuizStep(quizResults ? 'review' : 'intro');
                 setActiveIndex(course.lessons.length);
               }}
+              onAttest={canAttestWithoutQuiz ? () => void openNoQuizAttestation() : undefined}
               proceedDisabled={isProceedBlocked}
               proceedHint={
-                isVideoGateBlocked
-                  ? 'Watch the video to unlock the quiz'
-                  : 'Work through every module to unlock the quiz'
+                course.quiz
+                  ? isVideoGateBlocked
+                    ? 'Watch the video to unlock the quiz'
+                    : 'Work through every module to unlock the quiz'
+                  : isVideoGateBlocked
+                    ? 'Watch the video to finish the course'
+                    : 'Work through every module to finish the course'
               }
               hasQuiz={!!course.quiz}
               onNext={handleNext}
               onPrev={handlePrev}
               isFirst={activeIndex === 0}
-              isLast={activeIndex === course.lessons.length - 1 && !course.quiz}
+              isLast={isLastLesson(activeIndex)}
             >
               {course.lessons.map((lesson, idx) => (
                 <div
@@ -1338,6 +1386,32 @@ export default function LearnClient({ initialData }: LearnClientProps) {
       </div>
 
       {/* Modals */}
+      {canAttestWithoutQuiz && enrollment && (
+        <AttestationModal
+          isOpen={showAttestationModal}
+          onClose={() => setShowAttestationModal(false)}
+          enrollmentId={enrollment.id}
+          courseName={course.title}
+          userEmail={userData?.email || ''}
+          onSuccess={() => {
+            setShowAttestationModal(false);
+            setEnrollment((prev) => (prev ? { ...prev, status: 'attested' } : prev));
+            setAttestEligible(false);
+            setShowBadgeModal(true);
+          }}
+        />
+      )}
+      {enrollment && (
+        <BadgeSuccessModal
+          isOpen={showBadgeModal}
+          onClose={() => setShowBadgeModal(false)}
+          courseName={course.title}
+          organizationName={userData?.organizationName || 'N/A'}
+          badgeId={formatCertificateId(enrollment.id)}
+          issuedDate={new Date().toLocaleDateString()}
+          courseId={courseId}
+        />
+      )}
       {showQuizGateModal && !userData?.isAdminView === true && (
         <div
           className="fixed left-0 top-0 z-[100] flex h-full w-full items-center justify-center bg-black/50 backdrop-blur-[4px] animate-in fade-in duration-200"

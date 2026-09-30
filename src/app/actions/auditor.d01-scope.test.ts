@@ -120,6 +120,16 @@ describe('facility scope — subject data follows the caller, the catalogue does
     expect(hasFacilityPredicate(call.select.enrollments.where.organizationUser)).toBe(true);
   });
 
+  it('keeps deactivated members on the Staff tab — a deleted person’s records stay auditable (Q-23)', async () => {
+    mockAuth.mockResolvedValue(HR);
+
+    await getAuditorStaff();
+
+    const where = prismaMock.organizationUser.findMany.mock.calls[0][0].where;
+    expect(where).not.toHaveProperty('active');
+    expect(where).not.toHaveProperty('user');
+  });
+
   it('does NOT return staff from a facility the supervisor is not a member of', async () => {
     mockAuth.mockResolvedValue(SUPERVISOR);
     mockResolveDataFacilityIds.mockResolvedValue(['annex']);

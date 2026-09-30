@@ -1,9 +1,10 @@
-import { revalidatePath, revalidateTag } from 'next/cache';
+import { revalidatePath } from 'next/cache';
 import prisma from '@/lib/prisma';
 import { deleteFile } from '@/lib/storage';
 import { logger } from '@/lib/logger';
 import { invalidateCourseThumbnailMeta } from '@/lib/video/playback-cache';
 import { isCustomThumbnailStorageUri } from '@/lib/video/thumbnail';
+import { expireVideoCatalog } from '@/lib/video/catalog-cache';
 
 /**
  * Server-side writes of `Course.thumbnailStorageUri`, shared by the upload
@@ -63,5 +64,5 @@ export function refreshCourseThumbnailSurfaces(courseId: string): void {
   revalidatePath('/system/video-courses');
   revalidatePath(`/system/video-courses/${courseId}/edit`);
   // The org-facing course lists read the cached global catalog.
-  revalidateTag('video-catalog', 'max');
+  expireVideoCatalog();
 }

@@ -59,12 +59,15 @@ const targetId = args['target-id'];
 const storageUri = args['storage-uri'];
 
 if (!['lesson', 'course-preview'].includes(targetType) || !targetId || !storageUri) {
-  console.error('[transcode-worker] Missing/invalid --target-type, --target-id, or --storage-uri');
+  // stderr, not the stdout JSON stream: the parent surfaces stderr as the exit reason.
+  process.stderr.write(
+    '[transcode-worker] Missing/invalid --target-type, --target-id, or --storage-uri\n',
+  );
   process.exit(1);
 }
 
 const log = (level: string, msg: string, extra: Record<string, unknown> = {}) =>
-  console.log(JSON.stringify({ level, msg, ...extra }));
+  process.stdout.write(JSON.stringify({ level, msg, ...extra }) + '\n');
 
 // ── Storage clients ──────────────────────────────────────────────────────────
 let minioClient: MinioClient | null = null;

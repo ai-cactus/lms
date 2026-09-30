@@ -10,6 +10,7 @@
  */
 import prisma from '@/lib/prisma';
 import { logger } from '@/lib/logger';
+import { DeletedIdentityError, isDeletedIdentity } from '@/lib/auth/deleted-identity';
 import type { Role } from '@/types/next-auth';
 
 export interface MembershipSummary {
@@ -175,11 +176,27 @@ export interface CreateMembershipInput {
  * Re-joining is idempotent — an existing (possibly deactivated) membership is
  * reactivated and re-roled rather than duplicated, which the
  * `(userId, organizationId)` unique constraint would reject anyway.
+ *
+ * @throws {DeletedIdentityError} for a deleted identity (Q-23): reactivating
+ * one of its memberships would silently undo the delete.
  */
 export async function createMembership(input: CreateMembershipInput): Promise<MembershipSummary> {
   const { userId, organizationId, facilityId, role } = input;
 
   return prisma.$transaction(async (tx) => {
+    const identity = await tx.user.findUnique({
+      where: { id: userId },
+      select: { deletedAt: true },
+    });
+    if (isDeletedIdentity(identity)) {
+      logger.warn({
+        msg: '[auth] Refused to attach a deleted identity to an organization',
+        userId,
+        organizationId,
+      });
+      throw new DeletedIdentityError();
+    }
+
     const membership = await tx.organizationUser.upsert({
       where: { userId_organizationId: { userId, organizationId } },
       create: { userId, organizationId, role },
