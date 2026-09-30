@@ -379,8 +379,7 @@ describe('proxy — API default-deny (F-013)', () => {
      * NextAuth session, so requiring one here would lock the platform console
      * out entirely. Enforcing it at this layer would mean verifying that HMAC a
      * second time — duplicated security logic, which is worse than the
-     * exemption. Unifying the two is
-     * §4.4 of docs/rebuild/09-PLATFORM-ADMIN-SPEC.md.
+     * exemption.
      */
     it('passes /api/system/** through to its own auth mechanism', async () => {
       const res = await proxy(makeRequest('/api/system/manual'));

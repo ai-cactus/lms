@@ -100,7 +100,7 @@ export function ChangePasswordTab({ realm, onSuccess, authProvider }: ChangePass
         <PasswordInput
           value={currentPassword}
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCurrentPassword(e.target.value)}
-          placeholder="•••••••••"
+          placeholder="Enter current password"
         />
       </Field>
 
@@ -108,7 +108,7 @@ export function ChangePasswordTab({ realm, onSuccess, authProvider }: ChangePass
         <PasswordInput
           value={newPassword}
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewPassword(e.target.value)}
-          placeholder="•••••••••"
+          placeholder="Enter new password"
         />
       </Field>
 
@@ -116,7 +116,7 @@ export function ChangePasswordTab({ realm, onSuccess, authProvider }: ChangePass
         <PasswordInput
           value={confirmPassword}
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => setConfirmPassword(e.target.value)}
-          placeholder="•••••••••"
+          placeholder="Confirm new password"
         />
       </Field>
 

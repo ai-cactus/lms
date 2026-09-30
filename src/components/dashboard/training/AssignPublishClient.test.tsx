@@ -231,7 +231,7 @@ describe('AssignPublishClient — AssigneesInput host wiring', () => {
   it('exposes the bulk-import CSV control in people mode', () => {
     renderClient();
 
-    expect(screen.getByText('Click to upload .csv file instead')).toBeInTheDocument();
+    expect(screen.getByText('Click to upload .csv file')).toBeInTheDocument();
     expect(screen.getByText('Download sample .csv template')).toBeInTheDocument();
   });
 });
