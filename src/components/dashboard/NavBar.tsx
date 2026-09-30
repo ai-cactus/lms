@@ -206,7 +206,7 @@ export const DefaultDashboardNavBar: FC<DefaultDashboardNavBarProps> = ({
     refresh,
     markRead,
     markAll,
-  } = useNotifications({ pollMs: 60_000 });
+  } = useNotifications({ realm: 'admin', pollMs: 60_000 });
 
   const toggleDropdown = () => {
     setIsOpen(!isOpen);

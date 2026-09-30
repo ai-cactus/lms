@@ -78,7 +78,7 @@ describe('NotificationsView filter chips', () => {
     render(<NotificationsView backHref="/dashboard" audience="worker" />);
 
     await waitFor(() =>
-      expect(mockGetNotifications).toHaveBeenCalledWith({ limit: 20, type: null }),
+      expect(mockGetNotifications).toHaveBeenCalledWith('worker', { limit: 20, type: null }),
     );
 
     expect(screen.getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true');
@@ -86,7 +86,10 @@ describe('NotificationsView filter chips', () => {
     await user.click(screen.getByRole('button', { name: 'Assigned' }));
 
     await waitFor(() =>
-      expect(mockGetNotifications).toHaveBeenCalledWith({ limit: 20, type: 'COURSE_ASSIGNED' }),
+      expect(mockGetNotifications).toHaveBeenCalledWith('worker', {
+        limit: 20,
+        type: 'COURSE_ASSIGNED',
+      }),
     );
     expect(screen.getByRole('button', { name: 'Assigned' })).toHaveAttribute(
       'aria-pressed',
@@ -112,7 +115,7 @@ describe('NotificationsView preference toggles', () => {
 
     await user.click(assignedSwitch);
 
-    expect(mockSetNotificationPreference).toHaveBeenCalledWith('COURSE_ASSIGNED', false);
+    expect(mockSetNotificationPreference).toHaveBeenCalledWith('worker', 'COURSE_ASSIGNED', false);
     expect(assignedSwitch).toHaveAttribute('aria-checked', 'false');
   });
 
@@ -238,7 +241,7 @@ describe('NotificationsView link safety', () => {
     await user.click(await screen.findByText('Course assigned'));
 
     expect(screen.queryByRole('button', { name: 'View details' })).not.toBeInTheDocument();
-    expect(mockMarkAsRead).toHaveBeenCalledWith('notif-1');
+    expect(mockMarkAsRead).toHaveBeenCalledWith('worker', 'notif-1');
     expect(mockPush).not.toHaveBeenCalled();
   });
 
@@ -259,5 +262,17 @@ describe('NotificationsView link safety', () => {
 
     expect(mockPush).toHaveBeenCalledTimes(1);
     expect(mockPush).toHaveBeenCalledWith('/worker/trainings?tab=assigned#top');
+  });
+});
+
+describe('NotificationsView portal (BUG-47)', () => {
+  it('reads the inbox and preferences of the portal it is rendered in', async () => {
+    render(<NotificationsView backHref="/dashboard" audience="admin" />);
+
+    await waitFor(() =>
+      expect(mockGetNotifications).toHaveBeenCalledWith('admin', { limit: 20, type: null }),
+    );
+    await waitFor(() => expect(mockGetNotificationPreferences).toHaveBeenCalledWith('admin'));
+    expect(mockGetNotifications).not.toHaveBeenCalledWith('worker', expect.anything());
   });
 });

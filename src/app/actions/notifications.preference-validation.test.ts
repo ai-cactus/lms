@@ -33,7 +33,7 @@ beforeEach(() => {
 
 describe('setNotificationPreference — type validation', () => {
   it('stores a preference for a catalog type', async () => {
-    const result = await setNotificationPreference('COURSE_ASSIGNED', false);
+    const result = await setNotificationPreference('worker', 'COURSE_ASSIGNED', false);
 
     expect(result).toEqual({ success: true });
     expect(mockUpsert).toHaveBeenCalledExactlyOnceWith({
@@ -46,7 +46,7 @@ describe('setNotificationPreference — type validation', () => {
   it.each(['NOT_A_REAL_TYPE', '', 'course_assigned'])(
     'returns a refusal for the unknown type %j and writes nothing',
     async (type) => {
-      const result = await setNotificationPreference(type, false);
+      const result = await setNotificationPreference('worker', type, false);
 
       expect(result).toEqual({ success: false, error: 'Unknown notification type' });
       expect(mockUpsert).not.toHaveBeenCalled();
@@ -55,6 +55,7 @@ describe('setNotificationPreference — type validation', () => {
 
   it('refuses a non-boolean `enabled` rather than storing it', async () => {
     const result = await setNotificationPreference(
+      'worker',
       'COURSE_ASSIGNED',
       'false' as unknown as boolean,
     );
@@ -66,7 +67,7 @@ describe('setNotificationPreference — type validation', () => {
   it('still answers Unauthorized first when there is no membership', async () => {
     mockWorkerAuth.mockResolvedValue(null);
 
-    const result = await setNotificationPreference('NOT_A_REAL_TYPE', false);
+    const result = await setNotificationPreference('worker', 'NOT_A_REAL_TYPE', false);
 
     expect(result).toEqual({ success: false, error: 'Unauthorized' });
     expect(mockUpsert).not.toHaveBeenCalled();

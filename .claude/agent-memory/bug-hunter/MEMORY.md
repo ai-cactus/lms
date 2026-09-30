@@ -86,3 +86,4 @@
 - [Cycle-summary PR2 cutover validation](cycle-summary-pr2-cutover-validation.md) — self-escalation retry drops a section (CycleSummaryItem has no recipientRole); cutover permanently orphans pre-existing failed per-stage emails; mid-org crash proven safe; weekly-org copy now misleading
 - [Enrollment last-activity validation](enrollment-last-activity-validation.md) — objectContaining hides admin non-stamp regressions; qa'd migration+e2e; missing video fixture is pre-existing
 - [prisma migrate diff CLI flags removed](prisma-migrate-diff-cli-flags-removed.md) — --from-url/--to-schema-datamodel gone; use --from-config-datasource/--to-schema; working migration-proof recipe
+- [BUG-47 dual-account cookie e2e gotchas](bug47-dual-account-cookie-e2e-gotchas.md) — addCookies must reuse the FULL captured cookie (real name is `__Secure-*` under `next start`); same-tab dual-account login trips the unrelated SessionIdentityGuard — use a second tab

@@ -3,6 +3,7 @@ import type { Session } from 'next-auth';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
 import { sessionCookieName } from '@/lib/auth/session-cookies';
+import { logger } from '@/lib/logger';
 
 /**
  * Both portal sessions for the current request. Either (or both) may be null —
@@ -24,13 +25,21 @@ export function isPortalRealm(value: unknown): value is PortalRealm {
 }
 
 /**
- * The session of exactly one portal, for self-service writes whose caller
- * states which portal it belongs to. One browser can hold both portals'
+ * The session of exactly one portal, for actions whose portal is fixed (the
+ * admin-only actions) or stated by their caller (the ones both portals call). One browser can hold both portals'
  * sessions for two DIFFERENT accounts, so preferring one when both exist (or
  * falling back to the other when the named one is absent) can write to the
  * wrong account. There is deliberately no fallback here.
+ *
+ * A realm that reaches a Server Action as an argument arrives unchecked, so
+ * anything but a known portal resolves to no session rather than to whichever
+ * branch a bare comparison would fall into.
  */
 export async function getRealmSession(realm: PortalRealm): Promise<Session | null> {
+  if (!isPortalRealm(realm)) {
+    logger.warn({ msg: '[auth] Session requested for an unknown portal realm' });
+    return null;
+  }
   const session = realm === 'admin' ? await adminAuth() : await workerAuth();
   return session ?? null;
 }

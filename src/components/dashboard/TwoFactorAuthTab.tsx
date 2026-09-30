@@ -12,13 +12,15 @@ import {
   getMfaStatus,
   sendDisableMfaCode,
 } from '@/app/actions/mfa';
+import type { PortalRealm } from '@/lib/auth/portal-sessions';
 
 interface TwoFactorAuthTabProps {
+  realm: PortalRealm;
   onSuccess?: () => void;
   userEmail?: string;
 }
 
-export function TwoFactorAuthTab({ onSuccess }: TwoFactorAuthTabProps) {
+export function TwoFactorAuthTab({ realm, onSuccess }: TwoFactorAuthTabProps) {
   const [isEnabled, setIsEnabled] = useState(false);
   const [isSetupMode, setIsSetupMode] = useState(false);
   const [isDisableMode, setIsDisableMode] = useState(false);
@@ -35,7 +37,7 @@ export function TwoFactorAuthTab({ onSuccess }: TwoFactorAuthTabProps) {
   useEffect(() => {
     async function loadStatus() {
       try {
-        const res = await getMfaStatus();
+        const res = await getMfaStatus(realm);
         if ('enabled' in res) {
           setIsEnabled(res.enabled);
         } else {
@@ -48,7 +50,7 @@ export function TwoFactorAuthTab({ onSuccess }: TwoFactorAuthTabProps) {
       }
     }
     loadStatus();
-  }, []);
+  }, [realm]);
 
   useEffect(() => {
     if (disableCooldown <= 0) return;
@@ -68,7 +70,7 @@ export function TwoFactorAuthTab({ onSuccess }: TwoFactorAuthTabProps) {
     setIsActionLoading(true);
     setMessage(null);
     try {
-      const res = await requestMfaSetup();
+      const res = await requestMfaSetup(realm);
       if (res.success) {
         setIsSetupMode(true);
       } else {
@@ -93,7 +95,7 @@ export function TwoFactorAuthTab({ onSuccess }: TwoFactorAuthTabProps) {
     setIsActionLoading(true);
     setMessage(null);
     try {
-      const res = await verifyMfaSetup(verificationCode);
+      const res = await verifyMfaSetup(realm, verificationCode);
       if (res.success && res.data) {
         setIsEnabled(true);
         setIsSetupMode(false);
@@ -115,7 +117,7 @@ export function TwoFactorAuthTab({ onSuccess }: TwoFactorAuthTabProps) {
     setIsActionLoading(true);
     setMessage(null);
     try {
-      const res = await sendDisableMfaCode();
+      const res = await sendDisableMfaCode(realm);
       if (res.success) {
         setIsDisableMode(true);
         setDisableCodeSent(true);
@@ -140,7 +142,7 @@ export function TwoFactorAuthTab({ onSuccess }: TwoFactorAuthTabProps) {
     setIsActionLoading(true);
     setMessage(null);
     try {
-      const res = await disableMfa(disableCode);
+      const res = await disableMfa(realm, disableCode);
       if (res.success) {
         setIsEnabled(false);
         setIsDisableMode(false);
@@ -162,7 +164,7 @@ export function TwoFactorAuthTab({ onSuccess }: TwoFactorAuthTabProps) {
     setIsActionLoading(true);
     setMessage(null);
     try {
-      const res = await sendDisableMfaCode();
+      const res = await sendDisableMfaCode(realm);
       if (res.success) {
         setDisableCooldown(60);
         setMessage({ type: 'success', text: 'A new code has been sent to your email.' });

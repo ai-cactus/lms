@@ -65,12 +65,7 @@ import { analyticsContextFrom } from '@/lib/analytics/identity';
 import { resolveAttributionName } from '@/lib/attribution-name';
 import { selectAssessmentQuiz } from '@/lib/quiz/assessment';
 import { isCourseOrganizationReviewer } from '@/lib/course/read-access';
-
-// Helper: resolve the active session from either auth instance
-async function resolveSession() {
-  const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
-  return admin?.user?.id ? admin : worker?.user?.id ? worker : null;
-}
+import { getRealmSession, type PortalRealm } from '@/lib/auth/portal-sessions';
 
 /**
  * The document id behind a course's "View Source Document" action, or null when
@@ -96,7 +91,7 @@ function sourceDocumentIdOf(
 }
 
 export async function getCourses(): Promise<CourseWithStats[]> {
-  const session = await resolveSession();
+  const session = await getRealmSession('admin');
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
   }
@@ -353,8 +348,17 @@ async function narrowRosterToFacilityScope(
   };
 }
 
-export async function getCourseById(courseId: string): Promise<CourseWithRelations> {
-  const session = await resolveSession();
+/**
+ * BUG-47: both portals open a course through this action — the dashboard's
+ * course pages and the worker portal's course page — and one browser can hold
+ * an admin and a worker session for two DIFFERENT accounts. The caller names its
+ * portal; preferring the admin session answered the worker page as the admin.
+ */
+export async function getCourseById(
+  realm: PortalRealm,
+  courseId: string,
+): Promise<CourseWithRelations> {
+  const session = await getRealmSession(realm);
   if (!session?.user?.id) {
     throw new CourseAccessError('unauthenticated');
   }
@@ -489,7 +493,7 @@ export async function getCourseById(courseId: string): Promise<CourseWithRelatio
  * narrowed to the caller's facilities.
  */
 export async function getCourseForOrgView(courseId: string): Promise<CourseWithRelations> {
-  const session = await resolveSession();
+  const session = await getRealmSession('admin');
   if (!session?.user?.id) {
     throw new CourseAccessError('unauthenticated');
   }
@@ -549,7 +553,7 @@ export async function getCourseForOrgView(courseId: string): Promise<CourseWithR
 }
 
 export async function createCourse(data: { title: string; description?: string }) {
-  const session = await resolveSession();
+  const session = await getRealmSession('admin');
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
   }
@@ -605,7 +609,7 @@ export async function updateCourse(
     duration?: number;
   },
 ): Promise<{ success: boolean; error?: string }> {
-  const session = await resolveSession();
+  const session = await getRealmSession('admin');
   if (!session?.user?.id) {
     return { success: false, error: 'Your session has expired. Sign in and try again.' };
   }
@@ -669,7 +673,7 @@ export async function updateCourse(
  * published either way.
  */
 export async function publishCourse(courseId: string, opts?: { acknowledgeWarnings?: boolean }) {
-  const session = await resolveSession();
+  const session = await getRealmSession('admin');
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
   }
@@ -893,7 +897,7 @@ export async function publishCourse(courseId: string, opts?: { acknowledgeWarnin
 export async function deleteCourse(
   courseId: string,
 ): Promise<{ success: boolean; error?: string }> {
-  const session = await resolveSession();
+  const session = await getRealmSession('admin');
   if (!session?.user?.id) {
     return { success: false, error: 'Your session has expired. Sign in and try again.' };
   }
@@ -990,13 +994,13 @@ export async function deleteCourse(
  *   {@link resolveDashboardScope} — the value is re-validated, never trusted.
  */
 export async function getDashboardData(requestedFacilityIds?: string[] | null) {
-  const session = await resolveSession();
+  const session = await getRealmSession('admin');
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
   }
 
-  // This action resolves a WORKER session too, and a `'use server'` export is
-  // reachable without visiting the page, so it carries its own gate. It is
+  // A `'use server'` export is reachable without visiting the page, so this
+  // carries its own gate. It is
   // `getGlobalDashboardData`'s, deliberately verbatim: the two actions are
   // maintained in parity (dashboard-parity.test.ts) and must not disagree about
   // who may ask. Aggregates only — no staff name or email — so finance
@@ -1365,7 +1369,7 @@ export async function createFullCourse(data: {
   rawSlidesJson?: unknown;
   rawJudgeJson?: unknown;
 }) {
-  const session = await resolveSession();
+  const session = await getRealmSession('admin');
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
   }
@@ -1901,7 +1905,7 @@ export async function updateQuizQuestions(
     incorrectOptionExplanations?: Record<string, string>;
   }[],
 ): Promise<{ success: boolean; error?: string }> {
-  const session = await resolveSession();
+  const session = await getRealmSession('admin');
   if (!session?.user?.id) {
     return { success: false, error: 'Your session has expired. Sign in again and retry.' };
   }
@@ -2042,7 +2046,7 @@ export async function updateLessonContent(
   content: string,
   title?: string,
 ): Promise<{ success: boolean; error?: string }> {
-  const session = await resolveSession();
+  const session = await getRealmSession('admin');
   if (!session?.user?.id) {
     return { success: false, error: 'Your session has expired. Sign in again and retry.' };
   }
@@ -2141,7 +2145,7 @@ export async function updateLessonSlideContent(
   lessonId: string,
   slideContent: string,
 ): Promise<{ success: boolean; error?: string }> {
-  const session = await resolveSession();
+  const session = await getRealmSession('admin');
   if (!session?.user?.id) {
     return { success: false, error: 'Your session has expired. Sign in again and retry.' };
   }
@@ -2354,7 +2358,7 @@ export async function assignRetake(
   retakeReason?: string,
   dueDate?: string,
 ): Promise<AssignRetakeResult> {
-  const session = await resolveSession();
+  const session = await getRealmSession('admin');
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
   }

@@ -62,8 +62,8 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
     // instance already sets `sessionAllowedRoles: ALL_ROLES` for learner-mode
     // bridging, so "the instance implies the tier" is an assumption about THIS
     // instance, not a property of the pair. Where the caller can arrive on
-    // either instance — `getCertificateDetails`, which resolves admin-then-worker
-    // — the same check IS load-bearing.
+    // either instance — `getCertificateDetails`, which the worker portal calls
+    // with its own session — the same check IS load-bearing.
     if (!authorized && adminSession?.user?.id && adminSession.user.organizationId) {
       const roleKey = dbRoleToRoleKey(adminSession.user.role);
       if (roleKey && isAdminRole(adminSession.user.role) && can(roleKey, 'certificate.read')) {
