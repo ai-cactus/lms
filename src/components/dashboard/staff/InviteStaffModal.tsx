@@ -586,6 +586,7 @@ export default function InviteStaffModal({
                   disabled={csvParsing}
                   className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary disabled:opacity-60"
                 >
+                  Click to upload .csv file
                   <Upload className="size-4" aria-hidden="true" />
                   {csvParsing ? 'Parsing…' : 'Click to upload .csv file instead'}
                 </button>
