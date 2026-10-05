@@ -484,7 +484,7 @@ describe('AssigneesInput — capability gating', () => {
   it('renders no upload control when enableBulkImport is false', () => {
     render(<Harness />);
 
-    expect(screen.queryByText('Click to upload .csv file instead')).not.toBeInTheDocument();
+    expect(screen.queryByText('Click to upload .csv file')).not.toBeInTheDocument();
     expect(screen.queryByText('Download sample .csv template')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Upload a spreadsheet of recipients')).not.toBeInTheDocument();
   });
@@ -492,7 +492,7 @@ describe('AssigneesInput — capability gating', () => {
   it('renders the upload control when enableBulkImport is true', () => {
     render(<Harness enableBulkImport />);
 
-    expect(screen.getByText('Click to upload .csv file instead')).toBeInTheDocument();
+    expect(screen.getByText('Click to upload .csv file')).toBeInTheDocument();
     expect(screen.getByLabelText('Upload a spreadsheet of recipients')).toBeInTheDocument();
   });
 });
@@ -530,7 +530,7 @@ describe('AssigneesInput — disabled', () => {
   it('blocks the click-to-upload control', () => {
     render(<Harness enableBulkImport disabled />);
 
-    expect(screen.getByText('Click to upload .csv file instead').closest('button')).toBeDisabled();
+    expect(screen.getByText('Click to upload .csv file').closest('button')).toBeDisabled();
   });
 
   /**
