@@ -28,7 +28,8 @@ jobs:
           cache: 'npm'
 
       # Reads package-lock.json and queries the advisory DB — no install needed.
-      # Mirrors the CI gate (Job 6 in ci.yml): non-zero exit on HIGH or CRITICAL.
+      # Audits the FULL tree, dev tooling included — wider than the PR gate in
+      # quality-gate.yml, which only blocks on production dependencies.
       - name: Run npm audit (high+)
         id: audit
         run: |
