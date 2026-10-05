@@ -31,7 +31,9 @@ import {
   getActiveMembership,
   createMembership,
   recordMembershipLogin,
+  ExistingMembershipError,
 } from './membership';
+import { Prisma } from '@/generated/prisma/client';
 import { DeletedIdentityError } from './deleted-identity';
 import { LastOwnerError } from '@/lib/organization/owner-guard';
 
@@ -383,6 +385,92 @@ describe('createMembership', () => {
     ).rejects.toBeInstanceOf(DeletedIdentityError);
     expect(txMock.organizationUser.upsert).not.toHaveBeenCalled();
     expect(txMock.organizationUserFacility.upsert).not.toHaveBeenCalled();
+  });
+});
+
+// BUG-59: the self-serve join code must never re-role an existing member or
+// restore a revoked one.
+describe("createMembership({ onExisting: 'refuse' })", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function refuseTx(existing: { active: boolean } | null) {
+    const txMock = {
+      user: { findUnique: vi.fn().mockResolvedValue({ deletedAt: null }) },
+      organizationUser: {
+        findUnique: vi.fn().mockResolvedValue(existing),
+        create: vi.fn().mockResolvedValue(membershipRow({ role: 'nurse' })),
+        upsert: vi.fn(),
+      },
+      organizationUserFacility: { create: vi.fn().mockResolvedValue({}), upsert: vi.fn() },
+      $queryRaw: vi.fn(),
+    };
+    prismaMock.$transaction.mockImplementation(async (cb: (tx: typeof txMock) => unknown) =>
+      cb(txMock),
+    );
+    return txMock;
+  }
+
+  const input = {
+    userId: 'user-1',
+    organizationId: 'org-1',
+    facilityId: 'facility-1',
+    role: 'nurse' as const,
+    onExisting: 'refuse' as const,
+  };
+
+  it('creates a first membership and its facility row', async () => {
+    const txMock = refuseTx(null);
+
+    const result = await createMembership(input);
+
+    expect(result.role).toBe('nurse');
+    expect(txMock.organizationUser.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { userId: 'user-1', organizationId: 'org-1', role: 'nurse' },
+      }),
+    );
+    expect(txMock.organizationUserFacility.create).toHaveBeenCalledWith({
+      data: { organizationUserId: 'ou-1', facilityId: 'facility-1' },
+    });
+  });
+
+  it.each([
+    ['an active', true],
+    ['a deactivated', false],
+  ])('refuses %s existing membership and writes nothing', async (_label, active) => {
+    const txMock = refuseTx({ active });
+
+    const refusal = await createMembership(input).catch((err: unknown) => err);
+
+    expect(refusal).toBeInstanceOf(ExistingMembershipError);
+    expect((refusal as ExistingMembershipError).active).toBe(active);
+    expect(txMock.organizationUser.create).not.toHaveBeenCalled();
+    expect(txMock.organizationUser.upsert).not.toHaveBeenCalled();
+    expect(txMock.organizationUserFacility.create).not.toHaveBeenCalled();
+    expect(txMock.organizationUserFacility.upsert).not.toHaveBeenCalled();
+  });
+
+  it('refuses when a concurrent writer creates the membership first', async () => {
+    const txMock = refuseTx(null);
+    txMock.organizationUser.create.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'test',
+      }),
+    );
+
+    await expect(createMembership(input)).rejects.toBeInstanceOf(ExistingMembershipError);
+    expect(txMock.organizationUserFacility.create).not.toHaveBeenCalled();
+  });
+
+  it('still refuses a deleted identity (Q-23)', async () => {
+    const txMock = refuseTx(null);
+    txMock.user.findUnique.mockResolvedValue({ deletedAt: new Date('2026-09-28') });
+
+    await expect(createMembership(input)).rejects.toBeInstanceOf(DeletedIdentityError);
+    expect(txMock.organizationUser.create).not.toHaveBeenCalled();
   });
 });
 

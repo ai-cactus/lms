@@ -5,8 +5,8 @@
  * none. Both now take the organization lock before checking.
  *
  * The race suite drives the real `softDeleteUser` and `createMembership` (the
- * one path that can re-role an active owner: a join code or an invite accepted
- * by someone who already owns the org) against an in-memory database whose
+ * one path that can re-role an active owner: an invite accepted by someone who
+ * already owns the org) against an in-memory database whose
  * `SELECT … FOR UPDATE` blocks like Postgres does, and whose reads yield to
  * the event loop so an unlocked interleaving really happens.
  */

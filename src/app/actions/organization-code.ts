@@ -12,8 +12,7 @@ import { checkRateLimit } from '@/lib/rate-limit';
 import { DEFAULT_SELF_SERVE_WORKER_ROLE, getRoleDisplayName } from '@/lib/rbac/role-utils';
 import { emitNotificationEvent } from '@/lib/notifications/emit';
 import { enrollUserForRoleTargets } from '@/lib/enrollment/role-targets';
-import { createMembership } from '@/lib/auth/membership';
-import { LAST_OWNER_REFUSAL, LastOwnerError } from '@/lib/organization/owner-guard';
+import { createMembership, ExistingMembershipError } from '@/lib/auth/membership';
 
 // Helper to generate a cryptographically-random 6-digit code
 function generateCode() {
@@ -191,6 +190,7 @@ export async function joinOrganization(code: string) {
       organizationId: orgId,
       facilityId: facility.id,
       role: DEFAULT_SELF_SERVE_WORKER_ROLE,
+      onExisting: 'refuse',
     });
 
     // Live auto-enroll: the worker just joined the org with a role — enroll them
@@ -229,8 +229,18 @@ export async function joinOrganization(code: string) {
 
     return { success: true, organizationId: orgId };
   } catch (error) {
-    if (error instanceof LastOwnerError) {
-      return { success: false, error: LAST_OWNER_REFUSAL };
+    if (error instanceof ExistingMembershipError) {
+      logger.warn({
+        msg: '[org-code] joinOrganization refused: identity already has a membership',
+        userId,
+        membershipActive: error.active,
+      });
+      return {
+        success: false,
+        error: error.active
+          ? 'You are already a member of this organization.'
+          : 'Your access to this organization was removed. Ask an administrator to restore it.',
+      };
     }
     logger.error({ msg: 'Failed to join organization:', err: error });
     return { success: false, error: 'Failed to join organization' };
