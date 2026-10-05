@@ -10,7 +10,8 @@
  * clause at all, only authorship / global-catalog / existing-offering. A
  * Supervisor authors no courses, so every course the list shows them is a
  * colleague's — every assign click would have bounced silently. The fix adds
- * `{ creator: { organizationId } }` to the `OR`.
+ * a same-org clause to the `OR`, keyed on the course's own `organizationId`
+ * (RISK-15) rather than its author's current membership.
  *
  * These tests pin the fixed lookup against the same shape `enrollUsers` uses
  * (see enrollment.test.ts's course-ownership fixtures), so the page and the
@@ -135,7 +136,7 @@ describe('AssignCoursePage — course lookup tenancy', () => {
       status: 'published',
       isGlobal: false,
       createdByOrgUserId: 'ou-colleague-2', // not the caller
-      creator: { organizationId: ORG_ID }, // but same org
+      organizationId: ORG_ID, // but same org
     });
 
     const element = await renderPage();
@@ -154,7 +155,7 @@ describe('AssignCoursePage — course lookup tenancy', () => {
       status: 'draft',
       isGlobal: false,
       createdByOrgUserId: ADMIN_ORG_USER_ID,
-      creator: { organizationId: ORG_ID },
+      organizationId: ORG_ID,
     });
 
     const element = await renderPage();
@@ -174,7 +175,7 @@ describe('AssignCoursePage — course lookup tenancy', () => {
       // arm now spells that discriminator out, so the fixture must too.
       type: 'video',
       createdByOrgUserId: 'ou-platform-1',
-      creator: { organizationId: 'org-platform' },
+      organizationId: 'org-platform',
     });
 
     const element = await renderPage();
@@ -191,7 +192,7 @@ describe('AssignCoursePage — course lookup tenancy', () => {
       status: 'published',
       isGlobal: true,
       createdByOrgUserId: 'ou-platform-1',
-      creator: { organizationId: 'org-platform' },
+      organizationId: 'org-platform',
       offeringOrgIds: [ORG_ID],
     });
 
@@ -209,7 +210,40 @@ describe('AssignCoursePage — course lookup tenancy', () => {
       status: 'published',
       isGlobal: false,
       createdByOrgUserId: 'ou-rival-1',
-      creator: { organizationId: OTHER_ORG_ID }, // different org — must not match
+      organizationId: OTHER_ORG_ID, // different org — must not match
+    });
+
+    await expect(renderPage()).rejects.toThrow('NEXT_REDIRECT:/dashboard/courses');
+  });
+
+  // RISK-15: the author's current organisation follows the person, so it must
+  // neither keep a course assignable here nor make a foreign one assignable.
+  it('resolves an org-owned course whose author has since moved to another organisation', async () => {
+    resolveCourseAgainstWhere({
+      id: COURSE_ID,
+      title: 'Left Behind',
+      status: 'published',
+      isGlobal: false,
+      createdByOrgUserId: 'ou-departed-1',
+      organizationId: ORG_ID,
+      creator: { organizationId: OTHER_ORG_ID },
+    });
+
+    const element = await renderPage();
+    render(element);
+
+    expect(screen.getByTestId('assign-publish-client')).toBeInTheDocument();
+  });
+
+  it("redirects for another organisation's course whose author has joined the caller's organisation", async () => {
+    resolveCourseAgainstWhere({
+      id: COURSE_ID,
+      title: 'Brought Along',
+      status: 'published',
+      isGlobal: false,
+      createdByOrgUserId: 'ou-transferred-1',
+      organizationId: OTHER_ORG_ID,
+      creator: { organizationId: ORG_ID },
     });
 
     await expect(renderPage()).rejects.toThrow('NEXT_REDIRECT:/dashboard/courses');

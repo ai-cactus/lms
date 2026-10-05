@@ -80,7 +80,7 @@ describe('MappingPage', () => {
 
     expect(prismaMock.course.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'course-1', creator: { organizationId: 'org-1' } },
+        where: { id: 'course-1', organizationId: 'org-1' },
       }),
     );
   });

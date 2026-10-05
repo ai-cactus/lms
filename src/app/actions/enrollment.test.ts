@@ -115,7 +115,7 @@ const globalVideoCourse = {
   createdByOrgUserId: SYSTEM_ORG_USER_ID, // NOT the admin — created by the system user
   // Authored OUTSIDE the caller's org, so only the global-catalog / offering
   // branches can admit it — never the same-org ownership branch.
-  creator: { organizationId: 'org-platform' },
+  organizationId: 'org-platform',
   isGlobal: true,
   type: 'video',
   status: 'published', // active course — required by the Task 3 status guard
@@ -240,7 +240,7 @@ describe('enrollUsers — course-ownership guard', () => {
       id: 'own-course-001',
       title: 'My Training',
       createdByOrgUserId: ADMIN_ORG_USER_ID, // admin IS the creator
-      creator: { organizationId: ORG_ID },
+      organizationId: ORG_ID,
       isGlobal: false,
       type: 'document',
     };
@@ -268,7 +268,7 @@ describe('enrollUsers — course-ownership guard', () => {
       id: 'colleague-course-001',
       title: 'Their Training',
       createdByOrgUserId: 'ou-colleague-001', // a DIFFERENT membership...
-      creator: { organizationId: ORG_ID }, // ...in the SAME organization
+      organizationId: ORG_ID, // ...in the SAME organization
       isGlobal: false,
       type: 'document',
     };
@@ -287,7 +287,7 @@ describe('enrollUsers — course-ownership guard', () => {
       id: 'foreign-course-001',
       title: 'Someone Else’s Training',
       createdByOrgUserId: 'ou-outsider-001',
-      creator: { organizationId: 'org-other' },
+      organizationId: 'org-other',
       isGlobal: false,
       type: 'document',
     };
@@ -298,6 +298,42 @@ describe('enrollUsers — course-ownership guard', () => {
       'Course not found',
     );
 
+    expect(prismaMock.enrollment.create).not.toHaveBeenCalled();
+  });
+
+  // RISK-15: ownership is Course.organizationId, not the author's current
+  // organisation, which moves with the person.
+  it('enrolls into an org-owned course whose author has since moved to another organisation', async () => {
+    prismaMock.course.findUnique.mockResolvedValue({
+      id: 'orphaned-course-001',
+      title: 'Left Behind',
+      createdByOrgUserId: 'ou-departed-001',
+      organizationId: ORG_ID,
+      creator: { organizationId: 'org-authors-new-home' },
+      isGlobal: false,
+      type: 'document',
+    });
+    prismaMock.enrollment.findFirst.mockResolvedValue(null);
+
+    const result = await enrollUsers('orphaned-course-001', [{ email: STAFF_EMAIL }]);
+
+    expect(result.success).toContain(STAFF_EMAIL);
+  });
+
+  it("refuses another organisation's course even when its author has joined the caller's organisation", async () => {
+    prismaMock.course.findUnique.mockResolvedValue({
+      id: 'foreign-course-002',
+      title: 'Brought Along',
+      createdByOrgUserId: 'ou-transferred-001',
+      organizationId: 'org-other',
+      creator: { organizationId: ORG_ID },
+      isGlobal: false,
+      type: 'document',
+    });
+
+    await expect(enrollUsers('foreign-course-002', [{ email: STAFF_EMAIL }])).rejects.toThrow(
+      'Course not found',
+    );
     expect(prismaMock.enrollment.create).not.toHaveBeenCalled();
   });
 
@@ -403,7 +439,7 @@ describe('enrollUsers — CSV role mapping (entry.role "admin" → DB role "supe
     id: 'own-course-001',
     title: 'My Training',
     createdByOrgUserId: ADMIN_ORG_USER_ID,
-    creator: { organizationId: ORG_ID },
+    organizationId: ORG_ID,
     isGlobal: false,
     type: 'document',
   };
@@ -488,7 +524,7 @@ describe('enrollUsers — unified invite flow (fix/worker-invite)', () => {
     id: 'own-course-001',
     title: 'My Training',
     createdByOrgUserId: ADMIN_ORG_USER_ID,
-    creator: { organizationId: ORG_ID },
+    organizationId: ORG_ID,
     isGlobal: false,
     type: 'document',
   };
@@ -611,7 +647,7 @@ describe('enrollUsers — billing gate (Defect B)', () => {
     id: 'own-course-001',
     title: 'My Training',
     createdByOrgUserId: ADMIN_ORG_USER_ID,
-    creator: { organizationId: ORG_ID },
+    organizationId: ORG_ID,
     isGlobal: false,
     type: 'document',
   };

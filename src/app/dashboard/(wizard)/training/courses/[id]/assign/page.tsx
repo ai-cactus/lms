@@ -50,6 +50,9 @@ export default async function AssignCoursePage(props: PageProps) {
   // the page refuses is a silent redirect with nothing to explain it. Authorship
   // alone is far too narrow: a Supervisor authors no courses at all, so every
   // course the list shows them belongs to a colleague.
+  //
+  // RISK-15: the owner is `Course.organizationId`, not the author's current
+  // membership — that one moves with the person when they change organisation.
   const course = await prisma.course.findFirst({
     where: {
       id,
@@ -60,7 +63,7 @@ export default async function AssignCoursePage(props: PageProps) {
         // the type is spelled out rather than inferred from `isGlobal` alone.
         { isGlobal: true, type: 'video', status: 'published' },
         ...(organizationUserId ? [{ createdByOrgUserId: organizationUserId }] : []),
-        ...(organizationId ? [{ creator: { organizationId } }] : []),
+        ...(organizationId ? [{ organizationId }] : []),
         ...(organizationId ? [{ offerings: { some: { organizationId } } }] : []),
       ],
     },
