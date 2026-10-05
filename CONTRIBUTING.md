@@ -67,7 +67,7 @@ and CI keeps only what a local hook cannot honestly replace.
 | PR → `staging` / `main`        | + full unit suite + **E2E** + Semgrep/Trivy (~22 min)    | `npm run e2e:local` on demand                                     |
 | PR from `dependabot/**`        | the full tier, as for `staging` / `main` (~22 min)       | —                                                                 |
 | Weekly / on demand             | Semgrep, Trivy, gitleaks full history, SBOM              | —                                                                 |
-| Daily                          | `npm audit` (high+) → auto-issue                         | —                                                                 |
+| Daily                          | `npm audit` (high+, full tree) → auto-issue              | —                                                                 |
 
 **Never use `git push --no-verify`.** It skips everything. If a protected-branch push
 is genuinely too slow right now, use `SKIP_HEAVY=1 git push` — the light checks still run.
