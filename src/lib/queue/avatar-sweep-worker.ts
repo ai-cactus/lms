@@ -24,6 +24,8 @@
  *   - OWNER CHECK: an object is a candidate only when its `<userId>` exists in
  *     this database. A process pointed at another environment's bucket finds no
  *     such users, so it deletes nothing even with every other gate passed.
+ *   - UNRECOGNIZED-REFERENCE guardrail: aborts if any stored avatarUrl is not a
+ *     gcs:// / minio:// URI, since it cannot be matched to the key it may name.
  *   - EMPTY-REFERENCE-SET guardrail: aborts if no user references an avatar
  *     while aged objects exist (wrong DB / deploy window).
  *   - DELETION CAP: a real run with more orphans than AVATAR_SWEEP_MAX_DELETES
@@ -81,7 +83,7 @@ export interface AvatarSweepSummary {
   /** Orphan deletions that failed. */
   errors: number;
   /** Which guardrail aborted the sweep before any deletion; `null` if none did. */
-  aborted: 'empty-reference-set' | 'delete-cap-exceeded' | null;
+  aborted: 'unrecognized-reference' | 'empty-reference-set' | 'delete-cap-exceeded' | null;
 }
 
 function storageKeyOf(uri: string): string | null {
@@ -99,18 +101,25 @@ function storageKeyOf(uri: string): string | null {
  *
  * Soft-deleted users (Q-23) keep their row and are included: their stored photo
  * is still referenced.
+ *
+ * `unrecognized` counts values that are not a storage URI (a signed https URL,
+ * an `s3://` URI, a legacy `/uploads/` path). Such a value may still name an
+ * object under `avatars/`, so the caller must not sweep while any exist.
  */
-async function buildReferencedKeySet(): Promise<Set<string>> {
+async function buildReferencedKeySet(): Promise<{ keys: Set<string>; unrecognized: number }> {
   const users = await prisma.user.findMany({
     where: { avatarUrl: { not: null } },
     select: { avatarUrl: true },
   });
   const keys = new Set<string>();
+  let unrecognized = 0;
   for (const { avatarUrl } of users) {
-    const key = avatarUrl ? storageKeyOf(avatarUrl) : null;
+    if (!avatarUrl) continue;
+    const key = storageKeyOf(avatarUrl);
     if (key) keys.add(key);
+    else unrecognized += 1;
   }
-  return keys;
+  return { keys, unrecognized };
 }
 
 async function findExistingUserIds(userIds: string[]): Promise<Set<string>> {
@@ -147,10 +156,11 @@ export async function runAvatarSweep(options: AvatarSweepOptions): Promise<Avata
   }
   const unrecognized = aged.length - recognized.length;
 
-  const [referencedKeys, existingOwners] = await Promise.all([
-    buildReferencedKeySet(),
-    findExistingUserIds([...new Set(recognized.map((obj) => obj.ownerId))]),
-  ]);
+  const [{ keys: referencedKeys, unrecognized: unrecognizedReferences }, existingOwners] =
+    await Promise.all([
+      buildReferencedKeySet(),
+      findExistingUserIds([...new Set(recognized.map((obj) => obj.ownerId))]),
+    ]);
 
   const owned = recognized.filter((obj) => existingOwners.has(obj.ownerId));
   const unknownOwner = recognized.length - owned.length;
@@ -162,6 +172,24 @@ export async function runAvatarSweep(options: AvatarSweepOptions): Promise<Avata
   }
 
   const baseSummary = { total, graceFiltered, unrecognized, unknownOwner };
+
+  if (unrecognizedReferences > 0) {
+    logger.error({
+      msg: `[AvatarSweep] ABORT: ${unrecognizedReferences} stored avatar references are not storage URIs — refusing to sweep (an object they name would look orphaned)`,
+      unrecognizedReferences,
+      ...baseSummary,
+    });
+    const abortedSummary: AvatarSweepSummary = {
+      ...baseSummary,
+      referenced: 0,
+      orphaned: 0,
+      deleted: 0,
+      errors: 0,
+      aborted: 'unrecognized-reference',
+    };
+    logger.info({ msg: '[AvatarSweep] Sweep complete', dryRun, ...abortedSummary });
+    return abortedSummary;
+  }
 
   if (referencedKeys.size === 0 && aged.length > 0) {
     logger.error({

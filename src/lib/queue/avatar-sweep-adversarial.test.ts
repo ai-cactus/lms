@@ -174,24 +174,35 @@ describe('runAvatarSweep — adversarial keys and references', () => {
     expect(referenceQuery.where).toEqual({ avatarUrl: { not: null } });
   });
 
-  // KNOWN GAP (reported, product code untouched): a stored avatarUrl that is not a
-  // gcs:// / minio:// URI (a legacy signed https URL, an s3:// URI) cannot be parsed
-  // to a key, so it protects nothing and its object looks orphaned.
-  it.fails(
-    'a non-storage-URI avatarUrl that names an object (signed https URL) should still protect it',
-    async () => {
-      listing([UNSAVED, OLD], [SAVED, OLD]);
-      setupDb(
-        [
-          SAVED,
-          'https://storage.googleapis.com/bucket/avatars/u1/200-unsaved.png?X-Goog-Signature=abc',
-        ],
-        ['u1'],
-      );
+  // A stored avatarUrl that is not a gcs:// / minio:// URI cannot be matched to
+  // the key it may name, so its object would look orphaned. The sweep aborts.
+  it.each([
+    'https://storage.googleapis.com/bucket/avatars/u1/200-unsaved.png?X-Goog-Signature=abc',
+    's3://bucket/avatars/u1/200-unsaved.png',
+    '/uploads/avatars/u1/200-unsaved.png',
+  ])('aborts the whole run when any avatarUrl is not a storage URI (%s)', async (stored) => {
+    listing([UNSAVED, OLD], [SAVED, OLD]);
+    setupDb([SAVED, stored], ['u1']);
 
-      await runAvatarSweep(live);
+    const summary = await runAvatarSweep(live);
 
-      expect(mockDeleteFile).not.toHaveBeenCalled();
-    },
-  );
+    expect(mockDeleteFile).not.toHaveBeenCalled();
+    expect(summary).toMatchObject({ deleted: 0, orphaned: 0, aborted: 'unrecognized-reference' });
+    const abortLog = mockLoggerError.mock.calls
+      .map(([entry]) => entry as Record<string, unknown>)
+      .find((entry) => String(entry.msg).startsWith('[AvatarSweep] ABORT'));
+    expect(abortLog).toMatchObject({ unrecognizedReferences: 1 });
+    expect(JSON.stringify(abortLog)).not.toContain('avatars/u1');
+  });
+
+  it('sweeps normally when every stored avatarUrl parses to a storage key', async () => {
+    listing([UNSAVED, OLD], [SAVED, OLD]);
+    setupDb([SAVED, 'minio://other/avatars/u2/1-kept.png'], ['u1']);
+
+    const summary = await runAvatarSweep(live);
+
+    expect(mockDeleteFile).toHaveBeenCalledOnce();
+    expect(mockDeleteFile).toHaveBeenCalledWith(UNSAVED);
+    expect(summary).toMatchObject({ referenced: 1, deleted: 1, aborted: null });
+  });
 });
