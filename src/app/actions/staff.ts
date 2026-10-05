@@ -34,6 +34,12 @@ import { invalidateRevalidationCache } from '@/lib/auth/session-revalidation-cac
 import type { ActivityReportEnrollment } from '@/lib/pdf-reports';
 import { captureServer } from '@/lib/analytics/server';
 import { buildCourseThumbnailUrl } from '@/lib/video/thumbnail';
+import { signAvatarUrl } from '@/lib/storage/avatar';
+import {
+  LAST_OWNER_REFUSAL,
+  lockOrganizations,
+  wouldLeaveOrganizationOwnerless,
+} from '@/lib/organization/owner-guard';
 import { parseStoredOptionExplanations } from '@/lib/quiz/options';
 import {
   DELETED_EMAIL_REFUSAL,
@@ -52,6 +58,9 @@ const ROLE_CHANGE_DENIED_MESSAGES: Record<RoleChangeDenyReason, string> = {
   role_not_grantable:
     'The Owner role cannot be assigned. It is set only when an organization is created.',
 };
+
+const ROLE_CHANGED_CONCURRENTLY =
+  "This person's role changed while you were editing it. Reload the page and try again.";
 
 /**
  * `organizationUserId` identifies the person's membership in the caller's org
@@ -94,6 +103,7 @@ export async function getStaffDetails(organizationUserId: string) {
       // the joined User rows (password hash, MFA state, reset flags).
       select: {
         id: true,
+        userId: true,
         role: true,
         organizationId: true,
         managerId: true,
@@ -200,7 +210,7 @@ export async function getStaffDetails(organizationUserId: string) {
         id: orgUser.id,
         name: orgUser.user.fullName || orgUser.user.email.split('@')[0],
         email: orgUser.user.email,
-        avatarUrl: orgUser.user.avatarUrl ?? null,
+        avatarUrl: await signAvatarUrl(orgUser.user.avatarUrl, orgUser.userId),
         role: orgUser.role,
         // The two name fields are the EDITABLE record, reported verbatim —
         // never a display fallback. `updateStaffDetails` takes name and role
@@ -319,17 +329,42 @@ export async function updateStaffDetails(
   }
 
   try {
-    await prisma.organizationUser.update({
-      where: { id: organizationUserId },
-      data: {
-        role: data.role,
-        // Stamp the role-join date so late-joiner deadline windows count from the
-        // change.
-        ...(roleChanged ? { roleAssignedAt: new Date() } : {}),
-      },
-    });
-
     if (roleChanged) {
+      // RISK-16: the role above was read, and authorised, before this
+      // transaction. Under the organization lock every owner-affecting write
+      // takes, re-read it: a role that moved since means the authorisation is
+      // stale, and a demotion must never take the last active owner.
+      const outcome = await prisma.$transaction(async (tx) => {
+        await lockOrganizations(tx, [target.organizationId]);
+        const current = await tx.organizationUser.findUnique({
+          where: { id: organizationUserId },
+          select: { id: true, organizationId: true, role: true, active: true },
+        });
+        if (!current || current.role !== target.role) return 'stale' as const;
+        if (await wouldLeaveOrganizationOwnerless(tx, current)) return 'last_owner' as const;
+
+        await tx.organizationUser.update({
+          where: { id: organizationUserId },
+          // Stamp the role-join date so late-joiner deadline windows count
+          // from the change.
+          data: { role: data.role, roleAssignedAt: new Date() },
+        });
+        return 'changed' as const;
+      });
+
+      if (outcome !== 'changed') {
+        logger.warn({
+          msg: '[staff] Role change refused under the organization lock',
+          actorId: session.user.id,
+          targetOrgUserId: organizationUserId,
+          reason: outcome,
+        });
+        return {
+          success: false,
+          error: outcome === 'last_owner' ? LAST_OWNER_REFUSAL : ROLE_CHANGED_CONCURRENTLY,
+        };
+      }
+
       // Bump sessionVersion on the identity so the target's live sessions are
       // invalidated on their next JWT decode — their new permission ceiling
       // takes effect immediately (F-059 kill-switch precedent).
@@ -1228,24 +1263,45 @@ export async function removeStaff(organizationUserId: string) {
     // sessionVersion so any live session is invalidated on its next JWT decode
     // (F-059 kill-switch), and expire any pending invite for this email in the
     // org so a live `/join` token can't immediately re-add the person.
-    await prisma.$transaction([
-      prisma.organizationUser.update({
-        where: { id: organizationUserId },
+    const removed = await prisma.$transaction(async (tx) => {
+      // RISK-16: the owner check above ran before this transaction. Take the
+      // organization lock every owner-affecting write takes, and re-apply the
+      // check in the write itself, so the row deactivated here can never be an
+      // owner — whatever else is changing in the organization at that moment.
+      await lockOrganizations(tx, [admin.organizationId]);
+      const deactivated = await tx.organizationUser.updateMany({
+        where: {
+          id: organizationUserId,
+          organizationId: admin.organizationId,
+          role: { not: 'owner' },
+        },
         data: { active: false, deactivatedAt: new Date() },
-      }),
-      prisma.user.update({
+      });
+      if (deactivated.count === 0) return false;
+
+      await tx.user.update({
         where: { id: staffOrgUser.userId },
         data: { sessionVersion: { increment: 1 } },
-      }),
-      prisma.invite.updateMany({
+      });
+      await tx.invite.updateMany({
         where: {
           email: staffOrgUser.user.email,
           organizationId: admin.organizationId,
           status: 'pending',
         },
         data: { status: 'expired' },
-      }),
-    ]);
+      });
+      return true;
+    });
+    if (!removed) {
+      logger.warn({
+        msg: '[staff] removeStaff refused — the membership became an owner row or vanished',
+        actorId: session.user.id,
+        orgId: admin.organizationId,
+        organizationUserId,
+      });
+      throw new Error('The organization owner cannot be removed.');
+    }
 
     // The unlink bumped sessionVersion; evict the cached revalidation snapshot
     // so the removed user's next decode misses the cache and is invalidated.

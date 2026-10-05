@@ -36,6 +36,7 @@ import type { DbTransactionClient } from '@/db/index';
 import { auditCritical, type AuditEntry } from '@/lib/audit';
 import { invalidateRevalidationCache } from '@/lib/auth/session-revalidation-cache';
 import { logger } from '@/lib/logger';
+import { lockOrganizations } from '@/lib/organization/owner-guard';
 
 /** Who is deleting, for the audit row. Never an email or a name. */
 export type SoftDeleteActor = Pick<AuditEntry, 'actorId' | 'actorRole' | 'ip' | 'userAgent'>;
@@ -135,11 +136,10 @@ export async function softDeleteUser(
     const memberOrganizationIds = [...new Set(memberships.map((m) => m.organizationId))];
 
     // Lock the person's organizations before the Q-30 check, so two co-owners
-    // deleted at the same moment are serialised: the second sees the first's
-    // deactivation and is refused instead of both passing and orphaning the org.
-    if (memberOrganizationIds.length > 0) {
-      await tx.$queryRaw`SELECT id FROM organizations WHERE id = ANY(${memberOrganizationIds}::text[]) ORDER BY id FOR UPDATE`;
-    }
+    // deleted at the same moment — or a delete racing a demotion that takes the
+    // same lock (RISK-16) — are serialised: the second sees the first's write
+    // and is refused instead of both passing and orphaning the org.
+    await lockOrganizations(tx, memberOrganizationIds);
 
     const blocks = await findOwnershipBlocks(tx, userId);
     if (blocks.length > 0) return { kind: 'blocked' as const, blocks };

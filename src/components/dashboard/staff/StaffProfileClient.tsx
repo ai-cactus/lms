@@ -68,6 +68,7 @@ interface StaffProfileClientProps {
       id: string;
       name: string;
       email: string;
+      /** A short-lived signed URL (see `signAvatarUrl`), never the stored storage URI. */
       avatarUrl: string | null;
       role: string;
       firstName: string;

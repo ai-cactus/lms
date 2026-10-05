@@ -47,8 +47,3 @@ export function permissionForLink(linkUrl: string | null | undefined): Permissio
 export function roleHolds(role: Role, permission: Permission | null): boolean {
   return permission === null || can(dbRoleToRoleKey(role), permission);
 }
-
-/** Whether a member with `role` can open `linkUrl`. */
-export function roleMayOpenLink(role: Role, linkUrl: string | null | undefined): boolean {
-  return roleHolds(role, permissionForLink(linkUrl));
-}

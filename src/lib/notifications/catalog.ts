@@ -132,13 +132,6 @@ export const NOTIFICATION_TYPES: NotificationTypeMeta[] = [
     category: 'training',
   },
   {
-    key: 'COURSE_FAILED',
-    label: 'Failed',
-    description: 'When a worker fails a quiz',
-    audience: 'admin',
-    category: 'training',
-  },
-  {
     key: 'COURSE_RETRY_REQUESTED',
     label: 'Retry requests',
     description: 'When a worker requests a course retry',

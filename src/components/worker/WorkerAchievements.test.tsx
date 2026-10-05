@@ -54,4 +54,23 @@ describe('WorkerAchievements', () => {
     expect(screen.getByText('0 certificates')).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /View all certificates/ })).not.toBeInTheDocument();
   });
+
+  // BUG-57: the section lists certificates, but was headed "Courses Completed".
+  it('is headed "Certificates"', () => {
+    render(<WorkerAchievements certificateCount={1} recentCertificates={certs(1)} />);
+
+    expect(screen.getByRole('heading', { name: 'Certificates' })).toBeInTheDocument();
+    expect(screen.queryByText('Courses Completed')).not.toBeInTheDocument();
+  });
+
+  it('says the certificates could not be loaded, never "0 certificates", when the load failed', () => {
+    render(<WorkerAchievements certificateCount={0} recentCertificates={[]} loadFailed />);
+
+    expect(screen.getByRole('status')).toHaveTextContent(
+      "Certificates couldn't be loaded right now",
+    );
+    expect(screen.queryByText('0 certificates')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Browse Courses' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /View all certificates/ })).toBeInTheDocument();
+  });
 });

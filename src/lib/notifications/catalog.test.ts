@@ -132,6 +132,14 @@ describe('notificationTypesFor — audience filtering', () => {
     expect(adminTypes.some((t) => t.audience === 'worker')).toBe(false);
   });
 
+  // BUG-56: the Settings panel offered an opt-out for a notice no code writes.
+  // Failing a course IS running out of attempts, which QUIZ_RETRY_LIMIT_REACHED
+  // already covers. A stored COURSE_FAILED preference row is simply never read.
+  it('offers no preference toggle for COURSE_FAILED, which nothing sends', () => {
+    expect(NOTIFICATION_TYPES.map((t) => t.key)).not.toContain('COURSE_FAILED');
+    expect(notificationTypesFor('admin').map((t) => t.key)).toContain('QUIZ_RETRY_LIMIT_REACHED');
+  });
+
   it('the engine notification types are all audience "admin" (they concern org management)', () => {
     for (const type of ENGINE_TYPES) {
       const entry = NOTIFICATION_TYPES.find((t) => t.key === type);

@@ -9,7 +9,6 @@ import {
   REASSIGN_ESCALATION_PERMISSION,
   permissionForLink,
   roleHolds,
-  roleMayOpenLink,
 } from './link-audience';
 import type { Role } from '@/types/next-auth';
 
@@ -35,7 +34,8 @@ describe('permissionForLink', () => {
   });
 });
 
-describe('roleMayOpenLink — the admin tier against the two gated pages', () => {
+describe('roleHolds — the admin tier against the two gated pages', () => {
+  const mayOpen = (role: Role, link: string) => roleHolds(role, permissionForLink(link));
   const staffProfile = '/dashboard/staff/ou-1';
   const statusTracker = '/dashboard/status-tracker';
 
@@ -47,12 +47,12 @@ describe('roleMayOpenLink — the admin tier against the two gated pages', () =>
     ['clinical_director', false, true],
     ['finance', false, false],
   ])('%s: staff profile %s, status tracker %s', (role, staff, tracker) => {
-    expect(roleMayOpenLink(role, staffProfile)).toBe(staff);
-    expect(roleMayOpenLink(role, statusTracker)).toBe(tracker);
+    expect(mayOpen(role, staffProfile)).toBe(staff);
+    expect(mayOpen(role, statusTracker)).toBe(tracker);
   });
 
   it('narrows nobody for a link that needs nothing beyond the tier', () => {
-    expect(roleMayOpenLink('finance', '/dashboard')).toBe(true);
+    expect(mayOpen('finance', '/dashboard')).toBe(true);
     expect(roleHolds('finance', null)).toBe(true);
   });
 });
