@@ -16,6 +16,10 @@ import { publishCourseOnAssignment } from '@/lib/course/publish-on-assign';
 import { ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
 import { isCourseOrganizationReviewer } from '@/lib/course/read-access';
 import {
+  LEARNER_ENROLLMENT_UNAVAILABLE_MESSAGE,
+  LEARNER_SIGNED_OUT_MESSAGE,
+} from '@/lib/enrollment/learner-refusals';
+import {
   partitionEmailsByFacility,
   partitionOrgUsersByFacility,
 } from '@/lib/facility/target-scope';
@@ -1432,7 +1436,8 @@ export async function requestCourseRetry(
   const workerOrgUserId = worker?.user?.organizationUserId ?? null;
 
   if (!admin?.user?.id && !worker?.user?.id) {
-    throw new Error('Unauthorized');
+    logger.warn({ msg: '[enrollment] Course retry refused — no session', enrollmentId });
+    return { success: false, refusedReason: LEARNER_SIGNED_OUT_MESSAGE };
   }
 
   const enrollment = await prisma.enrollment.findUnique({
@@ -1448,7 +1453,13 @@ export async function requestCourseRetry(
     (enrollment.organizationUserId !== adminOrgUserId &&
       enrollment.organizationUserId !== workerOrgUserId)
   ) {
-    throw new Error('Enrollment not found');
+    logger.warn({
+      msg: '[enrollment] Course retry refused — enrollment not found or not owned by the caller',
+      enrollmentId,
+      adminOrgUserId,
+      workerOrgUserId,
+    });
+    return { success: false, refusedReason: LEARNER_ENROLLMENT_UNAVAILABLE_MESSAGE };
   }
 
   // Q-04: a cancelled course cannot be retried. Fail-closed — the reset below,

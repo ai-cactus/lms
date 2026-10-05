@@ -70,6 +70,10 @@ import {
   QUIZ_ALREADY_COMPLETED_MESSAGE,
   QUIZ_LOCKED_MESSAGE,
 } from '@/lib/enrollment/status-guards';
+import {
+  LEARNER_ENROLLMENT_UNAVAILABLE_MESSAGE,
+  LEARNER_SIGNED_OUT_MESSAGE,
+} from '@/lib/enrollment/learner-refusals';
 import { captureServer } from '@/lib/analytics/server';
 import { analyticsContextFrom } from '@/lib/analytics/identity';
 import { resolveAttributionName } from '@/lib/attribution-name';
@@ -1677,7 +1681,8 @@ export async function attestCourse(
   const workerId = worker?.user?.id;
 
   if (!adminId && !workerId) {
-    throw new Error('Unauthorized');
+    logger.warn({ msg: '[course] Attestation refused — no session', enrollmentId });
+    return { success: false, refusedReason: LEARNER_SIGNED_OUT_MESSAGE };
   }
 
   const enrollment = await prisma.enrollment.findUnique({
@@ -1698,16 +1703,19 @@ export async function attestCourse(
     },
   });
 
-  if (!enrollment) {
-    throw new Error('Enrollment not found');
-  }
-
   // Check if EITHER session owns this enrollment (handles cookie collision)
   if (
-    enrollment.organizationUser.userId !== adminId &&
-    enrollment.organizationUser.userId !== workerId
+    !enrollment ||
+    (enrollment.organizationUser.userId !== adminId &&
+      enrollment.organizationUser.userId !== workerId)
   ) {
-    throw new Error('Unauthorized');
+    logger.warn({
+      msg: '[course] Attestation refused — enrollment not found or not owned by the caller',
+      enrollmentId,
+      adminId,
+      workerId,
+    });
+    return { success: false, refusedReason: LEARNER_ENROLLMENT_UNAVAILABLE_MESSAGE };
   }
 
   if (!signature.trim()) {
@@ -1833,7 +1841,8 @@ export async function startCourse(
   const workerId = worker?.user?.id;
 
   if (!adminId && !workerId) {
-    throw new Error('Unauthorized');
+    logger.warn({ msg: '[course] Course start refused — no session', courseId });
+    return { success: false, refusedReason: LEARNER_SIGNED_OUT_MESSAGE };
   }
 
   // Try to find enrollment for either session user
@@ -1859,7 +1868,13 @@ export async function startCourse(
   }
 
   if (!enrollment) {
-    throw new Error('Enrollment not found');
+    logger.warn({
+      msg: '[course] Course start refused — caller is not enrolled',
+      courseId,
+      adminId,
+      workerId,
+    });
+    return { success: false, refusedReason: LEARNER_ENROLLMENT_UNAVAILABLE_MESSAGE };
   }
 
   // Q-04: opening a cancelled course is the first learner action to stop.
@@ -2256,7 +2271,8 @@ export async function retakeQuiz(
   const workerId = worker?.user?.id;
 
   if (!adminId && !workerId) {
-    throw new Error('Unauthorized');
+    logger.warn({ msg: '[course] Quiz retake refused — no session', enrollmentId });
+    return { success: false, refusedReason: LEARNER_SIGNED_OUT_MESSAGE };
   }
 
   const enrollment = await prisma.enrollment.findUnique({
@@ -2281,7 +2297,13 @@ export async function retakeQuiz(
     (enrollment.organizationUser.userId !== adminId &&
       enrollment.organizationUser.userId !== workerId)
   ) {
-    throw new Error('Enrollment not found or unauthorized');
+    logger.warn({
+      msg: '[course] Quiz retake refused — enrollment not found or not owned by the caller',
+      enrollmentId,
+      adminId,
+      workerId,
+    });
+    return { success: false, refusedReason: LEARNER_ENROLLMENT_UNAVAILABLE_MESSAGE };
   }
 
   // Q-04: an archived course cannot be retaken. Checked before the attempt
