@@ -67,4 +67,32 @@ test.describe('Certificate modal — action bar overlap regression', () => {
     await closeButton.click();
     await expect(dialog).toBeHidden();
   });
+
+  // SEC-15: getCertificateDetails returns its row to the browser. With
+  // `user: true` / `organization: true` that row carried the holder's bcrypt
+  // password hash, the organization's join code and its Stripe customer id.
+  test('the certificate preview never sends credentials, the join code or a Stripe id to the browser', async ({
+    page,
+  }) => {
+    const bodies: string[] = [];
+    page.on('response', async (response) => {
+      const request = response.request();
+      if (request.method() !== 'POST' || !request.headers()['next-action']) return;
+      bodies.push(await response.text().catch(() => ''));
+    });
+
+    await page.goto('/login');
+    await page.fill('input[type="email"]', 'cara.certificate@test.com');
+    await page.fill('input[type="password"]', 'TestPassword123!');
+    await page.click('button[type="submit"]');
+    await page.waitForURL('**/worker');
+
+    await page.goto('/worker/certificates');
+    await page.getByRole('button', { name: `View certificate for ${COURSE_TITLE}` }).click();
+    await expect(page.getByRole('dialog').getByText(STUDENT_NAME, { exact: true })).toBeVisible();
+
+    const payload = bodies.join('\n');
+    expect(payload).toContain(STUDENT_NAME);
+    expect(payload).not.toMatch(/"password"|"joinCode"|"stripeCustomerId"|"mfaSecret"|\$2[aby]\$/);
+  });
 });
