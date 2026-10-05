@@ -56,6 +56,7 @@ vi.mock('@/lib/facility/scope', async (importOriginal) => ({
 }));
 
 import { issueCertificate } from './certificate';
+import { audit } from '@/lib/audit';
 
 const ORG_ID = 'org-1';
 const ENROLLMENT_ID = 'enrollment-abc-123';
@@ -246,5 +247,50 @@ describe('issueCertificate — preconditions unchanged for an administrative iss
 
     expect(result).toEqual({ ok: true, certificate: existingCertificate });
     expectNothingIssued();
+  });
+});
+
+describe('issueCertificate — BUG-47: an admin and a worker session for two DIFFERENT accounts', () => {
+  const armBoth = (adminOu: string, workerOu: string) => {
+    mockAdminAuth.mockResolvedValue({
+      user: { id: 'viewer-1', role: 'hr', organizationId: ORG_ID, organizationUserId: adminOu },
+    });
+    mockWorkerAuth.mockResolvedValue({
+      user: { id: 'w-1', role: 'nurse', organizationId: ORG_ID, organizationUserId: workerOu },
+    });
+  };
+
+  it('the worker who owns the enrolment earns it AS the worker — self path, audited to them', async () => {
+    armBoth('ou-viewer', HOLDER_OU);
+
+    const result = await issueCertificate(ENROLLMENT_ID);
+
+    assert(result.ok);
+    expect(prismaMock.enrollment.findFirst).not.toHaveBeenCalled();
+    expect(vi.mocked(audit)).toHaveBeenCalledWith(
+      expect.objectContaining({ actorId: 'w-1', actorRole: 'nurse' }),
+    );
+  });
+
+  it('the admin account that owns the enrolment earns it as itself', async () => {
+    armBoth(HOLDER_OU, 'ou-other');
+
+    const result = await issueCertificate(ENROLLMENT_ID);
+
+    assert(result.ok);
+    expect(prismaMock.enrollment.findFirst).not.toHaveBeenCalled();
+    expect(vi.mocked(audit)).toHaveBeenCalledWith(expect.objectContaining({ actorId: 'viewer-1' }));
+  });
+
+  it('when neither owns it, issuance is administrative and runs as the admin account', async () => {
+    armBoth('ou-viewer', 'ou-other');
+
+    const result = await issueCertificate(ENROLLMENT_ID);
+
+    assert(result.ok);
+    expect(prismaMock.enrollment.findFirst).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(audit)).toHaveBeenCalledWith(
+      expect.objectContaining({ actorId: 'viewer-1', actorRole: 'hr' }),
+    );
   });
 });

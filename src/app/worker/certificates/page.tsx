@@ -13,6 +13,7 @@ export default async function WorkerCertificatesPage() {
   return (
     <div className="mx-auto w-full max-w-[1068px] py-8 px-4 sm:px-6 lg:px-8">
       <CertificateCardList
+        realm="worker"
         certificates={certificates}
         title="Certificates"
         description="Here's a brief overview of your certificates on the platform."

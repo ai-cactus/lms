@@ -5,6 +5,7 @@ import { Download, Loader2, X } from 'lucide-react';
 import { Dialog, DialogClose, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { getCertificateDetails } from '@/app/actions/certificate';
+import type { PortalRealm } from '@/lib/auth/portal-sessions';
 import CertificateDocument, { CERT_HEIGHT, CERT_WIDTH } from './certificate/CertificateDocument';
 import {
   exportCertificatePdf,
@@ -19,12 +20,14 @@ type CertificateData = Awaited<ReturnType<typeof getCertificateDetails>>;
 const MAX_CARD_WIDTH = 1000;
 
 interface CertificateModalProps {
+  realm: PortalRealm;
   isOpen: boolean;
   onClose: () => void;
   certificateId: string;
 }
 
 export default function CertificateModal({
+  realm,
   isOpen,
   onClose,
   certificateId,
@@ -46,7 +49,7 @@ export default function CertificateModal({
     setLoading(true);
     setError(null);
 
-    getCertificateDetails(certificateId)
+    getCertificateDetails(realm, certificateId)
       .then(async (res) => {
         if (cancelled) return;
         setData(res);
@@ -69,7 +72,7 @@ export default function CertificateModal({
     return () => {
       cancelled = true;
     };
-  }, [isOpen, certificateId]);
+  }, [realm, isOpen, certificateId]);
 
   // The certificate is authored at a fixed A4-landscape size, so it is scaled to
   // fit the space available inside the padded viewport region — bounded by BOTH the

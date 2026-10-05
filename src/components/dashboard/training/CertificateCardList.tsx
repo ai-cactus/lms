@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { getCertificateDetails } from '@/app/actions/certificate';
+import type { PortalRealm } from '@/lib/auth/portal-sessions';
 import {
   exportCertificatesPdf,
   formatCertificateIssueDate,
@@ -35,6 +36,7 @@ interface CertificateData {
 }
 
 interface CertificateCardListProps {
+  realm: PortalRealm;
   certificates: CertificateData[];
   title?: string;
   description?: string;
@@ -58,6 +60,7 @@ interface CertificateExportPage {
 }
 
 export default function CertificateCardList({
+  realm,
   certificates,
   title = 'Certificates',
   description = "Here's a brief overview of your certificates on the platform.",
@@ -136,7 +139,7 @@ export default function CertificateCardList({
     const pages: CertificateExportPage[] = [];
     for (const cert of selected) {
       try {
-        const details = await getCertificateDetails(cert.id);
+        const details = await getCertificateDetails(realm, cert.id);
 
         let qrDataUrl: string | undefined;
         try {
@@ -414,6 +417,7 @@ export default function CertificateCardList({
 
       {selectedCertId && (
         <CertificateModal
+          realm={realm}
           isOpen={true}
           onClose={() => setSelectedCertId(null)}
           certificateId={selectedCertId}

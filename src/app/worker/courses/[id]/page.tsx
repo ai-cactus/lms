@@ -28,7 +28,7 @@ export default async function WorkerCourseDetailsPage(props: PageProps) {
   // a missing course.
   let course;
   try {
-    course = await getCourseById(params.id);
+    course = await getCourseById('worker', params.id);
   } catch (error) {
     if (!isCourseAccessError(error)) throw error;
     notFound();
