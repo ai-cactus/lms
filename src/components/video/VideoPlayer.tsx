@@ -2,7 +2,12 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Alert } from '@/components/ui/alert';
-import { getVideoPlaybackUrl, saveVideoProgress } from '@/app/actions/video-progress';
+import { Button } from '@/components/ui/button';
+import {
+  getVideoPlaybackUrl,
+  saveVideoProgress,
+  type VideoProgressRefusalCode,
+} from '@/app/actions/video-progress';
 import {
   advanceWatchedMark,
   advanceWatchedMarkOnEnded,
@@ -47,6 +52,22 @@ const DEBOUNCE_MS = 10_000;
 
 const GENERIC_LOAD_ERROR = 'This video is currently unavailable.';
 
+interface ProgressRefusal {
+  code: VideoProgressRefusalCode;
+  message: string;
+}
+
+/**
+ * Refusals that cannot lift while this page is open: paused billing and an
+ * archived course. Every later heartbeat would be refused the same way, so the
+ * player stops sending them. MFA_REQUIRED is absent on purpose — signing in
+ * again (in another tab, say) makes the next heartbeat succeed.
+ */
+const TERMINAL_REFUSALS: ReadonlySet<VideoProgressRefusalCode> = new Set([
+  'BILLING_INACTIVE',
+  'COURSE_ARCHIVED',
+]);
+
 export function VideoPlayer({
   lessonId,
   enrollmentId,
@@ -56,6 +77,7 @@ export function VideoPlayer({
   trackProgress = true,
 }: VideoPlayerProps) {
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [progressRefusal, setProgressRefusal] = useState<ProgressRefusal | null>(null);
 
   // Derived, not fetched. The proxy builds this exact path from the lessonId
   // the client already holds, so asking the server for it costs a round trip
@@ -92,6 +114,12 @@ export function VideoPlayer({
   const mountedRef = useRef(true);
   const lastSavedAtRef = useRef(0);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Set once a terminal refusal lands; no save is attempted after it.
+  const progressHaltedRef = useRef(false);
+  // The refusal currently on screen, so a heartbeat refused for the same reason
+  // does not re-render (and re-announce) the notice every DEBOUNCE_MS.
+  const shownRefusalCodeRef = useRef<VideoProgressRefusalCode | null>(null);
 
   // Newest values seen by any handler. Every save reads this at fire time, so a
   // deferred save writes the position reached when the timer fires — not the
@@ -130,25 +158,59 @@ export function VideoPlayer({
   }, []);
 
   // ── Persist helper ───────────────────────────────────────────────────────
+  function handleSaveResult(result: Awaited<ReturnType<typeof saveVideoProgress>>) {
+    if (!mountedRef.current) return;
+
+    if (!result.refusedCode) {
+      // Only an MFA notice can be outlived: a save just went through.
+      if (shownRefusalCodeRef.current === 'MFA_REQUIRED') {
+        shownRefusalCodeRef.current = null;
+        setProgressRefusal(null);
+      }
+      return;
+    }
+
+    const { refusedCode } = result;
+    if (TERMINAL_REFUSALS.has(refusedCode)) {
+      progressHaltedRef.current = true;
+      if (debounceTimerRef.current !== null) {
+        clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
+    }
+
+    if (shownRefusalCodeRef.current === refusedCode) return;
+    shownRefusalCodeRef.current = refusedCode;
+    logger.warn({
+      msg: '[video] progress save refused',
+      enrollmentId: enrollmentIdRef.current,
+      code: refusedCode,
+    });
+    setProgressRefusal({
+      code: refusedCode,
+      message: result.refusedReason ?? 'Your progress on this video is not being saved.',
+    });
+  }
+
   function flushProgress() {
-    if (!trackProgressRef.current) return;
+    if (!trackProgressRef.current || progressHaltedRef.current) return;
     lastSavedAtRef.current = Date.now();
     const { positionSeconds, watchedPct } = latestProgressRef.current;
-    saveVideoProgress(enrollmentIdRef.current, positionSeconds, watchedPct).catch(
-      (err: unknown) => {
+    saveVideoProgress(enrollmentIdRef.current, positionSeconds, watchedPct)
+      .then(handleSaveResult)
+      .catch((err: unknown) => {
         logger.warn({
           msg: 'VideoPlayer: failed to save progress',
           err,
           enrollmentId: enrollmentIdRef.current,
         });
-      },
-    );
+      });
   }
 
   function persistProgress(immediate = false) {
     if (!mountedRef.current) return;
     // Bail before arming a timer for a save that flushProgress would drop anyway.
-    if (!trackProgressRef.current) return;
+    if (!trackProgressRef.current || progressHaltedRef.current) return;
 
     const msSinceLast = Date.now() - lastSavedAtRef.current;
 
@@ -329,35 +391,55 @@ export function VideoPlayer({
   }
 
   return (
-    // The ratio box is load-bearing, not decoration: a bare <video> has no
-    // intrinsic ratio until metadata arrives, so the UA default of 2:1 applies
-    // and then reflows to 16:9 — shifting everything below it, once per lesson
-    // on an article page. `max-h`/`max-w` together cap the box proportionally
-    // (height alone would letterbox), keeping the controls above the fold on a
-    // ~390px-tall landscape phone.
-    <div className="relative mx-auto aspect-video max-h-[70svh] w-full max-w-[calc(70svh*16/9)] overflow-hidden rounded-lg bg-black shadow-md">
-      <video
-        src={src}
-        // Paints the first frame immediately for ~40 KB. 404s (and so paints
-        // nothing) for assets transcoded before posters existed, until
-        // scripts/backfill-video-posters.ts has run.
-        poster={`/api/video/${lessonId}/poster`}
-        controls
-        // Android Chrome otherwise offers a Download button on the raw MP4.
-        controlsList="nodownload"
-        // playsInline is REQUIRED for inline playback on iOS Safari — without it
-        // iOS hijacks the video into its native fullscreen player.
-        playsInline
-        preload={preload}
-        className="h-full w-full object-contain"
-        onLoadedMetadata={handleLoadedMetadata}
-        onSeeking={handleSeeking}
-        onSeeked={handleSeeked}
-        onTimeUpdate={handleTimeUpdate}
-        onPause={handlePause}
-        onEnded={handleEnded}
-        onError={handleVideoError}
-      />
+    // The outer wrapper is always rendered, notice or not: toggling it would
+    // change the tree above <video> and remount it mid-playback.
+    <div className="flex w-full flex-col gap-3">
+      {/*
+        The ratio box is load-bearing, not decoration: a bare <video> has no
+        intrinsic ratio until metadata arrives, so the UA default of 2:1 applies
+        and then reflows to 16:9 — shifting everything below it, once per lesson
+        on an article page. `max-h`/`max-w` together cap the box proportionally
+        (height alone would letterbox), keeping the controls above the fold on a
+        ~390px-tall landscape phone.
+      */}
+      <div className="relative mx-auto aspect-video max-h-[70svh] w-full max-w-[calc(70svh*16/9)] overflow-hidden rounded-lg bg-black shadow-md">
+        <video
+          src={src}
+          // Paints the first frame immediately for ~40 KB. 404s (and so paints
+          // nothing) for assets transcoded before posters existed, until
+          // scripts/backfill-video-posters.ts has run.
+          poster={`/api/video/${lessonId}/poster`}
+          controls
+          // Android Chrome otherwise offers a Download button on the raw MP4.
+          controlsList="nodownload"
+          // playsInline is REQUIRED for inline playback on iOS Safari — without it
+          // iOS hijacks the video into its native fullscreen player.
+          playsInline
+          preload={preload}
+          className="h-full w-full object-contain"
+          onLoadedMetadata={handleLoadedMetadata}
+          onSeeking={handleSeeking}
+          onSeeked={handleSeeked}
+          onTimeUpdate={handleTimeUpdate}
+          onPause={handlePause}
+          onEnded={handleEnded}
+          onError={handleVideoError}
+        />
+      </div>
+      {progressRefusal && (
+        <Alert
+          variant="warning"
+          title="Your progress isn't being saved"
+          data-testid="video-progress-refusal"
+        >
+          <p>{progressRefusal.message}</p>
+          {progressRefusal.code === 'MFA_REQUIRED' && (
+            <Button asChild size="sm" variant="outline" className="mt-2">
+              <a href="/login">Sign in again</a>
+            </Button>
+          )}
+        </Alert>
+      )}
     </div>
   );
 }

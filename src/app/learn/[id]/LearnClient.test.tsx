@@ -24,7 +24,7 @@ vi.mock('@/lib/logger', () => ({
 
 vi.mock('@/app/actions/video-progress', () => ({
   getVideoPlaybackUrl: vi.fn(),
-  saveVideoProgress: vi.fn().mockResolvedValue(undefined),
+  saveVideoProgress: vi.fn().mockResolvedValue({ unlocked: false }),
 }));
 
 vi.mock('@/app/actions/course', () => ({
