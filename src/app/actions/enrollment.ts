@@ -235,11 +235,13 @@ export async function getAvailableUsers() {
   const members = await prisma.organizationUser.findMany({
     where: { organizationId, active: true, ...staffFacilityWhere(dataFacilityIds) },
     // Explicit projection — the DTO uses only these fields, so never load the
-    // password hash / MFA-secret columns of the full user row into memory.
+    // password hash / MFA-secret columns of the full user row into memory. No
+    // avatar: `User.avatarUrl` is a raw storage URI that must never reach the
+    // browser (BUG-48), and nothing renders one from this picker.
     select: {
       id: true,
       role: true,
-      user: { select: { email: true, fullName: true, avatarUrl: true } },
+      user: { select: { email: true, fullName: true } },
     },
     orderBy: { createdAt: 'desc' },
   });
@@ -249,7 +251,6 @@ export async function getAvailableUsers() {
     email: member.user.email,
     fullName: member.user.fullName || member.user.email,
     role: member.role,
-    avatarUrl: member.user.avatarUrl,
   }));
 }
 
