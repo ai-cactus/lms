@@ -17,7 +17,8 @@
  *
  * Tier 2 (numeric parity) runs one fixture — a transferred member (stamp A,
  * roster B), a two-facility member, admins with and without training, a
- * no-facility worker and a deactivated worker — through all three readers and
+ * no-facility worker, a deactivated worker and a member whose locked enrolment a
+ * retake superseded (BUG-38) — through all three readers and
  * asserts each facility's own dashboard equals its Global row, and the Global
  * Overdue tile equals the Status Tracker, for every scope.
  *
@@ -117,6 +118,7 @@ interface FixtureEnrollment {
   dueAt: Date | null;
   /** The write-time stamp. Present to prove NOTHING reads it. */
   facilityId: string | null;
+  retakeOf?: string;
 }
 
 const MEMBERS: FixtureMember[] = [
@@ -130,6 +132,9 @@ const MEMBERS: FixtureMember[] = [
   { id: 'adm-idle', role: 'owner', active: true, facilityIds: ['fac-a'] },
   // Departed: retained records (founder Q23) must not count.
   { id: 'w-gone', role: 'nurse', active: false, facilityIds: ['fac-a'] },
+  // Failed course-y (locked, 20 days past due), then passed and attested a
+  // retake. The locked row is superseded (BUG-38).
+  { id: 'w-retook', role: 'nurse', active: true, facilityIds: ['fac-b'] },
 ];
 
 const ENROLLMENTS: FixtureEnrollment[] = [
@@ -189,9 +194,28 @@ const ENROLLMENTS: FixtureEnrollment[] = [
     dueAt: daysAgo(5),
     facilityId: 'fac-a',
   },
+  {
+    id: 'e-retook-old',
+    organizationUserId: 'w-retook',
+    courseId: 'course-y',
+    status: 'locked',
+    dueAt: daysAgo(20),
+    facilityId: 'fac-b',
+  },
+  {
+    id: 'e-retook-new',
+    organizationUserId: 'w-retook',
+    courseId: 'course-y',
+    status: 'attested',
+    dueAt: null,
+    facilityId: 'fac-b',
+    retakeOf: 'e-retook-old',
+  },
 ];
 
 const ATTEMPTS = [
+  { enrollmentId: 'e-retook-old', quizId: 'q-y', score: 40, completedAt: daysAgo(25) },
+  { enrollmentId: 'e-retook-new', quizId: 'q-y', score: 95, completedAt: daysAgo(9) },
   // Highest wins: 60 then 88 -> 88.
   { enrollmentId: 'e-two-x', quizId: 'q-x', score: 60, completedAt: daysAgo(10) },
   { enrollmentId: 'e-two-x', quizId: 'q-x', score: 88, completedAt: daysAgo(9) },
@@ -252,6 +276,8 @@ function enrollmentMatches(e: FixtureEnrollment, where: Where): boolean {
   }
   const status = where.status as { notIn?: string[] } | undefined;
   if (status?.notIn?.includes(e.status)) return false;
+  const retakeOf = where.retakeOf as { in: string[] } | undefined;
+  if (retakeOf && !(e.retakeOf && retakeOf.in.includes(e.retakeOf))) return false;
   return true;
 }
 
@@ -311,7 +337,7 @@ function wireFixture() {
           accessAt: null,
           lastActivityAt: daysAgo(1),
           completedAt: e.status === 'attested' ? daysAgo(8) : null,
-          retakeOf: null,
+          retakeOf: e.retakeOf ?? null,
         })),
       );
     },
@@ -447,9 +473,11 @@ describe('dashboard-parity — Tier 2: numeric parity', () => {
     // A: w-two, w-a, adm-trained. B: w-moved, w-two.
     expect(atA.stats.totalAssignedLearners).toBe(3);
     expect(atB.stats.totalAssignedLearners).toBe(2);
-    // e-moved's 72 lands at B; A's grades are e-two-x (88) and e-a (50).
+    // e-moved's 72 lands at B; A's grades are e-two-x (88) and e-a (50). B's are
+    // e-moved (72), e-two-x (88) and e-retook-new (95) — the superseded
+    // e-retook-old (40) is graded by its retake.
     expect(atA.stats.averageGrade).toBe(69);
-    expect(atB.stats.averageGrade).toBe(80);
+    expect(atB.stats.averageGrade).toBe(85);
   });
 
   it("per-course completion is per assignment, over the facility's roster", async () => {
@@ -475,12 +503,12 @@ describe('dashboard-parity — Tier 2: numeric parity', () => {
   it('counts the staff population: workers + trained admins, active only, including no-facility members', async () => {
     const global = await getGlobalDashboardData();
 
-    // w-moved, w-two, w-a, w-none, adm-trained — not adm-idle, not w-gone.
-    expect(global.enterpriseFootprint.totalStaff.value).toBe(5);
+    // w-moved, w-two, w-a, w-none, adm-trained, w-retook — not adm-idle, not w-gone.
+    expect(global.enterpriseFootprint.totalStaff.value).toBe(6);
     const staff = Object.fromEntries(
       global.facilitiesOverview.map((r) => [r.facilityId, r.staffCount]),
     );
-    expect(staff).toEqual({ 'fac-a': 3, 'fac-b': 2 });
+    expect(staff).toEqual({ 'fac-a': 3, 'fac-b': 3 });
   });
 
   it('Global Overdue equals the Status Tracker overdue count for every scope', async () => {
@@ -490,7 +518,8 @@ describe('dashboard-parity — Tier 2: numeric parity', () => {
       dataFacilityIds: null,
     });
 
-    // e-moved, e-two-y, e-none — not e-gone (departed member).
+    // e-moved, e-two-y, e-none — not e-gone (departed member), not e-retook-old
+    // (superseded by an attested retake).
     expect(global.riskCompliance.overdueTrainings.value).toBe(3);
     expect(orgTracker.overdueCount).toBe(3);
 
@@ -502,6 +531,34 @@ describe('dashboard-parity — Tier 2: numeric parity', () => {
       const row = global.priorityRisks.find((r) => r.facilityId === facility.id)!;
       expect(tracker.overdueCount).toBe(row.overdueTrainings);
     }
+  });
+
+  it('counts a retaken assignment once, as its retake, on every screen (BUG-38)', async () => {
+    const global = await getGlobalDashboardData();
+    const atB = await getDashboardData(['fac-b']);
+    const tracker = await getStatusTrackerSummaryForOrg({
+      organizationId: ORG_ID,
+      dataFacilityIds: ['fac-b'],
+    });
+    const row = global.facilitiesOverview.find((r) => r.facilityId === 'fac-b')!;
+    const risk = global.priorityRisks.find((r) => r.facilityId === 'fac-b')!;
+
+    expect(tracker.rows.map((r) => r.enrollmentId)).not.toContain('e-retook-old');
+    expect(tracker.hardEscalationCount).toBe(0);
+    // B's assignments: e-moved, e-two-x, e-two-y, e-retook-new. Overdue are
+    // e-moved and e-two-y; finished are e-two-x and e-retook-new.
+    expect(risk.overdueTrainings).toBe(2);
+    expect(tracker.overdueCount).toBe(risk.overdueTrainings);
+    expect(atB.stats.trainingCoverage.totalAssignments).toBe(4);
+    expect(row.activeTrainings).toBe(2);
+    expect(row.completionPercent).toBe(50);
+    // course-y at B: e-two-y (not started) and e-retook-new (attested).
+    const courseY = atB.courses.find((c) => c.id === 'course-y')!;
+    expect(courseY.enrollmentsCount).toBe(2);
+    expect(courseY.completionRate).toBe(50);
+    // First-Time Pass Rate keeps the failed original: of the first attempts
+    // (e-two-x 60, e-a 50, e-moved 72, e-retook-old 40) only 72 passes.
+    expect(global.trainingVelocity.firstTimePassRate.value).toBe(25);
   });
 
   it("names the transferred member's CURRENT facility on their Status Tracker row", async () => {

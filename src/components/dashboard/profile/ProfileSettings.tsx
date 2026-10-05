@@ -85,14 +85,14 @@ export default function ProfileSettings({
       {activeSection === 'password' && (
         <div className="flex flex-col gap-6">
           <h2 className="text-xl font-semibold text-foreground">Change Password</h2>
-          <ChangePasswordTab authProvider={profile.authProvider} />
+          <ChangePasswordTab realm="admin" authProvider={profile.authProvider} />
         </div>
       )}
 
       {activeSection === '2fa' && (
         <div className="flex flex-col gap-6">
           <h2 className="text-xl font-semibold text-foreground">Two-factor Authentication</h2>
-          <TwoFactorAuthTab userEmail={profile.email} />
+          <TwoFactorAuthTab realm="admin" userEmail={profile.email} />
         </div>
       )}
     </ProfileSettingsShell>

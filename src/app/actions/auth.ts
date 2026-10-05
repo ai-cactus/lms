@@ -21,6 +21,7 @@ import { audit, getClientContext } from '@/lib/audit';
 import { captureServer } from '@/lib/analytics/server';
 import { BCRYPT_COST } from '@/lib/bcrypt-config';
 import { invalidateRevalidationCache } from '@/lib/auth/session-revalidation-cache';
+import { isDeletedIdentity } from '@/lib/auth/deleted-identity';
 
 // Pre-computed dummy hash for constant-time response when a user email doesn't exist.
 // bcrypt runs its full computation and returns false, preventing timing-based
@@ -72,12 +73,15 @@ export async function authenticate(
     // Role lookup with timing equalization — prevents username enumeration via response time.
     // If no user is found, bcrypt still runs on a dummy hash so timing is indistinguishable
     // from a valid login attempt with a wrong password.
-    const lookupUser = email
+    const foundUser = email
       ? await prisma.user.findUnique({
           where: { email },
-          select: { id: true, mfaEnabled: true },
+          select: { id: true, mfaEnabled: true, deletedAt: true },
         })
       : null;
+    // Q-23: a deleted identity takes the unknown-account path — same timing,
+    // same message — and never reaches the MFA challenge (which sends an email).
+    const lookupUser = isDeletedIdentity(foundUser) ? null : foundUser;
 
     if (!lookupUser) {
       await bcrypt.compare('dummy', DUMMY_BCRYPT_HASH);
@@ -369,8 +373,12 @@ export async function sendPasswordResetLink(email: string) {
     return { success: true }; // Security: don't reveal throttling or user existence
   }
 
-  const user = await prisma.user.findUnique({ where: { email }, select: { id: true } });
-  if (!user) {
+  const user = await prisma.user.findUnique({
+    where: { email },
+    select: { id: true, deletedAt: true },
+  });
+  // A deleted identity (Q-23) gets the same silent no-op as an unknown email.
+  if (!user || isDeletedIdentity(user)) {
     logger.info({
       msg: '[auth] Password reset requested: email not found (no-op for security)',
       email: maskEmail(email),
@@ -434,6 +442,17 @@ export async function resetPasswordWithToken(
   });
 
   if (!verificationToken) {
+    return { error: 'Invalid or expired reset link.' };
+  }
+
+  // The delete revokes outstanding reset tokens, but a deleted identity must
+  // never get a working password back even if one survived (Q-23).
+  const tokenOwner = await prisma.user.findUnique({
+    where: { email: verificationToken.identifier },
+    select: { deletedAt: true },
+  });
+  if (!tokenOwner || isDeletedIdentity(tokenOwner)) {
+    logger.warn({ msg: '[auth] Password reset refused: account missing or deleted' });
     return { error: 'Invalid or expired reset link.' };
   }
 

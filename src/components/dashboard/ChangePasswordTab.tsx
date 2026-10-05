@@ -6,15 +6,18 @@ import { Button } from '@/components/ui/button';
 import { PasswordInput } from '@/components/ui/password-input';
 import { Field, Alert } from '@/components/ui';
 import { changePassword } from '@/app/actions/user';
+import type { PortalRealm } from '@/lib/auth/portal-sessions';
 import { actionButtonClass, fieldClass } from './profile-tab-styles';
 
 interface ChangePasswordTabProps {
+  /** The portal this tab renders in; the password change targets that session only. */
+  realm: PortalRealm;
   onSuccess?: () => void;
   userEmail?: string;
   authProvider?: string;
 }
 
-export function ChangePasswordTab({ onSuccess, authProvider }: ChangePasswordTabProps) {
+export function ChangePasswordTab({ realm, onSuccess, authProvider }: ChangePasswordTabProps) {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -65,7 +68,7 @@ export function ChangePasswordTab({ onSuccess, authProvider }: ChangePasswordTab
 
     setIsLoading(true);
     try {
-      const res = await changePassword({ currentPassword, newPassword });
+      const res = await changePassword(realm, { currentPassword, newPassword });
       if (res.success) {
         setMessage({ type: 'success', text: 'Password updated successfully.' });
         setCurrentPassword('');
@@ -97,7 +100,7 @@ export function ChangePasswordTab({ onSuccess, authProvider }: ChangePasswordTab
         <PasswordInput
           value={currentPassword}
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCurrentPassword(e.target.value)}
-          placeholder="•••••••••"
+          placeholder="Enter current password"
         />
       </Field>
 
@@ -105,7 +108,7 @@ export function ChangePasswordTab({ onSuccess, authProvider }: ChangePasswordTab
         <PasswordInput
           value={newPassword}
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewPassword(e.target.value)}
-          placeholder="•••••••••"
+          placeholder="Enter new password"
         />
       </Field>
 
@@ -113,7 +116,7 @@ export function ChangePasswordTab({ onSuccess, authProvider }: ChangePasswordTab
         <PasswordInput
           value={confirmPassword}
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => setConfirmPassword(e.target.value)}
-          placeholder="•••••••••"
+          placeholder="Confirm new password"
         />
       </Field>
 

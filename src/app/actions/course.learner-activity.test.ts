@@ -47,12 +47,14 @@ describe('attestCourse — learner activity', () => {
       courseId: 'course-1',
       organizationUserId: 'ou-1',
       organizationUser: { userId: USER_ID, organizationId: 'org-1', user: { fullName: 'Ada' } },
-      course: { title: 'HIPAA', archivedAt: null },
+      progress: 100,
+      course: { title: 'HIPAA', archivedAt: null, quiz: null, lessons: [] },
     });
 
     await attestCourse('enr-1', 'Ada Lovelace', '');
 
-    const { data } = prismaMock.enrollment.update.mock.calls[0][0];
+    // Conditional write (RISK-10): `updateMany` so a replay cannot re-stamp.
+    const { data } = prismaMock.enrollment.updateMany.mock.calls[0][0];
     expect(data.status).toBe('attested');
     expect(data.attestedAt).toBeInstanceOf(Date);
     expect(data.lastActivityAt).toBe(data.attestedAt);

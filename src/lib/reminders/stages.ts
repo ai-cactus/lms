@@ -3,8 +3,9 @@ import type { ReminderStage } from '@/generated/prisma/enums';
 /**
  * Reminder ladder — single source of truth.
  *
- * Mirrors the 6-stage cadence in `docs/Reminders_and_Escalations.csv`. These are
- * the system defaults; an admin may override `offsetDays`/`enabled`/`channels`
+ * {@link REMINDER_STAGE_DEFAULTS} below IS the stage table: the 6-stage worker
+ * cadence (launch, -14d, -3d, day-of, +3d grace/soft escalation, +7d hard
+ * escalation) plus the fixed -7d admin heads-up. These are the system defaults; an admin may override `offsetDays`/`enabled`/`channels`
  * per assignment via `AssignmentReminderStage` rows (the sweep prefers those and
  * falls back to these defaults). `offsetDays` is signed and relative to the
  * enrollment's `dueAt`: negative = before the deadline, 0 = day-of, positive =

@@ -2,11 +2,11 @@
 
 import prisma from '@/lib/prisma';
 import { auth as adminAuth } from '@/auth';
-import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
 
-import { headers } from 'next/headers';
 import { logger, maskEmail } from '@/lib/logger';
+import { getRealmSession, isPortalRealm, type PortalRealm } from '@/lib/auth/portal-sessions';
+import { deleteReplacedAvatar, isOwnAvatarUri, signAvatarUrl } from '@/lib/storage/avatar';
 import { can } from '@/lib/rbac/permissions';
 import { dbRoleToRoleKey } from '@/lib/rbac/role-utils';
 import {
@@ -18,37 +18,34 @@ import { invalidateRevalidationCache } from '@/lib/auth/session-revalidation-cac
 import bcrypt from 'bcryptjs';
 import { BCRYPT_COST } from '@/lib/bcrypt-config';
 
-// Helper: resolve the active session from either auth instance
-async function resolveSession() {
-  const headersList = await headers();
-  const referer = headersList.get('referer');
-  const isWorkerRoute = referer?.includes('/worker');
-
-  if (isWorkerRoute) {
-    const worker = await workerAuth();
-    if (worker?.user?.id) return worker;
-  } else {
-    const admin = await adminAuth();
-    if (admin?.user?.id) return admin;
+/**
+ * BUG-05: self-service writes take the caller's portal explicitly. These used
+ * to guess it from the referer and fall back to the other portal, so with an
+ * admin and a worker session (two different accounts) in one browser, a save
+ * could land on the wrong account. The realm arrives unchecked like every
+ * Server Action argument, so anything but a known portal resolves to no session.
+ */
+async function sessionForRealm(realm: PortalRealm) {
+  if (!isPortalRealm(realm)) {
+    logger.warn({ msg: '[user] Self-service action called without a valid portal realm' });
+    return null;
   }
-
-  // Fallback if referer doesn't help or we are outside known bounds
-  const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
-  return admin?.user?.id ? admin : worker?.user?.id ? worker : null;
+  return getRealmSession(realm);
 }
 
 // --- Staff Management ---
 
 export async function getStaffUsers() {
-  const session = await resolveSession();
+  const session = await adminAuth();
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
   }
 
-  // D-01: this action had NO permission check, and `resolveSession()` falls back
-  // to workerAuth() — so any authenticated worker could POST it and receive the
-  // whole organisation's roster with email addresses. The exposure was never
-  // limited to the three manager roles the defect report named.
+  // D-01: this action once had NO permission check and also accepted a worker
+  // session, so any authenticated worker could POST it and receive the whole
+  // organisation's roster with email addresses. It now reads the admin portal's
+  // session only, and still checks the permission — the admin instance admits
+  // supervisor, which holds no org-wide read.
   const roleKey = dbRoleToRoleKey(session.user.role);
   if (!roleKey || !can(roleKey, 'user.read')) {
     logger.warn({
@@ -107,11 +104,15 @@ export async function getStaffUsers() {
     // Build a set of emails that already have accounts to avoid duplication
     const acceptedEmails = new Set(orgUsers.map((ou) => ou.user.email.toLowerCase()));
 
-    const acceptedEntries = orgUsers.map((ou) => ({
+    const signedAvatars = await Promise.all(
+      orgUsers.map((ou) => signAvatarUrl(ou.user.avatarUrl, ou.userId)),
+    );
+
+    const acceptedEntries = orgUsers.map((ou, index) => ({
       id: ou.id,
       name: ou.user.fullName || ou.user.email.split('@')[0],
       email: ou.user.email,
-      avatarUrl: ou.user.avatarUrl || null,
+      avatarUrl: signedAvatars[index],
       role: ou.role,
       dateInvited: ou.joinedAt,
       isPending: false,
@@ -148,14 +149,14 @@ export async function getStaffUsers() {
 }
 
 export async function searchStaffUsers(query: string) {
-  const session = await resolveSession();
+  const session = await adminAuth();
   if (!session?.user?.id) {
     return [];
   }
 
-  // D-01: no permission check at all, and worker-reachable via resolveSession()
-  // — any authenticated account could type two characters and receive names,
-  // emails and roles.
+  // D-01: this once had no permission check and accepted a worker session — any
+  // authenticated account could type two characters and receive names, emails
+  // and roles.
   //
   // Gated on `user.read` OR `assignment.create`, not `user.read` alone: Clinical
   // Director holds no `user.read` but does hold `assignment.create`, and this
@@ -186,7 +187,8 @@ export async function searchStaffUsers(query: string) {
       where: {
         organizationId,
         active: true,
-        role: { not: 'owner' },
+        // The same population `getStaffUsers` lists — owner included — so a
+        // member visible in the roster can always be found by name.
         ...staffFacilityWhere(dataFacilityIds),
         OR: [
           { user: { email: { contains: query, mode: 'insensitive' } } },
@@ -214,13 +216,17 @@ export async function searchStaffUsers(query: string) {
 
 // --- Onboarding / Profile Management ---
 
-export async function updateProfile(data: {
-  first_name: string;
-  last_name: string;
-  company_name?: string;
-  avatarUrl?: string;
-}) {
-  const session = await resolveSession();
+export async function updateProfile(
+  realm: PortalRealm,
+  data: {
+    first_name: string;
+    last_name: string;
+    company_name?: string;
+    /** `undefined` leaves the photo unchanged; `null` (or blank) clears it. */
+    avatarUrl?: string | null;
+  },
+) {
+  const session = await sessionForRealm(realm);
 
   if (!session?.user?.email) {
     logger.warn({ msg: '[user] updateProfile: not authenticated' });
@@ -248,6 +254,42 @@ export async function updateProfile(data: {
       return { success: false, error: 'User ID missing' };
     }
 
+    const requestedAvatar: unknown = data.avatarUrl;
+    let avatarUrl: string | null | undefined;
+    if (requestedAvatar === undefined) {
+      avatarUrl = undefined;
+    } else if (
+      requestedAvatar === null ||
+      (typeof requestedAvatar === 'string' && requestedAvatar.trim() === '')
+    ) {
+      avatarUrl = null;
+    } else if (
+      typeof requestedAvatar === 'string' &&
+      isOwnAvatarUri(requestedAvatar, session.user.id)
+    ) {
+      avatarUrl = requestedAvatar;
+    } else {
+      logger.warn({
+        msg: '[user] updateProfile: refused an avatar outside the caller’s own uploads',
+        userId: session.user.id,
+      });
+      return { success: false, error: 'Invalid profile photo. Please upload it again.' };
+    }
+
+    // RISK-13: every replace or clear used to strand the old object in storage.
+    // A concurrent save can at worst read the same previous value and leave
+    // one orphan — each upload key is unique, so nothing still referenced can
+    // be the "previous" value of another save.
+    const previousAvatarUrl =
+      avatarUrl === undefined
+        ? undefined
+        : (
+            await prisma.user.findUnique({
+              where: { id: session.user.id },
+              select: { avatarUrl: true },
+            })
+          )?.avatarUrl;
+
     logger.info({ msg: '[user] Updating profile', userId: session.user.id });
     // firstName/lastName/fullName/avatarUrl now live directly on the identity;
     // companyName has no home anymore (organization name lives on Organization).
@@ -257,7 +299,7 @@ export async function updateProfile(data: {
         firstName,
         lastName,
         fullName,
-        avatarUrl: data.avatarUrl,
+        avatarUrl,
       },
     });
 
@@ -265,6 +307,10 @@ export async function updateProfile(data: {
       msg: '[user] Profile updated successfully',
       userId: session.user.id,
     });
+
+    if (avatarUrl !== undefined) {
+      await deleteReplacedAvatar(previousAvatarUrl, avatarUrl, session.user.id);
+    }
 
     revalidatePath('/dashboard/profile');
     revalidatePath('/worker/profile');
@@ -278,8 +324,8 @@ export async function updateProfile(data: {
   }
 }
 
-export async function uploadAvatar(formData: FormData) {
-  const session = await resolveSession();
+export async function uploadAvatar(realm: PortalRealm, formData: FormData) {
+  const session = await sessionForRealm(realm);
   if (!session?.user?.id) {
     return { error: 'Not authenticated' };
   }
@@ -316,8 +362,11 @@ export async function uploadAvatar(formData: FormData) {
   }
 }
 
-export async function changePassword(data: { currentPassword?: string; newPassword: string }) {
-  const session = await resolveSession();
+export async function changePassword(
+  realm: PortalRealm,
+  data: { currentPassword?: string; newPassword: string },
+) {
+  const session = await sessionForRealm(realm);
   if (!session?.user?.id) {
     return { success: false, error: 'Not authenticated' };
   }

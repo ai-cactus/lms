@@ -38,7 +38,7 @@ import { countPreviousStaffPopulation, loadDashboardSnapshot } from '@/lib/dashb
  * with no facility row count in the headline only.
  */
 
-/** A headline figure plus its month-over-month movement (null = no chip). */
+/** A headline figure plus its movement against {@link TREND_WINDOW_DAYS} days ago (null = no chip). */
 export interface DashboardMetric {
   value: number;
   /**

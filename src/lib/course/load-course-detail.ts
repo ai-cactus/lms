@@ -18,7 +18,7 @@ import type { CourseWithRelations } from '@/types/course';
  */
 export async function loadCourseDetail(courseId: string): Promise<CourseWithRelations | null> {
   try {
-    return await getCourseById(courseId);
+    return await getCourseById('admin', courseId);
   } catch (error) {
     if (!isCourseAccessError(error)) throw error;
   }

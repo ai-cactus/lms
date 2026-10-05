@@ -28,7 +28,12 @@ const {
   mockCaptureServer,
 } = vi.hoisted(() => ({
   prismaMock: {
-    enrollment: { findFirst: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
+    enrollment: {
+      findFirst: vi.fn(),
+      findUnique: vi.fn(),
+      update: vi.fn(),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+    },
   },
   mockAdminAuth: vi.fn(),
   mockWorkerAuth: vi.fn(),
@@ -81,7 +86,8 @@ function makeAttestEnrollment(archivedAt: Date | null) {
       organizationId: 'org-1',
       user: { fullName: 'Ada Worker', email: 'ada@acme.test' },
     },
-    course: { title: 'Infection Control', archivedAt },
+    progress: 100,
+    course: { title: 'Infection Control', archivedAt, quiz: null, lessons: [] },
   };
 }
 
@@ -144,6 +150,7 @@ describe('attestCourse — archived course (Q-04)', () => {
       refusedReason: ARCHIVED_COURSE_LEARNER_MESSAGE,
     });
     expect(prismaMock.enrollment.update).not.toHaveBeenCalled();
+    expect(prismaMock.enrollment.updateMany).not.toHaveBeenCalled();
   });
 
   it('fires no completion side effects — no admin notice, no reminder resolution', async () => {
@@ -170,9 +177,9 @@ describe('attestCourse — archived course (Q-04)', () => {
     await expect(attestCourse(ENROLLMENT_ID, 'Ada Worker', 'RN')).resolves.toEqual({
       success: true,
     });
-    expect(prismaMock.enrollment.update).toHaveBeenCalledWith(
+    expect(prismaMock.enrollment.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: ENROLLMENT_ID },
+        where: { id: ENROLLMENT_ID, status: { not: 'attested' } },
         data: expect.objectContaining({ status: 'attested' }),
       }),
     );

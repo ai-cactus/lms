@@ -5,23 +5,23 @@
 // notifications is server-internal and lives in `@/lib/notifications/create`.
 
 import prisma from '@/lib/prisma';
-import { auth as adminAuth } from '@/auth';
-import { auth as workerAuth } from '@/auth.worker';
+import { getRealmSession, type PortalRealm } from '@/lib/auth/portal-sessions';
 import { logger } from '@/lib/logger';
-
-// Helper: resolve the active session from either auth instance
-async function resolveSession() {
-  const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
-  return admin?.user?.id ? admin : worker?.user?.id ? worker : null;
-}
+import { categoryForNotificationType } from '@/lib/notifications/catalog';
+import { withLiveCourseLinks } from '@/lib/notifications/live-course-links';
 
 /**
- * The membership whose inbox the current session reads. Notifications belong to
- * an OrganizationUser, not an identity, so a user in two orgs has two separate
- * inboxes and never sees the other org's items.
+ * The membership whose inbox the calling portal's session reads. Notifications
+ * belong to an OrganizationUser, not an identity, so a user in two orgs has two
+ * separate inboxes and never sees the other org's items.
+ *
+ * BUG-47: both portals render an inbox, and one browser can hold an admin and a
+ * worker session for two DIFFERENT accounts. The caller names its portal; a
+ * guess that preferred the admin session served the worker header the admin's
+ * inbox and let its mutations land there.
  */
-async function resolveOrganizationUserId(): Promise<string | null> {
-  const session = await resolveSession();
+async function resolveOrganizationUserId(realm: PortalRealm): Promise<string | null> {
+  const session = await getRealmSession(realm);
   return session?.user?.organizationUserId ?? null;
 }
 
@@ -32,8 +32,8 @@ const MAX_PAGE_SIZE = 50;
  * Cheap unread-count query. Used for the header badge so the count stays
  * correct even when there are more unread notifications than a single page.
  */
-export async function getUnreadCount() {
-  const organizationUserId = await resolveOrganizationUserId();
+export async function getUnreadCount(realm: PortalRealm) {
+  const organizationUserId = await resolveOrganizationUserId(realm);
   if (!organizationUserId) {
     return { success: false as const, error: 'Unauthorized' };
   }
@@ -53,12 +53,16 @@ export async function getUnreadCount() {
  * Cursor-based: pass the previous page's `nextCursor` to load older items.
  * `unreadCount` is the global unread total (independent of the `type` filter).
  */
-export async function getNotifications(options?: {
-  cursor?: string | null;
-  limit?: number;
-  type?: string | null;
-}) {
-  const organizationUserId = await resolveOrganizationUserId();
+export async function getNotifications(
+  realm: PortalRealm,
+  options?: {
+    cursor?: string | null;
+    limit?: number;
+    type?: string | null;
+  },
+) {
+  const session = await getRealmSession(realm);
+  const organizationUserId = session?.user?.organizationUserId ?? null;
   if (!organizationUserId) {
     return { success: false as const, error: 'Unauthorized' };
   }
@@ -76,8 +80,9 @@ export async function getNotifications(options?: {
     });
 
     const hasMore = rows.length > limit;
-    const notifications = hasMore ? rows.slice(0, limit) : rows;
-    const nextCursor = hasMore ? notifications[notifications.length - 1].id : null;
+    const page = hasMore ? rows.slice(0, limit) : rows;
+    const nextCursor = hasMore ? page[page.length - 1].id : null;
+    const notifications = await withLiveCourseLinks(page, session?.user?.role);
 
     const unreadCount = await prisma.notification.count({
       where: { organizationUserId, isRead: false },
@@ -93,8 +98,8 @@ export async function getNotifications(options?: {
 /**
  * Mark a specific notification as read.
  */
-export async function markAsRead(notificationId: string) {
-  const organizationUserId = await resolveOrganizationUserId();
+export async function markAsRead(realm: PortalRealm, notificationId: string) {
+  const organizationUserId = await resolveOrganizationUserId(realm);
   if (!organizationUserId) {
     return { success: false, error: 'Unauthorized' };
   }
@@ -118,8 +123,8 @@ export async function markAsRead(notificationId: string) {
 /**
  * Mark all unread notifications for the user as read.
  */
-export async function markAllAsRead() {
-  const organizationUserId = await resolveOrganizationUserId();
+export async function markAllAsRead(realm: PortalRealm) {
+  const organizationUserId = await resolveOrganizationUserId(realm);
   if (!organizationUserId) {
     return { success: false, error: 'Unauthorized' };
   }
@@ -143,8 +148,8 @@ export async function markAllAsRead() {
 /**
  * Delete a single notification owned by the current user.
  */
-export async function deleteNotification(notificationId: string) {
-  const organizationUserId = await resolveOrganizationUserId();
+export async function deleteNotification(realm: PortalRealm, notificationId: string) {
+  const organizationUserId = await resolveOrganizationUserId(realm);
   if (!organizationUserId) {
     return { success: false, error: 'Unauthorized' };
   }
@@ -163,8 +168,8 @@ export async function deleteNotification(notificationId: string) {
 /**
  * Delete all notifications for the current user.
  */
-export async function clearAllNotifications() {
-  const organizationUserId = await resolveOrganizationUserId();
+export async function clearAllNotifications(realm: PortalRealm) {
+  const organizationUserId = await resolveOrganizationUserId(realm);
   if (!organizationUserId) {
     return { success: false, error: 'Unauthorized' };
   }
@@ -183,8 +188,8 @@ export async function clearAllNotifications() {
  * to enabled, so the result only ever contains explicit `false` overrides plus
  * any explicit `true` rows.
  */
-export async function getNotificationPreferences() {
-  const organizationUserId = await resolveOrganizationUserId();
+export async function getNotificationPreferences(realm: PortalRealm) {
+  const organizationUserId = await resolveOrganizationUserId(realm);
   if (!organizationUserId) {
     return { success: false as const, error: 'Unauthorized' };
   }
@@ -205,10 +210,26 @@ export async function getNotificationPreferences() {
 /**
  * Enable or disable a notification type for the current user.
  */
-export async function setNotificationPreference(type: string, enabled: boolean) {
-  const organizationUserId = await resolveOrganizationUserId();
+export async function setNotificationPreference(
+  realm: PortalRealm,
+  type: string,
+  enabled: boolean,
+) {
+  const organizationUserId = await resolveOrganizationUserId(realm);
   if (!organizationUserId) {
     return { success: false, error: 'Unauthorized' };
+  }
+  // Server Action arguments arrive unchecked; without this a caller could park
+  // arbitrary junk rows on its own membership that no reader ever consults.
+  if (typeof type !== 'string' || categoryForNotificationType(type) === null) {
+    logger.warn({
+      msg: '[notifications] Refused a preference for an unknown notification type',
+      organizationUserId,
+    });
+    return { success: false, error: 'Unknown notification type' };
+  }
+  if (typeof enabled !== 'boolean') {
+    return { success: false, error: 'Invalid preference value' };
   }
   try {
     await prisma.notificationPreference.upsert({

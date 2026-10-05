@@ -13,7 +13,7 @@
  * enrollment context correctly — not re-testing createEnrollmentForUser's
  * internals (covered by create.test.ts).
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const {
   prismaMock,
@@ -55,6 +55,17 @@ const baseMembership = {
   user: { email: 'staff@example.com' },
   organization: { name: 'Acme Corp' },
 };
+
+// Q-32 skips a learner whose deadline has already passed, so the fixed deadlines
+// below only mean what they say against a pinned clock.
+const PINNED_NOW = new Date('2026-08-15T12:00:00.000Z');
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(PINNED_NOW);
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -186,6 +197,8 @@ describe('enrollInviteCourses — materialising parked courses', () => {
         assignmentId: 'assignment-1',
         scheduleAt,
         assignmentDueAt: dueAt,
+        // Q-32: acceptance is automatic, so a passed date falls back to the window.
+        onPassedDeadline: 'useWindow',
         assignmentWindowDays: 14,
         enrolledByUserId: ORG_USER_ID,
         deferWorkerNotification: true,

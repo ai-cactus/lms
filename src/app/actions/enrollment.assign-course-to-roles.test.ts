@@ -325,6 +325,31 @@ describe('assignCourseToRoles — enrolls the union of the targeted roles curren
   });
 });
 
+describe('assignCourseToRoles — holders whose deadline has already passed (Q-32)', () => {
+  it('skips and reports the Kiritimati holder while the Honolulu one is enrolled', async () => {
+    mockOrgUserFindMany.mockResolvedValue([
+      { id: 'ou-east', user: { email: 'east@test.com' } },
+      { id: 'ou-west', user: { email: 'west@test.com' } },
+    ]);
+    mockCreateEnrollmentForUser.mockImplementation(async (entry: { email: string }) =>
+      entry.email === 'east@test.com'
+        ? { status: 'deadlinePassed', email: entry.email, timeZone: 'Pacific/Kiritimati' }
+        : { status: 'enrolled', email: entry.email },
+    );
+
+    const result = await assignCourseToRoles('course-1', ['nurse']);
+
+    expect(result).toMatchObject({ holderCount: 2, enrolled: 1, alreadyEnrolled: 0, failed: 0 });
+    expect(result.deadlinePassed).toEqual([
+      { email: 'east@test.com', timeZone: 'Pacific/Kiritimati' },
+    ]);
+    expect(mockCreateEnrollmentForUser).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ onPassedDeadline: 'skip' }),
+    );
+  });
+});
+
 describe('assignCourseToRoles — deadline precedence', () => {
   // This fixture's 2026-03-01 deadline predates the suite's other tests, which
   // assume "today" — freeze the clock so it stays in the future relative to

@@ -21,10 +21,11 @@
  * outage degrades to "rows seeded, playback unavailable" rather than failing.
  *
  * NOTE: like `prisma/seed.ts`, this script builds its own PrismaClient (relative
- * import of the generated client + pg adapter) because tsx executes it directly
- * and does not resolve the app's `@/*` tsconfig path aliases. It is NOT part of
- * the app runtime, so the structured-logger convention does not apply — progress
- * is written with plain process.stdout.
+ * import of the generated client + pg adapter) and mirrors a few app helpers by
+ * hand rather than importing them. That is a choice, not a limitation: tsx does
+ * resolve the `@/*` tsconfig aliases, and many scripts in scripts/ import through
+ * them. It is NOT part of the app runtime, so the structured-logger convention
+ * does not apply — progress is written with plain process.stdout.
  */
 
 import 'dotenv/config';
@@ -52,8 +53,8 @@ const PAGINATION_ORG_SLUG = 'qa-pagination-org';
 const EMPTY_ORG_SLUG = 'qa-empty-org';
 
 // The platform identity that owns every global video course, and its
-// dedicated home organization (mirrors src/lib/video/system-user.ts, which
-// this script cannot import via `@/`). `Course.creator` is an
+// dedicated home organization (mirrors src/lib/video/system-user.ts by hand —
+// keep the two in step). `Course.creator` is an
 // `OrganizationUser`, so the system identity needs an org to belong to.
 const SYSTEM_USER_EMAIL = 'system@theraptly.internal';
 const SYSTEM_ORG_SLUG = 'system';
@@ -213,8 +214,8 @@ async function upsertOrgUser(
 /**
  * Idempotently returns the `OrganizationUser` membership for the platform's
  * internal "System" identity, which authors all global (`isGlobal`) video
- * courses. Mirrors `getOrCreateSystemUser` in src/lib/video/system-user.ts,
- * which this script cannot import via `@/`.
+ * courses. Mirrors `getOrCreateSystemUser` in src/lib/video/system-user.ts by
+ * hand — keep the two in step.
  */
 async function getOrCreateSystemMembership() {
   const user = await prisma.user.upsert({
@@ -1527,14 +1528,6 @@ async function seedNotifications(adminId: string, staffIds: string[], now: Date)
       isRead: false,
     },
     {
-      type: 'COURSE_FAILED',
-      title: 'Quiz failed',
-      message: `${staffName(6)} failed the quiz for "HIPAA Privacy Essentials" with a score of 55%.`,
-      linkUrl: staffLink(6),
-      minutes: 3 * 60,
-      isRead: false,
-    },
-    {
       type: 'COURSE_PASSED',
       title: 'Course completed',
       message: `${staffName(4)} completed "Infection Prevention and Control" with a score of 92%.`,
@@ -1564,14 +1557,6 @@ async function seedNotifications(adminId: string, staffIds: string[], now: Date)
       message: `${staffName(2)} completed "Medication Administration Basics" with a score of 88%.`,
       linkUrl: staffLink(2),
       minutes: 2 * 24 * 60,
-      isRead: true,
-    },
-    {
-      type: 'COURSE_FAILED',
-      title: 'Quiz failed',
-      message: `${staffName(14)} failed the quiz for "Crisis De-escalation Techniques" with a score of 60%.`,
-      linkUrl: staffLink(14),
-      minutes: 3 * 24 * 60,
       isRead: true,
     },
     {
@@ -1641,7 +1626,7 @@ async function seedNotifications(adminId: string, staffIds: string[], now: Date)
     });
   }
 
-  log(`notifications: ${items.length} for the data-rich admin (4 unread)`);
+  log(`notifications: ${items.length} for the data-rich admin (3 unread)`);
 }
 
 async function seedEmptyOrg(now: Date, adminPasswordHash: string) {

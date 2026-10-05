@@ -143,18 +143,31 @@ describe('getAvailableUsers — org-scoping sourced from the session', () => {
       expect(WORKER_ROLES_HOLDING_THE_TEMPTING_VERBS.length).toBeGreaterThanOrEqual(3);
     });
 
+    // Armed on the ADMIN instance: the action reads only that portal (BUG-47),
+    // so this is the gate's own defence should a worker role ever decode there.
     it.each(WORKER_ROLES_HOLDING_THE_TEMPTING_VERBS)(
       '%s is refused the roster, never touching the DB — despite holding enrollment.read and course.read',
       async (role) => {
-        mockAdminAuth.mockResolvedValue(null);
-        mockWorkerAuth.mockResolvedValue({
+        mockAdminAuth.mockResolvedValue({
           user: { id: 'w-1', role, organizationUserId: 'ou-w-1', organizationId: 'org-A' },
         });
+        mockWorkerAuth.mockResolvedValue(null);
 
         await expect(getAvailableUsers()).rejects.toThrow('Forbidden');
         expect(mockOrgUserFindMany).not.toHaveBeenCalled();
       },
     );
+
+    it('BUG-47: never reads the worker portal — a worker session alone is unauthenticated here', async () => {
+      mockAdminAuth.mockResolvedValue(null);
+      mockWorkerAuth.mockResolvedValue({
+        user: { id: 'w-1', role: 'owner', organizationUserId: 'ou-w-1', organizationId: 'org-A' },
+      });
+
+      await expect(getAvailableUsers()).rejects.toThrow('Unauthorized');
+      expect(mockWorkerAuth).not.toHaveBeenCalled();
+      expect(mockOrgUserFindMany).not.toHaveBeenCalled();
+    });
 
     it.each(
       ADMIN_ROLES.filter(

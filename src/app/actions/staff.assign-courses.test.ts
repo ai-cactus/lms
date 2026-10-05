@@ -395,3 +395,39 @@ describe('assignCoursesToStaffMember — no raw email in any log call', () => {
     }
   });
 });
+
+describe('assignCoursesToStaffMember — deadline already passed where they are (Q-32)', () => {
+  it('buckets each course the server skipped, with the zone it judged in, and announces nothing', async () => {
+    mockEnrollUsers.mockResolvedValue({
+      ...enrollResult({}),
+      deadlinePassed: [{ email: 'target@acme.com', timeZone: 'Pacific/Kiritimati' }],
+    });
+
+    const result = await assignCoursesToStaffMember('staff-1', ['course-1', 'course-2'], {
+      dueAt: FUTURE_DUE,
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.assigned).toEqual([]);
+    expect(result.deadlinePassed).toEqual([
+      { courseId: 'course-1', courseTitle: 'Safety Training', timeZone: 'Pacific/Kiritimati' },
+      { courseId: 'course-2', courseTitle: 'HIPAA Basics', timeZone: 'Pacific/Kiritimati' },
+    ]);
+    expect(mockNotifyCoursesAssigned).not.toHaveBeenCalled();
+  });
+
+  it('no longer refuses a date that has passed only in UTC — the server judges it per learner', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-09-30T12:00:00.000Z'));
+    mockEnrollUsers.mockResolvedValue(enrollResult({ success: ['target@acme.com'] }));
+
+    // 30 Sept 11:59 AM "UTC" is already over in UTC, but not in Honolulu.
+    const result = await assignCoursesToStaffMember('staff-1', ['course-1'], {
+      dueAt: '2026-09-30T11:59:00.000Z',
+    });
+    vi.useRealTimers();
+
+    expect(result.error).toBeUndefined();
+    expect(mockEnrollUsers).toHaveBeenCalled();
+  });
+});

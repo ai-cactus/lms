@@ -60,10 +60,10 @@ gcloud storage buckets update "gs://${BUCKET_NAME}" \
 
 `src/lib/storage/gcs-provider.ts` supports exactly two ways to authenticate, chosen by whether `GCS_KEY_BASE64` is set:
 
-| Path | When it is used | What it needs |
-| --- | --- | --- |
-| **Application Default Credentials (ADC)** | `GCS_KEY_BASE64` is **unset** — the provider constructs a bare `Storage()` | Whatever ADC resolves on the host: an attached service account on a GCP VM, or `gcloud auth application-default login` locally (stored in `~/.config/gcloud/application_default_credentials.json`) |
-| **In-memory service-account key** | `GCS_KEY_BASE64` is **set** — the provider decodes it and constructs `Storage({ projectId, credentials })` | A base64-encoded service-account JSON key (`base64 -w0 key.json`) and `GOOGLE_PROJECT_ID`. A malformed value makes the provider refuse to construct rather than fall back |
+| Path                                      | When it is used                                                                                            | What it needs                                                                                                                                                                                      |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Application Default Credentials (ADC)** | `GCS_KEY_BASE64` is **unset** — the provider constructs a bare `Storage()`                                 | Whatever ADC resolves on the host: an attached service account on a GCP VM, or `gcloud auth application-default login` locally (stored in `~/.config/gcloud/application_default_credentials.json`) |
+| **In-memory service-account key**         | `GCS_KEY_BASE64` is **set** — the provider decodes it and constructs `Storage({ projectId, credentials })` | A base64-encoded service-account JSON key (`base64 -w0 key.json`) and `GOOGLE_PROJECT_ID`. A malformed value makes the provider refuse to construct rather than fall back                          |
 
 **Staging and production use the in-memory key path** (`GCS_KEY_BASE64`), decided 2026-09-22 (OPEN-ISSUES Q-12). This is storage only: Vertex AI calls (`src/lib/ai-client.ts`) always authenticate through ADC, which on the GCE VM resolves to the VM's attached service account. The two identities are separate by design. Local development normally uses ADC for both.
 
@@ -103,6 +103,7 @@ gcloud storage ls "gs://${BUCKET_NAME}/documents/"
 ```
 
 In the application logs you should see:
+
 ```
 {"level":"info","storageUri":"gcs://lms-documents-yourcompany/documents/...","msg":"GCS upload successful"}
 ```
@@ -125,9 +126,9 @@ To verify MinIO is running locally:
 
 ```bash
 # MinIO S3-compatible health endpoint
-curl http://localhost:9000/minio/health/live
+curl http://localhost:9005/minio/health/live
 
 # Browser console (dev only)
-open http://localhost:9001
+open http://localhost:9006
 # Login: lms_minio_dev / lms_minio_secret_dev
 ```

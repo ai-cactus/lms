@@ -103,6 +103,7 @@ vi.mock('@/app/actions/course', () => ({
 }));
 
 import AssignPublishClient from './AssignPublishClient';
+import { logger } from '@/lib/logger';
 
 function existingSettings(
   overrides: Partial<CourseAssignmentSettings> = {},
@@ -230,7 +231,7 @@ describe('AssignPublishClient — AssigneesInput host wiring', () => {
   it('exposes the bulk-import CSV control in people mode', () => {
     renderClient();
 
-    expect(screen.getByText('Click to upload .csv file instead')).toBeInTheDocument();
+    expect(screen.getByText('Click to upload .csv file')).toBeInTheDocument();
     expect(screen.getByText('Download sample .csv template')).toBeInTheDocument();
   });
 });
@@ -273,6 +274,60 @@ describe('AssignPublishClient — submit payloads', () => {
       }),
     );
     expect(settings).not.toHaveProperty('dueAt');
+  });
+
+  // Q-32: the server skips holders whose deadline has already passed where they
+  // are; everyone else is assigned, so the skipped count rides on the success.
+  it('role mode lists the holders the server skipped on the success dialog', async () => {
+    const user = userEvent.setup();
+    mockAssignCourseToRoles.mockResolvedValue({
+      assignmentId: 'assign-1',
+      holderCount: 3,
+      enrolled: 1,
+      alreadyEnrolled: 0,
+      failed: 0,
+      deadlinePassed: [
+        { email: 'a@test.com', timeZone: 'Pacific/Kiritimati' },
+        { email: 'b@test.com', timeZone: 'Pacific/Kiritimati' },
+      ],
+      targetRoles: ['nurse'],
+    });
+    renderClient();
+
+    await user.click(screen.getByRole('button', { name: 'Roles' }));
+    await user.click(screen.getByTestId('role-target-picker'));
+    await user.type(screen.getByPlaceholderText('Select due date'), '2026-12-01');
+    await user.click(screen.getByRole('button', { name: 'Assign Course' }));
+
+    expect(await screen.findByText('Course Assigned Successfully')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Due date already passed for 2 learners (Pacific/Kiritimati), so they were not assigned.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('people mode shows it as the error when nobody could be assigned', async () => {
+    const user = userEvent.setup();
+    mockEnrollUsers.mockResolvedValue({
+      success: [],
+      alreadyEnrolled: [],
+      newInvited: [],
+      failed: [],
+      deadlinePassed: [{ email: 'worker@test.com', timeZone: 'Pacific/Kiritimati' }],
+    });
+    renderClient();
+
+    await user.type(screen.getByPlaceholderText('Add people, emails or names'), 'worker@test.com,');
+    await user.type(screen.getByPlaceholderText('Select due date'), '2026-12-01');
+    await user.click(screen.getByRole('button', { name: 'Assign Course' }));
+
+    expect(
+      await screen.findByText(
+        'Due date already passed for 1 learner (Pacific/Kiritimati), so they were not assigned.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Course Assigned Successfully')).not.toBeInTheDocument();
   });
 
   it('round-trips a wizard-set dueWindowDays through the people-mode submit instead of nulling it', async () => {
@@ -731,5 +786,52 @@ describe('AssignPublishClient — Priority 4: reminder-ladder hydration and subm
     await waitFor(() => expect(mockEnrollUsers).toHaveBeenCalledTimes(1));
     const [, , settings] = mockEnrollUsers.mock.calls[0];
     expect(settings.reminderDaysBefore).toEqual([]);
+  });
+});
+
+/**
+ * BUG-51: `publishCourse` returns the published course on success, and that
+ * arm had no `success` field, so `!publishResult.success` logged every
+ * successful publish of a draft as "assigned but not published".
+ */
+describe('AssignPublishClient — reading the publish result (BUG-51)', () => {
+  async function assignDraft() {
+    const user = userEvent.setup();
+    renderClient({ courseStatus: 'draft' });
+    await user.type(screen.getByPlaceholderText('Add people, emails or names'), 'worker@test.com,');
+    await user.click(screen.getByRole('button', { name: 'Publish Course' }));
+    await waitFor(() => expect(mockPublishCourse).toHaveBeenCalledWith('course-1'));
+  }
+
+  it('treats the published-course result as a success', async () => {
+    mockPublishCourse.mockResolvedValue({
+      id: 'course-1',
+      status: 'published',
+      success: true,
+      assignmentFailed: false,
+      assignmentDeadlineExpired: false,
+    });
+
+    await assignDraft();
+
+    expect(logger.warn).not.toHaveBeenCalledWith(
+      expect.objectContaining({ msg: '[assign] Course assigned but not published' }),
+    );
+  });
+
+  it('still reports a refused publish', async () => {
+    mockPublishCourse.mockResolvedValue({
+      success: false,
+      error: 'This course has quality warnings and requires review before publishing.',
+      warnings: ['thin'],
+    });
+
+    await assignDraft();
+
+    await waitFor(() =>
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({ msg: '[assign] Course assigned but not published' }),
+      ),
+    );
   });
 });

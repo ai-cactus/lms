@@ -71,7 +71,13 @@ const QUESTION = {
 };
 
 const makeCourse = (opts?: {
+  /**
+   * The author's CURRENT organisation. The payload no longer reads it (RISK-15);
+   * it only seeds `courseOrgId`'s default, so a test can pin that it is ignored.
+   */
   creatorOrgId?: string;
+  /** The OWNING organisation (Q25); defaults to the author's. */
+  courseOrgId?: string;
   isGlobal?: boolean;
   status?: string;
   quiz?: unknown;
@@ -81,10 +87,10 @@ const makeCourse = (opts?: {
   title: 'Intro Course',
   description: 'desc',
   duration: 30,
+  organizationId: opts?.courseOrgId ?? opts?.creatorOrgId ?? 'org-1',
   isGlobal: opts?.isGlobal ?? false,
   status: opts?.status ?? 'published',
   _count: { modules: opts?.moduleCount ?? 3 },
-  creator: { organizationId: opts?.creatorOrgId ?? 'org-1' },
   quiz: opts && 'quiz' in opts ? opts.quiz : null,
   lessons: [
     {
@@ -659,6 +665,46 @@ describe('getLearnPayload — canEditContent', () => {
 
     // The review still opens — that is the point of a shared catalogue.
     expect(payload.user.isAdminView).toBe(true);
+    expect(payload.user.canEditContent).toBe(false);
+  });
+
+  // BUG-11: the editor keys on `Course.organizationId` (Q25), the column every
+  // write path now checks — not on the author's membership. The two only differ
+  // in a fixture, which is exactly what isolates which one is read.
+  it('keys the editor on the owning organisation, not the author’s membership', async () => {
+    mockAdminAuth.mockResolvedValue(adminSession('owner', 'org-2'));
+    mockCourseFindUnique.mockResolvedValue(
+      makeCourse({ courseOrgId: 'org-2', creatorOrgId: 'org-1' }),
+    );
+
+    const payload = asPayload(await getLearnPayload('course-1'));
+
+    expect(payload.user.isAdminView).toBe(true);
+    expect(payload.user.canEditContent).toBe(true);
+  });
+
+  // RISK-15: opening the course keys on the owning organisation too. An author
+  // who moved to org-1 left the course with org-2.
+  it('refuses the review to the organisation a course’s author moved to', async () => {
+    mockAdminAuth.mockResolvedValue(adminSession('owner', 'org-1'));
+    mockCourseFindUnique.mockResolvedValue(
+      makeCourse({ courseOrgId: 'org-2', creatorOrgId: 'org-1' }),
+    );
+
+    expect(await getLearnPayload('course-1')).toEqual({
+      error: 'Not enrolled in this course',
+      status: 403,
+    });
+  });
+
+  it('a global catalogue course gets no editor even in the organisation that owns it', async () => {
+    mockAdminAuth.mockResolvedValue(adminSession('owner', 'org-1'));
+    mockCourseFindUnique.mockResolvedValue(
+      makeCourse({ courseOrgId: 'org-1', isGlobal: true, status: 'published' }),
+    );
+
+    const payload = asPayload(await getLearnPayload('course-1'));
+
     expect(payload.user.canEditContent).toBe(false);
   });
 

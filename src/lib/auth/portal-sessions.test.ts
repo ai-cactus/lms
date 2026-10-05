@@ -10,7 +10,7 @@ vi.mock('@/auth', () => ({ auth: mockAdminAuth }));
 vi.mock('@/auth.worker', () => ({ auth: mockWorkerAuth }));
 vi.mock('next/headers', () => ({ cookies: mockCookies }));
 
-import { getPortalSessions } from './portal-sessions';
+import { getPortalSessions, getRealmSession, isPortalRealm } from './portal-sessions';
 
 /** Builds the object `(await cookies()).getAll()` is expected to return. */
 const cookieJar = (names: string[]) => ({
@@ -127,5 +127,48 @@ describe('getPortalSessions', () => {
     expect(mockAdminAuth).toHaveBeenCalledTimes(1);
     expect(mockWorkerAuth).toHaveBeenCalledTimes(1);
     expect(result).toEqual({ admin: ADMIN_SESSION, worker: WORKER_SESSION });
+  });
+});
+
+// BUG-05: a self-service write names its portal and gets exactly that session.
+describe('getRealmSession', () => {
+  it('returns the admin session for the admin realm without consulting the worker portal', async () => {
+    await expect(getRealmSession('admin')).resolves.toBe(ADMIN_SESSION);
+    expect(mockWorkerAuth).not.toHaveBeenCalled();
+  });
+
+  it('returns the worker session for the worker realm without consulting the admin portal', async () => {
+    await expect(getRealmSession('worker')).resolves.toBe(WORKER_SESSION);
+    expect(mockAdminAuth).not.toHaveBeenCalled();
+  });
+
+  it('returns null, never the other portal, when the named portal has no session', async () => {
+    mockWorkerAuth.mockResolvedValue(null);
+
+    await expect(getRealmSession('worker')).resolves.toBeNull();
+    expect(mockAdminAuth).not.toHaveBeenCalled();
+  });
+
+  it.each([['portal'], [''], [undefined], [null], [{}]])(
+    'returns null without consulting either portal for the unchecked realm %j',
+    async (realm) => {
+      await expect(getRealmSession(realm as never)).resolves.toBeNull();
+      expect(mockAdminAuth).not.toHaveBeenCalled();
+      expect(mockWorkerAuth).not.toHaveBeenCalled();
+    },
+  );
+});
+
+describe('isPortalRealm', () => {
+  it.each([
+    ['admin', true],
+    ['worker', true],
+    ['Admin', false],
+    ['system', false],
+    ['', false],
+    [undefined, false],
+    [null, false],
+  ])('%j → %s', (value, expected) => {
+    expect(isPortalRealm(value)).toBe(expected);
   });
 });

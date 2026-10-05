@@ -57,7 +57,7 @@ export default function StatusTrackerOverview({ rows }: Props) {
         {rows.length > 0 && (
           <span className="inline-flex shrink-0 items-center gap-[7px] rounded-full bg-[#fee4e2] px-[14px] py-1.5 text-[13px] font-semibold whitespace-nowrap text-[#b42318] sm:text-[14.4px]">
             <span aria-hidden="true" className="size-[7px] shrink-0 rounded-full bg-[#d92d20]" />
-            {rows.length} at risk
+            {rows.length} overdue or due soon
           </span>
         )}
       </div>
@@ -115,7 +115,7 @@ export default function StatusTrackerOverview({ rows }: Props) {
                       </span>
                       <span className="truncate text-[12px] font-normal tracking-[0.27px] text-[#666d80] sm:text-[13.5px]">
                         <span className="xl:hidden">
-                          {row.courseTitle} · {formatDate(row.dueAt)}
+                          {row.courseTitle} · {formatDate(row.dueAt, row.timeZone)}
                         </span>
                         <span className="hidden xl:inline">{row.workerEmail}</span>
                       </span>
@@ -132,7 +132,7 @@ export default function StatusTrackerOverview({ rows }: Props) {
                 </TableCell>
 
                 <TableCell className="hidden px-5 py-0 text-[17.5px] font-normal whitespace-nowrap text-[#667085] xl:table-cell">
-                  {formatDate(row.dueAt)}
+                  {formatDate(row.dueAt, row.timeZone)}
                 </TableCell>
 
                 <TableCell className="hidden px-[18px] py-3 sm:table-cell">

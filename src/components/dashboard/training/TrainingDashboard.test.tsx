@@ -91,4 +91,17 @@ describe('TrainingDashboard — metric tiles and coverage', () => {
     expect(screen.getByText('Total Assignments')).toBeInTheDocument();
     expect(screen.queryByText('Total Staff')).not.toBeInTheDocument();
   });
+
+  // BUG-39: the split is of assignments, and the legend must say so in the
+  // main dashboard's words.
+  it('labels the donut legend as shares of assignments, not of staff', () => {
+    render(
+      <TrainingDashboard onCreateCourse={vi.fn()} stats={STATS} courses={[]} canCreateCourses />,
+    );
+
+    expect(screen.getByText('Assignments completed')).toBeInTheDocument();
+    expect(screen.getByText('Assignments in progress')).toBeInTheDocument();
+    expect(screen.getByText('Assignments not yet started')).toBeInTheDocument();
+    expect(screen.queryByText(/% of staff/)).not.toBeInTheDocument();
+  });
 });

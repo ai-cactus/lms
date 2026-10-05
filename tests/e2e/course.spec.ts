@@ -54,6 +54,13 @@ test.describe('Course Flows', () => {
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
     await expect(dialog.getByRole('heading', { name: 'Assign Retake' })).toBeVisible();
+    // BUG-54: the dialog names the learner the row was opened from.
+    await expect(dialog).toContainText(/retake attempt for test worker/i);
+
+    // Q-26: the retake carries a due date, pre-filled 14 days out, so the ladder
+    // reminds the learner. The picker's accessible name is its `label`; its
+    // text is the formatted date, so a filled value shows as a year.
+    await expect(dialog.getByRole('button', { name: 'Retake due date' })).toContainText(/\d{4}/);
 
     // Complete the modal: an optional reason, then confirm.
     await dialog
@@ -305,13 +312,10 @@ test.describe('Courses list — Video/Reading Courses tabs and role-gated row ac
 
       const row = page.getByRole('row', { name: new RegExp(seeded.videoCourseTitle) });
       await expect(row).toBeVisible();
-      // buildRowActions() (CoursesListClient.tsx) now always lists "View
-      // Source Document" for anyone with document.read — supervisors included
-      // — disabling it rather than hiding it when the course has no
-      // sourceDocumentId (this seeded course wasn't AI-generated). So the
-      // trigger DOES render for a supervisor; its one item is disabled here
-      // because this seeded course wasn't AI-generated. "Assign to staff" now
-      // appears (3.1); Rename and Delete still must not (C8).
+      // buildRowActions() (CoursesListClient.tsx) always lists "View Source
+      // Document" for anyone with document.read — supervisors included — and
+      // disables it on every video row (Q-33). "Assign to staff" appears (3.1);
+      // Rename and Delete still must not (C8).
       const rowActionsButton = row.getByRole('button', { name: 'Row actions' });
       await expect(rowActionsButton).toBeVisible();
       await rowActionsButton.click();
@@ -325,6 +329,40 @@ test.describe('Courses list — Video/Reading Courses tabs and role-gated row ac
       await expect(menu.getByRole('menuitem', { name: 'Delete' })).toHaveCount(0);
       await page.keyboard.press('Escape');
       await expect(page.getByRole('button', { name: 'Create Course' })).not.toBeVisible();
+    } finally {
+      await cleanupCourseTabsFixture(seeded);
+    }
+  });
+
+  // Q-33 (ruled): every organisation inherits the video courses, so a video row
+  // is assign-only even for an owner — Source and Rename listed but disabled,
+  // Delete never offered.
+  test("owner's video-course row menu offers Assign with Source and Rename disabled", async ({
+    page,
+  }) => {
+    const seeded = await seedCourseTabsFixture();
+    try {
+      await loginAs(page, seeded.ownerEmail, seeded.ownerPassword);
+      await page.goto('/dashboard/courses');
+      await page.waitForLoadState('networkidle');
+
+      const row = page.getByRole('row', { name: new RegExp(seeded.videoCourseTitle) });
+      await expect(row).toBeVisible();
+      await row.getByRole('button', { name: 'Row actions' }).click();
+      const menu = page.getByRole('menu');
+      await expect(menu.getByRole('menuitem', { name: 'Assign to staff' })).not.toHaveAttribute(
+        'data-disabled',
+      );
+      await expect(menu.getByRole('menuitem', { name: 'View Source Document' })).toHaveAttribute(
+        'data-disabled',
+        '',
+      );
+      await expect(menu.getByRole('menuitem', { name: 'Rename' })).toHaveAttribute(
+        'data-disabled',
+        '',
+      );
+      await expect(menu.getByRole('menuitem', { name: 'Delete' })).toHaveCount(0);
+      await page.keyboard.press('Escape');
     } finally {
       await cleanupCourseTabsFixture(seeded);
     }

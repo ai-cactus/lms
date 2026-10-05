@@ -5,7 +5,7 @@
  * real logic worth guarding directly:
  *   - top-5 slicing of the (already server-sorted) rows array
  *   - the "All caught up" empty state vs. the table branch
- *   - the "N at risk" pill count and the overdue/due-soon status badges
+ *   - the "N overdue or due soon" pill count and the overdue/due-soon status badges
  */
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -26,6 +26,7 @@ function makeRow(overrides: Partial<StatusTrackerRowView> = {}): StatusTrackerRo
     courseTitle: 'HIPAA Basics',
     facilityName: null,
     dueAt: '2024-06-01T00:00:00.000Z',
+    timeZone: 'UTC',
     daysOverdue: 3,
     daysUntilDue: null,
     ...overrides,
@@ -41,7 +42,7 @@ describe('StatusTrackerOverview', () => {
     render(<StatusTrackerOverview rows={[]} />);
 
     expect(screen.getByText('All caught up — no overdue training')).toBeInTheDocument();
-    expect(screen.queryByText(/at risk/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/overdue or due soon/)).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /view all/i })).not.toBeInTheDocument();
   });
 
@@ -69,7 +70,7 @@ describe('StatusTrackerOverview', () => {
     expect(within(table).getAllByText('Worker 0').length).toBeGreaterThan(0);
     expect(within(table).getAllByText('Worker 4').length).toBeGreaterThan(0);
     expect(within(table).queryAllByText('Worker 5')).toHaveLength(0);
-    expect(screen.getByText('8 at risk')).toBeInTheDocument();
+    expect(screen.getByText('8 overdue or due soon')).toBeInTheDocument();
   });
 
   it('shows an overdue badge for overdue rows and a due-soon badge for near-deadline rows', () => {
@@ -108,5 +109,16 @@ describe('StatusTrackerOverview', () => {
     render(<StatusTrackerOverview rows={[makeRow({ daysOverdue: 1 })]} />);
 
     expect(screen.getAllByText('Overdue by 1 day').length).toBeGreaterThan(0);
+  });
+
+  // BUG-12.3: a deadline ends at 23:59 in the learner's facility zone, so its
+  // date is read there — never in the viewer's browser zone.
+  it.each([
+    ['Pacific/Honolulu (UTC−10)', '2026-10-01T09:59:00.000Z', 'Pacific/Honolulu'],
+    ['Pacific/Kiritimati (UTC+14)', '2026-09-30T09:59:00.000Z', 'Pacific/Kiritimati'],
+  ])('shows the picked date for a facility in %s', (_label, dueAt, timeZone) => {
+    render(<StatusTrackerOverview rows={[makeRow({ dueAt, timeZone })]} />);
+
+    expect(screen.getAllByText(/Sep 30, 2026/).length).toBeGreaterThan(0);
   });
 });

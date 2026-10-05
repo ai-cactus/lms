@@ -19,6 +19,7 @@ import { setRoleAssignmentTargets } from '@/app/actions/enrollment';
 import { getRoleDisplayName, groupRolesForSelect } from '@/lib/rbac/role-utils';
 import { logger } from '@/lib/logger';
 import type { UserRole } from '@/generated/prisma/enums';
+import { describeDeadlinePassed } from '@/lib/reminders/deadline';
 
 /**
  * Where the picker is mounted, and therefore what a change means.
@@ -53,6 +54,11 @@ interface RoleTargetPickerProps {
   disabled?: boolean;
   /** Called with a live-mode refusal or failure, for the host page's error slot. */
   onLiveUpdateError?: (message: string) => void;
+  /**
+   * Called after a live-mode widen that succeeded but left some holders out
+   * because the due date had already passed where they are (Q-32).
+   */
+  onLiveUpdateNotice?: (message: string) => void;
 }
 
 /**
@@ -85,6 +91,7 @@ export default function RoleTargetPicker({
   roleHolderCounts,
   disabled = false,
   onLiveUpdateError,
+  onLiveUpdateNotice,
 }: RoleTargetPickerProps) {
   const [open, setOpen] = useState(false);
   const [pendingRemoval, setPendingRemoval] = useState<PendingRemoval | null>(null);
@@ -130,6 +137,8 @@ export default function RoleTargetPicker({
           return;
         }
         onSelectionChange(next);
+        const passed = describeDeadlinePassed(result.deadlinePassed ?? []);
+        if (passed) onLiveUpdateNotice?.(passed);
         onSettled?.(true);
       } catch (err) {
         logger.error({ msg: '[enrollment] Role-target update failed', err, assignmentId });

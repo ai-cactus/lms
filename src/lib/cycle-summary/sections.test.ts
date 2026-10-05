@@ -25,6 +25,7 @@ function reminder(overrides: Partial<ReminderSummaryItem> = {}): ReminderSummary
     recipientRole: 'worker',
     courseTitle: 'Bloodborne Pathogens',
     dueAt: new Date('2026-10-01T00:00:00.000Z'),
+    timeZone: 'UTC',
     workerName: 'Dana Learner',
     daysOverdue: 0,
     ...overrides,
@@ -314,6 +315,15 @@ describe('buildCycleSummarySections — detail copy', () => {
         }),
       ),
     ).toBe('1 day overdue (due March 1, 2026)');
+  });
+
+  // BUG-12.3: the date is read in the learner's facility zone, not in UTC.
+  it("states the deadline's date as it falls in the learner's zone", () => {
+    expect(
+      detailOf(
+        reminder({ dueAt: new Date('2026-10-01T09:59:00.000Z'), timeZone: 'Pacific/Honolulu' }),
+      ),
+    ).toBe('Due September 30, 2026');
   });
 
   it('says "Due today" for the day-of stage', () => {

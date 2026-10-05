@@ -12,7 +12,10 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/alert';
+import DatePicker from '@/components/ui/DatePicker';
 import { assignRetake } from '@/app/actions/course';
+import { defaultRetakeDueDate } from '@/lib/course/retake-deadline';
+import { earliestPickableDueDate } from '@/lib/reminders/deadline';
 
 interface AssignRetakeModalProps {
   isOpen: boolean;
@@ -20,16 +23,28 @@ interface AssignRetakeModalProps {
   enrollmentId: string;
   courseName: string;
   userName: string;
+  /**
+   * The learner's facility zone, supplied by the page's server query. The due
+   * date is theirs (BUG-12.3), so it is pre-filled from their today, not the
+   * admin's.
+   */
+  learnerTimeZone: string;
 }
 
+/**
+ * Mounted on demand by its callers (one mount per opened row), so the due date
+ * is pre-filled fresh for each retake rather than carried over from the last.
+ */
 export default function AssignRetakeModal({
   isOpen,
   onClose,
   enrollmentId,
   courseName,
   userName,
+  learnerTimeZone,
 }: AssignRetakeModalProps) {
   const [reason, setReason] = useState('');
+  const [dueDate, setDueDate] = useState(() => defaultRetakeDueDate(new Date(), learnerTimeZone));
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
@@ -38,7 +53,7 @@ export default function AssignRetakeModal({
     setIsSubmitting(true);
     setError(null);
     try {
-      const result = await assignRetake(enrollmentId, reason);
+      const result = await assignRetake(enrollmentId, reason, dueDate);
       if (result.success) {
         router.refresh(); // Refresh the page to show the new retake assignment
         onClose();
@@ -73,6 +88,21 @@ export default function AssignRetakeModal({
         </p>
 
         {error && <Alert variant="error">{error}</Alert>}
+
+        <div>
+          <span className="mb-2 block text-sm font-medium text-text-secondary">Due date</span>
+          <DatePicker
+            value={dueDate}
+            onChange={setDueDate}
+            minDate={earliestPickableDueDate(new Date())}
+            placeholder="Select retake due date"
+            label="Retake due date"
+            placement="top-end"
+          />
+          <p className="mt-1.5 text-xs text-text-tertiary">
+            The learner gets the usual deadline reminders, and managers are alerted if it passes.
+          </p>
+        </div>
 
         <div>
           <label

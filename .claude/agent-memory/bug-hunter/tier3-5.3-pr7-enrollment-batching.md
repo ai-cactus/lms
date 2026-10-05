@@ -34,11 +34,12 @@ and including the failing entry's own enrollment write}; batched = {that
 same set} ∪ {every other group that was already in flight}. Both paths honor
 the documented "non-transactional, no rollback" contract for what DOES get
 committed, but WHICH entries get committed on a hard-abort is not equivalent.
-Reported to the orchestrator as a blocking finding for PR-7 — not fixed here
-(bug-hunter does not touch product code); awaiting a fix-loop decision
-(code-ninja) on whether this divergence is accepted as an inherent tradeoff of
-bounded-concurrency batching (worth documenting explicitly) or needs
-cancellation semantics added.
+Addressed as RISK-09 (2026-09-29, pending the user's sign-off): treated as inherent to bounded-concurrency
+batching and DOCUMENTED on `createEnrollmentsForUsers` rather than fixed. Two
+more divergences were pinned alongside it: a realistic `enrollment.create` DB
+failure (production `createNotification` swallows its own errors, so the
+notification-throw fixture is not a real-world trigger), and a failed up-front
+batched read (writes nothing, where sequential commits the earlier entries).
 
 Also surfaced and confirmed via this work: [[vitest-concurrent-dynamic-import-mock-race]]
 — a Vitest-only test-infra limitation discovered while first drafting these

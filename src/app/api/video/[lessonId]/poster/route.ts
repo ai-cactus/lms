@@ -1,5 +1,6 @@
 import prisma from '@/lib/prisma';
 import { getPortalSessions } from '@/lib/auth/portal-sessions';
+import { isCourseOrganizationReviewer } from '@/lib/course/read-access';
 import { resolveLessonPosterMeta, resolvePlaybackAuthz } from '@/lib/video/playback-cache';
 import { streamPoster } from '@/lib/video/poster-response';
 
@@ -16,16 +17,26 @@ export const dynamic = 'force-dynamic';
  * the video, so it must not be readable by anyone who couldn't watch it.
  */
 
+interface MediaCaller {
+  organizationUserId: string | null;
+  organizationId: string | null;
+  role: string | null;
+}
+
 /** Resolves null only when neither session is authenticated. */
-async function currentOrganizationUserId(): Promise<{ organizationUserId: string | null } | null> {
+async function currentCaller(): Promise<MediaCaller | null> {
   const { admin: a, worker: w } = await getPortalSessions();
   const session = a?.user?.id ? a : w?.user?.id ? w : null;
   if (!session?.user?.id) return null;
-  return { organizationUserId: session.user.organizationUserId };
+  return {
+    organizationUserId: session.user.organizationUserId,
+    organizationId: session.user.organizationId ?? null,
+    role: session.user.role ?? null,
+  };
 }
 
 export async function GET(request: Request, { params }: { params: Promise<{ lessonId: string }> }) {
-  const current = await currentOrganizationUserId();
+  const current = await currentCaller();
   if (!current) return new Response('Unauthorized', { status: 401 });
 
   const { lessonId } = await params;
@@ -41,7 +52,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ less
             isGlobal: true,
             status: true,
             type: true,
-            createdByOrgUserId: true,
+            organizationId: true,
           },
         },
       },
@@ -52,13 +63,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ less
 
   const c = lesson.course;
   const isGlobalCatalog = c.isGlobal && c.status === 'published' && c.type === 'video';
-  const isCreator = current.organizationUserId
-    ? c.createdByOrgUserId === current.organizationUserId
-    : false;
+  const isOrgReviewer = isCourseOrganizationReviewer(c, current);
 
   let isEnrolled = false;
   const organizationUserId = current.organizationUserId;
-  if (!isGlobalCatalog && !isCreator && organizationUserId) {
+  if (!isGlobalCatalog && !isOrgReviewer && organizationUserId) {
     isEnrolled = await resolvePlaybackAuthz(organizationUserId, c.id, async () => {
       const enrollment = await prisma.enrollment.findFirst({
         where: { courseId: c.id, organizationUserId },
@@ -68,7 +77,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ less
     });
   }
 
-  if (!isCreator && !isEnrolled && !isGlobalCatalog) {
+  if (!isOrgReviewer && !isEnrolled && !isGlobalCatalog) {
     return new Response('Forbidden', { status: 403 });
   }
 

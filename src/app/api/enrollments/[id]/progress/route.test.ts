@@ -45,6 +45,7 @@ function makeEnrollment(overrides: Record<string, unknown> = {}) {
     progress: 10,
     status: 'in_progress',
     course: { archivedAt: null },
+    organizationUser: { organization: { subscription: { status: 'active', pausedAt: null } } },
     ...overrides,
   };
 }
@@ -88,7 +89,7 @@ describe('POST /api/enrollments/[id]/progress — archived course (Q-04)', () =>
 
     expect(prismaMock.enrollment.findUnique).toHaveBeenCalledWith(
       expect.objectContaining({
-        include: { course: { select: { archivedAt: true } } },
+        include: expect.objectContaining({ course: { select: { archivedAt: true } } }),
       }),
     );
   });
@@ -188,5 +189,142 @@ describe('POST /api/enrollments/[id]/progress — learner activity', () => {
 
     expect(prismaMock.enrollment.update).not.toHaveBeenCalled();
     expect(prismaMock.enrollment.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * BUG-53: any forward progress below 100 used to force `in_progress`, so a
+ * stray lesson ping un-finished signed training and released a learner from an
+ * attempt lockout. Progress is still recorded — it is a high-water mark of what
+ * was read — but the status may only advance within the reading phase.
+ */
+describe('POST /api/enrollments/[id]/progress — status never regresses (BUG-53)', () => {
+  it.each(['completed', 'attested', 'locked', 'failed', 'retry_requested'])(
+    'records progress but keeps "%s" below 100%%',
+    async (status) => {
+      prismaMock.enrollment.findUnique.mockResolvedValue(makeEnrollment({ status, progress: 10 }));
+
+      const res = await POST(makeReq({ progress: 60 }), { params });
+
+      expect(res.status).toBe(200);
+      expect(prismaMock.enrollment.update).toHaveBeenCalledWith({
+        where: { id: 'enr-1' },
+        data: { progress: 60, status, lastActivityAt: expect.any(Date) },
+      });
+    },
+  );
+
+  it.each(['completed', 'attested', 'locked', 'failed', 'retry_requested'])(
+    'keeps "%s" at 100%% too — lessons_complete is not a step back into the reading phase',
+    async (status) => {
+      prismaMock.enrollment.findUnique.mockResolvedValue(makeEnrollment({ status, progress: 50 }));
+
+      await POST(makeReq({ progress: 100 }), { params });
+
+      expect(prismaMock.enrollment.update).toHaveBeenCalledWith({
+        where: { id: 'enr-1' },
+        data: { progress: 100, status, lastActivityAt: expect.any(Date) },
+      });
+    },
+  );
+
+  it('does not pull lessons_complete (set by the 95% video gate) back to in_progress', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue(
+      makeEnrollment({ status: 'lessons_complete', progress: 95 }),
+    );
+
+    await POST(makeReq({ progress: 97 }), { params });
+
+    expect(prismaMock.enrollment.update).toHaveBeenCalledWith({
+      where: { id: 'enr-1' },
+      data: { progress: 97, status: 'lessons_complete', lastActivityAt: expect.any(Date) },
+    });
+  });
+
+  it.each(['enrolled', 'assigned'])('starts a "%s" enrolment (→ in_progress)', async (status) => {
+    prismaMock.enrollment.findUnique.mockResolvedValue(makeEnrollment({ status, progress: 0 }));
+
+    await POST(makeReq({ progress: 25 }), { params });
+
+    expect(prismaMock.enrollment.update).toHaveBeenCalledWith({
+      where: { id: 'enr-1' },
+      data: { progress: 25, status: 'in_progress', lastActivityAt: expect.any(Date) },
+    });
+  });
+});
+
+/**
+ * SEC-08: this route had only an ownership check. It now carries the same
+ * session/MFA guard (F-012) and billing gate the quiz start/submit routes use,
+ * with the same refusal shapes.
+ */
+describe('POST /api/enrollments/[id]/progress — session guard (SEC-08)', () => {
+  it('401s UNAUTHENTICATED with no session and never reads the enrollment', async () => {
+    mockWorkerAuth.mockResolvedValue(null);
+
+    const res = await POST(makeReq({ progress: 60 }), { params });
+
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: 'UNAUTHENTICATED' });
+    expect(prismaMock.enrollment.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('401s MFA_REQUIRED when MFA step-up is enabled but not completed', async () => {
+    mockWorkerAuth.mockResolvedValue({
+      user: { id: 'user-1', organizationUserId: 'ou-1', mfaEnabled: true, mfaVerified: false },
+    });
+
+    const res = await POST(makeReq({ progress: 60 }), { params });
+
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: 'MFA_REQUIRED' });
+    expect(prismaMock.enrollment.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/enrollments/[id]/progress — billing gate (SEC-08)', () => {
+  const PAUSED_MESSAGE =
+    'Your organization’s training access is paused. Please contact your administrator.';
+
+  it('403s and writes nothing when the subscription is paused', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue(
+      makeEnrollment({
+        organizationUser: {
+          organization: { subscription: { status: 'active', pausedAt: new Date('2026-09-01') } },
+        },
+      }),
+    );
+
+    const res = await POST(makeReq({ progress: 60 }), { params });
+
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: PAUSED_MESSAGE });
+    expect(prismaMock.enrollment.update).not.toHaveBeenCalled();
+    expect(prismaMock.enrollment.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('403s when the org has no subscription row at all', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue(
+      makeEnrollment({ organizationUser: { organization: { subscription: null } } }),
+    );
+
+    const res = await POST(makeReq({ progress: 60 }), { params });
+
+    expect(res.status).toBe(403);
+    expect(prismaMock.enrollment.update).not.toHaveBeenCalled();
+  });
+
+  it('checks ownership before billing, so a foreign enrollment leaks nothing about its org', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue(
+      makeEnrollment({
+        organizationUserId: 'someone-else',
+        organizationUser: { organization: { subscription: null } },
+      }),
+    );
+
+    const res = await POST(makeReq({ progress: 60 }), { params });
+
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: 'Enrollment does not belong to active sessions' });
   });
 });

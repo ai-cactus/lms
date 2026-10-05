@@ -2,8 +2,7 @@
 
 import crypto from 'crypto';
 import prisma from '@/lib/prisma';
-import { auth as adminAuth } from '@/auth';
-import { auth as workerAuth } from '@/auth.worker';
+import { getRealmSession, type PortalRealm } from '@/lib/auth/portal-sessions';
 import { headers } from 'next/headers';
 import {
   encryptSecret,
@@ -11,36 +10,22 @@ import {
   decryptOtpPayload,
   generateRecoveryCodes,
   hashRecoveryCode,
-  verifyRecoveryCode,
 } from '@/lib/mfa';
 import { logger } from '@/lib/logger';
 import { checkRateLimitOnly, recordRateLimitAttempt } from '@/lib/rate-limit';
 import { markSessionMfaVerified } from '@/lib/session-mfa';
 import { audit, getClientContext } from '@/lib/audit';
+import { verifyUserMfaCode } from '@/lib/auth/mfa-login-code';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type MfaActionResult =
   { success: true; data?: Record<string, unknown> } | { success: false; error: string };
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-async function resolveSession() {
-  const headersList = await headers();
-  const referer = headersList.get('referer');
-  const isWorkerRoute = referer?.includes('/worker');
-
-  if (isWorkerRoute) {
-    const worker = await workerAuth();
-    if (worker?.user?.id) return worker;
-  } else {
-    const admin = await adminAuth();
-    if (admin?.user?.id) return admin;
-  }
-
-  const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
-  return admin?.user?.id ? admin : worker?.user?.id ? worker : null;
-}
+// BUG-47: every action here changes the MFA state of ONE identity, and one
+// browser can hold an admin and a worker session for two different accounts.
+// The caller names its portal; the referer guess this replaced fell back to the
+// admin session whenever the named portal's cookie was absent or the header was.
 
 // ── MFA Setup ─────────────────────────────────────────────────────────────────
 
@@ -48,8 +33,8 @@ async function resolveSession() {
  * Step 1: Generate a one-time email OTP and send it to the user.
  * The factor is stored as unverified — the user must verify with the code to activate.
  */
-export async function requestMfaSetup(): Promise<MfaActionResult> {
-  const session = await resolveSession();
+export async function requestMfaSetup(realm: PortalRealm): Promise<MfaActionResult> {
+  const session = await getRealmSession(realm);
   if (!session?.user?.id) {
     return { success: false, error: 'Not authenticated' };
   }
@@ -117,8 +102,8 @@ export async function requestMfaSetup(): Promise<MfaActionResult> {
  * Step 2: Verify the email OTP entered by the user.
  * On success, enables MFA and generates recovery codes.
  */
-export async function verifyMfaSetup(code: string): Promise<MfaActionResult> {
-  const session = await resolveSession();
+export async function verifyMfaSetup(realm: PortalRealm, code: string): Promise<MfaActionResult> {
+  const session = await getRealmSession(realm);
   if (!session?.user?.id) {
     return { success: false, error: 'Not authenticated' };
   }
@@ -224,8 +209,8 @@ export async function verifyMfaSetup(code: string): Promise<MfaActionResult> {
 /**
  * Disable MFA for the current user. Requires a valid email OTP or recovery code.
  */
-export async function disableMfa(code: string): Promise<MfaActionResult> {
-  const session = await resolveSession();
+export async function disableMfa(realm: PortalRealm, code: string): Promise<MfaActionResult> {
+  const session = await getRealmSession(realm);
   if (!session?.user?.id) {
     return { success: false, error: 'Not authenticated' };
   }
@@ -277,8 +262,11 @@ export async function disableMfa(code: string): Promise<MfaActionResult> {
 /**
  * Regenerate recovery codes. Requires a valid email OTP.
  */
-export async function regenerateRecoveryCodes(code: string): Promise<MfaActionResult> {
-  const session = await resolveSession();
+export async function regenerateRecoveryCodes(
+  realm: PortalRealm,
+  code: string,
+): Promise<MfaActionResult> {
+  const session = await getRealmSession(realm);
   if (!session?.user?.id) {
     return { success: false, error: 'Not authenticated' };
   }
@@ -344,80 +332,16 @@ export async function regenerateRecoveryCodes(code: string): Promise<MfaActionRe
   };
 }
 
-// ── MFA Verification (used during login) ──────────────────────────────────────
-
-/**
- * Verify an email OTP or recovery code for a user.
- * Used by both the login MFA challenge and disable MFA flows.
- *
- * If a recovery code is used, it is consumed (marked as used).
- */
-export async function verifyUserMfaCode(
-  userId: string,
-  code: string,
-): Promise<{ valid: boolean; usedRecoveryCode?: boolean; error?: string }> {
-  // Pre-check rate limit without recording — only failures are counted.
-  // F-024: auth-critical (OTP/recovery-code brute-force guard) — fail closed.
-  const { allowed } = await checkRateLimitOnly(`mfa:${userId}`, 5, 900, { failClosed: true });
-  if (!allowed) {
-    logger.warn({ msg: 'MFA rate limit exceeded', userId });
-    return { valid: false, error: 'Too many attempts. Please try again later.' };
-  }
-
-  // Try the primary email OTP factor
-  const factor = await prisma.mfaFactor.findFirst({
-    where: { userId, verified: true },
-  });
-
-  if (factor?.secret) {
-    const otpPayload = decryptOtpPayload(factor.secret);
-    if (!otpPayload) {
-      // No usable OTP on file — fall through to recovery codes below.
-    } else if (otpPayload.expired) {
-      if (/^\d{1,6}$/.test(code)) {
-        return { valid: false, error: 'Code has expired. Please request a new one.' };
-      }
-    } else if (otpPayload.code === code) {
-      await prisma.mfaFactor.update({
-        where: { id: factor.id },
-        data: { secret: encryptSecret('USED') },
-      });
-      return { valid: true };
-    }
-  }
-
-  // Try recovery code
-  const recoveryCodes = await prisma.mfaRecoveryCode.findMany({
-    where: { userId, usedAt: null },
-  });
-
-  for (const rc of recoveryCodes) {
-    const match = await verifyRecoveryCode(rc.codeHash, code);
-    if (match) {
-      // Consume the recovery code
-      await prisma.mfaRecoveryCode.update({
-        where: { id: rc.id },
-        data: { usedAt: new Date() },
-      });
-      logger.info({ msg: 'MFA recovery code used', userId });
-      return { valid: true, usedRecoveryCode: true };
-    }
-  }
-
-  // Record failed attempt only
-  await recordRateLimitAttempt(`mfa:${userId}`, 900);
-
-  return { valid: false };
-}
-
 /**
  * Get the MFA status for the current user (for UI display).
  */
-export async function getMfaStatus(): Promise<
+export async function getMfaStatus(
+  realm: PortalRealm,
+): Promise<
   | { enabled: boolean; factors: { type: string; name: string | null; verified: boolean }[] }
   | { error: string }
 > {
-  const session = await resolveSession();
+  const session = await getRealmSession(realm);
   if (!session?.user?.id) {
     return { error: 'Not authenticated' };
   }
@@ -441,48 +365,12 @@ export async function getMfaStatus(): Promise<
 }
 
 /**
- * Send an email OTP code for login.
- */
-export async function sendLoginMfaCode(userId: string): Promise<MfaActionResult> {
-  // Rate limit OTP sends: 3 per 15 minutes. F-024: auth-critical — fail closed.
-  const { allowed } = await checkRateLimitOnly(`mfa-send:${userId}`, 3, 900, { failClosed: true });
-  if (!allowed) {
-    return { success: false, error: 'Too many code requests. Please try again later.' };
-  }
-
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { email: true, mfaFactors: { where: { verified: true, type: 'email' } } },
-  });
-
-  if (!user) return { success: false, error: 'User not found' };
-
-  const factor = user.mfaFactors[0];
-  if (!factor) return { success: false, error: 'No email MFA factor found' };
-
-  const code = crypto.randomInt(100000, 1000000).toString();
-  const encryptedSecret = encryptOtpPayload(code);
-
-  await prisma.mfaFactor.update({
-    where: { id: factor.id },
-    data: { secret: encryptedSecret },
-  });
-
-  const { sendMfaOtpEmail } = await import('@/lib/email');
-  await sendMfaOtpEmail(user.email, code);
-  await recordRateLimitAttempt(`mfa-send:${userId}`, 900);
-
-  logger.info({ msg: 'MFA login code sent via email', userId });
-  return { success: true };
-}
-
-/**
  * Send a fresh email OTP for the currently authenticated user.
  * Used by the settings panel when the user wants to disable MFA —
  * they need a valid OTP to confirm the action.
  */
-export async function sendDisableMfaCode(): Promise<MfaActionResult> {
-  const session = await resolveSession();
+export async function sendDisableMfaCode(realm: PortalRealm): Promise<MfaActionResult> {
+  const session = await getRealmSession(realm);
   if (!session?.user?.id) {
     return { success: false, error: 'Not authenticated' };
   }

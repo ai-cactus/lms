@@ -21,6 +21,8 @@ export interface BatchedAssignmentNotice {
   /** The recipient's role in this org — it decides which portal the notice links into. */
   recipientRole: UserRole;
   organizationName: string;
+  /** The worker's facility zone, which every course's `dueAt` date is written in. */
+  timeZone: string;
   courses: AssignedCourse[];
 }
 
@@ -47,6 +49,7 @@ export function collectDeferredNotices(
           recipientName: item.recipientName,
           recipientRole: item.recipientRole,
           organizationName: item.organizationName,
+          timeZone: item.timeZone,
           courses: [],
         },
         courseIds: new Set<string>(),
@@ -131,6 +134,7 @@ export async function notifyCoursesAssigned(
       notice.recipientName,
       notice.courses.map((course) => ({ title: course.courseTitle, dueAt: course.dueAt })),
       notice.organizationName,
+      notice.timeZone,
     );
     emailSent = result.success;
   } catch (err) {

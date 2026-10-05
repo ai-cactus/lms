@@ -21,6 +21,7 @@ function baseCourse(overrides: Record<string, unknown> = {}) {
   return {
     id: 'course-1',
     title: 'Bloodborne Pathogens',
+    deadlineTimeZone: 'America/New_York',
     status: 'assigned',
     progress: 0,
     ...overrides,
@@ -173,5 +174,23 @@ describe('WorkerTrainingList — Completed tab, archived course', () => {
     fireEvent.click(action);
 
     expect(mockPush).toHaveBeenCalledWith('/worker/courses/course-1');
+  });
+
+  it("never renders a finished course's past deadline as overdue (BUG-41)", () => {
+    const { container } = render(
+      <WorkerTrainingList
+        courses={[
+          baseCourse({
+            status: 'attested',
+            progress: 100,
+            deadline: new Date('2020-01-15T12:00:00Z'),
+          }),
+        ]}
+      />,
+    );
+    openCompletedTab();
+
+    expect(screen.getByText(/Due Jan 15, 2020/)).toBeInTheDocument();
+    expect(container.querySelector('.text-\\[\\#dc2626\\]')).toBeNull();
   });
 });

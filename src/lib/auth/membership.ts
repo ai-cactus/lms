@@ -10,6 +10,12 @@
  */
 import prisma from '@/lib/prisma';
 import { logger } from '@/lib/logger';
+import { DeletedIdentityError, isDeletedIdentity } from '@/lib/auth/deleted-identity';
+import {
+  LastOwnerError,
+  lockOrganizations,
+  wouldLeaveOrganizationOwnerless,
+} from '@/lib/organization/owner-guard';
 import type { Role } from '@/types/next-auth';
 
 export interface MembershipSummary {
@@ -175,11 +181,58 @@ export interface CreateMembershipInput {
  * Re-joining is idempotent — an existing (possibly deactivated) membership is
  * reactivated and re-roled rather than duplicated, which the
  * `(userId, organizationId)` unique constraint would reject anyway.
+ *
+ * @throws {DeletedIdentityError} for a deleted identity (Q-23): reactivating
+ * one of its memberships would silently undo the delete.
+ * @throws {LastOwnerError} when re-roling an existing membership would demote
+ * the organization's last active owner (RISK-16).
  */
 export async function createMembership(input: CreateMembershipInput): Promise<MembershipSummary> {
   const { userId, organizationId, facilityId, role } = input;
 
   return prisma.$transaction(async (tx) => {
+    const identity = await tx.user.findUnique({
+      where: { id: userId },
+      select: { deletedAt: true },
+    });
+    if (isDeletedIdentity(identity)) {
+      logger.warn({
+        msg: '[auth] Refused to attach a deleted identity to an organization',
+        userId,
+        organizationId,
+      });
+      throw new DeletedIdentityError();
+    }
+
+    // RISK-16: re-roling an active owner (a join code entered by the owner, or
+    // an invite accepted in a race with its own guard) is a demotion, so it
+    // takes the lock a user delete takes and re-reads under it — otherwise the
+    // two could each see the other owner and leave the org with none.
+    if (role !== 'owner') {
+      const whereMembership = { userId_organizationId: { userId, organizationId } };
+      const ownerSelect = { id: true, organizationId: true, role: true, active: true } as const;
+      const existing = await tx.organizationUser.findUnique({
+        where: whereMembership,
+        select: ownerSelect,
+      });
+      if (existing?.role === 'owner' && existing.active) {
+        await lockOrganizations(tx, [organizationId]);
+        const current = await tx.organizationUser.findUnique({
+          where: whereMembership,
+          select: ownerSelect,
+        });
+        if (current && (await wouldLeaveOrganizationOwnerless(tx, current))) {
+          logger.warn({
+            msg: '[auth] Refused to re-role the last active owner of an organization',
+            userId,
+            organizationId,
+            requestedRole: role,
+          });
+          throw new LastOwnerError();
+        }
+      }
+    }
+
     const membership = await tx.organizationUser.upsert({
       where: { userId_organizationId: { userId, organizationId } },
       create: { userId, organizationId, role },

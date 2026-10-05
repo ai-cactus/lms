@@ -3,6 +3,8 @@ import prisma from '@/lib/prisma';
 import WorkerTrainingList from '@/components/worker/WorkerTrainingList';
 import { computeDisplayProgress } from '@/lib/enrollment-progress';
 import { selectDisplayEnrollments } from '@/lib/enrollment/display-selection';
+import { resolveMemberFacility } from '@/lib/facility/member-facility';
+import { DEFAULT_TZ } from '@/lib/reminders/time';
 import type { LearnerCourseRow } from '@/types/enrollment';
 
 export default async function WorkerTrainingsPage() {
@@ -21,6 +23,10 @@ export default async function WorkerTrainingsPage() {
         },
       })
     : [];
+  const memberFacility = organizationUserId
+    ? await resolveMemberFacility(prisma, organizationUserId)
+    : null;
+  const deadlineTimeZone = memberFacility?.timezone ?? DEFAULT_TZ;
 
   const courses: LearnerCourseRow[] = selectDisplayEnrollments(allEnrollments).map((picked) => ({
     id: picked.courseId,
@@ -34,6 +40,7 @@ export default async function WorkerTrainingsPage() {
       passingScore: picked.course.quiz?.passingScore ?? null,
     }),
     deadline: picked.dueAt,
+    deadlineTimeZone,
     duration: picked.course.duration || undefined,
     category: picked.course.category,
     passingScore: picked.course.quiz?.passingScore ?? null,

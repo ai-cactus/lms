@@ -55,6 +55,16 @@ export interface CoverageCounts {
 }
 
 /**
+ * The coverage legend, shared by every dashboard's donut. The split is of
+ * ASSIGNMENTS, not staff (BUG-33), and the wording must say so (BUG-39).
+ */
+export const COVERAGE_LABELS: Readonly<Record<keyof CoverageCounts, string>> = {
+  completed: 'Assignments completed',
+  inProgress: 'Assignments in progress',
+  notStarted: 'Assignments not yet started',
+};
+
+/**
  * The coverage split as percentages, apportioned by largest remainder (Hamilton)
  * so the three always sum to exactly 100 — three independent `Math.round`s
  * produce a legend reading 33/33/33 or 34/33/34 for the same data.

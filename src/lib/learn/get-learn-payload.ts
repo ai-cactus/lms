@@ -6,6 +6,8 @@ import { getPortalSessions } from '@/lib/auth/portal-sessions';
 import { logger } from '@/lib/logger';
 import { ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
 import { parseStoredOptionExplanations } from '@/lib/quiz/options';
+import { selectAssessmentQuiz } from '@/lib/quiz/assessment';
+import { isCourseEditableByOrganization } from '@/lib/course/edit-access';
 import type { Role } from '@/types/next-auth';
 
 /**
@@ -45,10 +47,10 @@ function mayReviewWithoutEnrollment(role: Role | null | undefined): boolean {
 function mayEditCourseContent(
   role: Role | null | undefined,
   callerOrganizationId: string | null | undefined,
-  courseOrganizationId: string | null | undefined,
+  course: { organizationId: string; isGlobal: boolean },
 ): boolean {
   if (!role || !can(dbRoleToRoleKey(role), 'course.edit')) return false;
-  return Boolean(callerOrganizationId) && callerOrganizationId === courseOrganizationId;
+  return isCourseEditableByOrganization(course, callerOrganizationId);
 }
 
 const QUIZ_SELECT = {
@@ -282,6 +284,7 @@ export async function getLearnPayload(courseId: string): Promise<LearnPayload | 
         title: true,
         description: true,
         duration: true,
+        organizationId: true,
         isGlobal: true,
         status: true,
         archivedAt: true,
@@ -289,9 +292,6 @@ export async function getLearnPayload(courseId: string): Promise<LearnPayload | 
         // that is streaming every lesson body anyway — cheaper than the extra
         // round trip a separate query would cost.
         _count: { select: { modules: true } },
-        creator: {
-          select: { organizationId: true },
-        },
         // Course-level quiz (video courses attach the quiz to the course, not a lesson).
         quiz: { select: QUIZ_SELECT },
         lessons: {
@@ -363,10 +363,12 @@ export async function getLearnPayload(courseId: string): Promise<LearnPayload | 
           })
         : null;
 
+      // RISK-15: the course's OWNING organisation (Q25), not its author's
+      // current one — an author who moves takes neither the course nor its
+      // review right with them.
       const isSameOrg = Boolean(
         adminSession.user.organizationId &&
-        course.creator?.organizationId &&
-        adminSession.user.organizationId === course.creator.organizationId,
+        adminSession.user.organizationId === course.organizationId,
       );
 
       // Global published courses are a shared catalog any org admin may open
@@ -418,17 +420,12 @@ export async function getLearnPayload(courseId: string): Promise<LearnPayload | 
     const inLearnerPortal = Boolean(session?.user?.id);
     const isAdmin = mayOpenWithoutEnrollment && !inLearnerPortal;
 
-    // `isAdmin` can only be true when there is no worker cookie, so the admin
-    // session IS the one `updateLessonContent`'s `resolveSession()` would pick:
-    // there is no ambiguity about whose organisation to compare against the
-    // course's. Anything outside the admin view is never offered the editor.
+    // `isAdmin` can only be true when there is no worker cookie, and
+    // `updateLessonContent` reads the admin portal's session, so there is no
+    // ambiguity about whose organisation to compare against the course's. Anything outside the admin view is never offered the editor.
     const canEditContent =
       isAdmin &&
-      mayEditCourseContent(
-        adminSession?.user?.role,
-        adminSession?.user?.organizationId,
-        course.creator?.organizationId,
-      );
+      mayEditCourseContent(adminSession?.user?.role, adminSession?.user?.organizationId, course);
 
     // `answers` is a Prisma `Json` column the quiz endpoints always write as an
     // answer array; the client still guards with Array.isArray before reading it.
@@ -449,10 +446,7 @@ export async function getLearnPayload(courseId: string): Promise<LearnPayload | 
       videoPositionSeconds: null,
     };
 
-    // Quiz lives on the last lesson (text courses) or on the course itself
-    // (video courses). Prefer the lesson quiz, fall back to the course quiz.
-    const lastLesson = course.lessons[course.lessons.length - 1];
-    const quizData = lastLesson?.quiz ?? course.quiz;
+    const quizData = selectAssessmentQuiz(course.lessons, course.quiz);
 
     const quiz: LearnPayloadQuiz | null = quizData
       ? {

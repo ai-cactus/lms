@@ -85,6 +85,7 @@ function assignResult(overrides: Record<string, unknown> = {}) {
     assigned: [{ courseId: 'vid-1', courseTitle: 'Workplace Safety' }],
     alreadyAssigned: [],
     failed: [],
+    deadlinePassed: [],
     invited: false,
     emailSent: true,
     ...overrides,
@@ -188,6 +189,20 @@ describe('AssignCoursesModal — deadline step', () => {
     await screen.findByText('Set Completion Deadline');
   }
 
+  // Mirrors production exactly: the chip yields the LOCAL calendar date as
+  // `YYYY-MM-DD`, which `new Date(str)` parses as UTC midnight before the time
+  // is applied in UTC. A local `setDate` + `setUTCHours` disagrees with this
+  // whenever the local and UTC calendar days differ (near midnight off-UTC).
+  function expectedDueAt(daysAhead: number, utcHours: number, utcMinutes: number): Date {
+    const local = new Date();
+    local.setDate(local.getDate() + daysAhead);
+    const month = String(local.getMonth() + 1).padStart(2, '0');
+    const day = String(local.getDate()).padStart(2, '0');
+    const dueAt = new Date(`${local.getFullYear()}-${month}-${day}`);
+    dueAt.setUTCHours(utcHours, utcMinutes, 0, 0);
+    return dueAt;
+  }
+
   it('sets the due date from a suggested chip', async () => {
     const user = userEvent.setup();
     await advanceToDeadline(user);
@@ -235,9 +250,7 @@ describe('AssignCoursesModal — deadline step', () => {
     await user.click(screen.getByRole('button', { name: 'Assign Course' }));
 
     await screen.findByText('Courses Assigned Successfully');
-    const expected = new Date();
-    expected.setDate(expected.getDate() + 30);
-    expected.setUTCHours(23, 59, 0, 0);
+    const expected = expectedDueAt(30, 23, 59);
     // `assignCoursesToStaffMember` already accepts `string | Date | null` — no
     // action-signature change here. A preset chip now means the same deadline
     // (end of that day, UTC) however the date got picked: from the calendar or
@@ -259,9 +272,7 @@ describe('AssignCoursesModal — deadline step', () => {
     await user.click(screen.getByRole('button', { name: 'Assign Course' }));
 
     await screen.findByText('Courses Assigned Successfully');
-    const expected = new Date();
-    expected.setDate(expected.getDate() + 30);
-    expected.setUTCHours(8, 0, 0, 0);
+    const expected = expectedDueAt(30, 8, 0);
     expect(mockAssignCoursesToStaffMember).toHaveBeenCalledWith('ou-1', ['vid-1'], {
       dueAt: expected,
     });
@@ -306,6 +317,29 @@ describe('AssignCoursesModal — deadline step', () => {
     // Nothing was assigned, so the un-sent email is not a warning — it is simply
     // the absence of an announcement, and must not muddy the refusal.
     expect(screen.queryByText(/couldn’t email them/)).not.toBeInTheDocument();
+  });
+
+  // Q-32: the server judged the date in this person's facility zone.
+  it('says the due date had already passed where they are when every course was skipped', async () => {
+    const user = userEvent.setup();
+    mockAssignCoursesToStaffMember.mockResolvedValue(
+      assignResult({
+        assigned: [],
+        deadlinePassed: [
+          { courseId: 'vid-1', courseTitle: 'Workplace Safety', timeZone: 'Pacific/Kiritimati' },
+        ],
+        emailSent: false,
+      }),
+    );
+    await advanceToDeadline(user);
+
+    await user.click(screen.getByRole('button', { name: 'Assign Course' }));
+
+    expect(
+      await screen.findByText(
+        'Due date already passed for 1 learner (Pacific/Kiritimati), so they were not assigned.',
+      ),
+    ).toBeInTheDocument();
   });
 
   it("the DialogContent onInteractOutside guard covers the TimePicker's portalled clock, not just the DatePicker's calendar", async () => {

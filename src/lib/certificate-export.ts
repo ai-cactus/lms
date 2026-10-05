@@ -46,9 +46,14 @@ function sanitizeFilename(name: string): string {
  * exported, so they are loaded on demand at click time rather than shipped in
  * the initial bundle of the training/certificate UI.
  */
-async function loadExporter(): Promise<{ toPng: ToPng; JsPDF: typeof jsPDF }> {
+async function loadExporter(nodes: HTMLElement[]): Promise<{ toPng: ToPng; JsPDF: typeof jsPDF }> {
   // Ensure web fonts (Playfair, Sacramento, Suisse) are ready before capture.
-  if (typeof document !== 'undefined' && document.fonts?.ready) {
+  // Playfair is not preloaded, and a browser only starts fetching a face once
+  // text using it is laid out — which a just-mounted off-screen export node may
+  // not have been yet, leaving `fonts.ready` already settled. Forcing layout
+  // first queues those loads, so the await below covers them.
+  if (typeof document !== 'undefined' && document.fonts) {
+    for (const node of nodes) node.getBoundingClientRect();
     await document.fonts.ready;
   }
 
@@ -83,7 +88,7 @@ function drawCertificatePage(pdf: jsPDF, dataUrl: string): void {
  * The node is expected to be the fixed-size `CertificateDocument` element.
  */
 export async function exportCertificatePdf(node: HTMLElement, filename: string): Promise<void> {
-  const { toPng: toPngFn, JsPDF } = await loadExporter();
+  const { toPng: toPngFn, JsPDF } = await loadExporter([node]);
 
   // Capture before constructing the document, so a failed rasterisation leaves
   // no half-built PDF behind.
@@ -106,7 +111,7 @@ export async function exportCertificatesPdf(nodes: HTMLElement[], filename: stri
     throw new Error('No certificates to export');
   }
 
-  const { toPng: toPngFn, JsPDF } = await loadExporter();
+  const { toPng: toPngFn, JsPDF } = await loadExporter(nodes);
 
   // jsPDF opens with one blank page, so the first certificate fills it and only
   // subsequent ones add a page — otherwise page 1 of every export is empty.

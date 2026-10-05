@@ -44,6 +44,14 @@ vi.mock('next/server', async (importOriginal) => {
   const actual = await importOriginal<typeof import('next/server')>();
   return { ...actual, after: mockAfter };
 });
+// Wrapped, not replaced: the real builder runs unless a test overrides it to
+// simulate a future change that routes an upload through the module loop.
+const { mockBuildModuleFormData } = vi.hoisted(() => ({ mockBuildModuleFormData: vi.fn() }));
+vi.mock('@/lib/course/module-generation', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/course/module-generation')>();
+  mockBuildModuleFormData.mockImplementation(actual.buildModuleGenerationFormData);
+  return { ...actual, buildModuleGenerationFormData: mockBuildModuleFormData };
+});
 
 import { startModuleGenerationJobs } from './course-ai-v4.6';
 import { WIZARD_FORM_DATA } from '@/components/dashboard/courses/steps/wizardTestData';
@@ -109,11 +117,54 @@ describe('startModuleGenerationJobs', () => {
     expect(jobs[1]).toEqual({ moduleIndex: 1, jobId: undefined, error: 'Document not found' });
   });
 
+  it('refuses the whole batch up front with no session', async () => {
+    mockAuth.mockResolvedValue(null);
+
+    const { jobs, error } = await startModuleGenerationJobs(COURSE_DATA, MODULES);
+
+    expect(jobs).toEqual([]);
+    expect(error).toBe('Unauthorized');
+    expect(prismaMock.job.create).not.toHaveBeenCalled();
+  });
+
+  it('refuses the whole batch up front for a role that may not generate courses', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'sup-1', role: 'supervisor' } });
+
+    const { jobs, error } = await startModuleGenerationJobs(COURSE_DATA, MODULES);
+
+    expect(jobs).toEqual([]);
+    expect(error).toBe('Insufficient permissions');
+    expect(prismaMock.document.findUnique).not.toHaveBeenCalled();
+  });
+
   it('rejects an empty module list', async () => {
     const { jobs, error } = await startModuleGenerationJobs(COURSE_DATA, []);
 
     expect(jobs).toEqual([]);
     expect(error).toContain('at least one module');
     expect(prismaMock.job.create).not.toHaveBeenCalled();
+  });
+
+  // RISK-01: a file would put a 45s PHI scan per module inside the browser's
+  // ~100s gateway window. The batch must refuse before any Job or scan runs.
+  it('refuses the whole batch, before any Job exists, if a module would carry a file', async () => {
+    const { buildModuleGenerationFormData: real } = await vi.importActual<
+      typeof import('@/lib/course/module-generation')
+    >('@/lib/course/module-generation');
+    // `Once` per module so the real builder is back for any later test.
+    mockBuildModuleFormData
+      .mockImplementationOnce(real)
+      .mockImplementationOnce((...args: Parameters<typeof real>) => {
+        const formData = real(...args);
+        formData.append('file', new File(['x'], 'upload.pdf'));
+        return formData;
+      });
+
+    const { jobs, error } = await startModuleGenerationJobs(COURSE_DATA, MODULES);
+
+    expect(jobs).toEqual([]);
+    expect(error).toBe('Course generation could not start. Please try again.');
+    expect(prismaMock.job.create).not.toHaveBeenCalled();
+    expect(prismaMock.document.findUnique).not.toHaveBeenCalled();
   });
 });

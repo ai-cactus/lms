@@ -51,9 +51,9 @@ export default async function EditVideoCoursePage({
     passingScore: course.quiz?.passingScore ?? 70,
     allowedAttempts: course.quiz?.allowedAttempts ?? 1,
     questionCount: course.quiz?._count.questions ?? 0,
-    previewExistingUri: course.previewVideoStorageUri ?? null,
+    hasExistingPreview: Boolean(course.previewVideoStorageUri),
     previewDurationSeconds: course.previewVideoDurationSeconds ?? null,
-    courseVideoExistingUri: primaryLesson?.videoStorageUri ?? null,
+    hasExistingCourseVideo: Boolean(primaryLesson?.videoStorageUri),
     courseVideoDurationSeconds: primaryLesson?.videoDurationSeconds ?? null,
   };
 

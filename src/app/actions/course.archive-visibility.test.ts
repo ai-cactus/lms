@@ -248,6 +248,7 @@ function makeCourseRow(
     previewPosterStorageUri: null,
     previewVideoStorageUri: null,
     isGlobal: false,
+    organizationId: ORG_ID,
     createdAt: new Date('2026-01-01'),
     updatedAt: new Date('2026-01-01'),
     createdByOrgUserId: CREATOR_ORG_USER_ID,
@@ -283,6 +284,8 @@ function ownEnrollment() {
       userId: LEARNER_USER_ID,
       role: 'nurse',
       user: { email: 'learner@example.com', fullName: 'Learner One' },
+      // The roster select always returns the member's active facilities.
+      facilities: [],
     },
     certificate: null,
   };
@@ -348,19 +351,16 @@ describe('an archived course disappears from every catalogue and admin surface',
     expect(ids).not.toContain('archived-1');
   });
 
-  it('an offering cannot smuggle it back in: the adopted-courses join carries the archive predicate itself', async () => {
-    // The extension is a query extension on Course's OWN reads and cannot reach
-    // a nested traversal, so the offering read has to state the predicate.
-    await getCourses();
+  // RISK-11: adopted courses are no longer read through the offering relation
+  // (a nested traversal the archive extension cannot reach) but by id in the
+  // same top-level Course read, which the extension DOES filter.
+  it('an offering cannot smuggle it back in: an adopted archived course stays out', async () => {
+    mockOfferingFindMany.mockResolvedValue([{ courseId: 'archived-1' }]);
 
-    expect(mockOfferingFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          organizationId: ORG_ID,
-          course: { archivedAt: null },
-        }),
-      }),
-    );
+    const titles = (await getCourses()).map((course) => course.title);
+
+    expect(titles).toContain('Live Course');
+    expect(titles).not.toContain('Archived Course');
   });
 
   it('every list read goes through the ARCHIVE-FILTERING client, never the raw one', async () => {
@@ -416,28 +416,28 @@ describe("getCourseById — the learner's entry point to an archived course", ()
     );
     setWorkerSession(LEARNER_USER_ID);
 
-    await expect(getCourseById('archived-1')).rejects.toThrow('Course not found');
+    await expect(getCourseById('worker', 'archived-1')).rejects.toThrow('Course not found');
   });
 
   it('a same-org manager who is NOT enrolled is refused — archiving retires it from their surfaces', async () => {
     courseTable.push(makeCourseRow('archived-1', 'Archived Course', new Date('2026-09-17')));
     setAdminSession('user-owner', 'owner');
 
-    await expect(getCourseById('archived-1')).rejects.toThrow('Course not found');
+    await expect(getCourseById('admin', 'archived-1')).rejects.toThrow('Course not found');
   });
 
   it('authorship buys nothing either: the creator is refused unless they are enrolled', async () => {
     courseTable.push(makeCourseRow('archived-1', 'Archived Course', new Date('2026-09-17')));
     setAdminSession(CREATOR_USER_ID, 'owner', CREATOR_ORG_USER_ID);
 
-    await expect(getCourseById('archived-1')).rejects.toThrow('Course not found');
+    await expect(getCourseById('admin', 'archived-1')).rejects.toThrow('Course not found');
   });
 
   it('CONTROL: the same manager opens the same course while it is live', async () => {
     courseTable.push(makeCourseRow('live-1', 'Live Course', null));
     setAdminSession('user-owner', 'owner');
 
-    await expect(getCourseById('live-1')).resolves.toMatchObject({ id: 'live-1' });
+    await expect(getCourseById('admin', 'live-1')).resolves.toMatchObject({ id: 'live-1' });
   });
 });
 

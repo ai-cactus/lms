@@ -41,7 +41,7 @@ export default function WorkerHeader({ fullName, onMenuClick }: Omit<HeaderProps
     refresh,
     markRead,
     markAll,
-  } = useNotifications({ pollMs: 60_000 });
+  } = useNotifications({ realm: 'worker', pollMs: 60_000 });
 
   const toggleDropdown = () => {
     setIsOpen(!isOpen);

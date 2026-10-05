@@ -41,6 +41,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { prisma } from '@/db/index';
+import { logger } from '@/lib/logger';
 
 /**
  * Minimal .env loader (no deps) — fills process.env WITHOUT overwriting any
@@ -97,19 +98,21 @@ async function main() {
   const keepFiles = flags.has('--keep-files');
 
   if (ids.length === 0) {
-    console.error(
-      'Usage: npx tsx scripts/delete-video-courses.ts <courseId> [courseId...] ' +
+    logger.error({
+      msg:
+        '[delete-video-courses] Usage: npx tsx scripts/delete-video-courses.ts <courseId> [courseId...] ' +
         '[--dry-run] [--allow-non-video] [--keep-files] [--env-file=<path>]',
-    );
+    });
     process.exit(1);
   }
 
   if (!process.env.DATABASE_URL) {
-    console.error(
-      'DATABASE_URL is not set. Provide it via your environment or --env-file. Examples:\n' +
+    logger.error({
+      msg:
+        '[delete-video-courses] DATABASE_URL is not set. Provide it via your environment or --env-file. Examples:\n' +
         '  DATABASE_URL="postgresql://…" npx tsx scripts/delete-video-courses.ts <id>\n' +
         '  npx tsx scripts/delete-video-courses.ts <id> --env-file=.env.production',
-    );
+    });
     process.exit(1);
   }
 
@@ -126,16 +129,17 @@ async function main() {
   const targetIds = targets.map((c) => c.id);
 
   if (missing.length) {
-    console.warn(`⚠  Not found (skipped): ${missing.join(', ')}`);
+    logger.warn({ msg: `[delete-video-courses] ⚠  Not found (skipped): ${missing.join(', ')}` });
   }
   if (!allowNonVideo && nonVideo.length) {
-    console.warn(
-      `⚠  Skipping non-video courses (pass --allow-non-video to include): ` +
+    logger.warn({
+      msg:
+        `[delete-video-courses] ⚠  Skipping non-video courses (pass --allow-non-video to include): ` +
         nonVideo.map((c) => `${c.id} [${c.type}]`).join(', '),
-    );
+    });
   }
   if (targetIds.length === 0) {
-    console.error('No matching courses to delete. Aborting.');
+    logger.error({ msg: '[delete-video-courses] No matching courses to delete. Aborting.' });
     process.exit(1);
   }
 
@@ -184,23 +188,29 @@ async function main() {
   ];
 
   // ── Summary ─────────────────────────────────────────────────────────────────
-  console.log(`\nCourses to delete (${targets.length}):`);
+  logger.info({ msg: `[delete-video-courses] Courses to delete (${targets.length})` });
   for (const c of targets) {
-    console.log(`  - ${c.id} ${c.isGlobal ? '[global] ' : ''}${c.title} (${c.type})`);
+    logger.info({
+      msg: `[delete-video-courses] - ${c.id} ${c.isGlobal ? '[global] ' : ''}${c.title} (${c.type})`,
+    });
   }
-  console.log('\nRelated records that will be removed:');
-  console.log(`  modules:        ${moduleCount}`);
-  console.log(`  lessons:        ${lessonCount}`);
-  console.log(`  quizzes:        ${quizCount}`);
-  console.log(`  enrollments:    ${enrollmentCount}`);
-  console.log(`  quiz attempts:  ${attemptCount}`);
-  console.log(`  certificates:   ${certCount}`);
-  console.log(`  offerings:      ${offeringCount}`);
-  console.log(`  assignments:    ${assignmentCount}`);
-  console.log(`  storage blobs:  ${fileUris.length}${keepFiles ? ' (kept — --keep-files)' : ''}`);
+  logger.info({ msg: '[delete-video-courses] Related records that will be removed' });
+  logger.info({ msg: `[delete-video-courses] modules:        ${moduleCount}` });
+  logger.info({ msg: `[delete-video-courses] lessons:        ${lessonCount}` });
+  logger.info({ msg: `[delete-video-courses] quizzes:        ${quizCount}` });
+  logger.info({ msg: `[delete-video-courses] enrollments:    ${enrollmentCount}` });
+  logger.info({ msg: `[delete-video-courses] quiz attempts:  ${attemptCount}` });
+  logger.info({ msg: `[delete-video-courses] certificates:   ${certCount}` });
+  logger.info({ msg: `[delete-video-courses] offerings:      ${offeringCount}` });
+  logger.info({ msg: `[delete-video-courses] assignments:    ${assignmentCount}` });
+  logger.info({
+    msg: `[delete-video-courses] storage blobs:  ${fileUris.length}${keepFiles ? ' (kept — --keep-files)' : ''}`,
+  });
 
   if (dryRun) {
-    console.log('\nDRY RUN — nothing was deleted. Re-run without --dry-run to execute.\n');
+    logger.info({
+      msg: '[delete-video-courses] DRY RUN — nothing was deleted. Re-run without --dry-run to execute.',
+    });
     return;
   }
 
@@ -214,7 +224,9 @@ async function main() {
     prisma.enrollment.deleteMany({ where: { courseId: { in: targetIds } } }),
     prisma.course.deleteMany({ where: { id: { in: targetIds } } }),
   ]);
-  console.log(`\n✓ Deleted ${targetIds.length} course(s) and all related DB records.`);
+  logger.info({
+    msg: `[delete-video-courses] ✓ Deleted ${targetIds.length} course(s) and all related DB records.`,
+  });
 
   // ── Purge storage blobs (best-effort) ───────────────────────────────────────
   if (!keepFiles && fileUris.length > 0) {
@@ -227,17 +239,20 @@ async function main() {
         ok++;
       } catch (err) {
         fail++;
-        console.warn(`  ! failed to delete ${uri}: ${(err as Error).message}`);
+        logger.warn({
+          msg: `[delete-video-courses] ! failed to delete ${uri}: ${(err as Error).message}`,
+        });
       }
     }
-    console.log(`✓ Storage: ${ok} blob(s) deleted, ${fail} failed.`);
+    logger.info({
+      msg: `[delete-video-courses] ✓ Storage: ${ok} blob(s) deleted, ${fail} failed.`,
+    });
   }
-  console.log('');
 }
 
 main()
   .catch((err) => {
-    console.error(err);
+    logger.error({ msg: '[delete-video-courses] Failed', err });
     process.exit(1);
   })
   .finally(async () => {

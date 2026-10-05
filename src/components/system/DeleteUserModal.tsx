@@ -32,6 +32,37 @@ interface DeleteUserModalProps {
   onSuccess?: () => void;
 }
 
+interface CountRow {
+  label: string;
+  count: number;
+}
+
+function CountTable({ heading, rows }: { heading: string; rows: CountRow[] }) {
+  return (
+    <div>
+      <h4 className="mb-2 text-sm font-semibold text-foreground">{heading}</h4>
+      <div className="rounded-[10px] border border-border">
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead>Record Type</TableHead>
+              <TableHead className="text-right">Count</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((row) => (
+              <TableRow key={row.label}>
+                <TableCell>{row.label}</TableCell>
+                <TableCell className="text-right">{row.count}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}
+
 export default function DeleteUserModal({ preview, onClose, onSuccess }: DeleteUserModalProps) {
   const [confirmEmail, setConfirmEmail] = useState('');
   const [loading, setLoading] = useState(false);
@@ -40,15 +71,10 @@ export default function DeleteUserModal({ preview, onClose, onSuccess }: DeleteU
 
   const emailMatches = confirmEmail === preview.user.email;
 
-  const { user, counts, retained } = preview;
-
-  // The account holds courses or documents in an organization with nobody left
-  // to inherit them, so the server will refuse rather than destroy them.
-  const blockedOrganizations = retained.organizationsWithoutCustodian;
-  const blocked = blockedOrganizations.length > 0;
+  const { user, revoked, retained, blockedReason } = preview;
 
   async function handleDelete() {
-    if (!emailMatches || blocked) return;
+    if (!emailMatches || blockedReason) return;
     setLoading(true);
     setError('');
 
@@ -70,21 +96,18 @@ export default function DeleteUserModal({ preview, onClose, onSuccess }: DeleteU
     }
   }
 
-  const impactRows = [
-    { label: 'User Account', count: 1 },
-    { label: 'Enrollments', count: counts.enrollments },
-    { label: 'Quiz Attempts', count: counts.quizAttempts },
-    { label: 'Certificates', count: counts.certificates },
-    { label: 'Notifications', count: counts.notifications },
-    { label: 'Jobs', count: counts.jobs },
-    { label: 'Invites', count: counts.invites },
-    { label: 'Verification Tokens', count: counts.verificationTokens },
+  const revokedRows: CountRow[] = [
+    { label: 'Organization memberships (deactivated)', count: revoked.organizations.length },
+    { label: 'Pending invites (expired)', count: revoked.pendingInvites },
   ].filter((row) => row.count > 0);
 
-  const retainedRows = [
-    { label: 'Courses authored (reassigned)', count: retained.courses },
-    { label: 'Documents uploaded (reassigned)', count: retained.documents },
-    { label: "Other members' enrollments (untouched)", count: retained.otherEnrollments },
+  const retainedRows: CountRow[] = [
+    { label: 'Certificates', count: retained.certificates },
+    { label: 'Enrollments', count: retained.enrollments },
+    { label: 'Quiz Attempts', count: retained.quizAttempts },
+    { label: 'Courses authored', count: retained.courses },
+    { label: 'Documents uploaded', count: retained.documents },
+    { label: 'Direct reports (manager link kept)', count: retained.directReports },
   ].filter((row) => row.count > 0);
 
   if (success) {
@@ -93,8 +116,8 @@ export default function DeleteUserModal({ preview, onClose, onSuccess }: DeleteU
         <DialogContent showCloseButton={false} className="sm:max-w-md">
           <DialogTitle className="sr-only">User deleted</DialogTitle>
           <Alert variant="success" title="User deleted">
-            User <strong>{user.email}</strong> has been permanently deleted. Courses and documents
-            they authored were reassigned to a surviving member. Redirecting...
+            <strong>{user.email}</strong> can no longer sign in to any organization. Their
+            certificates, quiz history and completion records are retained. Redirecting...
           </Alert>
         </DialogContent>
       </Dialog>
@@ -112,11 +135,11 @@ export default function DeleteUserModal({ preview, onClose, onSuccess }: DeleteU
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <AlertTriangle className="size-5 text-error" aria-hidden="true" />
-            Delete User Permanently
+            Delete User
           </DialogTitle>
           <DialogDescription>
-            This action cannot be undone. The account and its own learning history are permanently
-            removed; the organization&apos;s courses and documents are kept.
+            This removes {user.name}&apos;s access to every organization. Certificates, quiz history
+            and completion records are retained for compliance and are not deleted.
           </DialogDescription>
         </DialogHeader>
 
@@ -124,6 +147,12 @@ export default function DeleteUserModal({ preview, onClose, onSuccess }: DeleteU
           {error && (
             <Alert variant="error" className="w-full">
               {error}
+            </Alert>
+          )}
+
+          {blockedReason && (
+            <Alert variant="error" className="w-full">
+              {blockedReason}
             </Alert>
           )}
 
@@ -143,71 +172,22 @@ export default function DeleteUserModal({ preview, onClose, onSuccess }: DeleteU
             </div>
           </div>
 
-          {blocked && (
-            <Alert variant="error" className="w-full">
-              This user authored courses or uploaded documents that no one is left to inherit in{' '}
-              <strong>{blockedOrganizations.join(', ')}</strong>. Add a member there, or delete the
-              organization, before deleting this user.
-            </Alert>
+          {revoked.organizations.length > 0 && (
+            <p className="text-sm text-text-secondary">
+              Access removed from:{' '}
+              <strong className="text-foreground">{revoked.organizations.join(', ')}</strong>
+            </p>
           )}
 
-          {counts.certificates > 0 && (
-            <Alert variant="warning" className="w-full">
-              <strong>{counts.certificates}</strong> certificate(s) belonging to this user are
-              compliance records and cannot be recovered once deleted.
-            </Alert>
-          )}
+          <Alert variant="warning" className="w-full">
+            The email address stays reserved: it cannot be used to sign up or accept an invite
+            again.
+          </Alert>
 
-          <div>
-            <h4 className="mb-2 text-sm font-semibold text-foreground">Records to be deleted:</h4>
-            <div className="rounded-[10px] border border-border">
-              <Table>
-                <TableHeader>
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead>Record Type</TableHead>
-                    <TableHead className="text-right">Count</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {impactRows.map((row) => (
-                    <TableRow key={row.label}>
-                      <TableCell>{row.label}</TableCell>
-                      <TableCell className="text-right">{row.count}</TableCell>
-                    </TableRow>
-                  ))}
-                  <TableRow>
-                    <TableCell className="font-bold">Total Records</TableCell>
-                    <TableCell className="text-right font-bold">
-                      {impactRows.reduce((sum, row) => sum + row.count, 0)}
-                    </TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
-            </div>
-          </div>
+          {revokedRows.length > 0 && <CountTable heading="Access removed:" rows={revokedRows} />}
 
           {retainedRows.length > 0 && (
-            <div>
-              <h4 className="mb-2 text-sm font-semibold text-foreground">Records kept:</h4>
-              <div className="rounded-[10px] border border-border">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="hover:bg-transparent">
-                      <TableHead>Record Type</TableHead>
-                      <TableHead className="text-right">Count</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {retainedRows.map((row) => (
-                      <TableRow key={row.label}>
-                        <TableCell>{row.label}</TableCell>
-                        <TableCell className="text-right">{row.count}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </div>
+            <CountTable heading="Records retained:" rows={retainedRows} />
           )}
 
           <Field label="To confirm deletion, type the email address below:" helperText={user.email}>
@@ -229,10 +209,10 @@ export default function DeleteUserModal({ preview, onClose, onSuccess }: DeleteU
             variant="destructive"
             type="button"
             onClick={handleDelete}
-            disabled={!emailMatches || loading || blocked}
+            disabled={!emailMatches || loading || Boolean(blockedReason)}
             loading={loading}
           >
-            Delete Permanently
+            Delete
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -127,16 +127,45 @@ beforeEach(() => {
 });
 
 describe('getEnrollmentWithResults — the learner', () => {
+  // The action reads only the admin portal (BUG-47), so the learner here is a
+  // manager enrolled on the course — `finance`, which holds no `assessment.read`,
+  // proves the self branch runs ahead of the verb.
   it('reads their own results without any permission or facility resolution', async () => {
-    mockAuth.mockResolvedValue(null);
-    mockWorkerAuth.mockResolvedValue({
-      user: { id: 'w-1', role: 'nurse', organizationId: ORG_ID, organizationUserId: LEARNER_OU },
+    mockAuth.mockResolvedValue({
+      user: { id: 'u-1', role: 'finance', organizationId: ORG_ID, organizationUserId: LEARNER_OU },
     });
+    mockWorkerAuth.mockResolvedValue(null);
 
     await expect(getEnrollmentWithResults('enr-1')).resolves.toMatchObject({ id: 'enr-1' });
 
     expect(mockListAccessibleFacilities).not.toHaveBeenCalled();
     expect(mockEnrollmentFindFirst).not.toHaveBeenCalled();
+  });
+});
+
+describe('getEnrollmentWithResults — BUG-47 portal', () => {
+  it('never reads the worker portal: the learner’s own worker session is unauthenticated here', async () => {
+    mockAuth.mockResolvedValue(null);
+    mockWorkerAuth.mockResolvedValue({
+      user: { id: 'w-1', role: 'nurse', organizationId: ORG_ID, organizationUserId: LEARNER_OU },
+    });
+
+    await expect(getEnrollmentWithResults('enr-1')).rejects.toThrow('Unauthorized');
+    expect(mockWorkerAuth).not.toHaveBeenCalled();
+    expect(mockEnrollmentFindUnique).not.toHaveBeenCalled();
+  });
+
+  it('with both portals signed in to different accounts, answers as the admin account', async () => {
+    mockAuth.mockResolvedValue({
+      user: { id: 'u-1', role: 'finance', organizationId: ORG_ID, organizationUserId: CREATOR_OU },
+    });
+    mockWorkerAuth.mockResolvedValue({
+      user: { id: 'w-1', role: 'nurse', organizationId: ORG_ID, organizationUserId: LEARNER_OU },
+    });
+
+    // The worker account owns this enrolment; the admin account (finance, no
+    // assessment.read) does not — so reading as the admin is refused.
+    await expect(getEnrollmentWithResults('enr-1')).rejects.toThrow('Access denied');
   });
 });
 
@@ -168,23 +197,19 @@ describe('getEnrollmentWithResults — permission gate', () => {
   });
 
   /**
-   * The `isAdminRole` half is genuinely load-bearing HERE, unlike on the
-   * admin-fenced `getEnrollmentQuizResult`: this action takes `resolveSession()`,
-   * which falls back to the WORKER instance, so these are sessions a nurse can
-   * really hold. Every worker role holds `assessment.read` so it can read its
-   * OWN attempt, so the verb alone does not separate "my answers" from "theirs"
-   * and would admit all eight to this id-addressed action.
+   * Every worker role holds `assessment.read` so it can read its OWN attempt, so
+   * the verb alone does not separate "my answers" from "theirs" and would admit
+   * all eight to this id-addressed action. The action reads only the admin
+   * portal, whose decode fence already refuses worker roles, so the `isAdminRole`
+   * half is defensive — pinned here on the admin instance so it stays that way.
    */
   it.each(['nurse', 'therapist_clinician', 'front_desk_admin'])(
     '%s holds assessment.read but is still denied someone else’s answers',
     async (role) => {
-      // The WORKER instance, and authorship satisfied, so the tier check is the
-      // only thing left that can refuse. Staging this on the admin instance
-      // would model a session the decode fence invalidates.
-      mockAuth.mockResolvedValue(null);
-      mockWorkerAuth.mockResolvedValue({
+      mockAuth.mockResolvedValue({
         user: { id: 'w-1', role, organizationId: ORG_ID, organizationUserId: CREATOR_OU },
       });
+      mockWorkerAuth.mockResolvedValue(null);
 
       await expect(getEnrollmentWithResults('enr-1')).rejects.toThrow('Access denied');
       expect(mockEnrollmentFindFirst).not.toHaveBeenCalled();

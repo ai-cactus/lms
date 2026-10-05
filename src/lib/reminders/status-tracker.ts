@@ -1,7 +1,12 @@
 import type { Prisma } from '@/generated/prisma/client';
 import prisma from '@/lib/prisma';
 import { buildDashboardScope } from '@/lib/dashboard/scope';
-import { dueSoonEnrollmentWhere, overdueEnrollmentWhere } from '@/lib/dashboard/definitions';
+import {
+  dueSoonEnrollmentWhere,
+  overdueEnrollmentWhere,
+  retakesOfWhere,
+  supersededEnrollmentIds,
+} from '@/lib/dashboard/definitions';
 import { REMINDER_STAGE_DEFAULTS } from './stages';
 import { DEFAULT_TZ, diffInDaysInTz } from './time';
 
@@ -25,6 +30,9 @@ import { DEFAULT_TZ, diffInDaysInTz } from './time';
  * next `DUE_SOON_WINDOW_DAYS` (`@/lib/facility/metrics`) days — the same window as the Global View's
  * "Approaching Deadlines" (BUG-35), independent of any per-assignment reminder
  * offsets.
+ *
+ * An enrolment a retake has superseded is never listed, in either section: the
+ * retake carries the obligation (`supersededEnrollmentIds`, BUG-38).
  *
  * Facility is the member's CURRENT roster, never the `Enrollment.facilityId`
  * stamp — a transferred worker is listed under, and visible to, their current
@@ -81,6 +89,8 @@ export interface StatusTrackerRow {
   /** The member's current facility (in scope), comma-joined if several; null when none. */
   facilityName: string | null;
   dueAt: Date;
+  /** The IANA zone `dueAt` is read in — its date is shown as it falls there (BUG-12.3). */
+  timeZone: string;
   daysOverdue: number;
   status: string;
   managerName: string | null;
@@ -99,6 +109,8 @@ export interface NearDeadlineRow {
   /** The member's current facility (in scope), comma-joined if several; null when none. */
   facilityName: string | null;
   dueAt: Date;
+  /** The IANA zone `dueAt` is read in — its date is shown as it falls there (BUG-12.3). */
+  timeZone: string;
   /** Whole days from now until the deadline (0 = due today, tz-aware). */
   daysUntilDue: number;
   status: string;
@@ -165,7 +177,8 @@ export interface StatusTrackerQuery {
 /**
  * Overdue + at-risk status-tracker picture for a single organization.
  *
- * Two bulk queries (no N+1) plus the organisation's course predicate. Each row
+ * Two bulk queries, one batched retake lookup over their ids (no N+1), plus the
+ * organisation's course predicate. Each row
  * joins the enrollment to its course, worker profile/email, manager name,
  * current roster facilities and assignment reminder-stage overrides. Overdue
  * rows are sorted most-overdue first; near-deadline rows soonest-due first.
@@ -179,7 +192,7 @@ export async function getStatusTrackerSummaryForOrg({
 }: StatusTrackerQuery): Promise<StatusTrackerSummary> {
   const { enrollmentWhere } = await buildDashboardScope({ organizationId, dataFacilityIds });
 
-  const [overdueEnrollments, nearDeadlineEnrollments] = await Promise.all([
+  const [overdueCandidates, nearDeadlineCandidates] = await Promise.all([
     prisma.enrollment.findMany({
       where: { ...enrollmentWhere, ...overdueEnrollmentWhere(now) },
       select: enrollmentRowSelect,
@@ -189,6 +202,18 @@ export async function getStatusTrackerSummaryForOrg({
       select: enrollmentRowSelect,
     }),
   ]);
+
+  const candidateIds = [...overdueCandidates, ...nearDeadlineCandidates].map((e) => e.id);
+  const retakes =
+    candidateIds.length > 0
+      ? await prisma.enrollment.findMany({
+          where: { ...enrollmentWhere, ...retakesOfWhere(candidateIds) },
+          select: { retakeOf: true },
+        })
+      : [];
+  const superseded = supersededEnrollmentIds(retakes);
+  const overdueEnrollments = overdueCandidates.filter((e) => !superseded.has(e.id));
+  const nearDeadlineEnrollments = nearDeadlineCandidates.filter((e) => !superseded.has(e.id));
 
   const rows: StatusTrackerRow[] = overdueEnrollments.map((enrollment) => {
     // `dueAt` is guaranteed non-null by the query filter; assert for the type.
@@ -207,6 +232,7 @@ export async function getStatusTrackerSummaryForOrg({
       courseTitle: enrollment.course.title,
       facilityName: rosterFacilityName(facilities),
       dueAt,
+      timeZone: tz,
       daysOverdue,
       status: enrollment.status,
       managerName: enrollment.organizationUser.manager?.user.fullName ?? null,
@@ -230,6 +256,7 @@ export async function getStatusTrackerSummaryForOrg({
       courseTitle: enrollment.course.title,
       facilityName: rosterFacilityName(facilities),
       dueAt,
+      timeZone: tz,
       daysUntilDue: diffInDaysInTz(dueAt, now, tz),
       status: enrollment.status,
       managerName: enrollment.organizationUser.manager?.user.fullName ?? null,

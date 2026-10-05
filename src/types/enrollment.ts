@@ -34,6 +34,11 @@ export interface LearnerCourseRow {
   status: string;
   progress: number;
   deadline?: Date | string | null;
+  /**
+   * The learner's facility zone. A deadline ends at the picked time there
+   * (BUG-12.3), so its date is rendered in this zone rather than the browser's.
+   */
+  deadlineTimeZone: string;
   duration?: number;
   quizAttempts?: LearnerCourseAttempt[];
   passingScore?: number | null;

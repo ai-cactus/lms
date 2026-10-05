@@ -40,8 +40,10 @@ const {
   mockLoggerWarn,
   mockLoggerInfo,
   mockLoggerError,
+  mockUserFindMany,
 } = vi.hoisted(() => {
   return {
+    mockUserFindMany: vi.fn(),
     mockAuth: vi.fn(),
     mockOrgFindUnique: vi.fn(),
     mockOrganizationUserCount: vi.fn(),
@@ -65,6 +67,7 @@ vi.mock('@/auth', () => ({ auth: mockAuth }));
 vi.mock('@/lib/prisma', () => ({
   default: {
     organization: { findUnique: mockOrgFindUnique },
+    user: { findMany: mockUserFindMany },
     organizationUser: { count: mockOrganizationUserCount, findMany: mockOrganizationUserFindMany },
     organizationUserFacility: { findFirst: mockOrganizationUserFacilityFindFirst },
     facility: { findFirst: mockFacilityFindFirst },
@@ -136,6 +139,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   // Default stubs for the batch lookup used after the seat check
   mockOrganizationUserFindMany.mockResolvedValue([]);
+  mockUserFindMany.mockResolvedValue([]); // Q-31: no deleted identities by default
   mockInviteFindMany.mockResolvedValue([]);
   mockInviteCreateMany.mockResolvedValue({ count: 1 });
   mockInviteUpdate.mockResolvedValue({});
@@ -782,5 +786,59 @@ describe('createInvites() — seat cap counts only genuinely new seats in a mixe
     expect(result.success).toBe(true);
     expect(result.results.find((r) => r.email === 'no-seat@acme.com')?.status).toBe('forbidden');
     expect(mockInviteCreateMany).not.toHaveBeenCalled();
+  });
+});
+
+// ── Q-31: a deleted identity's email is refused up front ─────────────────────
+
+describe('createInvites() — Q-31 deleted identity', () => {
+  beforeEach(() => {
+    mockAuth.mockResolvedValue(makeSession('owner'));
+    stubOrgNoSubscription();
+  });
+
+  it('refuses a deleted identity with a generic message: no invite row, no email', async () => {
+    mockUserFindMany.mockResolvedValue([{ email: 'Deleted@Acme.com' }]);
+
+    const result = await createInvites([item('deleted@acme.com', 'nurse')]);
+
+    expect(result.success).toBe(true);
+    expect(result.results).toEqual([
+      {
+        email: 'deleted@acme.com',
+        status: 'refused',
+        message: "This email can't be invited. Contact support.",
+      },
+    ]);
+    expect(mockInviteCreateMany).not.toHaveBeenCalled();
+    expect(mockInviteUpdate).not.toHaveBeenCalled();
+    expect(mockSendInviteEmail).not.toHaveBeenCalled();
+    expect(mockUserFindMany).toHaveBeenCalledWith({
+      where: {
+        email: { in: ['deleted@acme.com'], mode: 'insensitive' },
+        deletedAt: { not: null },
+      },
+      select: { email: true },
+    });
+    expect(mockLoggerWarn).toHaveBeenCalledWith(
+      expect.objectContaining({ source: 'createInvites', email: 'de***@masked' }),
+    );
+  });
+
+  it('still invites the other rows of the batch', async () => {
+    mockUserFindMany.mockResolvedValue([{ email: 'deleted@acme.com' }]);
+
+    const result = await createInvites([
+      item('deleted@acme.com', 'nurse'),
+      item('fresh@acme.com', 'nurse'),
+    ]);
+
+    expect(result.results.map((r) => [r.email, r.status])).toEqual([
+      ['deleted@acme.com', 'refused'],
+      ['fresh@acme.com', 'sent'],
+    ]);
+    const inserted = mockInviteCreateMany.mock.calls[0][0].data;
+    expect(inserted.map((row: { email: string }) => row.email)).toEqual(['fresh@acme.com']);
+    expect(mockSendInviteEmail).toHaveBeenCalledTimes(1);
   });
 });

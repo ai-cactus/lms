@@ -9,7 +9,7 @@
  * redaction it replaced.
  */
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const { mockAssignRetake, mockRouterRefresh } = vi.hoisted(() => ({
   mockAssignRetake: vi.fn(),
@@ -34,6 +34,7 @@ function renderModal(overrides: Partial<React.ComponentProps<typeof AssignRetake
       enrollmentId={ENROLLMENT_ID}
       courseName="Infection Control"
       userName="Jane Worker"
+      learnerTimeZone="America/New_York"
       {...overrides}
     />,
   );
@@ -42,8 +43,78 @@ function renderModal(overrides: Partial<React.ComponentProps<typeof AssignRetake
 
 const assignButton = () => screen.getByRole('button', { name: 'Assign Retake' });
 
+/** 11:00 on 28 Sept in New York, the learner zone these tests default to. */
+const TODAY = new Date('2026-09-28T15:00:00.000Z');
+const DEFAULT_DUE_DATE = '2026-10-12';
+
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(TODAY);
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+describe('AssignRetakeModal — due date (Q-26)', () => {
+  it('pre-fills the due date 14 days out', () => {
+    renderModal();
+
+    expect(screen.getByRole('button', { name: 'Retake due date' })).toHaveTextContent(
+      'October 12, 2026',
+    );
+  });
+
+  // BUG-12.3: the due date is the learner's, so it counts from their today. At
+  // 15:00 UTC on 28 Sept a UTC−10 admin is still on the 28th while a UTC+14
+  // learner is already on the 29th.
+  it.each([
+    [
+      'a UTC+14 learner (Pacific/Kiritimati)',
+      'Pacific/Kiritimati',
+      'October 13, 2026',
+      '2026-10-13',
+    ],
+    ['a UTC−10 learner (Pacific/Honolulu)', 'Pacific/Honolulu', 'October 12, 2026', '2026-10-12'],
+  ])(
+    "pre-fills from %s's today, whatever the admin's zone",
+    async (_label, learnerTimeZone, shown, submitted) => {
+      mockAssignRetake.mockResolvedValue({ success: true });
+      renderModal({ learnerTimeZone });
+
+      expect(screen.getByRole('button', { name: 'Retake due date' })).toHaveTextContent(shown);
+      fireEvent.click(assignButton());
+      await waitFor(() =>
+        expect(mockAssignRetake).toHaveBeenCalledWith(ENROLLMENT_ID, '', submitted),
+      );
+    },
+  );
+
+  it('submits the pre-filled due date with the retake', async () => {
+    mockAssignRetake.mockResolvedValue({ success: true });
+    renderModal();
+
+    fireEvent.click(assignButton());
+
+    await waitFor(() =>
+      expect(mockAssignRetake).toHaveBeenCalledWith(ENROLLMENT_ID, '', DEFAULT_DUE_DATE),
+    );
+  });
+
+  it("shows the server's refusal of the date verbatim", async () => {
+    mockAssignRetake.mockResolvedValue({
+      success: false,
+      refusedReason: 'The retake due date must be today or later.',
+    });
+    renderModal();
+
+    fireEvent.click(assignButton());
+
+    expect(
+      await screen.findByText('The retake due date must be today or later.'),
+    ).toBeInTheDocument();
+  });
 });
 
 describe('AssignRetakeModal — success', () => {
@@ -55,7 +126,7 @@ describe('AssignRetakeModal — success', () => {
 
     await waitFor(() => expect(mockRouterRefresh).toHaveBeenCalled());
     expect(onClose).toHaveBeenCalled();
-    expect(mockAssignRetake).toHaveBeenCalledWith(ENROLLMENT_ID, '');
+    expect(mockAssignRetake).toHaveBeenCalledWith(ENROLLMENT_ID, '', DEFAULT_DUE_DATE);
   });
 
   it('submits the typed reason', async () => {
@@ -68,7 +139,11 @@ describe('AssignRetakeModal — success', () => {
     fireEvent.click(assignButton());
 
     await waitFor(() =>
-      expect(mockAssignRetake).toHaveBeenCalledWith(ENROLLMENT_ID, 'Granted a second chance'),
+      expect(mockAssignRetake).toHaveBeenCalledWith(
+        ENROLLMENT_ID,
+        'Granted a second chance',
+        DEFAULT_DUE_DATE,
+      ),
     );
   });
 });

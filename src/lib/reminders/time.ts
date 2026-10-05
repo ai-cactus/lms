@@ -93,6 +93,43 @@ export function startOfDayInTz(date: Date, tz: string): Date {
 }
 
 /**
+ * The instant at which the wall clock in `tz` reads the date and time held in
+ * `wallClock`'s **UTC** fields.
+ *
+ * Every deadline picker in the product encodes the date and time the admin chose
+ * as UTC fields (`combineDateAndTime`). BUG-12.3 ruled that such a deadline ends
+ * at that wall-clock time in the learner's facility zone, so this is where a
+ * picked "30 Sept, 11:59 PM" becomes 23:59 in, say, Honolulu.
+ *
+ * Two passes: the offset is measured at a first guess, then re-measured at the
+ * resulting instant, so a deadline on a DST-change day takes the offset in force
+ * at that moment rather than the one before the change.
+ */
+export function zonedWallClockToInstant(wallClock: Date, tz: string): Date {
+  const safeTz = resolveTz(tz);
+  const wallTime = wallClock.getTime();
+  const firstOffset = tzOffsetMs(wallClock, safeTz);
+  const firstGuess = wallTime - firstOffset;
+  const settledOffset = tzOffsetMs(new Date(firstGuess), safeTz);
+  return new Date(wallTime - settledOffset);
+}
+
+/**
+ * Format a deadline's calendar date as seen in `tz`, so the date a learner or
+ * admin reads is the date that was picked for that learner's facility (BUG-12.3).
+ * An unknown zone falls back to {@link DEFAULT_TZ}, as every helper here does.
+ */
+export function formatDateInTz(
+  date: Date | string,
+  tz: string,
+  options: Intl.DateTimeFormatOptions = { year: 'numeric', month: 'long', day: 'numeric' },
+): string {
+  return new Intl.DateTimeFormat('en-US', { ...options, timeZone: resolveTz(tz) }).format(
+    new Date(date),
+  );
+}
+
+/**
  * Add `days` calendar days to `date`, operating on UTC fields so the arithmetic
  * is unaffected by the host machine's local timezone. Used together with
  * {@link startOfDayInTz} to project a stage's target date from a deadline.

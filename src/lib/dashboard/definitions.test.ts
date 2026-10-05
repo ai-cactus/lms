@@ -23,8 +23,11 @@ import {
   isUnfinishedStatus,
   overdueEnrollmentWhere,
   previousStaffPopulationWhere,
+  retakesOfWhere,
   sliceSnapshot,
   staffPopulationWhere,
+  supersededEnrollmentIds,
+  withoutSuperseded,
   type DashboardCertificate,
   type DashboardEnrollment,
   type DashboardMember,
@@ -584,5 +587,284 @@ describe('calculators', () => {
       expiredCredentials: 0,
       expiringCredentials: 1,
     });
+  });
+});
+
+// BUG-38: `assignRetake` opens a new enrolment and leaves the failed one
+// `locked` for good. Once a retake names it, the old row is superseded.
+describe('superseded (retaken) enrolments', () => {
+  type RetakeState = 'none' | 'attested' | 'in_progress';
+
+  /** A learner who failed c-1 (locked, stalled 30 days) and maybe got a retake. */
+  function retakeScenario(retake: RetakeState, originalDueAt: Date): DashboardSlice {
+    const original = enrollment({
+      id: 'e-old',
+      status: 'locked',
+      startedAt: daysBefore(NOW, 40),
+      lastActivityAt: daysBefore(NOW, 30),
+      dueAt: originalDueAt,
+    });
+    const enrollments = [original];
+    const attempts = [
+      attempt({ enrollmentId: 'e-old', score: 40, completedAt: daysBefore(NOW, 30) }),
+    ];
+    if (retake === 'attested') {
+      enrollments.push(
+        enrollment({
+          id: 'e-new',
+          status: 'attested',
+          retakeOf: 'e-old',
+          startedAt: daysBefore(NOW, 5),
+          lastActivityAt: daysBefore(NOW, 2),
+          completedAt: daysBefore(NOW, 2),
+        }),
+      );
+      attempts.push(attempt({ enrollmentId: 'e-new', score: 90, completedAt: daysBefore(NOW, 2) }));
+    } else if (retake === 'in_progress') {
+      enrollments.push(
+        enrollment({
+          id: 'e-new',
+          status: 'in_progress',
+          retakeOf: 'e-old',
+          startedAt: daysBefore(NOW, 5),
+          lastActivityAt: daysBefore(NOW, 1),
+        }),
+      );
+    }
+    return slice({ members: [member()], enrollments, attempts });
+  }
+
+  const PAST_DUE = daysBefore(NOW, 20);
+  const DUE_SOON = daysAfter(NOW, 5);
+
+  it('names every enrolment another one retook, and nothing else', () => {
+    expect(
+      supersededEnrollmentIds([{ retakeOf: null }, { retakeOf: 'e-old' }, { retakeOf: 'e-older' }]),
+    ).toEqual(new Set(['e-old', 'e-older']));
+    expect(retakesOfWhere(['a', 'b'])).toEqual({ retakeOf: { in: ['a', 'b'] } });
+  });
+
+  it('withoutSuperseded drops the superseded row and its attempts only', () => {
+    const live = withoutSuperseded(retakeScenario('attested', PAST_DUE));
+    expect(live.enrollments.map((e) => e.id)).toEqual(['e-new']);
+    expect(live.attempts.map((a) => a.enrollmentId)).toEqual(['e-new']);
+  });
+
+  // A two-deep chain: the original is retaken by a LOCKED retake, which is
+  // itself retaken by the eventual live enrolment. A locked row is still a
+  // live obligation on its own (previous cases) — UNLESS something else names
+  // it in `retakeOf`, in which case it is superseded too, however unfinished
+  // its own status is.
+  it('a retake chain supersedes every earlier link, keeping only the latest', () => {
+    const original = enrollment({
+      id: 'e-old',
+      status: 'locked',
+      startedAt: daysBefore(NOW, 40),
+      lastActivityAt: daysBefore(NOW, 30),
+      dueAt: PAST_DUE,
+    });
+    const middle = enrollment({
+      id: 'e-mid',
+      status: 'locked',
+      retakeOf: 'e-old',
+      startedAt: daysBefore(NOW, 10),
+      lastActivityAt: daysBefore(NOW, 9),
+      dueAt: daysBefore(NOW, 2),
+    });
+    const latest = enrollment({
+      id: 'e-latest',
+      status: 'in_progress',
+      retakeOf: 'e-mid',
+      startedAt: daysBefore(NOW, 3),
+      lastActivityAt: daysBefore(NOW, 1),
+      dueAt: daysAfter(NOW, 5),
+    });
+    const attempts = [
+      attempt({ enrollmentId: 'e-old', score: 40, completedAt: daysBefore(NOW, 30) }),
+      attempt({ enrollmentId: 'e-mid', score: 50, completedAt: daysBefore(NOW, 9) }),
+    ];
+    const chainSlice = slice({
+      members: [member()],
+      enrollments: [original, middle, latest],
+      attempts,
+    });
+
+    expect(supersededEnrollmentIds(chainSlice.enrollments)).toEqual(new Set(['e-old', 'e-mid']));
+
+    const live = withoutSuperseded(chainSlice);
+    expect(live.enrollments.map((e) => e.id)).toEqual(['e-latest']);
+    expect(live.attempts).toEqual([]);
+
+    // The middle link is LOCKED (itself an "unfinished, still owed" status) —
+    // it would count as overdue/active/dormant on its own, but it must not:
+    // it has been superseded by e-latest, just like a finished retake would.
+    const headline = computeHeadline(chainSlice);
+    expect(headline.activeLearners).toBe(1);
+    expect(headline.overdueTrainings).toBe(0);
+    expect(headline.dormantStaff).toBe(0);
+
+    // First-Time Pass Rate is untouched by the chain: only e-old is a
+    // first-time (non-retake) enrolment, and it failed.
+    expect(firstAttemptOutcomes(chainSlice)).toEqual({ total: 1, passed: 0 });
+  });
+
+  it.each<[string, RetakeState, Date, Record<string, number>]>([
+    [
+      'a locked row with NO retake still counts everywhere',
+      'none',
+      PAST_DUE,
+      {
+        activeLearners: 1,
+        ongoingCourses: 1,
+        overdueTrainings: 1,
+        dormantStaff: 1,
+        firstTimePassRate: 0,
+      },
+    ],
+    [
+      'a locked row superseded by an attested retake counts nowhere but first-time pass',
+      'attested',
+      PAST_DUE,
+      {
+        activeLearners: 0,
+        ongoingCourses: 0,
+        overdueTrainings: 0,
+        dormantStaff: 0,
+        firstTimePassRate: 0,
+      },
+    ],
+    [
+      'an unfinished retake counts normally in place of the original',
+      'in_progress',
+      PAST_DUE,
+      {
+        activeLearners: 1,
+        ongoingCourses: 1,
+        overdueTrainings: 0,
+        dormantStaff: 0,
+        firstTimePassRate: 0,
+      },
+    ],
+  ])('headline: %s', (_label, retake, dueAt, expected) => {
+    expect(computeHeadline(retakeScenario(retake, dueAt))).toMatchObject(expected);
+  });
+
+  it('keeps the superseded original in First-Time Pass Rate', () => {
+    expect(firstAttemptOutcomes(retakeScenario('attested', PAST_DUE))).toEqual({
+      total: 1,
+      passed: 0,
+    });
+  });
+
+  it.each<[string, RetakeState, object]>([
+    [
+      'no retake',
+      'none',
+      {
+        totalActiveCourses: 1,
+        totalAssignedLearners: 1,
+        averageGrade: 40,
+        coverage: { completed: 0, inProgress: 1, notStarted: 0 },
+        totalAssignments: 1,
+      },
+    ],
+    [
+      'attested retake',
+      'attested',
+      {
+        totalActiveCourses: 0,
+        totalAssignedLearners: 0,
+        averageGrade: 90,
+        coverage: { completed: 1, inProgress: 0, notStarted: 0 },
+        totalAssignments: 1,
+      },
+    ],
+    [
+      'unfinished retake',
+      'in_progress',
+      {
+        totalActiveCourses: 1,
+        totalAssignedLearners: 1,
+        averageGrade: 0,
+        coverage: { completed: 0, inProgress: 1, notStarted: 0 },
+        totalAssignments: 1,
+      },
+    ],
+  ])('facility view: %s', (_label, retake, expected) => {
+    expect(computeFacilityView(retakeScenario(retake, PAST_DUE))).toMatchObject(expected);
+  });
+
+  it.each<[string, RetakeState, object]>([
+    ['no retake', 'none', { total: 1, finished: 0, passCount: 0, failCount: 1, meanGrade: 40 }],
+    [
+      'attested retake',
+      'attested',
+      { total: 1, finished: 1, passCount: 1, failCount: 0, meanGrade: 90 },
+    ],
+    [
+      'unfinished retake',
+      'in_progress',
+      { total: 1, finished: 0, passCount: 0, failCount: 0, meanGrade: 0 },
+    ],
+  ])('per-course figures (Assigned Staff, pass/fail): %s', (_label, retake, expected) => {
+    const view = computeFacilityView(retakeScenario(retake, PAST_DUE));
+    expect(view.byCourse.get('c-1')).toEqual(expected);
+  });
+
+  it.each<[string, RetakeState, object]>([
+    [
+      'no retake',
+      'none',
+      {
+        activeTrainings: 1,
+        overdueTrainings: 1,
+        completionPercent: 0,
+        auditReadinessPercent: 0,
+        averageGrade: 40,
+        signals: {
+          overdueBeyondGrace: 1,
+          overdueWithinGrace: 0,
+          completionPercent: 0,
+          expiredCredentials: 0,
+          expiringCredentials: 0,
+        },
+      },
+    ],
+    [
+      'attested retake',
+      'attested',
+      {
+        activeTrainings: 0,
+        overdueTrainings: 0,
+        completionPercent: 100,
+        auditReadinessPercent: 100,
+        averageGrade: 90,
+        signals: {
+          overdueBeyondGrace: 0,
+          overdueWithinGrace: 0,
+          completionPercent: 100,
+          expiredCredentials: 0,
+          expiringCredentials: 0,
+        },
+      },
+    ],
+  ])('facility row: %s', (_label, retake, expected) => {
+    expect(computeFacilityRow(retakeScenario(retake, PAST_DUE))).toMatchObject(expected);
+  });
+
+  it.each<[RetakeState, number]>([
+    ['none', 1],
+    ['attested', 0],
+  ])('due soon with retake %s → %i approaching', (retake, expected) => {
+    expect(computeFacilityRow(retakeScenario(retake, DUE_SOON)).approachingDeadlines).toBe(
+      expected,
+    );
+  });
+
+  it('agrees through a facility slice of the snapshot', () => {
+    const s = retakeScenario('attested', PAST_DUE);
+    const sliced = sliceSnapshot(buildSnapshot(s), ['fac-a']);
+    expect(computeFacilityRow(sliced)).toEqual(computeFacilityRow(s));
+    expect(computeHeadline(sliced)).toEqual(computeHeadline(s));
   });
 });

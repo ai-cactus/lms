@@ -9,9 +9,12 @@ import {
   markAllAsRead,
   markAsRead,
 } from '@/app/actions/notifications';
+import type { PortalRealm } from '@/lib/auth/portal-sessions';
 import type { NotificationLike } from './notification-display';
 
 interface UseNotificationsOptions {
+  /** The portal rendering this inbox — its session, never the other's, is read. */
+  realm: PortalRealm;
   /** Page size for list fetches. */
   pageSize?: number;
   /** Poll the unread count every N ms (and on window focus). 0 disables. */
@@ -24,10 +27,11 @@ interface UseNotificationsOptions {
  * Shared notification state: pagination, unread-count polling, and the
  * mark/delete mutations. Used by both header dropdowns and the full page.
  */
-export function useNotifications(options?: UseNotificationsOptions) {
-  const pageSize = options?.pageSize ?? 20;
-  const pollMs = options?.pollMs ?? 0;
-  const autoLoad = options?.autoLoad ?? false;
+export function useNotifications(options: UseNotificationsOptions) {
+  const realm = options.realm;
+  const pageSize = options.pageSize ?? 20;
+  const pollMs = options.pollMs ?? 0;
+  const autoLoad = options.autoLoad ?? false;
 
   const [notifications, setNotifications] = useState<NotificationLike[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -39,14 +43,14 @@ export function useNotifications(options?: UseNotificationsOptions) {
   const cursorRef = useRef<string | null>(null);
 
   const refreshUnreadCount = useCallback(async () => {
-    const res = await getUnreadCount();
+    const res = await getUnreadCount(realm);
     if (res.success) setUnreadCount(res.unreadCount);
-  }, []);
+  }, [realm]);
 
   const load = useCallback(
     async (type: string | null) => {
       setIsLoading(true);
-      const res = await getNotifications({ limit: pageSize, type });
+      const res = await getNotifications(realm, { limit: pageSize, type });
       if (res.success) {
         setNotifications(res.notifications as NotificationLike[]);
         setUnreadCount(res.unreadCount);
@@ -55,7 +59,7 @@ export function useNotifications(options?: UseNotificationsOptions) {
       }
       setIsLoading(false);
     },
-    [pageSize],
+    [realm, pageSize],
   );
 
   const refresh = useCallback(() => load(typeFilter), [load, typeFilter]);
@@ -63,7 +67,7 @@ export function useNotifications(options?: UseNotificationsOptions) {
   const loadMore = useCallback(async () => {
     if (!cursorRef.current || isLoadingMore) return;
     setIsLoadingMore(true);
-    const res = await getNotifications({
+    const res = await getNotifications(realm, {
       limit: pageSize,
       type: typeFilter,
       cursor: cursorRef.current,
@@ -74,7 +78,7 @@ export function useNotifications(options?: UseNotificationsOptions) {
       setHasMore(res.hasMore);
     }
     setIsLoadingMore(false);
-  }, [pageSize, typeFilter, isLoadingMore]);
+  }, [realm, pageSize, typeFilter, isLoadingMore]);
 
   const setTypeFilter = useCallback(
     (type: string | null) => {
@@ -87,25 +91,25 @@ export function useNotifications(options?: UseNotificationsOptions) {
   const markRead = useCallback(
     async (id: string) => {
       setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)));
-      await markAsRead(id);
+      await markAsRead(realm, id);
       refreshUnreadCount();
     },
-    [refreshUnreadCount],
+    [realm, refreshUnreadCount],
   );
 
   const markAll = useCallback(async () => {
     setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
     setUnreadCount(0);
-    await markAllAsRead();
-  }, []);
+    await markAllAsRead(realm);
+  }, [realm]);
 
   const remove = useCallback(
     async (id: string) => {
       setNotifications((prev) => prev.filter((n) => n.id !== id));
-      await deleteNotification(id);
+      await deleteNotification(realm, id);
       refreshUnreadCount();
     },
-    [refreshUnreadCount],
+    [realm, refreshUnreadCount],
   );
 
   const clearAll = useCallback(async () => {
@@ -113,8 +117,8 @@ export function useNotifications(options?: UseNotificationsOptions) {
     setUnreadCount(0);
     setHasMore(false);
     cursorRef.current = null;
-    await clearAllNotifications();
-  }, []);
+    await clearAllNotifications(realm);
+  }, [realm]);
 
   // Initial load / unread-count seed.
   useEffect(() => {

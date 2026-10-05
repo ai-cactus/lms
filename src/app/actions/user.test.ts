@@ -18,6 +18,9 @@ const {
   mockInvalidateRevalidationCache,
   mockBcryptCompare,
   mockBcryptHash,
+  mockUploadFile,
+  mockGetSignedUrl,
+  mockDeleteFile,
 } = vi.hoisted(() => ({
   // Profile was merged into User — name fields live directly on the identity.
   prismaMock: {
@@ -34,6 +37,9 @@ const {
   mockInvalidateRevalidationCache: vi.fn(),
   mockBcryptCompare: vi.fn(),
   mockBcryptHash: vi.fn(),
+  mockUploadFile: vi.fn(),
+  mockGetSignedUrl: vi.fn(),
+  mockDeleteFile: vi.fn(),
 }));
 
 vi.mock('next/headers', () => ({ headers: mockHeaders }));
@@ -56,11 +62,18 @@ vi.mock('bcryptjs', () => ({
   hash: mockBcryptHash,
 }));
 
-import { updateProfile, changePassword, getStaffUsers } from './user';
+vi.mock('@/lib/storage', () => ({
+  uploadFile: mockUploadFile,
+  getSignedUrl: mockGetSignedUrl,
+  deleteFile: mockDeleteFile,
+}));
+
+import { updateProfile, changePassword, getStaffUsers, uploadAvatar } from './user';
+import type { PortalRealm } from '@/lib/auth/portal-sessions';
 
 const SESSION = { user: { id: 'user-1', email: 'user@acme.com' } };
 
-function baseData(overrides: Partial<Parameters<typeof updateProfile>[0]> = {}) {
+function baseData(overrides: Partial<Parameters<typeof updateProfile>[1]> = {}) {
   return {
     first_name: 'Jane',
     last_name: 'Doe',
@@ -70,7 +83,7 @@ function baseData(overrides: Partial<Parameters<typeof updateProfile>[0]> = {}) 
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockHeaders.mockResolvedValue({ get: () => null }); // non-worker referer → resolveSession uses adminAuth
+  mockHeaders.mockResolvedValue({ get: () => null });
   mockAdminAuth.mockResolvedValue(SESSION);
   mockWorkerAuth.mockResolvedValue(null);
   prismaMock.user.update.mockResolvedValue({ id: 'user-1' });
@@ -80,21 +93,21 @@ beforeEach(() => {
 
 describe('updateProfile — server-side name validation', () => {
   it('rejects an empty first name and never touches the database', async () => {
-    const result = await updateProfile(baseData({ first_name: '' }));
+    const result = await updateProfile('admin', baseData({ first_name: '' }));
 
     expect(result).toEqual({ success: false, error: 'First and last name are required.' });
     expect(prismaMock.user.update).not.toHaveBeenCalled();
   });
 
   it('rejects a whitespace-only last name and never touches the database', async () => {
-    const result = await updateProfile(baseData({ last_name: '   ' }));
+    const result = await updateProfile('admin', baseData({ last_name: '   ' }));
 
     expect(result).toEqual({ success: false, error: 'First and last name are required.' });
     expect(prismaMock.user.update).not.toHaveBeenCalled();
   });
 
   it('rejects a first name over 100 characters', async () => {
-    const result = await updateProfile(baseData({ first_name: 'a'.repeat(101) }));
+    const result = await updateProfile('admin', baseData({ first_name: 'a'.repeat(101) }));
 
     expect(result).toEqual({
       success: false,
@@ -104,7 +117,7 @@ describe('updateProfile — server-side name validation', () => {
   });
 
   it('rejects a last name over 100 characters', async () => {
-    const result = await updateProfile(baseData({ last_name: 'b'.repeat(101) }));
+    const result = await updateProfile('admin', baseData({ last_name: 'b'.repeat(101) }));
 
     expect(result).toEqual({
       success: false,
@@ -114,14 +127,17 @@ describe('updateProfile — server-side name validation', () => {
   });
 
   it('accepts a name at exactly the 100-character boundary', async () => {
-    const result = await updateProfile(baseData({ first_name: 'a'.repeat(100) }));
+    const result = await updateProfile('admin', baseData({ first_name: 'a'.repeat(100) }));
 
     expect(result).toEqual({ success: true });
     expect(prismaMock.user.update).toHaveBeenCalledOnce();
   });
 
   it('trims surrounding whitespace before persisting and computing the full name', async () => {
-    const result = await updateProfile(baseData({ first_name: '  Jane ', last_name: ' Doe  ' }));
+    const result = await updateProfile(
+      'admin',
+      baseData({ first_name: '  Jane ', last_name: ' Doe  ' }),
+    );
 
     expect(result).toEqual({ success: true });
     expect(prismaMock.user.update).toHaveBeenCalledWith(
@@ -140,7 +156,7 @@ describe('updateProfile — server-side name validation', () => {
     mockAdminAuth.mockResolvedValue(null);
     mockWorkerAuth.mockResolvedValue(null);
 
-    const result = await updateProfile(baseData({ first_name: '' }));
+    const result = await updateProfile('admin', baseData({ first_name: '' }));
 
     expect(result).toEqual({ success: false, error: 'Not authenticated' });
     expect(prismaMock.user.update).not.toHaveBeenCalled();
@@ -164,7 +180,7 @@ describe('updateProfile — writes the identity only', () => {
       },
     });
 
-    const result = await updateProfile(baseData());
+    const result = await updateProfile('admin', baseData());
 
     expect(result).toEqual({ success: true });
     expect(prismaMock.user.update).toHaveBeenCalledExactlyOnceWith({
@@ -186,7 +202,7 @@ describe('updateProfile — writes the identity only', () => {
       },
     });
 
-    const result = await updateProfile(baseData());
+    const result = await updateProfile('admin', baseData());
 
     expect(result).toEqual({ success: true });
     expect(prismaMock.user.update).toHaveBeenCalledOnce();
@@ -217,7 +233,7 @@ describe('changePassword — self-service password change', () => {
     mockAdminAuth.mockResolvedValue(null);
     mockWorkerAuth.mockResolvedValue(null);
 
-    const result = await changePassword({
+    const result = await changePassword('admin', {
       currentPassword: 'oldPass1!',
       newPassword: 'NewStr0ng!Pass1',
     });
@@ -228,7 +244,7 @@ describe('changePassword — self-service password change', () => {
   });
 
   it("updates the password, bumps sessionVersion, and busts the session's cached revalidation snapshot by id, after the DB write", async () => {
-    const result = await changePassword({
+    const result = await changePassword('admin', {
       currentPassword: 'correctCurrentPass1!',
       newPassword: 'NewStr0ng!Pass1',
     });
@@ -255,7 +271,7 @@ describe('changePassword — self-service password change', () => {
   it('rejects an OAuth account (no password to change) and does NOT invalidate the cache', async () => {
     prismaMock.user.findUnique.mockResolvedValue({ password: null, authProvider: 'google' });
 
-    const result = await changePassword({ newPassword: 'NewStr0ng!Pass1' });
+    const result = await changePassword('admin', { newPassword: 'NewStr0ng!Pass1' });
 
     expect(result).toEqual({
       success: false,
@@ -268,7 +284,7 @@ describe('changePassword — self-service password change', () => {
   it('returns "Incorrect current password." and does NOT update or invalidate when the current password is wrong', async () => {
     mockBcryptCompare.mockResolvedValue(false);
 
-    const result = await changePassword({
+    const result = await changePassword('admin', {
       currentPassword: 'wrongPass',
       newPassword: 'NewStr0ng!Pass1',
     });
@@ -279,7 +295,7 @@ describe('changePassword — self-service password change', () => {
   });
 
   it('rejects a new password under 12 characters before ever touching the DB', async () => {
-    const result = await changePassword({
+    const result = await changePassword('admin', {
       currentPassword: 'correctCurrentPass1!',
       newPassword: 'short1!',
     });
@@ -295,7 +311,7 @@ describe('changePassword — self-service password change', () => {
   it('returns a generic failure and does NOT invalidate the cache when the DB update throws', async () => {
     prismaMock.user.update.mockRejectedValue(new Error('connection pool exhausted'));
 
-    const result = await changePassword({
+    const result = await changePassword('admin', {
       currentPassword: 'correctCurrentPass1!',
       newPassword: 'NewStr0ng!Pass1',
     });
@@ -393,5 +409,365 @@ describe('getStaffUsers — D-01 facility scoping', () => {
 
     await expect(getStaffUsers()).rejects.toThrow('Unauthorized');
     expect(prismaMock.organizationUser.findMany).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// BUG-05 — self-service writes act on the portal the caller names, and only
+// that portal. One browser can hold an admin session and a worker session for
+// two DIFFERENT accounts; the old referer sniff preferred the admin session for
+// any referer-less request and fell back across portals, so a worker's save
+// could rename (or re-password) the admin account.
+// ---------------------------------------------------------------------------
+
+describe('BUG-05 — realm selection for self-service writes', () => {
+  const ADMIN_SESSION = {
+    user: { id: 'admin-user', email: 'boss@acme.com', organizationId: 'org-a' },
+  };
+  const WORKER_SESSION = {
+    user: { id: 'worker-user', email: 'nurse@acme.com', organizationId: 'org-b' },
+  };
+
+  beforeEach(() => {
+    prismaMock.user.findUnique.mockResolvedValue({ password: 'hash', authProvider: 'credentials' });
+    mockBcryptCompare.mockResolvedValue(true);
+    mockBcryptHash.mockResolvedValue('new-hash');
+    mockInvalidateRevalidationCache.mockResolvedValue(undefined);
+    mockUploadFile.mockResolvedValue({ storageUri: 'gcs://bucket/avatars/x.png' });
+  });
+
+  describe('with BOTH sessions in the browser', () => {
+    beforeEach(() => {
+      mockAdminAuth.mockResolvedValue(ADMIN_SESSION);
+      mockWorkerAuth.mockResolvedValue(WORKER_SESSION);
+    });
+
+    it('a worker-portal save writes the worker account, never the admin one', async () => {
+      const result = await updateProfile('worker', baseData());
+
+      expect(result).toEqual({ success: true });
+      expect(prismaMock.user.update).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ where: { id: 'worker-user' } }),
+      );
+    });
+
+    it('an admin-portal save writes the admin account', async () => {
+      await updateProfile('admin', baseData());
+
+      expect(prismaMock.user.update).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ where: { id: 'admin-user' } }),
+      );
+    });
+
+    it('ignores the referer entirely — a /worker referer cannot move an admin save', async () => {
+      mockHeaders.mockResolvedValue({ get: () => 'https://app.test/worker/profile' });
+
+      await updateProfile('admin', baseData());
+
+      expect(prismaMock.user.update).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ where: { id: 'admin-user' } }),
+      );
+    });
+
+    it('a worker-portal password change re-passwords and evicts the worker account only', async () => {
+      const result = await changePassword('worker', {
+        currentPassword: 'correctCurrentPass1!',
+        newPassword: 'NewStr0ng!Pass1',
+      });
+
+      expect(result).toEqual({ success: true });
+      expect(prismaMock.user.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'worker-user' } }),
+      );
+      expect(prismaMock.user.update).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ where: { id: 'worker-user' } }),
+      );
+      expect(mockInvalidateRevalidationCache).toHaveBeenCalledExactlyOnceWith('worker-user');
+    });
+
+    it("a worker-portal avatar upload is stored under the worker's own prefix", async () => {
+      const form = new FormData();
+      form.append('file', new File(['x'], 'me.png', { type: 'image/png' }));
+
+      const result = await uploadAvatar('worker', form);
+
+      expect(result).toEqual({ success: true, url: 'gcs://bucket/avatars/x.png' });
+      expect(mockUploadFile.mock.calls[0][0]).toMatch(/^avatars\/worker-user\//);
+    });
+  });
+
+  describe('never falls back to the other portal', () => {
+    it('a worker-portal save with only an admin session is refused, writing nothing', async () => {
+      mockAdminAuth.mockResolvedValue(ADMIN_SESSION);
+      mockWorkerAuth.mockResolvedValue(null);
+
+      const result = await updateProfile('worker', baseData());
+
+      expect(result).toEqual({ success: false, error: 'Not authenticated' });
+      expect(prismaMock.user.update).not.toHaveBeenCalled();
+    });
+
+    it('an admin-portal save with only a worker session is refused, writing nothing', async () => {
+      mockAdminAuth.mockResolvedValue(null);
+      mockWorkerAuth.mockResolvedValue(WORKER_SESSION);
+
+      const result = await updateProfile('admin', baseData());
+
+      expect(result).toEqual({ success: false, error: 'Not authenticated' });
+      expect(prismaMock.user.update).not.toHaveBeenCalled();
+      expect(mockAdminAuth).toHaveBeenCalled();
+      expect(mockWorkerAuth).not.toHaveBeenCalled();
+    });
+
+    it('a password change with the other portal only is refused, writing nothing', async () => {
+      mockAdminAuth.mockResolvedValue(ADMIN_SESSION);
+      mockWorkerAuth.mockResolvedValue(null);
+
+      const result = await changePassword('worker', { newPassword: 'NewStr0ng!Pass1' });
+
+      expect(result).toEqual({ success: false, error: 'Not authenticated' });
+      expect(prismaMock.user.update).not.toHaveBeenCalled();
+    });
+  });
+
+  it.each([undefined, '', 'system', 'Admin'])(
+    'an unknown realm %j resolves no session and writes nothing',
+    async (realm) => {
+      mockAdminAuth.mockResolvedValue(ADMIN_SESSION);
+      mockWorkerAuth.mockResolvedValue(WORKER_SESSION);
+
+      const result = await updateProfile(realm as unknown as PortalRealm, baseData());
+
+      expect(result).toEqual({ success: false, error: 'Not authenticated' });
+      expect(prismaMock.user.update).not.toHaveBeenCalled();
+      expect(mockAdminAuth).not.toHaveBeenCalled();
+      expect(mockWorkerAuth).not.toHaveBeenCalled();
+    },
+  );
+
+  it('the staff roster reads the admin portal only — a worker session is never consulted', async () => {
+    mockAdminAuth.mockResolvedValue(null);
+    mockWorkerAuth.mockResolvedValue({
+      user: { id: 'mgr', role: 'owner', organizationId: 'org-a', organizationUserId: 'ou' },
+    });
+
+    await expect(getStaffUsers()).rejects.toThrow('Unauthorized');
+    expect(mockWorkerAuth).not.toHaveBeenCalled();
+    expect(prismaMock.organizationUser.findMany).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// RISK-02 — clearing a profile photo. `undefined` means "leave unchanged", so
+// an intentional clear must arrive as null and be written as null. A new photo
+// must be one `uploadAvatar` produced for THIS user: the profile pages sign the
+// stored value by key, so any other URI would be read back as a signed URL.
+// ---------------------------------------------------------------------------
+
+describe('updateProfile — avatarUrl', () => {
+  const OWN_AVATAR = 'gcs://bucket/avatars/user-1/1700000000000-me.png';
+
+  function writtenAvatar() {
+    return prismaMock.user.update.mock.calls[0][0].data.avatarUrl;
+  }
+
+  it.each([
+    ['null', null],
+    ['an empty string', ''],
+    ['whitespace', '   '],
+  ])('clears the stored photo when sent %s', async (_label, avatarUrl) => {
+    const result = await updateProfile('admin', baseData({ avatarUrl }));
+
+    expect(result).toEqual({ success: true });
+    expect(prismaMock.user.update.mock.calls[0][0].data).toHaveProperty('avatarUrl', null);
+  });
+
+  it('leaves the stored photo untouched when avatarUrl is omitted', async () => {
+    await updateProfile('admin', baseData());
+
+    expect(writtenAvatar()).toBeUndefined();
+  });
+
+  it.each([OWN_AVATAR, 'minio://lms-documents/avatars/user-1/123-me.png'])(
+    'stores a photo from the caller’s own avatar uploads: %s',
+    async (avatarUrl) => {
+      const result = await updateProfile('admin', baseData({ avatarUrl }));
+
+      expect(result).toEqual({ success: true });
+      expect(writtenAvatar()).toBe(avatarUrl);
+    },
+  );
+
+  it.each([
+    ["another user's avatar", 'gcs://bucket/avatars/user-2/1-them.png'],
+    ['a prefix collision on the user id', 'gcs://bucket/avatars/user-10/1-them.png'],
+    ["another tenant's document", 'gcs://bucket/documents/org-b/secret.pdf'],
+    ['a traversal out of the avatar folder', 'gcs://bucket/avatars/user-1/../../documents/x.pdf'],
+    ['an external URL', 'https://evil.example/pixel.png'],
+    ['a legacy local path', '/uploads/avatars/user-1/me.png'],
+  ])('refuses %s and writes nothing', async (_label, avatarUrl) => {
+    const result = await updateProfile('admin', baseData({ avatarUrl }));
+
+    expect(result).toEqual({
+      success: false,
+      error: 'Invalid profile photo. Please upload it again.',
+    });
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
+  });
+
+  it('refuses a non-string avatarUrl (Server Action arguments are unchecked)', async () => {
+    const result = await updateProfile('admin', baseData({ avatarUrl: 42 as unknown as string }));
+
+    expect(result.success).toBe(false);
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// RISK-13 — a replaced or cleared photo stranded its object in storage forever.
+// The old object is deleted after the write commits, best-effort, and only
+// when it sits under the caller's own avatars/<userId>/ prefix.
+// ---------------------------------------------------------------------------
+
+describe('updateProfile — deleting the replaced avatar', () => {
+  const OLD = 'gcs://bucket/avatars/user-1/1600000000000-old.png';
+  const NEW = 'gcs://bucket/avatars/user-1/1700000000000-new.png';
+
+  function storedAvatar(avatarUrl: string | null) {
+    prismaMock.user.findUnique.mockResolvedValue({ avatarUrl });
+  }
+
+  it('deletes the previous object after the new photo is written', async () => {
+    storedAvatar(OLD);
+    const order: string[] = [];
+    prismaMock.user.update.mockImplementation(async () => {
+      order.push('write');
+      return { id: 'user-1' };
+    });
+    mockDeleteFile.mockImplementation(async () => {
+      order.push('delete');
+    });
+
+    const result = await updateProfile('admin', baseData({ avatarUrl: NEW }));
+
+    expect(result).toEqual({ success: true });
+    expect(mockDeleteFile).toHaveBeenCalledExactlyOnceWith(OLD);
+    expect(order).toEqual(['write', 'delete']);
+  });
+
+  it('deletes the previous object when the photo is cleared', async () => {
+    storedAvatar(OLD);
+
+    await updateProfile('admin', baseData({ avatarUrl: null }));
+
+    expect(mockDeleteFile).toHaveBeenCalledExactlyOnceWith(OLD);
+  });
+
+  it('deletes nothing when the photo is left unchanged or there was none', async () => {
+    await updateProfile('admin', baseData());
+    expect(prismaMock.user.findUnique).not.toHaveBeenCalled();
+
+    storedAvatar(null);
+    await updateProfile('admin', baseData({ avatarUrl: NEW }));
+
+    storedAvatar(NEW);
+    await updateProfile('admin', baseData({ avatarUrl: NEW }));
+
+    expect(mockDeleteFile).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["another user's avatar", 'gcs://bucket/avatars/user-2/1-them.png'],
+    ['a document', 'gcs://bucket/documents/org-a/policy.pdf'],
+    ['a legacy local path', '/uploads/avatars/user-1/me.png'],
+  ])('never deletes a previous value outside the caller’s prefix: %s', async (_label, previous) => {
+    storedAvatar(previous);
+
+    const result = await updateProfile('admin', baseData({ avatarUrl: NEW }));
+
+    expect(result).toEqual({ success: true });
+    expect(mockDeleteFile).not.toHaveBeenCalled();
+  });
+
+  it('keeps the save successful when the storage delete fails', async () => {
+    storedAvatar(OLD);
+    mockDeleteFile.mockRejectedValue(new Error('GCS unavailable'));
+
+    const result = await updateProfile('admin', baseData({ avatarUrl: NEW }));
+
+    expect(result).toEqual({ success: true });
+    expect(prismaMock.user.update).toHaveBeenCalledOnce();
+  });
+
+  it('deletes nothing when the database write fails', async () => {
+    storedAvatar(OLD);
+    prismaMock.user.update.mockRejectedValue(new Error('db down'));
+
+    const result = await updateProfile('admin', baseData({ avatarUrl: NEW }));
+
+    expect(result).toEqual({ success: false, error: 'Failed to update profile' });
+    expect(mockDeleteFile).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// BUG-48 — the roster drew `User.avatarUrl` straight into `<img src>`. That
+// value is a `gcs://`/`minio://` storage URI: it names the bucket and key, and
+// no browser can fetch it. The payload must carry a signed URL instead.
+// ---------------------------------------------------------------------------
+
+describe('getStaffUsers — avatar URLs', () => {
+  const STORED = 'gcs://lms-bucket/avatars/user-7/1700000000000-me.png';
+  const SIGNED =
+    'https://storage.googleapis.com/lms-bucket/avatars/user-7/me.png?X-Goog-Signature=abc';
+
+  function member(avatarUrl: string | null, userId = 'user-7') {
+    return {
+      id: `ou-${userId}`,
+      userId,
+      role: 'nurse',
+      joinedAt: new Date('2026-09-01T00:00:00.000Z'),
+      user: { email: `${userId}@acme.com`, fullName: 'Pat Doe', avatarUrl },
+      facilities: [],
+    };
+  }
+
+  beforeEach(() => {
+    mockAdminAuth.mockResolvedValue({
+      user: { id: 'u1', role: 'owner', organizationId: 'org-a', organizationUserId: 'ou1' },
+    });
+    prismaMock.invite.findMany.mockResolvedValue([]);
+  });
+
+  it('sends a signed URL, never the stored storage URI', async () => {
+    prismaMock.organizationUser.findMany.mockResolvedValue([member(STORED)]);
+    mockGetSignedUrl.mockResolvedValue(SIGNED);
+
+    const entries = await getStaffUsers();
+
+    expect(mockGetSignedUrl).toHaveBeenCalledWith(STORED);
+    expect(entries[0].avatarUrl).toBe(SIGNED);
+    expect(JSON.stringify(entries)).not.toContain('gcs://');
+  });
+
+  it('sends null for a member without a photo and signs nothing', async () => {
+    prismaMock.organizationUser.findMany.mockResolvedValue([member(null)]);
+
+    const entries = await getStaffUsers();
+
+    expect(entries[0].avatarUrl).toBeNull();
+    expect(mockGetSignedUrl).not.toHaveBeenCalled();
+  });
+
+  it('degrades one unsignable avatar to initials without failing the roster', async () => {
+    prismaMock.organizationUser.findMany.mockResolvedValue([
+      member(STORED, 'user-7'),
+      member('gcs://lms-bucket/avatars/user-8/1-me.png', 'user-8'),
+    ]);
+    mockGetSignedUrl.mockRejectedValueOnce(new Error('GCS unavailable')).mockResolvedValue(SIGNED);
+
+    const entries = await getStaffUsers();
+
+    expect(entries.map((e) => e.avatarUrl)).toEqual([null, SIGNED]);
   });
 });

@@ -2,29 +2,45 @@
  * Contract for the course thumbnail route — the image every course list draws
  * for a video course.
  *
- * Authorization mirrors /api/courses/[id]/preview-poster exactly. The system
- * back office previews through /api/system/video-courses/[courseId]/thumbnail.
+ * Authorization mirrors /api/courses/[id]/preview-poster, plus Q-15's org-admin
+ * widening for retired/archived global video courses (thumbnail only). The
+ * system back office previews through /api/system/video-courses/[courseId]/thumbnail.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const { mockAdminAuth, mockWorkerAuth, mockCourseFindUnique, mockEnrollmentFindFirst, mockSign } =
-  vi.hoisted(() => ({
-    mockAdminAuth: vi.fn(),
-    mockWorkerAuth: vi.fn(),
-    mockCourseFindUnique: vi.fn(),
-    mockEnrollmentFindFirst: vi.fn(),
-    mockSign: vi.fn(),
-  }));
+const {
+  mockAdminAuth,
+  mockWorkerAuth,
+  mockCourseFindUnique,
+  mockFilteredCourseFindUnique,
+  mockEnrollmentFindFirst,
+  mockOfferingFindUnique,
+  mockSign,
+} = vi.hoisted(() => ({
+  mockAdminAuth: vi.fn(),
+  mockWorkerAuth: vi.fn(),
+  mockCourseFindUnique: vi.fn(),
+  mockFilteredCourseFindUnique: vi.fn(),
+  mockEnrollmentFindFirst: vi.fn(),
+  mockOfferingFindUnique: vi.fn(),
+  mockSign: vi.fn(),
+}));
 
 vi.mock('@/auth', () => ({ auth: mockAdminAuth }));
 vi.mock('@/auth.worker', () => ({ auth: mockWorkerAuth }));
+// The course row is read through `rawPrisma` (archive filter bypassed, Q-15);
+// the filtered client gets its own spy so a swap back fails loudly.
 vi.mock('@/lib/prisma', () => {
   const prisma = {
-    course: { findUnique: (...a: unknown[]) => mockCourseFindUnique(...a) },
+    course: { findUnique: (...a: unknown[]) => mockFilteredCourseFindUnique(...a) },
     enrollment: { findFirst: (...a: unknown[]) => mockEnrollmentFindFirst(...a) },
+    orgCourseOffering: { findUnique: (...a: unknown[]) => mockOfferingFindUnique(...a) },
   };
   return { prisma, default: prisma };
 });
+vi.mock('@/db/index', () => ({
+  rawPrisma: { course: { findUnique: (...a: unknown[]) => mockCourseFindUnique(...a) } },
+}));
 vi.mock('@/lib/storage', () => ({ getSignedUrl: (...a: unknown[]) => mockSign(...a) }));
 vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn(), info: vi.fn(), warn: vi.fn() } }));
 
@@ -54,7 +70,9 @@ const makeCourse = (
     isGlobal?: boolean;
     status?: string;
     type?: string;
-    createdByOrgUserId?: string;
+    /** The course's OWNING organisation (RISK-15). */
+    organizationId?: string;
+    archivedAt?: Date | null;
   } = {},
 ) => ({
   thumbnailStorageUri: opts.thumbnailStorageUri ?? null,
@@ -62,7 +80,8 @@ const makeCourse = (
   isGlobal: opts.isGlobal ?? true,
   status: opts.status ?? 'published',
   type: opts.type ?? 'video',
-  createdByOrgUserId: opts.createdByOrgUserId ?? 'system-org-user',
+  organizationId: opts.organizationId ?? 'org-system',
+  archivedAt: opts.archivedAt ?? null,
   lessons: opts.lessonPoster === undefined ? [] : [{ videoPosterStorageUri: opts.lessonPoster }],
 });
 
@@ -74,6 +93,7 @@ beforeEach(() => {
   mockAdminAuth.mockResolvedValue(null);
   mockWorkerAuth.mockResolvedValue(null);
   mockEnrollmentFindFirst.mockResolvedValue(null);
+  mockOfferingFindUnique.mockResolvedValue(null);
   mockSign.mockImplementation((uri: string) => Promise.resolve(signedFor(uri)));
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('jpeg', { status: 200 })));
 });
@@ -84,8 +104,11 @@ afterEach(() => {
   else process.env.VIDEO_PLAYBACK_CACHE_TTL_SECONDS = ORIGINAL_TTL;
 });
 
+/** An admin of org-1 — the owning-org manager whenever a course is org-1's. */
 const signIn = (organizationUserId = 'ou-1') =>
-  mockAdminAuth.mockResolvedValue({ user: { id: 'u1', organizationUserId } });
+  mockAdminAuth.mockResolvedValue({
+    user: { id: 'u1', organizationUserId, organizationId: 'org-1', role: 'admin' },
+  });
 
 describe('GET /api/courses/[id]/thumbnail — access', () => {
   it('401 without a portal session', async () => {
@@ -95,8 +118,11 @@ describe('GET /api/courses/[id]/thumbnail — access', () => {
     expect(mockCourseFindUnique).not.toHaveBeenCalled();
   });
 
-  it('403 for a course the caller neither created nor is enrolled in, when it is not the global catalog', async () => {
-    signIn('ou-outsider');
+  it('403 for a course the caller neither manages nor is enrolled in, when it is not the global catalog', async () => {
+    // A learner, so Q-15's org-admin widening (covered below) stays out of it.
+    mockWorkerAuth.mockResolvedValue({
+      user: { id: 'w1', organizationUserId: 'ou-outsider', organizationId: 'org-1', role: 'nurse' },
+    });
     mockCourseFindUnique.mockResolvedValue(
       makeCourse({ status: 'inactive', lessonPoster: LESSON_URI }),
     );
@@ -134,10 +160,10 @@ describe('GET /api/courses/[id]/thumbnail — access', () => {
     });
   });
 
-  it('allows the course creator', async () => {
-    signIn('ou-creator');
+  it('allows a manager of the organisation that owns the course', async () => {
+    signIn('ou-manager');
     mockCourseFindUnique.mockResolvedValue(
-      makeCourse({ isGlobal: false, createdByOrgUserId: 'ou-creator', lessonPoster: LESSON_URI }),
+      makeCourse({ isGlobal: false, organizationId: 'org-1', lessonPoster: LESSON_URI }),
     );
 
     const res = await call(nextCourseId());
@@ -153,6 +179,156 @@ describe('GET /api/courses/[id]/thumbnail — access', () => {
     const res = await call(nextCourseId());
 
     expect(res.status).toBe(404);
+  });
+});
+
+describe('GET /api/courses/[id]/thumbnail — Q-15 org-admin widening', () => {
+  const ARCHIVED_AT = new Date('2026-09-20T00:00:00Z');
+
+  const signInOrgAdmin = (role = 'admin', organizationId = 'org-1') =>
+    mockAdminAuth.mockResolvedValue({
+      user: { id: 'u-admin', organizationUserId: 'ou-admin', organizationId, role },
+    });
+
+  it('reads the course through rawPrisma, never the archive-filtered client', async () => {
+    signIn();
+    mockCourseFindUnique.mockResolvedValue(makeCourse({ lessonPoster: LESSON_URI }));
+
+    await call(nextCourseId());
+
+    expect(mockCourseFindUnique).toHaveBeenCalledOnce();
+    expect(mockFilteredCourseFindUnique).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['retired (inactive)', { status: 'inactive' }],
+    ['archived', { archivedAt: ARCHIVED_AT }],
+  ])(
+    'serves a %s global video course to an org admin whose org offered it',
+    async (_label, opts) => {
+      signInOrgAdmin();
+      mockCourseFindUnique.mockResolvedValue(makeCourse({ ...opts, lessonPoster: LESSON_URI }));
+      mockOfferingFindUnique.mockResolvedValue({ id: 'off-1' });
+      const id = nextCourseId();
+
+      const res = await call(id);
+
+      expect(res.status).toBe(200);
+      expect(mockOfferingFindUnique.mock.calls[0][0].where).toEqual({
+        organizationId_courseId: { organizationId: 'org-1', courseId: id },
+      });
+    },
+  );
+
+  it('serves an archived global video course to an org admin whose org has an enrolment on it', async () => {
+    signInOrgAdmin();
+    mockCourseFindUnique.mockResolvedValue(
+      makeCourse({ archivedAt: ARCHIVED_AT, lessonPoster: LESSON_URI }),
+    );
+    mockEnrollmentFindFirst.mockResolvedValue({ id: 'enr-org' });
+    const id = nextCourseId();
+
+    const res = await call(id);
+
+    expect(res.status).toBe(200);
+    expect(mockEnrollmentFindFirst.mock.calls[0][0].where).toEqual({
+      courseId: id,
+      organizationUser: { organizationId: 'org-1' },
+    });
+  });
+
+  it('403s a retired course for an org admin whose org neither offered nor enrolled on it', async () => {
+    signInOrgAdmin();
+    mockCourseFindUnique.mockResolvedValue(
+      makeCourse({ status: 'inactive', lessonPoster: LESSON_URI }),
+    );
+
+    const res = await call(nextCourseId());
+
+    expect(res.status).toBe(403);
+    expect(mockSign).not.toHaveBeenCalled();
+  });
+
+  it('keeps an archived course a 404 for an admin whose org has no tie to it', async () => {
+    signInOrgAdmin();
+    mockCourseFindUnique.mockResolvedValue(
+      makeCourse({ archivedAt: ARCHIVED_AT, lessonPoster: LESSON_URI }),
+    );
+
+    const res = await call(nextCourseId());
+
+    expect(res.status).toBe(404);
+    expect(mockSign).not.toHaveBeenCalled();
+  });
+
+  it("does not widen for Finance, which cannot see the organisation's courses", async () => {
+    signInOrgAdmin('finance');
+    mockCourseFindUnique.mockResolvedValue(
+      makeCourse({ status: 'inactive', lessonPoster: LESSON_URI }),
+    );
+    mockOfferingFindUnique.mockResolvedValue({ id: 'off-1' });
+
+    const res = await call(nextCourseId());
+
+    expect(res.status).toBe(403);
+    expect(mockOfferingFindUnique).not.toHaveBeenCalled();
+  });
+
+  it('does not widen for a worker-portal session, even one enrolled elsewhere in the org', async () => {
+    mockWorkerAuth.mockResolvedValue({
+      user: {
+        id: 'w1',
+        organizationUserId: 'ou-w',
+        organizationId: 'org-1',
+        role: 'front_desk_admin',
+      },
+    });
+    mockCourseFindUnique.mockResolvedValue(
+      makeCourse({ archivedAt: ARCHIVED_AT, lessonPoster: LESSON_URI }),
+    );
+    mockOfferingFindUnique.mockResolvedValue({ id: 'off-1' });
+
+    const res = await call(nextCourseId());
+
+    expect(res.status).toBe(404);
+    expect(mockOfferingFindUnique).not.toHaveBeenCalled();
+  });
+
+  it('keeps an archived course a 404 for its own enrolled learner (the preview-poster rules never admit archived rows)', async () => {
+    mockWorkerAuth.mockResolvedValue({ user: { id: 'w1', organizationUserId: 'ou-learner' } });
+    mockCourseFindUnique.mockResolvedValue(
+      makeCourse({ archivedAt: ARCHIVED_AT, lessonPoster: LESSON_URI }),
+    );
+    mockEnrollmentFindFirst.mockResolvedValue({ id: 'enr-1' });
+
+    const res = await call(nextCourseId());
+
+    expect(res.status).toBe(404);
+  });
+
+  it('does not widen for an org-owned (non-global) retired course', async () => {
+    signInOrgAdmin();
+    mockCourseFindUnique.mockResolvedValue(
+      makeCourse({ isGlobal: false, status: 'inactive', lessonPoster: LESSON_URI }),
+    );
+    mockOfferingFindUnique.mockResolvedValue({ id: 'off-1' });
+
+    const res = await call(nextCourseId());
+
+    expect(res.status).toBe(403);
+  });
+
+  it('does not widen for a global, non-video (retired) course even when offered', async () => {
+    signInOrgAdmin();
+    mockCourseFindUnique.mockResolvedValue(
+      makeCourse({ type: 'text', status: 'inactive', lessonPoster: LESSON_URI }),
+    );
+    mockOfferingFindUnique.mockResolvedValue({ id: 'off-1' });
+
+    const res = await call(nextCourseId());
+
+    expect(res.status).toBe(403);
+    expect(mockOfferingFindUnique).not.toHaveBeenCalled();
   });
 });
 
@@ -209,7 +385,7 @@ describe('GET /api/courses/[id]/thumbnail — source chain', () => {
       makeCourse({
         type: 'text',
         isGlobal: false,
-        createdByOrgUserId: 'ou-1',
+        organizationId: 'org-1',
         lessonPoster: LESSON_URI,
       }),
     );

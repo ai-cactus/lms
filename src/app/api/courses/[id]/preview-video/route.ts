@@ -1,5 +1,6 @@
 import prisma from '@/lib/prisma';
 import { getPortalSessions } from '@/lib/auth/portal-sessions';
+import { isCourseOrganizationReviewer } from '@/lib/course/read-access';
 import { getSignedUrl } from '@/lib/storage';
 import {
   PREVIEW_VIDEO_MAX_AGE_SECONDS,
@@ -22,16 +23,27 @@ export const dynamic = 'force-dynamic';
  * HTTPS, forwarding Range headers for seeking.
  *
  * Access: a signed-in user may view a course's preview when the course is part
- * of the global published catalog (any org may browse it) OR they created it OR
- * they're enrolled in it. The course must actually have a preview video.
+ * of the global published catalog (any org may browse it) OR they manage the
+ * organisation that owns it (RISK-15) OR they're enrolled in it. The course must
+ * actually have a preview video.
  */
 
+interface MediaCaller {
+  organizationUserId: string | null;
+  organizationId: string | null;
+  role: string | null;
+}
+
 /** Resolves null only when neither session is authenticated. */
-async function currentOrganizationUserId(): Promise<{ organizationUserId: string | null } | null> {
+async function currentCaller(): Promise<MediaCaller | null> {
   const { admin: a, worker: w } = await getPortalSessions();
   const session = a?.user?.id ? a : w?.user?.id ? w : null;
   if (!session?.user?.id) return null;
-  return { organizationUserId: session.user.organizationUserId };
+  return {
+    organizationUserId: session.user.organizationUserId,
+    organizationId: session.user.organizationId ?? null,
+    role: session.user.role ?? null,
+  };
 }
 
 /** True when a fetch rejected because the caller's connection went away. */
@@ -74,7 +86,7 @@ function forwardedRequestHeaders(request: Request): Record<string, string> {
 }
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const current = await currentOrganizationUserId();
+  const current = await currentCaller();
   if (!current) return new Response('Unauthorized', { status: 401 });
 
   const { id: courseId } = await params;
@@ -87,7 +99,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         isGlobal: true,
         status: true,
         type: true,
-        createdByOrgUserId: true,
+        organizationId: true,
       },
     }),
   );
@@ -96,13 +108,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
   const isGlobalCatalog =
     course.isGlobal && course.status === 'published' && course.type === 'video';
-  const isCreator = current.organizationUserId
-    ? course.createdByOrgUserId === current.organizationUserId
-    : false;
+  const isOrgReviewer = isCourseOrganizationReviewer(course, current);
 
   let isEnrolled = false;
   const organizationUserId = current.organizationUserId;
-  if (!isGlobalCatalog && !isCreator && organizationUserId) {
+  if (!isGlobalCatalog && !isOrgReviewer && organizationUserId) {
     isEnrolled = await resolvePlaybackAuthz(organizationUserId, courseId, async () => {
       const enrollment = await prisma.enrollment.findFirst({
         where: { courseId, organizationUserId },
@@ -112,7 +122,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     });
   }
 
-  const allowed = isGlobalCatalog || isCreator || isEnrolled;
+  const allowed = isGlobalCatalog || isOrgReviewer || isEnrolled;
   if (!allowed) return new Response('Forbidden', { status: 403 });
 
   const storageUri = course.previewVideoStorageUri;

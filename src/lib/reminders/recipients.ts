@@ -1,6 +1,8 @@
 import prisma from '@/lib/prisma';
 import { logger } from '@/lib/logger';
 import { isAdminRole, ADMIN_ROLES } from '@/lib/rbac/role-utils';
+import type { Permission } from '@/lib/rbac/permissions';
+import { roleHolds } from '@/lib/notifications/link-audience';
 
 /**
  * Escalation recipient resolution.
@@ -8,6 +10,10 @@ import { isAdminRole, ADMIN_ROLES } from '@/lib/rbac/role-utils';
  * Escalation targets a worker's manager when one is set and that manager is a
  * same-org admin. Otherwise it falls back to every admin in the worker's
  * organization, mirroring the query shape in `notifyOrganizationAdmins`.
+ *
+ * Narrowed to members who can open what the escalation links to (Q-25): the
+ * caller names the permission its link needs, a manager who lacks it is passed
+ * over for the admins who hold it, and if nobody holds it the miss is logged.
  *
  * This is the *per-worker* chain (manager first, then all admins). Events that
  * target a specific role instead — HR, clinical/quality director — resolve
@@ -54,7 +60,10 @@ function toEscalationRecipients(members: EscalationMember[]): EscalationRecipien
 
 export async function resolveEscalationRecipients(enrollment: {
   organizationUserId: string;
+  /** What the escalation's link requires — only members holding it are returned. */
+  requiredPermission: Permission;
 }): Promise<EscalationRecipients> {
+  const { requiredPermission } = enrollment;
   const worker = await prisma.organizationUser.findUnique({
     where: { id: enrollment.organizationUserId },
     select: { organizationId: true, managerId: true },
@@ -68,7 +77,8 @@ export async function resolveEscalationRecipients(enrollment: {
     return NO_ESCALATION_RECIPIENTS;
   }
 
-  // Prefer a directly-assigned manager, but only if they are an active same-org admin.
+  // Prefer a directly-assigned manager, but only if they are an active same-org
+  // admin who can open the escalation's link.
   if (worker.managerId) {
     const manager = await prisma.organizationUser.findUnique({
       where: { id: worker.managerId },
@@ -85,7 +95,8 @@ export async function resolveEscalationRecipients(enrollment: {
       manager &&
       manager.active &&
       manager.organizationId === worker.organizationId &&
-      isAdminRole(manager.role)
+      isAdminRole(manager.role) &&
+      roleHolds(manager.role, requiredPermission)
     ) {
       return toEscalationRecipients([
         {
@@ -97,16 +108,19 @@ export async function resolveEscalationRecipients(enrollment: {
     }
   }
 
-  const admins = await prisma.organizationUser.findMany({
+  const tier = await prisma.organizationUser.findMany({
     where: { organizationId: worker.organizationId, active: true, role: { in: [...ADMIN_ROLES] } },
-    select: { id: true, user: { select: { email: true, fullName: true } } },
+    select: { id: true, role: true, user: { select: { email: true, fullName: true } } },
   });
+  const admins = tier.filter((admin) => roleHolds(admin.role, requiredPermission));
 
   if (admins.length === 0) {
     logger.warn({
-      msg: '[reminders] No escalation recipients — no manager and no org admins',
+      msg: '[reminders] No escalation recipients — no manager or admin can open the escalation',
       organizationUserId: enrollment.organizationUserId,
       orgId: worker.organizationId,
+      requiredPermission,
+      adminCount: tier.length,
     });
     return NO_ESCALATION_RECIPIENTS;
   }

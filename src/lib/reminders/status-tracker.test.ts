@@ -8,7 +8,7 @@
  * hardEscalationCount (≥7 days), descending sort by daysOverdue, manager name
  * propagation, workerName fallback to email, empty result, the shared 14-day
  * due-soon window, and CURRENT-roster facility attribution (never the
- * `Enrollment.facilityId` stamp).
+ * `Enrollment.facilityId` stamp), and superseded (retaken) enrolments (BUG-38).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
@@ -37,6 +37,8 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(NOW);
   prismaMock.orgCourseOffering.findMany.mockResolvedValue([]);
+  // The retake lookup (third call) finds none unless a case queues one.
+  prismaMock.enrollment.findMany.mockResolvedValue([]);
 });
 
 /** The org-wide call every legacy case used; `null` = no facility narrowing. */
@@ -432,5 +434,108 @@ describe('getStatusTrackerSummaryForOrg — facility scope', () => {
     const { rows } = await summary();
 
     expect(rows[0].facilityName).toBeNull();
+  });
+});
+
+// BUG-38: `assignRetake` leaves the failed row `locked` for good, so once a
+// retake names it in `retakeOf` the old row must stop being reported.
+describe('getStatusTrackerSummaryForOrg — superseded (retaken) enrolments', () => {
+  it('drops a superseded locked row from the list and from hardEscalationCount', async () => {
+    prismaMock.enrollment.findMany
+      .mockResolvedValueOnce([
+        makeEnrollment('locked-old', '2024-06-01T12:00:00Z', { status: 'locked' }), // 14d → hard
+        makeEnrollment('stuck', '2024-06-05T12:00:00Z', { status: 'locked' }), // no retake
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ retakeOf: 'locked-old' }]);
+
+    const result = await summary();
+
+    expect(result.rows.map((r) => r.enrollmentId)).toEqual(['stuck']);
+    expect(result.overdueCount).toBe(1);
+    expect(result.hardEscalationCount).toBe(1);
+  });
+
+  it('drops a superseded row from the near-deadline section too', async () => {
+    prismaMock.enrollment.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        makeEnrollment('soon-old', '2024-06-18T12:00:00Z', { status: 'locked' }),
+        makeEnrollment('soon-live', '2024-06-19T12:00:00Z'),
+      ])
+      .mockResolvedValueOnce([{ retakeOf: 'soon-old' }]);
+
+    const { nearDeadline } = await summary();
+
+    expect(nearDeadline.rows.map((r) => r.enrollmentId)).toEqual(['soon-live']);
+    expect(nearDeadline.count).toBe(1);
+  });
+
+  it('looks retakes up in the same scope, over the candidate ids only', async () => {
+    prismaMock.enrollment.findMany
+      .mockResolvedValueOnce([makeEnrollment('e1', '2024-06-05T12:00:00Z')])
+      .mockResolvedValueOnce([makeEnrollment('e2', '2024-06-18T12:00:00Z')])
+      .mockResolvedValueOnce([]);
+
+    await summary('org-1', ['fac-1']);
+
+    const retakeCall = prismaMock.enrollment.findMany.mock.calls[2][0];
+    expect(retakeCall.where.retakeOf).toEqual({ in: ['e1', 'e2'] });
+    expect(retakeCall.where.organizationUser).toMatchObject({
+      organizationId: 'org-1',
+      active: true,
+      facilities: { some: { facilityId: { in: ['fac-1'] }, active: true } },
+    });
+    expect(retakeCall.where.course).toEqual({ organizationId: 'org-1', archivedAt: null });
+  });
+
+  it('skips the retake lookup when nothing is overdue or due soon', async () => {
+    prismaMock.enrollment.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+
+    await summary();
+
+    expect(prismaMock.enrollment.findMany).toHaveBeenCalledTimes(2);
+  });
+
+  it('drops every earlier link of a retake chain, keeping only the latest', async () => {
+    // e-old (locked) is retaken by e-mid (also locked, itself overdue), which
+    // is retaken by e-new. The retake-lookup query finds e-mid's row naming
+    // e-old AND e-new's row naming e-mid, even though e-new itself is not a
+    // candidate (it is not overdue) — retakeOf carries no status filter.
+    prismaMock.enrollment.findMany
+      .mockResolvedValueOnce([
+        makeEnrollment('e-old', '2024-06-01T12:00:00Z', { status: 'locked' }),
+        makeEnrollment('e-mid', '2024-06-05T12:00:00Z', { status: 'locked' }),
+        makeEnrollment('stuck', '2024-06-08T12:00:00Z', { status: 'locked' }),
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ retakeOf: 'e-old' }, { retakeOf: 'e-mid' }]);
+
+    const result = await summary();
+
+    expect(result.rows.map((r) => r.enrollmentId)).toEqual(['stuck']);
+    expect(result.overdueCount).toBe(1);
+  });
+
+  it('issues the retake lookup exactly once for the whole batch, not per candidate row', async () => {
+    prismaMock.enrollment.findMany
+      .mockResolvedValueOnce([
+        makeEnrollment('e1', '2024-06-01T12:00:00Z', { status: 'locked' }),
+        makeEnrollment('e2', '2024-06-02T12:00:00Z', { status: 'locked' }),
+        makeEnrollment('e3', '2024-06-03T12:00:00Z', { status: 'locked' }),
+      ])
+      .mockResolvedValueOnce([
+        makeEnrollment('e4', '2024-06-20T12:00:00Z'),
+        makeEnrollment('e5', '2024-06-21T12:00:00Z'),
+      ])
+      .mockResolvedValueOnce([]);
+
+    await summary();
+
+    // Overdue + near-deadline + exactly ONE batched retake lookup = 3 calls,
+    // regardless of the 5 candidate rows above.
+    expect(prismaMock.enrollment.findMany).toHaveBeenCalledTimes(3);
+    const retakeCall = prismaMock.enrollment.findMany.mock.calls[2][0];
+    expect(retakeCall.where.retakeOf).toEqual({ in: ['e1', 'e2', 'e3', 'e4', 'e5'] });
   });
 });

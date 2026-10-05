@@ -1,10 +1,17 @@
 import prisma from '@/lib/prisma';
 import { DEFAULT_SELF_SERVE_WORKER_ROLE } from '@/lib/rbac/role-utils';
 import { logger, maskEmail } from '@/lib/logger';
+import { isDeletedIdentity } from '@/lib/auth/deleted-identity';
+import { logDeletedEmailRefusal } from '@/lib/auth/deleted-email-guard';
 import { createNotification } from '@/lib/notifications/create';
 import { trainingNoticeLink } from '@/lib/notifications/portal-link';
-import { computeDueAt, resolveStartDate } from '@/lib/reminders/deadline';
-import { resolveMemberFacilityId, resolveMemberFacilityIds } from '@/lib/facility/member-facility';
+import { computeDueAt, isDeadlinePassedFor, resolveStartDate } from '@/lib/reminders/deadline';
+import { DEFAULT_TZ } from '@/lib/reminders/time';
+import {
+  resolveMemberFacilities,
+  resolveMemberFacility,
+  type MemberFacility,
+} from '@/lib/facility/member-facility';
 import type { StaffEntry } from '@/types/enrollment';
 import type { UserRole } from '@/generated/prisma/enums';
 import type { Invite } from '@/generated/prisma/client';
@@ -29,6 +36,21 @@ export interface CreateEnrollmentContext {
   scheduleAt: Date | null;
   assignmentDueAt: Date | null;
   assignmentWindowDays: number | null;
+  /**
+   * What to do when {@link assignmentDueAt}, resolved in a learner's facility
+   * zone, has already passed for them (Q-32):
+   *
+   * - `'skip'` — enrol nobody and report the learner back
+   *   (`status: 'deadlinePassed'`). For an admin assigning now: nobody receives
+   *   an assignment that is overdue on arrival, and the admin, who is told, can
+   *   pick a later date for them.
+   * - `'useWindow'` — enrol them on their own completion window instead, as if
+   *   no date had been picked. For the automatic paths (role-target join, its
+   *   sweep backstop, invite acceptance): a new hire must still get required
+   *   training, nobody is there to be told, and skipping would leave them
+   *   untrained for good — the sweep would re-skip them every day.
+   */
+  onPassedDeadline: 'skip' | 'useWindow';
   /** Actor (identity id) recorded on the structured enrollment log. */
   enrolledByUserId: string;
   /**
@@ -67,6 +89,8 @@ export interface DeferredWorkerNotification {
   organizationName: string;
   /** The deadline actually persisted on the enrollment row. */
   dueAt: Date;
+  /** The member's facility zone, which `dueAt`'s date is written in (BUG-12.3). */
+  timeZone: string;
 }
 
 /**
@@ -79,6 +103,8 @@ export interface DeferredWorkerNotification {
 export type EnrollmentOutcome =
   | { status: 'failed'; email: string }
   | { status: 'alreadyEnrolled'; email: string }
+  /** Q-32: the picked deadline had already passed in the learner's zone, so nothing was written. */
+  | { status: 'deadlinePassed'; email: string; timeZone: string }
   | { status: 'invited'; email: string }
   | {
       status: 'enrolled';
@@ -95,6 +121,7 @@ interface PrefetchedUser {
   firstName: string | null;
   lastName: string | null;
   fullName: string | null;
+  deletedAt: Date | null;
 }
 
 /**
@@ -115,8 +142,8 @@ export interface EnrollmentPrefetch {
   alreadyEnrolled: boolean;
   /** The most recent outstanding pending invite for this email, or null. */
   existingInvite: Invite | null;
-  /** The membership's facility, or null when it holds no active assignment. */
-  memberFacilityId: string | null;
+  /** The membership's facility and its zone, or null when it holds no active assignment. */
+  memberFacility: MemberFacility | null;
 }
 
 /**
@@ -128,8 +155,10 @@ export interface EnrollmentPrefetch {
  * instead when {@link CreateEnrollmentContext.deferWorkerNotification} is set.
  * For an unknown or org-less email: send a `/join` invite and park
  * the course on it (materialised into an enrollment on accept) rather than
- * creating an account. Never throws for an individual entry — a failure is
- * reported via the returned {@link EnrollmentOutcome}.
+ * creating an account. Validation, permission and invite failures are reported
+ * as a `failed` {@link EnrollmentOutcome}, and a failed email or reminder-log
+ * write is logged without failing the entry; a database error on the member
+ * branch (name backfill, facility read, enrollment write) propagates.
  *
  * When `prefetch` is supplied the three per-user read queries are served from that
  * snapshot instead of the database; the write/notification/email side-effects are
@@ -158,7 +187,7 @@ export async function createEnrollmentForUser(
     ? prefetch.user
     : await prisma.user.findUnique({
         where: { email: normalizedEmail },
-        select: { id: true, firstName: true, lastName: true, fullName: true },
+        select: { id: true, firstName: true, lastName: true, fullName: true, deletedAt: true },
       });
 
   // Tenancy is now structural: we only ever look for a membership in the
@@ -179,6 +208,14 @@ export async function createEnrollmentForUser(
   // accepted (see enrollInviteCourses). Unifies the assign flow with the
   // staff-invite flow; no premature accounts, no temporary passwords.
   if (!user || !membership) {
+    // Q-31: a deleted identity is never invited — accepting would be refused
+    // anyway. Reported as an ordinary failure so the caller cannot tell the
+    // account was deleted.
+    if (isDeletedIdentity(user)) {
+      logDeletedEmailRefusal('createEnrollmentForUser', normalizedEmail, ctx.organizationId);
+      return { status: 'failed', email: normalizedEmail };
+    }
+
     // Team QA C8: a supervisor "can assign existing courses to existing staff"
     // but "can't add staff". This branch INVITES an unknown address, which is
     // adding staff — so it is gated on the caller's `invite.create`, not on the
@@ -338,28 +375,53 @@ export async function createEnrollmentForUser(
     return { status: 'alreadyEnrolled', email: normalizedEmail };
   }
 
-  // The effective deadline: an explicit assignment `dueAt` wins; otherwise
+  // The member's OWN facility, not ctx.facilityId — the latter is the invite
+  // target for an address with no membership yet, which this branch is not.
+  const memberFacility = prefetch
+    ? prefetch.memberFacility
+    : await resolveMemberFacility(prisma, membership.id);
+
+  // The effective deadline: an explicit assignment `dueAt` wins, ending at the
+  // picked time in the member's facility zone (BUG-12.3); otherwise
   // `start + window`, where the window falls through to the system default when
   // no org default exists (`Organization.defaultDueWindowDays` is not modeled).
-  const computedDueAt = computeDueAt({
-    assignmentDueAt: ctx.assignmentDueAt,
+  const timeZone = memberFacility?.timezone ?? DEFAULT_TZ;
+  const now = new Date();
+  const deadlineInputs = {
     assignmentWindowDays: ctx.assignmentWindowDays,
     orgWindowDays: null,
     start: resolveStartDate(
       { scheduleAt: ctx.scheduleAt },
-      { accessAt: ctx.scheduleAt ?? null, startedAt: new Date() },
+      { accessAt: ctx.scheduleAt ?? null, startedAt: now },
     ),
-  });
+    timeZone,
+  };
+  let computedDueAt = computeDueAt({ ...deadlineInputs, assignmentDueAt: ctx.assignmentDueAt });
+
+  if (ctx.assignmentDueAt && isDeadlinePassedFor(computedDueAt, now)) {
+    if (ctx.onPassedDeadline === 'skip') {
+      logger.info({
+        msg: '[enrollment] Learner skipped — due date already passed in their zone',
+        organizationUserId: membership.id,
+        courseId: ctx.courseId,
+        timeZone,
+      });
+      return { status: 'deadlinePassed', email: normalizedEmail, timeZone };
+    }
+    computedDueAt = computeDueAt({ ...deadlineInputs, assignmentDueAt: null });
+    logger.info({
+      msg: '[enrollment] Due date already passed in learner zone — completion window used',
+      organizationUserId: membership.id,
+      courseId: ctx.courseId,
+      timeZone,
+    });
+  }
 
   const enrollment = await prisma.enrollment.create({
     data: {
       organizationUserId: membership.id,
       courseId: ctx.courseId,
-      // The member's OWN facility, not ctx.facilityId — the latter is the invite
-      // target for an address with no membership yet, which this branch is not.
-      facilityId: prefetch
-        ? prefetch.memberFacilityId
-        : await resolveMemberFacilityId(prisma, membership.id),
+      facilityId: memberFacility?.facilityId ?? null,
       status: 'enrolled',
       progress: 0,
       assignmentId: ctx.assignmentId ?? undefined,
@@ -409,6 +471,7 @@ export async function createEnrollmentForUser(
       courseTitle: ctx.courseTitle,
       organizationName: ctx.organizationName,
       dueAt: computedDueAt,
+      timeZone,
     };
   } else {
     await createNotification({
@@ -427,6 +490,7 @@ export async function createEnrollmentForUser(
         ctx.courseTitle,
         ctx.organizationName,
         computedDueAt,
+        timeZone,
       );
     } catch (emailErr) {
       logger.error({
@@ -462,26 +526,37 @@ export async function createEnrollmentForUser(
 const ENROLLMENT_BATCH_CONCURRENCY = 10;
 
 /**
- * Batched, behaviour-preserving counterpart to {@link createEnrollmentForUser},
- * gated behind the `ENROLLMENT_BATCH_ENABLED` kill-switch at the call sites.
+ * Batched counterpart to {@link createEnrollmentForUser}, gated behind the
+ * `ENROLLMENT_BATCH_ENABLED` kill-switch at the call sites.
  *
- * Equivalent to calling `createEnrollmentForUser` once per entry in array order,
- * but it (a) collapses the per-user identity / membership / enrollment / invite /
- * facility reads into batched look-ups up front and (b) runs the independent per-user
- * side-effects with bounded concurrency instead of awaiting each serially. It
- * chooses the *implementation*, never the outcome: seat-limit rejection, skip
- * logic, which users get enrolled/invited, and the emails sent are all identical
- * to the sequential path.
+ * It (a) collapses the per-user identity / membership / enrollment / invite /
+ * facility reads into batched look-ups up front and (b) runs the independent
+ * per-email groups with bounded concurrency instead of awaiting each serially.
  *
- * Returns one {@link EnrollmentOutcome} per input entry, in input order. Emails in
- * `skipEmails` (already normalised — the seat-limit rejections) are force-failed
- * without any DB work, mirroring the caller's per-entry seat guard. Duplicate
- * emails within the batch are processed sequentially inside their own group, so a
- * repeat occurrence observes the first's writes exactly as the sequential loop
- * does. Partial-failure semantics are inherited unchanged from
- * `createEnrollmentForUser`: a committed enrollment is never rolled back by a
- * later reminder-log or email failure, and a hard failure (e.g. the in-app
- * notification throwing) aborts the run — no per-entry outcome is transactional.
+ * When every database call succeeds it is equivalent to calling
+ * `createEnrollmentForUser` once per entry in array order: seat-limit rejection,
+ * skip logic, which users get enrolled/invited, the returned outcomes (one per
+ * entry, in input order) and the emails sent are identical. Only the ORDER in
+ * which different emails' side-effects happen differs. Emails in `skipEmails`
+ * (already normalised — the seat-limit rejections) are force-failed without any
+ * DB work. Duplicate emails run sequentially inside their own group, so a repeat
+ * occurrence observes the first's writes exactly as the sequential loop does.
+ *
+ * ⚠️ RISK-09 — it is NOT equivalent when a database call throws. Both paths
+ * reject and neither rolls anything back, but they leave different rows behind:
+ *  - A throw inside one entry (e.g. `enrollment.create`): the sequential loop
+ *    never touches the entries after it; here every group already in flight —
+ *    all of them, for a batch of at most {@link ENROLLMENT_BATCH_CONCURRENCY}
+ *    distinct emails — runs to completion and commits.
+ *  - A throw in the up-front batched reads: nothing is written at all, whereas
+ *    the sequential loop would already have committed the entries before the
+ *    one whose read failed.
+ *  - With several failures, the error rethrown is the first one OBSERVED, not
+ *    necessarily the lowest-index entry's.
+ * This is inherent to running groups concurrently; matching the sequential
+ * path would mean serialising the groups, which is the cost this path exists to
+ * avoid. `create-batch.test.ts` pins each difference. Anyone enabling the flag
+ * is accepting them.
  */
 export async function createEnrollmentsForUsers(
   entries: StaffEntry[],
@@ -509,7 +584,14 @@ export async function createEnrollmentsForUsers(
   // Batch read 1: resolve every candidate identity in one query.
   const users = await prisma.user.findMany({
     where: { email: { in: uniqueEmails } },
-    select: { id: true, email: true, firstName: true, lastName: true, fullName: true },
+    select: {
+      id: true,
+      email: true,
+      firstName: true,
+      lastName: true,
+      fullName: true,
+      deletedAt: true,
+    },
   });
   const userByEmail = new Map(users.map((u) => [u.email.toLowerCase(), u]));
 
@@ -550,7 +632,7 @@ export async function createEnrollmentsForUsers(
           orderBy: { createdAt: 'desc' },
         })
       : Promise.resolve([]),
-    resolveMemberFacilityIds(prisma, membershipIds),
+    resolveMemberFacilities(prisma, membershipIds),
   ]);
 
   const enrolledMembershipIds = new Set(existingEnrollments.map((e) => e.organizationUserId));
@@ -587,7 +669,7 @@ export async function createEnrollmentsForUsers(
         membership,
         alreadyEnrolled: membership ? enrolledMembershipIds.has(membership.id) : false,
         existingInvite: inviteByEmail.get(email) ?? null,
-        memberFacilityId: membership ? (facilityByMembership.get(membership.id) ?? null) : null,
+        memberFacility: membership ? (facilityByMembership.get(membership.id) ?? null) : null,
       };
       try {
         for (let i = 0; i < items.length; i++) {

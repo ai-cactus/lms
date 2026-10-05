@@ -113,7 +113,7 @@ function valueOf(args: string[], flag: string): string | undefined {
 describe('transcode-worker encode + encoding-version stamping', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
 
     for (const key of ENCODE_ENV_VARS) {
       originalEnv[key] = process.env[key];

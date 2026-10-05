@@ -81,8 +81,7 @@ const PUBLIC_API_ROUTES: readonly string[] = [
  * `/api/system/**` uses the HMAC `system_admin_auth` cookie
  * (src/lib/system-auth.ts), verified inside each handler. Enforcing it here would
  * mean verifying that HMAC a second time in this file — duplicated security
- * logic in two places, which is worse than this exemption. Unifying the two mechanisms is §4.4 of
- * docs/rebuild/09-PLATFORM-ADMIN-SPEC.md.
+ * logic in two places, which is worse than this exemption.
  */
 const SELF_AUTHENTICATED_API_PREFIXES: readonly string[] = ['/api/system/'];
 

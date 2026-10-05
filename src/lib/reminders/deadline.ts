@@ -1,4 +1,4 @@
-import { addDays } from './time';
+import { addDays, localDateKey, zonedWallClockToInstant } from './time';
 
 /**
  * Deadline resolution for enrollments.
@@ -37,25 +37,43 @@ export function resolveStartDate(
  * Compute the effective deadline. An explicit `assignmentDueAt` always wins;
  * otherwise the window is `assignmentWindowDays ?? orgWindowDays ?? default`,
  * applied to `start`.
+ *
+ * `assignmentDueAt` is the picked date and time as UTC wall-clock fields (see
+ * {@link combineDateAndTime}); it is resolved in `timeZone`, the learner's
+ * facility zone, so "due 30 Sept" ends at 23:59 there (BUG-12.3). The window is
+ * a duration from an instant, not a picked date, so it needs no zone.
  */
 export function computeDueAt(args: {
   assignmentDueAt: Date | null;
   assignmentWindowDays: number | null;
   orgWindowDays: number | null;
   start: Date;
+  timeZone: string;
 }): Date {
-  if (args.assignmentDueAt) return args.assignmentDueAt;
+  if (args.assignmentDueAt) return zonedWallClockToInstant(args.assignmentDueAt, args.timeZone);
   const windowDays =
     args.assignmentWindowDays ?? args.orgWindowDays ?? resolveDefaultDueWindowDays();
   return addDays(args.start, windowDays);
 }
 
 /**
- * D-F: a submitted deadline in the past is a problem only when it CHANGES the
+ * How far behind UTC the westernmost zone on Earth runs (UTC−12). A picked
+ * wall-clock deadline has not ended ANYWHERE until it ends there.
+ */
+const LATEST_ZONE_LAG_MS = 12 * 60 * 60 * 1000;
+
+/**
+ * D-F: whether a submitted deadline is one no learner could still meet — its
+ * wall-clock time has passed even in the westernmost zone — AND it changes the
  * one already stored on the organisation's assignment. Re-submitting the
- * deadline already in force is how a late joiner is added to an already-overdue
- * course, so treating that as an error would force the admin to move the
- * deadline for everyone instead.
+ * deadline already in force is how a late joiner is added to an existing
+ * course, so it is never refused here.
+ *
+ * `submitted` is the picked wall clock (see {@link combineDateAndTime}), not an
+ * instant: whether it has passed for a given learner depends on their facility
+ * zone, and that is decided per learner when their enrollment is written (Q-32,
+ * {@link isDeadlinePassedFor}). This gate only keeps a date that has passed for
+ * everyone off the organisation-wide row.
  *
  * The single place this comparison is made: the assign actions refuse on it,
  * and `publishCourse` uses it to decide that a parked deadline went stale while
@@ -66,8 +84,53 @@ export function computeDueAt(args: {
  */
 export function isPastDeadlineChange(submitted: Date, stored: Date | null): boolean {
   const submittedTime = submitted.getTime();
-  if (Number.isNaN(submittedTime) || submittedTime > Date.now()) return false;
+  if (Number.isNaN(submittedTime) || submittedTime + LATEST_ZONE_LAG_MS > Date.now()) {
+    return false;
+  }
   return submittedTime !== stored?.getTime();
+}
+
+/**
+ * Q-32: a learner's own deadline — the picked date resolved in their facility
+ * zone by {@link computeDueAt} — has already passed, so assigning it would make
+ * them overdue the moment they are enrolled.
+ */
+export function isDeadlinePassedFor(learnerDueAt: Date, now: Date): boolean {
+  return learnerDueAt.getTime() <= now.getTime();
+}
+
+/**
+ * The earliest date a deadline picker should offer, as local midnight for the
+ * DatePicker: the calendar date that is still "today" in the westernmost zone
+ * (UTC−12). An admin may assign learners anywhere, so the picker must not rule
+ * out a date that is still current for some of them; the server then decides
+ * per learner (Q-32). Dates before it have ended everywhere.
+ */
+export function earliestPickableDueDate(now: Date): Date {
+  const [year, month, day] = localDateKey(now, 'Etc/GMT+12').split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
+/** A learner an assignment left out because their deadline had already passed (Q-32). */
+export interface DeadlinePassedLearner {
+  email: string;
+  /** The facility zone their deadline was judged in. */
+  timeZone: string;
+}
+
+/**
+ * The admin-facing line for learners skipped because the picked due date had
+ * already passed where they are, e.g. "Due date already passed for 2 learners
+ * (Pacific/Kiritimati), so they were not assigned." Null when nobody was
+ * skipped. Pure, so every assign surface renders the same sentence.
+ */
+export function describeDeadlinePassed(
+  learners: readonly Pick<DeadlinePassedLearner, 'timeZone'>[],
+): string | null {
+  if (learners.length === 0) return null;
+  const zones = [...new Set(learners.map((learner) => learner.timeZone))].sort();
+  const who = learners.length === 1 ? '1 learner' : `${learners.length} learners`;
+  return `Due date already passed for ${who} (${zones.join(', ')}), so they were not assigned.`;
 }
 
 /**
@@ -128,11 +191,15 @@ export function formatTimeOfDay(date: Date): string {
 }
 
 /**
- * Combine the course wizard's separate date and time-of-day inputs into a single
- * absolute deadline. Returns `null` when no date is given (the caller then falls
- * back to a computed window). The date is interpreted in UTC — `dueDate` arrives
- * as a UTC-midnight `Date` (from `new Date("YYYY-MM-DD")`) — so a missing or
- * unparseable `dueTime` leaves the deadline at 00:00 UTC on that day.
+ * Combine the course wizard's separate date and time-of-day inputs into one
+ * `Date` whose UTC fields hold the picked wall-clock date and time. Returns
+ * `null` when no date is given (the caller then falls back to a computed window).
+ * `dueDate` arrives as a UTC-midnight `Date` (from `new Date("YYYY-MM-DD")`), so
+ * a missing or unparseable `dueTime` leaves it at 00:00 on that day.
+ *
+ * This is the organisation-wide `CourseAssignment.dueAt`. It is not yet an
+ * instant: {@link computeDueAt} resolves it in each learner's facility zone
+ * when their `Enrollment.dueAt` is written (BUG-12.3).
  */
 export function combineDateAndTime(
   dueDate: Date | null | undefined,

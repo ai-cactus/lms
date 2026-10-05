@@ -17,7 +17,7 @@ for (const { name, w, h } of widths) {
   await page.waitForTimeout(600);
   const out = `/tmp/shot_${slug}_${name}.png`;
   await page.screenshot({ path: out, fullPage: name === 'mobile' });
-  console.log(`${name} (${w}x${h}) status=${resp?.status()} -> ${out}`);
+  process.stdout.write(`${name} (${w}x${h}) status=${resp?.status()} -> ${out}\n`);
   await ctx.close();
 }
 await browser.close();
