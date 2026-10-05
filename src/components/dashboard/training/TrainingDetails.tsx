@@ -677,6 +677,7 @@ export default function TrainingDetails({
 
       {selectedCertId && (
         <CertificateModal
+          realm="admin"
           isOpen={true}
           onClose={() => setSelectedCertId(null)}
           certificateId={selectedCertId}

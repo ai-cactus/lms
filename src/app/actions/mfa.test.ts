@@ -105,7 +105,7 @@ describe('verifyMfaSetup — not authenticated', () => {
     mockAdminAuth.mockResolvedValue(null as never);
     mockWorkerAuth.mockResolvedValue(null as never);
 
-    const result = await verifyMfaSetup('123456');
+    const result = await verifyMfaSetup('admin', '123456');
 
     expect(result).toEqual({ success: false, error: 'Not authenticated' });
     expect(prismaMock.mfaFactor.findFirst).not.toHaveBeenCalled();
@@ -122,7 +122,7 @@ describe('verifyMfaSetup — email OTP verification (THER-016)', () => {
       verified: false,
     } as never);
 
-    const result = await verifyMfaSetup('123456');
+    const result = await verifyMfaSetup('admin', '123456');
 
     expect(result.success).toBe(true);
     if (!result.success) throw new Error('expected success');
@@ -155,7 +155,7 @@ describe('verifyMfaSetup — email OTP verification (THER-016)', () => {
       verified: false,
     } as never);
 
-    const result = await verifyMfaSetup('654321');
+    const result = await verifyMfaSetup('admin', '654321');
 
     expect(result).toEqual({
       success: false,
@@ -175,7 +175,7 @@ describe('verifyMfaSetup — email OTP verification (THER-016)', () => {
       verified: false,
     } as never);
 
-    const result = await verifyMfaSetup('999999');
+    const result = await verifyMfaSetup('admin', '999999');
 
     expect(result).toEqual({
       success: false,
@@ -196,7 +196,7 @@ describe('verifyMfaSetup — email OTP verification (THER-016)', () => {
       new Error('Transaction API error: Transaction already closed (interactive tx timeout)'),
     );
 
-    await expect(verifyMfaSetup('123456')).resolves.toEqual({
+    await expect(verifyMfaSetup('admin', '123456')).resolves.toEqual({
       success: false,
       error: 'Could not enable two-factor authentication. Please try again.',
     });
@@ -223,7 +223,7 @@ describe('verifyMfaSetup — email OTP verification (THER-016)', () => {
       return out;
     });
 
-    await verifyMfaSetup('123456');
+    await verifyMfaSetup('admin', '123456');
 
     expect(callOrder.filter((e) => e === 'hash')).toHaveLength(10);
     const lastHashIndex = callOrder.lastIndexOf('hash');
@@ -244,7 +244,7 @@ describe('regenerateRecoveryCodes — THER-016 regression', () => {
     prismaMock.mfaFactor.update.mockResolvedValue({} as never);
     prismaMock.$transaction.mockRejectedValueOnce(new Error('interactive tx timeout'));
 
-    await expect(regenerateRecoveryCodes('123456')).resolves.toEqual({
+    await expect(regenerateRecoveryCodes('admin', '123456')).resolves.toEqual({
       success: false,
       error: 'Could not regenerate recovery codes. Please try again.',
     });
@@ -270,7 +270,7 @@ describe('regenerateRecoveryCodes — THER-016 regression', () => {
       return cb(txMock);
     });
 
-    const result = await regenerateRecoveryCodes('123456');
+    const result = await regenerateRecoveryCodes('admin', '123456');
 
     expect(result.success).toBe(true);
     expect(callOrder.filter((e) => e === 'hash')).toHaveLength(10);
@@ -291,14 +291,14 @@ describe('disableMfa — not authenticated / input validation', () => {
     mockAdminAuth.mockResolvedValue(null as never);
     mockWorkerAuth.mockResolvedValue(null as never);
 
-    const result = await disableMfa('123456');
+    const result = await disableMfa('admin', '123456');
 
     expect(result).toEqual({ success: false, error: 'Not authenticated' });
     expect(prismaMock.user.findUnique).not.toHaveBeenCalled();
   });
 
   it('returns an error when no code is provided', async () => {
-    const result = await disableMfa('');
+    const result = await disableMfa('admin', '');
 
     expect(result).toEqual({ success: false, error: 'Verification code is required' });
     expect(prismaMock.user.findUnique).not.toHaveBeenCalled();
@@ -307,7 +307,7 @@ describe('disableMfa — not authenticated / input validation', () => {
   it('returns an error when MFA is not enabled on the account', async () => {
     prismaMock.user.findUnique.mockResolvedValue({ mfaEnabled: false } as never);
 
-    const result = await disableMfa('123456');
+    const result = await disableMfa('admin', '123456');
 
     expect(result).toEqual({ success: false, error: 'MFA is not enabled' });
     expect(prismaMock.mfaFactor.findFirst).not.toHaveBeenCalled();
@@ -325,7 +325,7 @@ describe('disableMfa — regression: gate on verification.valid, not object trut
       verified: true,
     } as never);
 
-    const result = await disableMfa('999999');
+    const result = await disableMfa('admin', '999999');
 
     expect(result).toEqual({ success: false, error: 'Invalid verification code' });
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
@@ -344,7 +344,7 @@ describe('disableMfa — regression: gate on verification.valid, not object trut
       verified: true,
     } as never);
 
-    const result = await disableMfa('not-a-real-code');
+    const result = await disableMfa('admin', 'not-a-real-code');
 
     expect(result.success).toBe(false);
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
@@ -360,7 +360,7 @@ describe('disableMfa — regression: gate on verification.valid, not object trut
       verified: true,
     } as never);
 
-    const result = await disableMfa('123456');
+    const result = await disableMfa('admin', '123456');
 
     expect(result).toEqual({ success: true });
     expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
@@ -387,7 +387,7 @@ describe('disableMfa — regression: gate on verification.valid, not object trut
       { id: 'rc-1', codeHash, usedAt: null },
     ] as never);
 
-    const result = await disableMfa('RECOVERY-CODE');
+    const result = await disableMfa('admin', 'RECOVERY-CODE');
 
     expect(result).toEqual({ success: true });
     expect(prismaMock.mfaRecoveryCode.update).toHaveBeenCalledWith({
@@ -405,5 +405,58 @@ describe('mfa actions module — SEC-13 export surface', () => {
   it('does not export the raw-userId login helpers', () => {
     expect(mfaActions).not.toHaveProperty('sendLoginMfaCode');
     expect(mfaActions).not.toHaveProperty('verifyUserMfaCode');
+  });
+});
+
+/**
+ * BUG-47: each action changes the MFA state of ONE identity, and one browser can
+ * hold an admin and a worker session for two DIFFERENT accounts. The referer
+ * guess this replaced fell back to the admin session whenever the header was
+ * missing, so the worker profile page read and changed the ADMIN account's MFA.
+ */
+describe('mfa actions — BUG-47 portal', () => {
+  const WORKER_SESSION = { user: { id: 'worker-user', role: 'nurse', organizationId: 'org-1' } };
+
+  beforeEach(() => {
+    mockAdminAuth.mockResolvedValue(SESSION as never);
+    mockWorkerAuth.mockResolvedValue(WORKER_SESSION as never);
+    prismaMock.user.findUnique.mockResolvedValue({ mfaEnabled: false, mfaFactors: [] } as never);
+  });
+
+  it('the worker portal reads the worker account’s MFA status, never the admin’s', async () => {
+    await mfaActions.getMfaStatus('worker');
+
+    expect(prismaMock.user.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'worker-user' } }),
+    );
+    expect(mockAdminAuth).not.toHaveBeenCalled();
+  });
+
+  it('the worker portal disables MFA on the worker account', async () => {
+    prismaMock.user.findUnique.mockResolvedValue({ mfaEnabled: false } as never);
+
+    await disableMfa('worker', '123456');
+
+    expect(prismaMock.user.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'worker-user' } }),
+    );
+    expect(mockAdminAuth).not.toHaveBeenCalled();
+  });
+
+  it('the admin portal reads the admin account', async () => {
+    await mfaActions.getMfaStatus('admin');
+
+    expect(prismaMock.user.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'user-1' } }),
+    );
+    expect(mockWorkerAuth).not.toHaveBeenCalled();
+  });
+
+  it('an unchecked realm is unauthenticated and touches nothing', async () => {
+    await expect(mfaActions.requestMfaSetup('portal' as never)).resolves.toEqual({
+      success: false,
+      error: 'Not authenticated',
+    });
+    expect(prismaMock.user.findUnique).not.toHaveBeenCalled();
   });
 });

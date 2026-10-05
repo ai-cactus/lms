@@ -60,6 +60,10 @@ const {
   mockInvalidateRevalidationCache,
   mockOrgUserFindMany,
   mockListAccessibleFacilities,
+  mockGetSignedUrl,
+  mockOrgUserUpdateMany,
+  mockOrgUserCount,
+  mockQueryRaw,
   prismaMock,
 } = vi.hoisted(() => {
   const mockOrgUserFindUnique = vi.fn();
@@ -75,18 +79,30 @@ const {
   const mockOrgUserFacilityUpdateMany = vi.fn();
   const mockOrgUserFacilityUpsert = vi.fn();
   const mockOrgUserFindMany = vi.fn();
+  const mockOrgUserUpdateMany = vi.fn();
+  const mockOrgUserCount = vi.fn();
+  const mockQueryRaw = vi.fn();
+  // The interactive transactions (removeStaff, a role change,
+  // setStaffFacilities) share the top-level delegates, so each write is
+  // asserted the same way whether or not it ran inside the transaction.
   const txClient = {
+    organizationUser: {
+      findUnique: mockOrgUserFindUnique,
+      update: mockOrgUserUpdate,
+      updateMany: mockOrgUserUpdateMany,
+      count: mockOrgUserCount,
+    },
     organizationUserFacility: {
       updateMany: mockOrgUserFacilityUpdateMany,
       upsert: mockOrgUserFacilityUpsert,
     },
+    user: { update: mockUserUpdate },
+    invite: { updateMany: mockInviteUpdateMany },
+    $queryRaw: mockQueryRaw,
   };
-  // removeStaff() runs its writes as an array-form $transaction([...]); the
-  // individual delegate calls are already-invoked mock promises by the time
-  // $transaction receives them, so Promise.all is faithful to Prisma's real
-  // array-transaction semantics for that test double. setStaffFacilities()
-  // instead uses the callback form `$transaction(async (tx) => ...)`, so this
-  // mock must support BOTH shapes.
+  // Supports both $transaction shapes: an array of already-invoked delegate
+  // promises (Promise.all is faithful to Prisma's array semantics for this
+  // double) and the interactive callback form.
   const mockTransaction = vi.fn((arg: Promise<unknown>[] | ((tx: typeof txClient) => unknown)) =>
     typeof arg === 'function' ? Promise.resolve(arg(txClient)) : Promise.all(arg),
   );
@@ -137,6 +153,10 @@ const {
     mockInvalidateRevalidationCache: vi.fn(),
     mockOrgUserFindMany,
     mockListAccessibleFacilities: vi.fn(),
+    mockGetSignedUrl: vi.fn(),
+    mockOrgUserUpdateMany,
+    mockOrgUserCount,
+    mockQueryRaw,
     prismaMock,
   };
 });
@@ -174,6 +194,7 @@ vi.mock('@/lib/auth/session-revalidation-cache', () => ({
 // The facility narrowing itself is exercised for real (target-scope and
 // staff-where are NOT mocked); only the roster lookup behind the caller's
 // accessible set is stubbed, so a supervisor session resolves to a real scope.
+vi.mock('@/lib/storage', () => ({ getSignedUrl: mockGetSignedUrl }));
 vi.mock('@/lib/facility/scope', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/facility/scope')>()),
   listAccessibleFacilities: mockListAccessibleFacilities,
@@ -245,6 +266,9 @@ beforeEach(() => {
   });
   mockInvalidateRevalidationCache.mockResolvedValue(undefined);
   mockOrgUserFindMany.mockResolvedValue([]);
+  mockOrgUserUpdateMany.mockResolvedValue({ count: 1 });
+  mockOrgUserCount.mockResolvedValue(1);
+  mockQueryRaw.mockResolvedValue([]);
   mockListAccessibleFacilities.mockResolvedValue([]);
 });
 
@@ -511,7 +535,9 @@ describe('updateStaffDetails() — permission matrix (STAFF_PROFILE_ACTOR_ROLES 
       const result = await updateStaffDetails('target-1', { ...baseData, role: 'nurse' });
 
       expect(result.success).toBe(true);
-      expect(mockOrgUserUpdate).toHaveBeenCalledOnce();
+      // An unchanged role is not rewritten: echoing the value read before the
+      // save would silently revert a role change made by someone else meanwhile.
+      expect(mockOrgUserUpdate).not.toHaveBeenCalled();
       // A same-role resubmit must not touch sessionVersion — only ONE User
       // write occurs (the name-field update).
       expect(mockUserUpdate).toHaveBeenCalledOnce();
@@ -581,10 +607,8 @@ describe('updateStaffDetails() — in-place role change (canChangeRole integrati
     const result = await updateStaffDetails('target-1', { ...baseData, role: 'nurse' });
 
     expect(result).toEqual({ success: true });
-    expect(mockOrgUserUpdate).toHaveBeenCalledWith({
-      where: { id: 'target-1' },
-      data: { role: 'nurse' },
-    });
+    expect(mockOrgUserUpdate).not.toHaveBeenCalled();
+    expect(mockQueryRaw).not.toHaveBeenCalled();
     // Only the name-field update fires — no sessionVersion bump.
     expect(mockUserUpdate).toHaveBeenCalledOnce();
     expect(mockAudit).not.toHaveBeenCalledWith(
@@ -598,6 +622,50 @@ describe('updateStaffDetails() — in-place role change (canChangeRole integrati
   // Founder Q11: HR may re-role everything except the two Owner-equivalent
   // seats. The ceiling is GRANTABLE_ROLES.hr, applied by canChangeRole to both
   // the target's current role and the requested new role.
+  // RISK-16: the role was read and authorised before the transaction. Under the
+  // organization lock it is re-read; a role that moved in between must not be
+  // overwritten on the strength of the stale check.
+  it('takes the organization lock, re-reads the role, and refuses when it changed meanwhile', async () => {
+    mockAuth.mockResolvedValue(makeAdminSession('owner'));
+    const preRead = { userId: 'target-user-1', organizationId: 'org-1', role: 'hr' };
+    mockOrgUserFindUnique.mockResolvedValueOnce(preRead).mockResolvedValueOnce({
+      id: 'target-1',
+      organizationId: 'org-1',
+      role: 'admin',
+      active: true,
+    });
+
+    const result = await updateStaffDetails('target-1', { ...baseData, role: 'nurse' });
+
+    expect(result).toEqual({
+      success: false,
+      error: "This person's role changed while you were editing it. Reload the page and try again.",
+    });
+    expect(mockQueryRaw).toHaveBeenCalledOnce();
+    expect(mockOrgUserUpdate).not.toHaveBeenCalled();
+    expect(mockUserUpdate).not.toHaveBeenCalled();
+    expect(mockAudit).not.toHaveBeenCalled();
+  });
+
+  it('writes the new role inside the locked transaction, after the lock', async () => {
+    mockAuth.mockResolvedValue(makeAdminSession('owner'));
+    mockOrgUserFindUnique.mockResolvedValue({
+      id: 'target-1',
+      userId: 'target-user-1',
+      organizationId: 'org-1',
+      role: 'hr',
+      active: true,
+    });
+
+    const result = await updateStaffDetails('target-1', { ...baseData, role: 'nurse' });
+
+    expect(result).toEqual({ success: true });
+    expect(mockTransaction).toHaveBeenCalledOnce();
+    expect(mockQueryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      mockOrgUserUpdate.mock.invocationCallOrder[0],
+    );
+  });
+
   it('allows hr to promote a worker to supervisor', async () => {
     mockAuth.mockResolvedValue({
       user: { id: 'hr-1', email: 'hr@acme.com', role: 'hr', organizationId: 'org-1' },
@@ -1200,6 +1268,42 @@ describe('getStaffDetails — org isolation (F-009)', () => {
     expect(courseSelect.lessons.orderBy).toEqual({ order: 'asc' });
   });
 
+  // BUG-48: the stored value is a storage URI the browser cannot fetch and
+  // should never see; the profile header and Change Facility modal draw this.
+  it('hands the profile a signed avatar URL, never the stored storage URI', async () => {
+    const stored = 'gcs://lms-bucket/avatars/user-t/1700000000000-me.png';
+    const signed = 'https://storage.googleapis.com/lms-bucket/avatars/user-t/me.png?sig=1';
+    mockOrgUserFindUnique.mockResolvedValue({
+      ...makeTargetOrgUser('org-a'),
+      userId: 'user-t',
+      user: { ...makeTargetOrgUser('org-a').user, avatarUrl: stored },
+    });
+    mockGetSignedUrl.mockResolvedValue(signed);
+
+    const result = await getStaffDetails('target-1');
+
+    expect(mockGetSignedUrl).toHaveBeenCalledWith(stored);
+    expect(result?.user.avatarUrl).toBe(signed);
+    expect(JSON.stringify(result)).not.toContain('gcs://lms-bucket/avatars');
+  });
+
+  it('reports a null avatar when signing fails, instead of failing the profile', async () => {
+    mockOrgUserFindUnique.mockResolvedValue({
+      ...makeTargetOrgUser('org-a'),
+      userId: 'user-t',
+      user: {
+        ...makeTargetOrgUser('org-a').user,
+        avatarUrl: 'gcs://lms-bucket/avatars/user-t/1-me.png',
+      },
+    });
+    mockGetSignedUrl.mockRejectedValue(new Error('GCS unavailable'));
+
+    const result = await getStaffDetails('target-1');
+
+    expect(result?.user.avatarUrl).toBeNull();
+    expect(result?.user.email).toBe('target@example.com');
+  });
+
   it('reports blank name fields as blank rather than substituting a placeholder', async () => {
     mockOrgUserFindUnique.mockResolvedValue({
       ...makeTargetOrgUser('org-a'),
@@ -1431,8 +1535,8 @@ describe('removeStaff() — org disconnect + sessionVersion bump (QA ISSUE 2)', 
     const result = await removeStaff('target-1');
 
     expect(result).toEqual({ success: true });
-    expect(mockOrgUserUpdate).toHaveBeenCalledWith({
-      where: { id: 'target-1' },
+    expect(mockOrgUserUpdateMany).toHaveBeenCalledWith({
+      where: { id: 'target-1', organizationId: 'org-1', role: { not: 'owner' } },
       data: { active: false, deactivatedAt: expect.any(Date) },
     });
     expect(mockUserUpdate).toHaveBeenCalledWith({
@@ -1536,7 +1640,7 @@ describe('removeStaff() — org disconnect + sessionVersion bump (QA ISSUE 2)', 
 
     expect(result).toEqual({ success: true });
     // The DB mutation (the security-relevant part) already happened.
-    expect(mockOrgUserUpdate).toHaveBeenCalledOnce();
+    expect(mockOrgUserUpdateMany).toHaveBeenCalledOnce();
     expect(mockInvalidateRevalidationCache).toHaveBeenCalledExactlyOnceWith('target-user-1');
   });
 
@@ -1598,17 +1702,17 @@ describe('removeStaff() — retains training records and expires pending invites
     await removeStaff('target-1');
 
     expect(mockEnrollmentDeleteMany).not.toHaveBeenCalled();
-
-    // Asserted at the transaction level too, so a deletion reintroduced as a
-    // fourth op is caught even if it were routed around the delegate above.
-    expect(mockTransaction.mock.calls[0][0]).toHaveLength(3);
+    // The transaction client offers no enrollment delegate at all, so a
+    // deletion reintroduced inside the transaction would throw, not pass.
+    expect(mockTransaction).toHaveBeenCalledOnce();
+    expect(typeof mockTransaction.mock.calls[0][0]).toBe('function');
   });
 
   it('COMPLIANCE (Q23): deactivates the membership rather than deleting it, so the retained records keep an owner', async () => {
     await removeStaff('target-1');
 
-    expect(mockOrgUserUpdate).toHaveBeenCalledWith({
-      where: { id: 'target-1' },
+    expect(mockOrgUserUpdateMany).toHaveBeenCalledWith({
+      where: { id: 'target-1', organizationId: 'org-1', role: { not: 'owner' } },
       data: { active: false, deactivatedAt: expect.any(Date) },
     });
   });
@@ -1635,14 +1739,33 @@ describe('removeStaff() — retains training records and expires pending invites
     await removeStaff('target-1');
 
     expect(mockTransaction).toHaveBeenCalledOnce();
-    // 3 ops: organizationUser.update (deactivate), user.update (sessionVersion
-    // bump), invite.updateMany. Deactivating the org membership and killing the
-    // identity's live sessions are two writes on two models because of the
-    // multi-org split.
-    expect(mockTransaction.mock.calls[0][0]).toHaveLength(3);
-    expect(mockOrgUserUpdate).toHaveBeenCalledOnce();
+    // 3 writes after the organization lock: organizationUser.updateMany
+    // (deactivate), user.update (sessionVersion bump), invite.updateMany.
+    // Deactivating the org membership and killing the identity's live sessions
+    // are two writes on two models because of the multi-org split.
+    expect(mockQueryRaw).toHaveBeenCalledOnce();
+    expect(mockOrgUserUpdateMany).toHaveBeenCalledOnce();
     expect(mockUserUpdate).toHaveBeenCalledOnce();
     expect(mockInviteUpdateMany).toHaveBeenCalledOnce();
+    expect(mockOrgUserUpdate).not.toHaveBeenCalled();
+  });
+
+  // RISK-16: the owner check runs before the transaction, so the write itself
+  // re-applies it under the organization lock every owner-affecting write takes.
+  it('refuses, and revokes nothing, when the row is an owner by the time the lock is held', async () => {
+    mockOrgUserUpdateMany.mockResolvedValueOnce({ count: 0 });
+
+    const result = await removeStaff('target-1');
+
+    expect(result).toEqual({ success: false, error: 'The organization owner cannot be removed.' });
+    expect(mockQueryRaw).toHaveBeenCalledOnce();
+    expect(mockQueryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      mockOrgUserUpdateMany.mock.invocationCallOrder[0],
+    );
+    expect(mockUserUpdate).not.toHaveBeenCalled();
+    expect(mockInviteUpdateMany).not.toHaveBeenCalled();
+    expect(mockInvalidateRevalidationCache).not.toHaveBeenCalled();
+    expect(mockAudit).not.toHaveBeenCalled();
   });
 
   it('records the retention rule on the staff.remove audit entry', async () => {
@@ -1720,8 +1843,8 @@ describe('removeStaff() — permission matrix (user.delete gate)', () => {
     const result = await removeStaff('target-1');
 
     expect(result).toEqual({ success: true });
-    expect(mockOrgUserUpdate).toHaveBeenCalledWith({
-      where: { id: 'target-1' },
+    expect(mockOrgUserUpdateMany).toHaveBeenCalledWith({
+      where: { id: 'target-1', organizationId: 'org-1', role: { not: 'owner' } },
       data: { active: false, deactivatedAt: expect.any(Date) },
     });
     expect(mockUserUpdate).toHaveBeenCalledWith({

@@ -3,8 +3,7 @@
 import prisma from '@/lib/prisma';
 import { dbRoleToRoleKey, isAdminRole } from '@/lib/rbac/role-utils';
 import { can, type Permission } from '@/lib/rbac/permissions';
-import { auth as adminAuth } from '@/auth';
-import { auth as workerAuth } from '@/auth.worker';
+import { getRealmSession } from '@/lib/auth/portal-sessions';
 import { unstable_cache } from 'next/cache';
 import type { Role } from '@/types/next-auth';
 import type { CourseWithStats } from '@/types/course';
@@ -13,14 +12,6 @@ import { logger } from '@/lib/logger';
 import { getCourses } from './course';
 import { buildCourseThumbnailUrl } from '@/lib/video/thumbnail';
 import { VIDEO_CATALOG_TAG } from '@/lib/video/catalog-cache';
-
-// ---------------------------------------------------------------------------
-// Session helper — mirrors the pattern in course.ts
-// ---------------------------------------------------------------------------
-async function resolveSession() {
-  const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
-  return admin?.user?.id ? admin : worker?.user?.id ? worker : null;
-}
 
 // ---------------------------------------------------------------------------
 // Org resolver — derives the ACTIVE membership's organizationId and asserts
@@ -162,7 +153,7 @@ const getGlobalVideoCatalog = unstable_cache(
 //     getCourses() counts adopted courses.
 // ---------------------------------------------------------------------------
 export async function listGlobalVideoCatalogCourses(): Promise<CourseWithStats[]> {
-  const session = await resolveSession();
+  const session = await getRealmSession('admin');
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
   }
@@ -243,7 +234,7 @@ export async function listGlobalVideoCatalogCourses(): Promise<CourseWithStats[]
  * assign call would then refuse.
  */
 export async function getAssignableCourses(): Promise<CourseWithStats[]> {
-  const session = await resolveSession();
+  const session = await getRealmSession('admin');
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
   }

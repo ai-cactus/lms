@@ -5,7 +5,7 @@ import { dbRoleToRoleKey, isAdminRole, ALL_ROLES } from '@/lib/rbac/role-utils';
 import { can, type RoleKey } from '@/lib/rbac/permissions';
 import { hasActiveBilling, BILLING_GATE_ASSIGN_MESSAGE } from '@/lib/billing';
 import { auth as adminAuth } from '@/auth';
-import { auth as workerAuth } from '@/auth.worker';
+import { getRealmSession } from '@/lib/auth/portal-sessions';
 import { revalidatePath } from 'next/cache';
 import { notifyOrganizationAdmins } from '@/lib/notifications/create';
 import { logger } from '@/lib/logger';
@@ -156,12 +156,6 @@ export interface CourseAssignmentSettings {
   stages: { stage: ReminderStage; offsetDays: number; enabled: boolean; channels: string[] }[];
 }
 
-// Helper: resolve the active session from either auth instance
-async function resolveSession() {
-  const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
-  return admin?.user?.id ? admin : worker?.user?.id ? worker : null;
-}
-
 /**
  * Sequential enrollment path — the pre-existing per-entry loop, retained as the
  * instant fallback behind the `ENROLLMENT_BATCH_ENABLED` kill-switch. Seat-rejected
@@ -191,14 +185,15 @@ async function enrollSequentially(
  * Used by Share Modal to show selectable users.
  */
 export async function getAvailableUsers() {
-  const session = await resolveSession();
+  const session = await getRealmSession('admin');
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
   }
 
-  // The rows below carry staff EMAIL addresses, and this had no permission gate
-  // at all — a session check only. It resolves a WORKER session too, so any
-  // learner could POST to it and read their facility's roster. No page links it
+  // The rows below carry staff EMAIL addresses, and this once had no permission
+  // gate at all — a session check only, over a resolver that also accepted a
+  // WORKER session, so any learner could POST to it and read their facility's
+  // roster. No page links it
   // today, which changes nothing: a `'use server'` export is an HTTP endpoint
   // whether or not the UI calls it.
   //
@@ -316,13 +311,13 @@ export async function enrollUsers(
   assignmentSettings?: AssignmentSettingsInput,
   options?: EnrollUsersOptions,
 ): Promise<EnrollUsersResult> {
-  const session = await resolveSession();
+  const session = await getRealmSession('admin');
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
   }
 
-  // The session check above only proves *someone* is logged in (a worker
-  // session would pass it). Gate on the registry rather than the coarse
+  // The session check above only proves *someone* is signed in to the admin
+  // portal. Gate on the registry rather than the coarse
   // admin-tier check: since the RBAC ruling made Supervisor read-only, an
   // admin-tier check would let a supervisor create enrollments.
   //
@@ -776,7 +771,7 @@ export async function enrollUsers(
 export async function getCourseAssignmentSettings(
   courseId: string,
 ): Promise<CourseAssignmentSettings | null> {
-  const session = await resolveSession();
+  const session = await getRealmSession('admin');
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
   }
@@ -891,7 +886,7 @@ async function assignCourseToRoleTargets(
   roles: UserRole[],
   options: RoleTargetAssignmentOptions,
 ): Promise<RoleTargetAssignmentResult> {
-  const session = await resolveSession();
+  const session = await getRealmSession('admin');
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
   }
@@ -1263,7 +1258,7 @@ export async function assignCourseToRoles(
  * caller a smaller number than the one it acts on.
  */
 export async function getRoleHolderCounts(): Promise<Record<string, number>> {
-  const session = await resolveSession();
+  const session = await getRealmSession('admin');
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
   }
@@ -1296,7 +1291,7 @@ export async function getRoleHolderCounts(): Promise<Record<string, number>> {
  * Get enrollment details with quiz results.
  */
 export async function getEnrollmentWithResults(enrollmentId: string) {
-  const session = await resolveSession();
+  const session = await getRealmSession('admin');
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
   }
@@ -1352,12 +1347,11 @@ export async function getEnrollmentWithResults(enrollmentId: string) {
   // answers alongside the correct ones, which is the `assessment` resource — not
   // `enrollment`, whose read verb is held by every worker and by Finance.
   //
-  // `isAdminRole` is load-bearing here: this action takes `resolveSession()`,
-  // which falls back to the WORKER instance, so a learner's session reaches this
-  // line. Every worker role holds `assessment.read` (to read its OWN attempt),
-  // so the verb alone does not separate "my answers" from "theirs".
-  // `getEnrollmentQuizResult` pairs the same two, though there the admin
-  // instance already fences workers out and the tier check is defensive.
+  // `isAdminRole` stays paired with the verb: every worker role holds
+  // `assessment.read` (to read its OWN attempt), so the verb alone does not
+  // separate "my answers" from "theirs". This action reads the admin portal's
+  // session, whose instance already fences workers out, so here — as in
+  // `getEnrollmentQuizResult` — the tier check is defensive.
   //
   // Course AUTHORSHIP used to be a fourth condition, kept on the reasoning that
   // dropping it would widen access. It widened nothing that the org and facility
@@ -1525,7 +1519,7 @@ export async function requestCourseRetry(
 export async function removeWorkerAssignment(
   enrollmentId: string,
 ): Promise<{ success: boolean; error?: string }> {
-  const session = await resolveSession();
+  const session = await getRealmSession('admin');
   if (!session?.user?.id) {
     return { success: false, error: 'Not authenticated' };
   }

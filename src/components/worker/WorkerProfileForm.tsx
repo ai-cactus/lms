@@ -346,7 +346,7 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
         {activeTab === '2fa' && (
           <div className="flex flex-col gap-6">
             <h2 className="text-xl font-semibold text-foreground">Two-factor Authentication</h2>
-            <TwoFactorAuthTab userEmail={user.email} />
+            <TwoFactorAuthTab realm="worker" userEmail={user.email} />
           </div>
         )}
       </>

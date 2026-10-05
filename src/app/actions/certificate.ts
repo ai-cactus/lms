@@ -6,6 +6,7 @@ import { can } from '@/lib/rbac/permissions';
 import { resolveDataFacilityIds, staffFacilityWhere } from '@/lib/facility/staff-where';
 import { auth as adminAuth } from '@/auth';
 import { auth as workerAuth } from '@/auth.worker';
+import { getRealmSession, type PortalRealm } from '@/lib/auth/portal-sessions';
 import { revalidatePath } from 'next/cache';
 import { uploadFile } from '@/lib/storage';
 import { generateCertificatePDF } from '@/lib/certificate-generator';
@@ -15,11 +16,6 @@ import { audit, getClientContext } from '@/lib/audit';
 import { headers } from 'next/headers';
 import type { Certificate, Prisma } from '@/generated/prisma/client';
 import type { CourseCertificateRow } from '@/types/course';
-
-async function resolveSession() {
-  const [admin, worker] = await Promise.all([adminAuth(), workerAuth()]);
-  return admin?.user?.id ? admin : worker?.user?.id ? worker : null;
-}
 
 /**
  * Outcome of {@link issueCertificate}. A refusal is returned rather than thrown
@@ -32,8 +28,8 @@ export type IssueCertificateResult =
   { ok: true; certificate: Certificate } | { ok: false; reason: string };
 
 export async function issueCertificate(enrollmentId: string): Promise<IssueCertificateResult> {
-  const session = await resolveSession();
-  if (!session?.user?.id) {
+  const [admin, worker] = await Promise.all([getRealmSession('admin'), getRealmSession('worker')]);
+  if (!admin?.user?.id && !worker?.user?.id) {
     throw new Error('Unauthorized');
   }
 
@@ -50,12 +46,28 @@ export async function issueCertificate(enrollmentId: string): Promise<IssueCerti
     throw new Error('Enrollment not found');
   }
 
+  // BUG-47: issuance is reached from the learn player, which serves whichever
+  // portal's membership holds the enrolment, and one browser can hold an admin
+  // and a worker session for two DIFFERENT accounts. The session that OWNS the
+  // enrolment is the learner, whichever portal it is — preferring the admin
+  // session issued a worker's own certificate as (and audited it to) the admin.
+  // Only when neither owns it is this an administrative issuance, which is the
+  // admin portal's act; a lone worker session still reaches the gate below.
+  const ownerSession = [worker, admin].find(
+    (candidate) =>
+      candidate?.user?.id && candidate.user.organizationUserId === enrollment.organizationUserId,
+  );
+  const session = ownerSession ?? (admin?.user?.id ? admin : worker);
+  if (!session?.user?.id) {
+    throw new Error('Unauthorized');
+  }
+
   // The learner earning their own certificate always passes, and must stay
   // AHEAD of everything below: a worker holds no `certificate.create` verb, and
   // one with no active facility assignment narrows to `[]`. Either check would
   // lock them out of the certificate they just earned. Same self-access-first
   // shape as the three certificate reads.
-  const isSelf = enrollment.organizationUserId === session.user.organizationUserId;
+  const isSelf = ownerSession !== undefined;
 
   if (!isSelf) {
     // Administrative issuance. BOTH halves of the verb gate are load-bearing.
@@ -67,9 +79,9 @@ export async function issueCertificate(enrollmentId: string): Promise<IssueCerti
     //   certificates entirely — the reason this action needed a verb at all.
     //
     //   isAdminRole — load-bearing HERE, exactly as in `getCertificateDetails`
-    //   and unlike the admin-fenced `getAdminWorkerCertificates`. This action
-    //   takes the module's `resolveSession()`, which falls back to the WORKER
-    //   instance, so a nurse's session really does reach this line.
+    //   and unlike the admin-fenced `getAdminWorkerCertificates`. With no admin
+    //   session present this runs on the WORKER session, so a nurse's session
+    //   really does reach this line.
     const roleKey = dbRoleToRoleKey(session.user.role);
     if (
       !roleKey ||
@@ -222,7 +234,7 @@ export async function getAdminWorkerCertificates(organizationUserId: string) {
   // and the download route in `api/certificates/[id]`.
   //
   // Here the verb is the load-bearing half. This function takes `adminAuth()`
-  // directly, not the module's `resolveSession()`, and the admin instance fences
+  // directly, not a session the worker portal can supply, and the admin instance fences
   // worker roles out at decode (`auth.ts:6` + `create-auth-instance.ts:736`), so
   // `isAdminRole` is defence in depth. It is load-bearing in
   // `getCertificateDetails`, which accepts either instance.
@@ -336,8 +348,15 @@ export async function getCourseCertificates(courseId: string): Promise<CourseCer
   });
 }
 
-export async function getCertificateDetails(certificateId: string) {
-  const session = await resolveSession();
+/**
+ * BUG-47: both portals open a certificate through this action — the worker's own
+ * certificates page and the dashboard's staff and course views — and one browser
+ * can hold an admin and a worker session for two DIFFERENT accounts. The caller
+ * names its portal; preferring the admin session answered the worker as the
+ * admin, which could not read the worker's own certificate.
+ */
+export async function getCertificateDetails(realm: PortalRealm, certificateId: string) {
+  const session = await getRealmSession(realm);
   if (!session?.user?.id) {
     throw new Error('Unauthorized');
   }
@@ -369,8 +388,8 @@ export async function getCertificateDetails(certificateId: string) {
   //   but does hold the certificate verb (founder Q7).
   //
   //   isAdminRole — genuinely load-bearing HERE, unlike the two admin-fenced
-  //   certificate gates. This action takes `resolveSession()`, which falls back
-  //   to the WORKER instance, so a nurse's session really does reach this line.
+  //   certificate gates. The worker portal calls this action with its own
+  //   session, so a nurse's session really does reach this line.
   //   All eight worker roles hold `certificate.read` (granted by
   //   `workerPermissions` so a learner can read their own), and the verb alone
   //   does not separate "my certificate" from "theirs" — on an id-addressed

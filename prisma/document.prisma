@@ -27,12 +27,12 @@ model Document {
   createdAt           DateTime          @default(now()) @map("created_at")
   updatedAt           DateTime          @updatedAt @map("updated_at")
   /// ⚠️ `onDelete: Cascade` destroys this document — and every version of it —
-  /// when the uploader's OrganizationUser row is hard-deleted. That fails
-  /// UNSAFE: it silently discards retained documents, which is exactly what Q24
-  /// forbids. Inert today — `removeStaff` only deactivates, and self-service
-  /// account deletion is deferred — but whoever implements a real membership
-  /// delete must change this before doing so. Contrast `Course.creator`, which
-  /// is a Restrict and therefore fails safe.
+  /// if the uploader's OrganizationUser row is ever hard-deleted, silently
+  /// discarding records Q24 says to retain. No product path does that:
+  /// `removeStaff` deactivates a membership, and deleting a user (Q-23,
+  /// `softDeleteUser`) is a soft delete that keeps every membership row. Any
+  /// future hard delete of a membership must change this to Restrict first.
+  /// Contrast `Course.creator`, a Restrict, which fails safe.
   organizationUser    OrganizationUser  @relation(fields: [organizationUserId], references: [id], onDelete: Cascade)
   organization        Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   archivedBy          OrganizationUser? @relation("DocumentArchiver", fields: [archivedByOrgUserId], references: [id], onDelete: SetNull)

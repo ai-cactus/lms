@@ -44,6 +44,8 @@ const {
     enrollment: { findUnique: vi.fn(), update: vi.fn() },
     quiz: { findUnique: vi.fn() },
     notification: { findFirst: vi.fn(), createMany: vi.fn() },
+    notificationPreference: { findMany: vi.fn().mockResolvedValue([]) },
+    notificationCategoryPreference: { findUnique: vi.fn().mockResolvedValue(null) },
     organizationUser: { findMany: vi.fn() },
     $transaction: vi.fn(async (cb: (tx: typeof txMock) => unknown) => cb(txMock)),
   };
@@ -71,9 +73,12 @@ vi.mock('@/lib/ai-client', async (importOriginal) => ({
   callVertexAI: mockCallVertexAI,
 }));
 vi.mock('@/lib/rate-limit', () => ({ checkRateLimit: mockCheckRateLimit }));
-vi.mock('@/lib/email', () => ({ sendQuizLockedEmail: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('@/lib/email', () => ({
+  sendQuizLockedEmail: vi.fn().mockResolvedValue({ success: true }),
+}));
 vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+  maskEmail: (email: string) => email,
 }));
 
 // ---------------------------------------------------------------------------
@@ -473,8 +478,68 @@ describe('POST /api/quiz/[id]/submit — attempts-exhausted audience (Q-25)', ()
       'owner-1',
     ]);
     expect(args.data[0].linkUrl).toBe('/dashboard/staff/ou-1');
-    await vi.waitFor(() => expect(sendQuizLockedEmail).toHaveBeenCalledTimes(1));
+    expect(sendQuizLockedEmail).toHaveBeenCalledTimes(1);
     expect(vi.mocked(sendQuizLockedEmail).mock.calls[0][0]).toBe('owner@acme.com');
+  });
+
+  // BUG-55: the notice used to be a raw createMany that no preference reached.
+  it('skips an admin who opted out of the notice — no bell row and no email', async () => {
+    prismaMock.organizationUser.findMany.mockResolvedValue([
+      { id: 'owner-1', role: 'owner', user: { email: 'owner@acme.com' } },
+      { id: 'hr-1', role: 'hr', user: { email: 'hr@acme.com' } },
+    ]);
+    prismaMock.notificationPreference.findMany.mockResolvedValueOnce([
+      { organizationUserId: 'hr-1' },
+    ]);
+
+    await POST(makeReq({ enrollmentId: 'enr-1', answers: makeAnswers(2, 0) }), { params });
+
+    const [args] = prismaMock.notification.createMany.mock.calls[0];
+    expect(args.data.map((row: { organizationUserId: string }) => row.organizationUserId)).toEqual([
+      'owner-1',
+    ]);
+    expect(vi.mocked(sendQuizLockedEmail).mock.calls.map((call) => call[0])).toEqual([
+      'owner@acme.com',
+    ]);
+  });
+
+  it('writes no bell row when the org switched Training notices off in-app, but still emails', async () => {
+    prismaMock.notificationCategoryPreference.findUnique.mockResolvedValueOnce({
+      emailEnabled: false,
+      inAppEnabled: false,
+    });
+
+    await POST(makeReq({ enrollmentId: 'enr-1', answers: makeAnswers(2, 0) }), { params });
+
+    expect(prismaMock.notification.createMany).not.toHaveBeenCalled();
+    expect(sendQuizLockedEmail).toHaveBeenCalledTimes(1);
+  });
+
+  it('finishes sending the emails before it responds', async () => {
+    let settled = false;
+    vi.mocked(sendQuizLockedEmail).mockImplementationOnce(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      settled = true;
+      return { success: true };
+    });
+
+    const res = await POST(makeReq({ enrollmentId: 'enr-1', answers: makeAnswers(2, 0) }), {
+      params,
+    });
+
+    expect(settled).toBe(true);
+    expect(res.status).toBe(200);
+  });
+
+  it('still records the locked attempt when the email fails', async () => {
+    vi.mocked(sendQuizLockedEmail).mockRejectedValueOnce(new Error('SMTP down'));
+
+    const res = await POST(makeReq({ enrollmentId: 'enr-1', answers: makeAnswers(2, 0) }), {
+      params,
+    });
+
+    expect(res.status).toBe(200);
+    expect(prismaMock.notification.createMany).toHaveBeenCalledTimes(1);
   });
 
   it('writes nothing, and warns, when no admin can open the staff profile', async () => {

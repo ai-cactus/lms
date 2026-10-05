@@ -1,0 +1,12 @@
+---
+name: bug47-dual-account-cookie-e2e-gotchas
+description: two gotchas hit writing an e2e test that re-injects a portal cookie for a DIFFERENT account than the one live in the tab (BUG-47 realm-session-helpers validation)
+metadata:
+  type: project
+---
+
+Writing an e2e test for two DIFFERENT accounts' portal cookies genuinely coexisting in one browser (not the same-user Learn-mode bridge that `rbac-dual-cookie-login.spec.ts` already covered) hit two traps. Both cost a full e2e:local cycle (~1.5min) each to diagnose.
+
+**1. `context.addCookies()` must reuse the FULL captured cookie object, not a hand-built one.** Under `npm run e2e:local` (`next start` forces `NODE_ENV=production`), `useSecureCookies = true` in both `proxy.ts` and `create-auth-instance.ts`, so the real cookie is `__Secure-worker.session-token` with `secure: true` — not the plain `worker.session-token` name used by dev-mode examples elsewhere in the file. Hand-building `{ name: 'worker.session-token', ... }` silently fails (proxy's plain-name fallback *should* catch it per the code, but empirically the re-injected cookie was never accepted — landed on `/login` instead). Fix: capture the cookie via `findCookie()` (matches by `endsWith`, so it finds the real name whichever env you're in) and pass that whole object to `addCookies([capturedCookie])`.
+
+**2. Reusing one `page` for both logins trips `SessionIdentityGuard` (src/components/providers/SessionIdentityGuard.tsx), a real, unrelated safety feature — not the bug under test.** It's a same-TAB account-takeover guard from the ISSUE 4 session-isolation fix, keyed by `sessionStorage` (per-tab, not shared). Logging in as account A then account B in the same tab stamps that tab's `sessionStorage` with A's `currentUserId`; navigating afterward to a route the server resolves as B trips the guard's eviction overlay (`SessionEvictedScreen`) — confirmed via the error snapshot that the correct data (the worker's own notification) was already in the DOM, just `hidden` behind the overlay. Fix: do the final navigation to the "other account" route in a **new tab** (`context.newPage()`) — it shares the context's cookie jar (the actual BUG-47 precondition) but starts with empty `sessionStorage`, so the guard sees first-sight and doesn't fire. See `tests/e2e/rbac-dual-cookie-login.spec.ts`, the "BUG-47 — worker portal notifications read the WORKER account" block, for the working pattern.

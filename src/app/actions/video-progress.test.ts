@@ -331,6 +331,7 @@ describe('saveVideoProgress', () => {
     expect(result).toEqual({
       unlocked: false,
       refusedReason: ARCHIVED_COURSE_LEARNER_MESSAGE,
+      refusedCode: 'COURSE_ARCHIVED',
     });
     expect(mockEnrollmentUpdate).not.toHaveBeenCalled();
   });
@@ -350,6 +351,7 @@ describe('saveVideoProgress', () => {
     expect(result).toEqual({
       unlocked: false,
       refusedReason: 'Please complete two-factor verification to continue.',
+      refusedCode: 'MFA_REQUIRED',
     });
     expect(mockEnrollmentUpdate).not.toHaveBeenCalled();
   });
@@ -380,6 +382,7 @@ describe('saveVideoProgress', () => {
       unlocked: false,
       refusedReason:
         'Your organization’s training access is paused. Please contact your administrator.',
+      refusedCode: 'BILLING_INACTIVE',
     });
     expect(mockEnrollmentUpdate).not.toHaveBeenCalled();
   });

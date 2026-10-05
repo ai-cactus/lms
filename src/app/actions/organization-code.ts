@@ -13,6 +13,7 @@ import { DEFAULT_SELF_SERVE_WORKER_ROLE, getRoleDisplayName } from '@/lib/rbac/r
 import { emitNotificationEvent } from '@/lib/notifications/emit';
 import { enrollUserForRoleTargets } from '@/lib/enrollment/role-targets';
 import { createMembership } from '@/lib/auth/membership';
+import { LAST_OWNER_REFUSAL, LastOwnerError } from '@/lib/organization/owner-guard';
 
 // Helper to generate a cryptographically-random 6-digit code
 function generateCode() {
@@ -228,6 +229,9 @@ export async function joinOrganization(code: string) {
 
     return { success: true, organizationId: orgId };
   } catch (error) {
+    if (error instanceof LastOwnerError) {
+      return { success: false, error: LAST_OWNER_REFUSAL };
+    }
     logger.error({ msg: 'Failed to join organization:', err: error });
     return { success: false, error: 'Failed to join organization' };
   }

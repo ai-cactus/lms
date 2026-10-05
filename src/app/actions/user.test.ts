@@ -19,6 +19,8 @@ const {
   mockBcryptCompare,
   mockBcryptHash,
   mockUploadFile,
+  mockGetSignedUrl,
+  mockDeleteFile,
 } = vi.hoisted(() => ({
   // Profile was merged into User — name fields live directly on the identity.
   prismaMock: {
@@ -36,6 +38,8 @@ const {
   mockBcryptCompare: vi.fn(),
   mockBcryptHash: vi.fn(),
   mockUploadFile: vi.fn(),
+  mockGetSignedUrl: vi.fn(),
+  mockDeleteFile: vi.fn(),
 }));
 
 vi.mock('next/headers', () => ({ headers: mockHeaders }));
@@ -58,7 +62,11 @@ vi.mock('bcryptjs', () => ({
   hash: mockBcryptHash,
 }));
 
-vi.mock('@/lib/storage', () => ({ uploadFile: mockUploadFile }));
+vi.mock('@/lib/storage', () => ({
+  uploadFile: mockUploadFile,
+  getSignedUrl: mockGetSignedUrl,
+  deleteFile: mockDeleteFile,
+}));
 
 import { updateProfile, changePassword, getStaffUsers, uploadAvatar } from './user';
 import type { PortalRealm } from '@/lib/auth/portal-sessions';
@@ -612,5 +620,154 @@ describe('updateProfile — avatarUrl', () => {
 
     expect(result.success).toBe(false);
     expect(prismaMock.user.update).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// RISK-13 — a replaced or cleared photo stranded its object in storage forever.
+// The old object is deleted after the write commits, best-effort, and only
+// when it sits under the caller's own avatars/<userId>/ prefix.
+// ---------------------------------------------------------------------------
+
+describe('updateProfile — deleting the replaced avatar', () => {
+  const OLD = 'gcs://bucket/avatars/user-1/1600000000000-old.png';
+  const NEW = 'gcs://bucket/avatars/user-1/1700000000000-new.png';
+
+  function storedAvatar(avatarUrl: string | null) {
+    prismaMock.user.findUnique.mockResolvedValue({ avatarUrl });
+  }
+
+  it('deletes the previous object after the new photo is written', async () => {
+    storedAvatar(OLD);
+    const order: string[] = [];
+    prismaMock.user.update.mockImplementation(async () => {
+      order.push('write');
+      return { id: 'user-1' };
+    });
+    mockDeleteFile.mockImplementation(async () => {
+      order.push('delete');
+    });
+
+    const result = await updateProfile('admin', baseData({ avatarUrl: NEW }));
+
+    expect(result).toEqual({ success: true });
+    expect(mockDeleteFile).toHaveBeenCalledExactlyOnceWith(OLD);
+    expect(order).toEqual(['write', 'delete']);
+  });
+
+  it('deletes the previous object when the photo is cleared', async () => {
+    storedAvatar(OLD);
+
+    await updateProfile('admin', baseData({ avatarUrl: null }));
+
+    expect(mockDeleteFile).toHaveBeenCalledExactlyOnceWith(OLD);
+  });
+
+  it('deletes nothing when the photo is left unchanged or there was none', async () => {
+    await updateProfile('admin', baseData());
+    expect(prismaMock.user.findUnique).not.toHaveBeenCalled();
+
+    storedAvatar(null);
+    await updateProfile('admin', baseData({ avatarUrl: NEW }));
+
+    storedAvatar(NEW);
+    await updateProfile('admin', baseData({ avatarUrl: NEW }));
+
+    expect(mockDeleteFile).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["another user's avatar", 'gcs://bucket/avatars/user-2/1-them.png'],
+    ['a document', 'gcs://bucket/documents/org-a/policy.pdf'],
+    ['a legacy local path', '/uploads/avatars/user-1/me.png'],
+  ])('never deletes a previous value outside the caller’s prefix: %s', async (_label, previous) => {
+    storedAvatar(previous);
+
+    const result = await updateProfile('admin', baseData({ avatarUrl: NEW }));
+
+    expect(result).toEqual({ success: true });
+    expect(mockDeleteFile).not.toHaveBeenCalled();
+  });
+
+  it('keeps the save successful when the storage delete fails', async () => {
+    storedAvatar(OLD);
+    mockDeleteFile.mockRejectedValue(new Error('GCS unavailable'));
+
+    const result = await updateProfile('admin', baseData({ avatarUrl: NEW }));
+
+    expect(result).toEqual({ success: true });
+    expect(prismaMock.user.update).toHaveBeenCalledOnce();
+  });
+
+  it('deletes nothing when the database write fails', async () => {
+    storedAvatar(OLD);
+    prismaMock.user.update.mockRejectedValue(new Error('db down'));
+
+    const result = await updateProfile('admin', baseData({ avatarUrl: NEW }));
+
+    expect(result).toEqual({ success: false, error: 'Failed to update profile' });
+    expect(mockDeleteFile).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// BUG-48 — the roster drew `User.avatarUrl` straight into `<img src>`. That
+// value is a `gcs://`/`minio://` storage URI: it names the bucket and key, and
+// no browser can fetch it. The payload must carry a signed URL instead.
+// ---------------------------------------------------------------------------
+
+describe('getStaffUsers — avatar URLs', () => {
+  const STORED = 'gcs://lms-bucket/avatars/user-7/1700000000000-me.png';
+  const SIGNED =
+    'https://storage.googleapis.com/lms-bucket/avatars/user-7/me.png?X-Goog-Signature=abc';
+
+  function member(avatarUrl: string | null, userId = 'user-7') {
+    return {
+      id: `ou-${userId}`,
+      userId,
+      role: 'nurse',
+      joinedAt: new Date('2026-09-01T00:00:00.000Z'),
+      user: { email: `${userId}@acme.com`, fullName: 'Pat Doe', avatarUrl },
+      facilities: [],
+    };
+  }
+
+  beforeEach(() => {
+    mockAdminAuth.mockResolvedValue({
+      user: { id: 'u1', role: 'owner', organizationId: 'org-a', organizationUserId: 'ou1' },
+    });
+    prismaMock.invite.findMany.mockResolvedValue([]);
+  });
+
+  it('sends a signed URL, never the stored storage URI', async () => {
+    prismaMock.organizationUser.findMany.mockResolvedValue([member(STORED)]);
+    mockGetSignedUrl.mockResolvedValue(SIGNED);
+
+    const entries = await getStaffUsers();
+
+    expect(mockGetSignedUrl).toHaveBeenCalledWith(STORED);
+    expect(entries[0].avatarUrl).toBe(SIGNED);
+    expect(JSON.stringify(entries)).not.toContain('gcs://');
+  });
+
+  it('sends null for a member without a photo and signs nothing', async () => {
+    prismaMock.organizationUser.findMany.mockResolvedValue([member(null)]);
+
+    const entries = await getStaffUsers();
+
+    expect(entries[0].avatarUrl).toBeNull();
+    expect(mockGetSignedUrl).not.toHaveBeenCalled();
+  });
+
+  it('degrades one unsignable avatar to initials without failing the roster', async () => {
+    prismaMock.organizationUser.findMany.mockResolvedValue([
+      member(STORED, 'user-7'),
+      member('gcs://lms-bucket/avatars/user-8/1-me.png', 'user-8'),
+    ]);
+    mockGetSignedUrl.mockRejectedValueOnce(new Error('GCS unavailable')).mockResolvedValue(SIGNED);
+
+    const entries = await getStaffUsers();
+
+    expect(entries.map((e) => e.avatarUrl)).toEqual([null, SIGNED]);
   });
 });

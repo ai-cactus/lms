@@ -420,10 +420,9 @@ export async function getLearnPayload(courseId: string): Promise<LearnPayload | 
     const inLearnerPortal = Boolean(session?.user?.id);
     const isAdmin = mayOpenWithoutEnrollment && !inLearnerPortal;
 
-    // `isAdmin` can only be true when there is no worker cookie, so the admin
-    // session IS the one `updateLessonContent`'s `resolveSession()` would pick:
-    // there is no ambiguity about whose organisation to compare against the
-    // course's. Anything outside the admin view is never offered the editor.
+    // `isAdmin` can only be true when there is no worker cookie, and
+    // `updateLessonContent` reads the admin portal's session, so there is no
+    // ambiguity about whose organisation to compare against the course's. Anything outside the admin view is never offered the editor.
     const canEditContent =
       isAdmin &&
       mayEditCourseContent(adminSession?.user?.role, adminSession?.user?.organizationId, course);

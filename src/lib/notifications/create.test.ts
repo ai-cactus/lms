@@ -5,27 +5,29 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { prismaMock, mockWarn, mockIsChannelEnabled } = vi.hoisted(() => ({
+const { prismaMock, mockWarn, mockError, mockIsChannelEnabled } = vi.hoisted(() => ({
   prismaMock: {
     organizationUser: { findMany: vi.fn() },
     notificationPreference: { findMany: vi.fn(), findUnique: vi.fn() },
     notification: { createMany: vi.fn(), create: vi.fn() },
   },
   mockWarn: vi.fn(),
+  mockError: vi.fn(),
   mockIsChannelEnabled: vi.fn(),
 }));
 
 vi.mock('server-only', () => ({}));
 vi.mock('@/lib/prisma', () => ({ default: prismaMock, prisma: prismaMock }));
 vi.mock('@/lib/logger', () => ({
-  logger: { info: vi.fn(), warn: mockWarn, error: vi.fn(), debug: vi.fn() },
+  logger: { info: vi.fn(), warn: mockWarn, error: mockError, debug: vi.fn() },
+  maskEmail: () => '[masked]',
 }));
 vi.mock('@/lib/notifications/category-preferences', () => ({
   isNotificationChannelEnabled: mockIsChannelEnabled,
   isInAppEnabledForMembership: vi.fn().mockResolvedValue(true),
 }));
 
-import { notifyOrganizationAdmins } from './create';
+import { notifyOrganizationAdmins, notifyOrganizationAdminsWithEmail } from './create';
 
 const TIER = [
   { id: 'owner-1', role: 'owner' },
@@ -103,5 +105,77 @@ describe('notifyOrganizationAdmins — audience follows the link (Q-25)', () => 
         adminCount: 2,
       }),
     );
+  });
+});
+
+describe('notifyOrganizationAdminsWithEmail — one audience for the bell and the email (BUG-55)', () => {
+  const TIER_WITH_EMAIL = TIER.map((admin) => ({
+    ...admin,
+    user: { email: `${admin.id}@acme.com` },
+  }));
+  const STAFF_NOTICE = { ...notice('/dashboard/staff/ou-9'), type: 'QUIZ_RETRY_LIMIT_REACHED' };
+
+  beforeEach(() => {
+    prismaMock.organizationUser.findMany.mockResolvedValue(TIER_WITH_EMAIL);
+  });
+
+  it('writes the bell row and emails exactly the Q-25 audience minus opt-outs', async () => {
+    prismaMock.notificationPreference.findMany.mockResolvedValue([{ organizationUserId: 'hr-1' }]);
+    const sendEmail = vi.fn().mockResolvedValue({ success: true });
+
+    await notifyOrganizationAdminsWithEmail('org-1', STAFF_NOTICE, sendEmail);
+
+    expect(recipients()).toEqual(['owner-1']);
+    expect(sendEmail).toHaveBeenCalledExactlyOnceWith({
+      organizationUserId: 'owner-1',
+      email: 'owner-1@acme.com',
+    });
+  });
+
+  it('still emails when the org switched the category off in-app', async () => {
+    mockIsChannelEnabled.mockResolvedValue(false);
+    const sendEmail = vi.fn().mockResolvedValue({ success: true });
+
+    await notifyOrganizationAdminsWithEmail('org-1', STAFF_NOTICE, sendEmail);
+
+    expect(prismaMock.notification.createMany).not.toHaveBeenCalled();
+    expect(sendEmail).toHaveBeenCalledTimes(2);
+  });
+
+  it('sends nothing on either channel when no admin can open the link', async () => {
+    prismaMock.organizationUser.findMany.mockResolvedValue(
+      TIER_WITH_EMAIL.filter((a) => a.role === 'finance'),
+    );
+    const sendEmail = vi.fn();
+
+    await notifyOrganizationAdminsWithEmail('org-1', STAFF_NOTICE, sendEmail);
+
+    expect(prismaMock.notification.createMany).not.toHaveBeenCalled();
+    expect(sendEmail).not.toHaveBeenCalled();
+  });
+
+  it('logs a failed or throwing send, delivers the rest, and never throws', async () => {
+    const sendEmail = vi
+      .fn()
+      .mockResolvedValueOnce({ success: false })
+      .mockRejectedValueOnce(new Error('SMTP down'));
+
+    await expect(
+      notifyOrganizationAdminsWithEmail('org-1', STAFF_NOTICE, sendEmail),
+    ).resolves.toBeUndefined();
+
+    expect(sendEmail).toHaveBeenCalledTimes(2);
+    expect(mockError).toHaveBeenCalledTimes(2);
+    expect(JSON.stringify(mockError.mock.calls)).not.toContain('@acme.com');
+  });
+
+  it('never throws when the audience lookup fails', async () => {
+    prismaMock.organizationUser.findMany.mockRejectedValue(new Error('db down'));
+    const sendEmail = vi.fn();
+
+    await expect(
+      notifyOrganizationAdminsWithEmail('org-1', STAFF_NOTICE, sendEmail),
+    ).resolves.toBeUndefined();
+    expect(sendEmail).not.toHaveBeenCalled();
   });
 });

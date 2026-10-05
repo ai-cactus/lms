@@ -53,7 +53,7 @@ function certificate(overrides: Partial<{ id: string; enrollmentId: string }> = 
 
 describe('CertificateCardList — empty state', () => {
   it('renders the illustrated empty state with heading, body copy, and a working CTA link', () => {
-    render(<CertificateCardList certificates={[]} />);
+    render(<CertificateCardList realm="worker" certificates={[]} />);
 
     // alt="" + aria-hidden gives this element accessibility role "presentation",
     // not "img" — query by alt text instead of role.
@@ -74,13 +74,13 @@ describe('CertificateCardList — empty state', () => {
   });
 
   it('does not render the old plain empty-state copy', () => {
-    render(<CertificateCardList certificates={[]} />);
+    render(<CertificateCardList realm="worker" certificates={[]} />);
 
     expect(screen.queryByText('No certificates available.')).not.toBeInTheDocument();
   });
 
   it('the CTA is a real link reachable by keyboard, not a button-shaped div', () => {
-    render(<CertificateCardList certificates={[]} />);
+    render(<CertificateCardList realm="worker" certificates={[]} />);
 
     const cta = screen.getByRole('link', { name: 'Browse trainings' });
     expect(cta.tagName).toBe('A');
@@ -93,6 +93,7 @@ describe('CertificateCardList — empty state', () => {
   it('still renders the title and description props above the empty state', () => {
     render(
       <CertificateCardList
+        realm="worker"
         certificates={[]}
         title="My Certificates"
         description="A subtitle supplied by the page"
@@ -109,7 +110,7 @@ describe('CertificateCardList — empty state', () => {
   // block. The subtitle is the design's, adapted to the learner's voice (the
   // design itself is manager-facing — see the 2026-08-28 decision).
   it('carries no trace of the pre-redesign subtitle', () => {
-    render(<CertificateCardList certificates={[]} />);
+    render(<CertificateCardList realm="worker" certificates={[]} />);
 
     expect(
       screen.queryByText('Certificates you have earned will be displayed here'),
@@ -120,7 +121,7 @@ describe('CertificateCardList — empty state', () => {
   });
 
   it('seats the empty state in the design’s white card rather than on the bare page', () => {
-    render(<CertificateCardList certificates={[]} />);
+    render(<CertificateCardList realm="worker" certificates={[]} />);
 
     const card = screen.getByText('No certificate earned yet').closest('div')?.parentElement;
     expect(card).toHaveClass('bg-white', 'rounded-[17px]');
@@ -129,7 +130,7 @@ describe('CertificateCardList — empty state', () => {
   // Design 15560:138390 draws the header actions in the empty state too, with
   // Export greyed (#c0c0c0) rather than removed.
   it('still renders the header actions, disabled, when there is nothing to act on', () => {
-    render(<CertificateCardList certificates={[]} />);
+    render(<CertificateCardList realm="worker" certificates={[]} />);
 
     expect(screen.getByRole('button', { name: /export/i })).toBeDisabled();
     expect(
@@ -162,7 +163,7 @@ describe('CertificateCardList — date range filter', () => {
     screen.getByRole('combobox', { name: 'Filter certificates by date range' });
 
   it('opens on "All time" and shows every certificate', () => {
-    render(<CertificateCardList certificates={[recent, older]} />);
+    render(<CertificateCardList realm="worker" certificates={[recent, older]} />);
 
     expect(rangeTrigger()).toHaveTextContent('All time');
     expect(screen.getByText('Recent Course')).toBeInTheDocument();
@@ -171,7 +172,7 @@ describe('CertificateCardList — date range filter', () => {
 
   it('narrows the list to the chosen window', async () => {
     const user = userEvent.setup();
-    render(<CertificateCardList certificates={[recent, older]} />);
+    render(<CertificateCardList realm="worker" certificates={[recent, older]} />);
 
     await user.click(rangeTrigger());
     await user.click(screen.getByRole('option', { name: 'Last 7 days' }));
@@ -182,7 +183,7 @@ describe('CertificateCardList — date range filter', () => {
 
   it('says the range is empty rather than claiming no certificate was ever earned', async () => {
     const user = userEvent.setup();
-    render(<CertificateCardList certificates={[older]} />);
+    render(<CertificateCardList realm="worker" certificates={[older]} />);
 
     await user.click(rangeTrigger());
     await user.click(screen.getByRole('option', { name: 'Last 7 days' }));
@@ -195,7 +196,7 @@ describe('CertificateCardList — date range filter', () => {
 
   it('offers a way back out of an empty range', async () => {
     const user = userEvent.setup();
-    render(<CertificateCardList certificates={[older]} />);
+    render(<CertificateCardList realm="worker" certificates={[older]} />);
 
     await user.click(rangeTrigger());
     await user.click(screen.getByRole('option', { name: 'Last 7 days' }));
@@ -207,7 +208,7 @@ describe('CertificateCardList — date range filter', () => {
 
   it('disables Export while the current range holds nothing, without disabling the filter', async () => {
     const user = userEvent.setup();
-    render(<CertificateCardList certificates={[older]} />);
+    render(<CertificateCardList realm="worker" certificates={[older]} />);
 
     expect(screen.getByRole('button', { name: /export/i })).toBeEnabled();
 
@@ -222,7 +223,7 @@ describe('CertificateCardList — date range filter', () => {
 
 describe('CertificateCardList — populated state', () => {
   it('renders the certificate list instead of the empty-state illustration, heading, or CTA', () => {
-    render(<CertificateCardList certificates={[certificate()]} />);
+    render(<CertificateCardList realm="worker" certificates={[certificate()]} />);
 
     expect(screen.queryByAltText('')).not.toBeInTheDocument();
     expect(screen.queryByText('No certificate earned yet')).not.toBeInTheDocument();
@@ -237,7 +238,7 @@ describe('CertificateCardList — populated state', () => {
   // it. The badge was a hardcoded "Approved" literal never derived from any
   // status; regression-pin the corrected label so it cannot silently regress.
   it('badges the certificate "Issued", never the old "Approved" literal', () => {
-    render(<CertificateCardList certificates={[certificate()]} />);
+    render(<CertificateCardList realm="worker" certificates={[certificate()]} />);
 
     expect(screen.getByText('Issued')).toBeInTheDocument();
     expect(screen.queryByText('Approved')).not.toBeInTheDocument();
@@ -248,6 +249,7 @@ describe('CertificateCardList — export controls gating', () => {
   it('renders the header actions disabled when there are no certificates, alongside the heading and description', () => {
     render(
       <CertificateCardList
+        realm="worker"
         certificates={[]}
         title="Certificates"
         description="Here's a quick summary of your earned certificates."
@@ -268,7 +270,7 @@ describe('CertificateCardList — export controls gating', () => {
   });
 
   it('stays disabled with zero certificates even when showExport is explicitly true', () => {
-    render(<CertificateCardList certificates={[]} showExport={true} />);
+    render(<CertificateCardList realm="worker" certificates={[]} showExport={true} />);
 
     expect(
       screen.getByRole('combobox', { name: 'Filter certificates by date range' }),
@@ -277,7 +279,7 @@ describe('CertificateCardList — export controls gating', () => {
   });
 
   it('enables the date-range filter and Export button once at least one certificate exists', () => {
-    render(<CertificateCardList certificates={[certificate()]} />);
+    render(<CertificateCardList realm="worker" certificates={[certificate()]} />);
 
     expect(
       screen.getByRole('combobox', { name: 'Filter certificates by date range' }),
@@ -286,7 +288,9 @@ describe('CertificateCardList — export controls gating', () => {
   });
 
   it('respects showExport={false} independently of certificate count', () => {
-    render(<CertificateCardList certificates={[certificate()]} showExport={false} />);
+    render(
+      <CertificateCardList realm="worker" certificates={[certificate()]} showExport={false} />,
+    );
 
     expect(
       screen.queryByRole('combobox', { name: 'Filter certificates by date range' }),

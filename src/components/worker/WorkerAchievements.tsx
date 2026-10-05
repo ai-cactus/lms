@@ -13,6 +13,8 @@ interface RecentCertificate {
 interface WorkerAchievementsProps {
   certificateCount: number;
   recentCertificates?: RecentCertificate[];
+  /** The certificates could not be read — never present that as "0 certificates". */
+  loadFailed?: boolean;
 }
 
 function formatDate(date: Date) {
@@ -26,14 +28,15 @@ function formatDate(date: Date) {
 export default function WorkerAchievements({
   certificateCount,
   recentCertificates = [],
+  loadFailed = false,
 }: WorkerAchievementsProps) {
   const moreCount = certificateCount - recentCertificates.length;
 
   return (
     <section className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-bold text-[#1a202c]">Courses Completed</h2>
-        {certificateCount > 0 && (
+        <h2 className="text-lg font-bold text-[#1a202c]">Certificates</h2>
+        {(certificateCount > 0 || loadFailed) && (
           <Link
             href="/worker/certificates"
             className="flex items-center gap-1 text-sm font-semibold text-[#4C6EF5] hover:underline"
@@ -45,7 +48,11 @@ export default function WorkerAchievements({
       </div>
 
       <div className="flex min-h-[200px] items-start justify-start rounded-xl border border-[#e2e8f0] bg-white px-8 py-7">
-        {recentCertificates.length > 0 ? (
+        {loadFailed ? (
+          <p role="status" className="text-sm leading-relaxed text-[#718096]">
+            Certificates couldn&apos;t be loaded right now. Please refresh the page to try again.
+          </p>
+        ) : recentCertificates.length > 0 ? (
           <div className="flex w-full flex-col gap-3">
             <p className="text-base text-[#1a202c]">
               You have earned{' '}

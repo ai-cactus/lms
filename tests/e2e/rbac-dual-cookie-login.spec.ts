@@ -143,6 +143,24 @@ function uniqueEmail(prefix: string): string {
   return `${prefix}-${crypto.randomBytes(4).toString('hex')}@dual-cookie-e2e.invalid`;
 }
 
+async function insertNotification(
+  organizationUserId: string,
+  type: string,
+  title: string,
+  message: string,
+): Promise<void> {
+  const client = await db();
+  try {
+    await client.query(
+      `INSERT INTO notifications (id, organization_user_id, type, title, message, is_read, created_at)
+       VALUES ($1, $2, $3, $4, $5, false, NOW())`,
+      [crypto.randomUUID(), organizationUserId, type, title, message],
+    );
+  } finally {
+    await client.end();
+  }
+}
+
 async function loginAs(page: Page, email: string, password: string): Promise<void> {
   const ip = `10.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`;
   await page.setExtraHTTPHeaders({ 'x-forwarded-for': ip });
@@ -531,6 +549,96 @@ test.describe('Regression: MFA-enabled admin login stamps the ADMIN cookie even 
     } finally {
       await cleanup(workerSeed);
       await cleanup(adminSeed);
+    }
+  });
+});
+
+/**
+ * Regression for BUG-47 (src/lib/auth/portal-sessions.ts `getRealmSession`,
+ * src/app/actions/notifications.ts): the removed `resolveSession()` helper
+ * ignored which portal a Server Action was actually called from and always
+ * preferred the admin session when one was present. With an admin cookie and a
+ * worker cookie belonging to two DIFFERENT accounts coexisting in one browser
+ * (the exact condition the ISSUE 4 sibling-cookie-clear fix does not prevent —
+ * two tabs, one per portal, is the realistic case: cookies are shared across
+ * every tab in a browser context), the worker portal's notification inbox
+ * silently read and could mutate the ADMIN account's data instead of the
+ * signed-in worker's own.
+ *
+ * The worker tab below is a SEPARATE page in the same context on purpose: it
+ * shares the cookie jar with the admin tab (the BUG-47 precondition) but gets
+ * its own fresh, tab-local `sessionStorage` — so it does not collide with
+ * `SessionIdentityGuard` (src/components/providers/SessionIdentityGuard.tsx),
+ * an unrelated, same-tab-account-takeover guard from the ISSUE 4 fix. Reusing
+ * one page for both logins trips THAT guard's eviction screen instead
+ * (confirmed while writing this test — the worker's own notification was
+ * already correctly in the DOM, just hidden behind the eviction overlay),
+ * which is a false positive for this scenario, not the bug under test.
+ */
+test.describe('Regression: BUG-47 — worker portal notifications read the WORKER account, never a coexisting admin account', () => {
+  test('worker notifications page shows the worker inbox, not the admin inbox, when both cookies belong to different accounts', async ({
+    page,
+    context,
+  }) => {
+    const adminEmail = uniqueEmail('bug47-admin');
+    const adminPassword = 'Bug47Admin!96';
+    const workerEmail = uniqueEmail('bug47-worker');
+    const workerPassword = 'Bug47Worker!97';
+
+    const adminSeed = await seedActiveUser(adminEmail, adminPassword, 'owner');
+    const workerSeed = await seedActiveUser(workerEmail, workerPassword, 'nurse');
+
+    const adminMessage = `ADMIN-ONLY inbox item ${crypto.randomBytes(4).toString('hex')}`;
+    const workerMessage = `WORKER-ONLY inbox item ${crypto.randomBytes(4).toString('hex')}`;
+    await insertNotification(adminSeed.orgUserId, 'STAFF_ADDED', 'Staff added', adminMessage);
+    await insertNotification(
+      workerSeed.orgUserId,
+      'COURSE_ASSIGNED',
+      'Course assigned',
+      workerMessage,
+    );
+
+    let workerTab: Page | null = null;
+    try {
+      // Worker session first; capture its FULL cookie (not just its value —
+      // this environment's `useSecureCookies` is NODE_ENV === 'production'
+      // under `next start`, per create-auth-instance.ts, so the real cookie
+      // is `__Secure-worker.session-token`, not the unprefixed dev name)
+      // before the admin login below clears it (the ISSUE 4 fix).
+      await loginAs(page, workerEmail, workerPassword);
+      await page.waitForURL('**/worker', { timeout: 15000 });
+      const workerCookie = await findCookie(context, 'worker.session-token');
+      expect(workerCookie, 'worker cookie should be set after worker login').toBeTruthy();
+
+      await loginAs(page, adminEmail, adminPassword);
+      await page.waitForURL('**/dashboard', { timeout: 15000 });
+      expect(await findCookie(context, 'worker.session-token')).toBeFalsy();
+
+      // Re-inject the WORKER account's own (real, captured) cookie so both
+      // cookies genuinely coexist for two DIFFERENT accounts — the
+      // precondition BUG-47's "prefer admin" guess mishandled. A real login
+      // can't produce this directly (ISSUE 4 clears the sibling on every
+      // login), so this models the two-tabs-racing / stale-cookie case the
+      // fix comment calls out.
+      await context.addCookies([workerCookie!]);
+      expect(await findCookie(context, 'admin.session-token')).toBeTruthy();
+      expect(await findCookie(context, 'worker.session-token')).toBeTruthy();
+
+      // A brand-new tab for the actual worker-portal visit: it shares the
+      // context's cookie jar (both sessions) but starts with empty
+      // `sessionStorage`, so `SessionIdentityGuard`'s per-tab identity check
+      // sees this as first-sight for the worker account instead of a
+      // same-tab account swap — that guard is a real, unrelated safety
+      // feature (session-isolation fix) and firing it here would be a false
+      // positive, not the bug under test.
+      workerTab = await context.newPage();
+      await workerTab.goto('/worker/notifications');
+      await expect(workerTab.getByText(workerMessage)).toBeVisible({ timeout: 15000 });
+      await expect(workerTab.getByText(adminMessage)).toHaveCount(0);
+    } finally {
+      await workerTab?.close();
+      await cleanup(adminSeed);
+      await cleanup(workerSeed);
     }
   });
 });

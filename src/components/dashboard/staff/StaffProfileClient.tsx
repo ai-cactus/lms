@@ -69,6 +69,7 @@ interface StaffProfileClientProps {
       id: string;
       name: string;
       email: string;
+      /** A short-lived signed URL (see `signAvatarUrl`), never the stored storage URI. */
       avatarUrl: string | null;
       role: string;
       firstName: string;
@@ -824,6 +825,7 @@ export default function StaffProfileClient({
 
       {viewingCertificateId && (
         <CertificateModal
+          realm="admin"
           isOpen={true}
           onClose={() => setViewingCertificateId(null)}
           certificateId={viewingCertificateId}

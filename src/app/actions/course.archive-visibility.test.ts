@@ -416,28 +416,28 @@ describe("getCourseById — the learner's entry point to an archived course", ()
     );
     setWorkerSession(LEARNER_USER_ID);
 
-    await expect(getCourseById('archived-1')).rejects.toThrow('Course not found');
+    await expect(getCourseById('worker', 'archived-1')).rejects.toThrow('Course not found');
   });
 
   it('a same-org manager who is NOT enrolled is refused — archiving retires it from their surfaces', async () => {
     courseTable.push(makeCourseRow('archived-1', 'Archived Course', new Date('2026-09-17')));
     setAdminSession('user-owner', 'owner');
 
-    await expect(getCourseById('archived-1')).rejects.toThrow('Course not found');
+    await expect(getCourseById('admin', 'archived-1')).rejects.toThrow('Course not found');
   });
 
   it('authorship buys nothing either: the creator is refused unless they are enrolled', async () => {
     courseTable.push(makeCourseRow('archived-1', 'Archived Course', new Date('2026-09-17')));
     setAdminSession(CREATOR_USER_ID, 'owner', CREATOR_ORG_USER_ID);
 
-    await expect(getCourseById('archived-1')).rejects.toThrow('Course not found');
+    await expect(getCourseById('admin', 'archived-1')).rejects.toThrow('Course not found');
   });
 
   it('CONTROL: the same manager opens the same course while it is live', async () => {
     courseTable.push(makeCourseRow('live-1', 'Live Course', null));
     setAdminSession('user-owner', 'owner');
 
-    await expect(getCourseById('live-1')).resolves.toMatchObject({ id: 'live-1' });
+    await expect(getCourseById('admin', 'live-1')).resolves.toMatchObject({ id: 'live-1' });
   });
 });
 

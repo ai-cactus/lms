@@ -13,13 +13,32 @@ import { selectDisplayEnrollments } from '@/lib/enrollment/display-selection';
 import { resolveMemberFacility } from '@/lib/facility/member-facility';
 import { DEFAULT_TZ } from '@/lib/reminders/time';
 import type { LearnerCourseRow } from '@/types/enrollment';
+import { logger } from '@/lib/logger';
+
+/**
+ * BUG-57: a failed load used to degrade to `[]`, so the learner was told they
+ * had earned "0 certificates" and nobody heard about the failure. It still
+ * must not take the whole dashboard down, so it is logged and flagged instead.
+ */
+async function loadCertificates(userId: string) {
+  try {
+    return { certificates: await getWorkerCertificates(), loadFailed: false };
+  } catch (err) {
+    logger.error({
+      msg: '[certificate] Failed to load learner dashboard certificates',
+      userId,
+      err,
+    });
+    return { certificates: [], loadFailed: true };
+  }
+}
 
 export default async function LearnerDashboard() {
   const session = await auth();
   const userId = session?.user?.id;
   const organizationUserId = session?.user?.organizationUserId;
 
-  const [allEnrollments, user, allCertificates, memberFacility] = await Promise.all([
+  const [allEnrollments, user, certificatesResult, memberFacility] = await Promise.all([
     organizationUserId
       ? prisma.enrollment.findMany({
           where: { organizationUserId },
@@ -39,10 +58,10 @@ export default async function LearnerDashboard() {
           select: { firstName: true, lastName: true },
         })
       : null,
-    // Fetch certs only when a valid session exists; fall back to [] if not authed
-    userId ? getWorkerCertificates().catch(() => []) : Promise.resolve([]),
+    userId ? loadCertificates(userId) : Promise.resolve({ certificates: [], loadFailed: false }),
     organizationUserId ? resolveMemberFacility(prisma, organizationUserId) : null,
   ]);
+  const allCertificates = certificatesResult.certificates;
   const deadlineTimeZone = memberFacility?.timezone ?? DEFAULT_TZ;
 
   // 3 most recent certificates for the achievements widget
@@ -141,6 +160,7 @@ export default async function LearnerDashboard() {
       <WorkerCourseList courses={courses} />
 
       <WorkerAchievements
+        loadFailed={certificatesResult.loadFailed}
         certificateCount={allCertificates.length}
         recentCertificates={recentCertificates.map((cert) => ({
           id: cert.id,
