@@ -77,7 +77,7 @@ export async function getStaffUsers() {
           ...staffFacilityWhere(dataFacilityIds),
         },
         include: {
-          user: true,
+          user: { select: { email: true, fullName: true, avatarUrl: true } },
           facilities: {
             where: { active: true },
             select: { facility: { select: { id: true, name: true } } },
@@ -196,7 +196,7 @@ export async function searchStaffUsers(query: string) {
         ],
       },
       include: {
-        user: true,
+        user: { select: { email: true, fullName: true } },
       },
       take: 5,
     });

@@ -85,6 +85,23 @@ describe('getCertificateDetails — the owning learner', () => {
     expect(prismaMock.certificate.findFirst).not.toHaveBeenCalled();
   });
 
+  // SEC-15: the result is returned to the browser, so `user: true` shipped the
+  // holder's password hash and MFA secret, and `organization: true` the join code.
+  it('reads only the holder name, email and organization name it returns to the client', async () => {
+    mockAdminAuth.mockResolvedValue(null);
+    mockWorkerAuth.mockResolvedValue({
+      user: { id: 'w-1', role: 'nurse', organizationId: ORG_ID, organizationUserId: HOLDER_OU },
+    });
+
+    await getCertificateDetails('worker', 'cert-1');
+
+    const { include } = prismaMock.certificate.findUnique.mock.calls[0][0];
+    expect(include.organizationUser.include).toEqual({
+      user: { select: { email: true, fullName: true } },
+      organization: { select: { name: true } },
+    });
+  });
+
   it('keeps their own certificate even with NO active facility assignment (which narrows to `[]`)', async () => {
     mockAdminAuth.mockResolvedValue(null);
     mockWorkerAuth.mockResolvedValue({

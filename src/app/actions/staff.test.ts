@@ -206,6 +206,7 @@ import {
   revokeInvite,
   getStaffDetails,
   getEnrollmentQuizResult,
+  getAssignableManagers,
   removeStaff,
   setStaffManager,
   assignCourseToStaffMember,
@@ -1410,6 +1411,12 @@ describe('getEnrollmentQuizResult — org isolation (F-010)', () => {
     const result = await getEnrollmentQuizResult(ENROLLMENT_ID);
 
     expect(result).not.toBeNull();
+    // SEC-15: only the learner's name and the org's name — never the full rows.
+    const { include } = mockEnrollmentFindUnique.mock.calls[0][0];
+    expect(include.organizationUser.include).toEqual({
+      user: { select: { email: true, fullName: true } },
+      organization: { select: { name: true } },
+    });
     expect(result?.courseName).toBe('Fire Safety');
     expect(result?.userName).toBe('Worker Name');
     expect(result?.correct).toBe(1);
@@ -2039,5 +2046,24 @@ describe('setStaffFacilities', () => {
     const result = await setStaffFacilities('target-1', ['fac-1']);
 
     expect(result).toEqual({ success: false, error: 'Failed to update facility assignments' });
+  });
+});
+
+// SEC-15: `user: true` loaded every column, password hash and MFA secret included.
+describe('getAssignableManagers — narrow user read', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockAuth.mockResolvedValue({ user: { id: 'u1', role: 'owner', organizationId: 'org-a' } });
+    mockOrgUserFindMany.mockResolvedValue([
+      { id: 'ou-2', user: { email: 'mgr@example.com', fullName: 'Manager' } },
+    ]);
+  });
+
+  it('reads only the user columns the picker shows', async () => {
+    const result = await getAssignableManagers();
+
+    expect(result).toEqual([{ id: 'ou-2', name: 'Manager', email: 'mgr@example.com' }]);
+    const { include } = mockOrgUserFindMany.mock.calls[0][0];
+    expect(include).toEqual({ user: { select: { email: true, fullName: true } } });
   });
 });
