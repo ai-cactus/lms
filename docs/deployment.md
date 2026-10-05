@@ -73,7 +73,7 @@ Restructured 2026-08-09. The critical change: **deploys are now gated.** `ci.yml
 - **`prune-images.yml`** — dispatch-only GHCR cleanup (private packages count against a 500 MB allowance).
 - **`dependabot.yml`** — npm + github-actions, grouped, framework majors excluded.
 
-`npm audit` blocks on the PR path (`strict-audit: true` in `ci.yml`) but stays report-only on the deploy workflows — `npm audit` exits non-zero identically for an advisory and a registry outage, and a registry blip must not block a hotfix. Semgrep and Trivy are report-only, and run only on PRs into `staging`/`main`, weekly, and on demand.
+`npm audit` (production dependencies, HIGH+) blocks on the PR path (`strict-audit: true` in `ci.yml`); the daily scheduled audit covers the full tree, dev tooling included, but stays report-only on the deploy workflows — `npm audit` exits non-zero identically for an advisory and a registry outage, and a registry blip must not block a hotfix. Semgrep and Trivy are report-only, and run only on PRs into `staging`/`main`, weekly, and on demand.
 
 E2E stays out of the shared gate on purpose: at ~10–14 minutes it would stall an urgent production deploy, so a direct push is gated on the fast checks and promotion PRs additionally get e2e.
 
