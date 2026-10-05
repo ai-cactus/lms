@@ -12,6 +12,7 @@ import { auth as workerAuth } from '@/auth.worker';
 import { revalidatePath } from 'next/cache';
 import { createNotification, notifyOrganizationAdmins } from '@/lib/notifications/create';
 import { CourseWithStats, CourseWithRelations, courseDetailSelect } from '@/types/course';
+import { withLearnerTimeZones } from '@/lib/course/learner-time-zone';
 import { QuizQuestion } from '@/types/quiz';
 import {
   remapOptionExplanations,
@@ -20,7 +21,7 @@ import {
 } from '@/lib/quiz/options';
 import type { StaffEntry } from '@/types/enrollment';
 import { logger } from '@/lib/logger';
-import { resolveMemberFacilityId } from '@/lib/facility/member-facility';
+import { resolveMemberFacility } from '@/lib/facility/member-facility';
 import {
   resolveDataFacilityIds,
   staffFacilityWhere,
@@ -33,7 +34,11 @@ import {
   ARCHIVED_COURSE_ADMIN_MESSAGE,
   ARCHIVED_COURSE_LEARNER_MESSAGE,
 } from '@/lib/course/archived';
-import { defaultRetakeDueAt, parseRetakeDueDate } from '@/lib/course/retake-deadline';
+import {
+  defaultRetakeDueAt,
+  parseRetakeDueDate,
+  retakeDueAtIfNotPast,
+} from '@/lib/course/retake-deadline';
 import { notifyLearnersCourseCancelled } from '@/lib/course/notify-archived';
 import { resolveDashboardScope } from '@/lib/dashboard/scope';
 import { coveragePercentages, passingScoreFor } from '@/lib/dashboard/metrics';
@@ -46,7 +51,12 @@ import { loadDashboardSnapshot } from '@/lib/dashboard/snapshot';
 import { computeCompletionPercent } from '@/lib/facility/metrics';
 import { buildCourseThumbnailUrl, firstLessonThumbnailSelect } from '@/lib/video/thumbnail';
 import { resolveOnCompletion } from '@/lib/reminders/sweep';
-import { combineDateAndTime, isPastDeadlineChange } from '@/lib/reminders/deadline';
+import {
+  combineDateAndTime,
+  isPastDeadlineChange,
+  type DeadlinePassedLearner,
+} from '@/lib/reminders/deadline';
+import { DEFAULT_TZ } from '@/lib/reminders/time';
 import { assignCourseToRoles, enrollUsers } from './enrollment';
 import {
   buildPendingAssignment,
@@ -397,7 +407,7 @@ export async function getCourseById(
   // rather than rediscover it. `archivedAt` is selected alongside the shared
   // detail projection rather than added to it, so it stays an input to this
   // decision and never becomes part of the UI's course contract.
-  const course = await rawPrisma.course.findUnique({
+  const found = await rawPrisma.course.findUnique({
     where: { id: courseId },
     select: {
       ...courseDetailSelect,
@@ -407,9 +417,11 @@ export async function getCourseById(
     },
   });
 
-  if (!course) {
+  if (!found) {
     throw new CourseAccessError('notFound');
   }
+  // Before any roster narrowing, which would hide the facility the zone is read from.
+  const course = withLearnerTimeZones(found);
 
   // Allow access if the user is the creator, is enrolled, or is an admin-tier
   // member of the course's organization holding course.read — owners/admins/HR/
@@ -521,7 +533,7 @@ export async function getCourseForOrgView(courseId: string): Promise<CourseWithR
     throw new CourseAccessError('forbidden');
   }
 
-  const course = await prisma.course.findFirst({
+  const found = await prisma.course.findFirst({
     where: { id: courseId, type: 'video', isGlobal: true, status: 'published' },
     select: {
       ...courseDetailSelect,
@@ -534,9 +546,11 @@ export async function getCourseForOrgView(courseId: string): Promise<CourseWithR
     },
   });
 
-  if (!course) {
+  if (!found) {
     throw new CourseAccessError('notFound');
   }
+  // Before any roster narrowing, which would hide the facility the zone is read from.
+  const course = withLearnerTimeZones(found);
 
   // Same roster split as getCourseById: `user.read` is the staff-roster gate, so
   // a manager without it (clinical director) sees only their own enrolment.
@@ -665,12 +679,13 @@ export async function updateCourse(
 /**
  * Publish a course, replaying any assignment the F-051 quality gate deferred.
  *
- * The published course is returned with two advisory flags, neither of which
- * fails the publish: `assignmentFailed` when the deferred assignment could not
- * be replayed at all, and `assignmentDeadlineExpired` when it WAS replayed but
- * its parked deadline had already elapsed and was dropped in favour of each
- * recipient's completion window. Both are for the admin to see — the course is
- * published either way.
+ * The published course is returned with advisory fields, none of which fails
+ * the publish: `assignmentFailed` when the deferred assignment could not be
+ * replayed at all; `assignmentDeadlineExpired` when it WAS replayed but its
+ * parked deadline had passed everywhere and was dropped in favour of each
+ * recipient's completion window; and `assignmentDeadlinePassed`, the recipients
+ * the replay left out because that deadline had passed in their zone only
+ * (Q-32). All are for the admin to see — the course is published either way.
  */
 export async function publishCourse(courseId: string, opts?: { acknowledgeWarnings?: boolean }) {
   const session = await getRealmSession('admin');
@@ -750,6 +765,9 @@ export async function publishCourse(courseId: string, opts?: { acknowledgeWarnin
   // it is reported back and the admin re-assigns from the training dashboard.
   let assignmentFailed = false;
   let assignmentDeadlineExpired = false;
+  // Q-32: recipients the replay left out because the parked deadline had passed
+  // where they are, though not everywhere.
+  let assignmentDeadlinePassed: DeadlinePassedLearner[] = [];
   if (existing.reviewRequired && opts?.acknowledgeWarnings && existing.pendingAssignment !== null) {
     const pending = parsePendingAssignment(existing.pendingAssignment, { courseId });
     assignmentFailed = pending === null;
@@ -820,6 +838,7 @@ export async function publishCourse(courseId: string, opts?: { acknowledgeWarnin
             reason: replay.refusedReason,
           });
         } else {
+          assignmentDeadlinePassed = replay.deadlinePassed ?? [];
           logger.info({
             msg: '[course] Deferred assignment replayed on publish',
             courseId,
@@ -871,7 +890,13 @@ export async function publishCourse(courseId: string, opts?: { acknowledgeWarnin
   // BUG-51: `success` makes the result a discriminated union with the refusal
   // arms above. Without it a caller testing `!result.success` read every
   // successful publish as a refusal.
-  return { ...course, success: true as const, assignmentFailed, assignmentDeadlineExpired };
+  return {
+    ...course,
+    success: true as const,
+    assignmentFailed,
+    assignmentDeadlineExpired,
+    assignmentDeadlinePassed,
+  };
 }
 
 /**
@@ -1542,6 +1567,8 @@ export async function createFullCourse(data: {
     newInvited: 0,
     failed: [] as string[],
     skipped: [] as string[],
+    /** Q-32: left out because the due date had already passed where they are. */
+    deadlinePassed: [] as DeadlinePassedLearner[],
   };
 
   // Deferred while the quality gate holds the course: publishCourse replays the
@@ -1559,6 +1586,7 @@ export async function createFullCourse(data: {
       inviteResults.newInvited = enrollResults.newInvited.length;
       inviteResults.failed = enrollResults.failed;
       inviteResults.skipped = enrollResults.alreadyEnrolled;
+      inviteResults.deadlinePassed = enrollResults.deadlinePassed ?? [];
     } catch (enrollError) {
       logger.error({
         msg: '[course] Failed to assign workers during course creation',
@@ -1580,6 +1608,7 @@ export async function createFullCourse(data: {
     invited: inviteResults.newInvited,
     failed: inviteResults.failed.length,
     skipped: inviteResults.skipped.length,
+    deadlinePassed: inviteResults.deadlinePassed.length,
   });
   revalidatePath('/dashboard/training');
   return {
@@ -2378,18 +2407,19 @@ export async function assignRetake(
     throw new Error('Insufficient permissions');
   }
 
-  // Validated before anything is read or written: the dialog shows this to the
-  // admin, so it is returned rather than thrown (production redacts throws).
+  // An unreadable date is refused before anything is read or written: the
+  // dialog shows this to the admin, so it is returned rather than thrown
+  // (production redacts throws). Whether the date has already passed depends on
+  // the learner's zone, so that is checked once they are known.
   const now = new Date();
-  const deadline =
-    dueDate === undefined ? { dueAt: defaultRetakeDueAt(now) } : parseRetakeDueDate(dueDate, now);
-  if ('refusedReason' in deadline) {
+  const pickedDueDate = dueDate === undefined ? null : parseRetakeDueDate(dueDate);
+  if (pickedDueDate && 'refusedReason' in pickedDueDate) {
     logger.warn({
       msg: '[course] assignRetake refused — invalid due date',
       enrollmentId,
       userId: session.user.id,
     });
-    return { success: false, refusedReason: deadline.refusedReason };
+    return { success: false, refusedReason: pickedDueDate.refusedReason };
   }
 
   const lockedEnrollment = await prisma.enrollment.findUnique({
@@ -2453,13 +2483,28 @@ export async function assignRetake(
     };
   }
 
+  // Resolved fresh rather than inherited from the locked enrollment: a retake is
+  // new training, so it belongs to wherever the learner is posted now — and its
+  // deadline ends at 11:59 PM in that facility's zone (BUG-12.3).
+  const memberFacility = await resolveMemberFacility(prisma, lockedEnrollment.organizationUserId);
+  const timeZone = memberFacility?.timezone ?? DEFAULT_TZ;
+  const deadline = pickedDueDate
+    ? retakeDueAtIfNotPast(pickedDueDate.dueDate, timeZone, now)
+    : { dueAt: defaultRetakeDueAt(now, timeZone) };
+  if ('refusedReason' in deadline) {
+    logger.warn({
+      msg: '[course] assignRetake refused — due date has passed',
+      enrollmentId,
+      userId: session.user.id,
+    });
+    return { success: false, refusedReason: deadline.refusedReason };
+  }
+
   const retakeEnrollment = await prisma.enrollment.create({
     data: {
       organizationUserId: lockedEnrollment.organizationUserId,
       courseId: lockedEnrollment.courseId,
-      // Resolved fresh rather than inherited from the locked enrollment: a retake
-      // is new training, so it belongs to wherever the learner is posted now.
-      facilityId: await resolveMemberFacilityId(prisma, lockedEnrollment.organizationUserId),
+      facilityId: memberFacility?.facilityId ?? null,
       status: 'enrolled',
       progress: 100,
       retakeOf: lockedEnrollment.id,

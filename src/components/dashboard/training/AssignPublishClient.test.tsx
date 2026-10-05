@@ -276,6 +276,60 @@ describe('AssignPublishClient — submit payloads', () => {
     expect(settings).not.toHaveProperty('dueAt');
   });
 
+  // Q-32: the server skips holders whose deadline has already passed where they
+  // are; everyone else is assigned, so the skipped count rides on the success.
+  it('role mode lists the holders the server skipped on the success dialog', async () => {
+    const user = userEvent.setup();
+    mockAssignCourseToRoles.mockResolvedValue({
+      assignmentId: 'assign-1',
+      holderCount: 3,
+      enrolled: 1,
+      alreadyEnrolled: 0,
+      failed: 0,
+      deadlinePassed: [
+        { email: 'a@test.com', timeZone: 'Pacific/Kiritimati' },
+        { email: 'b@test.com', timeZone: 'Pacific/Kiritimati' },
+      ],
+      targetRoles: ['nurse'],
+    });
+    renderClient();
+
+    await user.click(screen.getByRole('button', { name: 'Roles' }));
+    await user.click(screen.getByTestId('role-target-picker'));
+    await user.type(screen.getByPlaceholderText('Select due date'), '2026-12-01');
+    await user.click(screen.getByRole('button', { name: 'Assign Course' }));
+
+    expect(await screen.findByText('Course Assigned Successfully')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Due date already passed for 2 learners (Pacific/Kiritimati), so they were not assigned.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('people mode shows it as the error when nobody could be assigned', async () => {
+    const user = userEvent.setup();
+    mockEnrollUsers.mockResolvedValue({
+      success: [],
+      alreadyEnrolled: [],
+      newInvited: [],
+      failed: [],
+      deadlinePassed: [{ email: 'worker@test.com', timeZone: 'Pacific/Kiritimati' }],
+    });
+    renderClient();
+
+    await user.type(screen.getByPlaceholderText('Add people, emails or names'), 'worker@test.com,');
+    await user.type(screen.getByPlaceholderText('Select due date'), '2026-12-01');
+    await user.click(screen.getByRole('button', { name: 'Assign Course' }));
+
+    expect(
+      await screen.findByText(
+        'Due date already passed for 1 learner (Pacific/Kiritimati), so they were not assigned.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Course Assigned Successfully')).not.toBeInTheDocument();
+  });
+
   it('round-trips a wizard-set dueWindowDays through the people-mode submit instead of nulling it', async () => {
     const user = userEvent.setup();
     renderClient({ existingSettings: existingSettings({ dueWindowDays: 45 }) });

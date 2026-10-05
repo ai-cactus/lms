@@ -6,7 +6,15 @@
  * invalid-tz fallback, midnight-straddling instants, and addDays arithmetic.
  */
 import { describe, it, expect } from 'vitest';
-import { DEFAULT_TZ, localDateKey, startOfDayInTz, addDays, diffInDaysInTz } from './time';
+import {
+  DEFAULT_TZ,
+  localDateKey,
+  startOfDayInTz,
+  addDays,
+  diffInDaysInTz,
+  zonedWallClockToInstant,
+  formatDateInTz,
+} from './time';
 
 describe('time utilities', () => {
   describe('localDateKey', () => {
@@ -180,6 +188,73 @@ describe('time utilities', () => {
       const a = new Date('2024-01-18T12:00:00Z');
       const b = new Date('2024-01-15T12:00:00Z');
       expect(diffInDaysInTz(a, b, 'Invalid/Zone')).toBe(diffInDaysInTz(a, b, DEFAULT_TZ));
+    });
+  });
+  describe('zonedWallClockToInstant', () => {
+    const DUE_30_SEPT = new Date('2026-09-30T23:59:00.000Z');
+
+    it('ends 30 Sept at 23:59 in a UTC+14 zone (Pacific/Kiritimati)', () => {
+      expect(zonedWallClockToInstant(DUE_30_SEPT, 'Pacific/Kiritimati').toISOString()).toBe(
+        '2026-09-30T09:59:00.000Z',
+      );
+    });
+
+    it('ends 30 Sept at 23:59 in a UTC−10 zone (Pacific/Honolulu)', () => {
+      expect(zonedWallClockToInstant(DUE_30_SEPT, 'Pacific/Honolulu').toISOString()).toBe(
+        '2026-10-01T09:59:00.000Z',
+      );
+    });
+
+    it('is the identity in UTC', () => {
+      expect(zonedWallClockToInstant(DUE_30_SEPT, 'UTC').toISOString()).toBe(
+        DUE_30_SEPT.toISOString(),
+      );
+    });
+
+    it('takes the offset in force on a DST-change day (NY, 2024-03-10 and 2024-11-03)', () => {
+      // Spring forward at 02:00: 23:59 that evening is EDT (UTC−4).
+      expect(
+        zonedWallClockToInstant(new Date('2024-03-10T23:59:00Z'), 'America/New_York').toISOString(),
+      ).toBe('2024-03-11T03:59:00.000Z');
+      // Fall back at 02:00: 23:59 that evening is EST (UTC−5).
+      expect(
+        zonedWallClockToInstant(new Date('2024-11-03T23:59:00Z'), 'America/New_York').toISOString(),
+      ).toBe('2024-11-04T04:59:00.000Z');
+    });
+
+    it('lands on the same local date and time it was given', () => {
+      const instant = zonedWallClockToInstant(DUE_30_SEPT, 'Asia/Kolkata');
+      expect(localDateKey(instant, 'Asia/Kolkata')).toBe('2026-09-30');
+      expect(instant.toISOString()).toBe('2026-09-30T18:29:00.000Z');
+    });
+
+    it('falls back to DEFAULT_TZ for an invalid timezone', () => {
+      expect(zonedWallClockToInstant(DUE_30_SEPT, 'Invalid/Zone').toISOString()).toBe(
+        zonedWallClockToInstant(DUE_30_SEPT, DEFAULT_TZ).toISOString(),
+      );
+    });
+  });
+
+  describe('formatDateInTz', () => {
+    it('reads the date in the given zone, not the host zone', () => {
+      const endOf30SeptHonolulu = new Date('2026-10-01T09:59:00.000Z');
+      expect(formatDateInTz(endOf30SeptHonolulu, 'Pacific/Honolulu')).toBe('September 30, 2026');
+      expect(formatDateInTz(endOf30SeptHonolulu, 'UTC')).toBe('October 1, 2026');
+    });
+
+    it('accepts an ISO string and custom options', () => {
+      expect(
+        formatDateInTz('2026-09-30T09:59:00.000Z', 'Pacific/Kiritimati', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+        }),
+      ).toBe('Sep 30, 2026');
+    });
+
+    it('falls back to DEFAULT_TZ for an invalid timezone', () => {
+      const instant = new Date('2026-10-01T02:00:00.000Z');
+      expect(formatDateInTz(instant, 'Invalid/Zone')).toBe(formatDateInTz(instant, DEFAULT_TZ));
     });
   });
 });

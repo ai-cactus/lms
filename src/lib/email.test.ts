@@ -205,6 +205,7 @@ describe('sendCoursesAssignedEmail / sendCourseLaunchEmail', () => {
       'Staff One',
       [{ title: 'Safety Training', dueAt }],
       'Acme Corp',
+      'UTC',
     );
 
     expect(result).toEqual(expect.objectContaining({ success: true }));
@@ -227,6 +228,7 @@ describe('sendCoursesAssignedEmail / sendCourseLaunchEmail', () => {
         { title: 'Fire Safety', dueAt: null },
       ],
       'Acme Corp',
+      'UTC',
     );
 
     const call = mockSendMail.mock.calls[0][0];
@@ -244,6 +246,27 @@ describe('sendCoursesAssignedEmail / sendCourseLaunchEmail', () => {
     expect(html).toContain('October 1, 2026');
   });
 
+  // BUG-12.3: a deadline ends at 11:59 PM in the learner's facility zone, which
+  // is already the next day in UTC — the email must show the date that was picked.
+  it.each([
+    ['Pacific/Honolulu (UTC−10)', 'Pacific/Honolulu', '2026-10-01T09:59:00.000Z'],
+    ['Pacific/Kiritimati (UTC+14)', 'Pacific/Kiritimati', '2026-09-30T09:59:00.000Z'],
+  ])('shows the due date as it falls in %s', async (_label, timeZone, dueAtIso) => {
+    mockSendMail.mockResolvedValue({ messageId: 'mid-course-zone' });
+
+    await sendCoursesAssignedEmail(
+      'staff@example.com',
+      'Staff One',
+      [{ title: 'Safety Training', dueAt: new Date(dueAtIso) }],
+      'Acme Corp',
+      timeZone,
+    );
+
+    const html = mockSendMail.mock.calls[0][0].html as string;
+    expect(html).toContain('September 30, 2026');
+    expect(html).not.toContain('October 1, 2026');
+  });
+
   it('omits the due-date line for a course whose dueAt is null', async () => {
     mockSendMail.mockResolvedValue({ messageId: 'mid-course-null-due' });
 
@@ -252,6 +275,7 @@ describe('sendCoursesAssignedEmail / sendCourseLaunchEmail', () => {
       'Staff One',
       [{ title: 'Fire Safety', dueAt: null }],
       'Acme Corp',
+      'UTC',
     );
 
     const html = mockSendMail.mock.calls[0][0].html as string;
@@ -264,6 +288,7 @@ describe('sendCoursesAssignedEmail / sendCourseLaunchEmail', () => {
       'Staff One',
       [],
       'Acme Corp',
+      'UTC',
     );
 
     expect(result).toEqual({ success: false, error: 'No courses to announce' });
@@ -279,6 +304,7 @@ describe('sendCoursesAssignedEmail / sendCourseLaunchEmail', () => {
       'Safety Training',
       'Acme Corp',
       dueAt,
+      'UTC',
     );
 
     expect(result).toEqual(expect.objectContaining({ success: true }));

@@ -272,11 +272,14 @@ export const courseDetailSelect = {
            * `take: 1`: a facility-scoped viewer's roster drops the rows outside
            * their scope first, so the pick must survive that narrowing. Empty for
            * a member with no active assignment.
+           *
+           * `timezone` is for the learner's own zone (BUG-12.3), which must be
+           * read from the oldest row BEFORE that narrowing — see `learnerTimeZone`.
            */
           facilities: {
             where: { active: true },
             orderBy: OLDEST_ASSIGNMENT_FIRST,
-            select: { facility: { select: { id: true, name: true } } },
+            select: { facility: { select: { id: true, name: true, timezone: true } } },
           },
         },
       },
@@ -316,7 +319,17 @@ export const courseDetailSelect = {
   },
 } satisfies Prisma.CourseSelect;
 
-export type CourseWithRelations = Prisma.CourseGetPayload<{ select: typeof courseDetailSelect }>;
+type CourseDetailPayload = Prisma.CourseGetPayload<{ select: typeof courseDetailSelect }>;
+
+export type CourseWithRelations = Omit<CourseDetailPayload, 'enrollments'> & {
+  enrollments: (CourseDetailPayload['enrollments'][number] & {
+    /**
+     * The learner's own facility zone (BUG-12.3), from their oldest active
+     * facility before any scope narrowing — see `withLearnerTimeZones`.
+     */
+    learnerTimeZone: string;
+  })[];
+};
 
 /**
  * One row of a course's Certificates tab (`getCourseCertificates`). `active` is

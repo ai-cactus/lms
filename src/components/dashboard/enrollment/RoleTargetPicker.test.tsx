@@ -47,19 +47,22 @@ function renderPicker(
     onSelectionChange?: (roles: UserRole[]) => void;
     mode?: RoleTargetPickerMode;
     onLiveUpdateError?: (message: string) => void;
+    onLiveUpdateNotice?: (message: string) => void;
   } = {},
 ) {
   const onSelectionChange = overrides.onSelectionChange ?? vi.fn();
   const onLiveUpdateError = overrides.onLiveUpdateError ?? vi.fn();
+  const onLiveUpdateNotice = overrides.onLiveUpdateNotice ?? vi.fn();
   const utils = render(
     <RoleTargetPicker
       selectedRoles={overrides.selectedRoles ?? []}
       onSelectionChange={onSelectionChange}
       mode={overrides.mode ?? { kind: 'draft' }}
       onLiveUpdateError={onLiveUpdateError}
+      onLiveUpdateNotice={onLiveUpdateNotice}
     />,
   );
-  return { ...utils, onSelectionChange, onLiveUpdateError };
+  return { ...utils, onSelectionChange, onLiveUpdateError, onLiveUpdateNotice };
 }
 
 async function openDropdown(user: ReturnType<typeof userEvent.setup>) {
@@ -146,6 +149,30 @@ describe('RoleTargetPicker — confirm cancel and server refusal (item 9)', () =
     expect(
       screen.getByText('You do not have permission to remove roles from this assignment.'),
     ).toBeInTheDocument();
+  });
+});
+
+describe('RoleTargetPicker — holders left out by a passed deadline (Q-32)', () => {
+  it('commits a live widen and reports the holders the server skipped', async () => {
+    mockSetRoleAssignmentTargets.mockResolvedValue({
+      success: true,
+      enrolled: 1,
+      deadlinePassed: [{ email: 'a@test.com', timeZone: 'Pacific/Kiritimati' }],
+    });
+    const user = userEvent.setup();
+    const { onSelectionChange, onLiveUpdateNotice, onLiveUpdateError } = renderPicker({
+      selectedRoles: [],
+      mode: LIVE_REVOKABLE,
+    });
+
+    await openDropdown(user);
+    await user.click(screen.getByRole('checkbox', { name: 'Nurse' }));
+
+    await waitFor(() => expect(onSelectionChange).toHaveBeenCalledWith(['nurse']));
+    expect(onLiveUpdateNotice).toHaveBeenCalledWith(
+      'Due date already passed for 1 learner (Pacific/Kiritimati), so they were not assigned.',
+    );
+    expect(onLiveUpdateError).not.toHaveBeenCalled();
   });
 });
 

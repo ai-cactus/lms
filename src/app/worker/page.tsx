@@ -10,6 +10,8 @@ import WorkerEmptyState from '@/components/worker/WorkerEmptyState';
 import { getWorkerCertificates } from '@/app/actions/certificate';
 import { computeDisplayProgress } from '@/lib/enrollment-progress';
 import { selectDisplayEnrollments } from '@/lib/enrollment/display-selection';
+import { resolveMemberFacility } from '@/lib/facility/member-facility';
+import { DEFAULT_TZ } from '@/lib/reminders/time';
 import type { LearnerCourseRow } from '@/types/enrollment';
 import { logger } from '@/lib/logger';
 
@@ -36,7 +38,7 @@ export default async function LearnerDashboard() {
   const userId = session?.user?.id;
   const organizationUserId = session?.user?.organizationUserId;
 
-  const [allEnrollments, user, certificatesResult] = await Promise.all([
+  const [allEnrollments, user, certificatesResult, memberFacility] = await Promise.all([
     organizationUserId
       ? prisma.enrollment.findMany({
           where: { organizationUserId },
@@ -57,8 +59,10 @@ export default async function LearnerDashboard() {
         })
       : null,
     userId ? loadCertificates(userId) : Promise.resolve({ certificates: [], loadFailed: false }),
+    organizationUserId ? resolveMemberFacility(prisma, organizationUserId) : null,
   ]);
   const allCertificates = certificatesResult.certificates;
+  const deadlineTimeZone = memberFacility?.timezone ?? DEFAULT_TZ;
 
   // 3 most recent certificates for the achievements widget
   const recentCertificates = allCertificates.slice(0, 3);
@@ -77,6 +81,7 @@ export default async function LearnerDashboard() {
       passingScore: picked.course.quiz?.passingScore ?? null,
     }),
     deadline: picked.dueAt,
+    deadlineTimeZone,
     duration: picked.course.duration || undefined,
     quizAttempts: picked.quizAttempts,
     passingScore: picked.course.quiz?.passingScore ?? null,

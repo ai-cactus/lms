@@ -638,7 +638,7 @@ describe('getCourseById', () => {
   const CREATOR_USER_ID = 'creator-user-1';
   const CREATOR_ORG_USER_ID = 'ou-creator-1';
 
-  type FacilityRef = { id: string; name: string };
+  type FacilityRef = { id: string; name: string; timezone?: string | null };
 
   function makeEnrollment(
     userId: string,
@@ -852,7 +852,7 @@ describe('getCourseById', () => {
       expect(select.enrollments.select.organizationUser.select.facilities).toEqual({
         where: { active: true },
         orderBy: [{ joinedAt: 'asc' }, { id: 'asc' }],
-        select: { facility: { select: { id: true, name: true } } },
+        select: { facility: { select: { id: true, name: true, timezone: true } } },
       });
       expect(select.enrollments.select.facility).toEqual({ select: { id: true, name: true } });
     });
@@ -891,6 +891,38 @@ describe('getCourseById', () => {
       const [row] = (await getCourseById('admin', 'course-1')).enrollments;
 
       expect(row.organizationUser.facilities).toEqual([{ facility: facB }]);
+    });
+
+    // BUG-12.3: the retake default is picked in the learner's own zone — their
+    // OLDEST facility, as the server's assignRetake resolves it — so it is read
+    // before the supervisor's scope hides that facility from the row.
+    it("gives a supervisor of B the learner's zone from their oldest facility A, though A is hidden", async () => {
+      const zonedA = { ...facA, timezone: 'Pacific/Kiritimati' };
+      const zonedB = { ...facB, timezone: 'Pacific/Honolulu' };
+      const multi = makeEnrollment('staff-m', 1, { current: [zonedA, zonedB], assigned: zonedA });
+      mockRawCourseFindUnique.mockResolvedValue(makeCourse([multi]));
+      mockListAccessibleFacilities.mockResolvedValue([{ id: 'fac-b' }]);
+      mockOrgUserFindMany.mockResolvedValue([{ id: 'ou-staff-m' }]);
+      setAdminSession('supervisor-viewer', 'supervisor');
+
+      const [row] = (await getCourseById('admin', 'course-1')).enrollments;
+
+      expect(row.organizationUser.facilities).toEqual([{ facility: zonedB }]);
+      expect(row.learnerTimeZone).toBe('Pacific/Kiritimati');
+    });
+
+    it('falls back to America/New_York for a learner with no facility or no zone', async () => {
+      const unplaced = makeEnrollment('staff-u', 1);
+      const unzoned = makeEnrollment('staff-z', 1, { current: [facA] });
+      mockRawCourseFindUnique.mockResolvedValue(makeCourse([unplaced, unzoned]));
+      setAdminSession('owner-viewer', 'owner');
+
+      const rows = (await getCourseById('admin', 'course-1')).enrollments;
+
+      expect(rows.map((row) => row.learnerTimeZone)).toEqual([
+        'America/New_York',
+        'America/New_York',
+      ]);
     });
 
     it('a member with no current facility and no stamp comes through without error', async () => {

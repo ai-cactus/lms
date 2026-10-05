@@ -176,6 +176,7 @@ export const ENROLLMENT_CONTEXT_SELECT = {
       user: { select: { email: true, fullName: true } },
       facilities: {
         where: { active: true },
+        orderBy: { joinedAt: 'asc' },
         take: 1,
         select: { facility: { select: { timezone: true } } },
       },
@@ -312,6 +313,7 @@ export function toSummaryItem(
     recipientRole,
     courseTitle: row.courseTitle,
     dueAt: row.dueAt,
+    timeZone: row.timezone,
     workerName: row.workerName,
     daysOverdue: daysOverdueFor(row, now),
     attemptsRemaining: row.attemptsRemaining,

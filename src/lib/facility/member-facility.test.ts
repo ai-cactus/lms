@@ -47,7 +47,7 @@ describe('resolveMemberFacilityId', () => {
     expect(mockFindFirst).toHaveBeenCalledWith({
       where: { organizationUserId: 'ou-1', active: true },
       orderBy: [{ joinedAt: 'asc' }, { id: 'asc' }],
-      select: { facilityId: true },
+      select: { facilityId: true, facility: { select: { timezone: true } } },
     });
   });
 });
@@ -94,7 +94,11 @@ describe('resolveMemberFacilityIds (batch)', () => {
     expect(mockFindMany).toHaveBeenCalledWith({
       where: { organizationUserId: { in: ['ou-1', 'ou-2'] }, active: true },
       orderBy: [{ joinedAt: 'asc' }, { id: 'asc' }],
-      select: { organizationUserId: true, facilityId: true },
+      select: {
+        organizationUserId: true,
+        facilityId: true,
+        facility: { select: { timezone: true } },
+      },
     });
   });
 });

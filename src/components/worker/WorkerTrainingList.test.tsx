@@ -21,6 +21,7 @@ function baseCourse(overrides: Record<string, unknown> = {}) {
   return {
     id: 'course-1',
     title: 'Bloodborne Pathogens',
+    deadlineTimeZone: 'America/New_York',
     status: 'assigned',
     progress: 0,
     ...overrides,

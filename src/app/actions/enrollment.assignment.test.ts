@@ -279,12 +279,13 @@ describe('enrollUsers — settings tri-state (Phase 1 sink hardening): an indivi
     // No cadence controls at all on this surface — the org's ladder stands untouched.
     expect(mockStageUpsert).not.toHaveBeenCalled();
     // The row is still linked (not skipped) and the worker's own enrollment
-    // still gets the admin's chosen deadline.
+    // still gets the admin's chosen deadline — as that wall-clock time in their
+    // facility zone (BUG-12.3); a worker with no facility falls back to New York.
     expect(mockEnrollmentCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           assignmentId: 'existing-assignment-1',
-          dueAt: new Date(chosenDeadline),
+          dueAt: new Date('2027-01-01T05:00:00.000Z'),
         }),
       }),
     );
@@ -349,7 +350,10 @@ describe('enrollUsers — D-F: a past deadline is refused only when it CHANGES t
     vi.useRealTimers();
   });
 
-  it('re-submitting the SAME past deadline is allowed — a late joiner can still be added to an already-overdue course', async () => {
+  // Q-32 (ruled 2026-09-29): the call is no longer refused, but nobody is
+  // enrolled into a deadline that has already passed for them — the late joiner
+  // is left out and reported, so the admin can give them a date they can meet.
+  it('re-submitting the SAME past deadline is not refused; the late joiner is reported, not enrolled overdue', async () => {
     mockAssignmentFindFirst.mockResolvedValue({
       id: 'existing-assignment-1',
       dueAt: STORED_PAST_DUE_AT,
@@ -366,7 +370,8 @@ describe('enrollUsers — D-F: a past deadline is refused only when it CHANGES t
 
     expect(result.refusedReason).toBeUndefined();
     expect(mockAssignmentUpdate).toHaveBeenCalled();
-    expect(mockEnrollmentCreate).toHaveBeenCalled();
+    expect(mockEnrollmentCreate).not.toHaveBeenCalled();
+    expect(result.deadlinePassed).toEqual([{ email: 'w@x.com', timeZone: 'America/New_York' }]);
   });
 
   it('submitting a DIFFERENT past deadline is refused, by return, before any write', async () => {

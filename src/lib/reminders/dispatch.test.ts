@@ -302,6 +302,9 @@ describe('dispatchLadderStage', () => {
           to: 'admin@test.com',
           recipientRole: 'escalation',
           stage: 'ADMIN_PRE_DEADLINE_REMINDER',
+          // The learner's zone travels with the deadline, so the template reads
+          // its date where the learner is (BUG-12.3).
+          timeZone: 'America/New_York',
         }),
       );
       // daysOverdue passed to the email template must be 0 — the deadline hasn't passed.

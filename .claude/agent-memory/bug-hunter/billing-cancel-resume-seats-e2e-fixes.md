@@ -10,8 +10,8 @@ From the `bugfix/billing-cancel-resume-seats` branch (PR #525), extending
 
 **If `next build`/`next dev` fails with "Turbopack is not supported on this platform… Only
 WebAssembly (WASM) bindings were loaded"**, the native `@next/swc-*` binding is missing from
-`node_modules`. Run a real `npm ci`. A `next/font` `ETIMEDOUT` means there is no egress to
-Google Fonts. That was a 2026-08 sandbox-only condition: the current environment has
+`node_modules`. Run a real `npm ci`. (Fonts no longer need egress: since TOOL-26 every
+font is `next/font/local`.) That was a 2026-08 sandbox-only condition: the current environment has
 `@next/swc-linux-x64-gnu` and runs `npm run e2e:local`. CI does NOT run e2e on feature PRs,
 so never defer e2e verification to CI. Run it locally.
 

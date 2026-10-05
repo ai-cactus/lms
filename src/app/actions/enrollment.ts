@@ -36,7 +36,11 @@ import {
 } from '@/lib/enrollment/assignment';
 import { assignmentFacilityScope } from '@/lib/enrollment/assignment-facility-scope';
 import { isOrgWideFacilityRole } from '@/lib/facility/org-wide-roles';
-import { combineDateAndTime, isPastDeadlineChange } from '@/lib/reminders/deadline';
+import {
+  combineDateAndTime,
+  isPastDeadlineChange,
+  type DeadlinePassedLearner,
+} from '@/lib/reminders/deadline';
 import { captureServer } from '@/lib/analytics/server';
 import { analyticsContextFrom } from '@/lib/analytics/identity';
 import { toCountBand } from '@/lib/analytics/events';
@@ -54,6 +58,10 @@ const REVIEW_GATE_ASSIGN_MESSAGE =
 
 /** D-F refusal text, matching the staff-profile modal's own wording. */
 const PAST_DEADLINE_ASSIGN_MESSAGE = 'The deadline must be in the future.';
+
+/** Refusal text for a deadline that is not a date, matching `assignCourseToRoles`. */
+const UNREADABLE_DEADLINE_ASSIGN_MESSAGE =
+  "That completion deadline couldn't be read. Please pick the date again.";
 
 /**
  * Refusal text for a course that is still a draft when the first enrollment
@@ -274,6 +282,12 @@ export interface EnrollUsersResult {
   /** Present only when `options.deferWorkerNotification` was set. */
   deferred?: DeferredWorkerNotification[];
   /**
+   * Q-32: members left out because the deadline had already passed in their
+   * facility zone. Present only when there is at least one; render it with
+   * `describeDeadlinePassed`.
+   */
+  deadlinePassed?: DeadlinePassedLearner[];
+  /**
    * Set when the call was refused outright — nothing was assigned, enrolled,
    * invited or emailed. Carries the user-facing reason; see
    * {@link REVIEW_GATE_ASSIGN_MESSAGE} and `BILLING_GATE_ASSIGN_MESSAGE`.
@@ -444,8 +458,30 @@ export async function enrollUsers(
   const scheduleAt = submittedScheduleAt ?? null;
   const deadlineScope = options?.deadlineScope ?? 'assignment';
 
-  // D-F: refuse a past deadline only when it would CHANGE the stored one, and
-  // refuse by return — a thrown message is redacted in production builds.
+  // BUG-12.2: an unparseable deadline must be refused, not written to the shared
+  // row as an Invalid Date. Refused by return — a thrown message is redacted in
+  // production builds. Fail-closed: nothing has been written yet.
+  if (submittedDueAt && Number.isNaN(submittedDueAt.getTime())) {
+    logger.warn({
+      msg: '[enrollment] Course assignment blocked — deadline is not a valid date',
+      courseId,
+      organizationId,
+      userId: session.user.id,
+    });
+    return {
+      success: [],
+      alreadyEnrolled: [],
+      newInvited: [],
+      failed: [],
+      refusedReason: UNREADABLE_DEADLINE_ASSIGN_MESSAGE,
+      ...(options?.deferWorkerNotification ? { deferred: [] } : {}),
+    };
+  }
+
+  // D-F: refuse a deadline that has passed for EVERYONE (even in the westernmost
+  // zone) when it would CHANGE the stored one, and refuse by return — a thrown
+  // message is redacted in production builds. Whether a date that has passed
+  // only somewhere is past for a given learner is decided per learner (Q-32).
   // Fail-closed: the first write below this point is the offering upsert.
   //
   // In `'enrollment'` scope the deadline being changed is the enrollee's own,
@@ -579,6 +615,9 @@ export async function enrollUsers(
     scheduleAt,
     assignmentDueAt,
     assignmentWindowDays,
+    // Q-32: an admin is assigning now — a learner whose deadline has already
+    // passed where they are is left out and reported, never enrolled overdue.
+    onPassedDeadline: 'skip',
     enrolledByUserId: session.user.id,
     // C8: supervisors assign to EXISTING staff only. Derived from the registry,
     // not from a role check, so any future role without invite.create inherits
@@ -684,11 +723,15 @@ export async function enrollUsers(
     : await enrollSequentially(staffEntries, enrollmentContext, skipEmails);
 
   const deferred: DeferredWorkerNotification[] = [];
+  const deadlinePassed: DeadlinePassedLearner[] = [];
 
   for (const outcome of outcomes) {
     switch (outcome.status) {
       case 'failed':
         results.failed.push(outcome.email);
+        break;
+      case 'deadlinePassed':
+        deadlinePassed.push({ email: outcome.email, timeZone: outcome.timeZone });
         break;
       case 'alreadyEnrolled':
         results.alreadyEnrolled.push(outcome.email);
@@ -710,7 +753,11 @@ export async function enrollUsers(
   revalidatePath(`/dashboard/training/courses/${courseId}`);
   // Conditional spread: callers that never opted in keep the exact result shape
   // they have always received.
-  return { ...results, ...(options?.deferWorkerNotification ? { deferred } : {}) };
+  return {
+    ...results,
+    ...(options?.deferWorkerNotification ? { deferred } : {}),
+    ...(deadlinePassed.length > 0 ? { deadlinePassed } : {}),
+  };
 }
 
 /**
@@ -807,6 +854,11 @@ interface RoleTargetAssignmentResult {
   enrolled: number;
   alreadyEnrolled: number;
   failed: number;
+  /**
+   * Q-32: holders left out because the deadline had already passed in their
+   * facility zone. Present only when there is at least one.
+   */
+  deadlinePassed?: DeadlinePassedLearner[];
   /**
    * Set when the call was refused outright — no assignment was written and no
    * holder was enrolled. Carries the user-facing reason; see
@@ -951,8 +1003,8 @@ async function assignCourseToRoleTargets(
 
   const { scheduleAt, dueAt, dueWindowDays } = options;
 
-  // D-F, as in enrollUsers above: a past deadline is refused only when it would
-  // change the stored one, so the roles' existing overdue deadline can be
+  // D-F, as in enrollUsers above: a deadline past for everyone is refused only
+  // when it would change the stored one, so the roles' existing overdue deadline can be
   // re-submitted (by a re-assignment that only widens the reach, say) without
   // the admin being forced to move it. Fail-closed — the publish below is the
   // first write.
@@ -1067,6 +1119,8 @@ async function assignCourseToRoleTargets(
     scheduleAt,
     assignmentDueAt: dueAt,
     assignmentWindowDays: dueWindowDays,
+    // Q-32: an admin is assigning now — see enrollUsers.
+    onPassedDeadline: 'skip',
     enrolledByUserId: session.user.id,
     // C8: supervisors assign to EXISTING staff only. Derived from the registry,
     // not from a role check, so any future role without invite.create inherits
@@ -1075,6 +1129,7 @@ async function assignCourseToRoleTargets(
   };
 
   const results = { enrolled: 0, alreadyEnrolled: 0, failed: 0 };
+  const deadlinePassed: DeadlinePassedLearner[] = [];
   const holderEntries: StaffEntry[] = holders.map((holder) => ({ email: holder.user.email }));
   // Same kill-switch as enrollUsers; role holders carry no seat rejection.
   const batchEnabled = process.env.ENROLLMENT_BATCH_ENABLED === 'true';
@@ -1087,7 +1142,9 @@ async function assignCourseToRoleTargets(
     // here; count it defensively alongside `enrolled` if it ever occurs.
     if (outcome.status === 'enrolled' || outcome.status === 'invited') results.enrolled += 1;
     else if (outcome.status === 'alreadyEnrolled') results.alreadyEnrolled += 1;
-    else results.failed += 1;
+    else if (outcome.status === 'deadlinePassed') {
+      deadlinePassed.push({ email: outcome.email, timeZone: outcome.timeZone });
+    } else results.failed += 1;
   }
 
   logger.info({
@@ -1096,6 +1153,7 @@ async function assignCourseToRoleTargets(
     targetRoles,
     holderCount: holders.length,
     ...results,
+    deadlinePassed: deadlinePassed.length,
   });
 
   captureServer(
@@ -1105,7 +1163,12 @@ async function assignCourseToRoleTargets(
   );
 
   revalidatePath(`/dashboard/training/courses/${courseId}`);
-  return { assignmentId, holderCount: holders.length, ...results };
+  return {
+    assignmentId,
+    holderCount: holders.length,
+    ...results,
+    ...(deadlinePassed.length > 0 ? { deadlinePassed } : {}),
+  };
 }
 
 /** The course wizard's assign & publish settings, in the wizard's own vocabulary. */
@@ -1164,7 +1227,7 @@ export async function assignCourseToRoles(
       enrolled: 0,
       alreadyEnrolled: 0,
       failed: 0,
-      refusedReason: "That completion deadline couldn't be read. Please pick the date again.",
+      refusedReason: UNREADABLE_DEADLINE_ASSIGN_MESSAGE,
       targetRoles: [...new Set(roles)],
     };
   }
@@ -1586,7 +1649,7 @@ async function enrollHoldersOfAddedRoles(
     actorUserId: string;
     actorRoleKey: RoleKey;
   },
-): Promise<number> {
+): Promise<{ enrolled: number; deadlinePassed: DeadlinePassedLearner[] }> {
   const holders = await prisma.organizationUser.findMany({
     where: {
       organizationId: context.organizationId,
@@ -1597,7 +1660,7 @@ async function enrollHoldersOfAddedRoles(
     select: { user: { select: { email: true } } },
   });
 
-  if (holders.length === 0) return 0;
+  if (holders.length === 0) return { enrolled: 0, deadlinePassed: [] };
 
   const enrollmentContext: CreateEnrollmentContext = {
     courseId: assignment.courseId,
@@ -1609,6 +1672,8 @@ async function enrollHoldersOfAddedRoles(
     scheduleAt: assignment.scheduleAt,
     assignmentDueAt: assignment.dueAt,
     assignmentWindowDays: assignment.dueWindowDays,
+    // Q-32: the admin widening the reach is told who was left out.
+    onPassedDeadline: 'skip',
     enrolledByUserId: context.actorUserId,
     // C8, as in assignCourseToRoleTargets: derived from the registry so any
     // future role without invite.create inherits the existing-staff-only limit.
@@ -1622,8 +1687,15 @@ async function enrollHoldersOfAddedRoles(
       ? await createEnrollmentsForUsers(entries, enrollmentContext)
       : await enrollSequentially(entries, enrollmentContext, new Set());
 
-  return outcomes.filter((outcome) => outcome.status === 'enrolled' || outcome.status === 'invited')
-    .length;
+  const deadlinePassed: DeadlinePassedLearner[] = [];
+  let enrolled = 0;
+  for (const outcome of outcomes) {
+    if (outcome.status === 'enrolled' || outcome.status === 'invited') enrolled += 1;
+    else if (outcome.status === 'deadlinePassed') {
+      deadlinePassed.push({ email: outcome.email, timeZone: outcome.timeZone });
+    }
+  }
+  return { enrolled, deadlinePassed };
 }
 
 /**
@@ -1645,7 +1717,13 @@ async function enrollHoldersOfAddedRoles(
 export async function setRoleAssignmentTargets(
   assignmentId: string,
   roles: UserRole[],
-): Promise<{ success: boolean; refusedReason?: string; enrolled?: number }> {
+): Promise<{
+  success: boolean;
+  refusedReason?: string;
+  enrolled?: number;
+  /** Q-32: holders of an added role left out because the deadline had passed for them. */
+  deadlinePassed?: DeadlinePassedLearner[];
+}> {
   const session = await adminAuth();
   const organizationId = session?.user?.organizationId;
   const roleKey = session?.user?.role ? dbRoleToRoleKey(session.user.role) : null;
@@ -1857,7 +1935,7 @@ export async function setRoleAssignmentTargets(
     data: roleTargetColumns(targetRoles),
   });
 
-  const enrolled =
+  const { enrolled, deadlinePassed } =
     added.length > 0
       ? await enrollHoldersOfAddedRoles(assignment, added, {
           organizationId,
@@ -1865,7 +1943,7 @@ export async function setRoleAssignmentTargets(
           actorUserId: session.user.id,
           actorRoleKey: roleKey,
         })
-      : 0;
+      : { enrolled: 0, deadlinePassed: [] };
 
   logger.info({
     msg: '[assignment] Role targets updated',
@@ -1876,9 +1954,14 @@ export async function setRoleAssignmentTargets(
     added,
     removed,
     enrolled,
+    deadlinePassed: deadlinePassed.length,
   });
 
   revalidatePath(`/dashboard/training/courses/${assignment.courseId}`);
   revalidatePath('/dashboard/courses');
-  return { success: true, enrolled };
+  return {
+    success: true,
+    enrolled,
+    ...(deadlinePassed.length > 0 ? { deadlinePassed } : {}),
+  };
 }

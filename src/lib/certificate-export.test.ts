@@ -130,6 +130,30 @@ describe('exportCertificatePdf — dynamic html-to-image/jspdf import', () => {
     // @ts-expect-error -- test cleanup of a jsdom-only stub
     delete document.fonts;
   });
+
+  it('lays the node out before awaiting fonts, so a font it uses has started loading', async () => {
+    const order: string[] = [];
+    const node = makeCertNode();
+    node.getBoundingClientRect = () => {
+      order.push('layout');
+      return new DOMRect();
+    };
+    Object.defineProperty(document, 'fonts', {
+      get: () => ({
+        get ready() {
+          order.push('fonts.ready');
+          return Promise.resolve();
+        },
+      }),
+      configurable: true,
+    });
+
+    await exportCertificatePdf(node, 'x');
+
+    expect(order.slice(0, 2)).toEqual(['layout', 'fonts.ready']);
+    // @ts-expect-error -- test cleanup of a jsdom-only stub
+    delete document.fonts;
+  });
 });
 
 describe('generateQrDataUrl', () => {

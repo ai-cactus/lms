@@ -7,6 +7,7 @@ import {
   sendRetakeReminderEmail,
 } from '@/lib/email';
 import type { EmailDeliveryResult, ReminderEmailMessage, ReminderEmailSender } from './dispatch';
+import { DEFAULT_TZ } from './time';
 
 /**
  * Real, template-backed reminder email sender.
@@ -50,6 +51,7 @@ async function routeEmail(message: ReminderEmailMessage): Promise<EmailDeliveryR
   const recipientName = message.toName?.trim() || 'there';
   const workerName = message.workerName ?? message.toName ?? message.to;
   const daysOverdue = message.daysOverdue ?? 0;
+  const timeZone = message.timeZone ?? DEFAULT_TZ;
 
   if (message.kind) {
     switch (message.kind) {
@@ -73,6 +75,7 @@ async function routeEmail(message: ReminderEmailMessage): Promise<EmailDeliveryR
             daysOverdue,
             escalationStageLabel(message),
             STATUS_TRACKER_LINK,
+            timeZone,
           ),
         );
     }
@@ -89,6 +92,7 @@ async function routeEmail(message: ReminderEmailMessage): Promise<EmailDeliveryR
             message.courseTitle,
             message.dueAt,
             'friendly',
+            timeZone,
           ),
         );
       case 'URGENT_REMINDER':
@@ -99,6 +103,7 @@ async function routeEmail(message: ReminderEmailMessage): Promise<EmailDeliveryR
             message.courseTitle,
             message.dueAt,
             'urgent',
+            timeZone,
           ),
         );
       case 'DAY_OF_DEADLINE':
@@ -109,6 +114,7 @@ async function routeEmail(message: ReminderEmailMessage): Promise<EmailDeliveryR
             message.courseTitle,
             message.dueAt,
             'day_of',
+            timeZone,
           ),
         );
       case 'GRACE_SOFT_ESCALATION':
@@ -120,6 +126,7 @@ async function routeEmail(message: ReminderEmailMessage): Promise<EmailDeliveryR
               message.courseTitle,
               message.dueAt,
               daysOverdue,
+              timeZone,
             ),
           );
         }
@@ -133,6 +140,7 @@ async function routeEmail(message: ReminderEmailMessage): Promise<EmailDeliveryR
             daysOverdue,
             escalationStageLabel(message),
             STATUS_TRACKER_LINK,
+            timeZone,
           ),
         );
       case 'HARD_ESCALATION':
@@ -146,6 +154,7 @@ async function routeEmail(message: ReminderEmailMessage): Promise<EmailDeliveryR
             daysOverdue,
             escalationStageLabel(message),
             STATUS_TRACKER_LINK,
+            timeZone,
           ),
         );
       case 'ADMIN_PRE_DEADLINE_REMINDER':
@@ -158,6 +167,7 @@ async function routeEmail(message: ReminderEmailMessage): Promise<EmailDeliveryR
             message.courseTitle,
             message.dueAt,
             STATUS_TRACKER_LINK,
+            timeZone,
           ),
         );
       case 'INITIAL_LAUNCH':
