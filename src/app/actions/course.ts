@@ -2510,8 +2510,9 @@ export async function assignRetake(
       retakeOf: lockedEnrollment.id,
       retakeReason: retakeReason || null,
       assignedByAdminId: session.user.id,
-      // Track A selects on `dueAt`; the retake has no assignment, so the ladder
-      // runs it on the default stage schedule.
+      // Track A selects on `dueAt`. The retake carries no assignment of its own;
+      // the sweep walks `retakeOf` to the original's assignment for its reminder
+      // settings (Q-28).
       dueAt: deadline.dueAt,
     },
   });

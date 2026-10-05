@@ -9,6 +9,11 @@ import {
 } from '@/lib/dashboard/definitions';
 import { REMINDER_STAGE_DEFAULTS } from './stages';
 import { DEFAULT_TZ, diffInDaysInTz } from './time';
+import {
+  reminderAssignmentSelect,
+  resolveRetakeRootAssignments,
+  type ReminderAssignment,
+} from './retake-settings';
 
 /**
  * Status tracker reporting for the admin status-tracker page and dashboard banner.
@@ -24,7 +29,8 @@ import { DEFAULT_TZ, diffInDaysInTz } from './time';
  * `REMINDER_STAGE_DEFAULTS.HARD_ESCALATION.offsetDays`) — mirroring the reminder
  * sweep, so the tracker agrees with when the sweep actually escalates to
  * managers/admins. A disabled HARD_ESCALATION stage means the assignment never
- * escalates, so such rows are never flagged.
+ * escalates, so such rows are never flagged. A retake reads the stages of its
+ * original enrolment's assignment, as the sweep does (Q-28).
  *
  * "At risk" means a not-yet-overdue enrollment whose deadline falls within the
  * next `DUE_SOON_WINDOW_DAYS` (`@/lib/facility/metrics`) days — the same window as the Global View's
@@ -57,11 +63,8 @@ const enrollmentRowSelect = {
   courseId: true,
   dueAt: true,
   status: true,
-  assignment: {
-    select: {
-      reminderStages: { select: { stage: true, offsetDays: true, enabled: true } },
-    },
-  },
+  retakeOf: true,
+  assignment: { select: reminderAssignmentSelect },
   course: { select: { title: true } },
   organizationUser: {
     select: {
@@ -134,8 +137,8 @@ export interface StatusTrackerSummary {
  * when the stage is explicitly disabled — the assignment never escalates, so no
  * overdue row for it should be flagged as a hard escalation.
  */
-function resolveHardEscalationThreshold(enrollment: EnrollmentRow): number | null {
-  const override = enrollment.assignment?.reminderStages.find((s) => s.stage === 'HARD_ESCALATION');
+function resolveHardEscalationThreshold(assignment: ReminderAssignment | null): number | null {
+  const override = assignment?.reminderStages.find((s) => s.stage === 'HARD_ESCALATION');
   if (!override) return DEFAULT_HARD_ESCALATION_OFFSET_DAYS;
   if (!override.enabled) return null;
   return override.offsetDays;
@@ -214,6 +217,9 @@ export async function getStatusTrackerSummaryForOrg({
   const superseded = supersededEnrollmentIds(retakes);
   const overdueEnrollments = overdueCandidates.filter((e) => !superseded.has(e.id));
   const nearDeadlineEnrollments = nearDeadlineCandidates.filter((e) => !superseded.has(e.id));
+  const inheritedAssignments = await resolveRetakeRootAssignments(
+    overdueEnrollments.filter((e) => e.assignment === null),
+  );
 
   const rows: StatusTrackerRow[] = overdueEnrollments.map((enrollment) => {
     // `dueAt` is guaranteed non-null by the query filter; assert for the type.
@@ -221,7 +227,9 @@ export async function getStatusTrackerSummaryForOrg({
     const facilities = scopedRosterFacilities(enrollment, dataFacilityIds);
     const tz = facilities[0]?.facility.timezone ?? DEFAULT_TZ;
     const daysOverdue = diffInDaysInTz(now, dueAt, tz);
-    const threshold = resolveHardEscalationThreshold(enrollment);
+    const threshold = resolveHardEscalationThreshold(
+      enrollment.assignment ?? inheritedAssignments.get(enrollment.id) ?? null,
+    );
 
     return {
       enrollmentId: enrollment.id,

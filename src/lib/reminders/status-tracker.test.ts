@@ -64,6 +64,7 @@ function makeEnrollment(
     assignment?: {
       reminderStages: { stage: string; offsetDays: number; enabled: boolean }[];
     } | null;
+    retakeOf?: string | null;
   } = {},
 ) {
   const {
@@ -72,6 +73,7 @@ function makeEnrollment(
     managerName = null,
     timezone = 'America/New_York',
     assignment = null,
+    retakeOf = null,
   } = opts;
   const roster =
     opts.roster ??
@@ -82,6 +84,7 @@ function makeEnrollment(
     courseId: `course-${id}`,
     dueAt: new Date(dueAtIso),
     status,
+    retakeOf,
     assignment,
     course: { title: `Course ${id}` },
     organizationUser: {
@@ -293,6 +296,62 @@ describe('getStatusTrackerSummaryForOrg — per-assignment HARD_ESCALATION overr
     const { rows } = await summary();
 
     expect(rows[0].isHardEscalation).toBe(true); // 7 >= default threshold (7)
+  });
+});
+
+// Q-28: a retake carries no assignment of its own; its threshold is the one
+// its original enrolment's assignment sets, exactly as the sweep reads it.
+describe('getStatusTrackerSummaryForOrg — retakes inherit the original assignment (Q-28)', () => {
+  it('never flags a retake whose original assignment disables HARD_ESCALATION', async () => {
+    prismaMock.enrollment.findMany
+      .mockResolvedValueOnce([
+        {
+          ...makeEnrollment('retake', '2024-06-01T12:00:00Z'),
+          organizationUserId: 'ou-learner',
+          retakeOf: 'original',
+        },
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: 'original',
+          organizationUserId: 'ou-learner',
+          retakeOf: null,
+          assignment: {
+            remindersEnabled: true,
+            reminderStages: [
+              { stage: 'HARD_ESCALATION', offsetDays: 7, enabled: false, channels: [] },
+            ],
+          },
+        },
+      ]);
+
+    const { rows, hardEscalationCount } = await summary();
+
+    expect(rows[0].daysOverdue).toBe(14);
+    expect(rows[0].isHardEscalation).toBe(false);
+    expect(hardEscalationCount).toBe(0);
+  });
+
+  it('keeps the default threshold for a retake whose original had no assignment', async () => {
+    prismaMock.enrollment.findMany
+      .mockResolvedValueOnce([
+        {
+          ...makeEnrollment('retake', '2024-06-01T12:00:00Z'),
+          organizationUserId: 'ou-learner',
+          retakeOf: 'original',
+        },
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        { id: 'original', organizationUserId: 'ou-learner', retakeOf: null, assignment: null },
+      ]);
+
+    const { rows } = await summary();
+
+    expect(rows[0].isHardEscalation).toBe(true);
   });
 });
 
