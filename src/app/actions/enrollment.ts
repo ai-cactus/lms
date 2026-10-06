@@ -14,6 +14,11 @@ import type { StaffEntry } from '@/types/enrollment';
 import { resolveDataFacilityIds, staffFacilityWhere } from '@/lib/facility/staff-where';
 import { publishCourseOnAssignment } from '@/lib/course/publish-on-assign';
 import { ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
+import { isCourseOrganizationReviewer } from '@/lib/course/read-access';
+import {
+  LEARNER_ENROLLMENT_UNAVAILABLE_MESSAGE,
+  LEARNER_SIGNED_OUT_MESSAGE,
+} from '@/lib/enrollment/learner-refusals';
 import {
   partitionEmailsByFacility,
   partitionOrgUsersByFacility,
@@ -230,11 +235,13 @@ export async function getAvailableUsers() {
   const members = await prisma.organizationUser.findMany({
     where: { organizationId, active: true, ...staffFacilityWhere(dataFacilityIds) },
     // Explicit projection — the DTO uses only these fields, so never load the
-    // password hash / MFA-secret columns of the full user row into memory.
+    // password hash / MFA-secret columns of the full user row into memory. No
+    // avatar: `User.avatarUrl` is a raw storage URI that must never reach the
+    // browser (BUG-48), and nothing renders one from this picker.
     select: {
       id: true,
       role: true,
-      user: { select: { email: true, fullName: true, avatarUrl: true } },
+      user: { select: { email: true, fullName: true } },
     },
     orderBy: { createdAt: 'desc' },
   });
@@ -244,7 +251,6 @@ export async function getAvailableUsers() {
     email: member.user.email,
     fullName: member.user.fullName || member.user.email,
     role: member.role,
-    avatarUrl: member.user.avatarUrl,
   }));
 }
 
@@ -337,10 +343,7 @@ export async function enrollUsers(
   }
 
   // Verify course exists and the calling admin is allowed to enroll staff into it.
-  const course = await prisma.course.findUnique({
-    where: { id: courseId },
-    include: { creator: { select: { organizationId: true } } },
-  });
+  const course = await prisma.course.findUnique({ where: { id: courseId } });
 
   // Get organization info for new user creation and offering checks.
   const organizationId = session.user.organizationId;
@@ -359,8 +362,9 @@ export async function enrollUsers(
   // this action rejects a colleague's course as
   // "Course not found", which is what left the staff-profile assign flow
   // unusable for any org whose courses were authored by someone else.
-  const isSameOrgCourse =
-    organizationId !== null && course?.creator.organizationId === organizationId;
+  // RISK-15: ownership is `Course.organizationId`, never the author's current
+  // membership, which follows the person to their next organisation.
+  const isSameOrgCourse = course !== null && isCourseOrganizationReviewer(course, session.user);
 
   // An org admin may also enroll staff into a global course that their
   // organization has explicitly offered (an OrgCourseOffering row exists).
@@ -915,10 +919,7 @@ async function assignCourseToRoleTargets(
     throw new Error('Forbidden');
   }
 
-  const course = await prisma.course.findUnique({
-    where: { id: courseId },
-    include: { creator: { select: { organizationId: true } } },
-  });
+  const course = await prisma.course.findUnique({ where: { id: courseId } });
 
   const organization = await prisma.organization.findUnique({
     where: { id: organizationId },
@@ -931,7 +932,7 @@ async function assignCourseToRoleTargets(
   // to the member who authored it. Without this a caller holding the assign
   // verbs is refused a colleague's course as "Course not found" while the very
   // same course assigns fine through the direct-target paths.
-  const isSameOrgCourse = course?.creator.organizationId === organizationId;
+  const isSameOrgCourse = course !== null && isCourseOrganizationReviewer(course, session.user);
 
   const isOfferedGlobal =
     !isOwnCourse && course?.isGlobal === true
@@ -1436,7 +1437,8 @@ export async function requestCourseRetry(
   const workerOrgUserId = worker?.user?.organizationUserId ?? null;
 
   if (!admin?.user?.id && !worker?.user?.id) {
-    throw new Error('Unauthorized');
+    logger.warn({ msg: '[enrollment] Course retry refused — no session', enrollmentId });
+    return { success: false, refusedReason: LEARNER_SIGNED_OUT_MESSAGE };
   }
 
   const enrollment = await prisma.enrollment.findUnique({
@@ -1452,7 +1454,13 @@ export async function requestCourseRetry(
     (enrollment.organizationUserId !== adminOrgUserId &&
       enrollment.organizationUserId !== workerOrgUserId)
   ) {
-    throw new Error('Enrollment not found');
+    logger.warn({
+      msg: '[enrollment] Course retry refused — enrollment not found or not owned by the caller',
+      enrollmentId,
+      adminOrgUserId,
+      workerOrgUserId,
+    });
+    return { success: false, refusedReason: LEARNER_ENROLLMENT_UNAVAILABLE_MESSAGE };
   }
 
   // Q-04: a cancelled course cannot be retried. Fail-closed — the reset below,

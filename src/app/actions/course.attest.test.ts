@@ -49,6 +49,10 @@ vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
+import {
+  LEARNER_ENROLLMENT_UNAVAILABLE_MESSAGE,
+  LEARNER_SIGNED_OUT_MESSAGE,
+} from '@/lib/enrollment/learner-refusals';
 import { attestCourse } from './course';
 
 const WORKER_ID = 'worker-1';
@@ -153,15 +157,30 @@ describe('attestCourse — completion timestamp (BUG-08)', () => {
 });
 
 describe('attestCourse — guards still hold', () => {
-  it('throws Unauthorized when neither session is present', async () => {
+  // BUG-60: refused by RETURN, because production redacts a thrown message.
+  it('refuses with the signed-out message when neither session is present', async () => {
     mockAdminAuth.mockResolvedValue(null);
     mockWorkerAuth.mockResolvedValue(null);
 
-    await expect(attestCourse(ENROLLMENT_ID, SIGNATURE, 'Nurse')).rejects.toThrow('Unauthorized');
+    await expect(attestCourse(ENROLLMENT_ID, SIGNATURE, 'Nurse')).resolves.toEqual({
+      success: false,
+      refusedReason: LEARNER_SIGNED_OUT_MESSAGE,
+    });
+    expect(prismaMock.enrollment.findUnique).not.toHaveBeenCalled();
     expect(prismaMock.enrollment.updateMany).not.toHaveBeenCalled();
   });
 
-  it('throws when neither session owns the enrollment, leaving completedAt unwritten', async () => {
+  it('refuses a missing enrollment with the same message as a foreign one', async () => {
+    prismaMock.enrollment.findUnique.mockResolvedValue(null);
+
+    await expect(attestCourse(ENROLLMENT_ID, SIGNATURE, 'Nurse')).resolves.toEqual({
+      success: false,
+      refusedReason: LEARNER_ENROLLMENT_UNAVAILABLE_MESSAGE,
+    });
+    expect(prismaMock.enrollment.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('refuses when neither session owns the enrollment, leaving completedAt unwritten', async () => {
     prismaMock.enrollment.findUnique.mockResolvedValue(
       makeEnrollment({
         organizationUser: {
@@ -172,7 +191,10 @@ describe('attestCourse — guards still hold', () => {
       }),
     );
 
-    await expect(attestCourse(ENROLLMENT_ID, SIGNATURE, 'Nurse')).rejects.toThrow('Unauthorized');
+    await expect(attestCourse(ENROLLMENT_ID, SIGNATURE, 'Nurse')).resolves.toEqual({
+      success: false,
+      refusedReason: LEARNER_ENROLLMENT_UNAVAILABLE_MESSAGE,
+    });
     expect(prismaMock.enrollment.updateMany).not.toHaveBeenCalled();
   });
 

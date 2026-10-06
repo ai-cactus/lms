@@ -79,7 +79,7 @@ const ownCourse = {
   id: 'course-1',
   title: 'Infection Control',
   createdByOrgUserId: ADMIN_ORG_USER_ID,
-  creator: { organizationId: ORG_ID },
+  organizationId: ORG_ID,
   isGlobal: false,
   type: 'document',
 };
@@ -174,7 +174,7 @@ describe('assignCourseToRoles — authorization and input', () => {
     mockCourseFindUnique.mockResolvedValue({
       ...ownCourse,
       createdByOrgUserId: 'ou-colleague-1',
-      creator: { organizationId: ORG_ID },
+      organizationId: ORG_ID,
     });
 
     const result = await assignCourseToRoles('course-1', ['nurse']);
@@ -187,7 +187,34 @@ describe('assignCourseToRoles — authorization and input', () => {
     mockCourseFindUnique.mockResolvedValue({
       ...ownCourse,
       createdByOrgUserId: 'ou-outsider-1',
-      creator: { organizationId: 'org-other' },
+      organizationId: 'org-other',
+    });
+
+    await expect(assignCourseToRoles('course-1', ['nurse'])).rejects.toThrow('Course not found');
+    expect(mockAssignmentCreate).not.toHaveBeenCalled();
+  });
+
+  // RISK-15: ownership is Course.organizationId. The author's CURRENT
+  // organisation follows the person, so it must neither grant nor revoke.
+  it('assigns an org-owned course whose author has since moved to another organisation', async () => {
+    mockCourseFindUnique.mockResolvedValue({
+      ...ownCourse,
+      createdByOrgUserId: 'ou-departed-1',
+      organizationId: ORG_ID,
+      creator: { organizationId: 'org-authors-new-home' },
+    });
+
+    const result = await assignCourseToRoles('course-1', ['nurse']);
+
+    expect(result.assignmentId).toBe('assignment-roles-1');
+  });
+
+  it("refuses another organisation's course even when its author has joined the caller's organisation", async () => {
+    mockCourseFindUnique.mockResolvedValue({
+      ...ownCourse,
+      createdByOrgUserId: 'ou-transferred-1',
+      organizationId: 'org-other',
+      creator: { organizationId: ORG_ID },
     });
 
     await expect(assignCourseToRoles('course-1', ['nurse'])).rejects.toThrow('Course not found');

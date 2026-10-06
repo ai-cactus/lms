@@ -62,7 +62,7 @@ describe('getAvailableUsers — org-scoping sourced from the session', () => {
       {
         id: 'ou1',
         role: 'nurse',
-        user: { email: 'a@org-a.com', fullName: null, avatarUrl: null },
+        user: { email: 'a@org-a.com', fullName: null },
       },
     ]);
 
@@ -79,9 +79,11 @@ describe('getAvailableUsers — org-scoping sourced from the session', () => {
         email: 'a@org-a.com',
         fullName: 'a@org-a.com',
         role: 'nurse',
-        avatarUrl: null,
       },
     ]);
+    // BUG-48: `User.avatarUrl` is a raw storage URI and nothing renders it from
+    // this picker, so it is not even read.
+    expect(mockOrgUserFindMany.mock.calls[0][0].select.user.select).not.toHaveProperty('avatarUrl');
   });
 
   it('a different org session (org-B) never sees org-A results and never issues an org-A-scoped query', async () => {

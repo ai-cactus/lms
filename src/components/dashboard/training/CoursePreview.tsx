@@ -101,6 +101,7 @@ function WorkerStartButton({
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [refusal, setRefusal] = useState('');
 
   const isStarted = (enrollment?.progress || 0) > 0 || enrollment?.status === 'in_progress';
   const isCompleted = enrollment?.status === 'completed' || enrollment?.status === 'attested';
@@ -123,17 +124,20 @@ function WorkerStartButton({
 
     try {
       setLoading(true);
+      setRefusal('');
       if (isFailed && enrollment?.id) {
-        await requestCourseRetry(enrollment.id);
+        const retry = await requestCourseRetry(enrollment.id);
+        if (!retry.success) setRefusal(retry.refusedReason ?? '');
         router.refresh();
         setLoading(false);
         return;
       }
       const started = await startCourse(courseId);
       if (!started.success) {
-        // Refused — the course was archived under the learner (Q-04). Re-render
-        // instead of navigating: this page refuses an archived course too, so a
-        // push would only land on the player's own refusal a step later.
+        // Refused — the course was archived under the learner (Q-04), or the
+        // session no longer owns this enrolment (BUG-60). Re-render instead of
+        // navigating: the player would only refuse it again a step later.
+        setRefusal(started.refusedReason ?? '');
         router.refresh();
         setLoading(false);
         return;
@@ -149,15 +153,25 @@ function WorkerStartButton({
   };
 
   return (
-    <Button
-      className="text-base"
-      size="lg"
-      onClick={handleClick}
-      disabled={loading || isRetryRequested}
-      variant={isFailed ? 'outline' : 'default'}
-    >
-      {buttonText}
-    </Button>
+    <div className="flex flex-col items-start gap-2">
+      <Button
+        className="text-base"
+        size="lg"
+        onClick={handleClick}
+        disabled={loading || isRetryRequested}
+        variant={isFailed ? 'outline' : 'default'}
+      >
+        {buttonText}
+      </Button>
+      {refusal && (
+        <p
+          role="alert"
+          className="max-w-xs rounded-md bg-background px-3 py-2 text-[13px] text-error"
+        >
+          {refusal}
+        </p>
+      )}
+    </div>
   );
 }
 

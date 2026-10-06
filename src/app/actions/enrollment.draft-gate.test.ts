@@ -92,7 +92,7 @@ const unheldDraft = {
   id: COURSE_ID,
   title: 'Newly Forked Course',
   createdByOrgUserId: ADMIN_ORG_USER_ID,
-  creator: { organizationId: ORG_ID },
+  organizationId: ORG_ID,
   isGlobal: false,
   type: 'document',
   status: 'draft',
