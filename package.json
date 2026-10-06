@@ -30,7 +30,7 @@
     "prisma:generate": "prisma generate"
   },
   "overrides": {
-    "sharp": "^0.35.4",
+    "sharp": "^0.35.5",
     "find-my-way": "^9.7.0",
     "postcss": "^8.5.12",
     "minimatch": "^10.2.5",
@@ -105,7 +105,7 @@
     "react-timekeeper": "^2.2.1",
     "recharts": "^3.10.1",
     "server-only": "^0.0.1",
-    "sharp": "^0.35.4",
+    "sharp": "^0.35.5",
     "sonner": "^2.0.8",
     "stripe": "^20.4.1",
     "tailwind-merge": "^3.7.0",
