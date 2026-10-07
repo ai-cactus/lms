@@ -92,4 +92,16 @@ describe('WorkerCourseDetailsPage', () => {
       undefined,
     );
   });
+
+  // SEC-15: the enrollment is serialised into the client component's props, so
+  // any user or organization relation would ship the password hash, MFA secret
+  // and the org's join code to the browser.
+  it('loads the enrollment without the user or organization rows CoursePreview never reads', async () => {
+    mockGetCourseById.mockResolvedValue({ id: 'course-1', enrollments: [] });
+
+    await WorkerCourseDetailsPage({ params });
+
+    const { include } = prismaMock.enrollment.findFirst.mock.calls[0][0];
+    expect(include).not.toHaveProperty('organizationUser');
+  });
 });

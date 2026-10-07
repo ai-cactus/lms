@@ -348,9 +348,6 @@ export type CourseCertificateRow = {
 export type EnrollmentWithRelations = Prisma.EnrollmentGetPayload<{
   include: {
     quizAttempts: true;
-    organizationUser: {
-      include: { user: true; organization: true };
-    };
     course: true;
     certificate: true;
   };

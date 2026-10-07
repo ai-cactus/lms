@@ -14,11 +14,12 @@ export default async function MappingPage({ params }: { params: Promise<{ id: st
   const { id } = await params;
 
   // Flow: Course -> CourseVersion -> DocumentVersion -> content. Narrowed to the
-  // caller's own organisation, so a course id from another tenant is
+  // organisation that OWNS the course (RISK-15: `Course.organizationId`, not the
+  // author's current membership), so a course id from another tenant is
   // indistinguishable from one that does not exist.
   const course = ctx.organizationId
     ? await prisma.course.findFirst({
-        where: { id, creator: { organizationId: ctx.organizationId } },
+        where: { id, organizationId: ctx.organizationId },
         include: { versions: { include: { documentVersion: true } } },
       })
     : null;

@@ -46,6 +46,10 @@ vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
+import {
+  LEARNER_ENROLLMENT_UNAVAILABLE_MESSAGE,
+  LEARNER_SIGNED_OUT_MESSAGE,
+} from '@/lib/enrollment/learner-refusals';
 import { retakeQuiz } from './course';
 import { ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
 
@@ -81,26 +85,36 @@ beforeEach(() => {
 });
 
 describe('retakeQuiz — auth and ownership', () => {
-  it('throws Unauthorized when neither admin nor worker session is present', async () => {
+  // BUG-60: refused by RETURN, because production redacts a thrown message.
+  it('refuses with the signed-out message when neither admin nor worker session is present', async () => {
     mockAdminAuth.mockResolvedValue(null);
     mockWorkerAuth.mockResolvedValue(null);
 
-    await expect(retakeQuiz(ENROLLMENT_ID)).rejects.toThrow('Unauthorized');
+    await expect(retakeQuiz(ENROLLMENT_ID)).resolves.toEqual({
+      success: false,
+      refusedReason: LEARNER_SIGNED_OUT_MESSAGE,
+    });
     expect(prismaMock.enrollment.findUnique).not.toHaveBeenCalled();
   });
 
-  it('throws when the enrollment does not exist', async () => {
+  it('refuses when the enrollment does not exist', async () => {
     prismaMock.enrollment.findUnique.mockResolvedValue(null);
 
-    await expect(retakeQuiz(ENROLLMENT_ID)).rejects.toThrow('Enrollment not found or unauthorized');
+    await expect(retakeQuiz(ENROLLMENT_ID)).resolves.toEqual({
+      success: false,
+      refusedReason: LEARNER_ENROLLMENT_UNAVAILABLE_MESSAGE,
+    });
   });
 
-  it('throws when the enrollment belongs to a different user (foreign enrollment)', async () => {
+  it('refuses when the enrollment belongs to a different user (foreign enrollment)', async () => {
     prismaMock.enrollment.findUnique.mockResolvedValue(
       makeEnrollment({ organizationUser: { userId: 'other-user' } }),
     );
 
-    await expect(retakeQuiz(ENROLLMENT_ID)).rejects.toThrow('Enrollment not found or unauthorized');
+    await expect(retakeQuiz(ENROLLMENT_ID)).resolves.toEqual({
+      success: false,
+      refusedReason: LEARNER_ENROLLMENT_UNAVAILABLE_MESSAGE,
+    });
     expect(prismaMock.enrollment.update).not.toHaveBeenCalled();
     expect(prismaMock.quizAttempt.update).not.toHaveBeenCalled();
   });

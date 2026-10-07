@@ -24,6 +24,10 @@ vi.mock('@/lib/notifications/create', () => ({
   createNotification: vi.fn(),
 }));
 
+import {
+  LEARNER_ENROLLMENT_UNAVAILABLE_MESSAGE,
+  LEARNER_SIGNED_OUT_MESSAGE,
+} from '@/lib/enrollment/learner-refusals';
 import { requestCourseRetry } from './enrollment';
 
 const ENROLLMENT = {
@@ -60,7 +64,22 @@ describe('requestCourseRetry — learner activity', () => {
       organizationUserId: 'ou-other',
     });
 
-    await expect(requestCourseRetry('enr-1')).rejects.toThrow('Enrollment not found');
+    await expect(requestCourseRetry('enr-1')).resolves.toEqual({
+      success: false,
+      refusedReason: LEARNER_ENROLLMENT_UNAVAILABLE_MESSAGE,
+    });
     expect(prismaMock.enrollment.update).not.toHaveBeenCalled();
+  });
+
+  // BUG-60: refused by RETURN, because production redacts a thrown message.
+  it('refuses with the signed-out message when neither session is present', async () => {
+    mockAdminAuth.mockResolvedValue(null);
+    mockWorkerAuth.mockResolvedValue(null);
+
+    await expect(requestCourseRetry('enr-1')).resolves.toEqual({
+      success: false,
+      refusedReason: LEARNER_SIGNED_OUT_MESSAGE,
+    });
+    expect(prismaMock.enrollment.findUnique).not.toHaveBeenCalled();
   });
 });

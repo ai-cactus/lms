@@ -29,6 +29,10 @@ vi.mock('@/lib/notifications/create', () => ({
 vi.mock('@/lib/reminders/sweep', () => ({ resolveOnCompletion: vi.fn() }));
 
 import { attestCourse, startCourse } from './course';
+import {
+  LEARNER_ENROLLMENT_UNAVAILABLE_MESSAGE,
+  LEARNER_SIGNED_OUT_MESSAGE,
+} from '@/lib/enrollment/learner-refusals';
 
 const USER_ID = 'user-1';
 
@@ -106,5 +110,29 @@ describe('startCourse — learner activity', () => {
         data: { lastActivityAt: expect.any(Date) },
       }),
     );
+  });
+});
+
+// BUG-60: refused by RETURN, because production redacts a thrown message.
+describe('startCourse — refusals', () => {
+  it('refuses with the signed-out message when neither session is present', async () => {
+    mockWorkerAuth.mockResolvedValue(null);
+
+    await expect(startCourse('course-1')).resolves.toEqual({
+      success: false,
+      refusedReason: LEARNER_SIGNED_OUT_MESSAGE,
+    });
+    expect(prismaMock.enrollment.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('refuses when neither session is enrolled, writing nothing', async () => {
+    prismaMock.enrollment.findFirst.mockResolvedValue(null);
+
+    await expect(startCourse('course-1')).resolves.toEqual({
+      success: false,
+      refusedReason: LEARNER_ENROLLMENT_UNAVAILABLE_MESSAGE,
+    });
+    expect(prismaMock.enrollment.update).not.toHaveBeenCalled();
+    expect(prismaMock.enrollment.updateMany).not.toHaveBeenCalled();
   });
 });

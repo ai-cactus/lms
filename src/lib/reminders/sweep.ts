@@ -24,6 +24,7 @@ import {
 import { REASSIGN_ESCALATION_PERMISSION } from '@/lib/notifications/link-audience';
 import { resolveEscalationRecipients, NO_ESCALATION_RECIPIENTS } from './recipients';
 import { findIneligibleEnrollmentIds, findSupersededIds } from './eligibility';
+import { reminderAssignmentSelect, resolveRetakeRootAssignments } from './retake-settings';
 
 /**
  * Reminder sweep — pure, unit-testable orchestration (mirrors `runVideoSweep`).
@@ -34,8 +35,9 @@ import { findIneligibleEnrollmentIds, findSupersededIds } from './eligibility';
  * failures change underneath it, and is resilient to a missed cron day.
  *
  * Bulk queries only (no N+1): one query per track plus one batched lookup each
- * for retakes, existing logs, and quiz attempts. Per-enrollment failures are
- * isolated so one bad row never aborts the run.
+ * for retakes, existing logs, and quiz attempts, and one per hop up a retake's
+ * `retakeOf` chain to the assignment it inherits (Q-28). Per-enrollment
+ * failures are isolated so one bad row never aborts the run.
  *
  * Note: `renewalCycle` is out of scope for v1 — the deadline is always the
  * current enrollment's `dueAt`.
@@ -763,6 +765,8 @@ async function runTrackA(
   // gap. Such enrollments fall back to
   // REMINDER_STAGE_DEFAULTS for their offsets/channels. We still exclude
   // enrollments whose assignment explicitly opted out (`remindersEnabled: false`).
+  // A retake is assignment-less too, but follows its original's assignment
+  // (Q-28), so it is matched here and resolved after the query.
   //
   // `active: true` is what keeps the ladder aligned with that page. removeStaff
   // RETAINS a departed member's in-flight enrollments for compliance (founder
@@ -788,13 +792,8 @@ async function runTrackA(
       organizationUserId: true,
       courseId: true,
       dueAt: true,
-      assignment: {
-        select: {
-          reminderStages: {
-            select: { stage: true, offsetDays: true, enabled: true, channels: true },
-          },
-        },
-      },
+      retakeOf: true,
+      assignment: { select: reminderAssignmentSelect },
       course: { select: { title: true } },
       organizationUser: {
         select: {
@@ -827,6 +826,10 @@ async function runTrackA(
   }
   if (enrollments.length === 0) return;
 
+  const inheritedAssignments = await resolveRetakeRootAssignments(
+    enrollments.filter((e) => e.assignment === null),
+  );
+
   // One batched lookup of already-sent stages.
   const logs = await prisma.reminderLog.findMany({
     where: { enrollmentId: { in: enrollments.map((e) => e.id) } },
@@ -842,7 +845,12 @@ async function runTrackA(
 
       const tz = enrollment.organizationUser.facilities[0]?.facility.timezone ?? DEFAULT_TZ;
       const dueStart = startOfDayInTz(dueAt, tz);
-      const stageConfig = enrollment.assignment?.reminderStages ?? [];
+      const assignment = enrollment.assignment ?? inheritedAssignments.get(enrollment.id) ?? null;
+      if (assignment && !assignment.remindersEnabled) {
+        summary.skipped += 1;
+        continue;
+      }
+      const stageConfig = assignment?.reminderStages ?? [];
       const worker = {
         id: enrollment.organizationUser.id,
         email: enrollment.organizationUser.user.email,

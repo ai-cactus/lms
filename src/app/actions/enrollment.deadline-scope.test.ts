@@ -112,7 +112,7 @@ beforeEach(() => {
     id: COURSE_ID,
     title: 'Infection Control',
     createdByOrgUserId: ADMIN_ORG_USER_ID,
-    creator: { organizationId: ORG_ID },
+    organizationId: ORG_ID,
     isGlobal: false,
     status: 'published',
     reviewRequired: false,

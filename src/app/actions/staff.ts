@@ -471,7 +471,7 @@ export async function getAssignableManagers(): Promise<
       ...staffFacilityWhere(dataFacilityIds),
     },
     include: {
-      user: true,
+      user: { select: { email: true, fullName: true } },
     },
     orderBy: {
       joinedAt: 'desc',
@@ -1093,8 +1093,8 @@ export async function getEnrollmentQuizResult(enrollmentId: string) {
       include: {
         organizationUser: {
           include: {
-            user: true,
-            organization: true,
+            user: { select: { email: true, fullName: true } },
+            organization: { select: { name: true } },
           },
         },
         course: true,

@@ -36,7 +36,12 @@ export async function issueCertificate(enrollmentId: string): Promise<IssueCerti
   const enrollment = await prisma.enrollment.findUnique({
     where: { id: enrollmentId },
     include: {
-      organizationUser: { include: { user: true, organization: true } },
+      organizationUser: {
+        include: {
+          user: { select: { email: true, fullName: true } },
+          organization: { select: { name: true } },
+        },
+      },
       course: true,
       certificate: true,
     },
@@ -364,7 +369,12 @@ export async function getCertificateDetails(realm: PortalRealm, certificateId: s
   const certificate = await prisma.certificate.findUnique({
     where: { id: certificateId },
     include: {
-      organizationUser: { include: { user: true, organization: true } },
+      organizationUser: {
+        include: {
+          user: { select: { email: true, fullName: true } },
+          organization: { select: { name: true } },
+        },
+      },
       course: true,
     },
   });

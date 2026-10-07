@@ -8,6 +8,7 @@
  * three resolved from the SAME `OrganizationUser` row by the helpers here, so a
  * role claim can never be paired with a foreign organization.
  */
+import { Prisma } from '@/generated/prisma/client';
 import prisma from '@/lib/prisma';
 import { logger } from '@/lib/logger';
 import { DeletedIdentityError, isDeletedIdentity } from '@/lib/auth/deleted-identity';
@@ -51,12 +52,14 @@ const MEMBERSHIP_SELECT = {
   organization: { select: { name: true, slug: true } },
 } as const;
 
-function toSummary(row: {
+interface MembershipRow {
   id: string;
   role: Role;
   organizationId: string;
   organization: { name: string; slug: string };
-}): MembershipSummary {
+}
+
+function toSummary(row: MembershipRow): MembershipSummary {
   return {
     organizationUserId: row.id,
     organizationId: row.organizationId,
@@ -171,6 +174,32 @@ export interface CreateMembershipInput {
   /** The facility this membership is assigned to on joining. */
   facilityId: string;
   role: Role;
+  /**
+   * What to do when the identity already has a membership in the organization.
+   * `reassign` (the default) reactivates and re-roles it — the invite and
+   * onboarding paths, where an administrator chose the role. `refuse` writes
+   * nothing and throws {@link ExistingMembershipError} — the self-serve join
+   * code, which must never change the role of, or restore access to, an
+   * existing member (BUG-59).
+   */
+  onExisting?: 'reassign' | 'refuse';
+}
+
+/**
+ * Thrown by `createMembership({ onExisting: 'refuse' })` when the identity
+ * already has a membership in the organization. `active` distinguishes a
+ * current member from one whose access was revoked, so the caller can explain
+ * which it is.
+ */
+export class ExistingMembershipError extends Error {
+  constructor(readonly active: boolean) {
+    super(
+      active
+        ? 'Already a member of this organization.'
+        : 'Membership in this organization was deactivated.',
+    );
+    this.name = 'ExistingMembershipError';
+  }
 }
 
 /**
@@ -178,17 +207,20 @@ export interface CreateMembershipInput {
  * first `OrganizationUserFacility` assignment, created atomically so a
  * membership can never exist without facility scope.
  *
- * Re-joining is idempotent — an existing (possibly deactivated) membership is
- * reactivated and re-roled rather than duplicated, which the
- * `(userId, organizationId)` unique constraint would reject anyway.
+ * By default re-joining is idempotent — an existing (possibly deactivated)
+ * membership is reactivated and re-roled rather than duplicated, which the
+ * `(userId, organizationId)` unique constraint would reject anyway. With
+ * `onExisting: 'refuse'` an existing membership is left untouched instead.
  *
  * @throws {DeletedIdentityError} for a deleted identity (Q-23): reactivating
  * one of its memberships would silently undo the delete.
  * @throws {LastOwnerError} when re-roling an existing membership would demote
  * the organization's last active owner (RISK-16).
+ * @throws {ExistingMembershipError} with `onExisting: 'refuse'` when a
+ * membership (active or deactivated) already exists.
  */
 export async function createMembership(input: CreateMembershipInput): Promise<MembershipSummary> {
-  const { userId, organizationId, facilityId, role } = input;
+  const { userId, organizationId, facilityId, role, onExisting = 'reassign' } = input;
 
   return prisma.$transaction(async (tx) => {
     const identity = await tx.user.findUnique({
@@ -204,8 +236,36 @@ export async function createMembership(input: CreateMembershipInput): Promise<Me
       throw new DeletedIdentityError();
     }
 
-    // RISK-16: re-roling an active owner (a join code entered by the owner, or
-    // an invite accepted in a race with its own guard) is a demotion, so it
+    if (onExisting === 'refuse') {
+      const existing = await tx.organizationUser.findUnique({
+        where: { userId_organizationId: { userId, organizationId } },
+        select: { active: true },
+      });
+      if (existing) {
+        throw new ExistingMembershipError(existing.active);
+      }
+
+      let created: MembershipRow;
+      try {
+        created = await tx.organizationUser.create({
+          data: { userId, organizationId, role },
+          select: MEMBERSHIP_SELECT,
+        });
+      } catch (err) {
+        // A concurrent join or invite created the row after the read above.
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+          throw new ExistingMembershipError(true);
+        }
+        throw err;
+      }
+      await tx.organizationUserFacility.create({
+        data: { organizationUserId: created.id, facilityId },
+      });
+      return toSummary(created);
+    }
+
+    // RISK-16: re-roling an active owner (an invite accepted in a race with its
+    // own guard) is a demotion, so it
     // takes the lock a user delete takes and re-reads under it — otherwise the
     // two could each see the other owner and leave the org with none.
     if (role !== 'owner') {

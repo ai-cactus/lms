@@ -25,6 +25,9 @@
  * Email retry pre-pass (BUG-45 / BUG-31): a failed email about a finished,
  * superseded or archived enrolment is cancelled, never re-sent.
  *
+ * Retakes inherit the original's reminder settings (Q-28): reminders-off,
+ * custom stages, the no-assignment fallback, multi-hop and broken chains.
+ *
  * resolveOnCompletion:
  *   - Calls notification.updateMany with correct type filter and metadata path
  *   - Walks the retakeOf chain so a finished retake clears its originals (BUG-46)
@@ -163,12 +166,12 @@ const DUE_AT_TARGET_YESTERDAY = new Date('2024-06-28T12:00:00Z');
 const DUE_AT_TARGET_3_DAYS_AGO = new Date('2024-06-26T12:00:00Z');
 
 /** Assignment slice as selected by the Track A query (null when the enrollment has no CourseAssignment). */
-type AssignmentSlice = { reminderStages: StageConfig[] } | null;
+type AssignmentSlice = { remindersEnabled: boolean; reminderStages: StageConfig[] } | null;
 
 function makeTrackAEnrollment(
   id: string,
   dueAt: Date = DUE_AT_FIRES_TODAY,
-  assignment: AssignmentSlice = { reminderStages: [] }, // default: assignment present, use stage defaults
+  assignment: AssignmentSlice = { remindersEnabled: true, reminderStages: [] }, // default: assignment present, use stage defaults
 ) {
   return {
     id,
@@ -369,6 +372,7 @@ describe('runReminderSweep — Track A (deadline ladder)', () => {
 
   it('skips a stage when the assignment config marks it disabled (enabled:false)', async () => {
     const enrollment = makeTrackAEnrollment('e1', DUE_AT_FIRES_TODAY, {
+      remindersEnabled: true,
       reminderStages: [
         {
           stage: 'FRIENDLY_REMINDER' as ReminderStage,
@@ -636,6 +640,189 @@ describe('runReminderSweep — Track B (quiz nudges)', () => {
     expect(mockLoggerError).toHaveBeenCalledWith(
       expect.objectContaining({ msg: expect.stringContaining('Track B enrollment failed') }),
     );
+  });
+});
+
+// ─── Retakes inherit reminder settings (Q-28) ─────────────────────────────────
+
+/**
+ * Ruled: a retake follows the reminder settings of its original enrolment's
+ * assignment. `assignRetake` writes no `assignmentId`, so the sweep walks
+ * `retakeOf` to the root and reads that root's assignment; a root with none
+ * keeps the default ladder. Routed by `where`, like the BUG-44 block below.
+ */
+describe('runReminderSweep — retakes inherit reminder settings (Q-28)', () => {
+  type AncestorRow = {
+    id: string;
+    organizationUserId: string;
+    retakeOf: string | null;
+    assignment: AssignmentSlice;
+  };
+
+  const DUE_AT_WEEK_AGO = new Date('2024-06-08T12:00:00Z');
+  const WIDE_CATCH_UP = { ...BASE_OPTS, catchUpDays: 30 };
+  const MEMBER = 'ou-learner';
+
+  function makeRetake(id: string, retakeOf: string) {
+    return {
+      ...makeTrackAEnrollment(id, DUE_AT_WEEK_AGO, null),
+      organizationUserId: MEMBER,
+      retakeOf,
+    };
+  }
+
+  function routeQueries({ trackA, ancestors }: { trackA: unknown[]; ancestors: AncestorRow[] }) {
+    prismaMock.enrollment.findMany.mockImplementation(
+      async (args: { where: Record<string, unknown> }) => {
+        const { where } = args;
+        if ('retakeOf' in where) return [];
+        if ('id' in where) {
+          const ids = (where.id as { in: string[] }).in;
+          return ancestors.filter((a) => ids.includes(a.id));
+        }
+        return 'dueAt' in where ? trackA : [];
+      },
+    );
+  }
+
+  function ancestorLookups(): unknown[] {
+    return prismaMock.enrollment.findMany.mock.calls
+      .map((args: unknown[]) => (args[0] as { where: Record<string, unknown> }).where)
+      .filter((where: Record<string, unknown>) => 'id' in where);
+  }
+
+  function dispatchedFor(enrollmentId: string) {
+    return mockDispatchLadderStage.mock.calls
+      .map(
+        (args: unknown[]) =>
+          args[0] as { enrollment: { id: string }; stage: string; channels: string[] },
+      )
+      .filter((input) => input.enrollment.id === enrollmentId);
+  }
+
+  it('sends nothing for a retake whose original assignment has reminders switched off', async () => {
+    routeQueries({
+      trackA: [makeRetake('retake', 'original')],
+      ancestors: [
+        {
+          id: 'original',
+          organizationUserId: MEMBER,
+          retakeOf: null,
+          assignment: { remindersEnabled: false, reminderStages: [] },
+        },
+      ],
+    });
+
+    const summary = await runReminderSweep(WIDE_CATCH_UP);
+
+    expect(mockDispatchLadderStage).not.toHaveBeenCalled();
+    expect(summary.scanned).toBe(1);
+    expect(summary.skipped).toBe(1);
+    expect(summary.errors).toBe(0);
+  });
+
+  it("runs a retake on its original assignment's custom stages", async () => {
+    routeQueries({
+      trackA: [makeRetake('retake', 'original')],
+      ancestors: [
+        {
+          id: 'original',
+          organizationUserId: MEMBER,
+          retakeOf: null,
+          assignment: {
+            remindersEnabled: true,
+            reminderStages: [
+              {
+                stage: 'HARD_ESCALATION' as ReminderStage,
+                offsetDays: 7,
+                enabled: false,
+                channels: [],
+              },
+              {
+                stage: 'DAY_OF_DEADLINE' as ReminderStage,
+                offsetDays: 0,
+                enabled: true,
+                channels: ['in_app'],
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    await runReminderSweep(WIDE_CATCH_UP);
+
+    const sent = dispatchedFor('retake');
+    expect(sent.map((s) => s.stage)).not.toContain('HARD_ESCALATION');
+    expect(sent.find((s) => s.stage === 'DAY_OF_DEADLINE')?.channels).toEqual(['in_app']);
+    expect(sent.map((s) => s.stage)).toContain('GRACE_SOFT_ESCALATION');
+  });
+
+  it('keeps the default ladder when the original enrolment had no assignment', async () => {
+    routeQueries({
+      trackA: [makeRetake('retake', 'original')],
+      ancestors: [{ id: 'original', organizationUserId: MEMBER, retakeOf: null, assignment: null }],
+    });
+
+    await runReminderSweep(WIDE_CATCH_UP);
+
+    expect(dispatchedFor('retake').map((s) => s.stage)).toEqual(
+      expect.arrayContaining(['DAY_OF_DEADLINE', 'GRACE_SOFT_ESCALATION', 'HARD_ESCALATION']),
+    );
+  });
+
+  it('walks a retake of a retake up to the root assignment, one query per hop', async () => {
+    routeQueries({
+      trackA: [makeRetake('retake-2', 'retake-1')],
+      ancestors: [
+        { id: 'retake-1', organizationUserId: MEMBER, retakeOf: 'original', assignment: null },
+        {
+          id: 'original',
+          organizationUserId: MEMBER,
+          retakeOf: null,
+          assignment: { remindersEnabled: false, reminderStages: [] },
+        },
+      ],
+    });
+
+    await runReminderSweep(WIDE_CATCH_UP);
+
+    expect(mockDispatchLadderStage).not.toHaveBeenCalled();
+    expect(ancestorLookups()).toEqual([{ id: { in: ['retake-1'] } }, { id: { in: ['original'] } }]);
+  });
+
+  it('falls back to the default ladder when the original no longer exists', async () => {
+    routeQueries({ trackA: [makeRetake('retake', 'deleted-original')], ancestors: [] });
+
+    await runReminderSweep(WIDE_CATCH_UP);
+
+    expect(dispatchedFor('retake').map((s) => s.stage)).toContain('HARD_ESCALATION');
+  });
+
+  it("never inherits another member's assignment through a corrupt retakeOf", async () => {
+    routeQueries({
+      trackA: [makeRetake('retake', 'foreign')],
+      ancestors: [
+        {
+          id: 'foreign',
+          organizationUserId: 'ou-someone-else',
+          retakeOf: null,
+          assignment: { remindersEnabled: false, reminderStages: [] },
+        },
+      ],
+    });
+
+    await runReminderSweep(WIDE_CATCH_UP);
+
+    expect(dispatchedFor('retake').map((s) => s.stage)).toContain('HARD_ESCALATION');
+  });
+
+  it('makes no ancestor lookup when no Track A row is a retake', async () => {
+    routeQueries({ trackA: [makeTrackAEnrollment('e1', DUE_AT_WEEK_AGO, null)], ancestors: [] });
+
+    await runReminderSweep(WIDE_CATCH_UP);
+
+    expect(ancestorLookups()).toHaveLength(0);
   });
 });
 

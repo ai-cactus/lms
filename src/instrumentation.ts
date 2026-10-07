@@ -69,7 +69,7 @@ export async function register() {
     // idempotent globalThis singleton and each sweep installs an idempotent
     // BullMQ Job Scheduler (keyed by a stable id), so this cannot double-start a
     // worker or duplicate a schedule, and it survives dev HMR. Enable flags
-    // (REMINDER_SWEEP_ENABLED / VIDEO_SWEEP_ENABLED /
+    // (REMINDER_SWEEP_ENABLED / VIDEO_SWEEP_ENABLED / AVATAR_SWEEP_ENABLED /
     // BILLING_PAUSE_SWEEP_ENABLED) are respected inside the getters — a
     // disabled sweep returns null and starts nothing.
     //
@@ -82,6 +82,7 @@ export async function register() {
         { getManualIndexerWorker },
         { getVideoTranscodeWorker },
         { getVideoSweepWorker },
+        { getAvatarSweepWorker },
         { getReminderSweepWorker },
         { getNotificationDigestWorker },
         { getCycleSummaryWorker },
@@ -90,6 +91,7 @@ export async function register() {
         import('@/lib/queue/manual-indexer-worker'),
         import('@/lib/queue/video-transcode-worker'),
         import('@/lib/queue/video-sweep-worker'),
+        import('@/lib/queue/avatar-sweep-worker'),
         import('@/lib/queue/reminder-sweep-worker'),
         import('@/lib/queue/notification-digest-worker'),
         import('@/lib/queue/cycle-summary-worker'),
@@ -100,6 +102,7 @@ export async function register() {
         getManualIndexerWorker(),
         getVideoTranscodeWorker(),
         getVideoSweepWorker(),
+        getAvatarSweepWorker(),
         getReminderSweepWorker(),
         // Exactly one of these two starts: CYCLE_SUMMARY_ENABLED decides which,
         // and each getter checks it, so listing both cannot run both.

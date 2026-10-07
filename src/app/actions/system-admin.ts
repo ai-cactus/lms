@@ -186,7 +186,6 @@ export interface SystemUserRow {
     fullName: string | null;
     firstName: string | null;
     lastName: string | null;
-    avatarUrl: string | null;
   } | null;
   _count: {
     courses: number;
@@ -259,7 +258,6 @@ export async function getAllUsers(options: {
         firstName: true,
         lastName: true,
         fullName: true,
-        avatarUrl: true,
         deletedAt: true,
         // Every membership, not just active ones: a deleted identity has only
         // deactivated memberships, and its retained records hang off them.
@@ -327,7 +325,6 @@ export async function getAllUsers(options: {
         fullName: u.fullName,
         firstName: u.firstName,
         lastName: u.lastName,
-        avatarUrl: u.avatarUrl,
       },
       _count: totals,
     };
@@ -364,7 +361,6 @@ export interface SystemUserDetail {
     fullName: string | null;
     firstName: string | null;
     lastName: string | null;
-    avatarUrl: string | null;
   } | null;
   courses: Array<{
     id: string;
@@ -414,7 +410,6 @@ export async function getUserDetail(userId: string): Promise<SystemUserDetail | 
       firstName: true,
       lastName: true,
       fullName: true,
-      avatarUrl: true,
       deletedAt: true,
     },
   });
@@ -487,7 +482,6 @@ export async function getUserDetail(userId: string): Promise<SystemUserDetail | 
       fullName: user.fullName,
       firstName: user.firstName,
       lastName: user.lastName,
-      avatarUrl: user.avatarUrl,
     },
     courses: membership?.createdCourses ?? [],
     enrollments: membership?.enrollments ?? [],

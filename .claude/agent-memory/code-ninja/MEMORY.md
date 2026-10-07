@@ -84,7 +84,7 @@
 - [Partial prisma mocks break on a new query](gotcha_partial_prisma_mocks_break_on_new_query.md): "undefined (reading 'findMany')" is a missing vi.mock key
 - [Course roster spans tenants](gotcha_course_roster_spans_tenants.md): org filter lives in the query with an own-row exemption and NO creator exemption
 - [Shared worktree + agent auto-stash](gotcha_shared_worktree_agents_autostash.md): agents in one checkout auto-stash each other; use a worktree per agent
-- [Worktree needs node_modules + generated](gotcha_worktree_needs_node_modules_and_generated.md): odd vi.mock errors = missing `generated`
+- [Worktree needs node_modules + generated](gotcha_worktree_needs_node_modules_and_generated.md): odd vi.mock errors = missing `generated`; a symlinked node_modules can be stale
 - [RBAC actor lists vs permissions](gotcha_rbac_actor_lists_vs_permissions.md): a ruling finer than a verb ships as a role-utils list, not a grant
 - [Self-service verbs pollute the matrix](gotcha_self_service_verbs_pollute_the_matrix.md): a matrix `R` cell reads as `CR`; quiz authoring is `course.edit`
 - [NOT NULL column needs its writer in the same PR](gotcha_required_column_needs_its_writer_same_pr.md): land it nullable

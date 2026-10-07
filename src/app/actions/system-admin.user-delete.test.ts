@@ -259,6 +259,14 @@ describe('getAllUsers — active / deleted / all', () => {
     expect(mockPrisma.user.findMany.mock.calls[0][0].where).toEqual({});
   });
 
+  // BUG-48: `User.avatarUrl` is a raw storage URI and nothing on /system renders
+  // an avatar, so it is neither read nor returned.
+  it('never selects or returns the stored avatar URI', async () => {
+    await getAllUsers({});
+
+    expect(mockPrisma.user.findMany.mock.calls[0][0].select).not.toHaveProperty('avatarUrl');
+  });
+
   it('lets a deleted identity match the organization it was deleted from', async () => {
     await getAllUsers({ statusFilter: 'all', orgFilter: 'org-a' });
     expect(mockPrisma.user.findMany.mock.calls[0][0].where).toEqual({
@@ -289,7 +297,6 @@ describe('getAllUsers — active / deleted / all', () => {
         firstName: null,
         lastName: null,
         fullName: 'Dana',
-        avatarUrl: null,
         deletedAt: DELETED_AT,
         organizationMemberships: [membership(false, 'org-a', 4), membership(false, 'org-b', 2)],
       },
@@ -302,7 +309,6 @@ describe('getAllUsers — active / deleted / all', () => {
         firstName: null,
         lastName: null,
         fullName: 'Lee',
-        avatarUrl: null,
         deletedAt: null,
         organizationMemberships: [membership(false, 'org-old', 9), membership(true, 'org-a', 1)],
       },
@@ -339,7 +345,6 @@ describe('getUserDetail — read-only view of a deleted user', () => {
       firstName: null,
       lastName: null,
       fullName: 'Dana',
-      avatarUrl: null,
       deletedAt: DELETED_AT,
     });
     mockPrisma.organizationUser.findFirst.mockResolvedValueOnce({
@@ -364,6 +369,9 @@ describe('getUserDetail — read-only view of a deleted user', () => {
     const detail = await getUserDetail('u-del');
 
     expect(detail?.deletedAt).toEqual(DELETED_AT);
+    // BUG-48: the raw storage URI never reaches the browser.
+    expect(mockPrisma.user.findUnique.mock.calls[0][0].select).not.toHaveProperty('avatarUrl');
+    expect(detail?.profile).not.toHaveProperty('avatarUrl');
     expect(detail?.enrollments).toHaveLength(1);
     // The representative membership is read active-or-not.
     expect(mockPrisma.organizationUser.findFirst.mock.calls[0][0].where).toEqual({

@@ -410,6 +410,16 @@ describe('getStaffUsers — D-01 facility scoping', () => {
     await expect(getStaffUsers()).rejects.toThrow('Unauthorized');
     expect(prismaMock.organizationUser.findMany).not.toHaveBeenCalled();
   });
+
+  // SEC-15: `user: true` loaded every column, password hash and MFA secret included.
+  it('reads only the user columns the roster shows', async () => {
+    mockAdminAuth.mockResolvedValue(sessionFor('hr'));
+
+    await getStaffUsers();
+
+    const { include } = prismaMock.organizationUser.findMany.mock.calls[0][0];
+    expect(include.user).toEqual({ select: { email: true, fullName: true, avatarUrl: true } });
+  });
 });
 
 // ---------------------------------------------------------------------------
