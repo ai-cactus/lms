@@ -96,6 +96,10 @@ interface StaffProfileClientProps {
       passingScore: number;
       difficulty?: string;
       dueAt: string | null;
+      /** When the learner last asked for a retake of this locked enrolment (Q-35). */
+      retryRequestedAt?: string | null;
+      /** A retake of this enrolment already exists, so it can't be retaken again. */
+      hasSuccessor?: boolean;
       quizAttempts?: {
         id: string;
         attemptCount: number;
@@ -108,6 +112,11 @@ interface StaffProfileClientProps {
   facilities: AccessibleFacility[];
   /** The viewer's own membership id — their own profile never offers Change Role. */
   viewerOrganizationUserId: string | null;
+  /**
+   * `?retake=` from a retry-request notice: opens Assign Retake for that row on
+   * arrival, once, when it is a locked enrolment of this member not yet retaken.
+   */
+  openRetakeForEnrollmentId?: string | null;
 }
 
 const headCls = 'h-10 px-[18px] text-[15.5px] font-medium tracking-[0.31px] text-[#666d80]';
@@ -182,6 +191,7 @@ export default function StaffProfileClient({
   viewerRole,
   facilities,
   viewerOrganizationUserId,
+  openRetakeForEnrollmentId = null,
 }: StaffProfileClientProps) {
   // NOTE: `user.id` here is the OrganizationUser (membership) id, not the global
   // identity id — getStaffDetails maps orgUser.id onto this field. Everything
@@ -261,7 +271,12 @@ export default function StaffProfileClient({
   const [retakeEnrollment, setRetakeEnrollment] = useState<{
     id: string;
     courseName: string;
-  } | null>(null);
+  } | null>(() => {
+    const target = enrollments.find(
+      (e) => e.id === openRetakeForEnrollmentId && e.status === 'locked' && !e.hasSuccessor,
+    );
+    return target ? { id: target.id, courseName: target.courseName } : null;
+  });
   const [viewingResult, setViewingResult] = useState<{
     enrollmentId: string;
     courseName: string;
@@ -513,6 +528,9 @@ export default function StaffProfileClient({
                 enrollment.status === 'completed' || isAttested || progress === 100;
               const hasPassed = isComplete && enrollment.score >= (enrollment.passingScore || 70);
               const isLocked = enrollment.status === 'locked';
+              const canAssignRetake = isLocked && !enrollment.hasSuccessor;
+              const retryRequestedAt =
+                canAssignRetake && enrollment.retryRequestedAt ? enrollment.retryRequestedAt : null;
               const attempt = enrollment.quizAttempts?.[0];
               const hasResult =
                 isComplete || (enrollment.quizAttempts && enrollment.quizAttempts.length > 0);
@@ -599,7 +617,11 @@ export default function StaffProfileClient({
                           Locked
                         </span>
                         <span className="text-[11px] font-medium text-[#e13737]">
-                          Limit reached
+                          {enrollment.hasSuccessor
+                            ? 'Retake assigned'
+                            : retryRequestedAt
+                              ? `Retry requested ${formatDueDate(retryRequestedAt, user.timeZone)}`
+                              : 'Limit reached'}
                         </span>
                       </div>
                     ) : isComplete ? (
@@ -636,7 +658,7 @@ export default function StaffProfileClient({
                     onClick={(e) => e.stopPropagation()}
                   >
                     <div className="flex items-center justify-end gap-2 md:gap-3">
-                      {isLocked && (
+                      {canAssignRetake && (
                         <Button
                           variant="link"
                           className={cn(rowLinkCls, 'text-[#d92d20] hover:text-[#d92d20]')}
@@ -658,9 +680,9 @@ export default function StaffProfileClient({
                             label: 'Assign Retake',
                             icon: <RotateCcw className="size-4" />,
                             // Retakes only exist for locked enrollments (quiz
-                            // attempts exhausted) — assignRetake rejects any
-                            // other status, so don't offer it.
-                            disabled: !isLocked,
+                            // attempts exhausted), once each — assignRetake
+                            // rejects anything else, so don't offer it.
+                            disabled: !canAssignRetake,
                             onSelect: () =>
                               setRetakeEnrollment({
                                 id: enrollment.id,
