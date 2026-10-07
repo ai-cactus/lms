@@ -1,4 +1,6 @@
 import type { EnrollmentStatus } from '@/generated/prisma/enums';
+import { TRAINING_ACCESS_PAUSED_MESSAGE } from '@/lib/billing';
+import { ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
 
 /**
  * Q-35 (ruled 2026-10-07): a learner locked out of a course — every quiz
@@ -66,6 +68,22 @@ export const RETRY_REQUEST_RATE_LIMITED_MESSAGE =
 
 export const RETRY_REQUEST_MFA_REQUIRED_MESSAGE =
   'Please complete two-factor verification to continue.';
+
+/** The learner-facing reason for each refused decision. */
+export function retryRequestRefusalMessage(
+  decision: Exclude<RetryRequestDecision, 'eligible' | 'already_requested'>,
+): string {
+  switch (decision) {
+    case 'archived':
+      return ARCHIVED_COURSE_LEARNER_MESSAGE;
+    case 'billing_paused':
+      return TRAINING_ACCESS_PAUSED_MESSAGE;
+    case 'not_locked':
+      return RETRY_REQUEST_NOT_LOCKED_MESSAGE;
+    case 'retake_exists':
+      return RETRY_REQUEST_RETAKE_EXISTS_MESSAGE;
+  }
+}
 
 /**
  * What a learner surface shows for one enrolment:
