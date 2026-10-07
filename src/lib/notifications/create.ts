@@ -157,10 +157,10 @@ export async function notifyOrganizationAdmins(organizationId: string, data: Adm
 /**
  * {@link notifyOrganizationAdmins} for a notice that is also emailed. Both legs
  * reach the same audience, so an admin who opted out of the type or cannot
- * open the link gets neither; the in-app leg alone honours the org's in-app
- * category switch. The emails are awaited — a fire-and-forget send can be cut
- * off when the request that triggered it ends. Never throws; each failed send
- * is logged.
+ * open the link gets neither. Each leg honours its own org-wide category switch
+ * (Q-34): the in-app leg the in-app switch, the email leg the email switch. The
+ * emails are awaited — a fire-and-forget send can be cut off when the request
+ * that triggered it ends. Never throws; each failed send is logged.
  */
 export async function notifyOrganizationAdminsWithEmail(
   organizationId: string,
@@ -176,6 +176,15 @@ export async function notifyOrganizationAdminsWithEmail(
         audience.map((admin) => admin.id),
         data,
       );
+    }
+
+    if (!(await isNotificationChannelEnabled(organizationId, data.type, 'email'))) {
+      logger.info({
+        msg: '[notifications] Admin notice email skipped — category email switched off',
+        orgId: organizationId,
+        type: data.type,
+      });
+      return;
     }
 
     await Promise.all(

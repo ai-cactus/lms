@@ -380,7 +380,8 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
           const { sendQuizLockedEmail } = await import('@/lib/email');
           // BUG-55: through the notification service, so the Q-25 audience
           // (the link needs `user.read`), per-admin opt-outs and the org's
-          // in-app switch all apply, and the emails finish before we respond.
+          // Training in-app and email switches (Q-34) all apply, and the emails
+          // finish before we respond.
           await notifyOrganizationAdminsWithEmail(
             orgId,
             {

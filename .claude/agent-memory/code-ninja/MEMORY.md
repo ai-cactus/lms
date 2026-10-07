@@ -131,3 +131,4 @@
 - [Attestation status writers](gotcha_attestation_status_writers.md): quiz pass stays in_progress; no-quiz attest must await its progress write
 - [Attest gate + read access](project_attest_gate_and_read_access.md): Q-27 judges the SERVED quiz's latest attempt; RISK-15 = isCourseOrganizationReviewer
 - [Realm-session tests arm the admin mock](gotcha_realm_session_tests_arm_admin_mock.md): BUG-47: admin-only actions read only `@/auth`; dual-portal actions take `realm` first
+- [Training email ships OFF](gotcha_training_email_switch_ships_off.md): Q-34 gates the quiz-locked admin email on it, so a fresh org gets no email
