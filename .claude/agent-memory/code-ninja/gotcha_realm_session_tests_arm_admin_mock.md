@@ -20,7 +20,9 @@ OWNS the enrolment (same shape as `/api/certificates/[id]`).
   "worker portal is never read" test.
 - New dual-portal actions: add `realm: PortalRealm` as the FIRST parameter (matches user.ts),
   thread it from the page/component, never re-introduce a fallback.
-- The inline dual-session learner actions (`attestCourse`, `startCourse`, `retakeQuiz`,
-  `requestCourseRetry`) match by ownership, not preference, and were deliberately left alone.
+- The inline dual-session learner actions (`attestCourse`, `startCourse`, `retakeQuiz`) match by
+  ownership, not preference, and were deliberately left alone. `requestCourseRetry` (Q-35
+  rewrite) is `getRealmSession('worker')` ONLY — a manager learner reaches it via learn mode,
+  which mints a worker cookie.
 
 Related: [[auth-instance-vs-role]], [[gotcha-admin-auth-instance-is-the-tier-check]].
