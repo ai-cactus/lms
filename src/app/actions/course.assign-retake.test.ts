@@ -191,10 +191,13 @@ describe('assignRetake — tenancy and facility scope (SEC-19)', () => {
   });
 
   it("refuses another tenant's enrollment with the not-found answer, writing nothing", async () => {
-    // The org predicate makes the DB return nothing for another tenant's row.
+    // Behaves like the DB: the row belongs to org-other, so it is returned
+    // unless the query carries a predicate naming a different organization.
     prismaMock.enrollment.findUnique.mockImplementation(
-      async ({ where }: { where: { organizationUser?: { organizationId?: string } } }) =>
-        where.organizationUser?.organizationId === 'org-other' ? makeLockedEnrollment() : null,
+      async ({ where }: { where: { organizationUser?: { organizationId?: string } } }) => {
+        const orgFilter = where.organizationUser?.organizationId;
+        return orgFilter === undefined || orgFilter === 'org-other' ? makeLockedEnrollment() : null;
+      },
     );
 
     const result = await assignRetake(ENROLLMENT_ID);
