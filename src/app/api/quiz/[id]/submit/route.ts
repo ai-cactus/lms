@@ -352,7 +352,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       const enrollmentWithDetails = await prisma.enrollment.findUnique({
         where: { id: enrollmentId },
         include: {
-          organizationUser: { include: { user: true } },
+          organizationUser: { include: { user: { select: { email: true, fullName: true } } } },
           course: { include: { lessons: { include: { quiz: true } } } },
         },
       });

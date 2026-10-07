@@ -1689,7 +1689,7 @@ export async function attestCourse(
   const enrollment = await prisma.enrollment.findUnique({
     where: { id: enrollmentId },
     include: {
-      organizationUser: { include: { user: true } },
+      organizationUser: { include: { user: { select: { email: true, fullName: true } } } },
       course: {
         include: {
           quiz: { select: { id: true, passingScore: true } },
@@ -2448,10 +2448,7 @@ export async function assignRetake(
 
   const lockedEnrollment = await prisma.enrollment.findUnique({
     where: { id: enrollmentId },
-    include: {
-      organizationUser: { include: { user: true } },
-      course: true,
-    },
+    include: { course: true },
   });
 
   if (!lockedEnrollment) {

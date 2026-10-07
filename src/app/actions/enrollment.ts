@@ -1301,7 +1301,10 @@ export async function getEnrollmentWithResults(enrollmentId: string) {
     where: { id: enrollmentId },
     include: {
       organizationUser: {
-        include: { user: true, organization: true },
+        include: {
+          user: { select: { email: true, fullName: true } },
+          organization: { select: { name: true } },
+        },
       },
       course: {
         include: {
@@ -1444,7 +1447,7 @@ export async function requestCourseRetry(
   const enrollment = await prisma.enrollment.findUnique({
     where: { id: enrollmentId },
     include: {
-      organizationUser: { include: { user: true } },
+      organizationUser: { include: { user: { select: { email: true, fullName: true } } } },
       course: true,
     },
   });
