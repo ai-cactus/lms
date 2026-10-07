@@ -30,7 +30,7 @@ valid `'@/auth'` session:
 the mis-gate class already closed — every worker-held-verb gate either had
 `isAdminRole` in the same expression or sat behind the admin instance. What was
 actually still open was the *absent*-gate variant on `resolveSession()` exports:
-`getDashboardData` (course.ts) and `getAvailableUsers` (enrollment.ts) had a
+`getDashboardData` (course.ts) and `getAvailableUsers` (enrollment.ts, deleted as dead code in TOOL-31) had a
 session check and nothing else, while the pages fronting them gated on
 `course.read`. See [[gotcha_dashboard_two_actions_one_population]].
 

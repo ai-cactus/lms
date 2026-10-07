@@ -1,10 +1,10 @@
 /**
  * Facility-scope wiring for the USER-target assignment path (enrollUsers).
  *
- * `getAvailableUsers` narrows the assign page's picker to the caller's
- * facilities, but the "Specific people" control accepts a free-text email, so
- * that narrowing was advisory: a facility-bound supervisor could enroll any
- * member of the organisation simply by typing their address.
+ * The assign page's "Specific people" control accepts a free-text email, so
+ * narrowing a picker to the caller's facilities would be advisory: a
+ * facility-bound supervisor could enroll any member of the organisation simply
+ * by typing their address.
  *
  * The failure was silent in both directions. Reads ARE correctly scoped, so the
  * assigner's own "Enrolled Staff" view never showed the enrollment they had just

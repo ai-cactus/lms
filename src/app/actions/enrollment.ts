@@ -185,75 +185,6 @@ async function enrollSequentially(
   return outcomes;
 }
 
-/**
- * Get all available users (workers) that can be enrolled in courses.
- * Used by Share Modal to show selectable users.
- */
-export async function getAvailableUsers() {
-  const session = await getRealmSession('admin');
-  if (!session?.user?.id) {
-    throw new Error('Unauthorized');
-  }
-
-  // The rows below carry staff EMAIL addresses, and this once had no permission
-  // gate at all — a session check only, over a resolver that also accepted a
-  // WORKER session, so any learner could POST to it and read their facility's
-  // roster. No page links it
-  // today, which changes nothing: a `'use server'` export is an HTTP endpoint
-  // whether or not the UI calls it.
-  //
-  // Same pair `searchStaffUsers` (user.ts) uses, and for the same reason:
-  // `user.read` is the Staff Management verb, while clinical director reaches
-  // the assignee picker through `assignment.create` instead. Neither verb is in
-  // `workerPermissions`, so this admits exactly the five manager roles that may
-  // assign training.
-  const roleKey = dbRoleToRoleKey(session.user.role);
-  if (!can(roleKey, 'user.read') && !can(roleKey, 'assignment.create')) {
-    logger.warn({
-      msg: '[enrollment] getAvailableUsers denied — no roster or assignment visibility',
-      userId: session.user.id,
-      role: session.user.role,
-    });
-    throw new Error('Forbidden');
-  }
-
-  // Restrict to the caller's ACTIVE organization — never return members of
-  // other tenants. `id` is the organizationUserId, the membership every
-  // org-scoped artifact is owned by. Org is authoritative on the DB-revalidated
-  // session — no re-query.
-  const organizationId = session.user.organizationId;
-  if (!organizationId) {
-    return [];
-  }
-
-  // Supervisors hold assignment.create as of 2026-08-25 (team QA 3.1 / C8), so
-  // this picker is now reachable by a FACILITY-BOUND role. Narrow it, or the
-  // act of granting the verb would hand a supervisor the whole org's roster —
-  // the same read-side gap D-01 closed everywhere else.
-  const dataFacilityIds = await resolveDataFacilityIds(session);
-
-  const members = await prisma.organizationUser.findMany({
-    where: { organizationId, active: true, ...staffFacilityWhere(dataFacilityIds) },
-    // Explicit projection — the DTO uses only these fields, so never load the
-    // password hash / MFA-secret columns of the full user row into memory. No
-    // avatar: `User.avatarUrl` is a raw storage URI that must never reach the
-    // browser (BUG-48), and nothing renders one from this picker.
-    select: {
-      id: true,
-      role: true,
-      user: { select: { email: true, fullName: true } },
-    },
-    orderBy: { createdAt: 'desc' },
-  });
-
-  return members.map((member) => ({
-    id: member.id,
-    email: member.user.email,
-    fullName: member.user.fullName || member.user.email,
-    role: member.role,
-  }));
-}
-
 /** Opt-in behaviour switches for {@link enrollUsers}; every default is today's behaviour. */
 export interface EnrollUsersOptions {
   /**
@@ -630,8 +561,8 @@ export async function enrollUsers(
     ...(options?.deferWorkerNotification ? { deferWorkerNotification: true } : {}),
   };
 
-  // Facility gate: this action takes FREE-TEXT emails, so the narrowing applied
-  // to the picker (getAvailableUsers) was advisory only — a facility-bound
+  // Facility gate: this action takes FREE-TEXT emails, so a picker narrowed to
+  // the caller's facilities would be advisory only — a facility-bound
   // supervisor could enroll any member of the organisation by typing their
   // address, and because reads ARE scoped, nothing surfaced the crossing to
   // either side. Shared with every other write that takes a caller-named
