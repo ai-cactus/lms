@@ -4,7 +4,6 @@ import React, { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Check,
-  CircleX,
   Lock,
   Clock,
   Search,
@@ -18,9 +17,11 @@ import EmptyTableState from '@/components/ui/EmptyTableState';
 import { Alert } from '@/components/ui/alert';
 import { RowActionsMenu, type RowAction } from '@/components/ui/RowActionsMenu';
 import CancelledCourseBadge from '@/components/worker/CancelledCourseBadge';
+import RequestRetryButton from '@/components/worker/RequestRetryButton';
 import { logger } from '@/lib/logger';
 import { ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
 import { formatDateInTz } from '@/lib/reminders/time';
+import { retryRequestUiState } from '@/lib/enrollment/retry-request';
 import type { LearnerCourseAttempt, LearnerCourseRow } from '@/types/enrollment';
 
 interface WorkerCourseListProps {
@@ -63,7 +64,7 @@ function deriveRowState(course: LearnerCourseRow): RowState {
   const attempt = latestCompletedAttempt(course.quizAttempts);
   const failedLatest =
     attempt != null && course.passingScore != null && attempt.score < course.passingScore;
-  if (course.status === 'failed' || failedLatest) return 'retry';
+  if (failedLatest) return 'retry';
 
   if (course.status === 'in_progress' || course.progress > 0) return 'continue';
   return 'start';
@@ -138,15 +139,6 @@ export default function WorkerCourseList({ courses, showHeading = true }: Worker
         </span>
       );
     }
-    if (course.status === 'failed') {
-      return (
-        <span className={`${badgeBase} bg-[#fee2e2] text-[#dc2626]`}>
-          <CircleX className="size-3" aria-hidden="true" />
-          Failed
-        </span>
-      );
-    }
-
     if (rowState === 'retake') {
       return (
         <span className={`${badgeBase} bg-error/10 text-error`}>
@@ -157,16 +149,23 @@ export default function WorkerCourseList({ courses, showHeading = true }: Worker
     }
 
     if (course.status === 'locked') {
+      const retryPending =
+        retryRequestUiState({
+          status: course.status,
+          retryRequestedAt: course.retryRequestedAt,
+        }) === 'pending';
       return (
         <div className="flex flex-col gap-1">
           <span className={`${badgeBase} bg-[#FEE2E2] text-[#DC2626]`}>
             <Lock className="size-3" aria-hidden="true" />
             Locked
           </span>
-          {/* The learner cannot self-retake once attempts are exhausted; only an
-              admin's assignRetake reopens this course. Name that, rather than
-              restating the cause. */}
-          <span className="text-[10px] text-[#EF4444]">Awaiting admin retake</span>
+          {/* Attempts are exhausted: the learner can ask for a retake (Q-35), but
+              only an admin's assignRetake reopens the course. Name the next step,
+              rather than restating the cause. */}
+          <span className="text-[10px] text-[#EF4444]">
+            {retryPending ? 'Retry requested' : 'Awaiting admin retake'}
+          </span>
         </div>
       );
     }
@@ -379,6 +378,15 @@ export default function WorkerCourseList({ courses, showHeading = true }: Worker
                       onClick={(e) => e.stopPropagation()}
                     >
                       <div className="flex items-center gap-1">
+                        {isLocked && !isCancelled && course.enrollmentId && (
+                          <RequestRetryButton
+                            enrollmentId={course.enrollmentId}
+                            status={course.status}
+                            retryRequestedAt={course.retryRequestedAt}
+                            compact
+                            hideWhenPending
+                          />
+                        )}
                         {actionLabel && (
                           <button
                             type="button"

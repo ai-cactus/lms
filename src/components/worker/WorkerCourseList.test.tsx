@@ -195,6 +195,52 @@ describe('WorkerCourseList — Action column', () => {
     expect(screen.getByRole('button', { name: /Actions for/ })).toBeInTheDocument();
   });
 
+  it('offers Request retry on a locked row that has not asked yet (Q-35)', () => {
+    render(<WorkerCourseList courses={[baseCourse({ status: 'locked', progress: 100 })]} />);
+
+    expect(screen.getByRole('button', { name: 'Request retry' })).toBeInTheDocument();
+    expect(screen.getByText('Awaiting admin retake')).toBeInTheDocument();
+  });
+
+  it('says "Retry requested" instead of "Awaiting admin retake" once the learner has asked', () => {
+    render(
+      <WorkerCourseList
+        courses={[baseCourse({ status: 'locked', progress: 100, retryRequestedAt: new Date() })]}
+      />,
+    );
+
+    expect(screen.getByText('Retry requested')).toBeInTheDocument();
+    expect(screen.queryByText('Awaiting admin retake')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Request retry' })).not.toBeInTheDocument();
+  });
+
+  it('offers Request retry again once the 72-hour cool-down has passed', () => {
+    const fourDaysAgo = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000);
+    render(
+      <WorkerCourseList
+        courses={[baseCourse({ status: 'locked', progress: 100, retryRequestedAt: fourDaysAgo })]}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Request retry' })).toBeInTheDocument();
+  });
+
+  it('offers no Request retry on a cancelled (archived) locked row', () => {
+    render(
+      <WorkerCourseList
+        courses={[baseCourse({ status: 'locked', progress: 100, courseArchived: true })]}
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: 'Request retry' })).not.toBeInTheDocument();
+  });
+
+  it('never shows a "Failed" badge — that status is never written', () => {
+    render(<WorkerCourseList courses={[baseCourse({ status: 'failed', progress: 100 })]} />);
+
+    expect(screen.queryByText('Failed')).not.toBeInTheDocument();
+  });
+
   it('offers View for a completed course', () => {
     render(<WorkerCourseList courses={[baseCourse({ status: 'attested', progress: 100 })]} />);
 

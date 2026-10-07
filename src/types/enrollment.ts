@@ -44,6 +44,8 @@ export interface LearnerCourseRow {
   passingScore?: number | null;
   /** Set when this enrollment is an admin-assigned retake of an earlier one. */
   retakeOf?: string | null;
+  /** When a locked learner last asked their admins for a retake (Q-35). */
+  retryRequestedAt?: Date | string | null;
   enrollmentId?: string;
   /** Present once a certificate has been issued for this enrollment. */
   certificateId?: string | null;

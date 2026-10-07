@@ -51,8 +51,21 @@ describe('WorkerTrainingList — routes through the course preview, never straig
     expect(mockPush).not.toHaveBeenCalledWith(expect.stringContaining('/learn/'));
   });
 
-  it('"Retry" (a failed course) also navigates to /worker/courses/[id]', () => {
-    render(<WorkerTrainingList courses={[baseCourse({ status: 'failed', progress: 100 })]} />);
+  // A failed attempt with retries left keeps the enrolment `in_progress`; only
+  // the attempt's score records the failure (`failed` is never written).
+  it('"Retry" (a failed attempt) also navigates to /worker/courses/[id]', () => {
+    render(
+      <WorkerTrainingList
+        courses={[
+          baseCourse({
+            status: 'in_progress',
+            progress: 100,
+            passingScore: 70,
+            quizAttempts: [{ id: 'a1', attemptCount: 1, timeTaken: 120, score: 40 }],
+          }),
+        ]}
+      />,
+    );
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
 

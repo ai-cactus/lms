@@ -188,6 +188,8 @@ export interface LearnPayload {
     status: string;
     score: number | null;
     videoPositionSeconds: number | null;
+    /** ISO instant of the learner's latest retry request on a locked enrolment (Q-35). */
+    retryRequestedAt: string | null;
     quizAttempts: LearnPayloadQuizAttempt[];
   };
   quizResultsData: LearnPayloadQuizResults | null;
@@ -444,6 +446,7 @@ export async function getLearnPayload(courseId: string): Promise<LearnPayload | 
       status: 'in_progress',
       score: null,
       videoPositionSeconds: null,
+      retryRequestedAt: null,
     };
 
     const quizData = selectAssessmentQuiz(course.lessons, course.quiz);
@@ -602,6 +605,7 @@ export async function getLearnPayload(courseId: string): Promise<LearnPayload | 
         status: effectiveEnrollment.status,
         score: effectiveEnrollment.score,
         videoPositionSeconds: effectiveEnrollment.videoPositionSeconds,
+        retryRequestedAt: toIsoTimestamp(effectiveEnrollment.retryRequestedAt),
         quizAttempts,
       },
       quizResultsData,
