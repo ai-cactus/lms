@@ -2,7 +2,7 @@ import React from 'react';
 import { auth } from '@/auth.worker';
 import prisma from '@/lib/prisma';
 import { redirect } from 'next/navigation';
-import { getSignedUrl } from '@/lib/storage';
+import { signAvatarUrl } from '@/lib/storage/avatar';
 import WorkerProfileForm from '@/components/worker/WorkerProfileForm';
 import { logger } from '@/lib/logger';
 
@@ -37,14 +37,9 @@ export default async function WorkerProfilePage() {
     redirect('/login');
   }
 
-  let avatarDisplayUrl: string | null = null;
-  if (user.avatarUrl) {
-    try {
-      avatarDisplayUrl = await getSignedUrl(user.avatarUrl);
-    } catch (error) {
-      logger.error({ msg: 'Failed to get signed URL for avatar:', err: error });
-    }
-  }
+  // BUG-65: only the signed display URL is sent; the stored storage URI names
+  // the bucket and object key and must never reach the browser.
+  const avatarDisplayUrl = await signAvatarUrl(user.avatarUrl, user.id);
 
   const userData = {
     id: user.id,
@@ -52,7 +47,6 @@ export default async function WorkerProfilePage() {
     last_name: user.lastName || '',
     email: user.email,
     role: session.user.role,
-    avatarUrl: user.avatarUrl,
     avatarDisplayUrl,
     authProvider: user.authProvider,
   };

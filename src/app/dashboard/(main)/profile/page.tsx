@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
 import { getSignedUrl } from '@/lib/storage';
-import { logger } from '@/lib/logger';
+import { signAvatarUrl } from '@/lib/storage/avatar';
 import { can } from '@/lib/rbac/permissions';
 import { dbRoleToRoleKey, getRoleDisplayName } from '@/lib/rbac/role-utils';
 import { isOrgWideFacilityRole } from '@/lib/facility/scope';
@@ -42,18 +42,9 @@ export default async function ProfilePage() {
       : null,
   ]);
 
-  let avatarDisplayUrl: string | null = null;
-  if (user?.avatarUrl) {
-    try {
-      avatarDisplayUrl = await getSignedUrl(user.avatarUrl);
-    } catch (error) {
-      logger.error({
-        msg: '[user] Failed to sign avatar URL for profile',
-        userId: session.user.id,
-        err: error,
-      });
-    }
-  }
+  // BUG-65: only the signed display URL is sent; the stored storage URI names
+  // the bucket and object key and must never reach the browser.
+  const avatarDisplayUrl = await signAvatarUrl(user?.avatarUrl, session.user.id!);
 
   const profile = {
     id: session.user.id!,
@@ -62,7 +53,6 @@ export default async function ProfilePage() {
     email: user?.email || session.user.email || '',
     role,
     roleDisplayName: getRoleDisplayName(role),
-    avatarUrl: user?.avatarUrl || null,
     avatarDisplayUrl,
     authProvider: user?.authProvider || 'credentials',
   };
