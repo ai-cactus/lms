@@ -187,7 +187,7 @@ describe('assignRetake — admin-only role gate sourced from the session', () =>
   beforeEach(async () => {
     // SEC-19: a facility-bound caller may retake only a learner in their own
     // facilities, so the supervisor case needs a roster that admits the learner.
-    const { prisma } = await import('@/lib/prisma');
+    const { default: prisma } = await import('@/lib/prisma');
     vi.mocked(prisma.facility.findMany).mockResolvedValue([{ id: 'fac-1' }] as never);
     vi.mocked(prisma.organizationUser.findMany).mockResolvedValue([
       { id: 'ou-worker-1', facilities: [{ facilityId: 'fac-1' }] },
