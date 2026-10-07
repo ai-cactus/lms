@@ -22,6 +22,7 @@ import {
 import type { StaffEntry } from '@/types/enrollment';
 import { logger } from '@/lib/logger';
 import { resolveMemberFacility } from '@/lib/facility/member-facility';
+import { partitionOrgUsersByFacility } from '@/lib/facility/target-scope';
 import {
   resolveDataFacilityIds,
   staffFacilityWhere,
@@ -2398,11 +2399,22 @@ export interface AssignRetakeResult {
   refusedReason?: string;
 }
 
+const RETAKE_ENROLLMENT_UNAVAILABLE_MESSAGE =
+  'That training record could not be found in your organization.';
+const RETAKE_OUTSIDE_FACILITY_MESSAGE = 'That staff member is outside the facilities you manage.';
+const RETAKE_ALREADY_ASSIGNED_MESSAGE = 'A retake has already been assigned for this course.';
+const RETAKE_ACTIVE_ENROLLMENT_MESSAGE =
+  'This learner already has an active enrollment on this course, so a retake cannot be added.';
+
 /**
  * Assign a retake of a `locked` enrolment. `dueDate` (`YYYY-MM-DD`, from the
  * dialog) becomes the retake's deadline so it gets the normal reminder and
  * escalation ladder (Q-26); omitted, it takes the same 14-day default the
  * dialog pre-fills, so no caller can mint a retake the ladder cannot see.
+ *
+ * SEC-19: the enrolment id arrives from the client, so it is read only inside
+ * the caller's organization and then narrowed to the learners their facilities
+ * admit — `enrollment.create` alone says nothing about WHO they may act on.
  */
 export async function assignRetake(
   enrollmentId: string,
@@ -2444,16 +2456,39 @@ export async function assignRetake(
     return { success: false, refusedReason: pickedDueDate.refusedReason };
   }
 
-  const lockedEnrollment = await prisma.enrollment.findUnique({
-    where: { id: enrollmentId },
-    include: {
-      organizationUser: { include: { user: true } },
-      course: true,
-    },
-  });
+  const organizationId = session.user.organizationId;
+  // Another tenant's enrolment and a missing one share one answer, so the
+  // refusal cannot be used to probe which ids exist.
+  const lockedEnrollment = organizationId
+    ? await prisma.enrollment.findUnique({
+        where: { id: enrollmentId, organizationUser: { organizationId } },
+        include: {
+          organizationUser: { include: { user: true } },
+          course: true,
+        },
+      })
+    : null;
 
-  if (!lockedEnrollment) {
-    throw new Error('Enrollment not found');
+  if (!organizationId || !lockedEnrollment) {
+    logger.warn({
+      msg: '[course] assignRetake refused — enrollment not found in the caller organization',
+      enrollmentId,
+      userId: session.user.id,
+    });
+    return { success: false, refusedReason: RETAKE_ENROLLMENT_UNAVAILABLE_MESSAGE };
+  }
+
+  const { rejected } = await partitionOrgUsersByFacility(session, organizationId, [
+    lockedEnrollment.organizationUserId,
+  ]);
+  if (rejected.length > 0) {
+    logger.warn({
+      msg: "[course] assignRetake refused — learner outside the caller's facilities",
+      enrollmentId,
+      userId: session.user.id,
+      role: session.user.role,
+    });
+    return { success: false, refusedReason: RETAKE_OUTSIDE_FACILITY_MESSAGE };
   }
 
   // Q-04: an archived course cannot be retaken. This is the one path that would
@@ -2489,20 +2524,21 @@ export async function assignRetake(
     };
   }
 
+  // Any successor, whatever its status: a locked enrolment is retaken once. A
+  // successor the learner has started (`in_progress`) is exactly what an
+  // `enrolled`-only check let through to the active-enrolment unique index.
   const existingRetake = await prisma.enrollment.findFirst({
-    where: { retakeOf: enrollmentId, status: 'enrolled' },
+    where: { retakeOf: enrollmentId },
+    select: { id: true },
   });
   if (existingRetake) {
     logger.warn({
-      msg: '[course] assignRetake refused — an active retake already exists',
+      msg: '[course] assignRetake refused — a retake already exists',
       enrollmentId,
       existingRetakeEnrollmentId: existingRetake.id,
       userId: session.user.id,
     });
-    return {
-      success: false,
-      refusedReason: 'This learner already has a retake in progress for this course.',
-    };
+    return { success: false, refusedReason: RETAKE_ALREADY_ASSIGNED_MESSAGE };
   }
 
   // Resolved fresh rather than inherited from the locked enrollment: a retake is
@@ -2522,22 +2558,37 @@ export async function assignRetake(
     return { success: false, refusedReason: deadline.refusedReason };
   }
 
-  const retakeEnrollment = await prisma.enrollment.create({
-    data: {
-      organizationUserId: lockedEnrollment.organizationUserId,
-      courseId: lockedEnrollment.courseId,
-      facilityId: memberFacility?.facilityId ?? null,
-      status: 'enrolled',
-      progress: 100,
-      retakeOf: lockedEnrollment.id,
-      retakeReason: retakeReason || null,
-      assignedByAdminId: session.user.id,
-      // Track A selects on `dueAt`. The retake carries no assignment of its own;
-      // the sweep walks `retakeOf` to the original's assignment for its reminder
-      // settings (Q-28).
-      dueAt: deadline.dueAt,
-    },
-  });
+  let retakeEnrollment: { id: string };
+  try {
+    retakeEnrollment = await prisma.enrollment.create({
+      data: {
+        organizationUserId: lockedEnrollment.organizationUserId,
+        courseId: lockedEnrollment.courseId,
+        facilityId: memberFacility?.facilityId ?? null,
+        status: 'enrolled',
+        progress: 100,
+        retakeOf: lockedEnrollment.id,
+        retakeReason: retakeReason || null,
+        assignedByAdminId: session.user.id,
+        // Track A selects on `dueAt`. The retake carries no assignment of its own;
+        // the sweep walks `retakeOf` to the original's assignment for its reminder
+        // settings (Q-28).
+        dueAt: deadline.dueAt,
+      },
+    });
+  } catch (err) {
+    // The DB allows one active enrolment per (learner, course): a concurrent
+    // grant, or a fresh assignment of the same course, got there first.
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      logger.warn({
+        msg: '[course] assignRetake refused — learner already holds an active enrollment',
+        enrollmentId,
+        userId: session.user.id,
+      });
+      return { success: false, refusedReason: RETAKE_ACTIVE_ENROLLMENT_MESSAGE };
+    }
+    throw err;
+  }
 
   await prisma.notification.updateMany({
     where: {
