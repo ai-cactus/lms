@@ -74,7 +74,8 @@ interface StaffProfileClientProps {
       role: string;
       firstName: string;
       lastName: string;
-      facilityName: string | null;
+      /** Active facilities, oldest first, narrowed to those the viewer can see. */
+      facilities: { id: string; name: string }[];
       /** The member's facility zone; deadlines are shown as they fall there (BUG-12.3). */
       timeZone: string;
     };
@@ -268,6 +269,13 @@ export default function StaffProfileClient({
   const changeFacilityBlockedReason = targetIsOrgWide
     ? `${getRoleDisplayName(user.role as Role)} is an organization-wide role, so it is not assigned to a facility.`
     : undefined;
+  // BUG-68: an org-wide role's facility rows are only the invite anchor — its
+  // scope is the whole organisation, so naming one facility would mislead.
+  const facilityNames = targetIsOrgWide
+    ? ['All facilities']
+    : user.facilities.map((facility) => facility.name);
+  const shownFacilityNames = facilityNames.length > 2 ? facilityNames.slice(0, 1) : facilityNames;
+  const hiddenFacilityNames = facilityNames.slice(shownFacilityNames.length);
   const [retakeEnrollment, setRetakeEnrollment] = useState<{
     id: string;
     courseName: string;
@@ -391,11 +399,20 @@ export default function StaffProfileClient({
                 <User className="size-[19px] shrink-0" aria-hidden="true" />
                 <span className="truncate">{user.email}</span>
               </div>
-              <span className="w-fit rounded-[6px] bg-[#eafdf5] px-[12.4px] py-[5px] text-[12.4px] leading-[20.667px] font-semibold text-[#59904b]">
-                {[getRoleDisplayName(user.role as Role), user.facilityName]
-                  .filter(Boolean)
-                  .join(', ')}
-              </span>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="w-fit rounded-[6px] bg-[#eafdf5] px-[12.4px] py-[5px] text-[12.4px] leading-[20.667px] font-semibold text-[#59904b]">
+                  {[getRoleDisplayName(user.role as Role), ...shownFacilityNames].join(', ')}
+                </span>
+                {hiddenFacilityNames.length > 0 && (
+                  <span
+                    className="shrink-0 rounded-full bg-background-secondary px-1.5 py-0.5 text-[11px] font-semibold text-text-secondary"
+                    title={hiddenFacilityNames.join(', ')}
+                    aria-label={`Also in ${hiddenFacilityNames.join(', ')}`}
+                  >
+                    +{hiddenFacilityNames.length}
+                  </span>
+                )}
+              </div>
             </div>
 
             {(canAssignCourses || canChangeFacility || canEdit || canChangeRole) && (
@@ -814,18 +831,20 @@ export default function StaffProfileClient({
         />
       )}
 
-      <ChangeFacilityModal
-        isOpen={isChangeFacilityOpen}
-        onClose={() => setIsChangeFacilityOpen(false)}
-        member={{
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          avatarUrl: user.avatarUrl,
-          currentFacilityName: user.facilityName,
-        }}
-        facilities={facilities}
-      />
+      {isChangeFacilityOpen && (
+        <ChangeFacilityModal
+          isOpen
+          onClose={() => setIsChangeFacilityOpen(false)}
+          member={{
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            avatarUrl: user.avatarUrl,
+            currentFacilities: user.facilities,
+          }}
+          facilities={facilities}
+        />
+      )}
 
       <AssignCoursesModal
         isOpen={isAssignModalOpen}

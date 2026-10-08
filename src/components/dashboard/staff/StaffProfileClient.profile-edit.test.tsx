@@ -52,7 +52,7 @@ function makeStaff(role = 'nurse', id = 'ou-1') {
       role,
       firstName: 'Target',
       lastName: 'User',
-      facilityName: 'Akobo branch',
+      facilities: [{ id: 'fac-a', name: 'Akobo branch' }],
       timeZone: 'UTC',
     },
     stats: { totalCourses: 0, completedCourses: 0, failedCourses: 0, activeCourses: 0 },
@@ -94,6 +94,56 @@ describe('StaffProfileClient — Edit Profile affordance (Q2)', () => {
 
     expect(screen.getByText(/Nurse, Akobo branch/)).toBeInTheDocument();
     expect(screen.queryByText('Staff Nurse')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['owner', 'Owner (Organisation Admin)'],
+    ['admin', 'Admin'],
+    ['hr', 'HR'],
+    ['clinical_director', 'Clinical Director'],
+    ['finance', 'Finance'],
+  ])(
+    'reads "%s, All facilities" for an org-wide member, never naming the anchor facility (BUG-68)',
+    (role, display) => {
+      renderProfile('owner', makeStaff(role));
+
+      expect(screen.getByText(`${display}, All facilities`)).toBeInTheDocument();
+      expect(screen.queryByText(/Akobo branch/)).not.toBeInTheDocument();
+    },
+  );
+
+  it('lists two facilities in the role chip, oldest first', () => {
+    const staff = makeStaff();
+    staff.user.facilities = [
+      { id: 'fac-a', name: 'Akobo branch' },
+      { id: 'fac-b', name: 'Akingbile branch' },
+    ];
+    renderProfile('supervisor', staff);
+
+    expect(screen.getByText('Nurse, Akobo branch, Akingbile branch')).toBeInTheDocument();
+    expect(screen.queryByText(/^\+\d+$/)).not.toBeInTheDocument();
+  });
+
+  it('collapses three or more facilities to the first plus a "+N" chip naming the rest', () => {
+    const staff = makeStaff();
+    staff.user.facilities = [
+      { id: 'fac-a', name: 'Akobo branch' },
+      { id: 'fac-b', name: 'Akingbile branch' },
+      { id: 'fac-c', name: 'Ikoyi branch' },
+    ];
+    renderProfile('supervisor', staff);
+
+    expect(screen.getByText('Nurse, Akobo branch')).toBeInTheDocument();
+    const chip = screen.getByText('+2');
+    expect(chip).toHaveAttribute('aria-label', 'Also in Akingbile branch, Ikoyi branch');
+  });
+
+  it('shows just the role when the viewer can see none of the member facilities', () => {
+    const staff = makeStaff();
+    staff.user.facilities = [];
+    renderProfile('supervisor', staff);
+
+    expect(screen.getByText('Nurse')).toBeInTheDocument();
   });
 
   it('opens the edit modal prefilled from the loaded member', async () => {

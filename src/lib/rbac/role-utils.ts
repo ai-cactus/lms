@@ -264,14 +264,19 @@ export interface RoleSelectGroup {
  * Partition the roles a given inviter may grant into the two display groups used
  * by the staff-invite role picker: manager-category roles under "Managers" and
  * worker-category roles under "Workers / Learners". Ordering within each group
- * follows `GRANTABLE_ROLES[inviterRole]`. Groups with no grantable roles are
+ * follows `GRANTABLE_ROLES[inviterRole]`. When `allowedRoles` is given, only the
+ * grantable roles it also lists are offered. Groups left with no roles are
  * omitted, so an inviter who can grant nothing yields an empty array.
  */
-export function groupRolesForSelect(inviterRole: Role): RoleSelectGroup[] {
+export function groupRolesForSelect(
+  inviterRole: Role,
+  allowedRoles?: readonly Role[],
+): RoleSelectGroup[] {
   const managers: RoleSelectOption[] = [];
   const workers: RoleSelectOption[] = [];
 
   for (const role of GRANTABLE_ROLES[inviterRole] ?? []) {
+    if (allowedRoles && !allowedRoles.includes(role)) continue;
     const roleKey = dbRoleToRoleKey(role);
     const entry = roleKey ? roles[roleKey] : undefined;
     if (!entry) continue;

@@ -14,6 +14,7 @@ import { enrollInviteCourses } from '@/lib/enrollment/invite-courses';
 import { emitNotificationEvent } from '@/lib/notifications/emit';
 import { getRoleDisplayName } from '@/lib/rbac/role-utils';
 import { createMembership } from '@/lib/auth/membership';
+import { isOrgWideFacilityRole } from '@/lib/facility/org-wide-roles';
 import { isDeletedIdentity } from '@/lib/auth/deleted-identity';
 import { captureServer } from '@/lib/analytics/server';
 
@@ -231,7 +232,9 @@ export async function POST(req: Request) {
           ? { userId: invite.invitedBy, role: inviterMembership.role }
           : null,
       subjectUserId: newUser.id,
-      facilityId: invite.facilityId,
+      // A global invite's facility is only the required-FK anchor, so it must not
+      // label an org-wide hire as belonging to that site.
+      facilityId: isOrgWideFacilityRole(invite.role) ? null : invite.facilityId,
       linkUrl: `/dashboard/staff/${membership.organizationUserId}`,
       context: { workerName: fullName, roleLabel, addedVia: 'invite' },
     });

@@ -4,10 +4,17 @@
  * only offered when the caller's org has 2+ facilities.
  *
  * Acceptance criteria:
- *   - Owner opens "Change Facility" from a staff row's kebab menu, selects a
- *     new facility, confirms the two-step dialog, and the change persists to
+ *   - Owner opens "Change Facility" from a staff row's kebab menu. The dialog is a
+ *     multi-select checklist pre-checked with the member's current facilities.
+ *     Moving a member means unchecking the old facility and checking the new
+ *     one; after "Review changes" and the two-step confirm the change persists to
  *     `organization_user_facilities` (old assignment deactivated, new one
- *     active) via setStaffFacilities.
+ *     active) via setStaffFacilities, and the confirm step lists what is being
+ *     added and removed.
+ *   - A member of two facilities KEEPS both when a third is added (regression:
+ *     the old single-select modal collapsed such a member to one facility).
+ *   - "Review changes" is disabled while nothing has changed and while every
+ *     facility is unchecked.
  *   - Cancelling from the confirm step makes no change.
  *   - Supervisor (lacks `user.edit`) never sees the "Change Facility" item.
  *
@@ -43,6 +50,7 @@ interface Seeded {
   staffUserId: string;
   staffOrgUserId: string;
   staffFullName: string;
+  extraFacilityIds: string[];
 }
 
 function uid(prefix: string): string {
@@ -129,10 +137,63 @@ async function seedOrgWithStaffAndTwoFacilities(): Promise<Seeded> {
       staffUserId,
       staffOrgUserId,
       staffFullName,
+      extraFacilityIds: [],
     };
   } finally {
     await client.end();
   }
+}
+
+async function addFacility(seeded: Seeded, name: string): Promise<string> {
+  const client = await db();
+  try {
+    const id = crypto.randomUUID();
+    await client.query(
+      `INSERT INTO facilities (id, organization_id, name, program_services, created_at, updated_at)
+       VALUES ($1, $2, $3, '{}', NOW(), NOW())`,
+      [id, seeded.orgId, name],
+    );
+    seeded.extraFacilityIds.push(id);
+    return id;
+  } finally {
+    await client.end();
+  }
+}
+
+async function assignStaffTo(seeded: Seeded, facilityId: string): Promise<void> {
+  const client = await db();
+  try {
+    await client.query(
+      `INSERT INTO organization_user_facilities (id, organization_user_id, facility_id, active, joined_at)
+       VALUES ($1, $2, $3, true, NOW())`,
+      [crypto.randomUUID(), seeded.staffOrgUserId, facilityId],
+    );
+  } finally {
+    await client.end();
+  }
+}
+
+async function activeFacilityIdsOf(orgUserId: string): Promise<string[]> {
+  const client = await db();
+  try {
+    const res = await client.query(
+      `SELECT facility_id FROM organization_user_facilities WHERE organization_user_id = $1 AND active = true`,
+      [orgUserId],
+    );
+    return res.rows.map((r) => r.facility_id as string).sort();
+  } finally {
+    await client.end();
+  }
+}
+
+async function openChangeFacility(page: Page, seeded: Seeded) {
+  const staffRow = page.getByRole('row', { name: new RegExp(seeded.staffFullName, 'i') });
+  await expect(staffRow).toBeVisible();
+  await staffRow.getByRole('button', { name: 'Row actions' }).click();
+  await page.getByRole('menuitem', { name: 'Change Facility' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByRole('heading', { name: 'Change facilities' })).toBeVisible();
+  return dialog;
 }
 
 async function addSupervisor(seeded: Seeded, email: string, password: string): Promise<string> {
@@ -177,9 +238,8 @@ async function cleanup(seeded: Seeded, extraOrgUserIds: string[] = []): Promise<
       seeded.ownerId,
       seeded.staffUserId,
     ]);
-    await client.query(`DELETE FROM facilities WHERE id = $1 OR id = $2`, [
-      seeded.facilityAId,
-      seeded.facilityBId,
+    await client.query(`DELETE FROM facilities WHERE id = ANY($1)`, [
+      [seeded.facilityAId, seeded.facilityBId, ...seeded.extraFacilityIds],
     ]);
     await client.query(`DELETE FROM organizations WHERE id = $1`, [seeded.orgId]);
   } finally {
@@ -198,7 +258,7 @@ async function login(page: Page, email: string, password: string): Promise<void>
 }
 
 test.describe('Staff — Change Facility flow', () => {
-  test("owner changes a staff member's facility via the two-step confirm dialog, and it persists", async ({
+  test('owner moves a staff member by unchecking the old facility and checking the new one, and it persists', async ({
     page,
   }) => {
     const seeded = await seedOrgWithStaffAndTwoFacilities();
@@ -207,26 +267,25 @@ test.describe('Staff — Change Facility flow', () => {
       await page.goto('/dashboard/staff');
       await page.waitForLoadState('networkidle');
 
-      const staffRow = page.getByRole('row', { name: new RegExp(seeded.staffFullName, 'i') });
-      await expect(staffRow).toBeVisible();
-      await staffRow.getByRole('button', { name: 'Row actions' }).click();
-      await page.getByRole('menuitem', { name: 'Change Facility' }).click();
+      const dialog = await openChangeFacility(page, seeded);
 
-      const dialog = page.getByRole('dialog');
-      await expect(dialog).toBeVisible();
-      // The dialog's heading and its confirm button both read "Change
-      // facility" (ChangeFacilityModal.tsx), so a plain getByText match is
-      // ambiguous (strict-mode violation) — scope to the heading.
-      await expect(dialog.getByRole('heading', { name: 'Change facility' })).toBeVisible();
+      // The member's current facility arrives pre-checked; nothing has changed
+      // yet, so there is nothing to review.
+      const checkboxA = dialog.getByRole('checkbox', { name: new RegExp(seeded.facilityAName) });
+      const checkboxB = dialog.getByRole('checkbox', { name: new RegExp(seeded.facilityBName) });
+      await expect(checkboxA).toBeChecked();
+      await expect(checkboxB).not.toBeChecked();
+      await expect(dialog.getByRole('button', { name: 'Review changes' })).toBeDisabled();
 
-      await dialog.getByRole('radio', { name: new RegExp(seeded.facilityBName) }).click();
-      await dialog.getByRole('button', { name: 'Change facility' }).click();
+      await checkboxB.click();
+      await checkboxA.click();
+      await dialog.getByRole('button', { name: 'Review changes' }).click();
 
-      await expect(
-        dialog.getByRole('heading', { name: new RegExp(`Switch.*${seeded.facilityBName}`) }),
-      ).toBeVisible();
+      await expect(dialog.getByRole('heading', { name: /Update facilities for/ })).toBeVisible();
+      await expect(dialog.getByText('Adding:').locator('..')).toContainText(seeded.facilityBName);
+      await expect(dialog.getByText('Removing:').locator('..')).toContainText(seeded.facilityAName);
 
-      await dialog.getByRole('button', { name: 'Switch facility' }).click();
+      await dialog.getByRole('button', { name: 'Update facilities' }).click();
       await expect(dialog).toBeHidden();
 
       const client = await db();
@@ -247,6 +306,66 @@ test.describe('Staff — Change Facility flow', () => {
     }
   });
 
+  test('REGRESSION: a member of two facilities keeps both when a third is added', async ({
+    page,
+  }) => {
+    const seeded = await seedOrgWithStaffAndTwoFacilities();
+    try {
+      await assignStaffTo(seeded, seeded.facilityBId);
+      const facilityCId = await addFacility(
+        seeded,
+        `Gamma Site ${crypto.randomBytes(3).toString('hex')}`,
+      );
+      await login(page, seeded.ownerEmail, seeded.ownerPassword);
+      await page.goto('/dashboard/staff');
+      await page.waitForLoadState('networkidle');
+
+      const dialog = await openChangeFacility(page, seeded);
+      await expect(
+        dialog.getByRole('checkbox', { name: new RegExp(seeded.facilityAName) }),
+      ).toBeChecked();
+      await expect(
+        dialog.getByRole('checkbox', { name: new RegExp(seeded.facilityBName) }),
+      ).toBeChecked();
+
+      await dialog.getByRole('checkbox', { name: /Gamma Site/ }).click();
+      await dialog.getByRole('button', { name: 'Review changes' }).click();
+      await expect(dialog.getByText('Adding:').locator('..')).toContainText('Gamma Site');
+      await expect(dialog.getByText('Removing:')).toHaveCount(0);
+      await dialog.getByRole('button', { name: 'Update facilities' }).click();
+      await expect(dialog).toBeHidden();
+
+      await expect
+        .poll(() => activeFacilityIdsOf(seeded.staffOrgUserId))
+        .toEqual([seeded.facilityAId, seeded.facilityBId, facilityCId].sort());
+    } finally {
+      await cleanup(seeded);
+    }
+  });
+
+  test('"Review changes" stays disabled when every facility is unchecked, and the member is untouched', async ({
+    page,
+  }) => {
+    const seeded = await seedOrgWithStaffAndTwoFacilities();
+    try {
+      await login(page, seeded.ownerEmail, seeded.ownerPassword);
+      await page.goto('/dashboard/staff');
+      await page.waitForLoadState('networkidle');
+
+      const dialog = await openChangeFacility(page, seeded);
+      await dialog.getByRole('checkbox', { name: new RegExp(seeded.facilityAName) }).click();
+
+      await expect(dialog.getByRole('checkbox', { checked: true })).toHaveCount(0);
+      await expect(dialog.getByRole('button', { name: 'Review changes' })).toBeDisabled();
+
+      await dialog.getByRole('button', { name: 'Cancel' }).click();
+      await expect(dialog).toBeHidden();
+      expect(await activeFacilityIdsOf(seeded.staffOrgUserId)).toEqual([seeded.facilityAId]);
+    } finally {
+      await cleanup(seeded);
+    }
+  });
+
   test('cancelling at the confirm step makes no change', async ({ page }) => {
     const seeded = await seedOrgWithStaffAndTwoFacilities();
     try {
@@ -254,17 +373,14 @@ test.describe('Staff — Change Facility flow', () => {
       await page.goto('/dashboard/staff');
       await page.waitForLoadState('networkidle');
 
-      const staffRow = page.getByRole('row', { name: new RegExp(seeded.staffFullName, 'i') });
-      await staffRow.getByRole('button', { name: 'Row actions' }).click();
-      await page.getByRole('menuitem', { name: 'Change Facility' }).click();
-
-      const dialog = page.getByRole('dialog');
-      await dialog.getByRole('radio', { name: new RegExp(seeded.facilityBName) }).click();
-      await dialog.getByRole('button', { name: 'Change facility' }).click();
+      const dialog = await openChangeFacility(page, seeded);
+      await dialog.getByRole('checkbox', { name: new RegExp(seeded.facilityBName) }).click();
+      await dialog.getByRole('button', { name: 'Review changes' }).click();
       // "Cancel" on the confirm step returns to the select step — it does not
-      // close the dialog (ChangeFacilityModal.tsx: onClick={() => setStep('select')}).
+      // close the dialog (ChangeFacilityModal.tsx: onClick={() => setStep('select')}); the ticked
+      // checkbox survives the round trip.
       await dialog.getByRole('button', { name: 'Cancel' }).click();
-      await expect(dialog.getByRole('button', { name: 'Change facility' })).toBeVisible();
+      await expect(dialog.getByRole('button', { name: 'Review changes' })).toBeVisible();
       // Closing from the select step is what actually dismisses the dialog.
       await dialog.getByRole('button', { name: 'Cancel' }).click();
       await expect(dialog).toBeHidden();
