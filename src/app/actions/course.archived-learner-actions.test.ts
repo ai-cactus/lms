@@ -166,9 +166,10 @@ describe('attestCourse — archived course (Q-04)', () => {
   it('still rejects an empty signature first — archival does not mask a bad request', async () => {
     prismaMock.enrollment.findUnique.mockResolvedValue(makeAttestEnrollment(ARCHIVED_AT));
 
-    await expect(attestCourse(ENROLLMENT_ID, '   ', 'RN')).rejects.toThrow(
-      'Signature is required.',
-    );
+    await expect(attestCourse(ENROLLMENT_ID, '   ', 'RN')).resolves.toEqual({
+      success: false,
+      refusedReason: 'Type your full name to sign the attestation.',
+    });
   });
 
   it('CONTROL: the same attestation is recorded while the course is live', async () => {

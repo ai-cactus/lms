@@ -66,13 +66,14 @@ describe('CoursePreview worker start button — returned refusals (BUG-60)', () 
     expect(mockPush).not.toHaveBeenCalled();
   });
 
-  it("shows requestCourseRetry's refusal", async () => {
+  it("shows requestCourseRetry's refusal on a locked enrolment", async () => {
     mockRequestCourseRetry.mockResolvedValue({ success: false, refusedReason: REFUSAL });
-    render(<CoursePreview course={course} mode="worker" enrollment={enrollment('failed')} />);
+    render(<CoursePreview course={course} mode="worker" enrollment={enrollment('locked')} />);
 
-    await userEvent.click(screen.getByRole('button', { name: 'Request Retry' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Request retry' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(REFUSAL);
+    expect(mockStartCourse).not.toHaveBeenCalled();
   });
 
   it('shows nothing when the course starts', async () => {
@@ -83,5 +84,42 @@ describe('CoursePreview worker start button — returned refusals (BUG-60)', () 
 
     expect(mockPush).toHaveBeenCalledWith('/learn/course-1');
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * Q-35: a locked learner cannot start the course (startCourse refuses it), so
+ * the hero offers "Request retry" instead of a dead "Start Course".
+ */
+describe('CoursePreview worker button — locked enrolment (Q-35)', () => {
+  function locked(retryRequestedAt: Date | null) {
+    return {
+      id: 'enr-1',
+      status: 'locked',
+      progress: 100,
+      retryRequestedAt,
+    } as unknown as EnrollmentWithRelations;
+  }
+
+  it('offers Request retry instead of Start Course, and records the request', async () => {
+    mockRequestCourseRetry.mockResolvedValue({
+      success: true,
+      requestedAt: new Date().toISOString(),
+    });
+    render(<CoursePreview course={course} mode="worker" enrollment={locked(null)} />);
+
+    expect(screen.queryByRole('button', { name: 'Start Course' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Request retry' }));
+
+    expect(mockRequestCourseRetry).toHaveBeenCalledWith('enr-1');
+    expect(await screen.findByText('Retry requested')).toBeInTheDocument();
+    expect(mockRefresh).toHaveBeenCalled();
+  });
+
+  it('shows Retry requested, with no button, while a recent request stands', () => {
+    render(<CoursePreview course={course} mode="worker" enrollment={locked(new Date())} />);
+
+    expect(screen.getByText('Retry requested')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Request retry' })).not.toBeInTheDocument();
   });
 });

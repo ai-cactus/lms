@@ -40,6 +40,7 @@ import {
   sendCoursesAssignedEmail,
   sendCourseLaunchEmail,
   sendCycleSummaryEmail,
+  sendCourseRetryRequestedEmail,
 } from './email';
 import { OTP_EXPIRY_MINUTES } from './mfa';
 
@@ -487,5 +488,36 @@ describe('sendCycleSummaryEmail', () => {
 
     expect(result.success).toBe(false);
     expect(prismaMock.emailMessage.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('sendCourseRetryRequestedEmail (Q-35)', () => {
+  it('names the worker and course, escapes them, links to the staff profile and is tracked', async () => {
+    mockSendMail.mockResolvedValue({ messageId: 'mid-retry' });
+
+    const result = await sendCourseRetryRequestedEmail(
+      'admin@acme.test',
+      'Ada <b>Worker</b>',
+      'Infection & Control',
+      '/dashboard/staff/ou-1?retake=enr-1',
+    );
+
+    expect(result).toEqual({ success: true, messageId: 'mid-retry' });
+    const sent = mockSendMail.mock.calls[0][0];
+    expect(sent.to).toBe('admin@acme.test');
+    expect(sent.subject).toContain('requested a retake');
+    expect(sent.html).toContain('Ada &lt;b&gt;Worker&lt;/b&gt;');
+    expect(sent.html).toContain('Infection &amp; Control');
+    expect(sent.html).toMatch(/href="https?:\/\/[^"]+\/dashboard\/staff\/ou-1\?retake=enr-1"/);
+    expect(prismaMock.emailMessage.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ kind: 'course_retry_requested', status: 'sent' }),
+    });
+  });
+
+  it('skips a missing recipient without touching the transport', async () => {
+    const result = await sendCourseRetryRequestedEmail('', 'Ada', 'Course', '/dashboard');
+
+    expect(result.success).toBe(false);
+    expect(mockSendMail).not.toHaveBeenCalled();
   });
 });

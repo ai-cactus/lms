@@ -16,7 +16,7 @@
  *    limit nor a Vertex outage may cost a worker their recorded attempt.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { NextRequest } from 'next/server';
 
 // ---------------------------------------------------------------------------
@@ -468,6 +468,16 @@ describe('POST /api/quiz/[id]/submit — attempts-exhausted audience (Q-25)', ()
       { id: 'cd-1', role: 'clinical_director', user: { email: 'cd@acme.com' } },
       { id: 'fin-1', role: 'finance', user: { email: 'fin@acme.com' } },
     ]);
+    // Q-34: the email follows the org's Training email switch, which ships OFF;
+    // these cases are an organisation that switched it on.
+    prismaMock.notificationCategoryPreference.findUnique.mockResolvedValue({
+      emailEnabled: true,
+      inAppEnabled: true,
+    });
+  });
+
+  afterEach(() => {
+    prismaMock.notificationCategoryPreference.findUnique.mockResolvedValue(null);
   });
 
   it('notifies and emails only the admins who can open the staff profile it links to', async () => {
@@ -504,8 +514,8 @@ describe('POST /api/quiz/[id]/submit — attempts-exhausted audience (Q-25)', ()
   });
 
   it('writes no bell row when the org switched Training notices off in-app, but still emails', async () => {
-    prismaMock.notificationCategoryPreference.findUnique.mockResolvedValueOnce({
-      emailEnabled: false,
+    prismaMock.notificationCategoryPreference.findUnique.mockResolvedValue({
+      emailEnabled: true,
       inAppEnabled: false,
     });
 
@@ -513,6 +523,28 @@ describe('POST /api/quiz/[id]/submit — attempts-exhausted audience (Q-25)', ()
 
     expect(prismaMock.notification.createMany).not.toHaveBeenCalled();
     expect(sendQuizLockedEmail).toHaveBeenCalledTimes(1);
+  });
+
+  // Q-34 (ruled 2026-10-07: honour the switch).
+  it('writes the bell row but sends no email when the org switched Training email off', async () => {
+    prismaMock.notificationCategoryPreference.findUnique.mockResolvedValue({
+      emailEnabled: false,
+      inAppEnabled: true,
+    });
+
+    await POST(makeReq({ enrollmentId: 'enr-1', answers: makeAnswers(2, 0) }), { params });
+
+    expect(prismaMock.notification.createMany).toHaveBeenCalledTimes(1);
+    expect(sendQuizLockedEmail).not.toHaveBeenCalled();
+  });
+
+  it('sends no email for an org that never touched the switch (Training email ships off)', async () => {
+    prismaMock.notificationCategoryPreference.findUnique.mockResolvedValue(null);
+
+    await POST(makeReq({ enrollmentId: 'enr-1', answers: makeAnswers(2, 0) }), { params });
+
+    expect(prismaMock.notification.createMany).toHaveBeenCalledTimes(1);
+    expect(sendQuizLockedEmail).not.toHaveBeenCalled();
   });
 
   it('finishes sending the emails before it responds', async () => {

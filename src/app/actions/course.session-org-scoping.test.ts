@@ -184,7 +184,14 @@ describe('assignRetake — admin-only role gate sourced from the session', () =>
     course: { id: 'course-1', title: 'Safety 101' },
   };
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    // SEC-19: a facility-bound caller may retake only a learner in their own
+    // facilities, so the supervisor case needs a roster that admits the learner.
+    const { default: prisma } = await import('@/lib/prisma');
+    vi.mocked(prisma.facility.findMany).mockResolvedValue([{ id: 'fac-1' }] as never);
+    vi.mocked(prisma.organizationUser.findMany).mockResolvedValue([
+      { id: 'ou-worker-1', facilities: [{ facilityId: 'fac-1' }] },
+    ] as never);
     mockEnrollmentFindUnique.mockResolvedValue(lockedEnrollment);
     mockEnrollmentCreate.mockResolvedValue({ id: 'retake-1' });
     mockNotificationUpdateMany.mockResolvedValue({ count: 0 });
@@ -233,7 +240,12 @@ describe('assignRetake — admin-only role gate sourced from the session', () =>
   // open question about whether retakes should have their own permission.
   it('allows a Supervisor: assignment is now within its grant (team QA 3.1 / C8)', async () => {
     mockAdminAuth.mockResolvedValue({
-      user: { id: 'sup-1', role: 'supervisor', organizationId: 'org-A' },
+      user: {
+        id: 'sup-1',
+        role: 'supervisor',
+        organizationId: 'org-A',
+        organizationUserId: 'ou-sup-1',
+      },
     });
     mockWorkerAuth.mockResolvedValue(null);
 

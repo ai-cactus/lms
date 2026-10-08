@@ -18,6 +18,10 @@ const { prismaMock, mockAdminAuth, mockWorkerAuth, mockRevalidatePath, mockCreat
       enrollment: { findUnique: vi.fn(), findFirst: vi.fn(), create: vi.fn() },
       notification: { updateMany: vi.fn() },
       organizationUserFacility: { findFirst: vi.fn() },
+      // A facility-bound caller's scope (listAccessibleFacilities) and the
+      // target's roster (partitionOrgUsersByFacility).
+      facility: { findMany: vi.fn() },
+      organizationUser: { findMany: vi.fn() },
     };
     return {
       prismaMock,
@@ -79,6 +83,10 @@ beforeEach(() => {
   prismaMock.enrollment.create.mockResolvedValue({ id: 'retake-enrollment-1' });
   prismaMock.notification.updateMany.mockResolvedValue({ count: 0 });
   prismaMock.organizationUserFacility.findFirst.mockResolvedValue(null);
+  prismaMock.facility.findMany.mockResolvedValue([{ id: 'fac-1', name: 'North' }]);
+  prismaMock.organizationUser.findMany.mockResolvedValue([
+    { id: 'ou-worker-1', facilities: [{ facilityId: 'fac-1' }] },
+  ]);
   mockCreateNotification.mockResolvedValue(undefined);
 });
 
@@ -126,10 +134,14 @@ describe('assignRetake — auth / RBAC gate', () => {
 });
 
 describe('assignRetake — guards', () => {
-  it('throws when the enrollment does not exist', async () => {
+  it('refuses by return when the enrollment does not exist', async () => {
     prismaMock.enrollment.findUnique.mockResolvedValue(null);
 
-    await expect(assignRetake(ENROLLMENT_ID)).rejects.toThrow('Enrollment not found');
+    await expect(assignRetake(ENROLLMENT_ID)).resolves.toEqual({
+      success: false,
+      refusedReason: 'That training record could not be found in your organization.',
+    });
+    expect(prismaMock.enrollment.create).not.toHaveBeenCalled();
   });
 
   // Returned rather than thrown: Next.js redacts Server Action errors in
@@ -149,16 +161,126 @@ describe('assignRetake — guards', () => {
     expect(prismaMock.enrollment.create).not.toHaveBeenCalled();
   });
 
-  it('refuses when an active retake already exists for this enrollment', async () => {
+  it('refuses when a retake already exists for this enrollment', async () => {
     prismaMock.enrollment.findFirst.mockResolvedValue({ id: 'existing-retake' });
 
     const result = await assignRetake(ENROLLMENT_ID);
 
     expect(result).toEqual({
       success: false,
-      refusedReason: 'This learner already has a retake in progress for this course.',
+      refusedReason: 'A retake has already been assigned for this course.',
     });
     expect(prismaMock.enrollment.create).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * SEC-19: the enrolment id is client-supplied. `enrollment.create` says what the
+ * caller may do, never WHO to — so the read is tenant-scoped in the query and
+ * the learner must sit inside the caller's facilities.
+ */
+describe('assignRetake — tenancy and facility scope (SEC-19)', () => {
+  it("reads the enrollment only inside the caller's organization", async () => {
+    await assignRetake(ENROLLMENT_ID);
+
+    expect(prismaMock.enrollment.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: ENROLLMENT_ID, organizationUser: { organizationId: 'org-1' } },
+      }),
+    );
+  });
+
+  it("refuses another tenant's enrollment with the not-found answer, writing nothing", async () => {
+    // Behaves like the DB: the row belongs to org-other, so it is returned
+    // unless the query carries a predicate naming a different organization.
+    prismaMock.enrollment.findUnique.mockImplementation(
+      async ({ where }: { where: { organizationUser?: { organizationId?: string } } }) => {
+        const orgFilter = where.organizationUser?.organizationId;
+        return orgFilter === undefined || orgFilter === 'org-other' ? makeLockedEnrollment() : null;
+      },
+    );
+
+    const result = await assignRetake(ENROLLMENT_ID);
+
+    expect(result).toEqual({
+      success: false,
+      refusedReason: 'That training record could not be found in your organization.',
+    });
+    expect(prismaMock.enrollment.create).not.toHaveBeenCalled();
+    expect(prismaMock.notification.updateMany).not.toHaveBeenCalled();
+    expect(mockCreateNotification).not.toHaveBeenCalled();
+  });
+
+  it('refuses a session with no organization before reading anything', async () => {
+    mockAdminAuth.mockResolvedValue(makeSession('owner', { organizationId: null }));
+
+    const result = await assignRetake(ENROLLMENT_ID);
+
+    expect(result.success).toBe(false);
+    expect(prismaMock.enrollment.findUnique).not.toHaveBeenCalled();
+    expect(prismaMock.enrollment.create).not.toHaveBeenCalled();
+  });
+
+  it("refuses a supervisor whose facilities do not include the learner's", async () => {
+    mockAdminAuth.mockResolvedValue(makeSession('supervisor'));
+    prismaMock.facility.findMany.mockResolvedValue([{ id: 'fac-1', name: 'North' }]);
+    prismaMock.organizationUser.findMany.mockResolvedValue([
+      { id: 'ou-worker-1', facilities: [{ facilityId: 'fac-2' }] },
+    ]);
+
+    const result = await assignRetake(ENROLLMENT_ID);
+
+    expect(result).toEqual({
+      success: false,
+      refusedReason: 'That staff member is outside the facilities you manage.',
+    });
+    expect(prismaMock.enrollment.create).not.toHaveBeenCalled();
+    expect(mockCreateNotification).not.toHaveBeenCalled();
+  });
+
+  it('CONTROL: a supervisor may retake a learner in their own facility', async () => {
+    mockAdminAuth.mockResolvedValue(makeSession('supervisor'));
+
+    await expect(assignRetake(ENROLLMENT_ID)).resolves.toEqual({
+      success: true,
+      retakeEnrollmentId: 'retake-enrollment-1',
+    });
+  });
+
+  it('refuses when the existing retake is already in progress, never reaching the unique index', async () => {
+    prismaMock.enrollment.findFirst.mockImplementation(
+      async ({ where }: { where: { retakeOf?: string; status?: string } }) =>
+        where.retakeOf === ENROLLMENT_ID && (where.status ?? 'in_progress') === 'in_progress'
+          ? { id: 'retake-started' }
+          : null,
+    );
+
+    const result = await assignRetake(ENROLLMENT_ID);
+
+    expect(result).toEqual({
+      success: false,
+      refusedReason: 'A retake has already been assigned for this course.',
+    });
+    expect(prismaMock.enrollment.create).not.toHaveBeenCalled();
+  });
+
+  it('turns an active-enrollment unique violation into a returned refusal', async () => {
+    const { Prisma } = await import('@/generated/prisma/client');
+    prismaMock.enrollment.create.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'test',
+      }),
+    );
+
+    const result = await assignRetake(ENROLLMENT_ID);
+
+    expect(result).toEqual({
+      success: false,
+      refusedReason:
+        'This learner already has an active enrollment on this course, so a retake cannot be added.',
+    });
+    expect(mockCreateNotification).not.toHaveBeenCalled();
   });
 });
 

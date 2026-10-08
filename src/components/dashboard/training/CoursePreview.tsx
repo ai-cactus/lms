@@ -27,8 +27,8 @@ interface CoursePreviewProps {
 }
 
 import { startCourse } from '@/app/actions/course';
-import { requestCourseRetry } from '@/app/actions/enrollment';
 import { logger } from '@/lib/logger';
+import RequestRetryButton from '@/components/worker/RequestRetryButton';
 import { RichTextContent } from '@/components/courses/RichTextContent';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -90,7 +90,7 @@ function PreviewVideoPlayer({ courseId }: { courseId: string }) {
   );
 }
 
-// ── Worker action button (unchanged behavior) ─────────────────────────────────
+// ── Worker action button ──────────────────────────────────────────────────────
 
 function WorkerStartButton({
   courseId,
@@ -103,16 +103,26 @@ function WorkerStartButton({
   const [loading, setLoading] = useState(false);
   const [refusal, setRefusal] = useState('');
 
+  // Attempts are exhausted, so starting is refused server-side; the one thing
+  // the learner can do is ask for a retake (Q-35).
+  if (enrollment?.status === 'locked') {
+    return (
+      <RequestRetryButton
+        enrollmentId={enrollment.id}
+        status={enrollment.status}
+        retryRequestedAt={enrollment.retryRequestedAt}
+        inverse
+        className="items-start"
+      />
+    );
+  }
+
   const isStarted = (enrollment?.progress || 0) > 0 || enrollment?.status === 'in_progress';
   const isCompleted = enrollment?.status === 'completed' || enrollment?.status === 'attested';
-  const isFailed = enrollment?.status === 'failed';
-  const isRetryRequested = enrollment?.status === 'retry_requested';
 
   let buttonText = 'Start Course';
   if (loading) buttonText = 'Processing...';
   else if (isCompleted) buttonText = 'Review Course';
-  else if (isFailed) buttonText = 'Request Retry';
-  else if (isRetryRequested) buttonText = 'Retry Requested';
   else if (isStarted) buttonText = 'Continue Course';
 
   const handleClick = async () => {
@@ -120,18 +130,10 @@ function WorkerStartButton({
       router.push(`/learn/${courseId}`);
       return;
     }
-    if (isRetryRequested) return;
 
     try {
       setLoading(true);
       setRefusal('');
-      if (isFailed && enrollment?.id) {
-        const retry = await requestCourseRetry(enrollment.id);
-        if (!retry.success) setRefusal(retry.refusedReason ?? '');
-        router.refresh();
-        setLoading(false);
-        return;
-      }
       const started = await startCourse(courseId);
       if (!started.success) {
         // Refused — the course was archived under the learner (Q-04), or the
@@ -144,23 +146,15 @@ function WorkerStartButton({
       }
       router.push(`/learn/${courseId}`);
     } catch (error) {
-      logger.error({ msg: 'Failed to start/retry course:', err: error });
-      if (!isFailed) {
-        router.push(`/learn/${courseId}`);
-      }
+      logger.error({ msg: 'Failed to start course:', err: error });
+      router.push(`/learn/${courseId}`);
       setLoading(false);
     }
   };
 
   return (
     <div className="flex flex-col items-start gap-2">
-      <Button
-        className="text-base"
-        size="lg"
-        onClick={handleClick}
-        disabled={loading || isRetryRequested}
-        variant={isFailed ? 'outline' : 'default'}
-      >
+      <Button className="text-base" size="lg" onClick={handleClick} disabled={loading}>
         {buttonText}
       </Button>
       {refusal && (

@@ -73,6 +73,11 @@ model Enrollment {
   attestationRole      String?           @map("attestation_role")
   assignedByAdminId    String?           @map("assigned_by_admin_id")
   lockedAt             DateTime?         @map("locked_at")
+  /// When a locked learner last asked their admins for a retake (Q-35). Only
+  /// `requestCourseRetry` writes it, and it never changes `status`: a request is
+  /// pending while the row is `locked` with no `retakeOf` successor, and granted
+  /// once `assignRetake` creates one. A repeat is allowed after 72 hours.
+  retryRequestedAt     DateTime?         @map("retry_requested_at")
   retakeOf             String?           @map("retake_of")
   retakeReason         String?           @map("retake_reason")
   renewedFrom          String?           @map("renewed_from")

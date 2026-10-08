@@ -1302,6 +1302,72 @@ export async function sendRetakeReminderEmail(
 }
 
 /**
+ * Q-35 — a learner locked out of a course asks an admin for a retake. The
+ * follow-up to {@link sendQuizLockedEmail}, so it mirrors that template's
+ * structure and styling and carries no more about the learner than it does.
+ * `actionLink` may be absolute or app-relative.
+ */
+export async function sendCourseRetryRequestedEmail(
+  adminEmail: string,
+  workerName: string,
+  courseName: string,
+  actionLink: string,
+): Promise<{ success: boolean; messageId?: string; error?: unknown }> {
+  if (!adminEmail) {
+    logger.warn({ msg: '[email] Retry request email skipped — missing recipient' });
+    return { success: false, error: 'Missing recipient email' };
+  }
+
+  const appName = 'Theraptly';
+  const html = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #E53E3E;">⚠️ Action Required: Retake Requested</h2>
+            <p style="color: #333; font-size: 16px; line-height: 1.6;">
+                A worker who used all of their quiz attempts has asked for a retake:
+            </p>
+            <div style="background: #FFF5F5; border-left: 4px solid #E53E3E; border-radius: 8px; padding: 20px; margin: 24px 0;">
+                <p style="margin: 4px 0;"><strong>Worker:</strong> ${escapeHtml(workerName)}</p>
+                <p style="margin: 4px 0;"><strong>Course:</strong> ${escapeHtml(courseName)}</p>
+            </div>
+            <p style="color: #333; font-size: 16px; line-height: 1.6;">
+                Please review and assign a retake if appropriate.
+            </p>
+            <div style="text-align: center; margin: 32px 0;">
+                <a href="${escapeHtml(resolveAppLink(actionLink))}" style="display: inline-block; background-color: #4C6EF5; color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">Assign Retake</a>
+            </div>
+            <p style="color: #718096; font-size: 12px; margin-top: 32px; text-align: center;">
+                This is an automated notification from ${appName}.
+            </p>
+        </div>
+    `;
+
+  try {
+    const info = await sendMailTracked(
+      {
+        from: `"${appName}" <${user}>`,
+        to: adminEmail,
+        subject: `Action Required: ${workerName} requested a retake - ${appName}`,
+        html,
+      },
+      'course_retry_requested',
+    );
+    logger.info({
+      msg: '[email] Retry request email sent',
+      messageId: info.messageId,
+      to: maskEmail(adminEmail),
+    });
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    logger.error({
+      msg: '[email] Failed to send retry request email',
+      err: error,
+      to: maskEmail(adminEmail),
+    });
+    return { success: false, error };
+  }
+}
+
+/**
  * Sends a staff member's activity report PDF to the admin as an email attachment.
  */
 export async function sendUserActivityReportEmail(

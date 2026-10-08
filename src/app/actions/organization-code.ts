@@ -98,61 +98,99 @@ export async function getOrganizationCode() {
   }
 }
 
+/**
+ * BUG-59 / BUG-62: one copy for the existing-member refusal, shown at the
+ * verify step and, should a membership appear in between, at the join step.
+ */
+function existingMembershipMessage(active: boolean): string {
+  return active
+    ? 'You are already a member of this organization.'
+    : 'Your access to this organization was removed. Ask an administrator to restore it.';
+}
+
+/** Rate-limited join-code lookup, shared by the verify and join steps. */
+async function lookupJoinCode(code: string) {
+  // Throttle code-guessing: 10 attempts per 15 minutes per client IP.
+  // Prevents brute-forcing the 6-digit join code space.
+  const hdrs = await headers();
+  const ip =
+    hdrs.get('x-forwarded-for')?.split(',')[0]?.trim() || hdrs.get('x-real-ip') || 'unknown';
+  const { allowed } = await checkRateLimit(`org-code-verify:${ip}`, 10, 900, {
+    failClosed: true,
+  });
+  if (!allowed) {
+    return { success: false as const, error: 'Too many attempts. Please try again later.' };
+  }
+
+  const org = await prisma.organization.findUnique({
+    where: { joinCode: code },
+    select: {
+      id: true,
+      name: true,
+      joinCodeExpiresAt: true,
+      primaryBusinessType: true,
+      primaryContact: true,
+      // Location/services fields now live on the facility.
+      facilities: {
+        select: { programServices: true, country: true, phone: true },
+        take: 1,
+      },
+    },
+  });
+
+  if (!org) {
+    return { success: false as const, error: 'Invalid code.' };
+  }
+
+  if (org.joinCodeExpiresAt && new Date() > org.joinCodeExpiresAt) {
+    return { success: false as const, error: 'This code has expired.' };
+  }
+
+  const facility = org.facilities[0];
+
+  return {
+    success: true as const,
+    organization: {
+      id: org.id,
+      name: org.name,
+      type: org.primaryBusinessType,
+      services: facility?.programServices ?? [],
+      country: facility?.country ?? null,
+      phone: facility?.phone ?? null,
+      contactName: org.primaryContact,
+    },
+  };
+}
+
 export async function verifyOrganizationCode(code: string) {
   try {
-    // Throttle code-guessing: 10 attempts per 15 minutes per client IP.
-    // Prevents brute-forcing the 6-digit join code space.
-    const hdrs = await headers();
-    const ip =
-      hdrs.get('x-forwarded-for')?.split(',')[0]?.trim() || hdrs.get('x-real-ip') || 'unknown';
-    const { allowed } = await checkRateLimit(`org-code-verify:${ip}`, 10, 900, {
-      failClosed: true,
-    });
-    if (!allowed) {
-      return { success: false, error: 'Too many attempts. Please try again later.' };
+    const result = await lookupJoinCode(code);
+    if (!result.success) return result;
+
+    // BUG-62: tell an existing member (active or deactivated) before they press
+    // Join rather than only at the join step. Only a caller who already holds a
+    // membership in this organization learns anything beyond what verify shows.
+    const session = (await workerAuth()) || (await adminAuth());
+    const userId = session?.user?.id;
+    if (userId) {
+      const existing = await prisma.organizationUser.findUnique({
+        where: { userId_organizationId: { userId, organizationId: result.organization.id } },
+        select: { active: true },
+      });
+      if (existing) {
+        logger.warn({
+          msg: '[org-code] verifyOrganizationCode refused: identity already has a membership',
+          userId,
+          membershipActive: existing.active,
+        });
+        return { success: false as const, error: existingMembershipMessage(existing.active) };
+      }
     }
 
-    const org = await prisma.organization.findUnique({
-      where: { joinCode: code },
-      select: {
-        id: true,
-        name: true,
-        joinCodeExpiresAt: true,
-        primaryBusinessType: true,
-        primaryContact: true,
-        // Location/services fields now live on the facility.
-        facilities: {
-          select: { programServices: true, country: true, phone: true },
-          take: 1,
-        },
-      },
-    });
-
-    if (!org) {
-      return { success: false, error: 'Invalid code.' };
-    }
-
-    if (org.joinCodeExpiresAt && new Date() > org.joinCodeExpiresAt) {
-      return { success: false, error: 'This code has expired.' };
-    }
-
-    const facility = org.facilities[0];
-
-    return {
-      success: true,
-      organization: {
-        id: org.id,
-        name: org.name,
-        type: org.primaryBusinessType,
-        services: facility?.programServices ?? [],
-        country: facility?.country ?? null,
-        phone: facility?.phone ?? null,
-        contactName: org.primaryContact,
-      },
-    };
+    return result;
   } catch (error) {
     logger.error({ msg: 'Failed to verify code:', err: error });
-    return { success: false, error: 'Failed to verify code' };
+    return { success: false as const, error: 'Failed to verify code' };
   }
 }
 
@@ -167,10 +205,9 @@ export async function joinOrganization(code: string) {
   const userId = session.user.id;
 
   try {
-    // Verify code again to be safe
-    const verifyResult = await verifyOrganizationCode(code);
-    if (!verifyResult.success || !verifyResult.organization) {
-      return { success: false, error: verifyResult.error || 'Invalid code' };
+    const verifyResult = await lookupJoinCode(code);
+    if (!verifyResult.success) {
+      return { success: false, error: verifyResult.error };
     }
 
     const orgId = verifyResult.organization.id;
@@ -237,9 +274,7 @@ export async function joinOrganization(code: string) {
       });
       return {
         success: false,
-        error: error.active
-          ? 'You are already a member of this organization.'
-          : 'Your access to this organization was removed. Ask an administrator to restore it.',
+        error: existingMembershipMessage(error.active),
       };
     }
     logger.error({ msg: 'Failed to join organization:', err: error });

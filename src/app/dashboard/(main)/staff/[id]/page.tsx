@@ -8,10 +8,11 @@ export const dynamic = 'force-dynamic';
 
 interface PageProps {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ retake?: string | string[] }>;
 }
 
-export default async function StaffProfilePage({ params }: PageProps) {
-  const { id } = await params;
+export default async function StaffProfilePage({ params, searchParams }: PageProps) {
+  const [{ id }, { retake }] = await Promise.all([params, searchParams]);
 
   // D-01: `onDeny: 'notFound'` rather than a redirect — this URL is addressed by
   // someone else's id, so a 403 would confirm that the id exists. A caller
@@ -31,6 +32,9 @@ export default async function StaffProfilePage({ params }: PageProps) {
       viewerRole={ctx.role}
       facilities={ctx.accessibleFacilities}
       viewerOrganizationUserId={ctx.organizationUserId}
+      // A retry-request notice deep-links here (Q-35). The client opens the
+      // dialog only for a row already in this scoped profile.
+      openRetakeForEnrollmentId={typeof retake === 'string' ? retake : null}
     />
   );
 }

@@ -179,7 +179,7 @@ export const HELP_CATEGORIES: HelpCategory[] = [
         question: 'What happens if I fail a quiz?',
         audience: 'worker',
         intro:
-          'You can retake a quiz when a retake is assigned to you. Review the related course material first — your most recent passing attempt is what counts toward completion.',
+          'While you have attempts left, you can retake the quiz yourself. Once every attempt is used the course locks: select Request retry to ask your administrator for a retake, and take the quiz again once they assign one. Review the related course material first — your most recent passing attempt is what counts toward completion.',
       },
       {
         slug: 'password-reset-prompt',

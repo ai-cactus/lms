@@ -1269,6 +1269,54 @@ describe('getStaffDetails — org isolation (F-009)', () => {
     expect(courseSelect.lessons.orderBy).toEqual({ order: 'asc' });
   });
 
+  // Q-35: the locked row shows the learner's retry request, and a row already
+  // retaken is not offered a second grant.
+  it('reports each enrollment’s retry request and whether it has been retaken', async () => {
+    const row = (id: string, extra: Record<string, unknown>) => ({
+      id,
+      courseId: `c-${id}`,
+      status: 'locked',
+      progress: 100,
+      score: 40,
+      startedAt: new Date('2026-09-01T00:00:00.000Z'),
+      completedAt: null,
+      dueAt: null,
+      retakeOf: null,
+      retryRequestedAt: null,
+      course: {
+        id: `c-${id}`,
+        title: id,
+        type: 'text',
+        thumbnailStorageUri: null,
+        previewPosterStorageUri: null,
+        updatedAt: new Date('2026-09-01T00:00:00.000Z'),
+        lessons: [],
+      },
+      ...extra,
+    });
+    mockOrgUserFindUnique.mockResolvedValue({
+      ...makeTargetOrgUser('org-a'),
+      enrollments: [
+        row('retake', { status: 'enrolled', retakeOf: 'retaken' }),
+        row('retaken', { retryRequestedAt: new Date('2026-10-01T00:00:00.000Z') }),
+        row('pending', { retryRequestedAt: new Date('2026-10-05T00:00:00.000Z') }),
+      ],
+    });
+
+    const result = await getStaffDetails('target-1');
+
+    const byId = Object.fromEntries(result!.enrollments.map((e) => [e.id, e]));
+    expect(byId.retaken).toMatchObject({
+      hasSuccessor: true,
+      retryRequestedAt: '2026-10-01T00:00:00.000Z',
+    });
+    expect(byId.pending).toMatchObject({
+      hasSuccessor: false,
+      retryRequestedAt: '2026-10-05T00:00:00.000Z',
+    });
+    expect(byId.retake).toMatchObject({ hasSuccessor: false, retryRequestedAt: null });
+  });
+
   // BUG-48: the stored value is a storage URI the browser cannot fetch and
   // should never see; the profile header and Change Facility modal draw this.
   it('hands the profile a signed avatar URL, never the stored storage URI', async () => {

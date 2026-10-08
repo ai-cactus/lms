@@ -1,27 +1,25 @@
 /**
  * Adversarial tenant-isolation regression tests for Tier 3 5.2 (PR-5):
- * getAvailableUsers, getCourseAssignmentSettings and getRoleHolderCounts in
- * enrollment.ts now read organizationId/role straight off the
- * DB-revalidated session instead of re-querying prisma.user.findUnique.
- * None of the three had a pre-existing dedicated test (enrollment.test.ts
+ * getCourseAssignmentSettings and getRoleHolderCounts in enrollment.ts read
+ * organizationId/role straight off the DB-revalidated session instead of
+ * re-querying prisma.user.findUnique.
+ * Neither had a pre-existing dedicated test (enrollment.test.ts
  * only covers enrollUsers) — this closes that gap and specifically probes
  * cross-tenant leakage and the admin-only role gates.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Post multi-org split: both the assignable roster and the role-holder tally
-// are per-organization memberships, so they read OrganizationUser, not User.
+// Post multi-org split: the role-holder tally counts per-organization
+// memberships, so it reads OrganizationUser, not User.
 const {
   mockAdminAuth,
   mockWorkerAuth,
-  mockOrgUserFindMany,
   mockOrgUserGroupBy,
   mockCourseAssignmentFindFirst,
   mockFacilityFindMany,
 } = vi.hoisted(() => ({
   mockAdminAuth: vi.fn(),
   mockWorkerAuth: vi.fn(),
-  mockOrgUserFindMany: vi.fn(),
   mockOrgUserGroupBy: vi.fn(),
   mockCourseAssignmentFindFirst: vi.fn(),
   mockFacilityFindMany: vi.fn(),
@@ -29,7 +27,7 @@ const {
 
 vi.mock('@/lib/prisma', () => {
   const prisma = {
-    organizationUser: { findMany: mockOrgUserFindMany, groupBy: mockOrgUserGroupBy },
+    organizationUser: { groupBy: mockOrgUserGroupBy },
     courseAssignment: { findFirst: mockCourseAssignmentFindFirst },
     // `resolveDataFacilityIds` reaches this for a facility-bound caller
     // (supervisor); an org-wide one short-circuits before it.
@@ -44,159 +42,18 @@ vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-import { getAvailableUsers, getCourseAssignmentSettings, getRoleHolderCounts } from './enrollment';
-import { ADMIN_ROLES, WORKER_ROLES, dbRoleToRoleKey } from '@/lib/rbac/role-utils';
-import { can } from '@/lib/rbac/permissions';
+import * as enrollmentActions from './enrollment';
+import { getCourseAssignmentSettings, getRoleHolderCounts } from './enrollment';
 
 beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe('getAvailableUsers — org-scoping sourced from the session', () => {
-  it('queries only users in the caller org (org-A), and only org-A', async () => {
-    mockAdminAuth.mockResolvedValue({
-      user: { id: 'admin-1', role: 'owner', organizationId: 'org-A' },
-    });
-    mockWorkerAuth.mockResolvedValue(null);
-    mockOrgUserFindMany.mockResolvedValue([
-      {
-        id: 'ou1',
-        role: 'nurse',
-        user: { email: 'a@org-a.com', fullName: null },
-      },
-    ]);
-
-    const result = await getAvailableUsers();
-
-    expect(mockOrgUserFindMany).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ where: { organizationId: 'org-A', active: true } }),
-    );
-    // `id` is the organizationUserId — the membership every org-scoped artifact
-    // (enrollments included) is owned by, never the bare identity id.
-    expect(result).toEqual([
-      {
-        id: 'ou1',
-        email: 'a@org-a.com',
-        fullName: 'a@org-a.com',
-        role: 'nurse',
-      },
-    ]);
-    // BUG-48: `User.avatarUrl` is a raw storage URI and nothing renders it from
-    // this picker, so it is not even read.
-    expect(mockOrgUserFindMany.mock.calls[0][0].select.user.select).not.toHaveProperty('avatarUrl');
-  });
-
-  it('a different org session (org-B) never sees org-A results and never issues an org-A-scoped query', async () => {
-    mockAdminAuth.mockResolvedValue({
-      user: { id: 'admin-2', role: 'owner', organizationId: 'org-B' },
-    });
-    mockWorkerAuth.mockResolvedValue(null);
-    mockOrgUserFindMany.mockResolvedValue([]);
-
-    await getAvailableUsers();
-
-    expect(mockOrgUserFindMany).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ where: { organizationId: 'org-B', active: true } }),
-    );
-    expect(mockOrgUserFindMany).not.toHaveBeenCalledWith(
-      expect.objectContaining({ where: expect.objectContaining({ organizationId: 'org-A' }) }),
-    );
-  });
-
-  it('never issues the DB query for an org-less session — an org: null where-clause would match every removed/pending user across ALL orgs, a real cross-tenant leak if this guard regresses', async () => {
-    // `role` is now load-bearing on this fixture: the permission gate runs ahead
-    // of the org check, so an org-less session must still carry a role that gets
-    // past it for this test to prove what it says it proves.
-    mockAdminAuth.mockResolvedValue({
-      user: { id: 'admin-1', role: 'owner', organizationId: null },
-    });
-    mockWorkerAuth.mockResolvedValue(null);
-
-    const result = await getAvailableUsers();
-
-    expect(result).toEqual([]);
-    expect(mockOrgUserFindMany).not.toHaveBeenCalled();
-  });
-
-  it('throws Unauthorized with no session, never touching the DB', async () => {
-    mockAdminAuth.mockResolvedValue(null);
-    mockWorkerAuth.mockResolvedValue(null);
-
-    await expect(getAvailableUsers()).rejects.toThrow('Unauthorized');
-    expect(mockOrgUserFindMany).not.toHaveBeenCalled();
-  });
-
-  /**
-   * The trap this pins: `getAvailableUsers` resolves a WORKER session as well as
-   * an admin one and returns rows carrying staff EMAIL addresses. The obvious
-   * verbs for an assignee picker — `enrollment.read`, `course.read` — are in
-   * `workerPermissions`, so gating on either would leave this exactly as open as
-   * it was with no gate at all. The roles below are denied precisely BECAUSE
-   * they hold those verbs; a "simplification" to either must turn this red.
-   */
-  describe('permission gate', () => {
-    const WORKER_ROLES_HOLDING_THE_TEMPTING_VERBS = WORKER_ROLES.filter(
-      (role) =>
-        can(dbRoleToRoleKey(role), 'enrollment.read') && can(dbRoleToRoleKey(role), 'course.read'),
-    );
-
-    it('every worker role holds enrollment.read AND course.read — the reason neither can be the gate', () => {
-      expect(WORKER_ROLES_HOLDING_THE_TEMPTING_VERBS).toEqual([...WORKER_ROLES]);
-      expect(WORKER_ROLES_HOLDING_THE_TEMPTING_VERBS.length).toBeGreaterThanOrEqual(3);
-    });
-
-    // Armed on the ADMIN instance: the action reads only that portal (BUG-47),
-    // so this is the gate's own defence should a worker role ever decode there.
-    it.each(WORKER_ROLES_HOLDING_THE_TEMPTING_VERBS)(
-      '%s is refused the roster, never touching the DB — despite holding enrollment.read and course.read',
-      async (role) => {
-        mockAdminAuth.mockResolvedValue({
-          user: { id: 'w-1', role, organizationUserId: 'ou-w-1', organizationId: 'org-A' },
-        });
-        mockWorkerAuth.mockResolvedValue(null);
-
-        await expect(getAvailableUsers()).rejects.toThrow('Forbidden');
-        expect(mockOrgUserFindMany).not.toHaveBeenCalled();
-      },
-    );
-
-    it('BUG-47: never reads the worker portal — a worker session alone is unauthenticated here', async () => {
-      mockAdminAuth.mockResolvedValue(null);
-      mockWorkerAuth.mockResolvedValue({
-        user: { id: 'w-1', role: 'owner', organizationUserId: 'ou-w-1', organizationId: 'org-A' },
-      });
-
-      await expect(getAvailableUsers()).rejects.toThrow('Unauthorized');
-      expect(mockWorkerAuth).not.toHaveBeenCalled();
-      expect(mockOrgUserFindMany).not.toHaveBeenCalled();
-    });
-
-    it.each(
-      ADMIN_ROLES.filter(
-        (role) =>
-          can(dbRoleToRoleKey(role), 'user.read') ||
-          can(dbRoleToRoleKey(role), 'assignment.create'),
-      ),
-    )('%s keeps the picker — it may assign training', async (role) => {
-      mockAdminAuth.mockResolvedValue({
-        user: { id: 'a-1', role, organizationUserId: 'ou-a-1', organizationId: 'org-A' },
-      });
-      mockWorkerAuth.mockResolvedValue(null);
-      mockOrgUserFindMany.mockResolvedValue([]);
-      mockFacilityFindMany.mockResolvedValue([{ id: 'fac-1' }]);
-
-      await expect(getAvailableUsers()).resolves.toEqual([]);
-    });
-
-    it('finance is refused too — it holds neither verb and has no Staff Management access', async () => {
-      mockAdminAuth.mockResolvedValue({
-        user: { id: 'f-1', role: 'finance', organizationUserId: 'ou-f-1', organizationId: 'org-A' },
-      });
-      mockWorkerAuth.mockResolvedValue(null);
-
-      await expect(getAvailableUsers()).rejects.toThrow('Forbidden');
-      expect(mockOrgUserFindMany).not.toHaveBeenCalled();
-    });
+// TOOL-31: the roster picker action had no caller but tests, yet as a
+// `'use server'` export it stayed a live HTTP endpoint returning staff emails.
+describe('retired endpoints', () => {
+  it('no longer exports getAvailableUsers', () => {
+    expect(Object.keys(enrollmentActions)).not.toContain('getAvailableUsers');
   });
 });
 

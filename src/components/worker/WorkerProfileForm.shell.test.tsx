@@ -24,7 +24,6 @@ const user = {
   firstName: 'Nina',
   lastName: 'Nurse',
   role: 'nurse',
-  avatarUrl: null,
   authProvider: 'credentials',
 } as never;
 

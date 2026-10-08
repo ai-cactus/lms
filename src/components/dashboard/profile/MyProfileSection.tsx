@@ -40,7 +40,9 @@ export default function MyProfileSection({ profile, organizationName }: MyProfil
 
   const [isEditing, setIsEditing] = useState(false);
   const [form, setForm] = useState<EditableProfile>(() => toEditable(profile));
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(profile.avatarUrl ?? null);
+  // The page never sends the stored avatar's storage URI (BUG-65); a save
+  // carries only the reference `uploadAvatar` returns for a new photo.
+  const [uploadedAvatarRef, setUploadedAvatarRef] = useState<string | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(
     profile.avatarDisplayUrl ?? null,
   );
@@ -57,19 +59,19 @@ export default function MyProfileSection({ profile, organizationName }: MyProfil
   const isDirty =
     form.first_name !== profile.first_name ||
     form.last_name !== profile.last_name ||
-    avatarUrl !== (profile.avatarUrl ?? null);
+    uploadedAvatarRef !== null;
 
   const startEditing = () => {
     setMessage(null);
     setForm(toEditable(profile));
-    setAvatarUrl(profile.avatarUrl ?? null);
+    setUploadedAvatarRef(null);
     setAvatarPreview(profile.avatarDisplayUrl ?? null);
     setIsEditing(true);
   };
 
   const cancelEditing = () => {
     setForm(toEditable(profile));
-    setAvatarUrl(profile.avatarUrl ?? null);
+    setUploadedAvatarRef(null);
     setAvatarPreview(profile.avatarDisplayUrl ?? null);
     setMessage(null);
     setIsEditing(false);
@@ -89,7 +91,7 @@ export default function MyProfileSection({ profile, organizationName }: MyProfil
     try {
       const result = await uploadAvatar('admin', payload);
       if (result.success && result.url) {
-        setAvatarUrl(result.url);
+        setUploadedAvatarRef(result.url);
       } else {
         setMessage({ type: 'error', text: result.error || 'Failed to upload photo' });
       }
@@ -109,9 +111,7 @@ export default function MyProfileSection({ profile, organizationName }: MyProfil
       const result = await updateProfile('admin', {
         first_name: form.first_name,
         last_name: form.last_name,
-        // Only a changed photo is sent, and a removed one as an explicit null —
-        // `undefined` means "leave unchanged", so it can never express a clear.
-        avatarUrl: avatarUrl !== (profile.avatarUrl ?? null) ? avatarUrl : undefined,
+        avatarUrl: uploadedAvatarRef ?? undefined,
       });
 
       if (!result.success) throw new Error(result.error);

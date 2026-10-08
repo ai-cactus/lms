@@ -77,6 +77,7 @@ const makePayload = (overrides: Partial<LearnPayload> = {}): LearnPayload => ({
     status: 'in_progress',
     score: null,
     videoPositionSeconds: 0,
+    retryRequestedAt: null,
     quizAttempts: [],
   },
   quizResultsData: null,
