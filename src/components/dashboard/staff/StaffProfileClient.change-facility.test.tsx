@@ -41,7 +41,7 @@ function makeStaff(role = 'nurse') {
       role,
       firstName: 'Target',
       lastName: 'User',
-      facilityName: 'Akobo branch',
+      facilities: [{ id: 'fac-a', name: 'Akobo branch' }],
       timeZone: 'UTC',
     },
     stats: { totalCourses: 0, completedCourses: 0, failedCourses: 0, activeCourses: 0 },
@@ -64,8 +64,30 @@ describe('StaffProfileClient — Change Facility button', () => {
     const button = screen.getByRole('button', { name: /Change Facility/ });
     await user.click(button);
 
-    expect(screen.getByRole('heading', { name: 'Change facility' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Change facilities' })).toBeInTheDocument();
     expect(screen.getByText(/Current · Akobo branch/)).toBeInTheDocument();
+  });
+
+  it('opens the modal with every one of a multi-facility member facilities pre-checked', async () => {
+    const user = userEvent.setup();
+    const staff = makeStaff();
+    staff.user.facilities = [
+      { id: 'fac-a', name: 'Akobo branch' },
+      { id: 'fac-b', name: 'Akingbile branch' },
+    ];
+    render(
+      <StaffProfileClient
+        staff={staff}
+        viewerRole={'owner' as Role}
+        viewerOrganizationUserId="ou-viewer"
+        facilities={FACILITIES}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /Change Facility/ }));
+
+    expect(screen.getByRole('checkbox', { name: /Akobo branch/ })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: /Akingbile branch/ })).toBeChecked();
   });
 
   // Supervisor is the case Rule A exists for: it now edits staff profiles and
@@ -153,7 +175,7 @@ describe('StaffProfileClient — Change Facility button', () => {
 
     await user.click(screen.getByRole('button', { name: /Change Facility/ }));
 
-    expect(screen.queryByRole('heading', { name: 'Change facility' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Change facilities' })).not.toBeInTheDocument();
   });
 
   it('is hidden when there are no facilities to move to', () => {

@@ -275,6 +275,7 @@ export default function StaffListClient({
 
       {changeFacilityTarget && (
         <ChangeFacilityModal
+          key={changeFacilityTarget.id}
           isOpen={!!changeFacilityTarget}
           onClose={() => setChangeFacilityTarget(null)}
           member={changeFacilityTarget}
@@ -552,7 +553,11 @@ export default function StaffListClient({
                     </TableCell>
 
                     <TableCell className="hidden px-5 py-0 lg:table-cell">
-                      {user.facilities.length > 0 ? (
+                      {isOrgWideFacilityRole(user.role as Role) ? (
+                        <span className="text-[14px] font-medium text-text-secondary">
+                          All facilities
+                        </span>
+                      ) : user.facilities.length > 0 ? (
                         <span className="flex items-center gap-1.5 text-[14px] font-medium text-[#0d0d12]">
                           <span className="truncate" title={user.facilities[0].name}>
                             {user.facilities[0].name}
@@ -641,7 +646,7 @@ export default function StaffListClient({
                                           name: user.name,
                                           email: user.email,
                                           avatarUrl: user.avatarUrl,
-                                          currentFacilityName: user.facilities[0]?.name ?? null,
+                                          currentFacilities: user.facilities,
                                         }),
                                     },
                                   ]

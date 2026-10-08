@@ -89,3 +89,4 @@
 - [Enrollment last-activity validation](enrollment-last-activity-validation.md) — objectContaining hides admin non-stamp regressions; qa'd migration+e2e; missing video fixture is pre-existing
 - [prisma migrate diff CLI flags removed](prisma-migrate-diff-cli-flags-removed.md) — --from-url/--to-schema-datamodel gone; use --from-config-datasource/--to-schema; working migration-proof recipe
 - [BUG-47 dual-account cookie e2e gotchas](bug47-dual-account-cookie-e2e-gotchas.md) — addCookies must reuse the FULL captured cookie (real name is `__Secure-*` under `next start`); same-tab dual-account login trips the unrelated SessionIdentityGuard — use a second tab
+- [Invite modal bulk-role tests](invite-modal-bulk-roles-tests.md) — jsdom CSV upload recipe (portal input, File.arrayBuffer override); e2e selector contract

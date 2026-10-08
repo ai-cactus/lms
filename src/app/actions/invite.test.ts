@@ -662,19 +662,152 @@ describe('createInvites() — existing member and pending-invite rows', () => {
   // moments later. Resending must always refresh the 7-day window.
   it('refreshes the expiry of an existing pending invite on resend', async () => {
     mockInviteFindMany.mockResolvedValue([
-      { id: 'existing-invite-1', email: 'pending@acme.com', token: 'existing-token-123' },
+      {
+        id: 'existing-invite-1',
+        email: 'pending@acme.com',
+        token: 'existing-token-123',
+        role: 'nurse',
+        facilityId: 'facility-1',
+      },
     ]);
 
     await createInvites([item('pending@acme.com', 'nurse')]);
 
     expect(mockInviteUpdate).toHaveBeenCalledWith({
       where: { id: 'existing-invite-1' },
-      data: { expiresAt: expect.any(Date) },
+      data: { expiresAt: expect.any(Date), role: 'nurse', facilityId: 'facility-1' },
     });
     // The refresh must precede (or at least accompany) the resend email — not
     // matter which happens first here, but the row must actually be touched.
     const refreshedExpiry = mockInviteUpdate.mock.calls[0][0].data.expiresAt as Date;
     expect(refreshedExpiry.getTime()).toBeGreaterThan(Date.now());
+  });
+});
+
+// ── BUG-67: a re-invite carries the NEW role and facility onto the pending invite ──
+
+describe('createInvites() — re-inviting a pending email updates its role and facility (BUG-67)', () => {
+  const PENDING = {
+    id: 'pending-1',
+    email: 'pending@acme.com',
+    token: 'keep-this-token',
+    role: 'nurse',
+    facilityId: 'facility-1',
+  };
+
+  beforeEach(() => {
+    mockAuth.mockResolvedValue(makeSession('owner'));
+    stubOrgNoSubscription();
+    mockInviteFindMany.mockResolvedValue([PENDING]);
+  });
+
+  it('updates the role when it changed, keeps the token, and says the invitation was updated', async () => {
+    const result = await createInvites([item('pending@acme.com', 'case_manager')], {
+      facilityId: 'facility-1',
+    });
+
+    expect(mockInviteUpdate).toHaveBeenCalledWith({
+      where: { id: 'pending-1' },
+      data: { expiresAt: expect.any(Date), role: 'case_manager', facilityId: 'facility-1' },
+    });
+    expect(result.results[0]).toEqual({
+      email: 'pending@acme.com',
+      status: 'resent',
+      message: 'Invitation updated and resent.',
+    });
+    expect(mockInviteUpdate.mock.calls[0][0].data).not.toHaveProperty('token');
+    expect(mockSendInviteEmail.mock.calls[0][1]).toMatch(/\/join\/keep-this-token$/);
+    expect(mockInviteCreateMany).not.toHaveBeenCalled();
+  });
+
+  it('sends the NEW role label in the resent email', async () => {
+    await createInvites([item('pending@acme.com', 'case_manager')], { facilityId: 'facility-1' });
+
+    expect(mockSendInviteEmail.mock.calls[0][3]).toContain('Case Manager');
+  });
+
+  it('updates the facility when only the facility changed', async () => {
+    mockFacilityFindFirst.mockResolvedValue({ id: 'facility-2' });
+
+    const result = await createInvites([item('pending@acme.com', 'nurse')], {
+      facilityId: 'facility-2',
+    });
+
+    expect(mockInviteUpdate).toHaveBeenCalledWith({
+      where: { id: 'pending-1' },
+      data: { expiresAt: expect.any(Date), role: 'nurse', facilityId: 'facility-2' },
+    });
+    expect(result.results[0]).toMatchObject({
+      status: 'resent',
+      message: 'Invitation updated and resent.',
+    });
+  });
+
+  it('keeps the plain "Invitation resent." message and logs nothing when role and facility are unchanged', async () => {
+    const result = await createInvites([item('pending@acme.com', 'nurse')], {
+      facilityId: 'facility-1',
+    });
+
+    expect(result.results[0]).toEqual({
+      email: 'pending@acme.com',
+      status: 'resent',
+      message: 'Invitation resent.',
+    });
+    expect(mockLoggerInfo).not.toHaveBeenCalledWith(
+      expect.objectContaining({ msg: '[invite] Pending invite updated' }),
+    );
+  });
+
+  it('logs the old and new role and facility, and no email address', async () => {
+    mockFacilityFindFirst.mockResolvedValue({ id: 'facility-2' });
+
+    await createInvites([item('pending@acme.com', 'case_manager')], { facilityId: 'facility-2' });
+
+    const call = mockLoggerInfo.mock.calls.find(
+      ([entry]) => (entry as { msg?: string }).msg === '[invite] Pending invite updated',
+    );
+    expect(call).toBeDefined();
+    expect(call?.[0]).toEqual({
+      msg: '[invite] Pending invite updated',
+      inviteId: 'pending-1',
+      organizationId: 'org-1',
+      oldRole: 'nurse',
+      newRole: 'case_manager',
+      oldFacilityId: 'facility-1',
+      newFacilityId: 'facility-2',
+    });
+    expect(JSON.stringify(call?.[0])).not.toContain('pending@acme.com');
+  });
+
+  it('does NOT update the invite when the new role is not allowed on this invite path', async () => {
+    const result = await createInvites([item('pending@acme.com', 'nurse')], { facilityId: null });
+
+    expect(result.results[0]).toMatchObject({ status: 'forbidden' });
+    expect(mockInviteUpdate).not.toHaveBeenCalled();
+    expect(mockSendInviteEmail).not.toHaveBeenCalled();
+  });
+
+  it('does NOT update the invite when the inviter may not grant the new role', async () => {
+    mockAuth.mockResolvedValue(makeSession('hr'));
+
+    const result = await createInvites([item('pending@acme.com', 'admin')], {
+      facilityId: null,
+    });
+
+    expect(result.results[0]).toMatchObject({ status: 'forbidden' });
+    expect(mockInviteUpdate).not.toHaveBeenCalled();
+  });
+
+  it('moves a Global re-invite onto the org anchor facility and an org-wide role', async () => {
+    mockFacilityFindFirst.mockResolvedValue({ id: 'facility-oldest' });
+
+    const result = await createInvites([item('pending@acme.com', 'hr')], { facilityId: null });
+
+    expect(mockInviteUpdate).toHaveBeenCalledWith({
+      where: { id: 'pending-1' },
+      data: { expiresAt: expect.any(Date), role: 'hr', facilityId: 'facility-oldest' },
+    });
+    expect(result.results[0]).toMatchObject({ message: 'Invitation updated and resent.' });
   });
 });
 
@@ -840,5 +973,190 @@ describe('createInvites() — Q-31 deleted identity', () => {
     const inserted = mockInviteCreateMany.mock.calls[0][0].data;
     expect(inserted.map((row: { email: string }) => row.email)).toEqual(['fresh@acme.com']);
     expect(mockSendInviteEmail).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── Invite path: Global takes org-wide roles, a facility takes facility-bound ones
+
+describe('createInvites() — role must fit the invite path', () => {
+  const GLOBAL_ONLY_MSG = (name: string) => `${name} must be invited to a specific facility.`;
+  const FACILITY_ONLY_MSG = (name: string) => `${name} is organization-wide — invite with Global.`;
+
+  beforeEach(() => {
+    mockAuth.mockResolvedValue(makeSession('owner'));
+    stubOrgNoSubscription();
+  });
+
+  const statusOf = (result: Awaited<ReturnType<typeof createInvites>>, email: string) =>
+    result.results.find((r) => r.email === email);
+
+  it('refuses a worker role on a Global invite with the "specific facility" message', async () => {
+    const result = await createInvites([item('nurse@acme.com', 'nurse')], { facilityId: null });
+
+    expect(result.success).toBe(true);
+    expect(statusOf(result, 'nurse@acme.com')).toEqual({
+      email: 'nurse@acme.com',
+      status: 'forbidden',
+      message: GLOBAL_ONLY_MSG('Nurse'),
+    });
+    expect(mockInviteCreateMany).not.toHaveBeenCalled();
+    expect(mockSendInviteEmail).not.toHaveBeenCalled();
+  });
+
+  it('refuses a supervisor on a Global invite', async () => {
+    const result = await createInvites([item('sup@acme.com', 'supervisor')], { facilityId: null });
+
+    expect(statusOf(result, 'sup@acme.com')).toMatchObject({
+      status: 'forbidden',
+      message: GLOBAL_ONLY_MSG('Facility Supervisor'),
+    });
+  });
+
+  it('accepts hr on a Global invite', async () => {
+    const result = await createInvites([item('hr@acme.com', 'hr')], { facilityId: null });
+
+    expect(statusOf(result, 'hr@acme.com')?.status).toBe('sent');
+    expect(mockInviteCreateMany.mock.calls[0][0].data[0]).toMatchObject({ role: 'hr' });
+  });
+
+  it.each([
+    ['hr', 'HR'],
+    ['finance', 'Finance'],
+    ['clinical_director', 'Clinical Director'],
+    ['admin', 'Admin'],
+  ])('refuses %s on a facility invite with the "organization-wide" message', async (role, name) => {
+    const result = await createInvites([item('mgr@acme.com', role)], {
+      facilityId: 'facility-1',
+    });
+
+    expect(statusOf(result, 'mgr@acme.com')).toEqual({
+      email: 'mgr@acme.com',
+      status: 'forbidden',
+      message: FACILITY_ONLY_MSG(name),
+    });
+    expect(mockInviteCreateMany).not.toHaveBeenCalled();
+    expect(mockSendInviteEmail).not.toHaveBeenCalled();
+  });
+
+  it.each(['supervisor', 'nurse'])('accepts %s on a facility invite', async (role) => {
+    const result = await createInvites([item('w@acme.com', role)], { facilityId: 'facility-1' });
+
+    expect(statusOf(result, 'w@acme.com')?.status).toBe('sent');
+    expect(mockInviteCreateMany.mock.calls[0][0].data[0]).toMatchObject({
+      role,
+      facilityId: 'facility-1',
+    });
+  });
+
+  it('never refuses on path when the facility option is omitted: each role is classified by itself', async () => {
+    const result = await createInvites([
+      item('hr@acme.com', 'hr'),
+      item('nurse@acme.com', 'nurse'),
+      item('sup@acme.com', 'supervisor'),
+    ]);
+
+    expect(result.results.map((r) => r.status)).toEqual(['sent', 'sent', 'sent']);
+    expect(mockInviteCreateMany.mock.calls[0][0].data).toHaveLength(3);
+  });
+
+  it('partially succeeds a mixed Global batch: org-wide rows go through, the worker row is refused', async () => {
+    const result = await createInvites(
+      [item('hr@acme.com', 'hr'), item('nurse@acme.com', 'nurse'), item('fin@acme.com', 'finance')],
+      { facilityId: null },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.results.map((r) => [r.email, r.status])).toEqual([
+      ['nurse@acme.com', 'forbidden'],
+      ['hr@acme.com', 'sent'],
+      ['fin@acme.com', 'sent'],
+    ]);
+    const inserted = mockInviteCreateMany.mock.calls[0][0].data as { email: string }[];
+    expect(inserted.map((row) => row.email).sort()).toEqual(['fin@acme.com', 'hr@acme.com']);
+    expect(mockSendInviteEmail).toHaveBeenCalledTimes(2);
+  });
+
+  it('partially succeeds a mixed facility batch: the manager row is refused, the workers go through', async () => {
+    const result = await createInvites(
+      [item('hr@acme.com', 'hr'), item('nurse@acme.com', 'nurse')],
+      { facilityId: 'facility-1' },
+    );
+
+    expect(statusOf(result, 'hr@acme.com')?.status).toBe('forbidden');
+    expect(statusOf(result, 'nurse@acme.com')?.status).toBe('sent');
+    expect(mockInviteCreateMany.mock.calls[0][0].data).toHaveLength(1);
+  });
+
+  it('refused rows consume no seats: a full plan still returns per-row forbidden, not a seat failure', async () => {
+    mockOrgFindUnique.mockResolvedValue({
+      name: 'Acme Corp',
+      subscription: { plan: 'starter', status: 'active' },
+    });
+    mockOrganizationUserCount.mockResolvedValue(10);
+    mockInviteCount.mockResolvedValue(0);
+
+    const result = await createInvites(
+      [item('a@acme.com', 'nurse'), item('b@acme.com', 'case_manager')],
+      { facilityId: null },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.results.map((r) => r.status)).toEqual(['forbidden', 'forbidden']);
+    expect(mockInviteCreateMany).not.toHaveBeenCalled();
+  });
+
+  it('counts only the rows that fit the path against the seat limit', async () => {
+    mockOrgFindUnique.mockResolvedValue({
+      name: 'Acme Corp',
+      subscription: { plan: 'starter', status: 'active' },
+    });
+    // 9/10 used: one seat left. Two refused workers must not be counted, so the
+    // single valid hr row fits; counting all three would exceed the plan.
+    mockOrganizationUserCount.mockResolvedValue(9);
+    mockInviteCount.mockResolvedValue(0);
+
+    const result = await createInvites(
+      [item('a@acme.com', 'nurse'), item('b@acme.com', 'case_manager'), item('c@acme.com', 'hr')],
+      { facilityId: null },
+    );
+
+    expect(result.success).toBe(true);
+    expect(statusOf(result, 'c@acme.com')?.status).toBe('sent');
+  });
+
+  it('refuses before the deleted-email guard: a wrong-path row is "forbidden", not "refused"', async () => {
+    mockUserFindMany.mockResolvedValue([{ email: 'gone@acme.com' }]);
+
+    const result = await createInvites([item('gone@acme.com', 'nurse')], { facilityId: null });
+
+    expect(statusOf(result, 'gone@acme.com')).toMatchObject({
+      status: 'forbidden',
+      message: GLOBAL_ONLY_MSG('Nurse'),
+    });
+  });
+
+  it('refuses before the pending re-invite branch: no expiry refresh, no resent email', async () => {
+    mockInviteFindMany.mockResolvedValue([
+      { id: 'inv-1', email: 'pending@acme.com', role: 'nurse', facilityId: 'facility-1' },
+    ]);
+
+    const result = await createInvites([item('pending@acme.com', 'nurse')], { facilityId: null });
+
+    expect(statusOf(result, 'pending@acme.com')?.status).toBe('forbidden');
+    expect(mockInviteUpdate).not.toHaveBeenCalled();
+    expect(mockSendInviteEmail).not.toHaveBeenCalled();
+    expect(mockInviteCreateMany).not.toHaveBeenCalled();
+  });
+
+  it('logs the refusal at warn level with a masked email', async () => {
+    await createInvites([item('nurse@acme.com', 'nurse')], { facilityId: null });
+
+    expect(mockLoggerWarn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        msg: '[invite] Role refused on this invite path',
+        requestedRole: 'nurse',
+        email: 'nu***@masked',
+      }),
+    );
   });
 });

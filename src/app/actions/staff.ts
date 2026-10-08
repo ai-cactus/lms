@@ -124,8 +124,7 @@ export async function getStaffDetails(organizationUserId: string) {
         facilities: {
           where: { active: true },
           orderBy: [{ joinedAt: 'asc' }, { id: 'asc' }],
-          take: 1,
-          select: { facility: { select: { name: true, timezone: true } } },
+          select: { facility: { select: { id: true, name: true, timezone: true } } },
         },
         enrollments: {
           orderBy: { startedAt: 'desc' },
@@ -190,6 +189,12 @@ export async function getStaffDetails(organizationUserId: string) {
       ...getClientContext(await headers()),
     });
 
+    // A facility-bound viewer sees only the facilities it covers: a member of
+    // A and B viewed by a supervisor of A must not reveal B's name.
+    const visibleFacilities = orgUser.facilities
+      .map(({ facility }) => ({ id: facility.id, name: facility.name }))
+      .filter((facility) => dataFacilityIds === null || dataFacilityIds.includes(facility.id));
+
     const totalCourses = orgUser.enrollments.length || 0;
     const completedCourses =
       orgUser.enrollments.filter((e) => {
@@ -231,9 +236,10 @@ export async function getStaffDetails(organizationUserId: string) {
         // substituting a placeholder here would have it overwrite a blank name.
         firstName: orgUser.user.firstName ?? '',
         lastName: orgUser.user.lastName ?? '',
-        facilityName: orgUser.facilities[0]?.facility.name ?? null,
+        facilities: visibleFacilities,
         // The zone this member's deadlines end in (BUG-12.3), so a due date is
-        // shown as the date that was picked.
+        // shown as the date that was picked. Read from the oldest facility even
+        // when the viewer can't see it: it is the zone the deadlines were set in.
         timeZone: orgUser.facilities[0]?.facility.timezone ?? DEFAULT_TZ,
         managerId: orgUser.managerId ?? null,
         managerName: orgUser.manager
@@ -579,8 +585,8 @@ export async function setStaffManager(
 /**
  * Replaces a staff member's facility assignments with exactly `facilityIds`.
  *
- * Powers both the single-select "change facility" move and multi-facility
- * assignment: assignments not in the set are REVOKED (`active = false`) rather
+ * Powers the multi-select Change Facility modal, which sends the member's full
+ * intended set: assignments not in the set are REVOKED (`active = false`) rather
  * than deleted, and the ones in it are created or reactivated. Enrollments and
  * certificates hang off the membership, not the facility, so training history is
  * preserved by construction — which is what the modal's "records preserved" copy

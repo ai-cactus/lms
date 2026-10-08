@@ -726,6 +726,62 @@ describe('updateProfile — deleting the replaced avatar', () => {
 // no browser can fetch it. The payload must carry a signed URL instead.
 // ---------------------------------------------------------------------------
 
+describe('getStaffUsers — member facility names are narrowed to the viewer scope', () => {
+  // The Prisma double ignores `where`, so these assert on the query the action
+  // builds: a supervisor of A must not receive B's name for a member of A and B.
+  const sessionFor = (role: string) => ({
+    user: { id: 'u1', role, organizationId: 'org-a', organizationUserId: 'ou1' },
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockHeaders.mockResolvedValue(new Headers());
+    prismaMock.organizationUser.findMany.mockResolvedValue([]);
+    prismaMock.invite.findMany.mockResolvedValue([]);
+    prismaMock.facility.findMany.mockResolvedValue([{ id: 'annex', name: 'Annex' }]);
+  });
+
+  const facilitiesInclude = () =>
+    prismaMock.organizationUser.findMany.mock.calls[0][0].include.facilities;
+
+  it('restricts the included facilities of every member to the supervisor facilities', async () => {
+    mockAdminAuth.mockResolvedValue(sessionFor('supervisor'));
+
+    await getStaffUsers();
+
+    expect(facilitiesInclude().where).toEqual({ active: true, facilityId: { in: ['annex'] } });
+  });
+
+  it('restricts a supervisor with no facility assignments to none, not to all', async () => {
+    mockAdminAuth.mockResolvedValue(sessionFor('supervisor'));
+    prismaMock.facility.findMany.mockResolvedValue([]);
+
+    await getStaffUsers();
+
+    expect(facilitiesInclude().where).toEqual({ active: true, facilityId: { in: [] } });
+  });
+
+  it.each(['owner', 'admin', 'hr'])(
+    'leaves the included facilities unrestricted for the org-wide %s',
+    async (role) => {
+      mockAdminAuth.mockResolvedValue(sessionFor(role));
+
+      await getStaffUsers();
+
+      expect(facilitiesInclude().where).toEqual({ active: true });
+    },
+  );
+
+  it('keeps facility ids and names, oldest first, for the Change Facility modal', async () => {
+    mockAdminAuth.mockResolvedValue(sessionFor('owner'));
+
+    await getStaffUsers();
+
+    expect(facilitiesInclude().select).toEqual({ facility: { select: { id: true, name: true } } });
+    expect(facilitiesInclude().orderBy).toEqual({ joinedAt: 'asc' });
+  });
+});
+
 describe('getStaffUsers — avatar URLs', () => {
   const STORED = 'gcs://lms-bucket/avatars/user-7/1700000000000-me.png';
   const SIGNED =

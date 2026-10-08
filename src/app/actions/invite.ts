@@ -6,6 +6,11 @@ import { revalidatePath } from 'next/cache';
 import { sendInviteEmail } from '@/lib/email';
 import { logger, maskEmail } from '@/lib/logger';
 import { areFacilitiesInCallerScope } from '@/lib/facility/target-scope';
+import {
+  checkInviteRolePath,
+  invitePathForRole,
+  type InvitePath,
+} from '@/lib/facility/invite-role-path';
 import { getSeatUsage } from '@/lib/seat-limits';
 import {
   DELETED_EMAIL_REFUSAL,
@@ -59,6 +64,10 @@ export interface CreateInvitesOptions {
    * `null` marks a GLOBAL invite — an org-wide managerial seat that is
    * deliberately not tied to the inviter's site. Omitting the field keeps the
    * legacy behaviour (inherit the inviter's facility).
+   *
+   * A string or `null` also fixes the invite path: a global invite accepts only
+   * org-wide roles and a facility invite only facility-bound ones (see
+   * `checkInviteRolePath`); a mismatched row comes back `forbidden`.
    */
   facilityId?: string | null;
 }
@@ -146,10 +155,12 @@ export async function createInvites(
   }
 
   // NOTE: `Invite.facilityId` is a required FK, so even a global invite has to
-  // be anchored to a row. The org's oldest facility is the neutral anchor —
-  // what actually makes these seats org-wide is the granted role
-  // (see `isOrgWideFacilityRole`), not this column. Making the column nullable
-  // is a schema change tracked separately.
+  // be anchored to a row. The org's oldest facility is the neutral anchor. Only
+  // org-wide roles reach it — the per-row path check below refuses a
+  // facility-bound role on a global invite — and for them the column is inert:
+  // what makes the seat org-wide is the granted role (see
+  // `isOrgWideFacilityRole`). Making the column nullable is a schema change
+  // tracked separately.
   if (!facilityId) {
     const fallbackFacility = await prisma.facility.findFirst({
       where: { organizationId },
@@ -169,10 +180,18 @@ export async function createInvites(
 
   const results: InviteResultItem[] = [];
 
-  // Per-row role validation: reject only the offending rows (invalid or
-  // non-grantable role) rather than failing the whole batch. Surviving rows keep
-  // the FIRST role seen for a given email — a defensive dedupe against a caller
-  // that lists the same email twice with conflicting roles.
+  // An explicit facility choice fixes the path for the whole batch. A caller
+  // that omits the field picks no path, so each row is classified by its own
+  // role and none is refused on that ground.
+  const batchPath: InvitePath | undefined =
+    options?.facilityId === undefined ? undefined : isGlobalInvite ? 'global' : 'facility';
+
+  // Per-row role validation: reject only the offending rows (invalid,
+  // non-grantable, or on the wrong invite path) rather than failing the whole
+  // batch, and before the deleted-email guard and the seat count so a refused
+  // row consumes no seat. Surviving rows keep the FIRST role seen for a given
+  // email — a defensive dedupe against a caller that lists the same email twice
+  // with conflicting roles.
   const emailRoleMap = new Map<string, UserRole>();
   for (const item of items) {
     const isRealRole = ALL_ROLES.includes(item.role);
@@ -189,6 +208,18 @@ export async function createInvites(
         status: 'forbidden',
         message: isRealRole ? 'You cannot grant the requested role.' : 'Invalid role.',
       });
+      continue;
+    }
+    const pathCheck = checkInviteRolePath(item.role, batchPath ?? invitePathForRole(item.role));
+    if (!pathCheck.ok) {
+      logger.warn({
+        msg: '[invite] Role refused on this invite path',
+        inviterRole: session.user.role,
+        requestedRole: item.role,
+        invitePath: batchPath,
+        email: maskEmail(item.email),
+      });
+      results.push({ email: item.email, status: 'forbidden', message: pathCheck.message });
       continue;
     }
     if (!emailRoleMap.has(item.email)) emailRoleMap.set(item.email, item.role);
@@ -385,14 +416,38 @@ export async function createInvites(
 
       const existingInvite = existingInviteMap.get(email);
       if (existingInvite) {
-        // Refresh the expiry so a resend never carries a nearly-expired token.
+        // BUG-67: the re-invite carries this batch's role and facility, both
+        // already validated above. The token is kept, so a link from an earlier
+        // email now grants the new role rather than the stale one. The expiry
+        // is refreshed so a resend never carries a nearly-expired token.
+        const role = emailRoleMap.get(email) as UserRole;
+        const roleChanged = existingInvite.role !== role;
+        const facilityChanged = existingInvite.facilityId !== facilityId;
         await prisma.invite.update({
           where: { id: existingInvite.id },
-          data: { expiresAt },
+          data: { expiresAt, role, facilityId },
         });
+        if (roleChanged || facilityChanged) {
+          logger.info({
+            msg: '[invite] Pending invite updated',
+            inviteId: existingInvite.id,
+            organizationId,
+            oldRole: existingInvite.role,
+            newRole: role,
+            oldFacilityId: existingInvite.facilityId,
+            newFacilityId: facilityId,
+          });
+        }
         const inviteLink = `${process.env.NEXT_PUBLIC_APP_URL}/join/${existingInvite.token}`;
         await sendInviteEmail(email, inviteLink, org.name, roleDisplayName);
-        return { email, status: 'resent' as const, message: 'Invitation resent.' };
+        return {
+          email,
+          status: 'resent' as const,
+          message:
+            roleChanged || facilityChanged
+              ? 'Invitation updated and resent.'
+              : 'Invitation resent.',
+        };
       }
 
       const newInvite = newInvitesMap.get(email);

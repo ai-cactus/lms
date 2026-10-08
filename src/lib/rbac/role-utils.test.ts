@@ -18,6 +18,7 @@ import {
   isWorkerRole,
   canChangeRole,
   ROLE_CHANGE_ACTOR_ROLES,
+  groupRolesForSelect,
 } from './role-utils';
 import type { Role } from '@/types/next-auth';
 
@@ -435,4 +436,39 @@ describe('isWorkerRole', () => {
   it('returns false for the retired worker role string (no longer a real role)', () =>
     expect(isWorkerRole('worker')).toBe(false));
   it('returns false for null', () => expect(isWorkerRole(null)).toBe(false));
+});
+
+describe('groupRolesForSelect — allowedRoles filter', () => {
+  const labelsOf = (groups: ReturnType<typeof groupRolesForSelect>) => groups.map((g) => g.label);
+  const valuesOf = (groups: ReturnType<typeof groupRolesForSelect>) =>
+    groups.flatMap((g) => g.roles.map((r) => r.value));
+
+  it('offers every grantable role in two groups when no filter is given', () => {
+    const groups = groupRolesForSelect('owner');
+
+    expect([...valuesOf(groups)].sort()).toEqual([...GRANTABLE_ROLES.owner].sort());
+    expect(groups).toHaveLength(2);
+  });
+
+  it('keeps only the allowed roles, preserving grant order', () => {
+    const groups = groupRolesForSelect('owner', ['finance', 'hr']);
+
+    expect(valuesOf(groups)).toEqual(['hr', 'finance']);
+  });
+
+  it('drops a group that ends up empty (managers only -> a single group)', () => {
+    const groups = groupRolesForSelect('owner', ['hr', 'finance']);
+
+    expect(groups).toHaveLength(1);
+    expect(labelsOf(groups)).toEqual([groups[0].label]);
+    expect(groups[0].roles.map((r) => r.value)).toEqual(['hr', 'finance']);
+  });
+
+  it('never grants more than the inviter may: an allowed role outside GRANTABLE_ROLES is ignored', () => {
+    expect(valuesOf(groupRolesForSelect('hr', ['admin', 'hr']))).toEqual(['hr']);
+  });
+
+  it('returns an empty array when the filter excludes everything', () => {
+    expect(groupRolesForSelect('owner', [])).toEqual([]);
+  });
 });

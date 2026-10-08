@@ -313,6 +313,33 @@ describe('createEnrollmentForUser — unknown/org-less email: invite branch', ()
     );
   });
 
+  it('NEVER changes the role or facility of the reused invite — only the expiry (that is createInvites, not course assignment)', async () => {
+    prismaMock.user.findUnique.mockResolvedValue(null);
+    prismaMock.invite.findFirst.mockResolvedValue({
+      id: 'existing-invite-2',
+      token: 'existing-tok-2',
+      email: 'new@example.com',
+      organizationId: 'org-1',
+      role: 'hr',
+      facilityId: 'facility-elsewhere',
+      status: 'pending',
+      expiresAt: new Date('2026-07-01T00:00:00Z'),
+    });
+    prismaMock.invite.update.mockResolvedValue({
+      id: 'existing-invite-2',
+      token: 'existing-tok-2',
+      email: 'new@example.com',
+      organizationId: 'org-1',
+      role: 'hr',
+    });
+
+    await createEnrollmentForUser({ email: 'new@example.com', role: 'admin' }, BASE_CTX);
+
+    expect(prismaMock.invite.update).toHaveBeenCalledTimes(1);
+    const { data } = prismaMock.invite.update.mock.calls[0][0] as { data: Record<string, unknown> };
+    expect(Object.keys(data)).toEqual(['expiresAt']);
+  });
+
   it('reports failed and creates no invite when ctx.organizationId is null for an unknown email', async () => {
     prismaMock.user.findUnique.mockResolvedValue(null);
 

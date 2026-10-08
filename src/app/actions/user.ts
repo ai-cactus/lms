@@ -78,8 +78,13 @@ export async function getStaffUsers() {
         },
         include: {
           user: { select: { email: true, fullName: true, avatarUrl: true } },
+          // A facility-bound viewer sees only the facilities it covers: a
+          // member of A and B listed for a supervisor of A must not reveal B.
           facilities: {
-            where: { active: true },
+            where: {
+              active: true,
+              ...(dataFacilityIds ? { facilityId: { in: dataFacilityIds } } : {}),
+            },
             select: { facility: { select: { id: true, name: true } } },
             orderBy: { joinedAt: 'asc' },
           },
