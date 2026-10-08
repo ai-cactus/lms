@@ -138,6 +138,8 @@ export async function getStaffDetails(organizationUserId: string) {
             startedAt: true,
             completedAt: true,
             dueAt: true,
+            retakeOf: true,
+            retryRequestedAt: true,
             course: {
               select: {
                 id: true,
@@ -210,6 +212,12 @@ export async function getStaffDetails(organizationUserId: string) {
     // Active courses are those in progress but NOT failed yet
     const activeCourses = Math.max(0, totalCourses - completedCourses - failedCourses);
 
+    // A retake belongs to the same member, so whether an enrolment has already
+    // been retaken is answered by the rows already loaded.
+    const retakenEnrollmentIds = new Set(
+      orgUser.enrollments.flatMap((e) => (e.retakeOf ? [e.retakeOf] : [])),
+    );
+
     return {
       user: {
         id: orgUser.id,
@@ -250,6 +258,8 @@ export async function getStaffDetails(organizationUserId: string) {
         enrolledAt: e.startedAt,
         completedAt: e.completedAt,
         dueAt: e.dueAt?.toISOString() ?? null,
+        retryRequestedAt: e.retryRequestedAt?.toISOString() ?? null,
+        hasSuccessor: retakenEnrollmentIds.has(e.id),
         allowedAttempts: e.course.lessons.find((l) => l.quiz)?.quiz?.allowedAttempts ?? undefined,
         passingScore: e.course.lessons.find((l) => l.quiz)?.quiz?.passingScore || 70,
       })),

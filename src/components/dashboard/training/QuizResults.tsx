@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import CircularProgress from '@/components/ui/CircularProgress';
 import EmptyTableState from '@/components/ui/EmptyTableState';
 import AttestationModal from './AttestationModal';
+import RequestRetryButton from '@/components/worker/RequestRetryButton';
 import BadgeSuccessModal from './BadgeSuccessModal';
 import { isWorkerRole } from '@/lib/rbac/role-utils';
 import { formatCertificateId } from '@/lib/certificate-id';
@@ -53,6 +54,12 @@ interface QuizResultsProps {
   };
   userRole?: string | null;
   organizationName?: string;
+  /**
+   * Set only for the learner's own locked enrolment (Q-35): every attempt is
+   * used, so the one action left is asking an admin for a retake. Never passed
+   * by the admin views that reuse this screen.
+   */
+  retryRequest?: { enrollmentId: string; retryRequestedAt: string | null };
 }
 
 export default function QuizResults({
@@ -66,6 +73,7 @@ export default function QuizResults({
   data,
   userRole = 'worker',
   organizationName,
+  retryRequest,
 }: QuizResultsProps) {
   const [isAttestationOpen, setIsAttestationOpen] = useState(false);
   const [isBadgeOpen, setIsBadgeOpen] = useState(false);
@@ -93,7 +101,8 @@ export default function QuizResults({
 
   const attemptsUsed = data?.attemptsUsed || 1;
   const allowedAttempts = data?.allowedAttempts || null;
-  const canRetake = !passed && (allowedAttempts === null || attemptsUsed < allowedAttempts);
+  const canRetake =
+    !retryRequest && !passed && (allowedAttempts === null || attemptsUsed < allowedAttempts);
 
   const handleRetake = () => {
     if (onRetake) {
@@ -142,6 +151,14 @@ export default function QuizResults({
                 <Button variant="outline" size="sm" onClick={handleRetake}>
                   Retake Quiz
                 </Button>
+              )}
+              {retryRequest && (
+                <RequestRetryButton
+                  enrollmentId={retryRequest.enrollmentId}
+                  status="locked"
+                  retryRequestedAt={retryRequest.retryRequestedAt}
+                  className="max-w-xs items-end"
+                />
               )}
               {passed && (
                 <Link href={dashboardPath}>

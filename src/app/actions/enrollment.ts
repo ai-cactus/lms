@@ -7,18 +7,27 @@ import { hasActiveBilling, BILLING_GATE_ASSIGN_MESSAGE } from '@/lib/billing';
 import { auth as adminAuth } from '@/auth';
 import { getRealmSession } from '@/lib/auth/portal-sessions';
 import { revalidatePath } from 'next/cache';
-import { notifyOrganizationAdmins } from '@/lib/notifications/create';
+import { notifyLearnerAdmins } from '@/lib/notifications/facility-audience';
+import { AuthzError, requireActionSession } from '@/lib/auth-guard';
+import { checkRateLimit } from '@/lib/rate-limit';
 import { logger } from '@/lib/logger';
 import { invalidatePlaybackAuthz } from '@/lib/video/playback-cache';
 import type { StaffEntry } from '@/types/enrollment';
 import { resolveDataFacilityIds, staffFacilityWhere } from '@/lib/facility/staff-where';
 import { publishCourseOnAssignment } from '@/lib/course/publish-on-assign';
-import { ARCHIVED_COURSE_LEARNER_MESSAGE } from '@/lib/course/archived';
 import { isCourseOrganizationReviewer } from '@/lib/course/read-access';
 import {
   LEARNER_ENROLLMENT_UNAVAILABLE_MESSAGE,
   LEARNER_SIGNED_OUT_MESSAGE,
 } from '@/lib/enrollment/learner-refusals';
+import {
+  decideRetryRequest,
+  retryRequestCooldownStart,
+  retryRequestRefusalMessage,
+  RETRY_REQUEST_MFA_REQUIRED_MESSAGE,
+  RETRY_REQUEST_NOT_LOCKED_MESSAGE,
+  RETRY_REQUEST_RATE_LIMITED_MESSAGE,
+} from '@/lib/enrollment/retry-request';
 import {
   partitionEmailsByFacility,
   partitionOrgUsersByFacility,
@@ -47,7 +56,6 @@ import {
   type DeadlinePassedLearner,
 } from '@/lib/reminders/deadline';
 import { captureServer } from '@/lib/analytics/server';
-import { analyticsContextFrom } from '@/lib/analytics/identity';
 import { toCountBand } from '@/lib/analytics/events';
 
 /**
@@ -1357,93 +1365,202 @@ export async function getEnrollmentWithResults(enrollmentId: string) {
   return enrollment;
 }
 
-/**
- * Worker requests a retry on a failed course quiz.
- */
-export async function requestCourseRetry(
-  enrollmentId: string,
-): Promise<{ success: boolean; refusedReason?: string }> {
-  const [admin, worker] = await Promise.all([
-    (await import('@/auth')).auth(),
-    (await import('@/auth.worker')).auth(),
-  ]);
-  const adminOrgUserId = admin?.user?.organizationUserId ?? null;
-  const workerOrgUserId = worker?.user?.organizationUserId ?? null;
+/** Outcome of {@link requestCourseRetry}. */
+export interface RequestCourseRetryResult {
+  success: boolean;
+  /** Set when the request was refused — nothing was written and nobody notified. */
+  refusedReason?: string;
+  /** True when an earlier request still stands inside the 72-hour cool-down. */
+  alreadyRequested?: boolean;
+  /** ISO instant of the request that stands. */
+  requestedAt?: string;
+}
 
-  if (!admin?.user?.id && !worker?.user?.id) {
-    logger.warn({ msg: '[enrollment] Course retry refused — no session', enrollmentId });
+/**
+ * A locked learner asks their admins for a retake (Q-35).
+ *
+ * SEC-18: this used to reset ANY enrolment it was handed to `enrolled` with no
+ * score — so a locked learner could lift their own lockout, and a completed or
+ * attested one could erase signed-off training. It now never writes `status`
+ * or `score`: it only stamps `retryRequestedAt`, and only on a `locked`
+ * enrolment. The retake itself is still the admin's `assignRetake`.
+ *
+ * Worker portal only — a manager taking a course does so through learn mode,
+ * which signs them into it. Refusals are RETURNED (production redacts thrown
+ * Server Action messages). A request inside the 72-hour cool-down is not an
+ * error: it answers `alreadyRequested` and notifies nobody again.
+ */
+export async function requestCourseRetry(enrollmentId: string): Promise<RequestCourseRetryResult> {
+  const session = await getRealmSession('worker');
+  const organizationUserId = session?.user?.organizationUserId;
+  if (!session?.user?.id || !organizationUserId) {
+    logger.warn({ msg: '[enrollment] Course retry refused — no worker session', enrollmentId });
     return { success: false, refusedReason: LEARNER_SIGNED_OUT_MESSAGE };
   }
 
-  const enrollment = await prisma.enrollment.findUnique({
-    where: { id: enrollmentId },
-    include: {
-      organizationUser: { include: { user: { select: { email: true, fullName: true } } } },
-      course: true,
-    },
-  });
+  try {
+    requireActionSession(session);
+  } catch (err) {
+    if (!(err instanceof AuthzError)) throw err;
+    logger.warn({
+      msg: '[enrollment] Course retry refused — session not authorised',
+      enrollmentId,
+      code: err.code,
+    });
+    return {
+      success: false,
+      refusedReason:
+        err.code === 'MFA_REQUIRED'
+          ? RETRY_REQUEST_MFA_REQUIRED_MESSAGE
+          : LEARNER_SIGNED_OUT_MESSAGE,
+    };
+  }
 
-  if (
-    !enrollment ||
-    (enrollment.organizationUserId !== adminOrgUserId &&
-      enrollment.organizationUserId !== workerOrgUserId)
-  ) {
+  const { allowed } = await checkRateLimit(`retry-request:${organizationUserId}`, 5, 60 * 60);
+  if (!allowed) {
+    logger.warn({
+      msg: '[enrollment] Course retry refused — rate limit exceeded',
+      enrollmentId,
+      organizationUserId,
+    });
+    return { success: false, refusedReason: RETRY_REQUEST_RATE_LIMITED_MESSAGE };
+  }
+
+  // Ownership is part of the query: someone else's enrolment and a missing one
+  // are the same answer, so the refusal cannot probe which ids exist.
+  const enrollment =
+    typeof enrollmentId === 'string'
+      ? await prisma.enrollment.findFirst({
+          where: { id: enrollmentId, organizationUserId },
+          select: {
+            id: true,
+            status: true,
+            retryRequestedAt: true,
+            courseId: true,
+            // Nested, so the archive query extension does not hide the row.
+            course: { select: { title: true, archivedAt: true } },
+            organizationUser: {
+              select: {
+                organizationId: true,
+                user: { select: { fullName: true, email: true } },
+                organization: {
+                  select: { subscription: { select: { status: true, pausedAt: true } } },
+                },
+              },
+            },
+          },
+        })
+      : null;
+
+  if (!enrollment) {
     logger.warn({
       msg: '[enrollment] Course retry refused — enrollment not found or not owned by the caller',
       enrollmentId,
-      adminOrgUserId,
-      workerOrgUserId,
+      organizationUserId,
     });
     return { success: false, refusedReason: LEARNER_ENROLLMENT_UNAVAILABLE_MESSAGE };
   }
 
-  // Q-04: a cancelled course cannot be retried. Fail-closed — the reset below,
-  // which would drop the learner's score, has not run.
-  if (enrollment.course.archivedAt) {
+  const now = new Date();
+  const retakeCount = await prisma.enrollment.count({ where: { retakeOf: enrollment.id } });
+  const decision = decideRetryRequest({
+    status: enrollment.status,
+    retryRequestedAt: enrollment.retryRequestedAt,
+    courseArchived: enrollment.course.archivedAt !== null,
+    hasRetake: retakeCount > 0,
+    billingActive: hasActiveBilling(enrollment.organizationUser.organization.subscription),
+    now,
+  });
+
+  if (decision === 'already_requested') {
+    return {
+      success: true,
+      alreadyRequested: true,
+      requestedAt: enrollment.retryRequestedAt?.toISOString(),
+    };
+  }
+  if (decision !== 'eligible') {
     logger.warn({
-      msg: '[enrollment] Course retry refused — course is archived',
+      msg: '[enrollment] Course retry refused',
       enrollmentId,
-      courseId: enrollment.courseId,
+      organizationUserId,
+      decision,
+      status: enrollment.status,
     });
-    return { success: false, refusedReason: ARCHIVED_COURSE_LEARNER_MESSAGE };
+    return { success: false, refusedReason: retryRequestRefusalMessage(decision) };
   }
 
-  await prisma.enrollment.update({
-    where: { id: enrollmentId },
-    data: {
-      status: 'enrolled',
-      score: null,
-      lastActivityAt: new Date(),
+  // The claim is conditional, so two concurrent requests notify the admins
+  // once: only the call whose update lands goes on to notify.
+  const claim = await prisma.enrollment.updateMany({
+    where: {
+      id: enrollment.id,
+      organizationUserId,
+      status: 'locked',
+      OR: [
+        { retryRequestedAt: null },
+        { retryRequestedAt: { lte: retryRequestCooldownStart(now) } },
+      ],
     },
+    data: { retryRequestedAt: now, lastActivityAt: now },
   });
+
+  if (claim.count !== 1) {
+    const fresh = await prisma.enrollment.findFirst({
+      where: { id: enrollment.id, organizationUserId },
+      select: { status: true, retryRequestedAt: true },
+    });
+    if (fresh?.status === 'locked' && fresh.retryRequestedAt) {
+      return {
+        success: true,
+        alreadyRequested: true,
+        requestedAt: fresh.retryRequestedAt.toISOString(),
+      };
+    }
+    logger.warn({
+      msg: '[enrollment] Course retry refused — enrollment changed before the request was recorded',
+      enrollmentId,
+      organizationUserId,
+    });
+    return { success: false, refusedReason: RETRY_REQUEST_NOT_LOCKED_MESSAGE };
+  }
+
+  const { organizationId, user } = enrollment.organizationUser;
+  const workerName = user.fullName || user.email;
+  const courseName = enrollment.course.title;
+  const linkUrl = `/dashboard/staff/${organizationUserId}?retake=${enrollment.id}`;
+  const { sendCourseRetryRequestedEmail } = await import('@/lib/email');
+  await notifyLearnerAdmins(
+    organizationId,
+    organizationUserId,
+    {
+      type: 'COURSE_RETRY_REQUESTED',
+      title: 'Course Retry Requested',
+      message: `${workerName} has used all quiz attempts on "${courseName}" and is asking for a retake.`,
+      linkUrl,
+      metadata: {
+        enrollmentId: enrollment.id,
+        organizationUserId,
+        courseId: enrollment.courseId,
+        workerName,
+        courseName,
+      },
+    },
+    (admin) => sendCourseRetryRequestedEmail(admin.email, workerName, courseName, linkUrl),
+  );
 
   logger.info({
     msg: '[enrollment] Course retry requested',
-    enrollmentId,
+    enrollmentId: enrollment.id,
     courseId: enrollment.courseId,
-    organizationUserId: enrollment.organizationUserId,
+    organizationUserId,
   });
 
-  // Attribute to whichever session owns the enrollment, not to whichever cookie
-  // happens to exist: an admin bridged into learner mode holds both.
-  const retakeAnalytics = analyticsContextFrom(
-    enrollment.organizationUserId === workerOrgUserId ? worker : admin,
-  );
-  if (retakeAnalytics) {
-    captureServer('retake_assigned', { reason: 'failed_quiz' }, retakeAnalytics);
-  }
-
-  const { organizationUser } = enrollment;
-  await notifyOrganizationAdmins(organizationUser.organizationId, {
-    type: 'COURSE_RETRY_REQUESTED',
-    title: 'Course Retry Requested',
-    message: `${organizationUser.user.fullName || organizationUser.user.email} has requested a retry for the course: ${enrollment.course.title}.`,
-    linkUrl: `/dashboard/staff/${organizationUser.id}`,
-    metadata: { organizationUserId: organizationUser.id, courseId: enrollment.courseId },
-  });
-
-  revalidatePath(`/worker/trainings`);
-  return { success: true };
+  revalidatePath('/worker');
+  revalidatePath('/worker/trainings');
+  revalidatePath(`/worker/courses/${enrollment.courseId}`);
+  revalidatePath(`/learn/${enrollment.courseId}`);
+  return { success: true, requestedAt: now.toISOString() };
 }
 
 /**

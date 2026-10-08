@@ -84,6 +84,7 @@ interface EnrollmentData {
   status: string;
   score?: number | null;
   videoPositionSeconds?: number | null;
+  retryRequestedAt?: string | null;
   quizAttempts?: {
     id: string;
     score: number;
@@ -972,6 +973,23 @@ export default function LearnClient({ initialData }: LearnClientProps) {
                 }}
                 hideActions={enrollmentIsSigned}
                 passed={quizResults.passed}
+                // Q-35: a learner who has used every attempt may ask for a
+                // retake. A fresh submit locks the enrolment server-side without
+                // updating `enrollment.status` here, so the submit result's own
+                // attempt count (the route's lock rule) counts too.
+                retryRequest={
+                  userData?.isAdminView !== true &&
+                  enrollment?.id &&
+                  (enrollment.status === 'locked' ||
+                    (!quizResults.passed &&
+                      Boolean(quizResults.allowedAttempts) &&
+                      (quizResults.attemptsUsed ?? 0) >= (quizResults.allowedAttempts ?? 0)))
+                    ? {
+                        enrollmentId: enrollment.id,
+                        retryRequestedAt: enrollment.retryRequestedAt ?? null,
+                      }
+                    : undefined
+                }
                 // Both halves are server verdicts: `attestEligible`
                 // (owns-this-enrollment + not-yet-attested) from the learn
                 // payload, `passed` from whichever server produced the result on

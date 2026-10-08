@@ -134,7 +134,7 @@ export const NOTIFICATION_TYPES: NotificationTypeMeta[] = [
   {
     key: 'COURSE_RETRY_REQUESTED',
     label: 'Retry requests',
-    description: 'When a worker requests a course retry',
+    description: 'When a worker who used every quiz attempt asks for a retake',
     audience: 'admin',
     category: 'training',
   },

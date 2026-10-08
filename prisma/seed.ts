@@ -555,9 +555,9 @@ async function main(): Promise<void> {
   // ENG-022 actually calls assignRetake(), which — on success — creates a NEW
   // enrollment row (`retakeOf: ENROLLMENT_WORKER_ID`, status 'enrolled') and a
   // RETAKE_ASSIGNED notification for the worker. assignRetake() refuses to run
-  // again while an 'enrolled' retake already exists ("An active retake already
-  // exists for this enrollment"), so without cleanup here the SECOND full
-  // suite run would fail. Delete both before every seed run.
+  // again once any retake exists for the enrollment ("A retake has already been
+  // assigned for this course"), so without cleanup here the SECOND full suite
+  // run would fail. Delete both before every seed run.
   await prisma.enrollment.deleteMany({
     where: { retakeOf: { in: [ENROLLMENT_SARAH_ID, ENROLLMENT_WORKER_ID] } },
   });
