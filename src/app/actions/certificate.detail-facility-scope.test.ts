@@ -100,6 +100,8 @@ describe('getCertificateDetails — the owning learner', () => {
       user: { select: { email: true, fullName: true } },
       organization: { select: { name: true } },
     });
+    // TOOL-30: the certificate UI reads only the course title.
+    expect(include.course).toEqual({ select: { title: true } });
   });
 
   it('keeps their own certificate even with NO active facility assignment (which narrows to `[]`)', async () => {

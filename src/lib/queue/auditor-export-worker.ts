@@ -158,7 +158,12 @@ export function getExportWorker() {
             },
             enrollments: {
               where: { ...subjectEnrollmentWhere, ...dateWhere },
-              include: { organizationUser: { include: { user: true } }, quizAttempts: true },
+              include: {
+                organizationUser: {
+                  include: { user: { select: { email: true, fullName: true } } },
+                },
+                quizAttempts: true,
+              },
             },
           },
         });
@@ -227,7 +232,7 @@ export function getExportWorker() {
         const staff = await prisma.organizationUser.findFirst({
           where: { id: scopeId, ...subjectMemberWhere },
           include: {
-            user: true,
+            user: { select: { email: true, fullName: true } },
             enrollments: {
               where: dateWhere,
               include: {

@@ -222,7 +222,12 @@ export async function updateProfile(
     first_name: string;
     last_name: string;
     company_name?: string;
-    /** `undefined` leaves the photo unchanged; `null` (or blank) clears it. */
+    /**
+     * `undefined` leaves the photo unchanged; `null` (or blank) clears it;
+     * otherwise the reference `uploadAvatar` returned for a new photo. The
+     * profile pages never send the stored avatar's URI to the browser (BUG-65),
+     * so the client cannot echo it back.
+     */
     avatarUrl?: string | null;
   },
 ) {
@@ -353,8 +358,8 @@ export async function uploadAvatar(realm: PortalRealm, formData: FormData) {
     const key = `avatars/${session.user.id}/${timestamp}-${safeName}`;
     const { storageUri } = await uploadFile(key, buffer, file.type || 'image/jpeg');
 
-    // Return the storageUri as the avatar URL — the client stores this in profile.avatarUrl
-    // and the signed URL is resolved when needed.
+    // The reference the client hands back to `updateProfile`, which accepts it
+    // only for an object under this user's own `avatars/<userId>/` prefix.
     return { success: true, url: storageUri };
   } catch (error) {
     logger.error({ msg: 'Failed to upload avatar:', err: error });

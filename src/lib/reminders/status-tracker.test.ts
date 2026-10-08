@@ -62,6 +62,7 @@ function makeEnrollment(
     /** The member's CURRENT active roster rows; defaults to one facility. */
     roster?: { facilityId: string; name: string; timezone: string | null }[];
     assignment?: {
+      remindersEnabled?: boolean;
       reminderStages: { stage: string; offsetDays: number; enabled: boolean }[];
     } | null;
     retakeOf?: string | null;
@@ -85,7 +86,7 @@ function makeEnrollment(
     dueAt: new Date(dueAtIso),
     status,
     retakeOf,
-    assignment,
+    assignment: assignment && { remindersEnabled: true, ...assignment },
     course: { title: `Course ${id}` },
     organizationUser: {
       user: { email: `worker-${id}@test.com`, fullName },
@@ -299,6 +300,45 @@ describe('getStatusTrackerSummaryForOrg — per-assignment HARD_ESCALATION overr
   });
 });
 
+// BUG-63: Track A sends nothing at all for an assignment with reminders switched
+// off, so the tracker must not claim it has escalated. It is still overdue.
+describe('getStatusTrackerSummaryForOrg — assignment with reminders switched off', () => {
+  it('lists and counts the row as overdue but never flags it as a hard escalation', async () => {
+    prismaMock.enrollment.findMany
+      .mockResolvedValueOnce([
+        makeEnrollment('e1', '2024-06-01T12:00:00Z', {
+          assignment: { remindersEnabled: false, reminderStages: [] },
+        }),
+      ])
+      .mockResolvedValueOnce([]);
+
+    const { rows, overdueCount, hardEscalationCount } = await summary();
+
+    expect(overdueCount).toBe(1);
+    expect(rows[0].daysOverdue).toBe(14);
+    expect(rows[0].isHardEscalation).toBe(false);
+    expect(hardEscalationCount).toBe(0);
+  });
+
+  it('ignores an enabled HARD_ESCALATION stage when reminders are switched off', async () => {
+    prismaMock.enrollment.findMany
+      .mockResolvedValueOnce([
+        makeEnrollment('e1', '2024-06-13T12:00:00Z', {
+          assignment: {
+            remindersEnabled: false,
+            reminderStages: [{ stage: 'HARD_ESCALATION', offsetDays: 0, enabled: true }],
+          },
+        }),
+      ])
+      .mockResolvedValueOnce([]);
+
+    const { rows, hardEscalationCount } = await summary();
+
+    expect(rows[0].isHardEscalation).toBe(false);
+    expect(hardEscalationCount).toBe(0);
+  });
+});
+
 // Q-28: a retake carries no assignment of its own; its threshold is the one
 // its original enrolment's assignment sets, exactly as the sweep reads it.
 describe('getStatusTrackerSummaryForOrg — retakes inherit the original assignment (Q-28)', () => {
@@ -330,6 +370,33 @@ describe('getStatusTrackerSummaryForOrg — retakes inherit the original assignm
     const { rows, hardEscalationCount } = await summary();
 
     expect(rows[0].daysOverdue).toBe(14);
+    expect(rows[0].isHardEscalation).toBe(false);
+    expect(hardEscalationCount).toBe(0);
+  });
+
+  it('never flags a retake whose original assignment has reminders switched off (BUG-63)', async () => {
+    prismaMock.enrollment.findMany
+      .mockResolvedValueOnce([
+        {
+          ...makeEnrollment('retake', '2024-06-01T12:00:00Z'),
+          organizationUserId: 'ou-learner',
+          retakeOf: 'original',
+        },
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: 'original',
+          organizationUserId: 'ou-learner',
+          retakeOf: null,
+          assignment: { remindersEnabled: false, reminderStages: [] },
+        },
+      ]);
+
+    const { rows, overdueCount, hardEscalationCount } = await summary();
+
+    expect(overdueCount).toBe(1);
     expect(rows[0].isHardEscalation).toBe(false);
     expect(hardEscalationCount).toBe(0);
   });
