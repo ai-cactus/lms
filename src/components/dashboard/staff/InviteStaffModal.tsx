@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useId, useMemo, useRef, useState } from 'react';
 import {
   Building2,
   Check,
@@ -33,7 +33,8 @@ import {
 import { parseEmailList } from '@/lib/email-list';
 import { logger } from '@/lib/logger';
 import { useRouter } from 'next/navigation';
-import { groupRolesForSelect, GRANTABLE_ROLES } from '@/lib/rbac/role-utils';
+import { groupRolesForSelect, getRoleDisplayName, GRANTABLE_ROLES } from '@/lib/rbac/role-utils';
+import { rolesForInvitePath, type InvitePath } from '@/lib/facility/invite-role-path';
 import type { Role } from '@/types/next-auth';
 
 /**
@@ -97,7 +98,6 @@ export default function InviteStaffModal({
   facilities,
 }: InviteStaffModalProps) {
   const router = useRouter();
-  const roleGroups = useMemo(() => groupRolesForSelect(inviterRole), [inviterRole]);
   // Roles this inviter may actually grant — used to scope CSV role pre-fill so an
   // ungrantable role in the file is never silently applied (left for manual pick).
   const grantableRoleSet = useMemo(
@@ -106,6 +106,7 @@ export default function InviteStaffModal({
   );
   const fileInputRef = useRef<HTMLInputElement>(null);
   const emailInputRef = useRef<HTMLInputElement>(null);
+  const bulkHintId = useId();
 
   const isLimitedPlan = remainingSeats !== null;
   const seatsExhausted = isLimitedPlan && remainingSeats === 0;
@@ -127,6 +128,10 @@ export default function InviteStaffModal({
   const [csvWarning, setCsvWarning] = useState<string | null>(null);
 
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [rolesClearedByPathChange, setRolesClearedByPathChange] = useState(false);
+  const [csvRoleMismatchCount, setCsvRoleMismatchCount] = useState(0);
+  const [bulkRole, setBulkRole] = useState<Role | ''>('');
+  const [bulkAnnouncement, setBulkAnnouncement] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [invitedCount, setInvitedCount] = useState(0);
@@ -184,6 +189,16 @@ export default function InviteStaffModal({
     setEmails((prev) => prev.filter((entry) => entry !== email));
   };
 
+  const invitePath: InvitePath = facilityChoice === GLOBAL_FACILITY_VALUE ? 'global' : 'facility';
+  const pathRoles = useMemo(
+    () => rolesForInvitePath(invitePath, GRANTABLE_ROLES[inviterRole] ?? []),
+    [invitePath, inviterRole],
+  );
+  const roleGroups = useMemo(
+    () => groupRolesForSelect(inviterRole, pathRoles),
+    [inviterRole, pathRoles],
+  );
+
   const selectedFacilityLabel =
     facilityChoice === GLOBAL_FACILITY_VALUE
       ? 'Global'
@@ -201,6 +216,10 @@ export default function InviteStaffModal({
     setCsvParsing(false);
     setCsvWarning(null);
     setContacts([]);
+    setRolesClearedByPathChange(false);
+    setCsvRoleMismatchCount(0);
+    setBulkRole('');
+    setBulkAnnouncement('');
     setIsLoading(false);
     setMessage(null);
     setInvitedCount(0);
@@ -298,14 +317,37 @@ export default function InviteStaffModal({
       return;
     }
     if (combinedEmails.length === 0) return;
-    setContacts(combinedEmails);
+
+    // Roles picked on an earlier visit to this step survive Back; the CSV's
+    // pre-fill applies only where nothing was picked. Either kind is blanked
+    // when it doesn't fit the facility now chosen, since the facility may have
+    // been picked (or changed) after the roles were.
+    const pickedRoles = new Map(contacts.map((c) => [c.email, c.role]));
+    let pickedCleared = 0;
+    let csvCleared = 0;
+    const nextContacts = combinedEmails.map((contact): Contact => {
+      const picked = pickedRoles.get(contact.email) || '';
+      const role = picked || contact.role;
+      if (!role || pathRoles.includes(role)) return { ...contact, role };
+      if (picked) pickedCleared += 1;
+      else csvCleared += 1;
+      return { ...contact, role: '' };
+    });
+    const bulkRoleCleared = bulkRole !== '' && !pathRoles.includes(bulkRole);
+    if (bulkRoleCleared) setBulkRole('');
+
+    setContacts(nextContacts);
+    setRolesClearedByPathChange(pickedCleared > 0 || bulkRoleCleared);
+    setCsvRoleMismatchCount(csvCleared);
     setMessage(null);
     setStep('assign');
   };
 
   // ── Step 2 — role assignment ─────────────────────────────────────────────────
-  const setAllRoles = (role: Role) => {
-    setContacts((prev) => prev.map((c) => ({ ...c, role })));
+  const applyBulkRole = () => {
+    if (!bulkRole) return;
+    setContacts((prev) => prev.map((c) => ({ ...c, role: bulkRole })));
+    setBulkAnnouncement(`Role set to ${getRoleDisplayName(bulkRole)} for ${contacts.length} staff`);
   };
 
   const setContactRole = (email: string, role: Role) => {
@@ -314,12 +356,14 @@ export default function InviteStaffModal({
 
   const removeContact = (email: string) => {
     setContacts((prev) => prev.filter((c) => c.email !== email));
+    setBulkAnnouncement('');
   };
 
   const allAssigned = contacts.length > 0 && contacts.every((c) => c.role !== '');
 
   const backToInput = () => {
     setMessage(null);
+    setBulkAnnouncement('');
     setStep('input');
   };
 
@@ -345,7 +389,8 @@ export default function InviteStaffModal({
         (r) => r.status === 'sent' || r.status === 'resent',
       ).length;
       const existed = result.results.filter((r) => r.status === 'exists').length;
-      const forbidden = result.results.filter((r) => r.status === 'forbidden').length;
+      const forbiddenResults = result.results.filter((r) => r.status === 'forbidden');
+      const forbidden = forbiddenResults.length;
       const errored = result.results.filter((r) => r.status === 'error').length;
       const refused = result.results.filter((r) => r.status === 'refused').length;
       const issues = existed + forbidden + errored + refused;
@@ -363,7 +408,16 @@ export default function InviteStaffModal({
       const parts: string[] = [];
       if (sent > 0) parts.push(`${sent} invited`);
       if (existed > 0) parts.push(`${existed} already a member or invited`);
-      if (forbidden > 0) parts.push(`${forbidden} could not be granted the selected role`);
+      if (forbidden > 0) {
+        const reasons = [
+          ...new Set(forbiddenResults.map((r) => r.message).filter((m): m is string => !!m)),
+        ];
+        parts.push(
+          reasons.length === 1
+            ? `${forbidden} not invited: ${reasons[0]}`
+            : `${forbidden} could not be invited with the selected role and facility`,
+        );
+      }
       if (errored > 0) parts.push(`${errored} failed to send`);
       if (refused > 0) parts.push(`${refused} can't be invited. Contact support`);
       setMessage({
@@ -392,6 +446,16 @@ export default function InviteStaffModal({
     </>
   );
 
+  const assignCsvWarning =
+    [
+      csvWarning,
+      csvRoleMismatchCount > 0
+        ? `${csvRoleMismatchCount} row${csvRoleMismatchCount === 1 ? '' : 's'} had a role that doesn't fit the selected facility — pick one below.`
+        : null,
+    ]
+      .filter(Boolean)
+      .join(' ') || null;
+
   const seatsHint = isLimitedPlan ? (
     <p
       className={
@@ -411,12 +475,15 @@ export default function InviteStaffModal({
         if (!open) handleClose();
       }}
     >
-      <DialogContent className="sm:max-w-[643px]" showCloseButton={step !== 'success'}>
+      <DialogContent
+        className="max-h-[90dvh] overflow-y-auto sm:max-w-[643px]"
+        showCloseButton={step !== 'success'}
+      >
         {step === 'input' && (
-          <div className="flex flex-col gap-5">
+          <div className="flex min-w-0 flex-col gap-5">
             <div className="flex flex-col gap-1">
               <DialogTitle className="text-lg font-semibold text-foreground">
-                Invite New Staffs
+                Invite New Staff
               </DialogTitle>
               <DialogDescription className="text-sm text-text-secondary">
                 Add the emails of people to invite, or upload a CSV. We&apos;ll pull out the
@@ -443,7 +510,7 @@ export default function InviteStaffModal({
                   <span className="flex min-w-0 items-center gap-2">
                     <Building2 className="size-4 shrink-0 text-text-secondary" aria-hidden="true" />
                     <SelectValue
-                      className={`truncate ${facilityChoice ? 'text-[#5C47FF]' : ''}`}
+                      className={`truncate ${facilityChoice ? 'text-primary' : ''}`}
                       placeholder="Select a facility"
                     >
                       {selectedFacilityLabel}
@@ -464,13 +531,13 @@ export default function InviteStaffModal({
                       <span
                         className={`font-medium text-[15px] ${
                           facilityChoice === GLOBAL_FACILITY_VALUE
-                            ? 'text-[#5C47FF]'
-                            : 'text-[#101928]'
+                            ? 'text-primary'
+                            : 'text-foreground'
                         }`}
                       >
                         Global
                       </span>
-                      <span className="text-[13px] text-[#667085]">
+                      <span className="text-[13px] text-muted-foreground">
                         &middot; For managerial roles including Admin, HR, Finance, Clinical/Quality
                         Director
                       </span>
@@ -487,13 +554,15 @@ export default function InviteStaffModal({
                         <span className="flex min-w-0 flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-2">
                           <span
                             className={`font-medium text-[15px] ${
-                              facilityChoice === facility.id ? 'text-[#5C47FF]' : 'text-[#101928]'
+                              facilityChoice === facility.id ? 'text-primary' : 'text-foreground'
                             }`}
                           >
                             {facility.name}
                           </span>
                           {meta && (
-                            <span className="text-[13px] text-[#667085]">&middot; {meta}</span>
+                            <span className="text-[13px] text-muted-foreground">
+                              &middot; {meta}
+                            </span>
                           )}
                         </span>
                       </SelectItem>
@@ -510,14 +579,14 @@ export default function InviteStaffModal({
               </label>
               <div
                 onClick={() => emailInputRef.current?.focus()}
-                className="flex min-h-[110px] w-full cursor-text flex-wrap content-start items-start gap-2 rounded-[10px] border border-border bg-background p-3 transition-[color,box-shadow] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50"
+                className="flex max-h-[160px] min-h-[110px] w-full cursor-text overflow-y-auto flex-wrap content-start items-start gap-2 rounded-[10px] border border-border bg-background p-3 transition-[color,box-shadow] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50"
               >
                 {emails.map((email) => (
                   <span
                     key={email}
                     className="flex max-w-full items-center gap-1.5 rounded-md border border-border bg-background-secondary px-2.5 py-1 text-sm text-foreground"
                   >
-                    <span className="truncate">{email}</span>
+                    <span className="min-w-0 truncate">{email}</span>
                     <button
                       type="button"
                       onClick={(e) => {
@@ -630,78 +699,155 @@ export default function InviteStaffModal({
                 onClick={goToAssign}
                 disabled={combinedEmails.length === 0 || (seatsExhausted && isLimitedPlan)}
               >
-                Continue
+                Assign role
               </Button>
             </div>
           </div>
         )}
 
         {step === 'assign' && (
-          <div className="flex flex-col gap-5">
-            <div className="flex flex-col gap-1">
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={backToInput}
-                  className="rounded-md text-text-secondary transition-colors hover:text-foreground"
-                  aria-label="Back to email entry"
-                >
-                  <ChevronLeft className="size-5" aria-hidden="true" />
-                </button>
-                <DialogTitle className="text-lg font-semibold text-foreground">
-                  Assign roles
-                </DialogTitle>
-              </div>
-              <DialogDescription className="pl-7 text-sm text-text-secondary">
-                {`${contacts.length} contact${contacts.length !== 1 ? 's' : ''} found. Assign a role to each — they'll be invited by email.`}
+          <div className="flex min-w-0 flex-col gap-5">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={backToInput}
+                className="rounded-md text-text-secondary transition-colors hover:text-foreground"
+                aria-label="Back to email entry"
+              >
+                <ChevronLeft className="size-5" aria-hidden="true" />
+              </button>
+              <DialogTitle className="text-lg font-semibold text-foreground">
+                Assign roles
+              </DialogTitle>
+              <span className="rounded-md border border-border px-2 py-0.5 text-sm text-text-secondary">
+                {`${contacts.length} staff on this list`}
+              </span>
+              <DialogDescription className="sr-only">
+                Choose a role for each person, then send the invites.
               </DialogDescription>
             </div>
 
-            <div className="flex items-center justify-between gap-3 rounded-lg bg-background-secondary px-3 py-2.5">
-              <span className="text-sm font-medium text-foreground">Set every role to</span>
-              <Select onValueChange={(value) => setAllRoles(value as Role)}>
-                <SelectTrigger className="w-[190px]">
-                  <SelectValue placeholder="Choose a role" />
-                </SelectTrigger>
-                <SelectContent>{roleOptions}</SelectContent>
-              </Select>
-            </div>
-
-            <div className="flex max-h-[320px] flex-col gap-0 divide-y divide-border overflow-y-auto overflow-x-hidden rounded-lg border border-border">
-              {contacts.map((contact) => (
-                <div key={contact.email} className="flex items-center gap-3 p-3">
-                  <div className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate text-sm font-medium text-foreground">
-                      {contact.name ?? contact.email}
+            {contacts.length === 0 ? (
+              <p className="rounded-lg border border-border p-6 text-center text-sm text-text-secondary">
+                No staff left on this list.
+              </p>
+            ) : (
+              <>
+                <div className="flex flex-col gap-3 rounded-lg border border-primary/20 bg-primary/5 p-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex min-w-0 flex-col gap-0.5">
+                    <span className="text-sm font-semibold text-foreground">
+                      {`Bulk assign a role to all ${contacts.length} staff`}
                     </span>
-                    {contact.name && (
-                      <span className="truncate text-xs text-text-secondary">{contact.email}</span>
-                    )}
+                    <span id={bulkHintId} className="text-xs text-text-secondary">
+                      This will instantly apply the selected role to everyone in the list below
+                    </span>
                   </div>
-                  <Select
-                    value={contact.role}
-                    onValueChange={(value) => setContactRole(contact.email, value as Role)}
-                  >
-                    <SelectTrigger className="w-[170px] shrink-0">
-                      <SelectValue placeholder="Select role" />
-                    </SelectTrigger>
-                    <SelectContent>{roleOptions}</SelectContent>
-                  </Select>
-                  <button
-                    type="button"
-                    onClick={() => removeContact(contact.email)}
-                    className="shrink-0 text-text-secondary transition-colors hover:text-error"
-                    aria-label={`Remove ${contact.email}`}
-                  >
-                    <X className="size-4" aria-hidden="true" />
-                  </button>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:shrink-0">
+                    <Select value={bulkRole} onValueChange={(value) => setBulkRole(value as Role)}>
+                      <SelectTrigger
+                        aria-label="Role to apply to everyone"
+                        className="w-full bg-background sm:w-[190px]"
+                      >
+                        <SelectValue placeholder="Choose a role" />
+                      </SelectTrigger>
+                      <SelectContent>{roleOptions}</SelectContent>
+                    </Select>
+                    <Button
+                      variant="default"
+                      type="button"
+                      className="w-full sm:w-auto"
+                      onClick={applyBulkRole}
+                      disabled={!bulkRole}
+                      aria-describedby={bulkHintId}
+                    >
+                      Apply to all
+                    </Button>
+                  </div>
                 </div>
-              ))}
-            </div>
+                <p role="status" aria-live="polite" className="sr-only">
+                  {bulkAnnouncement}
+                </p>
 
-            {csvWarning && (
+                <div className="flex items-center gap-3 text-sm text-text-secondary">
+                  <span className="h-px flex-1 bg-border" aria-hidden="true" />
+                  or assign individually
+                  <span className="h-px flex-1 bg-border" aria-hidden="true" />
+                </div>
+
+                <div
+                  role="table"
+                  aria-label="Staff to invite"
+                  className="overflow-hidden rounded-lg border border-border"
+                >
+                  <div role="rowgroup" className="hidden sm:block">
+                    <div
+                      role="row"
+                      className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 border-b border-border bg-background-secondary px-4 py-2.5 text-sm font-medium text-text-secondary"
+                    >
+                      <span role="columnheader">Name</span>
+                      <span role="columnheader" className="w-[218px]">
+                        Role
+                      </span>
+                    </div>
+                  </div>
+                  <div
+                    role="rowgroup"
+                    className="max-h-[320px] divide-y divide-border overflow-y-auto overflow-x-hidden"
+                  >
+                    {contacts.map((contact) => (
+                      <div
+                        key={contact.email}
+                        role="row"
+                        className="relative grid grid-cols-1 gap-2 p-4 pr-10 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-3 sm:pr-4"
+                      >
+                        <div role="cell" className="flex min-w-0 flex-col">
+                          <span className="truncate text-sm font-medium text-foreground">
+                            {contact.name ?? contact.email}
+                          </span>
+                          {contact.name && (
+                            <span className="truncate text-xs text-text-secondary">
+                              {contact.email}
+                            </span>
+                          )}
+                        </div>
+                        <div role="cell" className="flex items-center gap-3">
+                          <Select
+                            value={contact.role}
+                            onValueChange={(value) => setContactRole(contact.email, value as Role)}
+                          >
+                            <SelectTrigger
+                              aria-label={`Role for ${contact.email}`}
+                              className="w-full sm:w-[190px]"
+                            >
+                              <SelectValue placeholder="Choose a role" />
+                            </SelectTrigger>
+                            <SelectContent>{roleOptions}</SelectContent>
+                          </Select>
+                          <button
+                            type="button"
+                            onClick={() => removeContact(contact.email)}
+                            className="absolute top-4 right-4 shrink-0 text-text-secondary transition-colors hover:text-error sm:static"
+                            aria-label={`Remove ${contact.email}`}
+                          >
+                            <X className="size-4" aria-hidden="true" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+
+            {rolesClearedByPathChange && (
+              <Alert variant="warning">
+                Some roles were cleared because they aren&apos;t available for the selected
+                facility.
+              </Alert>
+            )}
+            {assignCsvWarning && (
               <Alert variant="warning" title="Some rows need attention">
-                {csvWarning}
+                {assignCsvWarning}
               </Alert>
             )}
             {message && (
@@ -712,24 +858,30 @@ export default function InviteStaffModal({
             {seatsHint}
 
             <div className="mt-1 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-              <Button variant="outline" type="button" onClick={handleClose}>
+              <Button
+                variant="outline"
+                type="button"
+                className="w-full sm:w-auto"
+                onClick={handleClose}
+              >
                 Cancel
               </Button>
               <Button
                 variant="default"
                 type="button"
+                className="w-full sm:w-auto"
                 onClick={submitInvites}
                 loading={isLoading}
                 disabled={!allAssigned || (seatsExhausted && isLimitedPlan)}
               >
-                {`Invite ${contacts.length} staff${contacts.length === 1 ? '' : 's'}`}
+                {`Invite ${contacts.length} staff`}
               </Button>
             </div>
           </div>
         )}
 
         {step === 'success' && (
-          <div className="flex flex-col items-center gap-4 py-4 text-center">
+          <div className="flex min-w-0 flex-col items-center gap-4 py-4 text-center">
             <div className="flex size-16 items-center justify-center rounded-full bg-success/10 ring-8 ring-success/5">
               <div className="flex size-11 items-center justify-center rounded-full bg-success text-white">
                 <Check className="size-6" aria-hidden="true" />
@@ -740,8 +892,8 @@ export default function InviteStaffModal({
                 Invite sent
               </DialogTitle>
               <DialogDescription className="text-sm text-text-secondary">
-                {`${invitedCount} staff${invitedCount === 1 ? '' : 's'} invited.`} They&apos;ll get
-                an email to join and start their assigned training.
+                {`${invitedCount} staff invited.`} They&apos;ll get an email to join and start their
+                assigned training.
               </DialogDescription>
             </div>
             <Button variant="default" type="button" className="w-full" onClick={handleClose}>

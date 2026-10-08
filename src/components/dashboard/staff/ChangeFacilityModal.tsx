@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/alert';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Checkbox } from '@/components/ui/checkbox';
 import { setStaffFacilities } from '@/app/actions/staff';
 import { cn } from '@/lib/utils';
 import type { AccessibleFacility } from '@/lib/facility/scope';
@@ -25,7 +25,8 @@ export interface ChangeFacilityMember {
   email: string;
   /** A short-lived signed URL (see `signAvatarUrl`), never the stored storage URI. */
   avatarUrl: string | null;
-  currentFacilityName: string | null;
+  /** The member's active facilities, oldest first. */
+  currentFacilities: { id: string; name: string }[];
 }
 
 interface ChangeFacilityModalProps {
@@ -36,11 +37,15 @@ interface ChangeFacilityModalProps {
 }
 
 /**
- * Moves a staff member to a single facility.
+ * Sets every facility a facility-bound staff member belongs to.
  *
- * The schema keeps multi-facility membership; this is the convenience "move"
- * affordance from the design, so it sends exactly one facility id and the server
- * deactivates the rest.
+ * `setStaffFacilities` replaces the member's assignments with exactly the ids it
+ * is sent, so this modal always sends the full intended set — starting from the
+ * member's current facilities — never a single "move" target, which would
+ * silently drop a member of several facilities down to one.
+ *
+ * Seeded from `member` on mount: callers mount it per member (keyed, or only
+ * while open) so the selection never carries over from someone else.
  */
 export default function ChangeFacilityModal({
   isOpen,
@@ -50,32 +55,74 @@ export default function ChangeFacilityModal({
 }: ChangeFacilityModalProps) {
   const router = useRouter();
   const [step, setStep] = useState<'select' | 'confirm'>('select');
-  const [targetId, setTargetId] = useState('');
+  const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(
+    () => new Set(member.currentFacilities.map((facility) => facility.id)),
+  );
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
-  const target = facilities.find((facility) => facility.id === targetId) ?? null;
+  const currentIds = new Set(member.currentFacilities.map((facility) => facility.id));
+  const viewerFacilityIds = new Set(facilities.map((facility) => facility.id));
+  // A current facility outside the viewer's list can't be offered as a choice,
+  // but dropping it from the payload would revoke it, so it is kept and locked.
+  const lockedFacilities = member.currentFacilities.filter(
+    (facility) => !viewerFacilityIds.has(facility.id),
+  );
+  const options = [
+    ...facilities.map((facility) => ({
+      id: facility.id,
+      name: facility.name,
+      meta:
+        [facility.type, facility.city].filter(Boolean).join(' · ') || 'No type or city recorded',
+      locked: false,
+    })),
+    ...lockedFacilities.map((facility) => ({
+      id: facility.id,
+      name: facility.name,
+      meta: 'Outside the facilities you manage',
+      locked: true,
+    })),
+  ];
+
+  const added = options.filter(
+    (option) => selectedIds.has(option.id) && !currentIds.has(option.id),
+  );
+  const removed = member.currentFacilities.filter((facility) => !selectedIds.has(facility.id));
+  const unchanged = added.length === 0 && removed.length === 0;
+
+  const currentLabel =
+    member.currentFacilities.length > 2
+      ? `${member.currentFacilities.length} facilities`
+      : member.currentFacilities.map((facility) => facility.name).join(', ');
+
+  const toggle = (id: string, checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
 
   const close = () => {
     setStep('select');
-    setTargetId('');
     setError(null);
     onClose();
   };
 
   const handleConfirm = async () => {
-    if (!target) return;
+    if (selectedIds.size === 0) return;
     setIsSaving(true);
     setError(null);
 
-    const result = await setStaffFacilities(member.id, [target.id]);
+    const result = await setStaffFacilities(member.id, [...selectedIds]);
 
     setIsSaving(false);
     if (result.success) {
       close();
       router.refresh();
     } else {
-      setError(result.error ?? 'Failed to change facility.');
+      setError(result.error ?? 'Failed to update facilities.');
       setStep('select');
     }
   };
@@ -91,13 +138,13 @@ export default function ChangeFacilityModal({
         {step === 'select' ? (
           <>
             <DialogHeader>
-              <DialogTitle>Change facility</DialogTitle>
+              <DialogTitle>Change facilities</DialogTitle>
               <DialogDescription>
-                Choose the facility this staff member should belong to.
+                Choose every facility this staff member should belong to.
               </DialogDescription>
             </DialogHeader>
 
-            <div className="flex items-center gap-3 rounded-xl border border-border bg-background-secondary p-4">
+            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-background-secondary p-4">
               <div className="flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-accent text-text-secondary">
                 {member.avatarUrl ? (
                   <Image
@@ -113,62 +160,64 @@ export default function ChangeFacilityModal({
                   </span>
                 )}
               </div>
-              <div className="flex min-w-0 flex-col gap-1">
+              <div className="flex min-w-0 flex-1 flex-col gap-1">
                 <span className="truncate text-sm font-semibold text-foreground">
                   {member.name || member.email}
                 </span>
                 <span className="truncate text-xs text-text-secondary">{member.email}</span>
               </div>
-              {member.currentFacilityName && (
-                <span className="ml-auto shrink-0 rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary">
-                  Current &middot; {member.currentFacilityName}
+              {currentLabel && (
+                <span
+                  className="max-w-full truncate rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary"
+                  title={member.currentFacilities.map((facility) => facility.name).join(', ')}
+                >
+                  Current &middot; {currentLabel}
                 </span>
               )}
             </div>
 
-            <RadioGroup
-              value={targetId}
-              onValueChange={setTargetId}
-              aria-label="Target facility"
-              // One bordered container for the whole list (per the design) —
-              // rows are separated by dividers, not individually boxed.
-              className="gap-0 divide-y divide-border overflow-hidden rounded-xl border border-border"
+            <div
+              role="group"
+              aria-label="Facilities"
+              className="flex flex-col divide-y divide-border overflow-hidden rounded-xl border border-border"
             >
-              {facilities.map((facility) => {
-                const meta =
-                  [facility.type, facility.city].filter(Boolean).join(' · ') ||
-                  'No type or city recorded';
+              {options.map((option) => {
+                const checked = selectedIds.has(option.id);
                 return (
-                  // `min-w-0` is load-bearing: the label is a grid item (RadioGroup
-                  // is `grid`), whose default `min-width: auto` would let a long
-                  // comma-joined type string push past the card instead of
-                  // truncating.
                   <label
-                    key={facility.id}
+                    key={option.id}
                     className={cn(
-                      'flex min-w-0 cursor-pointer items-center gap-3 p-3.5 transition-colors',
-                      facility.id === targetId ? 'bg-primary/5' : 'hover:bg-accent',
+                      'flex min-w-0 items-center gap-3 p-3.5 transition-colors',
+                      option.locked
+                        ? 'cursor-not-allowed'
+                        : checked
+                          ? 'cursor-pointer bg-primary/5'
+                          : 'cursor-pointer hover:bg-accent',
                     )}
                   >
-                    <RadioGroupItem value={facility.id} />
+                    <Checkbox
+                      checked={checked}
+                      disabled={option.locked}
+                      onCheckedChange={(value) => toggle(option.id, value === true)}
+                    />
                     <span className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
                       <span
                         className={cn(
                           'truncate text-sm font-semibold',
-                          facility.id === targetId ? 'text-primary' : 'text-foreground',
+                          checked ? 'text-primary' : 'text-foreground',
                         )}
-                        title={facility.name}
+                        title={option.name}
                       >
-                        {facility.name}
+                        {option.name}
                       </span>
-                      <span className="truncate text-xs text-text-secondary" title={meta}>
-                        &bull; {meta}
+                      <span className="truncate text-xs text-text-secondary" title={option.meta}>
+                        &bull; {option.meta}
                       </span>
                     </span>
                   </label>
                 );
               })}
-            </RadioGroup>
+            </div>
 
             <p className="text-sm text-text-secondary">
               {
@@ -183,20 +232,20 @@ export default function ChangeFacilityModal({
                 variant="outline"
                 type="button"
                 onClick={close}
-                className="h-12 w-full border border-[#E4E7EC] bg-white sm:w-[178px]"
+                className="h-12 w-full border border-border bg-background sm:w-[178px]"
               >
                 Cancel
               </Button>
               <Button
                 type="button"
-                disabled={!target}
+                disabled={selectedIds.size === 0 || unchanged}
                 onClick={() => {
                   setError(null);
                   setStep('confirm');
                 }}
                 className="h-12 w-full sm:w-[178px]"
               >
-                Change facility
+                Review changes
               </Button>
             </DialogFooter>
           </>
@@ -204,16 +253,25 @@ export default function ChangeFacilityModal({
           <>
             <DialogHeader>
               <DialogTitle>
-                Switch &ldquo;{member.name || member.email}&rdquo; from{' '}
-                <span className="text-[#5C47FF]">
-                  &ldquo;
-                  {member.currentFacilityName ?? 'No facility'}&rdquo;{' '}
-                  <span className="text-[#202020]">to</span> &ldquo;
-                  {target?.name}
-                  &rdquo;?
-                </span>
+                Update facilities for &ldquo;{member.name || member.email}&rdquo;?
               </DialogTitle>
-              <DialogDescription>Are you sure you want to perform this action ?</DialogDescription>
+              <DialogDescription asChild>
+                <div className="flex flex-col gap-1">
+                  {added.length > 0 && (
+                    <p>
+                      <span className="font-semibold text-foreground">Adding:</span>{' '}
+                      {added.map((facility) => facility.name).join(', ')}
+                    </p>
+                  )}
+                  {removed.length > 0 && (
+                    <p>
+                      <span className="font-semibold text-foreground">Removing:</span>{' '}
+                      {removed.map((facility) => facility.name).join(', ')}
+                    </p>
+                  )}
+                  <p>Are you sure you want to perform this action?</p>
+                </div>
+              </DialogDescription>
             </DialogHeader>
 
             {error && <Alert variant="error">{error}</Alert>}
@@ -224,7 +282,7 @@ export default function ChangeFacilityModal({
                 type="button"
                 onClick={() => setStep('select')}
                 disabled={isSaving}
-                className="h-12 w-full border border-[#E4E7EC] bg-white sm:w-[178px]"
+                className="h-12 w-full border border-border bg-background sm:w-[178px]"
               >
                 Cancel
               </Button>
@@ -234,7 +292,7 @@ export default function ChangeFacilityModal({
                 loading={isSaving}
                 className="h-12 w-full sm:w-[178px]"
               >
-                Switch facility
+                Update facilities
               </Button>
             </DialogFooter>
           </>

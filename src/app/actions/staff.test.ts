@@ -1158,6 +1158,109 @@ describe('resendInvite — happy path (token + expiry regeneration, status reset
 });
 
 /**
+ * A member of A and B, viewed by a supervisor of A only, must not reveal B's
+ * name. `getStaffDetails` filters the member's facilities to the viewer's
+ * `dataFacilityIds`; org-wide viewers (null) still see every one, oldest first.
+ */
+describe('getStaffDetails — facility names are narrowed to the viewer scope', () => {
+  const ALPHA = { id: 'fac-a', name: 'Alpha Site', timezone: 'America/Chicago' };
+  const BETA = { id: 'fac-b', name: 'Beta Annex', timezone: 'America/Denver' };
+
+  function memberOf(...facilities: (typeof ALPHA)[]) {
+    return {
+      id: 'target-1',
+      role: 'nurse',
+      managerId: null,
+      organizationId: 'org-a',
+      user: {
+        fullName: 'Target User',
+        email: 'target@example.com',
+        avatarUrl: null,
+        firstName: 'Target',
+        lastName: 'User',
+      },
+      manager: null,
+      facilities: facilities.map((facility) => ({ facility })),
+      enrollments: [],
+    };
+  }
+
+  beforeEach(() => {
+    mockOrgUserFindUnique.mockResolvedValue(memberOf(ALPHA, BETA));
+  });
+
+  it('shows a supervisor of A only A, and nothing of B anywhere in the payload', async () => {
+    mockAuth.mockResolvedValue({
+      user: {
+        id: 'sup-1',
+        role: 'supervisor',
+        organizationId: 'org-a',
+        organizationUserId: 'ou-sup',
+      },
+    });
+    mockListAccessibleFacilities.mockResolvedValue([{ id: 'fac-a' }]);
+
+    const result = await getStaffDetails('target-1');
+
+    expect(result?.user.facilities).toEqual([{ id: 'fac-a', name: 'Alpha Site' }]);
+    expect(JSON.stringify(result)).not.toContain('Beta Annex');
+    expect(JSON.stringify(result)).not.toContain('fac-b');
+  });
+
+  it('shows an org-wide owner every facility, oldest first', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'own-1', role: 'owner', organizationId: 'org-a' } });
+
+    const result = await getStaffDetails('target-1');
+
+    expect(result?.user.facilities).toEqual([
+      { id: 'fac-a', name: 'Alpha Site' },
+      { id: 'fac-b', name: 'Beta Annex' },
+    ]);
+  });
+
+  it('asks the database for every active facility, with ids, oldest first', async () => {
+    mockAuth.mockResolvedValue({ user: { id: 'own-1', role: 'owner', organizationId: 'org-a' } });
+
+    await getStaffDetails('target-1');
+
+    const { select } = mockOrgUserFindUnique.mock.calls[0][0];
+    expect(select.facilities).toEqual({
+      where: { active: true },
+      orderBy: [{ joinedAt: 'asc' }, { id: 'asc' }],
+      select: { facility: { select: { id: true, name: true, timezone: true } } },
+    });
+    expect(select.facilities).not.toHaveProperty('take');
+  });
+
+  it('still reads the deadline zone from the oldest facility even when the viewer cannot see it', async () => {
+    mockOrgUserFindUnique.mockResolvedValue(memberOf(BETA, ALPHA));
+    mockAuth.mockResolvedValue({
+      user: {
+        id: 'sup-1',
+        role: 'supervisor',
+        organizationId: 'org-a',
+        organizationUserId: 'ou-sup',
+      },
+    });
+    mockListAccessibleFacilities.mockResolvedValue([{ id: 'fac-a' }]);
+
+    const result = await getStaffDetails('target-1');
+
+    expect(result?.user.facilities).toEqual([{ id: 'fac-a', name: 'Alpha Site' }]);
+    expect(result?.user.timeZone).toBe('America/Denver');
+  });
+
+  it('returns an empty list, not an error, when the member has no active facility', async () => {
+    mockOrgUserFindUnique.mockResolvedValue(memberOf());
+    mockAuth.mockResolvedValue({ user: { id: 'own-1', role: 'owner', organizationId: 'org-a' } });
+
+    const result = await getStaffDetails('target-1');
+
+    expect(result?.user.facilities).toEqual([]);
+  });
+});
+
+/**
  * F-009 regression tests for getStaffDetails — cross-tenant isolation.
  *
  * Previously, any authenticated admin could pull another organization's

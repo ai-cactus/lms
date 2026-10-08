@@ -35,7 +35,7 @@ const STAFF = {
     role: 'nurse',
     firstName: 'Target',
     lastName: 'User',
-    facilityName: 'Northside Clinic',
+    facilities: [{ id: 'fac-1', name: 'Northside Clinic' }],
     timeZone: 'UTC',
   },
   stats: { totalCourses: 0, completedCourses: 0, failedCourses: 0, activeCourses: 0 },

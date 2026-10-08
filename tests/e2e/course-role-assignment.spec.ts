@@ -316,14 +316,17 @@ test.describe('Assign page — role targeting, D6 soft revoke, and post-untarget
       await page.waitForSelector('[role="dialog"]', { timeout: 5000 });
 
       await page.getByRole('combobox', { name: 'Facility' }).click();
-      await page.getByRole('option', { name: /^global/i }).click();
+      await page
+        .getByRole('option', { name: /^(?!global)/i })
+        .first()
+        .click();
       await page.getByPlaceholder(/enter emails separated by/i).fill(newNurseEmail);
-      await page.getByRole('button', { name: /^continue$/i }).click();
+      await page.getByRole('button', { name: /^assign role$/i }).click();
 
       await expect(page.getByRole('heading', { name: 'Assign roles', exact: true })).toBeVisible();
-      await page.getByRole('combobox').nth(1).click();
+      await page.getByRole('combobox', { name: `Role for ${newNurseEmail}` }).click();
       await page.getByRole('option', { name: /^nurse$/i }).click();
-      await page.getByRole('button', { name: /^invite \d+ staffs?$/i }).click();
+      await page.getByRole('button', { name: /^invite \d+ staff$/i }).click();
       await expect(page.getByRole('button', { name: /^okay$/i })).toBeVisible({ timeout: 15000 });
       await page.getByRole('button', { name: /^okay$/i }).click();
 

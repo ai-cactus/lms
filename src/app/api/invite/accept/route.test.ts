@@ -330,6 +330,72 @@ describe('POST /api/invite/accept — valid token', () => {
 // ── STAFF_ADDED notification wiring (§2.1/§2.2 routing) ─────────────────────
 
 describe('POST /api/invite/accept — STAFF_ADDED notification wiring', () => {
+  // BUG-68: a global invite's facility is only the required-FK anchor, so the
+  // notice for an org-wide hire must not be filed under that one site.
+  it.each(['owner', 'admin', 'hr', 'clinical_director', 'finance'])(
+    'emits STAFF_ADDED with facilityId null for the org-wide role %s, whatever facility the invite is anchored to',
+    async (role) => {
+      prismaMock.invite.findUnique.mockResolvedValueOnce({
+        id: 'invite-global',
+        token: 'tok-global',
+        email: 'manager@acme.com',
+        organizationId: 'org-correct',
+        facilityId: 'facility-anchor',
+        role,
+        invitedBy: null,
+        expiresAt: FUTURE,
+      });
+      mockCreateMembership.mockResolvedValue(
+        membershipResult({ organizationUserId: 'ou-new-2', organizationId: 'org-correct' }),
+      );
+
+      await POST(
+        makeReq({
+          token: 'tok-global',
+          firstName: 'Jane',
+          lastName: 'Doe',
+          password: VALID_PASSWORD,
+        }),
+      );
+
+      expect(mockEmitNotificationEvent).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ type: 'STAFF_ADDED', facilityId: null }),
+      );
+    },
+  );
+
+  it.each(['supervisor', 'nurse', 'case_manager'])(
+    'keeps the invite facility on STAFF_ADDED for the facility-bound role %s',
+    async (role) => {
+      prismaMock.invite.findUnique.mockResolvedValueOnce({
+        id: 'invite-site',
+        token: 'tok-site',
+        email: 'worker@acme.com',
+        organizationId: 'org-correct',
+        facilityId: 'facility-site',
+        role,
+        invitedBy: null,
+        expiresAt: FUTURE,
+      });
+      mockCreateMembership.mockResolvedValue(
+        membershipResult({ organizationUserId: 'ou-new-3', organizationId: 'org-correct' }),
+      );
+
+      await POST(
+        makeReq({
+          token: 'tok-site',
+          firstName: 'Jane',
+          lastName: 'Doe',
+          password: VALID_PASSWORD,
+        }),
+      );
+
+      expect(mockEmitNotificationEvent).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ type: 'STAFF_ADDED', facilityId: 'facility-site' }),
+      );
+    },
+  );
+
   it('emits STAFF_ADDED with the inviter as actor when invite.invitedBy resolves to an active membership', async () => {
     prismaMock.invite.findUnique.mockResolvedValueOnce({
       id: 'invite-correct',

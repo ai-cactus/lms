@@ -73,7 +73,12 @@ function renderList(inviterRole: Role) {
   );
 }
 
-function memberEntry(id: string, name: string, role = 'hr') {
+function memberEntry(
+  id: string,
+  name: string,
+  role = 'hr',
+  facilities: { id: string; name: string }[] = [],
+) {
   return {
     id,
     name,
@@ -84,7 +89,7 @@ function memberEntry(id: string, name: string, role = 'hr') {
     isPending: false,
     isExpired: false,
     token: null,
-    facilities: [],
+    facilities,
   };
 }
 
@@ -261,6 +266,126 @@ describe('StaffListClient — Remove Staff never offered on the viewer’s own r
 
     await user.click(within(rowFor('Sam Supervisor')).getByRole('button', { name: 'Row actions' }));
     expect(screen.getByRole('menuitem', { name: /change facility/i })).toBeInTheDocument();
+  });
+});
+
+describe('StaffListClient — Facility column (BUG-68)', () => {
+  const MAIN = { id: 'fac-1', name: 'Main Site' };
+  const NORTH = { id: 'fac-2', name: 'North Wing' };
+
+  function renderRows(users: ReturnType<typeof memberEntry>[]) {
+    render(
+      <StaffListClient
+        users={users}
+        hasOrganization={true}
+        organizationId="org-1"
+        planLimit={null}
+        planName="Professional"
+        currentWorkerCount={users.length}
+        pendingInviteCount={0}
+        inviterRole="owner"
+        viewerOrganizationUserId="ou-viewer"
+        facilities={MULTI_FACILITIES}
+      />,
+    );
+  }
+
+  it.each(['owner', 'admin', 'hr', 'clinical_director', 'finance'])(
+    'shows "All facilities" for an org-wide %s member, not the anchor facility the row carries',
+    (role) => {
+      renderRows([memberEntry('ou-mgr', 'Mia Manager', role, [MAIN])]);
+
+      const row = rowFor('Mia Manager');
+      expect(within(row).getByText('All facilities')).toBeInTheDocument();
+      expect(within(row).queryByText('Main Site')).not.toBeInTheDocument();
+    },
+  );
+
+  it('shows "All facilities" on a PENDING invite row for an org-wide role, decided by the invite role', () => {
+    renderRows([{ ...memberEntry('inv-1', 'Pending Hr', 'hr', [MAIN]), isPending: true }]);
+
+    const row = rowFor('Pending Hr');
+    expect(within(row).getByText('All facilities')).toBeInTheDocument();
+    expect(within(row).queryByText('Main Site')).not.toBeInTheDocument();
+  });
+
+  it('still names the facility on a pending invite row for a facility-bound role', () => {
+    renderRows([{ ...memberEntry('inv-2', 'Pending Nurse', 'nurse', [MAIN]), isPending: true }]);
+
+    const row = rowFor('Pending Nurse');
+    expect(within(row).getByText('Main Site')).toBeInTheDocument();
+    expect(within(row).queryByText('All facilities')).not.toBeInTheDocument();
+  });
+
+  it.each(['supervisor', 'nurse'])(
+    'names the first facility plus a "+N" chip listing the rest for a multi-facility %s',
+    (role) => {
+      renderRows([memberEntry('ou-w', 'Wendy Worker', role, [MAIN, NORTH])]);
+
+      const row = rowFor('Wendy Worker');
+      expect(within(row).getByText('Main Site')).toBeInTheDocument();
+      const chip = within(row).getByText('+1');
+      expect(chip).toHaveAttribute('title', 'North Wing');
+      expect(within(row).queryByText('All facilities')).not.toBeInTheDocument();
+    },
+  );
+
+  it('shows a dash for a facility-bound member with no visible facility', () => {
+    renderRows([memberEntry('ou-w', 'Nina Nofac', 'nurse', [])]);
+
+    expect(within(rowFor('Nina Nofac')).getByText('—')).toBeInTheDocument();
+  });
+});
+
+describe('StaffListClient — Change Facility carries the member full facility set', () => {
+  const MAIN = { id: 'fac-1', name: 'Main Site' };
+  const NORTH = { id: 'fac-2', name: 'North Wing' };
+
+  function renderTwoMembers() {
+    render(
+      <StaffListClient
+        users={[
+          memberEntry('ou-both', 'Both Sites', 'nurse', [MAIN, NORTH]),
+          memberEntry('ou-north', 'North Only', 'nurse', [NORTH]),
+        ]}
+        hasOrganization={true}
+        organizationId="org-1"
+        planLimit={null}
+        planName="Professional"
+        currentWorkerCount={2}
+        pendingInviteCount={0}
+        inviterRole="owner"
+        viewerOrganizationUserId="ou-viewer"
+        facilities={MULTI_FACILITIES}
+      />,
+    );
+  }
+
+  async function openChangeFacility(user: ReturnType<typeof userEvent.setup>, name: string) {
+    await user.click(within(rowFor(name)).getByRole('button', { name: 'Row actions' }));
+    await user.click(screen.getByRole('menuitem', { name: /change facility/i }));
+  }
+
+  it('pre-checks every facility the member belongs to, not just the first', async () => {
+    const user = userEvent.setup();
+    renderTwoMembers();
+
+    await openChangeFacility(user, 'Both Sites');
+
+    expect(screen.getByRole('checkbox', { name: /Main Site/ })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: /North Wing/ })).toBeChecked();
+  });
+
+  it('does not carry one member selection over to the next member the modal is opened for', async () => {
+    const user = userEvent.setup();
+    renderTwoMembers();
+
+    await openChangeFacility(user, 'Both Sites');
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    await openChangeFacility(user, 'North Only');
+
+    expect(screen.getByRole('checkbox', { name: /North Wing/ })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: /Main Site/ })).not.toBeChecked();
   });
 });
 

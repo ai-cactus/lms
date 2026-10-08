@@ -217,24 +217,29 @@ test.describe('Removed-user re-invite lifecycle', () => {
         .first()
         .click();
       await page.waitForSelector('[role="dialog"]', { timeout: 5000 });
-      await expect(page.getByText('Invite New Staffs')).toBeVisible();
-      // Facility is required before Continue advances past step 1.
+      await expect(
+        page.getByRole('heading', { name: 'Invite New Staff', exact: true }),
+      ).toBeVisible();
+      // Facility is required before "Assign role" advances past step 1.
       await page.getByRole('combobox', { name: 'Facility' }).click();
-      await page.getByRole('option', { name: /^global/i }).click();
+      await page
+        .getByRole('option', { name: /^(?!global)/i })
+        .first()
+        .click();
       await page.getByPlaceholder(/enter emails separated by/i).fill(seeded.staffEmail);
-      await page.getByRole('button', { name: /^continue$/i }).click();
+      await page.getByRole('button', { name: /^assign role$/i }).click();
 
       // Exact heading match — the step-1 description paragraph ("...so you can
       // assign roles.") contains the same words and would otherwise satisfy a
       // loose getByText('Assign roles') even while still stuck on step 1.
       await expect(page.getByRole('heading', { name: 'Assign roles', exact: true })).toBeVisible();
       await expect(page.getByText(seeded.staffEmail)).toBeVisible();
-      await page.getByRole('combobox').nth(1).click();
+      await page.getByRole('combobox', { name: `Role for ${seeded.staffEmail}` }).click();
       // Role options render the full RBAC displayName ("Facility Supervisor"
       // per src/lib/rbac/permissions.ts), not the bare role key "supervisor".
       await page.getByRole('option', { name: /^facility supervisor\b/i }).click();
-      // The step-2 submit button reads "Invite N staff(s)", not "Continue".
-      await page.getByRole('button', { name: /^invite \d+ staffs?$/i }).click();
+      // The step-2 submit button reads "Invite N staff", not "Assign role".
+      await page.getByRole('button', { name: /^invite \d+ staff$/i }).click();
 
       await expect(page.getByText('Invite sent')).toBeVisible({ timeout: 10000 });
       await page.getByRole('button', { name: /^okay$/i }).click();

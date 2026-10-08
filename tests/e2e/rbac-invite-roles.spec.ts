@@ -1,15 +1,15 @@
 /**
  * E2E spec: Invite modal — role selector shows correct grantable roles per inviter.
  *
- * Acceptance criteria:
- *   - An 'owner' sees the full grantable set in the role selector:
- *       supervisor, hr, clinical_director, finance, + all 8 job-specific worker
- *       roles (e.g. Nurse, Case Manager, ...)
- *     but NOT 'owner' (non-grantable).
- *   - An 'hr' inviter sees: supervisor, hr, clinical_director, finance, + all 8
- *     worker roles but NOT 'admin' or 'owner' (founder Q10 — HR may invite
- *     anyone except the two Owner-equivalent seats).
- *   - 'owner' never appears as an option in any inviter's role selector.
+ * Acceptance criteria — the role selector depends on the invite PATH chosen in the
+ * Facility select, then on the inviter:
+ *   - Global path: only the org-wide roles the inviter may grant. An 'owner' sees
+ *     admin, hr, clinical_director, finance; an 'hr' sees the same minus admin
+ *     (founder Q10 — HR may invite anyone except the two Owner-equivalent seats).
+ *     No supervisor and no worker role is offered.
+ *   - Facility path: supervisor + all 8 job-specific worker roles, for owner and
+ *     hr alike; no hr, finance, clinical_director, admin or owner.
+ *   - 'owner' never appears as an option on any path.
  *
  * Note: the single 'worker' role was replaced by 8 job-specific worker-category
  * roles (see src/lib/rbac/permissions.ts); the role selector shows each by its
@@ -17,10 +17,10 @@
  * "Worker" label, so assertions target specific worker displayNames.
  *
  * IMPORTANT — modal is now a 2-step flow (staff-invite rewrite): opening the
- * modal lands on the "Invite New Staffs" email-entry step, which has NO role
+ * modal lands on the "Invite New Staff" email-entry step, which has NO role
  * selector at all. The role picker only appears on step 2 ("Assign roles"),
- * reached by typing/pasting at least one valid email and clicking "Continue".
- * `loginAndOpenInviteModal` below performs that email → Continue hop before
+ * reached by typing/pasting at least one valid email and clicking "Assign role".
+ * `loginAndOpenInviteModal` below performs that email → "Assign role" hop before
  * returning, so callers land directly on the Assign-roles step. The full
  * submit → success path (createInvites actually firing) is covered separately
  * in tests/e2e/staff-invite-flow.spec.ts; this spec only asserts the grant
@@ -30,9 +30,10 @@
  *   1. Seed a test user with the target inviter role.
  *   2. Log in as that user.
  *   3. Navigate to /dashboard/staff (the invite-staff page).
- *   4. Open the invite modal, enter one email, click Continue to reach step 2.
- *   5. Open the "Set every role to" bulk selector and assert its options match
- *      the expected GRANTABLE_ROLES matrix.
+ *   4. Open the invite modal, pick Global or the (single) facility, enter one email,
+ *      click "Assign role" to reach step 2.
+ *   5. Open the "Role to apply to everyone" bulk selector and assert its options match
+ *      the expected set for that path.
  *
  * Pre-conditions:
  *   - App running on http://localhost:3005.
@@ -133,10 +134,13 @@ function uid(prefix: string): string {
   return `${prefix}-${crypto.randomBytes(4).toString('hex')}@invite-e2e.invalid`;
 }
 
+type InvitePath = 'global' | 'facility';
+
 async function loginAndOpenInviteModal(
   page: import('@playwright/test').Page,
   email: string,
   password: string,
+  path: InvitePath,
 ): Promise<void> {
   // Give each login attempt a unique source IP so the in-memory rate-limit
   // bucket (login:${ip}) doesn't accumulate across tests when the dev server
@@ -160,15 +164,19 @@ async function loginAndOpenInviteModal(
   // Wait for modal to appear (step 1 — email entry).
   await page.waitForSelector('[role="dialog"]', { timeout: 5000 });
 
-  // Step 1 → step 2: pick a facility (required — Continue is a no-op without
-  // one), type a throwaway email, and click Continue. The role selector only
-  // exists on step 2 ("Assign roles").
+  // Step 1 → step 2: pick the invite path (required — "Assign role" is a no-op
+  // without a facility choice), type a throwaway email, and click "Assign role".
+  // The role selector only exists on step 2 ("Assign roles"), and what it offers
+  // depends on the path: Global → org-wide roles, a facility → supervisor + workers.
   await page.getByRole('combobox', { name: 'Facility' }).click();
-  await page.getByRole('option', { name: /^global/i }).click();
+  await page
+    .getByRole('option', { name: path === 'global' ? /^global/i : /^(?!global)/i })
+    .first()
+    .click();
   await page
     .getByPlaceholder(/enter emails separated by/i)
     .fill(`probe-${crypto.randomBytes(3).toString('hex')}@invite-e2e.invalid`);
-  await page.getByRole('button', { name: /^continue$/i }).click();
+  await page.getByRole('button', { name: /^assign role$/i }).click();
   // Exact heading match — the step-1 description paragraph ("...so you can
   // assign roles.") contains the same words and would otherwise satisfy a
   // loose getByText('Assign roles') even while still stuck on step 1.
@@ -177,79 +185,150 @@ async function loginAndOpenInviteModal(
   });
 }
 
+const WORKER_OPTION_NAMES = [
+  /psychiatrist.*prescriber/i,
+  /^nurse$/i,
+  /therapist.*clinician/i,
+  /case manager/i,
+  /behavioral health technician/i,
+  /peer support specialist/i,
+  /front desk.*administrative support/i,
+  /facilities.*support staff/i,
+];
+
+async function openBulkRoleSelect(page: import('@playwright/test').Page) {
+  await page.getByRole('combobox', { name: 'Role to apply to everyone' }).click();
+}
+
+async function expectNoWorkerOrSupervisorOptions(page: import('@playwright/test').Page) {
+  for (const name of WORKER_OPTION_NAMES) {
+    await expect(page.getByRole('option', { name })).toHaveCount(0);
+  }
+  await expect(page.getByRole('option', { name: /supervisor/i })).toHaveCount(0);
+}
+
+async function expectAllWorkerOptions(page: import('@playwright/test').Page) {
+  for (const name of WORKER_OPTION_NAMES) {
+    await expect(page.getByRole('option', { name })).toBeVisible();
+  }
+}
+
+async function expectNoOrgWideOptions(page: import('@playwright/test').Page) {
+  await expect(page.getByRole('option', { name: /^hr$/i })).toHaveCount(0);
+  await expect(page.getByRole('option', { name: /finance/i })).toHaveCount(0);
+  await expect(page.getByRole('option', { name: /clinical director/i })).toHaveCount(0);
+  await expect(page.getByRole('option', { name: /^admin$/i })).toHaveCount(0);
+  await expect(page.getByRole('option', { name: /^owner/i })).toHaveCount(0);
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-test.describe('Invite modal — role selector per inviter role', () => {
-  test('owner sees supervisor, hr, clinical_director, finance, + all 8 worker roles — but NOT owner', async ({
+test.describe('Invite modal — Global path: org-wide roles only', () => {
+  test('owner under Global sees admin, hr, clinical_director, finance — and no supervisor, worker role or owner', async ({
     page,
   }) => {
     test.setTimeout(90_000);
-    const email = uid('inv-owner');
+    const email = uid('inv-owner-global');
     const seeded = await seedInviter('owner', email, 'Owne!r99xP');
     try {
-      await loginAndOpenInviteModal(page, email, 'Owne!r99xP');
+      await loginAndOpenInviteModal(page, email, 'Owne!r99xP', 'global');
+      await openBulkRoleSelect(page);
 
-      // Open the role selector (shadcn Select / combobox)
-      const select = page.getByRole('combobox').first();
-      await select.click();
-
-      // All grantable admin roles must be visible
-      await expect(page.getByRole('option', { name: /supervisor/i })).toBeVisible();
+      await expect(page.getByRole('option', { name: /^admin$/i })).toBeVisible();
       await expect(page.getByRole('option', { name: /^hr$/i })).toBeVisible();
       await expect(page.getByRole('option', { name: /clinical director/i })).toBeVisible();
       await expect(page.getByRole('option', { name: /finance/i })).toBeVisible();
+      await expect(page.getByRole('option')).toHaveCount(4);
 
-      // All 8 job-specific worker-category roles must be visible (by displayName)
-      await expect(page.getByRole('option', { name: /psychiatrist.*prescriber/i })).toBeVisible();
-      await expect(page.getByRole('option', { name: /^nurse$/i })).toBeVisible();
-      await expect(page.getByRole('option', { name: /therapist.*clinician/i })).toBeVisible();
-      await expect(page.getByRole('option', { name: /case manager/i })).toBeVisible();
-      await expect(
-        page.getByRole('option', { name: /behavioral health technician/i }),
-      ).toBeVisible();
-      await expect(page.getByRole('option', { name: /peer support specialist/i })).toBeVisible();
-      await expect(
-        page.getByRole('option', { name: /front desk.*administrative support/i }),
-      ).toBeVisible();
-      await expect(page.getByRole('option', { name: /facilities.*support staff/i })).toBeVisible();
-
-      // Owner must NOT be an option
-      await expect(page.getByRole('option', { name: /^owner/i })).not.toBeVisible();
+      await expectNoWorkerOrSupervisorOptions(page);
+      await expect(page.getByRole('option', { name: /^owner/i })).toHaveCount(0);
     } finally {
       await cleanup(seeded);
     }
   });
 
-  test('hr sees supervisor, hr, clinical_director, finance, + all 8 worker roles — but NOT admin or owner', async ({
+  test('hr under Global sees hr, clinical_director, finance — the same set minus admin', async ({
     page,
   }) => {
     test.setTimeout(90_000);
-    const email = uid('inv-hr');
+    const email = uid('inv-hr-global');
     const seeded = await seedInviter('hr', email, 'Hr!Pass99x');
     try {
-      await loginAndOpenInviteModal(page, email, 'Hr!Pass99x');
+      await loginAndOpenInviteModal(page, email, 'Hr!Pass99x', 'global');
+      await openBulkRoleSelect(page);
 
-      const select = page.getByRole('combobox').first();
-      await select.click();
-
-      // HR's grantable admin roles — supervisor added per founder Q10.
-      await expect(page.getByRole('option', { name: /supervisor/i })).toBeVisible();
       await expect(page.getByRole('option', { name: /^hr$/i })).toBeVisible();
       await expect(page.getByRole('option', { name: /clinical director/i })).toBeVisible();
       await expect(page.getByRole('option', { name: /finance/i })).toBeVisible();
+      await expect(page.getByRole('option')).toHaveCount(3);
 
-      // HR can also grant all 8 job-specific worker-category roles
-      await expect(page.getByRole('option', { name: /^nurse$/i })).toBeVisible();
-      await expect(page.getByRole('option', { name: /case manager/i })).toBeVisible();
-      await expect(
-        page.getByRole('option', { name: /front desk.*administrative support/i }),
-      ).toBeVisible();
+      // The escalation fence: HR may never grant the two Owner-equivalent seats
+      // (founder Q10, round 2). Losing either assertion is a privilege-escalation
+      // regression.
+      await expect(page.getByRole('option', { name: /^admin$/i })).toHaveCount(0);
+      await expect(page.getByRole('option', { name: /^owner/i })).toHaveCount(0);
+      await expectNoWorkerOrSupervisorOptions(page);
+    } finally {
+      await cleanup(seeded);
+    }
+  });
 
-      // The escalation fence: HR may grant everything EXCEPT the two
-      // Owner-equivalent seats (founder Q10, round 2 — "Make it 'Owner and
-      // Admin'"). Losing either assertion is a privilege-escalation regression.
-      await expect(page.getByRole('option', { name: /^admin$/i })).not.toBeVisible();
-      await expect(page.getByRole('option', { name: /^owner/i })).not.toBeVisible();
+  test('worker roles are not offered under Global, in the bulk select or in a row select', async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    const email = uid('inv-global-no-workers');
+    const seeded = await seedInviter('owner', email, 'Owne!r99xP');
+    try {
+      await loginAndOpenInviteModal(page, email, 'Owne!r99xP', 'global');
+
+      await openBulkRoleSelect(page);
+      await expectNoWorkerOrSupervisorOptions(page);
+      await page.keyboard.press('Escape');
+
+      await page.getByRole('combobox', { name: /^Role for probe-/ }).click();
+      await expectNoWorkerOrSupervisorOptions(page);
+      await expect(page.getByRole('option', { name: /^hr$/i })).toBeVisible();
+    } finally {
+      await cleanup(seeded);
+    }
+  });
+});
+
+test.describe('Invite modal — facility path: supervisor + workers only', () => {
+  test('owner under a facility sees supervisor + all 8 worker roles — and no hr, finance, clinical director, admin or owner', async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    const email = uid('inv-owner-fac');
+    const seeded = await seedInviter('owner', email, 'Owne!r99xP');
+    try {
+      await loginAndOpenInviteModal(page, email, 'Owne!r99xP', 'facility');
+      await openBulkRoleSelect(page);
+
+      await expect(page.getByRole('option', { name: /facility supervisor/i })).toBeVisible();
+      await expectAllWorkerOptions(page);
+      await expect(page.getByRole('option')).toHaveCount(9);
+      await expectNoOrgWideOptions(page);
+    } finally {
+      await cleanup(seeded);
+    }
+  });
+
+  test('hr under a facility sees the same supervisor + worker roles, and still no org-wide role', async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    const email = uid('inv-hr-fac');
+    const seeded = await seedInviter('hr', email, 'Hr!Pass99x');
+    try {
+      await loginAndOpenInviteModal(page, email, 'Hr!Pass99x', 'facility');
+      await openBulkRoleSelect(page);
+
+      await expect(page.getByRole('option', { name: /facility supervisor/i })).toBeVisible();
+      await expectAllWorkerOptions(page);
+      await expect(page.getByRole('option')).toHaveCount(9);
+      await expectNoOrgWideOptions(page);
     } finally {
       await cleanup(seeded);
     }
