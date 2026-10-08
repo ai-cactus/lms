@@ -375,7 +375,7 @@ export async function getCertificateDetails(realm: PortalRealm, certificateId: s
           organization: { select: { name: true } },
         },
       },
-      course: true,
+      course: { select: { title: true } },
     },
   });
 

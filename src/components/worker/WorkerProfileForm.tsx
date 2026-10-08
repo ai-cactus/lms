@@ -27,7 +27,6 @@ interface WorkerProfileProps {
     last_name: string;
     email: string;
     role: Role;
-    avatarUrl?: string | null;
     avatarDisplayUrl?: string | null;
     authProvider?: string;
   };
@@ -69,23 +68,23 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
       first_name: user.first_name,
       last_name: user.last_name,
     });
-    setAvatarUrl(user.avatarUrl || null);
+    setUploadedAvatarRef(null);
     setAvatarDisplayUrl(user.avatarDisplayUrl || null);
-    setBaseAvatarUrl(user.avatarUrl || null);
   }, [user]);
 
   const [showConfirm, setShowConfirm] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(user.avatarUrl || null);
+  // The page never sends the stored avatar's storage URI (BUG-65); a save
+  // carries only the reference `uploadAvatar` returns for a new photo.
+  const [uploadedAvatarRef, setUploadedAvatarRef] = useState<string | null>(null);
   const [avatarDisplayUrl, setAvatarDisplayUrl] = useState<string | null>(
     user.avatarDisplayUrl || null,
   );
-  const [baseAvatarUrl, setBaseAvatarUrl] = useState<string | null>(user.avatarUrl || null);
 
   const isDirty =
     formData.first_name !== baseData.first_name ||
     formData.last_name !== baseData.last_name ||
-    avatarUrl !== baseAvatarUrl;
+    uploadedAvatarRef !== null;
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -135,9 +134,7 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
     try {
       const result = await uploadAvatar('worker', data);
       if (result.success && result.url) {
-        setAvatarUrl(result.url);
-        // We don't save immediately, we wait for "Save Changes"
-        // But we should probably mark as dirty (which we did by adding avatarUrl to check)
+        setUploadedAvatarRef(result.url);
       } else {
         setMessage({ type: 'error', text: result.error || 'Failed to upload avatar' });
       }
@@ -157,15 +154,13 @@ export default function WorkerProfileForm({ user, organization }: WorkerProfileP
       const result = await updateProfile('worker', {
         first_name: formData.first_name,
         last_name: formData.last_name,
-        // Only a changed photo is sent, and a removed one as an explicit null —
-        // `undefined` means "leave unchanged", so it can never express a clear.
-        avatarUrl: avatarUrl !== baseAvatarUrl ? avatarUrl : undefined,
+        avatarUrl: uploadedAvatarRef ?? undefined,
       });
 
       if (result.success) {
         setMessage({ type: 'success', text: 'Profile updated successfully' });
         setBaseData({ ...formData });
-        setBaseAvatarUrl(avatarUrl);
+        setUploadedAvatarRef(null);
         router.refresh();
       } else {
         setMessage({ type: 'error', text: result.error || 'Failed to update profile' });

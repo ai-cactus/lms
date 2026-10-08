@@ -7,7 +7,7 @@ export interface ProfileData {
   email: string;
   role: Role;
   roleDisplayName: string;
-  avatarUrl?: string | null;
+  /** Signed, short-lived URL for display. The stored storage URI is never sent (BUG-65). */
   avatarDisplayUrl?: string | null;
   authProvider?: string;
 }

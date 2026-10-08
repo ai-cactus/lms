@@ -28,9 +28,11 @@ import {
  * `AssignmentReminderStage` override (falling back to
  * `REMINDER_STAGE_DEFAULTS.HARD_ESCALATION.offsetDays`) — mirroring the reminder
  * sweep, so the tracker agrees with when the sweep actually escalates to
- * managers/admins. A disabled HARD_ESCALATION stage means the assignment never
- * escalates, so such rows are never flagged. A retake reads the stages of its
- * original enrolment's assignment, as the sweep does (Q-28).
+ * managers/admins. A disabled HARD_ESCALATION stage, or an assignment with
+ * `remindersEnabled: false` (the sweep sends nothing for it at all), means the
+ * row never escalates: it is still listed and counted as overdue, just never
+ * flagged (BUG-63). A retake reads the settings of its original enrolment's
+ * assignment, as the sweep does (Q-28).
  *
  * "At risk" means a not-yet-overdue enrollment whose deadline falls within the
  * next `DUE_SOON_WINDOW_DAYS` (`@/lib/facility/metrics`) days — the same window as the Global View's
@@ -134,10 +136,12 @@ export interface StatusTrackerSummary {
  * Resolve the effective hard-escalation threshold for an enrollment, mirroring
  * `runTrackA` in `sweep.ts`: prefer the assignment's `HARD_ESCALATION` override
  * (offset + enabled), otherwise fall back to the system default. Returns `null`
- * when the stage is explicitly disabled — the assignment never escalates, so no
- * overdue row for it should be flagged as a hard escalation.
+ * when the assignment has reminders switched off or the stage is explicitly
+ * disabled — the assignment never escalates, so no overdue row for it should be
+ * flagged as a hard escalation.
  */
 function resolveHardEscalationThreshold(assignment: ReminderAssignment | null): number | null {
+  if (assignment && !assignment.remindersEnabled) return null;
   const override = assignment?.reminderStages.find((s) => s.stage === 'HARD_ESCALATION');
   if (!override) return DEFAULT_HARD_ESCALATION_OFFSET_DAYS;
   if (!override.enabled) return null;

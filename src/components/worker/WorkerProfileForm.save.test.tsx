@@ -28,7 +28,6 @@ const user = {
   last_name: 'Adeyemi',
   email: 'nurse@acme.test',
   role: 'nurse' as const,
-  avatarUrl: null,
   avatarDisplayUrl: null,
   authProvider: 'credentials',
 };
@@ -64,13 +63,13 @@ describe('WorkerProfileForm — profile save payload', () => {
     });
   });
 
-  // RISK-02: `undefined` means "leave unchanged", so the form sends the photo
-  // only when it changed — the old `avatarUrl || undefined` could never clear.
+  // RISK-02: `undefined` means "leave unchanged". BUG-65: the page sends only a
+  // signed display URL, which must never be echoed back as the photo.
   it('does not resend an unchanged photo', async () => {
     const u = userEvent.setup();
     render(
       <WorkerProfileForm
-        user={{ ...user, avatarUrl: 'gcs://b/avatars/user-1/old.png' }}
+        user={{ ...user, avatarDisplayUrl: 'https://signed.example/old.png?sig=1' }}
         organization={null}
       />,
     );
@@ -100,6 +99,29 @@ describe('WorkerProfileForm — profile save payload', () => {
     expect(mockUpdateProfile).toHaveBeenCalledExactlyOnceWith(
       'worker',
       expect.objectContaining({ avatarUrl: 'gcs://b/avatars/user-1/new.png' }),
+    );
+  });
+
+  it('sends an uploaded photo once: a second save leaves it unchanged', async () => {
+    mockUploadAvatar.mockResolvedValue({ success: true, url: 'gcs://b/avatars/user-1/new.png' });
+    globalThis.URL.createObjectURL = vi.fn(() => 'blob:preview');
+    const u = userEvent.setup();
+    const { container } = render(<WorkerProfileForm user={user} organization={null} />);
+
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    await u.upload(input, new File(['x'], 'me.png', { type: 'image/png' }));
+    await u.click(screen.getByRole('button', { name: 'Save Changes' }));
+    await u.click(await screen.findByRole('button', { name: 'Confirm' }));
+    await screen.findByText('Profile updated successfully');
+
+    await u.type(screen.getByPlaceholderText('Last Name'), 'x');
+    await u.click(screen.getByRole('button', { name: 'Save Changes' }));
+    await u.click(await screen.findByRole('button', { name: 'Confirm' }));
+
+    expect(mockUpdateProfile).toHaveBeenCalledTimes(2);
+    expect(mockUpdateProfile).toHaveBeenLastCalledWith(
+      'worker',
+      expect.objectContaining({ avatarUrl: undefined }),
     );
   });
 });

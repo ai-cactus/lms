@@ -143,6 +143,26 @@ describe('getEnrollmentWithResults — the learner', () => {
   });
 });
 
+describe('getEnrollmentWithResults — what it reads', () => {
+  // TOOL-30: a Server Action is directly callable, so `user: true` returned the
+  // learner's password hash and MFA secret to its caller. The results page
+  // reads only the name, email and organization name.
+  it('reads only the learner name, email and organization name', async () => {
+    mockAuth.mockResolvedValue({
+      user: { id: 'u-1', role: 'nurse', organizationId: ORG_ID, organizationUserId: LEARNER_OU },
+    });
+    mockWorkerAuth.mockResolvedValue(null);
+
+    await getEnrollmentWithResults('enr-1');
+
+    const { include } = mockEnrollmentFindUnique.mock.calls[0][0];
+    expect(include.organizationUser.include).toEqual({
+      user: { select: { email: true, fullName: true } },
+      organization: { select: { name: true } },
+    });
+  });
+});
+
 describe('getEnrollmentWithResults — BUG-47 portal', () => {
   it('never reads the worker portal: the learner’s own worker session is unauthenticated here', async () => {
     mockAuth.mockResolvedValue(null);

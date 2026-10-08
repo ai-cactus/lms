@@ -133,13 +133,46 @@ describe('notifyOrganizationAdminsWithEmail — one audience for the bell and th
   });
 
   it('still emails when the org switched the category off in-app', async () => {
-    mockIsChannelEnabled.mockResolvedValue(false);
+    mockIsChannelEnabled.mockImplementation(async (_org, _type, channel) => channel === 'email');
     const sendEmail = vi.fn().mockResolvedValue({ success: true });
 
     await notifyOrganizationAdminsWithEmail('org-1', STAFF_NOTICE, sendEmail);
 
     expect(prismaMock.notification.createMany).not.toHaveBeenCalled();
     expect(sendEmail).toHaveBeenCalledTimes(2);
+  });
+
+  // Q-34 (ruled 2026-10-07: honour the switch): the quiz-locked email follows
+  // the organisation's Training email switch, as every other Training email does.
+  it('sends no email when the org switched the category off for email, keeping the bell row', async () => {
+    mockIsChannelEnabled.mockImplementation(async (_org, _type, channel) => channel === 'inApp');
+    const sendEmail = vi.fn().mockResolvedValue({ success: true });
+
+    await notifyOrganizationAdminsWithEmail('org-1', STAFF_NOTICE, sendEmail);
+
+    expect(mockIsChannelEnabled).toHaveBeenCalledWith('org-1', 'QUIZ_RETRY_LIMIT_REACHED', 'email');
+    expect(sendEmail).not.toHaveBeenCalled();
+    expect(recipients()).toEqual(['owner-1', 'hr-1']);
+  });
+
+  it('emails the audience when the org switched the category on for email', async () => {
+    const sendEmail = vi.fn().mockResolvedValue({ success: true });
+
+    await notifyOrganizationAdminsWithEmail('org-1', STAFF_NOTICE, sendEmail);
+
+    expect(mockIsChannelEnabled).toHaveBeenCalledWith('org-1', 'QUIZ_RETRY_LIMIT_REACHED', 'email');
+    expect(sendEmail).toHaveBeenCalledTimes(2);
+    expect(recipients()).toEqual(['owner-1', 'hr-1']);
+  });
+
+  it('sends nothing at all when both switches are off', async () => {
+    mockIsChannelEnabled.mockResolvedValue(false);
+    const sendEmail = vi.fn();
+
+    await notifyOrganizationAdminsWithEmail('org-1', STAFF_NOTICE, sendEmail);
+
+    expect(prismaMock.notification.createMany).not.toHaveBeenCalled();
+    expect(sendEmail).not.toHaveBeenCalled();
   });
 
   it('sends nothing on either channel when no admin can open the link', async () => {

@@ -1625,6 +1625,7 @@ export async function createFullCourse(data: {
 }
 
 const ALREADY_ATTESTED_MESSAGE = 'This course has already been attested.';
+const SIGNATURE_REQUIRED_MESSAGE = 'Type your full name to sign the attestation.';
 const QUIZ_NOT_PASSED_MESSAGE =
   'You need to pass this course’s quiz before you can attest to completing it.';
 const LESSONS_NOT_COMPLETE_MESSAGE =
@@ -1688,7 +1689,7 @@ export async function attestCourse(
   const enrollment = await prisma.enrollment.findUnique({
     where: { id: enrollmentId },
     include: {
-      organizationUser: { include: { user: true } },
+      organizationUser: { include: { user: { select: { email: true, fullName: true } } } },
       course: {
         include: {
           quiz: { select: { id: true, passingScore: true } },
@@ -1719,7 +1720,8 @@ export async function attestCourse(
   }
 
   if (!signature.trim()) {
-    throw new Error(`Signature is required.`);
+    logger.warn({ msg: '[course] Attestation refused — empty signature', enrollmentId });
+    return { success: false, refusedReason: SIGNATURE_REQUIRED_MESSAGE };
   }
 
   // Attestation IS this product's completion act (see the schema note on
@@ -2446,10 +2448,7 @@ export async function assignRetake(
 
   const lockedEnrollment = await prisma.enrollment.findUnique({
     where: { id: enrollmentId },
-    include: {
-      organizationUser: { include: { user: true } },
-      course: true,
-    },
+    include: { course: true },
   });
 
   if (!lockedEnrollment) {

@@ -198,11 +198,15 @@ describe('attestCourse — guards still hold', () => {
     expect(prismaMock.enrollment.updateMany).not.toHaveBeenCalled();
   });
 
-  it('refuses a blank signature without recording a completion', async () => {
-    await expect(attestCourse(ENROLLMENT_ID, '   ', 'Nurse')).rejects.toThrow(
-      'Signature is required.',
-    );
+  // BUG-64: returned, not thrown — production redacts a thrown Server Action
+  // message to React error #441, so the learner would never see why.
+  it('refuses a blank signature by return, without recording a completion', async () => {
+    await expect(attestCourse(ENROLLMENT_ID, '   ', 'Nurse')).resolves.toEqual({
+      success: false,
+      refusedReason: 'Type your full name to sign the attestation.',
+    });
     expect(prismaMock.enrollment.updateMany).not.toHaveBeenCalled();
+    expect(mockNotifyOrganizationAdmins).not.toHaveBeenCalled();
   });
 });
 
