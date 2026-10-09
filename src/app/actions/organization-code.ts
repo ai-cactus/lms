@@ -12,7 +12,11 @@ import { checkRateLimit } from '@/lib/rate-limit';
 import { DEFAULT_SELF_SERVE_WORKER_ROLE, getRoleDisplayName } from '@/lib/rbac/role-utils';
 import { emitNotificationEvent } from '@/lib/notifications/emit';
 import { enrollUserForRoleTargets } from '@/lib/enrollment/role-targets';
-import { createMembership, ExistingMembershipError } from '@/lib/auth/membership';
+import {
+  createMembership,
+  DeletedOrganizationError,
+  ExistingMembershipError,
+} from '@/lib/auth/membership';
 
 // Helper to generate a cryptographically-random 6-digit code
 function generateCode() {
@@ -122,8 +126,10 @@ async function lookupJoinCode(code: string) {
     return { success: false as const, error: 'Too many attempts. Please try again later.' };
   }
 
+  // A soft-deleted organization keeps its code (so the uniqueness check still
+  // sees it), but the code answers exactly like an unknown one.
   const org = await prisma.organization.findUnique({
-    where: { joinCode: code },
+    where: { joinCode: code, deletedAt: null },
     select: {
       id: true,
       name: true,
@@ -266,6 +272,10 @@ export async function joinOrganization(code: string) {
 
     return { success: true, organizationId: orgId };
   } catch (error) {
+    if (error instanceof DeletedOrganizationError) {
+      logger.warn({ msg: '[org-code] joinOrganization refused: organization deleted', userId });
+      return { success: false, error: 'Invalid code.' };
+    }
     if (error instanceof ExistingMembershipError) {
       logger.warn({
         msg: '[org-code] joinOrganization refused: identity already has a membership',

@@ -16,6 +16,7 @@ import { logger, maskEmail } from '@/lib/logger';
 import { createMfaChallenge } from '@/lib/mfa-challenge';
 import { isWorkerRole } from '@/lib/rbac/role-utils';
 import { resolveActiveMembership } from '@/lib/auth/membership';
+import { ORGANIZATION_DELETED_LOGIN_MESSAGE } from '@/lib/organization/deleted-copy';
 import { verifyCaptcha } from '@/lib/captcha';
 import { audit, getClientContext } from '@/lib/audit';
 import { captureServer } from '@/lib/analytics/server';
@@ -107,6 +108,15 @@ export async function authenticate(
     }
 
     const resolution = await resolveActiveMembership(lookupUser.id);
+
+    if (resolution.kind === 'org_deleted') {
+      captureServer(
+        'login_failed',
+        { portal: role, reason: 'organization_deleted' },
+        { distinctId: lookupUser.id },
+      );
+      return { error: ORGANIZATION_DELETED_LOGIN_MESSAGE };
+    }
 
     // Every membership this account held has been deactivated — surface an
     // actionable message instead of routing to a signIn that authorize() would

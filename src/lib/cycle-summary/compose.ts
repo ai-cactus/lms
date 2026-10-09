@@ -27,6 +27,7 @@ import {
   type CycleSummarySection,
   type ReminderSummaryItem,
 } from './sections';
+import { liveOrganizationWhere } from '@/lib/organization/deleted';
 
 /**
  * Cycle summary — pure, unit-testable orchestration (mirrors `digest.ts`).
@@ -262,14 +263,25 @@ export async function partitionByEnrollmentEligibility(
  * this cutover, so summarizing the marker would re-announce an assignment the
  * learner was already emailed about.
  */
+// A soft-deleted organization's rows are retired when it is deleted; this keeps
+// any written after that out of a summary too.
+const LIVE_ORGANIZATION_ENROLLMENT = {
+  organizationUser: { organization: liveOrganizationWhere },
+} as const;
+
 async function gatherReminderRows(): Promise<ReminderSourceRow[]> {
   const [logs, nudges] = await Promise.all([
     prisma.reminderLog.findMany({
-      where: { summarizedAt: null, channels: { has: 'email' }, stage: { not: 'INITIAL_LAUNCH' } },
+      where: {
+        summarizedAt: null,
+        channels: { has: 'email' },
+        stage: { not: 'INITIAL_LAUNCH' },
+        enrollment: LIVE_ORGANIZATION_ENROLLMENT,
+      },
       select: { id: true, stage: true, enrollment: { select: ENROLLMENT_CONTEXT_SELECT } },
     }),
     prisma.reminderNudge.findMany({
-      where: { summarizedAt: null },
+      where: { summarizedAt: null, enrollment: LIVE_ORGANIZATION_ENROLLMENT },
       select: {
         id: true,
         kind: true,
@@ -382,8 +394,10 @@ export async function runCycleSummary(opts: CycleSummaryOptions): Promise<CycleS
     return summary;
   }
 
+  // A soft-deleted organization is never summarized; its pending events were
+  // set `skipped` when it was deleted.
   const organizations = await prisma.organization.findMany({
-    where: { id: { in: organizationIds } },
+    where: { id: { in: organizationIds }, ...liveOrganizationWhere },
     select: { id: true, name: true, notificationDigestFrequency: true },
   });
 

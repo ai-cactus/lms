@@ -215,6 +215,46 @@ describe('POST /api/webhooks/stripe — THER-010 canonical row protection', () =
   });
 });
 
+describe('POST /api/webhooks/stripe — a soft-deleted organization keeps syncing billing state', () => {
+  it('resolves the organization by Stripe customer alone and still upserts the subscription', async () => {
+    // The row the lookup returns belongs to an organization that was soft-deleted:
+    // the delete leaves billing untouched, so Stripe's events must keep landing.
+    prismaMock.organization.findUnique.mockResolvedValue({
+      id: 'org-deleted',
+      deletedAt: new Date('2026-10-08'),
+    });
+    prismaMock.subscription.findUnique.mockResolvedValue(null);
+    stripeMock.webhooks.constructEvent.mockReturnValue({
+      type: 'customer.subscription.updated',
+      data: { object: stripeSubscription({ id: 'sub_x', status: 'past_due' }) },
+    });
+
+    const res = await POST(makeReq('{}'));
+
+    expect(res.status).toBe(200);
+    expect(prismaMock.organization.findUnique).toHaveBeenCalledWith({
+      where: { stripeCustomerId: 'cus_1' },
+      select: { id: true },
+    });
+    expect(prismaMock.subscription.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { organizationId: 'org-deleted' } }),
+    );
+  });
+
+  it('still records an invoice for it', async () => {
+    prismaMock.organization.findUnique.mockResolvedValue({ id: 'org-deleted' });
+    stripeMock.webhooks.constructEvent.mockReturnValue({
+      type: 'invoice.paid',
+      data: { object: stripeInvoice() },
+    });
+
+    const res = await POST(makeReq('{}'));
+
+    expect(res.status).toBe(200);
+    expect(prismaMock.invoice.upsert).toHaveBeenCalledOnce();
+  });
+});
+
 describe('POST /api/webhooks/stripe — F-014 idempotency', () => {
   it('short-circuits with 200 and does NOT re-process an event already in the ledger', async () => {
     prismaMock.processedWebhookEvent.findUnique.mockResolvedValue({ id: 'row-1' });

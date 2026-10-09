@@ -16,6 +16,7 @@ import { signIn } from 'next-auth/react';
 import { logger, maskEmail } from '@/lib/logger';
 import { SIBLING_EVICTED_COOKIE_SUFFIX } from '@/lib/auth/session-cookies';
 import { clearTabIdentity } from '@/lib/auth/tab-identity';
+import { ORGANIZATION_DELETED_LOGIN_MESSAGE } from '@/lib/organization/deleted-copy';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -195,6 +196,11 @@ export default function LoginPage() {
         {oauthError === 'AccessRevoked' && (
           <Alert variant="error" className="w-full" title="Access Removed">
             Your access to this organization has been removed. Please contact your administrator.
+          </Alert>
+        )}
+        {oauthError === 'OrganizationDeleted' && (
+          <Alert variant="error" className="w-full" title="Organization Inactive">
+            {ORGANIZATION_DELETED_LOGIN_MESSAGE}
           </Alert>
         )}
         {inactiveReason === 'inactive' && (

@@ -88,7 +88,13 @@ export interface AnalyticsEventProperties {
    */
   login_failed: {
     portal: 'admin' | 'worker';
-    reason: 'bad_credentials' | 'unverified' | 'locked' | 'role_mismatch' | 'no_membership';
+    reason:
+      | 'bad_credentials'
+      | 'unverified'
+      | 'locked'
+      | 'role_mismatch'
+      | 'no_membership'
+      | 'organization_deleted';
   };
 
   mfa_challenge_sent: { portal: 'admin' | 'worker' };

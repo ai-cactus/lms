@@ -239,6 +239,9 @@ jobs:
       # auth rather than at config, which is the behaviour the AI-degradation
       # specs assert against.
       GOOGLE_PROJECT_ID: ci-dummy-project-not-real
+      # Enables /system (it 404s without this) so the system-admin specs run here
+      # instead of self-skipping. Dummy value; the CI runner holds no real data.
+      SYSTEM_ADMIN_PASSWORD: e2e-system-admin
 
     steps:
       - uses: actions/checkout@v7

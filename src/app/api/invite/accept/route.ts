@@ -13,7 +13,8 @@ import { enrollUserForRoleTargets } from '@/lib/enrollment/role-targets';
 import { enrollInviteCourses } from '@/lib/enrollment/invite-courses';
 import { emitNotificationEvent } from '@/lib/notifications/emit';
 import { getRoleDisplayName } from '@/lib/rbac/role-utils';
-import { createMembership } from '@/lib/auth/membership';
+import { createMembership, DeletedOrganizationError } from '@/lib/auth/membership';
+import { lockOrganizations } from '@/lib/organization/owner-guard';
 import { isOrgWideFacilityRole } from '@/lib/facility/org-wide-roles';
 import { isDeletedIdentity } from '@/lib/auth/deleted-identity';
 import { captureServer } from '@/lib/analytics/server';
@@ -86,8 +87,9 @@ export async function POST(req: Request) {
     // `token` is Zod-validated as a non-empty string and `token` is @unique, so
     // this lookup resolves to exactly the invite that owns the token or none —
     // a crafted POST can never widen to reach another organization's invite.
+    // A soft-deleted organization's invite answers exactly like an unknown one.
     const invite = await prisma.invite.findUnique({
-      where: { token, status: 'pending' },
+      where: { token, status: 'pending', organization: { deletedAt: null } },
     });
 
     if (!invite || new Date() > invite.expiresAt) {
@@ -139,7 +141,26 @@ export async function POST(req: Request) {
     const hashedPassword = await bcrypt.hash(password, BCRYPT_COST);
     const fullName = `${firstName} ${lastName}`;
 
-    const newUser = await prisma.$transaction(async (tx) => {
+    // One transaction for every write the accept makes — credentials, invite
+    // status and membership — so an organization deleted mid-accept leaves
+    // nothing half-done behind the refusal.
+    const { newUser, membership } = await prisma.$transaction(async (tx) => {
+      // Before any write, under the lock the organization soft delete takes: a
+      // delete that committed after the invite lookup above is seen here.
+      await lockOrganizations(tx, [invite.organizationId]);
+      const organization = await tx.organization.findUnique({
+        where: { id: invite.organizationId },
+        select: { deletedAt: true },
+      });
+      if (organization?.deletedAt) {
+        logger.warn({
+          msg: '[invite] Accept refused: organization deleted',
+          inviteId: invite.id,
+          orgId: invite.organizationId,
+        });
+        throw new DeletedOrganizationError();
+      }
+
       // F-022: re-check seat availability INSIDE the transaction so a seat that
       // filled between invite issuance and acceptance (concurrent accepts, or
       // seats consumed since the invite was sent) is caught race-safely. Counts
@@ -178,16 +199,19 @@ export async function POST(req: Request) {
         data: { status: 'accepted' },
       });
 
-      return user;
-    });
+      // Attach the (new-or-relinked) identity to the inviting org, on the
+      // invite's facility, with the invited role.
+      const joined = await createMembership(
+        {
+          userId: user.id,
+          organizationId: invite.organizationId,
+          facilityId: invite.facilityId,
+          role: invite.role,
+        },
+        tx,
+      );
 
-    // Attach the (new-or-relinked) identity to the inviting org, on the
-    // invite's facility, with the invited role.
-    const membership = await createMembership({
-      userId: newUser.id,
-      organizationId: invite.organizationId,
-      facilityId: invite.facilityId,
-      role: invite.role,
+      return { newUser: user, membership: joined };
     });
 
     // F-001: invite accepted — a new credentialed account joined the org.
@@ -260,6 +284,11 @@ export async function POST(req: Request) {
     if (error instanceof SeatLimitError) {
       logger.warn({ msg: '[invite] Accept blocked — plan seat limit reached' });
       return NextResponse.json({ error: error.message }, { status: 409 });
+    }
+    // The organization was deleted between the invite lookup and the accept
+    // transaction; that transaction rolled back, so nothing was written.
+    if (error instanceof DeletedOrganizationError) {
+      return NextResponse.json({ error: 'Invalid or expired invite' }, { status: 400 });
     }
     const err = error as Error;
     logger.error({ msg: 'Error accepting invite:', err: err });

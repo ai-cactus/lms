@@ -414,6 +414,54 @@ describe('authenticate — removed staff member (QA ISSUE 2)', () => {
   });
 });
 
+describe('authenticate — member of a soft-deleted organization', () => {
+  const DELETED_AT = new Date('2026-10-08T10:00:00.000Z');
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    stubHeadersIp();
+    mockCheckRateLimit.mockResolvedValue({ allowed: true, remaining: 9, resetInSeconds: 900 });
+    prismaMock.user.findUnique.mockResolvedValue({ id: 'user-1', mfaEnabled: false });
+  });
+
+  function onlyOrgDeleted(membership: { active: boolean; deactivatedAt: Date | null }) {
+    prismaMock.organizationUser.findMany
+      .mockResolvedValueOnce([]) // no live membership
+      .mockResolvedValueOnce([{ ...membership, organization: { deletedAt: DELETED_AT } }]);
+    prismaMock.organizationUser.count.mockResolvedValue(1);
+  }
+
+  it('returns the organization-inactive copy, not the "access removed" copy', async () => {
+    onlyOrgDeleted({ active: false, deactivatedAt: DELETED_AT });
+
+    const result = await authenticate(undefined, makeLoginFormData('worker@example.com'));
+
+    expect(result).toEqual({ error: 'This organization is no longer active. Contact support.' });
+  });
+
+  it('never calls signIn (admin or worker) for such a member', async () => {
+    onlyOrgDeleted({ active: false, deactivatedAt: DELETED_AT });
+    const { signIn } = await import('@/auth');
+    const { signIn: signInWorker } = await import('@/auth.worker');
+
+    await authenticate(undefined, makeLoginFormData('worker@example.com'));
+
+    expect(signIn).not.toHaveBeenCalled();
+    expect(signInWorker).not.toHaveBeenCalled();
+  });
+
+  it('keeps the "access removed" copy for someone an admin removed BEFORE the org was deleted', async () => {
+    onlyOrgDeleted({ active: false, deactivatedAt: new Date('2026-10-01T09:00:00.000Z') });
+
+    const result = await authenticate(undefined, makeLoginFormData('removed@example.com'));
+
+    expect(result).toEqual({
+      error:
+        'Your access to this organization has been removed. Please contact your administrator.',
+    });
+  });
+});
+
 // ---------------------------------------------------------------------------
 // authenticate() — post-login destination. A membership-less identity must be
 // routed into onboarding by the ACTION, and at a route that RENDERS: any

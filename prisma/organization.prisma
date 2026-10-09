@@ -36,6 +36,12 @@ model Organization {
   joinCodeExpiresAt           DateTime?                        @map("join_code_expires_at")
   stripeCustomerId            String?                          @unique @map("stripe_customer_id")
   requireMfa                  Boolean                          @default(false) @map("require_mfa")
+  // Soft delete (/system): when set, the organization is deleted. Every
+  // membership active at that moment is deactivated with `deactivatedAt` set to
+  // this EXACT instant — restore reactivates precisely the memberships whose
+  // `deactivatedAt` equals it, so the two must always be written from one Date.
+  // Records stay; see src/lib/system/delete-organization.ts.
+  deletedAt                   DateTime?                        @map("deleted_at")
   // How often batched (Tier 2) notifications are emailed. Per-type opt-outs
   // stay per-user on NotificationPreference; this is the org-wide cadence.
   notificationDigestFrequency DigestFrequency                  @default(daily) @map("notification_digest_frequency")

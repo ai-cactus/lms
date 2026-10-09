@@ -3,6 +3,7 @@
 import { signIn } from '@/auth.worker';
 import { isAdminRole } from '@/lib/rbac/role-utils';
 import { resolveActiveMembership } from '@/lib/auth/membership';
+import { ORGANIZATION_DELETED_LOGIN_MESSAGE } from '@/lib/organization/deleted-copy';
 import { AuthError } from 'next-auth';
 import prisma from '@/lib/prisma';
 
@@ -27,6 +28,9 @@ export async function authenticateWorker(
         // gate sign-in — an admin-tier account is redirected to the admin
         // login before the worker form even submits.
         const resolution = await resolveActiveMembership(user.id);
+        if (resolution.kind === 'org_deleted') {
+          return { error: ORGANIZATION_DELETED_LOGIN_MESSAGE };
+        }
         const activeRole =
           resolution.kind === 'resolved'
             ? resolution.membership.role

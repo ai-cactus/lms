@@ -28,6 +28,7 @@ import { enrollInviteCourses } from '@/lib/enrollment/invite-courses';
 import {
   activeMembershipOf,
   createMembership,
+  DeletedOrganizationError,
   getActiveMembership,
   recordMembershipLogin,
   resolveActiveMembership,
@@ -276,6 +277,24 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
             return null;
           }
 
+          if (resolution.kind === 'org_deleted') {
+            logger.warn({
+              msg: 'Auth login failed: organization deleted',
+              instance: cookiePrefix,
+            });
+            await audit({
+              action: 'auth.login.failure',
+              actorId: user.id,
+              ...clientCtx,
+              metadata: {
+                reason: 'organization_deleted',
+                instance: cookiePrefix,
+                email: maskedEmail,
+              },
+            });
+            return null;
+          }
+
           const membership = activeMembershipOf(resolution);
           const claims = claimsFor(membership, cookiePrefix);
 
@@ -433,8 +452,10 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
 
           let dbUser: { id: string; fullName: string | null } | null = existingUser;
 
+          // A deleted organization's invites stay pending so a restore revives
+          // them, but they must not be consumed while it is deleted.
           const pendingInvite = await prisma.invite.findFirst({
-            where: { email, status: 'pending' },
+            where: { email, status: 'pending', organization: { deletedAt: null } },
             orderBy: { createdAt: 'desc' },
           });
 
@@ -500,18 +521,38 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
                 orgId: pendingInvite.organizationId,
               });
 
-              invitedMembership = await createMembership({
-                userId: dbUser.id,
-                organizationId: pendingInvite.organizationId,
-                facilityId: pendingInvite.facilityId,
-                role: inviteRole,
-              });
+              // Membership and invite status commit together. An organization
+              // deleted since the invite lookup rolls both back and the sign-in
+              // carries on as if there had been no invite — the same answer a
+              // deleted organization's invite gets from the lookup itself.
+              const userId = dbUser.id;
+              try {
+                invitedMembership = await prisma.$transaction(async (tx) => {
+                  const joined = await createMembership(
+                    {
+                      userId,
+                      organizationId: pendingInvite.organizationId,
+                      facilityId: pendingInvite.facilityId,
+                      role: inviteRole,
+                    },
+                    tx,
+                  );
+                  await tx.invite.update({
+                    where: { id: pendingInvite.id },
+                    data: { status: 'accepted' },
+                  });
+                  return joined;
+                });
+              } catch (err) {
+                if (!(err instanceof DeletedOrganizationError)) throw err;
+                logger.warn({
+                  msg: '[auth] OAuth: pending invite belongs to a deleted organization, ignored',
+                  orgId: pendingInvite.organizationId,
+                });
+              }
+            }
 
-              await prisma.invite.update({
-                where: { id: pendingInvite.id },
-                data: { status: 'accepted' },
-              });
-
+            if (invitedMembership) {
               // F-001: OAuth user consuming a pending invite.
               await audit({
                 action: 'auth.invite.accept',
@@ -543,6 +584,14 @@ export function createAuthInstance(instanceConfig: AuthInstanceConfig) {
               email: maskEmail(email),
             });
             return `${config.pages?.signIn}?error=AccessRevoked`;
+          }
+
+          if (resolution.kind === 'org_deleted') {
+            logger.warn({
+              msg: '[auth] OAuth: member of a deleted organization denied',
+              email: maskEmail(email),
+            });
+            return `${config.pages?.signIn}?error=OrganizationDeleted`;
           }
 
           const membership = invitedMembership ?? activeMembershipOf(resolution);

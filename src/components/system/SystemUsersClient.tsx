@@ -31,7 +31,7 @@ interface SystemUsersClientProps {
   initialTotal: number;
   initialPage: number;
   initialTotalPages: number;
-  organizations: { id: string; name: string }[];
+  organizations: { id: string; name: string; deletedAt: Date | null }[];
 }
 
 export default function SystemUsersClient({
@@ -183,7 +183,7 @@ export default function SystemUsersClient({
           <option value="">All Organizations</option>
           {organizations.map((org) => (
             <option key={org.id} value={org.id}>
-              {org.name}
+              {org.deletedAt ? `${org.name} (deleted)` : org.name}
             </option>
           ))}
         </select>

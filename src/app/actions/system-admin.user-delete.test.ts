@@ -259,6 +259,25 @@ describe('getAllUsers — active / deleted / all', () => {
     expect(mockPrisma.user.findMany.mock.calls[0][0].where).toEqual({});
   });
 
+  it('returns every organization, soft-deleted ones flagged, so their users stay filterable', async () => {
+    const deletedAt = new Date('2026-10-08T10:00:00Z');
+    mockPrisma.organization.findMany.mockResolvedValue([
+      { id: 'org-a', name: 'Alpha', deletedAt: null },
+      { id: 'org-z', name: 'Zeta', deletedAt },
+    ]);
+
+    const { organizations } = await getAllUsers({});
+
+    expect(mockPrisma.organization.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ select: { id: true, name: true, deletedAt: true } }),
+    );
+    expect(mockPrisma.organization.findMany.mock.calls[0][0]).not.toHaveProperty('where');
+    expect(organizations).toEqual([
+      { id: 'org-a', name: 'Alpha', deletedAt: null },
+      { id: 'org-z', name: 'Zeta', deletedAt },
+    ]);
+  });
+
   // BUG-48: `User.avatarUrl` is a raw storage URI and nothing on /system renders
   // an avatar, so it is neither read nor returned.
   it('never selects or returns the stored avatar URI', async () => {
