@@ -113,6 +113,33 @@ beforeEach(() => {
   mockSendInviteEmail.mockResolvedValue(undefined);
 });
 
+describe('completeOnboarding — a soft-deleted organization keeps its name reserved', () => {
+  it('looks the name up case-insensitively with NO deletedAt predicate, so a deleted org still collides', async () => {
+    await completeOnboarding(BASE_DATA);
+
+    expect(txMock.organization.findFirst).toHaveBeenCalledWith({
+      where: { name: { equals: 'Acme Health', mode: 'insensitive' } },
+    });
+  });
+
+  it('refuses to create an organization when the matching row is a soft-deleted one', async () => {
+    txMock.organization.findFirst.mockResolvedValue({
+      id: 'org-gone',
+      name: 'acme health',
+      deletedAt: new Date('2026-10-08'),
+    });
+
+    const result = await completeOnboarding(BASE_DATA);
+
+    expect(result.success).toBe(false);
+    expect(!result.success && result.error).toBe(
+      'Organization with this name already exists. Please contact your admin for access.',
+    );
+    expect(txMock.organization.create).not.toHaveBeenCalled();
+    expect(mockCreateMembership).not.toHaveBeenCalled();
+  });
+});
+
 describe('completeOnboarding — Organization/Facility split', () => {
   it('creates the facility with step1 location fields and a timezone derived from state', async () => {
     await completeOnboarding(BASE_DATA);

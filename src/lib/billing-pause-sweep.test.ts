@@ -116,6 +116,22 @@ describe('runBillingPauseSweep — cutoff query', () => {
   });
 });
 
+describe('runBillingPauseSweep — a soft-deleted organization is still swept (billing is not touched by a delete)', () => {
+  it('scans without any organization or deletedAt predicate and still voids collection for the row', async () => {
+    prismaMock.subscription.findMany.mockResolvedValue([dueRow({ organizationId: 'org-deleted' })]);
+
+    const summary = await runBillingPauseSweep({ now: NOW, dryRun: false });
+
+    const where = prismaMock.subscription.findMany.mock.calls[0][0].where;
+    expect(JSON.stringify(where)).not.toMatch(/organization|deletedAt/);
+    expect(summary.materialized).toBe(1);
+    expect(stripeMock.subscriptions.update).toHaveBeenCalledTimes(1);
+    expect(prismaMock.organization.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'org-deleted' } }),
+    );
+  });
+});
+
 describe('runBillingPauseSweep — pausedAt is the PROMISED boundary, not the sweep wall-clock', () => {
   it("writes pausedAt as the row's pauseStartsAt, not `now`", async () => {
     prismaMock.subscription.findMany.mockResolvedValue([dueRow()]);

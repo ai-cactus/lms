@@ -14,6 +14,11 @@ import {
   type ReminderSourceRow,
 } from './compose';
 import { buildCycleSummarySections, countSectionItems, type ReminderSummaryItem } from './sections';
+import {
+  excludeDeletedOrgIds,
+  getDeletedOrganizationIds,
+  liveOrganizationWhere,
+} from '@/lib/organization/deleted';
 
 /**
  * Cycle summary — delivery retry.
@@ -130,11 +135,14 @@ export async function runCycleSummaryRetry(
 
   // Column-to-column comparison (attempts < maxAttempts) isn't expressible in a
   // Prisma filter, so gate on kind/status/backoff in SQL and cap in JS.
+  // A soft-deleted organization's failed summaries stay failed, not resent.
+  const deletedOrganizationIds = await getDeletedOrganizationIds();
   const failedMessages = await prisma.emailMessage.findMany({
     where: {
       kind: CYCLE_SUMMARY_EMAIL_KIND,
       status: 'failed',
       updatedAt: { lt: backoffFloor },
+      ...excludeDeletedOrgIds(deletedOrganizationIds),
     },
     select: {
       id: true,
@@ -260,7 +268,7 @@ async function loadSourceContext(candidates: RetryCandidate[]): Promise<SourceCo
       : Promise.resolve([]),
     organizationIds.length
       ? prisma.organization.findMany({
-          where: { id: { in: organizationIds } },
+          where: { id: { in: organizationIds }, ...liveOrganizationWhere },
           select: { id: true, name: true },
         })
       : Promise.resolve([]),

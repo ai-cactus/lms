@@ -128,6 +128,7 @@ describe('JoinPage — already-accepted invite', () => {
       token: 'tok-2',
       status: 'accepted',
       expiresAt: FUTURE,
+      organization: { name: 'Acme Co', deletedAt: null },
     });
 
     const element = await JoinPage({ params: paramsFor('tok-2') });
@@ -135,6 +136,48 @@ describe('JoinPage — already-accepted invite', () => {
 
     expect(screen.getByText('This invite has already been used')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /go to login/i })).toHaveAttribute('href', '/login');
+    expect(mockNotFound).not.toHaveBeenCalled();
+  });
+});
+
+describe('JoinPage — soft-deleted organization', () => {
+  const deletedOrgInvite = (status: 'pending' | 'accepted') => ({
+    id: 'invite-del',
+    token: 'tok-del',
+    organizationId: 'org-del',
+    expiresAt: FUTURE,
+    status,
+    organization: { name: 'Secret Deleted Org', deletedAt: new Date('2026-10-08') },
+  });
+
+  it.each(['pending', 'accepted'] as const)(
+    'is notFound() for a %s invite, indistinguishable from an unknown token, and never renders the org name',
+    async (status) => {
+      prismaMock.invite.findUnique.mockResolvedValueOnce(deletedOrgInvite(status));
+
+      let rendered = '';
+      try {
+        const element = await JoinPage({ params: paramsFor('tok-del') });
+        rendered = render(element).container.textContent ?? '';
+      } catch (err) {
+        expect((err as Error).message).toBe('NEXT_NOT_FOUND');
+      }
+
+      expect(mockNotFound).toHaveBeenCalledOnce();
+      expect(rendered).not.toContain('Secret Deleted Org');
+      expect(screen.queryByTestId('join-page-client')).not.toBeInTheDocument();
+    },
+  );
+
+  it('still renders the form for a live organization (the guard is not over-broad)', async () => {
+    prismaMock.invite.findUnique.mockResolvedValueOnce({
+      ...deletedOrgInvite('pending'),
+      organization: { name: 'Live Org', deletedAt: null },
+    });
+
+    render(await JoinPage({ params: paramsFor('tok-del') }));
+
+    expect(screen.getByTestId('join-page-client')).toHaveTextContent('Live Org');
     expect(mockNotFound).not.toHaveBeenCalled();
   });
 });

@@ -27,6 +27,13 @@ export default async function JoinPage({ params }: { params: Promise<{ token: st
     include: { organization: true },
   });
 
+  // A soft-deleted organization's invite is indistinguishable from an unknown
+  // token: nothing on this public page may confirm the organization exists.
+  if (invite?.organization.deletedAt) {
+    logger.warn({ msg: '[invite] Join page: invite belongs to a deleted organization' });
+    return notFound();
+  }
+
   // Valid, unexpired, still-pending invite → render the account-creation form.
   if (invite && invite.status === 'pending' && new Date() <= invite.expiresAt) {
     return <JoinPageClient invite={invite} orgName={invite.organization.name} />;

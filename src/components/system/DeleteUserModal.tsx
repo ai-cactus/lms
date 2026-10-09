@@ -17,50 +17,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Field } from '@/components/ui/field';
 import { Alert } from '@/components/ui/alert';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import CountTable, { type CountRow } from './CountTable';
 
 interface DeleteUserModalProps {
   preview: DeletePreview;
   onClose: () => void;
   onSuccess?: () => void;
-}
-
-interface CountRow {
-  label: string;
-  count: number;
-}
-
-function CountTable({ heading, rows }: { heading: string; rows: CountRow[] }) {
-  return (
-    <div>
-      <h4 className="mb-2 text-sm font-semibold text-foreground">{heading}</h4>
-      <div className="rounded-[10px] border border-border">
-        <Table>
-          <TableHeader>
-            <TableRow className="hover:bg-transparent">
-              <TableHead>Record Type</TableHead>
-              <TableHead className="text-right">Count</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((row) => (
-              <TableRow key={row.label}>
-                <TableCell>{row.label}</TableCell>
-                <TableCell className="text-right">{row.count}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-    </div>
-  );
 }
 
 export default function DeleteUserModal({ preview, onClose, onSuccess }: DeleteUserModalProps) {

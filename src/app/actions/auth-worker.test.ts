@@ -93,3 +93,37 @@ describe('authenticateWorker — post-login redirect target', () => {
     );
   });
 });
+
+describe('authenticateWorker — member of a soft-deleted organization', () => {
+  const DELETED_AT = new Date('2026-10-08T10:00:00.000Z');
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    prismaMock.user.findUnique.mockResolvedValue({ id: 'user-1' });
+  });
+
+  it('returns the organization-inactive copy and never signs in', async () => {
+    prismaMock.organizationUser.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        { active: false, deactivatedAt: DELETED_AT, organization: { deletedAt: DELETED_AT } },
+      ]);
+    prismaMock.organizationUser.count.mockResolvedValue(1);
+
+    const result = await authenticateWorker(undefined, makeLoginFormData('nurse@example.com'));
+
+    expect(result).toEqual({ error: 'This organization is no longer active. Contact support.' });
+    expect(mockSignInWorker).not.toHaveBeenCalled();
+  });
+
+  it('still signs a multi-org worker into the live organization', async () => {
+    prismaMock.organizationUser.findMany.mockResolvedValue([membershipRow('nurse', 'org-live')]);
+
+    await authenticateWorker(undefined, makeLoginFormData('nurse@example.com'));
+
+    expect(mockSignInWorker).toHaveBeenCalledWith(
+      'credentials',
+      expect.objectContaining({ redirectTo: '/worker' }),
+    );
+  });
+});

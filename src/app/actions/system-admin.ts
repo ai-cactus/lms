@@ -11,6 +11,14 @@ import {
   findOwnershipBlocks,
   softDeleteUser,
 } from '@/lib/system/delete-user';
+import {
+  previewOrganizationRestore,
+  previewOrganizationSoftDelete,
+  restoreOrganization as restoreOrganizationRecord,
+  softDeleteOrganization,
+  type OrganizationRestorePreview,
+  type OrganizationSoftDeletePreview,
+} from '@/lib/system/delete-organization';
 import { audit, getClientContext } from '@/lib/audit';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { verifySystemAdminCookie, SYSTEM_ADMIN_COOKIE } from '@/lib/system-auth';
@@ -75,6 +83,24 @@ async function systemClientContext() {
     actorRole: 'system_admin',
     ...getClientContext(await headers()),
   };
+}
+
+/**
+ * Shared throttle for the console's destructive actions. Fail-closed for the
+ * same reason the console login is: a Redis outage must not open an unmetered
+ * window on irreversible cross-tenant writes. Returns the refusal, or null.
+ */
+async function destructiveActionRateLimitRefusal(): Promise<string | null> {
+  const ip = getClientContext(await headers()).ip ?? 'unknown';
+  const { allowed, resetInSeconds } = await checkRateLimit(
+    `system-admin-destructive:${ip}`,
+    10,
+    900,
+    { failClosed: true },
+  );
+  if (allowed) return null;
+  logger.warn({ msg: '[system] Destructive action rate limit exceeded', ip });
+  return `Too many attempts. Please wait ${resetInSeconds} seconds and try again.`;
 }
 
 // ── Auth Action ──────────────────────────────────────────────────────────────
@@ -210,7 +236,8 @@ export async function getAllUsers(options: {
   total: number;
   page: number;
   totalPages: number;
-  organizations: { id: string; name: string }[];
+  /** Every organization, deleted ones included (flagged) so their users stay filterable. */
+  organizations: { id: string; name: string; deletedAt: Date | null }[];
 }> {
   if (!(await verifySystemAdminCookie())) {
     throw new Error('Unauthorized');
@@ -285,7 +312,7 @@ export async function getAllUsers(options: {
     }),
     prisma.user.count({ where }),
     prisma.organization.findMany({
-      select: { id: true, name: true },
+      select: { id: true, name: true, deletedAt: true },
       orderBy: { name: 'asc' },
     }),
   ]);
@@ -653,6 +680,330 @@ export async function deleteUserWithRelations(userId: string): Promise<{
   } catch (error) {
     logger.error({ msg: '[system] Failed to delete user', userId, err: error });
     return { success: false, error: 'Failed to delete user. Please try again.' };
+  }
+}
+
+// ── Organizations ────────────────────────────────────────────────────────────
+
+export type SystemOrganizationStatusFilter = 'active' | 'deleted' | 'all';
+
+export interface SystemOrganizationRow {
+  id: string;
+  name: string;
+  slug: string;
+  deletedAt: Date | null;
+  createdAt: Date;
+  /** Active memberships. A deleted organization has none. */
+  memberCount: number;
+  ownerCount: number;
+  facilityCount: number;
+  subscription: { plan: string; status: string } | null;
+}
+
+export async function getAllOrganizations(options: {
+  page?: number;
+  limit?: number;
+  search?: string;
+  /** Defaults to `active`: deleted organizations are hidden unless asked for. */
+  statusFilter?: SystemOrganizationStatusFilter;
+}): Promise<{
+  organizations: SystemOrganizationRow[];
+  total: number;
+  page: number;
+  totalPages: number;
+}> {
+  if (!(await verifySystemAdminCookie())) {
+    throw new Error('Unauthorized');
+  }
+
+  const page = Math.max(1, options.page || 1);
+  const limit = Math.min(100, Math.max(1, options.limit || 20));
+  const search = options.search?.trim() || '';
+  const statusFilter: SystemOrganizationStatusFilter = options.statusFilter ?? 'active';
+
+  const where: Prisma.OrganizationWhereInput = {};
+  if (statusFilter === 'active') where.deletedAt = null;
+  if (statusFilter === 'deleted') where.deletedAt = { not: null };
+  if (search.length >= 2) {
+    where.OR = [
+      { name: { contains: search, mode: 'insensitive' } },
+      { slug: { contains: search, mode: 'insensitive' } },
+    ];
+  }
+
+  const [organizations, total] = await Promise.all([
+    prisma.organization.findMany({
+      where,
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        deletedAt: true,
+        createdAt: true,
+        subscription: { select: { plan: true, status: true } },
+        _count: {
+          select: {
+            organizationUsers: { where: { active: true } },
+            facilities: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+    prisma.organization.count({ where }),
+  ]);
+
+  const ownerCounts = await prisma.organizationUser.groupBy({
+    by: ['organizationId'],
+    where: {
+      organizationId: { in: organizations.map((org) => org.id) },
+      active: true,
+      role: 'owner',
+    },
+    _count: { _all: true },
+  });
+  const ownersByOrg = new Map(ownerCounts.map((row) => [row.organizationId, row._count._all]));
+
+  return {
+    organizations: organizations.map((org) => ({
+      id: org.id,
+      name: org.name,
+      slug: org.slug,
+      deletedAt: org.deletedAt,
+      createdAt: org.createdAt,
+      memberCount: org._count.organizationUsers,
+      ownerCount: ownersByOrg.get(org.id) ?? 0,
+      facilityCount: org._count.facilities,
+      subscription: org.subscription,
+    })),
+    total,
+    page,
+    totalPages: Math.ceil(total / limit),
+  };
+}
+
+/** Members shown on the organization detail page; the total is reported separately. */
+const ORGANIZATION_DETAIL_MEMBER_LIMIT = 200;
+
+export interface SystemOrganizationDetail {
+  id: string;
+  name: string;
+  slug: string;
+  createdAt: Date;
+  /** Set when the organization is soft-deleted; the console then opens read-only. */
+  deletedAt: Date | null;
+  memberTotal: number;
+  members: Array<{
+    organizationUserId: string;
+    userId: string;
+    name: string | null;
+    email: string;
+    role: string;
+    active: boolean;
+    deactivatedAt: Date | null;
+    /** Set when the person's identity has been deleted (Q-23). */
+    userDeletedAt: Date | null;
+  }>;
+  facilities: Array<{
+    id: string;
+    name: string;
+    city: string | null;
+    state: string | null;
+  }>;
+  subscription: {
+    plan: string;
+    status: string;
+    cancelAtPeriodEnd: boolean;
+    currentPeriodEnd: Date;
+  } | null;
+}
+
+export async function getOrganizationDetail(
+  organizationId: string,
+): Promise<SystemOrganizationDetail | null> {
+  if (!(await verifySystemAdminCookie())) {
+    throw new Error('Unauthorized');
+  }
+
+  const organization = await prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      createdAt: true,
+      deletedAt: true,
+      subscription: {
+        select: { plan: true, status: true, cancelAtPeriodEnd: true, currentPeriodEnd: true },
+      },
+      facilities: {
+        select: { id: true, name: true, city: true, state: true },
+        orderBy: { createdAt: 'asc' },
+      },
+      organizationUsers: {
+        select: {
+          id: true,
+          role: true,
+          active: true,
+          deactivatedAt: true,
+          user: { select: { id: true, email: true, fullName: true, deletedAt: true } },
+        },
+        orderBy: [{ active: 'desc' }, { joinedAt: 'asc' }],
+        take: ORGANIZATION_DETAIL_MEMBER_LIMIT,
+      },
+      _count: { select: { organizationUsers: true } },
+    },
+  });
+
+  if (!organization) return null;
+
+  return {
+    id: organization.id,
+    name: organization.name,
+    slug: organization.slug,
+    createdAt: organization.createdAt,
+    deletedAt: organization.deletedAt,
+    memberTotal: organization._count.organizationUsers,
+    members: organization.organizationUsers.map((membership) => ({
+      organizationUserId: membership.id,
+      userId: membership.user.id,
+      name: membership.user.fullName,
+      email: membership.user.email,
+      role: membership.role,
+      active: membership.active,
+      deactivatedAt: membership.deactivatedAt,
+      userDeletedAt: membership.user.deletedAt,
+    })),
+    facilities: organization.facilities,
+    subscription: organization.subscription,
+  };
+}
+
+export async function getOrganizationDeletePreview(
+  organizationId: string,
+): Promise<OrganizationSoftDeletePreview | null> {
+  if (!(await verifySystemAdminCookie())) {
+    throw new Error('Unauthorized');
+  }
+  return previewOrganizationSoftDelete(organizationId);
+}
+
+export async function getOrganizationRestorePreview(
+  organizationId: string,
+): Promise<OrganizationRestorePreview | null> {
+  if (!(await verifySystemAdminCookie())) {
+    throw new Error('Unauthorized');
+  }
+  return previewOrganizationRestore(organizationId);
+}
+
+/** The word typed, alongside the organization's exact name, to confirm a delete. */
+const ORGANIZATION_DELETE_CONFIRM_WORD = 'DELETE';
+
+function revalidateOrganizationPages(organizationId: string): void {
+  revalidatePath('/system');
+  revalidatePath('/system/organizations');
+  revalidatePath(`/system/organizations/${organizationId}`);
+}
+
+/**
+ * Soft-deletes an organization through the shared {@link softDeleteOrganization}:
+ * every member loses access, every record is kept, billing is untouched.
+ * The typed confirmation is re-validated here — the client check is a
+ * convenience, not the gate.
+ */
+export async function deleteOrganization(
+  organizationId: string,
+  confirmation: { confirmName: string; confirmWord: string },
+): Promise<{ success: boolean; error?: string; membershipsDeactivated?: number }> {
+  if (!(await verifySystemAdminCookie())) {
+    throw new Error('Unauthorized');
+  }
+
+  try {
+    const rateLimitRefusal = await destructiveActionRateLimitRefusal();
+    if (rateLimitRefusal) return { success: false, error: rateLimitRefusal };
+
+    const organization = await prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { name: true },
+    });
+    if (!organization) return { success: false, error: 'Organization not found' };
+
+    if (
+      confirmation.confirmName !== organization.name ||
+      confirmation.confirmWord !== ORGANIZATION_DELETE_CONFIRM_WORD
+    ) {
+      return {
+        success: false,
+        error: `Type the organization name and ${ORGANIZATION_DELETE_CONFIRM_WORD} exactly to confirm.`,
+      };
+    }
+
+    const result = await softDeleteOrganization(organizationId, await systemClientContext());
+
+    switch (result.status) {
+      case 'not_found':
+        return { success: false, error: 'Organization not found' };
+      case 'already_deleted':
+        return {
+          success: false,
+          error: `This organization was already deleted on ${result.deletedAt.toISOString().slice(0, 10)}.`,
+        };
+      case 'refused':
+        return { success: false, error: result.message };
+      case 'deleted':
+        revalidateOrganizationPages(organizationId);
+        return { success: true, membershipsDeactivated: result.membershipsDeactivated };
+    }
+  } catch (error) {
+    logger.error({
+      msg: '[system] Failed to delete organization',
+      orgId: organizationId,
+      err: error,
+    });
+    return { success: false, error: 'Failed to delete organization. Please try again.' };
+  }
+}
+
+/**
+ * Restores a soft-deleted organization: brings back exactly the members who
+ * were active when it was deleted, except identities deleted since. Refused
+ * when no active owner would result; allowed over the plan's seat limit.
+ */
+export async function restoreOrganization(
+  organizationId: string,
+): Promise<{ success: boolean; error?: string; membershipsReactivated?: number }> {
+  if (!(await verifySystemAdminCookie())) {
+    throw new Error('Unauthorized');
+  }
+
+  try {
+    const rateLimitRefusal = await destructiveActionRateLimitRefusal();
+    if (rateLimitRefusal) return { success: false, error: rateLimitRefusal };
+
+    const result = await restoreOrganizationRecord(organizationId, await systemClientContext());
+
+    switch (result.status) {
+      case 'not_found':
+        return { success: false, error: 'Organization not found' };
+      case 'not_deleted':
+        return { success: false, error: 'This organization is not deleted.' };
+      case 'blocked':
+        return { success: false, error: result.message };
+      case 'restored':
+        revalidateOrganizationPages(organizationId);
+        return { success: true, membershipsReactivated: result.membershipsReactivated };
+    }
+  } catch (error) {
+    logger.error({
+      msg: '[system] Failed to restore organization',
+      orgId: organizationId,
+      err: error,
+    });
+    return { success: false, error: 'Failed to restore organization. Please try again.' };
   }
 }
 

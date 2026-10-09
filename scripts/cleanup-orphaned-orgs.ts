@@ -10,6 +10,8 @@
  * legal name ("Organization with this name already exists").
  *
  * This script finds every organization with zero membership rows and deletes it.
+ * A soft-deleted organization (`deletedAt` set) is skipped: it is restorable
+ * from /system, and its fate belongs to that console.
  * Facilities, invites and the rest of the org-owned graph go with it via the
  * schema's ON DELETE CASCADE.
  *
@@ -24,9 +26,9 @@
  *   --dry-run   Report the organizations that would be deleted, write nothing.
  *
  * NOTE: this script must stay runnable inside the deployed app container
- * (`npm run script <env> cleanup-orphaned-orgs.ts`), whose image carries `db/`
- * but NOT `src/` — so only `@/db/*` imports are allowed here and output goes
- * through console like the other container-run scripts (sync-auditor-access).
+ * (`npm run script <env> cleanup-orphaned-orgs.ts`). The runtime image copies
+ * `db/`, `src/` and `tsconfig.json` (see Dockerfile), so `@/db/*` and `@/lib/*`
+ * imports resolve there.
  */
 import { prisma } from '@/db/index';
 import { logger } from '@/lib/logger';
@@ -40,9 +42,10 @@ async function main() {
 
   // "Orphaned" means NO membership row at all — not merely no ACTIVE one. An org
   // whose members were all deactivated still has an owner who can be restored,
-  // and must never be deleted here.
+  // and must never be deleted here. A soft-deleted org is restorable from
+  // /system and is never this script's to remove either.
   const orphans = await prisma.organization.findMany({
-    where: { organizationUsers: { none: {} } },
+    where: { organizationUsers: { none: {} }, deletedAt: null },
     select: {
       id: true,
       name: true,

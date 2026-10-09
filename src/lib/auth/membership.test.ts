@@ -32,6 +32,8 @@ import {
   createMembership,
   recordMembershipLogin,
   ExistingMembershipError,
+  DeletedOrganizationError,
+  activeMembershipOf,
 } from './membership';
 import { Prisma } from '@/generated/prisma/client';
 import { DeletedIdentityError } from './deleted-identity';
@@ -142,6 +144,92 @@ describe('resolveActiveMembership', () => {
   });
 });
 
+describe('resolveActiveMembership — organization soft delete', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  /** First findMany = live memberships (none); second = the lost-to-delete probe. */
+  function noLiveMembership(inDeletedOrgs: unknown[], totalRows = inDeletedOrgs.length) {
+    prismaMock.user.findUnique.mockResolvedValue({ lastActiveOrganizationId: null });
+    prismaMock.organizationUser.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce(inDeletedOrgs);
+    prismaMock.organizationUser.count.mockResolvedValue(totalRows);
+  }
+
+  const DELETED_AT = new Date('2026-10-08T10:00:00.000Z');
+
+  it('reports org_deleted when the only org was deleted while the membership was still active', async () => {
+    noLiveMembership([
+      { active: true, deactivatedAt: null, organization: { deletedAt: DELETED_AT } },
+    ]);
+
+    expect(await resolveActiveMembership('user-1')).toEqual({ kind: 'org_deleted' });
+  });
+
+  it('reports org_deleted when the membership was deactivated by the delete itself (same instant)', async () => {
+    noLiveMembership([
+      {
+        active: false,
+        deactivatedAt: new Date(DELETED_AT.getTime()),
+        organization: { deletedAt: DELETED_AT },
+      },
+    ]);
+
+    expect(await resolveActiveMembership('user-1')).toEqual({ kind: 'org_deleted' });
+  });
+
+  it('stays revoked when the person was removed by an admin before the org was deleted', async () => {
+    noLiveMembership([
+      {
+        active: false,
+        deactivatedAt: new Date('2026-10-01T09:00:00.000Z'),
+        organization: { deletedAt: DELETED_AT },
+      },
+    ]);
+
+    expect(await resolveActiveMembership('user-1')).toEqual({ kind: 'revoked' });
+  });
+
+  it('stays revoked when the only deactivated membership is in a live org', async () => {
+    noLiveMembership([], 1);
+
+    expect(await resolveActiveMembership('user-1')).toEqual({ kind: 'revoked' });
+  });
+
+  it('asks only for deleted-org memberships when probing why access was lost', async () => {
+    noLiveMembership([]);
+    prismaMock.organizationUser.count.mockResolvedValue(1);
+
+    await resolveActiveMembership('user-1');
+
+    expect(prismaMock.organizationUser.findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: { userId: 'user-1', organization: { deletedAt: { not: null } } },
+      }),
+    );
+  });
+
+  it('never probes for a deleted org when a live membership exists (multi-org user keeps their live org)', async () => {
+    prismaMock.user.findUnique.mockResolvedValue({ lastActiveOrganizationId: null });
+    prismaMock.organizationUser.findMany.mockResolvedValue([
+      membershipRow({ id: 'ou-live', organizationId: 'org-live' }),
+    ]);
+
+    const result = await resolveActiveMembership('user-1');
+
+    expect(result.kind).toBe('resolved');
+    expect(result.kind === 'resolved' && result.membership.organizationId).toBe('org-live');
+    expect(prismaMock.organizationUser.findMany).toHaveBeenCalledTimes(1);
+    expect(prismaMock.organizationUser.count).not.toHaveBeenCalled();
+  });
+
+  it('activeMembershipOf gives no membership for org_deleted', () => {
+    expect(activeMembershipOf({ kind: 'org_deleted' })).toBeNull();
+  });
+});
+
 describe('listActiveMemberships / getActiveMembership', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -154,7 +242,7 @@ describe('listActiveMemberships / getActiveMembership', () => {
 
     expect(prismaMock.organizationUser.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { userId: 'user-1', active: true },
+        where: { userId: 'user-1', active: true, organization: { deletedAt: null } },
         orderBy: { joinedAt: 'asc' },
       }),
     );
@@ -168,7 +256,12 @@ describe('listActiveMemberships / getActiveMembership', () => {
     expect(result).toBeNull();
     expect(prismaMock.organizationUser.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { userId: 'user-1', organizationId: 'org-1', active: true },
+        where: {
+          userId: 'user-1',
+          organizationId: 'org-1',
+          active: true,
+          organization: { deletedAt: null },
+        },
       }),
     );
   });
@@ -207,7 +300,12 @@ describe('resolveMembershipForActiveSession', () => {
     });
     expect(prismaMock.organizationUser.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { userId: 'user-1', organizationId: 'org-1', active: true },
+        where: {
+          userId: 'user-1',
+          organizationId: 'org-1',
+          active: true,
+          organization: { deletedAt: null },
+        },
       }),
     );
   });
@@ -269,12 +367,13 @@ describe('createMembership', () => {
   it('creates the OrganizationUser and its first OrganizationUserFacility row atomically', async () => {
     const txMock = {
       user: { findUnique: vi.fn().mockResolvedValue({ deletedAt: null }) },
+      organization: { findUnique: vi.fn().mockResolvedValue({ deletedAt: null }) },
+      $queryRaw: vi.fn().mockResolvedValue([]),
       organizationUser: {
         findUnique: vi.fn().mockResolvedValue(null),
         upsert: vi.fn().mockResolvedValue(membershipRow()),
       },
       organizationUserFacility: { upsert: vi.fn().mockResolvedValue({}) },
-      $queryRaw: vi.fn(),
     };
     prismaMock.$transaction.mockImplementation(async (cb: (tx: typeof txMock) => unknown) =>
       cb(txMock),
@@ -308,8 +407,9 @@ describe('createMembership', () => {
         create: { organizationUserId: 'ou-1', facilityId: 'facility-1' },
       }),
     );
-    // A first join has no owner seat at stake, so no organization lock is taken.
-    expect(txMock.$queryRaw).not.toHaveBeenCalled();
+    // Every join takes the organization lock the soft delete takes, so a join
+    // racing a delete is serialised against it.
+    expect(txMock.$queryRaw).toHaveBeenCalledOnce();
   });
 
   // RISK-16 — the concurrent case is driven end to end in owner-guard.test.ts.
@@ -317,13 +417,14 @@ describe('createMembership', () => {
     const owner = { id: 'ou-1', organizationId: 'org-1', role: 'owner', active: true };
     const txMock = {
       user: { findUnique: vi.fn().mockResolvedValue({ deletedAt: null }) },
+      organization: { findUnique: vi.fn().mockResolvedValue({ deletedAt: null }) },
+      $queryRaw: vi.fn().mockResolvedValue([]),
       organizationUser: {
         findUnique: vi.fn().mockResolvedValue(owner),
         count: vi.fn().mockResolvedValue(0),
         upsert: vi.fn(),
       },
       organizationUserFacility: { upsert: vi.fn() },
-      $queryRaw: vi.fn().mockResolvedValue([]),
     };
     prismaMock.$transaction.mockImplementation(async (cb: (tx: typeof txMock) => unknown) =>
       cb(txMock),
@@ -345,6 +446,8 @@ describe('createMembership', () => {
   it('reactivates a deactivated membership on re-join instead of creating a duplicate row', async () => {
     const txMock = {
       user: { findUnique: vi.fn().mockResolvedValue({ deletedAt: null }) },
+      organization: { findUnique: vi.fn().mockResolvedValue({ deletedAt: null }) },
+      $queryRaw: vi.fn().mockResolvedValue([]),
       organizationUser: { upsert: vi.fn().mockResolvedValue(membershipRow({ role: 'owner' })) },
       organizationUserFacility: { upsert: vi.fn().mockResolvedValue({}) },
     };
@@ -388,6 +491,89 @@ describe('createMembership', () => {
   });
 });
 
+describe('createMembership — soft-deleted organization', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function deletedOrgTx() {
+    return {
+      user: { findUnique: vi.fn().mockResolvedValue({ deletedAt: null }) },
+      organization: {
+        findUnique: vi.fn().mockResolvedValue({ deletedAt: new Date('2026-10-08') }),
+      },
+      organizationUser: {
+        findUnique: vi.fn().mockResolvedValue(null),
+        create: vi.fn(),
+        upsert: vi.fn(),
+      },
+      organizationUserFacility: { create: vi.fn(), upsert: vi.fn() },
+      $queryRaw: vi.fn().mockResolvedValue([]),
+    };
+  }
+
+  const base = {
+    userId: 'user-1',
+    organizationId: 'org-1',
+    facilityId: 'facility-1',
+    role: 'nurse' as const,
+  };
+
+  function expectNothingWritten(tx: ReturnType<typeof deletedOrgTx>) {
+    expect(tx.organizationUser.create).not.toHaveBeenCalled();
+    expect(tx.organizationUser.upsert).not.toHaveBeenCalled();
+    expect(tx.organizationUserFacility.create).not.toHaveBeenCalled();
+    expect(tx.organizationUserFacility.upsert).not.toHaveBeenCalled();
+  }
+
+  it.each([
+    ['the default (reassign/upsert) branch', {}],
+    ["the onExisting 'refuse' branch", { onExisting: 'refuse' as const }],
+  ])('refuses a deleted organization on %s and writes nothing', async (_label, extra) => {
+    const tx = deletedOrgTx();
+    prismaMock.$transaction.mockImplementation(async (cb: (t: typeof tx) => unknown) => cb(tx));
+
+    await expect(createMembership({ ...base, ...extra })).rejects.toBeInstanceOf(
+      DeletedOrganizationError,
+    );
+    expectNothingWritten(tx);
+  });
+
+  it('takes the organization lock BEFORE reading deletedAt', async () => {
+    const tx = deletedOrgTx();
+    prismaMock.$transaction.mockImplementation(async (cb: (t: typeof tx) => unknown) => cb(tx));
+
+    await createMembership(base).catch(() => undefined);
+
+    expect(tx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.organization.findUnique.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('refuses inside a caller transaction too, without opening its own', async () => {
+    const tx = deletedOrgTx();
+
+    await expect(
+      createMembership({ ...base, onExisting: 'refuse' }, tx as never),
+    ).rejects.toBeInstanceOf(DeletedOrganizationError);
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expectNothingWritten(tx);
+  });
+
+  it('runs a successful join on the caller transaction without opening its own', async () => {
+    const tx = deletedOrgTx();
+    tx.organization.findUnique.mockResolvedValue({ deletedAt: null });
+    tx.organizationUser.upsert.mockResolvedValue(membershipRow({ role: 'nurse' }));
+    tx.organizationUserFacility.upsert.mockResolvedValue({});
+
+    const result = await createMembership(base, tx as never);
+
+    expect(result.role).toBe('nurse');
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(tx.organizationUser.upsert).toHaveBeenCalledOnce();
+  });
+});
+
 // BUG-59: the self-serve join code must never re-role an existing member or
 // restore a revoked one.
 describe("createMembership({ onExisting: 'refuse' })", () => {
@@ -398,13 +584,14 @@ describe("createMembership({ onExisting: 'refuse' })", () => {
   function refuseTx(existing: { active: boolean } | null) {
     const txMock = {
       user: { findUnique: vi.fn().mockResolvedValue({ deletedAt: null }) },
+      organization: { findUnique: vi.fn().mockResolvedValue({ deletedAt: null }) },
+      $queryRaw: vi.fn().mockResolvedValue([]),
       organizationUser: {
         findUnique: vi.fn().mockResolvedValue(existing),
         create: vi.fn().mockResolvedValue(membershipRow({ role: 'nurse' })),
         upsert: vi.fn(),
       },
       organizationUserFacility: { create: vi.fn().mockResolvedValue({}), upsert: vi.fn() },
-      $queryRaw: vi.fn(),
     };
     prismaMock.$transaction.mockImplementation(async (cb: (tx: typeof txMock) => unknown) =>
       cb(txMock),

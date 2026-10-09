@@ -65,14 +65,16 @@ type MembershipReader = Pick<DbTransactionClient, 'organizationUser'>;
 /**
  * Q-30 (ruled 2026-09-29): which of the person's organizations the delete would
  * orphan. Only organizations where the person is ACTIVE count — deleting them
- * cannot take away an owner an org has already lost some other way.
+ * cannot take away an owner an org has already lost some other way. A
+ * soft-deleted organization never blocks: it has no access left to orphan, and
+ * its restore already refuses to bring it back without an active owner.
  */
 export async function findOwnershipBlocks(
   client: MembershipReader,
   userId: string,
 ): Promise<OwnershipBlock[]> {
   const memberships = await client.organizationUser.findMany({
-    where: { userId, active: true },
+    where: { userId, active: true, organization: { deletedAt: null } },
     select: { organizationId: true, role: true, organization: { select: { name: true } } },
     orderBy: { joinedAt: 'asc' },
   });
