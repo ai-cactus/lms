@@ -91,3 +91,4 @@
 - [BUG-47 dual-account cookie e2e gotchas](bug47-dual-account-cookie-e2e-gotchas.md) — addCookies must reuse the FULL captured cookie (real name is `__Secure-*` under `next start`); same-tab dual-account login trips the unrelated SessionIdentityGuard — use a second tab
 - [Invite modal bulk-role tests](invite-modal-bulk-roles-tests.md) — jsdom CSV upload recipe (portal input, File.arrayBuffer override); e2e selector contract
 - [Org soft delete PR A tests](org-soft-delete-pr-a-tests.md) — strict tx-rollback fake pattern; join-code e2e unreachable; Monitor tool floods context on long e2e runs
+- [User hard delete PR B tests](user-hard-delete-pr-b-tests.md) — audit_logs append-only in e2e cleanup; transient success text; schema-parse cascade manifest

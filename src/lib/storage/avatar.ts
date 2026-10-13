@@ -1,4 +1,4 @@
-import { deleteFile, getSignedUrl } from '@/lib/storage';
+import { deleteFile, getSignedUrl, listFilesForActiveBackend } from '@/lib/storage';
 import { parseStorageUri } from '@/lib/storage/types';
 import { logger } from '@/lib/logger';
 
@@ -64,4 +64,93 @@ export async function deleteReplacedAvatar(
   } catch (err) {
     logger.warn({ msg: '[user] Failed to delete replaced avatar', userId, err });
   }
+}
+
+/** The id shapes `User.id` takes: a uuid (the schema default) or a cuid. */
+const USER_ID_PATTERN =
+  /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|c[a-z0-9]{20,31})$/i;
+
+/** Matches the key `uploadAvatar` writes: `avatars/<userId>/<timestamp>-<name>`. */
+const AVATAR_KEY_PATTERN = /^avatars\/([^/]+)\/[^/]+$/;
+
+/** More objects than one person's replaced avatars could plausibly leave behind. */
+export const AVATAR_FOLDER_DELETE_CAP = 500;
+
+export type AvatarFolderDeleteResult =
+  | { status: 'deleted'; listed: number; deleted: number; failed: string[] }
+  | { status: 'refused'; reason: 'invalid_user_id' | 'list_failed' | 'over_cap'; listed: number };
+
+/**
+ * Deletes every object under ONE user's own avatar folder, `avatars/<userId>/`.
+ *
+ * ⛔ The only folder-scoped delete in the codebase, and only for a user being
+ * permanently deleted. This repo has twice lost production videos to prefix
+ * sweeps, so every guard below is load-bearing:
+ *  - the id must be uuid- or cuid-shaped, so it can contain no `/` or `..`;
+ *  - the prefix keeps its trailing slash, so `abc` never matches `abcd`;
+ *  - listing comes from ONLY the backend this environment writes to, exactly as
+ *    the avatar sweeper selects it — never a merged or another environment's view;
+ *  - every listed key is re-checked against the exact `avatars/<userId>/<file>`
+ *    shape before it is deleted, so a provider that reads the prefix loosely
+ *    cannot widen it;
+ *  - more than {@link AVATAR_FOLDER_DELETE_CAP} objects deletes nothing.
+ *
+ * Never throws. Call it only after the user's row has been deleted.
+ */
+export async function deleteUserAvatarFolder(userId: string): Promise<AvatarFolderDeleteResult> {
+  if (!USER_ID_PATTERN.test(userId)) {
+    logger.warn({ msg: '[user] Refused an avatar folder delete for a malformed user id' });
+    return { status: 'refused', reason: 'invalid_user_id', listed: 0 };
+  }
+
+  let listed: { storageUri: string }[];
+  try {
+    listed = await listFilesForActiveBackend(`avatars/${userId}/`);
+  } catch (err) {
+    logger.error({ msg: '[user] Failed to list the avatar folder', userId, err });
+    return { status: 'refused', reason: 'list_failed', listed: 0 };
+  }
+
+  const owned = listed.filter(
+    ({ storageUri }) =>
+      isOwnAvatarUri(storageUri, userId) &&
+      AVATAR_KEY_PATTERN.exec(parseStorageUri(storageUri).key)?.[1] === userId,
+  );
+
+  if (owned.length !== listed.length) {
+    logger.warn({
+      msg: '[user] Kept listed objects outside the user’s own avatar folder',
+      userId,
+      kept: listed.length - owned.length,
+    });
+  }
+
+  if (owned.length > AVATAR_FOLDER_DELETE_CAP) {
+    logger.error({
+      msg: '[user] Refused an avatar folder delete over the cap (deleting nothing)',
+      userId,
+      listed: owned.length,
+      cap: AVATAR_FOLDER_DELETE_CAP,
+    });
+    return { status: 'refused', reason: 'over_cap', listed: owned.length };
+  }
+
+  const failed: string[] = [];
+  for (const { storageUri } of owned) {
+    try {
+      await deleteFile(storageUri);
+    } catch (err) {
+      failed.push(storageUri);
+      logger.warn({ msg: '[user] Failed to delete an avatar object', userId, err });
+    }
+  }
+
+  logger.info({
+    msg: '[user] Deleted the avatar folder',
+    userId,
+    listed: owned.length,
+    deleted: owned.length - failed.length,
+    failed: failed.length,
+  });
+  return { status: 'deleted', listed: owned.length, deleted: owned.length - failed.length, failed };
 }

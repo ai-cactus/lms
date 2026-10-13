@@ -3,7 +3,10 @@
  * `softDeleteUser` the /system console uses (Q-23, RISK-14): every membership
  * is deactivated and sign-in is refused everywhere, while the person's
  * enrollments, quiz attempts, certificates and authored content are retained.
- * Nothing is hard-deleted, and the email is not freed for re-registration.
+ * This script never hard-deletes, and the email is not freed for
+ * re-registration. Permanent deletion is a separate, flag-gated /system action
+ * (`src/lib/system/hard-delete-user.ts`) that only accepts an identity already
+ * soft-deleted here or in the console.
  *
  * Usage:
  *   npx tsx scripts/delete-user.ts --email someone@example.com --dry-run   # report only

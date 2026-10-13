@@ -19,6 +19,15 @@ import {
   type OrganizationRestorePreview,
   type OrganizationSoftDeletePreview,
 } from '@/lib/system/delete-organization';
+import {
+  EMAIL_MISMATCH_REFUSAL,
+  NOT_ACKNOWLEDGED_REFUSAL,
+  NOT_SOFT_DELETED_REFUSAL,
+  hardDeleteUser as hardDeleteUserRecord,
+  previewUserHardDelete,
+  type UserHardDeletePreview,
+} from '@/lib/system/hard-delete-user';
+import { HARD_DELETE_DISABLED_REFUSAL, isHardDeleteEnabled } from '@/lib/system/hard-delete-flag';
 import { audit, getClientContext } from '@/lib/audit';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { verifySystemAdminCookie, SYSTEM_ADMIN_COOKIE } from '@/lib/system-auth';
@@ -680,6 +689,68 @@ export async function deleteUserWithRelations(userId: string): Promise<{
   } catch (error) {
     logger.error({ msg: '[system] Failed to delete user', userId, err: error });
     return { success: false, error: 'Failed to delete user. Please try again.' };
+  }
+}
+
+// ── Permanent User Delete ────────────────────────────────────────────────────
+
+export async function getUserHardDeletePreview(
+  userId: string,
+): Promise<UserHardDeletePreview | null> {
+  if (!(await verifySystemAdminCookie())) {
+    throw new Error('Unauthorized');
+  }
+  return previewUserHardDelete(userId);
+}
+
+/**
+ * Permanently deletes an already soft-deleted user through the shared
+ * {@link hardDeleteUserRecord}. The typed email and the acknowledgement are
+ * re-validated by the lib — the client checks are a convenience, not the gate.
+ */
+export async function hardDeleteUser(
+  userId: string,
+  confirmation: { confirmEmail: string; acknowledged: boolean },
+): Promise<{ success: boolean; error?: string; storageFailures?: number }> {
+  if (!(await verifySystemAdminCookie())) {
+    throw new Error('Unauthorized');
+  }
+
+  if (!isHardDeleteEnabled()) return { success: false, error: HARD_DELETE_DISABLED_REFUSAL };
+
+  try {
+    const rateLimitRefusal = await destructiveActionRateLimitRefusal();
+    if (rateLimitRefusal) return { success: false, error: rateLimitRefusal };
+
+    const result = await hardDeleteUserRecord(
+      userId,
+      {
+        confirmEmail: String(confirmation?.confirmEmail ?? ''),
+        acknowledged: confirmation?.acknowledged === true,
+      },
+      await systemClientContext(),
+    );
+
+    switch (result.status) {
+      case 'disabled':
+        return { success: false, error: HARD_DELETE_DISABLED_REFUSAL };
+      case 'not_found':
+        return { success: false, error: 'User not found' };
+      case 'not_soft_deleted':
+        return { success: false, error: NOT_SOFT_DELETED_REFUSAL };
+      case 'confirmation_mismatch':
+        return { success: false, error: EMAIL_MISMATCH_REFUSAL };
+      case 'not_acknowledged':
+        return { success: false, error: NOT_ACKNOWLEDGED_REFUSAL };
+      case 'refused':
+        return { success: false, error: result.message };
+      case 'deleted':
+        revalidatePath('/system');
+        return { success: true, storageFailures: result.storage.failed };
+    }
+  } catch (error) {
+    logger.error({ msg: '[system] Failed to permanently delete user', userId, err: error });
+    return { success: false, error: 'Failed to permanently delete user. Please try again.' };
   }
 }
 

@@ -2,6 +2,7 @@ import React from 'react';
 import { notFound, redirect } from 'next/navigation';
 import { checkSystemAuth, getUserDetail } from '@/app/actions/system-admin';
 import UserDetailClient from '@/components/system/UserDetailClient';
+import { isHardDeleteEnabled } from '@/lib/system/hard-delete-flag';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,5 +19,5 @@ export default async function UserDetailPage({ params }: { params: Promise<{ id:
     notFound();
   }
 
-  return <UserDetailClient user={user} />;
+  return <UserDetailClient user={user} hardDeleteEnabled={isHardDeleteEnabled()} />;
 }
