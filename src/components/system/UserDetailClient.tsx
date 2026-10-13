@@ -5,9 +5,11 @@ import { isAdminRole } from '@/lib/rbac/role-utils';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, AlertTriangle, Trash2 } from 'lucide-react';
-import { getUserDeletePreview } from '@/app/actions/system-admin';
+import { getUserDeletePreview, getUserHardDeletePreview } from '@/app/actions/system-admin';
 import type { SystemUserDetail, DeletePreview } from '@/app/actions/system-admin';
+import type { UserHardDeletePreview } from '@/lib/system/hard-delete-user';
 import DeleteUserModal from './DeleteUserModal';
+import HardDeleteUserModal from './HardDeleteUserModal';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/alert';
 import {
@@ -24,6 +26,7 @@ import { getUserDisplayName, getUserInitials } from '@/lib/user-display';
 
 interface UserDetailClientProps {
   user: SystemUserDetail;
+  hardDeleteEnabled: boolean;
 }
 
 function statusBadgeClass(status: string): string {
@@ -37,10 +40,12 @@ function statusBadgeClass(status: string): string {
   }
 }
 
-export default function UserDetailClient({ user }: UserDetailClientProps) {
+export default function UserDetailClient({ user, hardDeleteEnabled }: UserDetailClientProps) {
   const router = useRouter();
   const [deletePreview, setDeletePreview] = useState<DeletePreview | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [hardDeletePreview, setHardDeletePreview] = useState<UserHardDeletePreview | null>(null);
+  const [hardDeleteLoading, setHardDeleteLoading] = useState(false);
 
   async function handleDeleteClick() {
     setDeleteLoading(true);
@@ -53,6 +58,20 @@ export default function UserDetailClient({ user }: UserDetailClientProps) {
       logger.error({ msg: 'Failed to load delete preview:', err: err });
     } finally {
       setDeleteLoading(false);
+    }
+  }
+
+  async function handleHardDeleteClick() {
+    setHardDeleteLoading(true);
+    try {
+      const preview = await getUserHardDeletePreview(user.id);
+      if (preview) {
+        setHardDeletePreview(preview);
+      }
+    } catch (err) {
+      logger.error({ msg: '[system] Failed to load the permanent delete preview', err });
+    } finally {
+      setHardDeleteLoading(false);
     }
   }
 
@@ -373,6 +392,37 @@ export default function UserDetailClient({ user }: UserDetailClientProps) {
             Delete This User
           </Button>
         </div>
+      )}
+
+      {user.deletedAt && hardDeleteEnabled && (
+        <div className="mt-6 rounded-xl border border-error/30 bg-error/10 p-6">
+          <div className="flex items-center gap-2 font-semibold text-error">
+            <AlertTriangle className="size-5" aria-hidden="true" />
+            Permanent deletion
+          </div>
+          <p className="mt-2 text-sm text-text-secondary">
+            This user is already deleted. Permanently deleting removes their account and every
+            record tied to it. This cannot be undone.
+          </p>
+          <Button
+            variant="destructive"
+            onClick={handleHardDeleteClick}
+            disabled={hardDeleteLoading}
+            loading={hardDeleteLoading}
+            className="mt-4"
+          >
+            <Trash2 className="size-4" aria-hidden="true" />
+            Permanently delete
+          </Button>
+        </div>
+      )}
+
+      {hardDeletePreview && (
+        <HardDeleteUserModal
+          preview={hardDeletePreview}
+          onClose={() => setHardDeletePreview(null)}
+          onSuccess={() => router.push('/system')}
+        />
       )}
 
       {deletePreview && (

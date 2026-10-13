@@ -78,6 +78,8 @@ services:
       MINIO_ENDPOINT: minio
       MINIO_PORT: '9000'
       MINIO_USE_SSL: 'false'
+      # Pinned off here because `environment:` beats env_file: permanent deletion can never be enabled in production.
+      SYSTEM_HARD_DELETE_ENABLED: 'false'
     depends_on:
       db:
         condition: service_healthy
