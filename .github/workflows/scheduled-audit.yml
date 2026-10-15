@@ -30,12 +30,18 @@ jobs:
       # Reads package-lock.json and queries the advisory DB — no install needed.
       # Audits the FULL tree, dev tooling included — wider than the PR gate in
       # quality-gate.yml, which only blocks on production dependencies.
+      # Pass/fail comes from scripts/audit-allowlist.mjs, which accepts only the
+      # advisory ids listed there (no fix released); the readable report below
+      # still lists everything.
       - name: Run npm audit (high+)
         id: audit
         run: |
           set +e
-          npm audit --audit-level=high | tee audit-output.txt
-          echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+          npm audit --audit-level=high > audit-output.txt
+          npm audit --json | node scripts/audit-allowlist.mjs | tee audit-gate.txt
+          code=${PIPESTATUS[1]}
+          cat audit-output.txt
+          echo "exit_code=${code}" >> "$GITHUB_OUTPUT"
 
       - name: Open or update tracking issue
         if: steps.audit.outputs.exit_code != '0'
@@ -46,7 +52,8 @@ jobs:
             const TITLE = 'Scheduled npm audit: high/critical advisories detected';
             const MAX_BODY = 6000;
 
-            let output = fs.readFileSync('audit-output.txt', 'utf8');
+            let output =
+              fs.readFileSync('audit-gate.txt', 'utf8') + '\n' + fs.readFileSync('audit-output.txt', 'utf8');
             if (output.length > MAX_BODY) {
               output = output.slice(0, MAX_BODY) + '\n… (truncated — run `npm audit` locally for the full report)';
             }
@@ -61,7 +68,7 @@ jobs:
               '',
               `Run: ${runUrl}`,
               '',
-              'Remediate on a `bugfix/npm-audit-*` branch (see prior audit PRs for the pattern); this issue auto-updates daily while advisories remain and can be closed once `npm audit --audit-level=high` exits 0.',
+              'Remediate on a `bugfix/npm-audit-*` branch (see prior audit PRs for the pattern); this issue auto-updates daily while advisories remain and can be closed once `npm audit --json | node scripts/audit-allowlist.mjs` exits 0.',
             ].join('\n');
 
             const { data: issues } = await github.rest.issues.listForRepo({
