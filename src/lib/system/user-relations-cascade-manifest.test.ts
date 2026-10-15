@@ -9,47 +9,13 @@
  *
  * `hardDeleteUser` pre-checks the two allowlisted relations and refuses instead.
  */
-import { readdirSync, readFileSync } from 'node:fs';
-import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { parsePrismaSchema } from '@/test/prisma-schema';
 
-const PRISMA_DIR = path.resolve(__dirname, '../../../prisma');
-
-interface Relation {
-  model: string;
-  field: string;
-  target: 'User' | 'OrganizationUser';
-  onDelete: 'Cascade' | 'SetNull' | 'Restrict' | 'NoAction' | 'SetDefault';
-}
-
-function parseRelations(): Relation[] {
-  const relations: Relation[] = [];
-  for (const file of readdirSync(PRISMA_DIR).filter((name) => name.endsWith('.prisma'))) {
-    let model: string | null = null;
-    for (const line of readFileSync(path.join(PRISMA_DIR, file), 'utf8').split('\n')) {
-      const modelMatch = /^model\s+(\w+)\s*\{/.exec(line);
-      if (modelMatch) {
-        model = modelMatch[1];
-        continue;
-      }
-      if (line.startsWith('}')) {
-        model = null;
-        continue;
-      }
-      const fieldMatch = /^\s+(\w+)\s+(User|OrganizationUser)(\?)?\s+@relation\((.*)\)/.exec(line);
-      // The owning side names its foreign key; the back-reference side does not.
-      if (!model || !fieldMatch || !fieldMatch[4].includes('fields:')) continue;
-      const [, field, target, optional, args] = fieldMatch;
-      const explicit = /onDelete:\s*(\w+)/.exec(args)?.[1];
-      relations.push({
-        model,
-        field,
-        target: target as Relation['target'],
-        onDelete: (explicit ?? (optional ? 'SetNull' : 'Restrict')) as Relation['onDelete'],
-      });
-    }
-  }
-  return relations;
+function parseRelations() {
+  return parsePrismaSchema().relations.filter(
+    (relation) => relation.target === 'User' || relation.target === 'OrganizationUser',
+  );
 }
 
 const ALLOWLIST = new Set(['Course.creator', 'Document.organizationUser']);

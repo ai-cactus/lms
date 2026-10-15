@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { isAdminRole, isWorkerRole } from '@/lib/rbac/role-utils';
 import { getRoles } from '@/lib/rbac/permissions';
 import { Eye, Trash2 } from 'lucide-react';
@@ -54,7 +54,11 @@ export default function SystemUsersClient({
   const [deletePreview, setDeletePreview] = useState<DeletePreview | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
+  // Every keystroke starts a fetch; only the newest may write, or a slower stale response overwrites the filtered list.
+  const latestRequestRef = useRef(0);
+
   const fetchUsers = useCallback(async () => {
+    const requestId = ++latestRequestRef.current;
     setLoading(true);
     try {
       const result = await getAllUsers({
@@ -65,13 +69,14 @@ export default function SystemUsersClient({
         orgFilter,
         statusFilter,
       });
+      if (requestId !== latestRequestRef.current) return;
       setUsers(result.users);
       setTotal(result.total);
       setTotalPages(result.totalPages);
     } catch (err) {
       logger.error({ msg: 'Failed to fetch users:', err: err });
     } finally {
-      setLoading(false);
+      if (requestId === latestRequestRef.current) setLoading(false);
     }
   }, [page, search, roleFilter, orgFilter, statusFilter]);
 

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Eye, RotateCcw, Trash2 } from 'lucide-react';
 import {
   getAllOrganizations,
@@ -66,7 +66,11 @@ export default function SystemOrganizationsClient({
   const [restorePreview, setRestorePreview] = useState<OrganizationRestorePreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
 
+  // Every keystroke starts a fetch; only the newest may write, or a slower stale response overwrites the filtered list.
+  const latestRequestRef = useRef(0);
+
   const fetchOrganizations = useCallback(async () => {
+    const requestId = ++latestRequestRef.current;
     setLoading(true);
     try {
       const result = await getAllOrganizations({
@@ -75,13 +79,14 @@ export default function SystemOrganizationsClient({
         search,
         statusFilter,
       });
+      if (requestId !== latestRequestRef.current) return;
       setOrganizations(result.organizations);
       setTotal(result.total);
       setTotalPages(result.totalPages);
     } catch (err) {
       logger.error({ msg: '[system] Failed to fetch organizations', err });
     } finally {
-      setLoading(false);
+      if (requestId === latestRequestRef.current) setLoading(false);
     }
   }, [page, search, statusFilter]);
 

@@ -27,7 +27,18 @@ import {
   previewUserHardDelete,
   type UserHardDeletePreview,
 } from '@/lib/system/hard-delete-user';
+import {
+  NOT_ACKNOWLEDGED_ORGANIZATION_REFUSAL,
+  NOT_SOFT_DELETED_ORGANIZATION_REFUSAL,
+  hardDeleteOrganization as hardDeleteOrganizationRecord,
+  previewOrganizationHardDelete,
+  type OrganizationHardDeletePreview,
+} from '@/lib/system/hard-delete-organization';
 import { HARD_DELETE_DISABLED_REFUSAL, isHardDeleteEnabled } from '@/lib/system/hard-delete-flag';
+import {
+  ORGANIZATION_CONFIRMATION_MISMATCH_REFUSAL,
+  ORGANIZATION_DELETE_CONFIRM_WORD,
+} from '@/lib/system/organization-delete-confirm';
 import { audit, getClientContext } from '@/lib/audit';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { verifySystemAdminCookie, SYSTEM_ADMIN_COOKIE } from '@/lib/system-auth';
@@ -970,9 +981,6 @@ export async function getOrganizationRestorePreview(
   return previewOrganizationRestore(organizationId);
 }
 
-/** The word typed, alongside the organization's exact name, to confirm a delete. */
-const ORGANIZATION_DELETE_CONFIRM_WORD = 'DELETE';
-
 function revalidateOrganizationPages(organizationId: string): void {
   revalidatePath('/system');
   revalidatePath('/system/organizations');
@@ -1007,10 +1015,7 @@ export async function deleteOrganization(
       confirmation.confirmName !== organization.name ||
       confirmation.confirmWord !== ORGANIZATION_DELETE_CONFIRM_WORD
     ) {
-      return {
-        success: false,
-        error: `Type the organization name and ${ORGANIZATION_DELETE_CONFIRM_WORD} exactly to confirm.`,
-      };
+      return { success: false, error: ORGANIZATION_CONFIRMATION_MISMATCH_REFUSAL };
     }
 
     const result = await softDeleteOrganization(organizationId, await systemClientContext());
@@ -1075,6 +1080,97 @@ export async function restoreOrganization(
       err: error,
     });
     return { success: false, error: 'Failed to restore organization. Please try again.' };
+  }
+}
+
+// ── Permanent Organization Delete ────────────────────────────────────────────
+
+export async function getOrganizationHardDeletePreview(
+  organizationId: string,
+): Promise<OrganizationHardDeletePreview | null> {
+  if (!(await verifySystemAdminCookie())) {
+    throw new Error('Unauthorized');
+  }
+  return previewOrganizationHardDelete(organizationId);
+}
+
+/**
+ * Permanently deletes an already soft-deleted organization through the shared
+ * {@link hardDeleteOrganizationRecord}. The typed name and word and the
+ * acknowledgement are re-validated by the lib; the client checks are a
+ * convenience, not the gate.
+ */
+export async function hardDeleteOrganization(
+  organizationId: string,
+  confirmation: {
+    confirmName: string;
+    confirmWord: string;
+    acknowledged: boolean;
+    cancelSubscription: boolean;
+  },
+): Promise<{
+  success: boolean;
+  error?: string;
+  storageFailures?: number;
+  subscriptionCancelled?: boolean;
+}> {
+  if (!(await verifySystemAdminCookie())) {
+    throw new Error('Unauthorized');
+  }
+
+  if (!isHardDeleteEnabled()) return { success: false, error: HARD_DELETE_DISABLED_REFUSAL };
+
+  try {
+    const rateLimitRefusal = await destructiveActionRateLimitRefusal();
+    if (rateLimitRefusal) return { success: false, error: rateLimitRefusal };
+
+    const result = await hardDeleteOrganizationRecord(
+      organizationId,
+      {
+        confirmName: String(confirmation?.confirmName ?? ''),
+        confirmWord: String(confirmation?.confirmWord ?? ''),
+        acknowledged: confirmation?.acknowledged === true,
+        cancelSubscription: confirmation?.cancelSubscription === true,
+      },
+      await systemClientContext(),
+    );
+
+    switch (result.status) {
+      case 'disabled':
+        return { success: false, error: HARD_DELETE_DISABLED_REFUSAL };
+      case 'not_found':
+        return { success: false, error: 'Organization not found' };
+      case 'not_soft_deleted':
+        return { success: false, error: NOT_SOFT_DELETED_ORGANIZATION_REFUSAL };
+      case 'confirmation_mismatch':
+        return { success: false, error: ORGANIZATION_CONFIRMATION_MISMATCH_REFUSAL };
+      case 'not_acknowledged':
+        return { success: false, error: NOT_ACKNOWLEDGED_ORGANIZATION_REFUSAL };
+      case 'refused':
+        return {
+          success: false,
+          error: result.message,
+          subscriptionCancelled: result.subscriptionCancelled,
+        };
+      case 'deleted':
+        revalidateOrganizationPages(organizationId);
+        revalidatePath('/system/users');
+        return {
+          success: true,
+          storageFailures: result.storage.failed,
+          subscriptionCancelled: result.subscription === 'cancelled',
+        };
+    }
+  } catch (error) {
+    logger.error({
+      msg: '[system] Failed to permanently delete organization',
+      orgId: organizationId,
+      err: error,
+    });
+    return {
+      success: false,
+      error: 'Failed to permanently delete organization. Please try again.',
+    };
   }
 }
 

@@ -266,6 +266,9 @@ test.describe('System organization soft delete and restore', () => {
     await openOrganizationsList(page, f, 'active');
     await expect(page.getByText(f.orgName)).toBeVisible({ timeout: 15000 });
 
+    await expect(page.getByRole('button', { name: 'Row actions' })).toHaveCount(1, {
+      timeout: 15000,
+    });
     await page.getByRole('button', { name: 'Row actions' }).click();
     await page.getByRole('menuitem', { name: 'Delete' }).click();
 
@@ -344,6 +347,9 @@ test.describe('System organization soft delete and restore', () => {
     // ── Restore ──────────────────────────────────────────────────────────────
     await openOrganizationsList(page, f, 'deleted');
     await expect(page.getByText(f.orgName)).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('button', { name: 'Row actions' })).toHaveCount(1, {
+      timeout: 15000,
+    });
     await page.getByRole('button', { name: 'Row actions' }).click();
     await page.getByRole('menuitem', { name: 'Restore' }).click();
 

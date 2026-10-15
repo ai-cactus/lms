@@ -2,7 +2,7 @@
  * The /system organizations table: active organizations by default, a status
  * filter for deleted ones, and the right row action for each state.
  */
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -151,5 +151,72 @@ describe('SystemOrganizationsClient — rows', () => {
     expect(screen.queryByRole('menuitem', { name: 'Delete' })).not.toBeInTheDocument();
     await user.click(await screen.findByRole('menuitem', { name: 'Restore' }));
     expect(mockRestorePreview).toHaveBeenCalledWith('org-2');
+  });
+});
+
+describe('SystemOrganizationsClient — out-of-order responses', () => {
+  function deferred<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((r) => {
+      resolve = r;
+    });
+    return { promise, resolve };
+  }
+  const page = (organizations: SystemOrganizationRow[]) => ({
+    organizations,
+    total: organizations.length,
+    page: 1,
+    totalPages: 1,
+  });
+
+  it('keeps the newest search results when an earlier, slower response arrives last', async () => {
+    const stale = deferred<ReturnType<typeof page>>();
+    const fresh = deferred<ReturnType<typeof page>>();
+    mockGetAll.mockReset();
+    mockGetAll
+      .mockResolvedValueOnce(page([LIVE]))
+      .mockReturnValueOnce(stale.promise)
+      .mockReturnValueOnce(fresh.promise);
+    const user = userEvent.setup();
+    renderClient();
+    await waitFor(() => expect(mockGetAll).toHaveBeenCalledTimes(1));
+
+    await user.type(screen.getByPlaceholderText('Search by name or slug...'), 'gb');
+    await waitFor(() => expect(mockGetAll).toHaveBeenCalledTimes(3));
+
+    fresh.resolve(page([GONE]));
+    expect(await screen.findByText('Gone Care')).toBeVisible();
+    await act(async () => {
+      stale.resolve(page([LIVE]));
+    });
+
+    expect(screen.getByText('Gone Care')).toBeVisible();
+    expect(screen.queryByText('Acme Health')).not.toBeInTheDocument();
+    expect(screen.queryByText('Loading organizations...')).not.toBeInTheDocument();
+  });
+
+  it('stays loading until the newest request settles, even if an older one finishes first', async () => {
+    const stale = deferred<ReturnType<typeof page>>();
+    const fresh = deferred<ReturnType<typeof page>>();
+    mockGetAll.mockReset();
+    mockGetAll
+      .mockResolvedValueOnce(page([LIVE]))
+      .mockReturnValueOnce(stale.promise)
+      .mockReturnValueOnce(fresh.promise);
+    const user = userEvent.setup();
+    renderClient();
+    await waitFor(() => expect(mockGetAll).toHaveBeenCalledTimes(1));
+
+    await user.type(screen.getByPlaceholderText('Search by name or slug...'), 'gb');
+    await waitFor(() => expect(mockGetAll).toHaveBeenCalledTimes(3));
+
+    await act(async () => {
+      stale.resolve(page([LIVE]));
+    });
+    expect(screen.getByText('Loading organizations...')).toBeVisible();
+
+    fresh.resolve(page([GONE]));
+    expect(await screen.findByText('Gone Care')).toBeVisible();
+    expect(screen.queryByText('Loading organizations...')).not.toBeInTheDocument();
   });
 });

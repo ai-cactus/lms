@@ -15,7 +15,9 @@
  * What it deliberately leaves alone: billing (the Stripe subscription keeps
  * running and the webhook keeps syncing it), pending invites (unacceptable
  * while the org is deleted, live again on restore), the join code, every
- * course, document, enrolment, certificate and stored file. No sessionVersion
+ * course, document, enrolment, certificate and stored file. Only the separate,
+ * flag-gated permanent delete (`hard-delete-organization.ts`) removes those,
+ * and only for an organization this function has already deleted. No sessionVersion
  * bump: the membership lookups refuse a deleted org, which ends its sessions on
  * the next JWT decode without signing multi-org users out of their other orgs.
  *

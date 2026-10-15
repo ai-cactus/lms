@@ -9,4 +9,4 @@ metadata:
 
 **Why:** PR B's plan asked for a "cascade manifest test from the generated DMMF"; that data does not exist at runtime here.
 
-**How to apply:** for any test asserting Cascade/SetNull/Restrict on relations into User/OrganizationUser, read and regex the split schema files (`prisma/*.prisma`, `@relation(... onDelete: X)`), or add a dev dependency only with approval. Related: [[project_offline_migrations]].
+**How to apply:** for any test asserting Cascade/SetNull/Restrict, use the shared line parser `parsePrismaSchema()` in `src/test/prisma-schema.ts` (relations with Prisma's default onDelete, scalar fields, models); both /system manifest tests (user + organization) use it. Do not copy the regex into a new test. Related: [[project_offline_migrations]], [[gotcha-org-hard-delete-cross-tenant-edges]].

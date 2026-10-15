@@ -16,9 +16,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Field } from '@/components/ui/field';
 import { Alert } from '@/components/ui/alert';
+import { ORGANIZATION_DELETE_CONFIRM_WORD } from '@/lib/system/organization-delete-confirm';
 import CountTable, { type CountRow } from './CountTable';
-
-const CONFIRM_WORD = 'DELETE';
 
 interface DeleteOrganizationModalProps {
   preview: OrganizationSoftDeletePreview;
@@ -38,7 +37,8 @@ export default function DeleteOrganizationModal({
   const [error, setError] = useState('');
 
   const { organization, refusal, members, pendingInvites, subscription, retained } = preview;
-  const confirmed = confirmName === organization.name && confirmWord === CONFIRM_WORD;
+  const confirmed =
+    confirmName === organization.name && confirmWord === ORGANIZATION_DELETE_CONFIRM_WORD;
   const billingActive = subscription !== null && subscription.status !== 'canceled';
 
   async function handleDelete() {
@@ -170,12 +170,12 @@ export default function DeleteOrganizationModal({
                   autoComplete="off"
                 />
               </Field>
-              <Field label="Type DELETE to confirm:">
+              <Field label={`Type ${ORGANIZATION_DELETE_CONFIRM_WORD} to confirm:`}>
                 <Input
                   type="text"
                   value={confirmWord}
                   onChange={(e) => setConfirmWord(e.target.value)}
-                  placeholder={CONFIRM_WORD}
+                  placeholder={ORGANIZATION_DELETE_CONFIRM_WORD}
                   autoComplete="off"
                 />
               </Field>

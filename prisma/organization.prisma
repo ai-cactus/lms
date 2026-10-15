@@ -40,7 +40,9 @@ model Organization {
   // membership active at that moment is deactivated with `deactivatedAt` set to
   // this EXACT instant — restore reactivates precisely the memberships whose
   // `deactivatedAt` equals it, so the two must always be written from one Date.
-  // Records stay; see src/lib/system/delete-organization.ts.
+  // Records stay until the organization is permanently deleted from /system
+  // (src/lib/system/hard-delete-organization.ts); see
+  // src/lib/system/delete-organization.ts.
   deletedAt                   DateTime?                        @map("deleted_at")
   // How often batched (Tier 2) notifications are emailed. Per-type opt-outs
   // stay per-user on NotificationPreference; this is the org-wide cadence.
