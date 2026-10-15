@@ -1,6 +1,6 @@
 /**
- * The switch for the /system console's PERMANENT deletes (users now,
- * organizations next). Off unless `SYSTEM_HARD_DELETE_ENABLED` is exactly the
+ * The switch for the /system console's PERMANENT deletes of users and
+ * organizations. Off unless `SYSTEM_HARD_DELETE_ENABLED` is exactly the
  * string `'true'`, and read on every call so flipping it needs no rebuild.
  *
  * Enabled on staging only. `docker-compose.production.yml` pins it to `'false'`

@@ -11,9 +11,16 @@
  *
  * This script finds every organization with zero membership rows and deletes it.
  * A soft-deleted organization (`deletedAt` set) is skipped: it is restorable
- * from /system, and its fate belongs to that console.
+ * from /system, and its fate (restore or permanent delete) belongs to that
+ * console.
  * Facilities, invites and the rest of the org-owned graph go with it via the
- * schema's ON DELETE CASCADE.
+ * schema's ON DELETE CASCADE. That single DELETE works here only because a
+ * memberless organization normally has no enrolments or certificates on its
+ * courses: on a populated one the cascade trips Restrict edges
+ * (`Enrollment.course`, `Certificate.course`, `QuizAttempt.quiz`) and the whole
+ * DELETE fails. A populated organization is removed from /system instead
+ * (`src/lib/system/hard-delete-organization.ts`), which deletes in an explicit
+ * order.
  *
  * ⚠  The deletion is IRREVERSIBLE. Preview it with `--dry-run` first, and
  * double-check which DATABASE_URL you are pointed at.

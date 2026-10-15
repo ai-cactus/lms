@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { ArrowLeft, AlertTriangle, RotateCcw, Trash2 } from 'lucide-react';
 import {
   getOrganizationDeletePreview,
+  getOrganizationHardDeletePreview,
   getOrganizationRestorePreview,
 } from '@/app/actions/system-admin';
 import type { SystemOrganizationDetail } from '@/app/actions/system-admin';
@@ -13,7 +14,9 @@ import type {
   OrganizationRestorePreview,
   OrganizationSoftDeletePreview,
 } from '@/lib/system/delete-organization';
+import type { OrganizationHardDeletePreview } from '@/lib/system/hard-delete-organization';
 import DeleteOrganizationModal from './DeleteOrganizationModal';
+import HardDeleteOrganizationModal from './HardDeleteOrganizationModal';
 import RestoreOrganizationModal from './RestoreOrganizationModal';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/alert';
@@ -30,6 +33,7 @@ import { logger } from '@/lib/logger';
 
 interface OrganizationDetailClientProps {
   organization: SystemOrganizationDetail;
+  hardDeleteEnabled: boolean;
 }
 
 function formatDate(date: Date | string): string {
@@ -59,11 +63,18 @@ function SummaryRow({ label, value }: { label: string; value: React.ReactNode })
   );
 }
 
-export default function OrganizationDetailClient({ organization }: OrganizationDetailClientProps) {
+export default function OrganizationDetailClient({
+  organization,
+  hardDeleteEnabled,
+}: OrganizationDetailClientProps) {
   const router = useRouter();
   const [deletePreview, setDeletePreview] = useState<OrganizationSoftDeletePreview | null>(null);
   const [restorePreview, setRestorePreview] = useState<OrganizationRestorePreview | null>(null);
+  const [hardDeletePreview, setHardDeletePreview] = useState<OrganizationHardDeletePreview | null>(
+    null,
+  );
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [hardDeleteLoading, setHardDeleteLoading] = useState(false);
 
   async function handleDeleteClick() {
     setPreviewLoading(true);
@@ -86,6 +97,21 @@ export default function OrganizationDetailClient({ organization }: OrganizationD
       logger.error({ msg: '[system] Failed to load organization restore preview', err });
     } finally {
       setPreviewLoading(false);
+    }
+  }
+
+  async function handleHardDeleteClick() {
+    setHardDeleteLoading(true);
+    try {
+      const preview = await getOrganizationHardDeletePreview(organization.id);
+      if (preview) setHardDeletePreview(preview);
+    } catch (err) {
+      logger.error({
+        msg: '[system] Failed to load the organization permanent delete preview',
+        err,
+      });
+    } finally {
+      setHardDeleteLoading(false);
     }
   }
 
@@ -290,6 +316,37 @@ export default function OrganizationDetailClient({ organization }: OrganizationD
             Delete This Organization
           </Button>
         </div>
+      )}
+
+      {organization.deletedAt && hardDeleteEnabled && (
+        <div className="mt-6 rounded-xl border border-error/30 bg-error/10 p-6">
+          <div className="flex items-center gap-2 font-semibold text-error">
+            <AlertTriangle className="size-5" aria-hidden="true" />
+            Permanent deletion
+          </div>
+          <p className="mt-2 text-sm text-text-secondary">
+            This organization is already deleted. Permanently deleting removes it and every record
+            it owns. User accounts are kept. This cannot be undone.
+          </p>
+          <Button
+            variant="destructive"
+            onClick={handleHardDeleteClick}
+            disabled={hardDeleteLoading}
+            loading={hardDeleteLoading}
+            className="mt-4"
+          >
+            <Trash2 className="size-4" aria-hidden="true" />
+            Permanently delete
+          </Button>
+        </div>
+      )}
+
+      {hardDeletePreview && (
+        <HardDeleteOrganizationModal
+          preview={hardDeletePreview}
+          onClose={() => setHardDeletePreview(null)}
+          onSuccess={() => router.push('/system/organizations')}
+        />
       )}
 
       {deletePreview && (

@@ -99,11 +99,13 @@ model Course {
   courseCategory              CourseCategory?          @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   approvedBy                  OrganizationUser?        @relation("CourseApprover", fields: [approvedByOrgUserId], references: [id], onDelete: SetNull)
   /// `onDelete: Restrict` refuses a hard delete of an OrganizationUser that
-  /// authored a course. No product path hard-deletes one: `removeStaff`
-  /// deactivates a membership, and deleting a user (Q-23, `softDeleteUser`) is
-  /// a soft delete that keeps every membership row. So the authorship always
-  /// resolves, and a stray hard delete fails safe here (it is refused) rather
-  /// than orphaning the course. Contrast `Document.organizationUser`.
+  /// authored a course. `removeStaff` deactivates a membership and deleting a
+  /// user (Q-23, `softDeleteUser`) keeps every membership row. The two
+  /// permanent /system deletes respect it: `hardDeleteUser` refuses an author,
+  /// and `hardDeleteOrganization` deletes the organization's courses before its
+  /// memberships (and refuses when its members authored courses elsewhere). A
+  /// stray hard delete fails safe here rather than orphaning the course.
+  /// Contrast `Document.organizationUser`.
   creator                     OrganizationUser         @relation("CourseCreator", fields: [createdByOrgUserId], references: [id], onDelete: Restrict)
   organization                Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   archivedBy                  OrganizationUser?        @relation("CourseArchiver", fields: [archivedByOrgUserId], references: [id], onDelete: SetNull)

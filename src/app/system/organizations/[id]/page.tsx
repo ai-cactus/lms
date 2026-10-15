@@ -2,6 +2,7 @@ import React from 'react';
 import { notFound, redirect } from 'next/navigation';
 import { checkSystemAuth, getOrganizationDetail } from '@/app/actions/system-admin';
 import OrganizationDetailClient from '@/components/system/OrganizationDetailClient';
+import { isHardDeleteEnabled } from '@/lib/system/hard-delete-flag';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,5 +23,10 @@ export default async function OrganizationDetailPage({
     notFound();
   }
 
-  return <OrganizationDetailClient organization={organization} />;
+  return (
+    <OrganizationDetailClient
+      organization={organization}
+      hardDeleteEnabled={isHardDeleteEnabled()}
+    />
+  );
 }
