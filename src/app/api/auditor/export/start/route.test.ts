@@ -202,3 +202,29 @@ describe('POST /api/auditor/export/start — stamped facility scope', () => {
     expect(mockJobCreate).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * RISK-19: the job row records the organization it was run for, so status and
+ * download can refuse it elsewhere and the permanent org delete can find it.
+ */
+describe('POST /api/auditor/export/start — organization stamp', () => {
+  const stampedPayload = () => mockJobCreate.mock.calls[0][0].data.payload;
+
+  it('stamps the session organization into the job payload', async () => {
+    setCaller('hr');
+
+    const res = await POST(req({ scope: 'org' }));
+
+    expect(res.status).toBe(200);
+    expect(stampedPayload().organizationId).toBe(ORG);
+  });
+
+  it('ignores an organizationId supplied in the request body', async () => {
+    setCaller('hr');
+
+    await POST(req({ scope: 'org', organizationId: 'org-attacker' }));
+
+    expect(stampedPayload().organizationId).toBe(ORG);
+    expect(mockQueueAdd.mock.calls[0][1].organizationId).toBe(ORG);
+  });
+});

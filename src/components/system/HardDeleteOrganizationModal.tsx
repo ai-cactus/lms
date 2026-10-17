@@ -97,7 +97,7 @@ export default function HardDeleteOrganizationModal({
     { label: 'Emails', count: destroyed.emailMessages },
     { label: 'Notification events', count: destroyed.notificationEvents },
     { label: 'Cycle-summary runs', count: destroyed.cycleSummaryRuns },
-    { label: 'Course-generation jobs', count: destroyed.jobs },
+    { label: 'Course-generation and audit-export jobs', count: destroyed.jobs },
     { label: 'Stored files', count: preview.storageObjects },
   ].filter((row) => row.count > 0);
 

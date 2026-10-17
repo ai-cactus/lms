@@ -480,13 +480,29 @@ export function getExportWorker() {
   worker.on('failed', async (job, err) => {
     logger.error({ msg: `Export Job ${job?.id} failed:`, err: err });
     if (job?.data?.dbJobId) {
-      await prisma.job.update({
-        where: { id: job.data.dbJobId },
-        data: {
-          status: 'failed',
-          payload: { progress: 0, message: 'Export failed due to server error' },
-        },
-      });
+      try {
+        const existing = await prisma.job.findUnique({
+          where: { id: job.data.dbJobId },
+          select: { payload: true },
+        });
+        // Merged, not replaced: the organization stamp is what lets the
+        // permanent org delete find this row (RISK-19), and `facilityIds` is
+        // what status/download judge a facility-bound caller by.
+        const prev = (existing?.payload as Record<string, unknown>) ?? {};
+        await prisma.job.update({
+          where: { id: job.data.dbJobId },
+          data: {
+            status: 'failed',
+            payload: { ...prev, progress: 0, message: 'Export failed due to server error' },
+          },
+        });
+      } catch (updateErr) {
+        logger.error({
+          msg: '[auditor] Failed to record export job failure',
+          err: updateErr,
+          jobId: job.data.dbJobId,
+        });
+      }
     }
   });
 

@@ -7,6 +7,7 @@ import { Document, Packer, Paragraph, HeadingLevel } from 'docx';
 import { logger } from '@/lib/logger';
 import { audit, getClientContext } from '@/lib/audit';
 import { flattenAuditReport } from '@/lib/audit-reports/flatten';
+import { AUDITOR_EXPORT_JOB_TYPE, exportJobOrganizationId } from '@/lib/audit-reports/export-job';
 import type { AuditReportResult } from '@/lib/audit-reports/types';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ jobId: string }> }) {
@@ -38,9 +39,27 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ jobI
       return NextResponse.json({ error: 'Auditor access not enabled' }, { status: 403 });
     }
 
-    const job = await prisma.job.findUnique({ where: { id: jobId } });
+    // Only export jobs are served here: another job's `result` (e.g. a
+    // generated course) is not an audit report, so it reads as missing.
+    const job = await prisma.job.findFirst({
+      where: { id: jobId, type: AUDITOR_EXPORT_JOB_TYPE },
+    });
     if (!job || job.status !== 'completed') {
       return NextResponse.json({ error: 'Job not ready or not found' }, { status: 404 });
+    }
+
+    // RISK-19: a stamped report is releasable only in the organization it was
+    // run for. Owner membership alone released a multi-org owner's report to
+    // their other organizations. Unstamped (legacy) jobs fall through to the
+    // membership check below.
+    const jobOrganizationId = exportJobOrganizationId(job.payload);
+    if (jobOrganizationId !== undefined && jobOrganizationId !== organizationId) {
+      logger.warn({
+        msg: '[auditor] Download refused — job belongs to another organization',
+        userId: authResult.ctx.userId,
+        jobId,
+      });
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     // Tenant isolation: the job must belong to a member of the caller's org.

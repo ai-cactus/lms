@@ -14,17 +14,17 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockAuthorize, mockJobFindUnique, mockOrgUserFindFirst, mockListAccessibleFacilities } =
+const { mockAuthorize, mockJobFindFirst, mockOrgUserFindFirst, mockListAccessibleFacilities } =
   vi.hoisted(() => ({
     mockAuthorize: vi.fn(),
-    mockJobFindUnique: vi.fn(),
+    mockJobFindFirst: vi.fn(),
     mockOrgUserFindFirst: vi.fn(),
     mockListAccessibleFacilities: vi.fn(),
   }));
 
 vi.mock('@/lib/prisma', () => {
   const prisma = {
-    job: { findUnique: mockJobFindUnique },
+    job: { findFirst: mockJobFindFirst },
     organizationUser: { findFirst: mockOrgUserFindFirst },
   };
   return { prisma, default: prisma };
@@ -67,7 +67,7 @@ function setCaller(role: string) {
 }
 
 function setJob(userId: string, facilityIds: unknown) {
-  mockJobFindUnique.mockResolvedValue({
+  mockJobFindFirst.mockResolvedValue({
     id: 'job-1',
     userId,
     status: 'completed',
@@ -142,7 +142,7 @@ describe('GET export job status', () => {
  */
 describe('GET export job status — row count', () => {
   it('surfaces the row count the worker recorded', async () => {
-    mockJobFindUnique.mockResolvedValue({
+    mockJobFindFirst.mockResolvedValue({
       id: 'job-1',
       userId: CALLER,
       status: 'completed',
@@ -155,7 +155,7 @@ describe('GET export job status — row count', () => {
   });
 
   it('omits the count for a job that never recorded one', async () => {
-    mockJobFindUnique.mockResolvedValue({
+    mockJobFindFirst.mockResolvedValue({
       id: 'job-1',
       userId: CALLER,
       status: 'completed',
@@ -165,5 +165,122 @@ describe('GET export job status — row count', () => {
     const res = await GET(req(), params);
 
     expect(await res.json()).not.toHaveProperty('rowCount');
+  });
+});
+
+/**
+ * RISK-19: owner membership alone is not the organization the job was run for.
+ * A user in orgs A and B runs an export in A; an auditor-entitled member of B
+ * holding the job id passed the membership check, since the owner IS a member
+ * of B. A stamped job is now visible only in its own organization.
+ */
+describe('GET export job status — organization stamp', () => {
+  function setStampedJob(userId: string, organizationId: string | undefined) {
+    mockJobFindFirst.mockResolvedValue({
+      id: 'job-1',
+      userId,
+      status: 'completed',
+      payload: {
+        ...(organizationId === undefined ? {} : { organizationId }),
+        facilityIds: null,
+        progress: 100,
+      },
+    });
+  }
+
+  beforeEach(() => {
+    setCaller('owner');
+  });
+
+  it('allows a job stamped with the caller organization', async () => {
+    setStampedJob(OTHER, ORG);
+
+    const res = await GET(req(), params);
+
+    expect(res.status).toBe(200);
+  });
+
+  it('refuses a job stamped for another organization even though its owner is a member of the caller org', async () => {
+    setStampedJob(OTHER, 'org-2');
+    mockOrgUserFindFirst.mockResolvedValue({ id: 'ou-other-in-org-1' });
+
+    const res = await GET(req(), params);
+
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: 'Forbidden' });
+  });
+
+  it('refuses the owner too when polling from a different organization', async () => {
+    setStampedJob(CALLER, 'org-2');
+
+    const res = await GET(req(), params);
+
+    expect(res.status).toBe(403);
+  });
+
+  it('answers a stamp mismatch exactly as it answers a non-member owner', async () => {
+    setStampedJob(OTHER, undefined);
+    mockOrgUserFindFirst.mockResolvedValue(null);
+    const nonMember = await GET(req(), params);
+
+    setStampedJob(OTHER, 'org-2');
+    mockOrgUserFindFirst.mockResolvedValue({ id: 'ou-other-in-org-1' });
+    const mismatch = await GET(req(), params);
+
+    expect(mismatch.status).toBe(nonMember.status);
+    expect(await mismatch.json()).toEqual(await nonMember.json());
+  });
+
+  it('falls back to owner membership for a legacy job with no stamp — member allowed', async () => {
+    setStampedJob(OTHER, undefined);
+    mockOrgUserFindFirst.mockResolvedValue({ id: 'ou-other' });
+
+    const res = await GET(req(), params);
+
+    expect(res.status).toBe(200);
+  });
+
+  it('falls back to owner membership for a legacy job with no stamp — non-member refused', async () => {
+    setStampedJob(OTHER, undefined);
+    mockOrgUserFindFirst.mockResolvedValue(null);
+
+    const res = await GET(req(), params);
+
+    expect(res.status).toBe(403);
+  });
+});
+
+/**
+ * Only export jobs are polled here. Another job type (e.g. a same-org course
+ * generation) must read exactly like a missing job.
+ */
+describe('GET export job status — job type', () => {
+  type JobRow = { id: string; type: string; userId: string; status: string; payload: unknown };
+
+  /** Answers the query the way the database would, honouring `where.id` and `where.type`. */
+  function storeJob(row: JobRow) {
+    mockJobFindFirst.mockImplementation(
+      async ({ where }: { where: { id: string; type?: string } }) =>
+        where.id === row.id && (where.type === undefined || where.type === row.type) ? row : null,
+    );
+  }
+
+  it('answers a same-org job of another type exactly as a missing job', async () => {
+    setCaller('owner');
+    mockJobFindFirst.mockResolvedValue(null);
+    const missing = await GET(req(), params);
+
+    storeJob({
+      id: 'job-1',
+      type: 'GENERATE_V46_COURSE',
+      userId: CALLER,
+      status: 'completed',
+      payload: { organizationId: ORG },
+    });
+    const otherType = await GET(req(), params);
+
+    expect(otherType.status).toBe(404);
+    expect(await otherType.json()).toEqual({ error: 'Job not found' });
+    expect(await missing.json()).toEqual({ error: 'Job not found' });
   });
 });

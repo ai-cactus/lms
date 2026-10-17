@@ -8,6 +8,7 @@ import { auditorExportQueue } from '@/lib/queue/auditor-export-queue';
 import { getExportWorker } from '@/lib/queue/auditor-export-worker';
 import { logger } from '@/lib/logger';
 import { resolveDateRange } from '@/lib/audit-reports/date-range';
+import { AUDITOR_EXPORT_JOB_TYPE } from '@/lib/audit-reports/export-job';
 
 type Scope = 'org' | 'course' | 'staff' | 'all-courses' | 'all-staff';
 
@@ -128,10 +129,14 @@ export async function POST(req: NextRequest) {
 
     const dbJob = await prisma.job.create({
       data: {
-        type: 'AUDITOR_PACK_EXPORT',
+        type: AUDITOR_EXPORT_JOB_TYPE,
         userId,
         status: 'queued',
         payload: {
+          // RISK-19: from the session, never the body. Status and download
+          // release the job only within this organization, and the /system
+          // permanent org delete finds the job's report by it.
+          organizationId,
           progress: 0,
           message: 'Queued for export...',
           scope,
