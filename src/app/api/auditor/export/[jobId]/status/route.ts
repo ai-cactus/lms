@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { authorize } from '@/lib/rbac/authorize';
 import { resolveDataFacilityIds } from '@/lib/facility/staff-where';
+import { AUDITOR_EXPORT_JOB_TYPE, exportJobOrganizationId } from '@/lib/audit-reports/export-job';
 import { logger } from '@/lib/logger';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ jobId: string }> }) {
@@ -18,9 +19,26 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ jobI
       return NextResponse.json({ error: 'Missing jobId' }, { status: 400 });
     }
 
-    const job = await prisma.job.findUnique({ where: { id: jobId } });
+    // Only export jobs are served here; any other job type reads as missing.
+    const job = await prisma.job.findFirst({
+      where: { id: jobId, type: AUDITOR_EXPORT_JOB_TYPE },
+    });
     if (!job) {
       return NextResponse.json({ error: 'Job not found' }, { status: 404 });
+    }
+
+    // RISK-19: a stamped job is visible only in the organization it was run
+    // for, even to its owner — owner membership alone admitted a multi-org
+    // owner's other organizations. Unstamped (legacy) jobs fall through to the
+    // membership check below.
+    const jobOrganizationId = exportJobOrganizationId(job.payload);
+    if (jobOrganizationId !== undefined && jobOrganizationId !== organizationId) {
+      logger.warn({
+        msg: '[auditor] Status refused — job belongs to another organization',
+        userId,
+        jobId,
+      });
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     // Ensure they only poll their own org's jobs (though job IDs are UUIDs)

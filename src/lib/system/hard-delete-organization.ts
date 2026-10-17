@@ -230,9 +230,10 @@ const DELETE_STEPS: readonly DeleteStep[] = [
     run: (tx, organizationId) => tx.cycleSummaryRun.deleteMany({ where: { organizationId } }),
   },
   {
-    // Course-generation jobs stamp the organization they generate for (SEC-14)
-    // and their result holds the generated course. Jobs without the stamp stay
-    // with their user, who is kept.
+    // Course-generation jobs (SEC-14) and auditor exports (RISK-19) stamp the
+    // organization they run for; their result holds the generated course or the
+    // org's audit report. Jobs without the stamp — including exports created
+    // before it existed — stay with their user, who is kept.
     model: 'Job',
     run: (tx, organizationId) =>
       tx.job.deleteMany({
@@ -500,9 +501,9 @@ async function countCrossOrganizationUsage(
 
 /**
  * Running work that would fail, or orphan its output, once its rows are gone.
- * `Job` carries only a user id (plus the SEC-14 organization stamp on course
- * generation), so a member's running job for another organization also waits
- * here: a transient over-refusal, accepted.
+ * `Job` carries only a user id (plus the organization stamp on course
+ * generation, SEC-14, and auditor exports, RISK-19), so a member's running job
+ * for another organization also waits here: a transient over-refusal, accepted.
  */
 async function countRunningWork(client: RawClient, organizationId: string): Promise<number> {
   const members = await client.organizationUser.findMany({
