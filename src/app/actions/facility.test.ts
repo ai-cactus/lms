@@ -189,7 +189,7 @@ describe('updateFacility() — supervisor own-facility exception', () => {
       staffCount: '500+',
       licenseNumber: 'HACKED-001',
       programServices: ['aging'],
-      complianceDocumentUrl: 'gs://evil/doc.pdf',
+      complianceDocumentName: 'evil.pdf',
       phone: '555-0000',
     });
 
@@ -225,6 +225,24 @@ describe('updateFacility() — owner is allowed', () => {
     expect(result.success).toBe(true);
     expect(mockFacilityUpdate).toHaveBeenCalledOnce();
     expect(mockFacilityUpdate.mock.calls[0][0].where).toEqual({ id: 'fac-42' });
+    expect(mockFacilityUpdate.mock.calls[0][0].data.phone).toBe('555-9000');
+  });
+
+  // SEC-20: only uploadComplianceDocument may set the URI, from a key it builds
+  // itself. A hand-crafted Server Action payload carrying one must not land.
+  it('ignores a client-supplied complianceDocumentUrl', async () => {
+    mockAuth.mockResolvedValue(makeSession('owner'));
+    mockOrgUserFacilityFindFirst.mockResolvedValue({ facilityId: 'fac-42' });
+
+    const payload = {
+      phone: '555-9000',
+      complianceDocumentUrl: 'gcs://bucket/organizations/other-org/compliance/1-secret.pdf',
+    } as Parameters<typeof updateFacility>[0];
+
+    const result = await updateFacility(payload);
+
+    expect(result.success).toBe(true);
+    expect(mockFacilityUpdate.mock.calls[0][0].data).not.toHaveProperty('complianceDocumentUrl');
     expect(mockFacilityUpdate.mock.calls[0][0].data.phone).toBe('555-9000');
   });
 });

@@ -36,7 +36,6 @@ interface OrganizationUpdateData {
   primaryBusinessType?: string;
   additionalBusinessTypes?: string[];
   programServices?: string[];
-  complianceDocumentUrl?: string;
   complianceDocumentName?: string;
 }
 
@@ -108,7 +107,8 @@ export async function updateOrganization(data: OrganizationUpdateData) {
           timezone: data.timezone ?? (data.state ? deriveTimezoneFromState(data.state) : undefined),
           licenseNumber: data.licenseNumber,
           programServices: data.programServices ?? undefined,
-          complianceDocumentUrl: data.complianceDocumentUrl,
+          // complianceDocumentUrl is never client-writable (SEC-20): only
+          // uploadComplianceDocument sets it, from a key it builds itself.
           complianceDocumentName: data.complianceDocumentName,
         },
       });
@@ -307,7 +307,6 @@ interface FacilityUpdateData {
   zipCode?: string;
   licenseNumber?: string;
   programServices?: string[];
-  complianceDocumentUrl?: string;
   complianceDocumentName?: string;
   /**
    * Hand the facility to this supervisor. An existing member is assigned
@@ -469,7 +468,7 @@ export async function updateFacility(data: FacilityUpdateData): Promise<{
             zipCode: data.zipCode,
             licenseNumber: data.licenseNumber,
             programServices: data.programServices ?? undefined,
-            complianceDocumentUrl: data.complianceDocumentUrl,
+            // complianceDocumentUrl is never client-writable (SEC-20); see updateOrganization.
             complianceDocumentName: data.complianceDocumentName,
           }
         : { name: data.name, type: data.type, address: data.address },

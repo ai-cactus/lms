@@ -281,7 +281,6 @@ describe('updateOrganization', () => {
     timezone: 'America/Los_Angeles',
     licenseNumber: 'LIC-123',
     programServices: ['home-health'],
-    complianceDocumentUrl: 'https://storage/doc.pdf',
     complianceDocumentName: 'doc.pdf',
   };
 
@@ -355,10 +354,28 @@ describe('updateOrganization', () => {
         zipCode: '95814',
         timezone: 'America/Los_Angeles',
         licenseNumber: 'LIC-123',
-        complianceDocumentUrl: 'https://storage/doc.pdf',
         complianceDocumentName: 'doc.pdf',
       }),
     });
+  });
+
+  // SEC-20: only uploadComplianceDocument may set the URI, from a key it builds
+  // itself. A hand-crafted Server Action payload carrying one must not land.
+  it('ignores a client-supplied complianceDocumentUrl on both Organization and Facility', async () => {
+    mockAuth.mockResolvedValue(makeSession('owner'));
+
+    const payload = {
+      ...updateData,
+      complianceDocumentUrl: 'gcs://bucket/organizations/other-org/compliance/1-secret.pdf',
+    } as Parameters<typeof updateOrganization>[0];
+
+    const result = await updateOrganization(payload);
+
+    expect(result.success).toBe(true);
+    const orgData = vi.mocked(prisma.organization.update).mock.calls[0][0].data;
+    const facilityData = vi.mocked(prisma.facility.update).mock.calls[0][0].data;
+    expect(orgData).not.toHaveProperty('complianceDocumentUrl');
+    expect(facilityData).not.toHaveProperty('complianceDocumentUrl');
   });
 
   it('does not attempt a facility update when the caller has no active OrganizationUserFacility', async () => {

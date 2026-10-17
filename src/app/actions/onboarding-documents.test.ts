@@ -170,6 +170,16 @@ describe('deleteOnboardingDocument — tenancy fence', () => {
     expect(mockDeleteFile).not.toHaveBeenCalled();
   });
 
+  it('rejects a dot-segment key that starts inside the caller prefix but escapes it', async () => {
+    const result = await deleteOnboardingDocument(
+      'gcs://bucket/onboarding/user-1/../user-2/secret.pdf',
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('Unauthorized');
+    expect(mockDeleteFile).not.toHaveBeenCalled();
+  });
+
   it('returns a generic error and does not throw when the storage delete fails', async () => {
     mockDeleteFile.mockRejectedValue(new Error('GCS unavailable'));
 

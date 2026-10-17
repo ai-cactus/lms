@@ -43,6 +43,7 @@ import { logger } from '@/lib/logger';
 import { lockOrganizations } from '@/lib/organization/owner-guard';
 import { deleteStorageObjects } from '@/lib/storage/cleanup';
 import { parseStorageUri } from '@/lib/storage/types';
+import { isOwnOnboardingStorageKey } from '@/lib/onboarding/document-storage';
 import { SYSTEM_ORG_SLUG } from '@/lib/video/system-user';
 import { cancelStripeSubscriptionNow } from '@/lib/system/cancel-subscription-now';
 import { SYSTEM_ORGANIZATION_REFUSAL } from '@/lib/system/delete-organization';
@@ -327,8 +328,7 @@ const ORGANIZATION_STORAGE_SOURCES: Record<string, StorageSource> = {
     columns: ['url'],
     where: (organizationId) => ({ facility: { organizationId } }),
     extraSelect: ['uploadedById'],
-    owns: (key, row) =>
-      Boolean(row.uploadedById) && key.startsWith(`onboarding/${row.uploadedById}/`),
+    owns: (key, row) => isOwnOnboardingStorageKey(key, row.uploadedById),
   },
 };
 
