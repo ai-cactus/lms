@@ -137,3 +137,4 @@
 - [Org soft-delete restore contract](gotcha_org_soft_delete_restore_contract.md): deactivatedAt == org.deletedAt is the restore key; createMembership always locks the org
 - [No onDelete in runtime DMMF](gotcha_no_dmmf_ondelete_at_runtime.md): FK-behaviour tests use src/test/prisma-schema.ts; no @prisma/internals
 - [Org hard delete cross-tenant edges](gotcha_org_hard_delete_cross_tenant_edges.md): org-keyed deletes cascade into OTHER orgs; refuse, and prefix-check client URIs
+- [Worktrees have no docs/local](gotcha_worktree_has_no_docs_local.md): OPEN-ISSUES.md is gitignored; return tracker wording, never create it in a worktree
