@@ -133,6 +133,25 @@ describe('runNotificationDigest — nothing pending', () => {
   });
 });
 
+describe('runNotificationDigest — soft-deleted organizations', () => {
+  it('looks organizations up through the live-organization filter and digests none that it drops', async () => {
+    prismaMock.notificationEvent.groupBy.mockResolvedValue([{ organizationId: 'org-deleted' }]);
+    prismaMock.organization.findMany.mockResolvedValue([]);
+
+    const summary = await runNotificationDigest({
+      now: new Date('2026-08-03T13:00:00.000Z'),
+      dryRun: false,
+    });
+
+    expect(prismaMock.organization.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: { in: ['org-deleted'] }, deletedAt: null } }),
+    );
+    expect(summary.organizationsDue).toBe(0);
+    expect(summary.digestsSent).toBe(0);
+    expect(prismaMock.cycleSummaryRun.create).not.toHaveBeenCalled();
+  });
+});
+
 describe('runNotificationDigest — weekly cadence gating', () => {
   it('skips a weekly org entirely (not even claimed) when now is not a Monday UTC', async () => {
     prismaMock.notificationEvent.groupBy.mockResolvedValue([{ organizationId: 'org-1' }]);

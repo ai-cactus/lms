@@ -202,7 +202,7 @@ describe('runCycleSummary — organization scan union', () => {
     const summary = await runCycleSummary({ now: WEDNESDAY, dryRun: false });
 
     expect(prismaMock.organization.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: { in: [ORG.id] } } }),
+      expect.objectContaining({ where: { id: { in: [ORG.id] }, deletedAt: null } }),
     );
     expect(summary.organizationsScanned).toBe(1);
     expect(summary.emailsSent).toBe(1);
@@ -229,6 +229,24 @@ describe('runCycleSummary — organization scan union', () => {
     expect(summary.organizationsScanned).toBe(1);
   });
 
+  it('sends nothing for an organization the live-org lookup no longer returns (soft-deleted)', async () => {
+    prismaMock.notificationEvent.groupBy.mockResolvedValue([{ organizationId: 'org-deleted' }]);
+    prismaMock.reminderLog.findMany.mockResolvedValue([]);
+    prismaMock.organization.findMany.mockResolvedValue([]);
+    const sendEmail = vi.fn().mockResolvedValue({ ok: true });
+
+    const summary = await runCycleSummary({ now: WEDNESDAY, dryRun: false, sendEmail });
+
+    expect(prismaMock.organization.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: { in: ['org-deleted'] }, deletedAt: null },
+      }),
+    );
+    expect(sendEmail).not.toHaveBeenCalled();
+    expect(summary.emailsSent).toBe(0);
+    expect(prismaMock.cycleSummaryRun.create).not.toHaveBeenCalled();
+  });
+
   it('returns a zeroed summary and touches no run table when nothing is outstanding', async () => {
     const summary = await runCycleSummary({ now: WEDNESDAY, dryRun: false });
 
@@ -252,6 +270,8 @@ describe('runCycleSummary — gather contract', () => {
           // themselves. Summarizing it would re-announce an assignment the
           // learner was already emailed about.
           stage: { not: 'INITIAL_LAUNCH' },
+          // A soft-deleted organization's rows are never summarized.
+          enrollment: { organizationUser: { organization: { deletedAt: null } } },
         },
       }),
     );
@@ -259,7 +279,12 @@ describe('runCycleSummary — gather contract', () => {
     // summarizedAt to null (dispatch side) and this query must pick the row up
     // again on the strength of that alone.
     expect(prismaMock.reminderNudge.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { summarizedAt: null } }),
+      expect.objectContaining({
+        where: {
+          summarizedAt: null,
+          enrollment: { organizationUser: { organization: { deletedAt: null } } },
+        },
+      }),
     );
   });
 

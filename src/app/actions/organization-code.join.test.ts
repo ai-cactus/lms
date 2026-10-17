@@ -51,7 +51,7 @@ vi.mock('@/lib/auth/membership', async (importOriginal) => ({
 }));
 
 import { joinOrganization } from './organization-code';
-import { ExistingMembershipError } from '@/lib/auth/membership';
+import { DeletedOrganizationError, ExistingMembershipError } from '@/lib/auth/membership';
 import { DEFAULT_SELF_SERVE_WORKER_ROLE } from '@/lib/rbac/role-utils';
 
 describe('joinOrganization', () => {
@@ -115,6 +115,43 @@ describe('joinOrganization', () => {
       error: 'Your access to this organization was removed. Ask an administrator to restore it.',
     });
     expect(mockEnrollUserForRoleTargets).not.toHaveBeenCalled();
+    expect(mockEmitNotificationEvent).not.toHaveBeenCalled();
+  });
+});
+
+describe('joinOrganization — soft-deleted organization', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockWorkerAuth.mockResolvedValue({ user: { id: 'user-1', email: 'a@example.com' } });
+    prismaMock.facility.findFirst.mockResolvedValue({ id: 'facility-1' });
+  });
+
+  it('refuses a code whose organization is deleted at lookup, before any facility or membership work', async () => {
+    prismaMock.organization.findUnique.mockResolvedValue(null);
+
+    const result = await joinOrganization('123456');
+
+    expect(result).toEqual({ success: false, error: 'Invalid code.' });
+    expect(prismaMock.facility.findFirst).not.toHaveBeenCalled();
+    expect(mockCreateMembership).not.toHaveBeenCalled();
+  });
+
+  it('answers "Invalid code." with no side effects when the org is deleted between lookup and join', async () => {
+    prismaMock.organization.findUnique.mockResolvedValue({
+      id: 'org-1',
+      name: 'Acme Health',
+      joinCodeExpiresAt: null,
+      primaryBusinessType: null,
+      primaryContact: null,
+      facilities: [],
+    });
+    mockCreateMembership.mockRejectedValue(new DeletedOrganizationError());
+
+    const result = await joinOrganization('123456');
+
+    expect(result).toEqual({ success: false, error: 'Invalid code.' });
+    expect(mockEnrollUserForRoleTargets).not.toHaveBeenCalled();
+    expect(mockCreateNotification).not.toHaveBeenCalled();
     expect(mockEmitNotificationEvent).not.toHaveBeenCalled();
   });
 });

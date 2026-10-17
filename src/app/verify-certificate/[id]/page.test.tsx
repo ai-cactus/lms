@@ -86,3 +86,26 @@ describe('VerifyCertificatePage — no email fallback/selection (F-038)', () => 
     expect(screen.getByText('Certificate Not Found')).toBeInTheDocument();
   });
 });
+
+describe('VerifyCertificatePage — a soft-deleted organization (certificates stay verifiable)', () => {
+  it('still renders the certificate and the issuing organization, with no deletedAt predicate on the lookup', async () => {
+    prismaMock.certificate.findUnique.mockResolvedValue({
+      enrollmentId: 'enrollment-1',
+      issuedAt: new Date('2026-01-15'),
+      course: { title: 'Fire Safety' },
+      organizationUser: {
+        user: { fullName: 'Jane Doe' },
+        organization: { name: 'Deleted Care Co', deletedAt: new Date('2026-10-08') },
+      },
+    });
+
+    render(await VerifyCertificatePage({ params: Promise.resolve({ id: CERT_ID }) }));
+
+    expect(screen.getByText('Jane Doe')).toBeInTheDocument();
+    expect(screen.getByText('Deleted Care Co')).toBeInTheDocument();
+    expect(screen.getByText('Fire Safety')).toBeInTheDocument();
+    const query = prismaMock.certificate.findUnique.mock.calls[0][0];
+    expect(query.where).toEqual({ id: CERT_ID });
+    expect(JSON.stringify(query)).not.toContain('deletedAt');
+  });
+});

@@ -3,8 +3,11 @@
  * revokes the person's access everywhere and keeps their compliance records.
  *
  * Both the /system console (`deleteUserWithRelations`) and the ops scripts
- * (`scripts/delete-user.ts`, `scripts/delete-workers.ts`) call this, so there is
- * no second, destructive path (RISK-14).
+ * (`scripts/delete-user.ts`, `scripts/delete-workers.ts`) call this (RISK-14).
+ * The only destructive path is a separate second step,
+ * `src/lib/system/hard-delete-user.ts`: a /system-only permanent delete that
+ * accepts nothing but an identity this function has already deleted, and runs
+ * only where `SYSTEM_HARD_DELETE_ENABLED` is on (staging).
  *
  * What it does, in one transaction:
  *  - refuses, changing nothing, when an organization the person is active in
@@ -29,7 +32,8 @@
  *
  * The email is NOT freed: `User.email` is unique and the row stays, so signup,
  * invite accept and OAuth all refuse it rather than creating a second identity.
- * Restoring a deleted identity is out of scope.
+ * Only the permanent delete above frees it. Restoring a deleted identity is out
+ * of scope.
  */
 import prisma from '@/lib/prisma';
 import type { DbTransactionClient } from '@/db/index';
@@ -65,14 +69,16 @@ type MembershipReader = Pick<DbTransactionClient, 'organizationUser'>;
 /**
  * Q-30 (ruled 2026-09-29): which of the person's organizations the delete would
  * orphan. Only organizations where the person is ACTIVE count — deleting them
- * cannot take away an owner an org has already lost some other way.
+ * cannot take away an owner an org has already lost some other way. A
+ * soft-deleted organization never blocks: it has no access left to orphan, and
+ * its restore already refuses to bring it back without an active owner.
  */
 export async function findOwnershipBlocks(
   client: MembershipReader,
   userId: string,
 ): Promise<OwnershipBlock[]> {
   const memberships = await client.organizationUser.findMany({
-    where: { userId, active: true },
+    where: { userId, active: true, organization: { deletedAt: null } },
     select: { organizationId: true, role: true, organization: { select: { name: true } } },
     orderBy: { joinedAt: 'asc' },
   });

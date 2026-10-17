@@ -72,6 +72,10 @@ vi.mock('@/lib/prisma', () => {
   const prisma = {
     user: { findUnique: mockFindUnique, update: mockUpdate, create: mockUserCreate },
     invite: { findFirst: mockInviteFindFirst, update: mockInviteUpdate },
+    // The invite consumption (membership + invite status) runs in one
+    // transaction; the tx client exposes the same invite.update spy.
+    $transaction: async (cb: (tx: unknown) => unknown) =>
+      cb({ invite: { update: mockInviteUpdate }, __tx: true }),
   };
   return { prisma, default: prisma };
 });
@@ -646,12 +650,15 @@ describe('OAuth signIn callback — pending-invite auto-enroll hooks (fix/worker
     });
 
     expect(result).toBe(true);
-    expect(mockCreateMembership).toHaveBeenCalledExactlyOnceWith({
-      userId: 'new-user-1',
-      organizationId: 'org-1',
-      facilityId: 'facility-1',
-      role: 'nurse',
-    });
+    expect(mockCreateMembership).toHaveBeenCalledExactlyOnceWith(
+      {
+        userId: 'new-user-1',
+        organizationId: 'org-1',
+        facilityId: 'facility-1',
+        role: 'nurse',
+      },
+      expect.objectContaining({ __tx: true }),
+    );
     expect(mockInviteUpdate).toHaveBeenCalledExactlyOnceWith({
       where: { id: 'invite-1' },
       data: { status: 'accepted' },
@@ -1074,5 +1081,122 @@ describe('Q-23 — a soft-deleted identity is refused on every auth path', () =>
     const result = await (workerConfig.callbacks!.jwt as any)({ token });
 
     expect(result).toBeNull();
+  });
+});
+
+describe('organization soft delete — credential and OAuth sign-in', () => {
+  const oauthAccount = { provider: 'microsoft-entra-id' };
+
+  it.each([
+    ['admin', adminConfig],
+    ['worker', workerConfig],
+  ])(
+    'authorize() on the %s instance denies a member of a deleted organization with its own audit reason, before the password check',
+    async (_label, config) => {
+      mockFindUnique.mockResolvedValue(baseUser);
+      mockResolveActiveMembership.mockResolvedValue({ kind: 'org_deleted' });
+      const bcrypt = await import('bcryptjs');
+      (bcrypt.default.compare as ReturnType<typeof vi.fn>).mockClear();
+
+      const result = await getAuthorize(config)(
+        { email: 'person@acme.com', password: 'pw' },
+        fakeRequest(),
+      );
+
+      expect(result).toBeNull();
+      expect(bcrypt.default.compare).not.toHaveBeenCalled();
+      expect(mockAudit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'auth.login.failure',
+          actorId: 'user-1',
+          metadata: expect.objectContaining({ reason: 'organization_deleted' }),
+        }),
+      );
+      expect(mockAudit).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          metadata: expect.objectContaining({ reason: 'removed_from_org' }),
+        }),
+      );
+    },
+  );
+
+  it('OAuth signIn sends a member of a deleted organization to OrganizationDeleted and sets no session cookie', async () => {
+    mockFindUnique.mockResolvedValueOnce({ id: 'user-1', fullName: 'Dana', deletedAt: null });
+    mockInviteFindFirst.mockResolvedValue(null);
+    mockResolveActiveMembership.mockResolvedValue({ kind: 'org_deleted' });
+
+    const result = await getSignIn(workerConfig)({
+      user: { id: undefined, email: 'person@acme.com', name: 'Dana' },
+      account: oauthAccount,
+    });
+
+    expect(result).toBe('/login?error=OrganizationDeleted');
+    expect(mockCookieStore.set).not.toHaveBeenCalled();
+  });
+
+  it('OAuth only looks for pending invites to LIVE organizations', async () => {
+    mockFindUnique.mockResolvedValueOnce({ id: 'user-1', fullName: 'Dana', deletedAt: null });
+    mockInviteFindFirst.mockResolvedValue(null);
+    mockResolveActiveMembership.mockResolvedValue({ kind: 'none' });
+
+    await getSignIn(workerConfig)({
+      user: { id: undefined, email: 'person@acme.com', name: 'Dana' },
+      account: oauthAccount,
+    });
+
+    expect(mockInviteFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          email: 'person@acme.com',
+          status: 'pending',
+          organization: { deletedAt: null },
+        },
+      }),
+    );
+  });
+
+  it('OAuth: a deleted org discovered at join time is ignored — the invite is NOT consumed, no enrolment, sign-in carries on', async () => {
+    mockFindUnique.mockResolvedValueOnce({ id: 'user-1', fullName: 'Dana', deletedAt: null });
+    mockInviteFindFirst.mockResolvedValue({
+      id: 'invite-del',
+      organizationId: 'org-deleted',
+      facilityId: 'facility-1',
+      role: 'nurse',
+    });
+    mockGetActiveMembership.mockResolvedValue(null);
+    const { DeletedOrganizationError } = await import('@/lib/auth/membership');
+    mockCreateMembership.mockRejectedValue(new DeletedOrganizationError());
+    const live = makeMembership({ organizationUserId: 'ou-live', organizationId: 'org-live' });
+    mockResolveActiveMembership.mockResolvedValue({ kind: 'resolved', membership: live });
+
+    const result = await getSignIn(workerConfig)({
+      user: { id: undefined, email: 'person@acme.com', name: 'Dana' },
+      account: oauthAccount,
+    });
+
+    expect(result).toBe(true);
+    expect(mockInviteUpdate).not.toHaveBeenCalled();
+    expect(mockEnrollUserForRoleTargets).not.toHaveBeenCalled();
+    expect(mockEnrollInviteCourses).not.toHaveBeenCalled();
+  });
+
+  it('OAuth: a non-deleted-org failure while joining still propagates', async () => {
+    mockFindUnique.mockResolvedValueOnce({ id: 'user-1', fullName: 'Dana', deletedAt: null });
+    mockInviteFindFirst.mockResolvedValue({
+      id: 'invite-x',
+      organizationId: 'org-1',
+      facilityId: 'facility-1',
+      role: 'nurse',
+    });
+    mockGetActiveMembership.mockResolvedValue(null);
+    mockCreateMembership.mockRejectedValue(new Error('db down'));
+
+    await expect(
+      getSignIn(workerConfig)({
+        user: { id: undefined, email: 'person@acme.com', name: 'Dana' },
+        account: oauthAccount,
+      }),
+    ).rejects.toThrow('db down');
+    expect(mockInviteUpdate).not.toHaveBeenCalled();
   });
 });

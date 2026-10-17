@@ -40,6 +40,7 @@ interface Seeded {
   userId: string;
   orgId: string;
   facilityId: string;
+  facilityName: string;
   orgUserId: string;
   email: string;
   password: string;
@@ -55,6 +56,7 @@ async function seedOwner(): Promise<Seeded> {
     const slug = `staff-invite-${crypto.randomBytes(4).toString('hex')}`;
     const orgId = crypto.randomUUID();
     const facilityId = crypto.randomUUID();
+    const facilityName = `Staff Invite Flow ${slug}`;
     const userId = crypto.randomUUID();
     const orgUserId = crypto.randomUUID();
 
@@ -66,7 +68,7 @@ async function seedOwner(): Promise<Seeded> {
     await client.query(
       `INSERT INTO facilities (id, organization_id, name, program_services, created_at, updated_at)
        VALUES ($1, $2, $3, '{}', NOW(), NOW())`,
-      [facilityId, orgId, `Staff Invite Flow ${slug}`],
+      [facilityId, orgId, facilityName],
     );
     await client.query(
       `INSERT INTO users (id, email, password, email_verified, auth_provider, first_name, last_name, full_name, created_at, updated_at)
@@ -83,7 +85,7 @@ async function seedOwner(): Promise<Seeded> {
        VALUES ($1, $2, $3, true, NOW())`,
       [crypto.randomUUID(), orgUserId, facilityId],
     );
-    return { userId, orgId, facilityId, orgUserId, email, password };
+    return { userId, orgId, facilityId, facilityName, orgUserId, email, password };
   } finally {
     await client.end();
   }
@@ -181,6 +183,10 @@ test.describe('Staff invite — 2-step modal, submit to success', () => {
       // Exact match — the row also contains an unrelated "Pending Invite" string
       // in the Date-Invited column, which a substring match would also hit.
       await expect(row.getByText('Pending', { exact: true })).toBeVisible();
+      // BUG-69: a pending facility-bound invite names its destination facility
+      // in the Facility column instead of the "—" placeholder.
+      await expect(row.getByText(seeded.facilityName)).toBeVisible();
+      await expect(row.getByText('—')).toHaveCount(0);
 
       // DB-level confirmation of the created invite's role.
       const client = new Client({ connectionString: DB_URL });

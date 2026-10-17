@@ -141,6 +141,11 @@ export type DbTransactionClient = Parameters<Parameters<DbClient['$transaction']
  *      not enrolled in it, because the answer depends on why access was granted
  *      and the access gate runs after the lookup. Nothing else in that file is
  *      widened; the course LISTS stay on the filtered client.
+ *   7. `system/hard-delete-user.ts` — the permanent user delete must REFUSE a
+ *      person who authored any course or uploaded any document, archived ones
+ *      included: an archived course still holds `Course.creator`'s Restrict
+ *      FK, and an archived document would cascade away with the membership.
+ *      Filtered, the refusal would miss them.
  *
  * Anywhere else, use `prisma`.
  */

@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import prisma from '@/lib/prisma';
 
 export const SYSTEM_USER_EMAIL = 'system@theraptly.internal';
-const SYSTEM_ORG_SLUG = 'system';
+export const SYSTEM_ORG_SLUG = 'system';
 const SYSTEM_ORG_NAME = 'System';
 
 /**

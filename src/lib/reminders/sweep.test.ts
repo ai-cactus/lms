@@ -71,6 +71,7 @@ const {
     courseAssignment: { findMany: vi.fn() },
     organizationUser: { findMany: vi.fn() },
     organizationUserFacility: { findMany: vi.fn() },
+    organization: { findMany: vi.fn() },
   };
   const mockDispatchLadderStage = vi.fn();
   const mockDispatchNudge = vi.fn();
@@ -235,6 +236,7 @@ beforeEach(() => {
   prismaMock.courseAssignment.findMany.mockResolvedValue([]);
   prismaMock.organizationUser.findMany.mockResolvedValue([]);
   prismaMock.organizationUserFacility.findMany.mockResolvedValue([]);
+  prismaMock.organization.findMany.mockResolvedValue([]); // no soft-deleted organizations
   prismaMock.enrollment.create.mockResolvedValue({ id: 'new-enrollment-1' });
   prismaMock.reminderLog.create.mockResolvedValue({ id: 'log-1' });
   mockCreateEnrollmentForUser.mockResolvedValue({
@@ -1968,6 +1970,98 @@ describe('runReminderSweep — archived courses produce no reminders (Q-06)', ()
       (w) => !('dueAt' in w) && !('assignmentId' in w) && 'status' in w,
     );
     expect(where.course).toEqual({ archivedAt: null });
+  });
+});
+
+// ─── Soft-deleted organizations are excluded from every cron path ─────────────
+
+/**
+ * Org soft delete: the retry pre-pass reads EmailMessage rows by organization
+ * with no membership in the way, and the two write pre-passes read
+ * CourseAssignment — each restates the live-org predicate explicitly.
+ */
+describe('runReminderSweep — soft-deleted organizations are excluded', () => {
+  type EmailWhere = {
+    OR?: Array<{ organizationId: null | { notIn: string[] } }>;
+  };
+
+  /** Applies the `OR` the sweep builds to in-memory rows, SQL NULL semantics included. */
+  function applyOrgFilter(
+    rows: Array<{ id: string; organizationId: string | null }>,
+    w: EmailWhere,
+  ) {
+    if (!w.OR) return rows;
+    return rows.filter((row) =>
+      w.OR!.some((clause) =>
+        clause.organizationId === null
+          ? row.organizationId === null
+          : row.organizationId !== null &&
+            !clause.organizationId.notIn.includes(row.organizationId),
+      ),
+    );
+  }
+
+  function failedEmail(id: string, organizationId: string | null) {
+    return {
+      id,
+      organizationId,
+      toEmail: 'w@test.com',
+      attempts: 1,
+      maxAttempts: 3,
+      reminderLogId: null,
+      reminderNudgeId: null,
+    };
+  }
+
+  it('the retry pre-pass drops a deleted organization failed email, keeping live-org and org-less rows', async () => {
+    prismaMock.organization.findMany.mockResolvedValue([{ id: 'org-deleted' }]);
+    const rows = [
+      failedEmail('e-live', 'org-live'),
+      failedEmail('e-deleted', 'org-deleted'),
+      failedEmail('e-none', null),
+    ];
+    prismaMock.emailMessage.findMany.mockImplementation(async (args: { where: EmailWhere }) =>
+      applyOrgFilter(rows, args.where),
+    );
+
+    await runReminderSweep(BASE_OPTS);
+
+    expect(prismaMock.organization.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { deletedAt: { not: null } } }),
+    );
+    const where = prismaMock.emailMessage.findMany.mock.calls[0][0].where as EmailWhere;
+    expect(where.OR).toEqual([
+      { organizationId: null },
+      { organizationId: { notIn: ['org-deleted'] } },
+    ]);
+    const returned = applyOrgFilter(rows, where).map((r) => r.id);
+    expect(returned).toEqual(['e-live', 'e-none']);
+  });
+
+  it('adds no organization predicate when no organization is deleted', async () => {
+    prismaMock.organization.findMany.mockResolvedValue([]);
+
+    await runReminderSweep(BASE_OPTS);
+
+    expect(prismaMock.emailMessage.findMany.mock.calls[0][0].where).not.toHaveProperty('OR');
+  });
+
+  it('the role-target reconcile pre-pass reads only live organizations', async () => {
+    await runReminderSweep(BASE_OPTS);
+
+    const where = prismaMock.courseAssignment.findMany.mock.calls
+      .map((args: unknown[]) => (args[0] as { where: Record<string, unknown> }).where)
+      .find((w) => 'OR' in w);
+    expect(where?.organization).toEqual({ deletedAt: null });
+  });
+
+  it('the renewal re-trigger pre-pass reads only live organizations', async () => {
+    await runReminderSweep(BASE_OPTS);
+
+    const where = prismaMock.courseAssignment.findMany.mock.calls
+      .map((args: unknown[]) => (args[0] as { where: Record<string, unknown> }).where)
+      .find((w) => 'renewalCycle' in w);
+    expect(where?.organization).toEqual({ deletedAt: null });
   });
 });
 

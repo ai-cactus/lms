@@ -127,3 +127,53 @@ describe('verifyOrganizationCode — existing members (BUG-62)', () => {
     expect(prismaMock.organizationUser.findUnique).not.toHaveBeenCalled();
   });
 });
+
+describe('verifyOrganizationCode — soft-deleted organization', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockWorkerAuth.mockResolvedValue({ user: { id: 'user-1', email: 'a@example.com' } });
+    mockAdminAuth.mockResolvedValue(null);
+    prismaMock.organizationUser.findUnique.mockResolvedValue(null);
+  });
+
+  /** A tiny store that honours the `deletedAt: null` filter the way the database does. */
+  function storeWith(org: typeof ORG_ROW & { deletedAt: Date | null }) {
+    prismaMock.organization.findUnique.mockImplementation(
+      async ({ where }: { where: { joinCode: string; deletedAt?: null } }) => {
+        if (where.joinCode !== '123456') return null;
+        if (where.deletedAt === null && org.deletedAt !== null) return null;
+        return org;
+      },
+    );
+  }
+
+  it('answers a deleted organization code exactly like an unknown one', async () => {
+    storeWith({ ...ORG_ROW, deletedAt: new Date('2026-10-08') });
+
+    const deleted = await verifyOrganizationCode('123456');
+    const unknown = await verifyOrganizationCode('999999');
+
+    expect(deleted).toEqual({ success: false, error: 'Invalid code.' });
+    expect(deleted).toEqual(unknown);
+    expect(JSON.stringify(deleted)).not.toContain('Acme Health');
+    expect(prismaMock.organizationUser.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('still verifies the same code once the organization is live', async () => {
+    storeWith({ ...ORG_ROW, deletedAt: null });
+
+    const result = await verifyOrganizationCode('123456');
+
+    expect(result.success).toBe(true);
+  });
+
+  it('looks the code up with the live-organization filter', async () => {
+    storeWith({ ...ORG_ROW, deletedAt: null });
+
+    await verifyOrganizationCode('123456');
+
+    expect(prismaMock.organization.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { joinCode: '123456', deletedAt: null } }),
+    );
+  });
+});

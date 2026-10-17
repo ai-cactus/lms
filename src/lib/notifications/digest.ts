@@ -6,6 +6,7 @@ import type { Role } from '@/types/next-auth';
 import { ENGINE_EVENTS, type NotificationEngineType } from './catalog';
 import { isNotificationChannelEnabled } from './category-preferences';
 import { resolveRoleRecipients } from './recipients';
+import { liveOrganizationWhere } from '@/lib/organization/deleted';
 
 /**
  * Notification digest — pure, unit-testable orchestration (mirrors
@@ -256,8 +257,9 @@ export async function runNotificationDigest(
     return summary;
   }
 
+  // A soft-deleted organization never gets a digest.
   const organizations = await prisma.organization.findMany({
-    where: { id: { in: pendingOrgs.map((o) => o.organizationId) } },
+    where: { id: { in: pendingOrgs.map((o) => o.organizationId) }, ...liveOrganizationWhere },
     select: { id: true, name: true, notificationDigestFrequency: true },
   });
 

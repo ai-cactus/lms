@@ -128,6 +128,12 @@ vi.mock('@/lib/prisma', () => {
           return { ...row, organization: orgOf(row.organizationId) };
         },
       },
+      organization: {
+        findUnique: async () => {
+          await yieldToOthers();
+          return { deletedAt: null };
+        },
+      },
       organizationUserFacility: { upsert: async () => ({}) },
       invite: { updateMany: async () => ({ count: 0 }) },
       verificationToken: { deleteMany: async () => ({ count: 0 }) },

@@ -100,6 +100,7 @@ export async function getStaffUsers() {
           // incoming hires leaks the same class of PII as the roster itself.
           ...inviteFacilityWhere(dataFacilityIds),
         },
+        include: { facility: { select: { id: true, name: true } } },
         orderBy: { createdAt: 'desc' },
       }),
     ]);
@@ -140,8 +141,10 @@ export async function getStaffUsers() {
           isPending: true,
           isExpired,
           token: invite.token as string | null,
-          // An invite has no membership yet, so no facility assignments exist.
-          facilities: [] as { id: string; name: string }[],
+          // No membership exists yet, so the invite's destination facility stands
+          // in for the assignment it becomes on accept. It is already in the
+          // viewer's scope: the query above is narrowed by `inviteFacilityWhere`.
+          facilities: [invite.facility],
         };
       });
 

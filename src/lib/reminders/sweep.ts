@@ -25,6 +25,11 @@ import { REASSIGN_ESCALATION_PERMISSION } from '@/lib/notifications/link-audienc
 import { resolveEscalationRecipients, NO_ESCALATION_RECIPIENTS } from './recipients';
 import { findIneligibleEnrollmentIds, findSupersededIds } from './eligibility';
 import { reminderAssignmentSelect, resolveRetakeRootAssignments } from './retake-settings';
+import {
+  excludeDeletedOrgIds,
+  getDeletedOrganizationIds,
+  liveOrganizationWhere,
+} from '@/lib/organization/deleted';
 
 /**
  * Reminder sweep — pure, unit-testable orchestration (mirrors `runVideoSweep`).
@@ -201,6 +206,9 @@ async function runRetryPrePass(
   const sendEmail = opts.sendEmail ?? noopEmailSender;
   const backoffFloor = new Date(now.getTime() - RETRY_BACKOFF_MS);
   const drainingLegacyBacklog = isCycleSummaryEnabled();
+  // A soft-deleted organization's failed reminders are left failed, not
+  // retried: its members no longer have access to the training they name.
+  const deletedOrganizationIds = await getDeletedOrganizationIds();
 
   // Column-to-column comparison (attempts < maxAttempts) isn't expressible in a
   // Prisma filter, so gate on status/backoff in SQL and cap in JS.
@@ -209,6 +217,7 @@ async function runRetryPrePass(
       status: 'failed',
       updatedAt: { lt: backoffFloor },
       ...(drainingLegacyBacklog ? { kind: { in: [...LEGACY_REMINDER_EMAIL_KINDS] } } : {}),
+      ...excludeDeletedOrgIds(deletedOrganizationIds),
     },
     select: {
       id: true,
@@ -398,6 +407,9 @@ async function runRoleTargetReconcilePrePass(
         // runs org-wide, so a per-holder skip log would be nightly noise, and
         // dropping the assignment here also drops its holder scan.
         course: { archivedAt: null },
+        // A soft-deleted organization must not gain enrolments (or send launch
+        // emails) while it is deleted.
+        organization: liveOrganizationWhere,
       },
       select: {
         id: true,
@@ -568,6 +580,7 @@ async function runRenewalRetriggerPrePass(
         // above: the Q24 archive filter does not reach `CourseAssignment.course`.
         // The completed enrollments this renews from are untouched.
         course: { archivedAt: null },
+        organization: liveOrganizationWhere,
       },
       select: {
         id: true,

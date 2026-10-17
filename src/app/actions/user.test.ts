@@ -782,6 +782,98 @@ describe('getStaffUsers — member facility names are narrowed to the viewer sco
   });
 });
 
+describe('getStaffUsers — pending invite facility (BUG-69)', () => {
+  const sessionFor = (role: string) => ({
+    user: { id: 'u1', role, organizationId: 'org-a', organizationUserId: 'ou1' },
+  });
+  const ANNEX = { id: 'annex', name: 'Annex' };
+
+  const invite = (overrides: Record<string, unknown> = {}) => ({
+    id: 'inv-1',
+    email: 'new.nurse@acme.com',
+    role: 'nurse',
+    token: 'tok-1',
+    status: 'pending',
+    createdAt: new Date('2026-10-01T00:00:00.000Z'),
+    expiresAt: new Date('2099-01-01T00:00:00.000Z'),
+    facilityId: ANNEX.id,
+    facility: ANNEX,
+    ...overrides,
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockHeaders.mockResolvedValue(new Headers());
+    prismaMock.organizationUser.findMany.mockResolvedValue([]);
+    prismaMock.invite.findMany.mockResolvedValue([]);
+    prismaMock.facility.findMany.mockResolvedValue([ANNEX]);
+  });
+
+  it('loads the invite destination facility id and name, and nothing else of it', async () => {
+    mockAdminAuth.mockResolvedValue(sessionFor('owner'));
+
+    await getStaffUsers();
+
+    expect(prismaMock.invite.findMany.mock.calls[0][0].include).toEqual({
+      facility: { select: { id: true, name: true } },
+    });
+  });
+
+  it('returns the destination facility on a pending nurse invite', async () => {
+    mockAdminAuth.mockResolvedValue(sessionFor('owner'));
+    prismaMock.invite.findMany.mockResolvedValue([invite()]);
+
+    const entries = await getStaffUsers();
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      isPending: true,
+      role: 'nurse',
+      facilities: [{ id: 'annex', name: 'Annex' }],
+    });
+  });
+
+  it('still returns the anchor facility for an org-wide role; the list hides it by role', async () => {
+    mockAdminAuth.mockResolvedValue(sessionFor('owner'));
+    prismaMock.invite.findMany.mockResolvedValue([invite({ role: 'hr' })]);
+
+    const entries = await getStaffUsers();
+
+    expect(entries[0]).toMatchObject({ role: 'hr', facilities: [ANNEX] });
+  });
+
+  it('keeps the supervisor invite query narrowed to its own facilities', async () => {
+    mockAdminAuth.mockResolvedValue(sessionFor('supervisor'));
+    prismaMock.invite.findMany.mockResolvedValue([invite()]);
+
+    const entries = await getStaffUsers();
+
+    const { where, include } = prismaMock.invite.findMany.mock.calls[0][0];
+    expect(where.facilityId).toEqual({ in: ['annex'] });
+    expect(include.facility).toBeDefined();
+    expect(entries[0].facilities).toEqual([ANNEX]);
+  });
+
+  it('does not list an invite whose email already has an accepted membership', async () => {
+    mockAdminAuth.mockResolvedValue(sessionFor('owner'));
+    prismaMock.organizationUser.findMany.mockResolvedValue([
+      {
+        id: 'ou-9',
+        userId: 'u9',
+        role: 'nurse',
+        joinedAt: new Date('2026-09-01T00:00:00.000Z'),
+        user: { email: 'NEW.nurse@acme.com', fullName: 'New Nurse', avatarUrl: null },
+        facilities: [],
+      },
+    ]);
+    prismaMock.invite.findMany.mockResolvedValue([invite()]);
+
+    const entries = await getStaffUsers();
+
+    expect(entries.filter((e) => e.isPending)).toHaveLength(0);
+  });
+});
+
 describe('getStaffUsers — avatar URLs', () => {
   const STORED = 'gcs://lms-bucket/avatars/user-7/1700000000000-me.png';
   const SIGNED =

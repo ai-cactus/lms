@@ -10,6 +10,7 @@
  */
 import { Prisma } from '@/generated/prisma/client';
 import prisma from '@/lib/prisma';
+import type { DbTransactionClient } from '@/db/index';
 import { logger } from '@/lib/logger';
 import { DeletedIdentityError, isDeletedIdentity } from '@/lib/auth/deleted-identity';
 import {
@@ -34,6 +35,9 @@ export interface MembershipSummary {
  *                prospective founder and belongs in onboarding.
  * - `revoked`  — memberships exist but every one is deactivated; access to
  *                every organization has been removed, so login must be denied.
+ * - `org_deleted` — no live membership remains, and at least one membership
+ *                was lost to an organization soft delete (it was active when the
+ *                org was deleted). Login is denied with the org-specific copy.
  * - `resolved` — exactly one candidate, or a remembered org that is still
  *                valid: sign straight in with no picker.
  * - `choice`   — two or more active memberships and no usable preference: the
@@ -42,6 +46,7 @@ export interface MembershipSummary {
 export type MembershipResolution =
   | { kind: 'none' }
   | { kind: 'revoked' }
+  | { kind: 'org_deleted' }
   | { kind: 'resolved'; membership: MembershipSummary }
   | { kind: 'choice'; memberships: MembershipSummary[] };
 
@@ -69,10 +74,13 @@ function toSummary(row: MembershipRow): MembershipSummary {
   };
 }
 
-/** Every ACTIVE membership for an identity, oldest join first (stable order). */
+/**
+ * Every ACTIVE membership in a live (not soft-deleted) organization for an
+ * identity, oldest join first (stable order).
+ */
 export async function listActiveMemberships(userId: string): Promise<MembershipSummary[]> {
   const rows = await prisma.organizationUser.findMany({
-    where: { userId, active: true },
+    where: { userId, active: true, organization: { deletedAt: null } },
     select: MEMBERSHIP_SELECT,
     orderBy: { joinedAt: 'asc' },
   });
@@ -81,15 +89,16 @@ export async function listActiveMemberships(userId: string): Promise<MembershipS
 
 /**
  * Load a single ACTIVE membership by (user, organization). Returns null when the
- * user is not a member of that org, or the membership is deactivated — the
- * authorization check behind every org switch and every JWT re-validation.
+ * user is not a member of that org, the membership is deactivated, or the org
+ * is soft-deleted — the authorization check behind every org switch and every
+ * JWT re-validation, which is what ends a deleted org's live sessions.
  */
 export async function getActiveMembership(
   userId: string,
   organizationId: string,
 ): Promise<MembershipSummary | null> {
   const row = await prisma.organizationUser.findFirst({
-    where: { userId, organizationId, active: true },
+    where: { userId, organizationId, active: true, organization: { deletedAt: null } },
     select: MEMBERSHIP_SELECT,
   });
   return row ? toSummary(row) : null;
@@ -116,7 +125,10 @@ export async function resolveActiveMembership(userId: string): Promise<Membershi
     // Distinguish "never joined" (a founder heading to onboarding) from "every
     // membership revoked" (access removed) — the two must not share a fate.
     const revokedCount = await prisma.organizationUser.count({ where: { userId } });
-    return revokedCount > 0 ? { kind: 'revoked' } : { kind: 'none' };
+    if (revokedCount === 0) return { kind: 'none' };
+    return (await lostAccessToOrganizationDelete(userId))
+      ? { kind: 'org_deleted' }
+      : { kind: 'revoked' };
   }
 
   if (memberships.length === 1) {
@@ -133,15 +145,44 @@ export async function resolveActiveMembership(userId: string): Promise<Membershi
 }
 
 /**
+ * True when one of the identity's memberships was taken away by an
+ * organization soft delete, rather than by an administrator removing the
+ * person: it is still flagged active, or it was deactivated at the org's exact
+ * `deletedAt` instant (the delete writes both from one Date).
+ */
+async function lostAccessToOrganizationDelete(userId: string): Promise<boolean> {
+  const inDeletedOrgs = await prisma.organizationUser.findMany({
+    where: { userId, organization: { deletedAt: { not: null } } },
+    select: { active: true, deactivatedAt: true, organization: { select: { deletedAt: true } } },
+  });
+  return inDeletedOrgs.some(
+    (membership) =>
+      membership.active ||
+      membership.deactivatedAt?.getTime() === membership.organization.deletedAt?.getTime(),
+  );
+}
+
+/**
  * Pick the membership a resolution activates. On `choice` the org picker lets
  * the user switch afterwards, but the session must always be scoped to a real
  * membership, so the first (oldest-joined, deterministic) one is provisionally
  * activated rather than leaving the session org-less.
  */
 export function activeMembershipOf(resolution: MembershipResolution): MembershipSummary | null {
-  if (resolution.kind === 'resolved') return resolution.membership;
-  if (resolution.kind === 'choice') return resolution.memberships[0];
-  return null;
+  switch (resolution.kind) {
+    case 'resolved':
+      return resolution.membership;
+    case 'choice':
+      return resolution.memberships[0];
+    case 'none':
+    case 'revoked':
+    case 'org_deleted':
+      return null;
+    default: {
+      const unhandled: never = resolution;
+      return unhandled;
+    }
+  }
 }
 
 /**
@@ -203,6 +244,18 @@ export class ExistingMembershipError extends Error {
 }
 
 /**
+ * Thrown by `createMembership` when the organization is soft-deleted. Every
+ * caller answers it with the same generic "no longer valid" response it gives a
+ * missing invite or code, so a deleted organization's name is never revealed.
+ */
+export class DeletedOrganizationError extends Error {
+  constructor() {
+    super('This organization is no longer active.');
+    this.name = 'DeletedOrganizationError';
+  }
+}
+
+/**
  * Attach an identity to an organization: the `OrganizationUser` row plus its
  * first `OrganizationUserFacility` assignment, created atomically so a
  * membership can never exist without facility scope.
@@ -214,15 +267,24 @@ export class ExistingMembershipError extends Error {
  *
  * @throws {DeletedIdentityError} for a deleted identity (Q-23): reactivating
  * one of its memberships would silently undo the delete.
+ * @throws {DeletedOrganizationError} when the organization is soft-deleted:
+ * joining (or reactivating a membership in) it would reopen a deleted org.
  * @throws {LastOwnerError} when re-roling an existing membership would demote
  * the organization's last active owner (RISK-16).
  * @throws {ExistingMembershipError} with `onExisting: 'refuse'` when a
  * membership (active or deactivated) already exists.
+ *
+ * Pass `client` to run inside the caller's transaction, so the membership
+ * commits (or rolls back) together with the caller's own writes — and the
+ * organization lock taken here is the one the caller already holds.
  */
-export async function createMembership(input: CreateMembershipInput): Promise<MembershipSummary> {
+export async function createMembership(
+  input: CreateMembershipInput,
+  client?: DbTransactionClient,
+): Promise<MembershipSummary> {
   const { userId, organizationId, facilityId, role, onExisting = 'reassign' } = input;
 
-  return prisma.$transaction(async (tx) => {
+  const attach = async (tx: DbTransactionClient): Promise<MembershipSummary> => {
     const identity = await tx.user.findUnique({
       where: { id: userId },
       select: { deletedAt: true },
@@ -234,6 +296,22 @@ export async function createMembership(input: CreateMembershipInput): Promise<Me
         organizationId,
       });
       throw new DeletedIdentityError();
+    }
+
+    // Under the lock the organization soft delete takes, so a join racing the
+    // delete either lands before it (and is deactivated by it) or sees it.
+    await lockOrganizations(tx, [organizationId]);
+    const organization = await tx.organization.findUnique({
+      where: { id: organizationId },
+      select: { deletedAt: true },
+    });
+    if (organization?.deletedAt) {
+      logger.warn({
+        msg: '[auth] Refused to attach an identity to a deleted organization',
+        userId,
+        organizationId,
+      });
+      throw new DeletedOrganizationError();
     }
 
     if (onExisting === 'refuse') {
@@ -265,9 +343,9 @@ export async function createMembership(input: CreateMembershipInput): Promise<Me
     }
 
     // RISK-16: re-roling an active owner (an invite accepted in a race with its
-    // own guard) is a demotion, so it
-    // takes the lock a user delete takes and re-reads under it — otherwise the
-    // two could each see the other owner and leave the org with none.
+    // own guard) is a demotion, so it re-reads under the organization lock
+    // taken above (the one a user delete takes) — otherwise the two could each
+    // see the other owner and leave the org with none.
     if (role !== 'owner') {
       const whereMembership = { userId_organizationId: { userId, organizationId } };
       const ownerSelect = { id: true, organizationId: true, role: true, active: true } as const;
@@ -276,7 +354,6 @@ export async function createMembership(input: CreateMembershipInput): Promise<Me
         select: ownerSelect,
       });
       if (existing?.role === 'owner' && existing.active) {
-        await lockOrganizations(tx, [organizationId]);
         const current = await tx.organizationUser.findUnique({
           where: whereMembership,
           select: ownerSelect,
@@ -315,7 +392,9 @@ export async function createMembership(input: CreateMembershipInput): Promise<Me
     });
 
     return toSummary(membership);
-  });
+  };
+
+  return client ? attach(client) : prisma.$transaction(attach);
 }
 
 /**

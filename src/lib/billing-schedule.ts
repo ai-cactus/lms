@@ -28,7 +28,7 @@ const RELEASABLE_STATUSES: ReadonlySet<Stripe.SubscriptionSchedule.Status> = new
  * identity is not guaranteed across module instances, and `code` is the stable
  * public contract for "this object no longer exists".
  */
-function isResourceMissingError(err: unknown): boolean {
+export function isResourceMissingError(err: unknown): boolean {
   return (
     typeof err === 'object' &&
     err !== null &&

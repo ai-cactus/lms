@@ -175,9 +175,7 @@ export async function completeOnboarding(data: OnboardingData): Promise<Complete
       });
 
       if (existingOrg) {
-        throw new Error(
-          'Organization with this name already exists. Please contact your admin for access.',
-        );
+        throw new OrganizationNameTakenError();
       }
 
       // 2. Create Organization
@@ -377,7 +375,20 @@ export async function completeOnboarding(data: OnboardingData): Promise<Complete
 
     return { success: true, organizationId: result.org.id };
   } catch (error) {
+    if (error instanceof OrganizationNameTakenError) {
+      logger.warn({ msg: '[completeOnboarding] Organization name already taken', userId });
+      return { success: false, error: error.message };
+    }
     logger.error({ msg: '[completeOnboarding] Transaction Failed:', err: error });
     return { success: false, error: 'Failed to complete onboarding. Please try again.' };
+  }
+}
+
+// Thrown inside the transaction to roll it back; the outer catch turns it into the
+// user-facing refusal instead of the generic failure, so the founder learns why.
+class OrganizationNameTakenError extends Error {
+  constructor() {
+    super('Organization with this name already exists. Please contact your admin for access.');
+    this.name = 'OrganizationNameTakenError';
   }
 }

@@ -88,7 +88,14 @@ beforeEach(() => {
   prismaMock.reminderNudge.findMany.mockResolvedValue([]);
   prismaMock.enrollment.findMany.mockResolvedValue([]); // superseded lookup: no retakes
   prismaMock.notificationEvent.findMany.mockResolvedValue([]);
-  prismaMock.organization.findMany.mockResolvedValue([{ id: 'org-1', name: 'Acme Care' }]);
+  // Two readers share this mock: the deleted-org lookup (filters on a non-null
+  // deletedAt) must find nothing, the live-org name lookup finds the org.
+  prismaMock.organization.findMany.mockImplementation(
+    async ({ where }: { where: { deletedAt?: unknown } }) =>
+      where.deletedAt && typeof where.deletedAt === 'object'
+        ? []
+        : [{ id: 'org-1', name: 'Acme Care' }],
+  );
   prismaMock.facility.findMany.mockResolvedValue([]);
 });
 
@@ -114,6 +121,27 @@ describe('runCycleSummaryRetry — candidate selection', () => {
         }),
       }),
     );
+  });
+
+  it('leaves a soft-deleted organization failed summary out of the selection, keeping org-less rows', async () => {
+    prismaMock.organization.findMany.mockImplementation(
+      async ({ where }: { where: { deletedAt?: unknown } }) =>
+        where.deletedAt && typeof where.deletedAt === 'object' ? [{ id: 'org-deleted' }] : [],
+    );
+
+    await runCycleSummaryRetry({ now: NOW, dryRun: false });
+
+    const where = prismaMock.emailMessage.findMany.mock.calls[0][0].where;
+    expect(where.OR).toEqual([
+      { organizationId: null },
+      { organizationId: { notIn: ['org-deleted'] } },
+    ]);
+  });
+
+  it('adds no organization predicate when nothing is soft-deleted', async () => {
+    await runCycleSummaryRetry({ now: NOW, dryRun: false });
+
+    expect(prismaMock.emailMessage.findMany.mock.calls[0][0].where).not.toHaveProperty('OR');
   });
 
   it('counts a message past its attempt cap as exhausted and never re-sends it', async () => {
@@ -209,6 +237,18 @@ describe('runCycleSummaryRetry — rebuild and re-send', () => {
     prismaMock.reminderLog.findMany.mockResolvedValue([
       { id: 'log-1', stage: 'GRACE_SOFT_ESCALATION', enrollment: enrollmentContext() },
     ]);
+  });
+
+  it('resolves the organization name through the live-organization filter', async () => {
+    await runCycleSummaryRetry({
+      now: NOW,
+      dryRun: false,
+      sendEmail: vi.fn().mockResolvedValue({ ok: true }),
+    });
+
+    expect(prismaMock.organization.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: { in: ['org-1'] }, deletedAt: null } }),
+    );
   });
 
   it('rebuilds the email from its recorded items and marks it sent', async () => {

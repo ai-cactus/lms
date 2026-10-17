@@ -41,6 +41,7 @@ const { db, lockedOrgs, mockAuditCritical, mockInvalidate, mockLogger } = vi.hoi
     memberships: [] as MembershipRow[],
     invites: [] as InviteRow[],
     tokens: [] as TokenRow[],
+    deletedOrgIds: [] as string[],
   },
   mockAuditCritical: vi.fn(),
   mockInvalidate: vi.fn(),
@@ -80,12 +81,20 @@ vi.mock('@/lib/prisma', () => {
       },
     }),
     organizationUser: strict('organizationUser', {
-      findMany: async ({ where }: { where: { userId: string; active?: boolean } }) =>
+      findMany: async ({
+        where,
+      }: {
+        where: { userId: string; active?: boolean; organization?: { deletedAt: null } };
+      }) =>
         db.memberships
           .filter(
             (m) =>
               m.userId === where.userId &&
-              (where.active === undefined || m.active === where.active),
+              (where.active === undefined || m.active === where.active) &&
+              !(
+                where.organization?.deletedAt === null &&
+                db.deletedOrgIds.includes(m.organizationId)
+              ),
           )
           .map((m) => ({
             organizationId: m.organizationId,
@@ -222,6 +231,7 @@ function seed() {
     { id: 'inv-foreign', email: 'dana@example.com', organizationId: 'org-z', status: 'pending' },
     { id: 'inv-colleague', email: 'other@example.com', organizationId: 'org-a', status: 'pending' },
   ];
+  db.deletedOrgIds = [];
   db.tokens = [
     { identifier: 'Dana@Example.com', token: 'reset-1' },
     { identifier: 'other@example.com', token: 'reset-2' },
@@ -408,6 +418,33 @@ describe('softDeleteUser — Q-30 never orphan an organization', () => {
       'Transfer ownership of ORG-A before deleting this user. ' +
         'ORG-B has no other active member. Add an owner there before deleting this user.',
     );
+  });
+
+  it('ignores a soft-deleted organization: a sole owner there does not block the delete', async () => {
+    db.memberships = [
+      membership('m1', 'u-del', 'org-gone', 'owner'),
+      membership('m2', 'u-del', 'org-live', 'nurse'),
+      membership('m3', 'u-other', 'org-live', 'owner'),
+    ];
+    db.deletedOrgIds = ['org-gone'];
+
+    await expect(softDeleteUser('u-del', ACTOR)).resolves.toMatchObject({ status: 'deleted' });
+  });
+
+  it('still blocks on a LIVE organization when another one is soft-deleted', async () => {
+    db.memberships = [
+      membership('m1', 'u-del', 'org-gone', 'owner'),
+      membership('m2', 'u-del', 'org-live', 'owner'),
+      membership('m3', 'u-other', 'org-live', 'nurse'),
+    ];
+    db.deletedOrgIds = ['org-gone'];
+
+    const result = await softDeleteUser('u-del', ACTOR);
+
+    expect(result).toMatchObject({
+      status: 'blocked',
+      blocks: [{ organizationId: 'org-live', reason: 'sole_owner' }],
+    });
   });
 
   it("locks the person's organizations before checking, so concurrent co-owner deletes serialise", async () => {

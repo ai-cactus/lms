@@ -26,6 +26,9 @@ const {
   mockEnrollUserForRoleTargets,
   mockEnrollInviteCourses,
   mockCreateMembership,
+  mockOrgFindUnique,
+  mockQueryRaw,
+  DeletedOrganizationErrorMock,
 } = vi.hoisted(() => ({
   prismaMock: {
     invite: { findUnique: vi.fn(), update: vi.fn() },
@@ -38,6 +41,9 @@ const {
   mockEnrollUserForRoleTargets: vi.fn(),
   mockEnrollInviteCourses: vi.fn(),
   mockCreateMembership: vi.fn(),
+  mockOrgFindUnique: vi.fn(),
+  mockQueryRaw: vi.fn(),
+  DeletedOrganizationErrorMock: class DeletedOrganizationError extends Error {},
 }));
 
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock, default: prismaMock }));
@@ -71,7 +77,10 @@ vi.mock('@/lib/enrollment/invite-courses', () => ({
   enrollInviteCourses: mockEnrollInviteCourses,
 }));
 vi.mock('@/lib/notifications/emit', () => ({ emitNotificationEvent: vi.fn() }));
-vi.mock('@/lib/auth/membership', () => ({ createMembership: mockCreateMembership }));
+vi.mock('@/lib/auth/membership', () => ({
+  createMembership: mockCreateMembership,
+  DeletedOrganizationError: DeletedOrganizationErrorMock,
+}));
 
 import { POST } from './route';
 import { emitNotificationEvent } from '@/lib/notifications/emit';
@@ -87,6 +96,19 @@ function makeReq(body: unknown): NextRequest {
     headers: new Headers(),
   } as unknown as NextRequest;
 }
+
+/** The accept transaction's client; `userUpdate` lets a test observe the relink. */
+function makeTx(userUpdate: (...args: never[]) => unknown = prismaMock.user.update) {
+  return {
+    user: { create: prismaMock.user.create, update: userUpdate },
+    invite: { update: prismaMock.invite.update },
+    organization: { findUnique: mockOrgFindUnique },
+    $queryRaw: mockQueryRaw,
+  };
+}
+
+/** createMembership must join on the accept transaction, not open its own. */
+const IN_ACCEPT_TX = expect.objectContaining({ $queryRaw: mockQueryRaw });
 
 function membershipResult(
   overrides: Partial<{ organizationUserId: string; organizationId: string; role: string }> = {},
@@ -105,12 +127,9 @@ beforeEach(() => {
   mockBcryptHash.mockResolvedValue('hashed-password');
   prismaMock.user.findUnique.mockResolvedValue(null);
   prismaMock.organizationUser.findUnique.mockResolvedValue(null);
-  prismaMock.$transaction.mockImplementation(async (cb) =>
-    cb({
-      user: { create: prismaMock.user.create, update: prismaMock.user.update },
-      invite: { update: prismaMock.invite.update },
-    }),
-  );
+  prismaMock.$transaction.mockImplementation(async (cb) => cb(makeTx()));
+  mockOrgFindUnique.mockResolvedValue({ deletedAt: null });
+  mockQueryRaw.mockResolvedValue([]);
   prismaMock.user.create.mockResolvedValue({ id: 'new-user-1' });
   mockEnrollUserForRoleTargets.mockResolvedValue(undefined);
   mockEnrollInviteCourses.mockResolvedValue(undefined);
@@ -206,7 +225,7 @@ describe('POST /api/invite/accept — valid token', () => {
 
     expect(res.status).toBe(200);
     expect(prismaMock.invite.findUnique).toHaveBeenCalledExactlyOnceWith({
-      where: { token: 'tok-correct', status: 'pending' },
+      where: { token: 'tok-correct', status: 'pending', organization: { deletedAt: null } },
     });
     // User creation is now identity-only — no organizationId/facilityId/role.
     expect(prismaMock.user.create).toHaveBeenCalledExactlyOnceWith({
@@ -225,12 +244,15 @@ describe('POST /api/invite/accept — valid token', () => {
     });
     // The org/facility/role attachment happens via createMembership, sourced
     // directly from the invite (not from caller input).
-    expect(mockCreateMembership).toHaveBeenCalledExactlyOnceWith({
-      userId: 'new-user-1',
-      organizationId: 'org-correct',
-      facilityId: 'facility-correct',
-      role: 'nurse',
-    });
+    expect(mockCreateMembership).toHaveBeenCalledExactlyOnceWith(
+      {
+        userId: 'new-user-1',
+        organizationId: 'org-correct',
+        facilityId: 'facility-correct',
+        role: 'nurse',
+      },
+      IN_ACCEPT_TX,
+    );
   });
 
   it('materialises any invite-parked courses after enrolling the new user, keyed by the membership id', async () => {
@@ -304,12 +326,7 @@ describe('POST /api/invite/accept — valid token', () => {
     // No row for (existing-elsewhere, org-2) — never joined this org before.
     prismaMock.organizationUser.findUnique.mockResolvedValueOnce(null);
     const mockUserUpdate = vi.fn().mockResolvedValue({ id: 'existing-elsewhere' });
-    prismaMock.$transaction.mockImplementationOnce(async (cb) =>
-      cb({
-        user: { create: prismaMock.user.create, update: mockUserUpdate },
-        invite: { update: prismaMock.invite.update },
-      }),
-    );
+    prismaMock.$transaction.mockImplementationOnce(async (cb) => cb(makeTx(mockUserUpdate)));
 
     const res = await POST(
       makeReq({ token: 'tok-2', firstName: 'Jane', lastName: 'Doe', password: VALID_PASSWORD }),
@@ -318,12 +335,15 @@ describe('POST /api/invite/accept — valid token', () => {
     expect(res.status).toBe(200);
     expect(prismaMock.user.create).not.toHaveBeenCalled();
     expect(mockUserUpdate).toHaveBeenCalledOnce();
-    expect(mockCreateMembership).toHaveBeenCalledExactlyOnceWith({
-      userId: 'existing-elsewhere',
-      organizationId: 'org-2',
-      facilityId: 'facility-2',
-      role: 'hr',
-    });
+    expect(mockCreateMembership).toHaveBeenCalledExactlyOnceWith(
+      {
+        userId: 'existing-elsewhere',
+        organizationId: 'org-2',
+        facilityId: 'facility-2',
+        role: 'hr',
+      },
+      IN_ACCEPT_TX,
+    );
   });
 });
 
@@ -545,12 +565,7 @@ describe('POST /api/invite/accept — relinking an existing account', () => {
     prismaMock.user.findUnique.mockResolvedValueOnce({ id: 'removed-user-1' });
     prismaMock.organizationUser.findUnique.mockResolvedValueOnce(null); // no active membership here
     const mockUserUpdate = vi.fn().mockResolvedValue({ id: 'removed-user-1' });
-    prismaMock.$transaction.mockImplementationOnce(async (cb) =>
-      cb({
-        user: { create: prismaMock.user.create, update: mockUserUpdate },
-        invite: { update: prismaMock.invite.update },
-      }),
-    );
+    prismaMock.$transaction.mockImplementationOnce(async (cb) => cb(makeTx(mockUserUpdate)));
     mockCreateMembership.mockResolvedValue(
       membershipResult({
         organizationUserId: 'ou-relink-1',
@@ -586,12 +601,15 @@ describe('POST /api/invite/accept — relinking an existing account', () => {
       where: { id: 'invite-relink' },
       data: { status: 'accepted' },
     });
-    expect(mockCreateMembership).toHaveBeenCalledExactlyOnceWith({
-      userId: 'removed-user-1',
-      organizationId: 'org-new',
-      facilityId: 'facility-new',
-      role: 'hr',
-    });
+    expect(mockCreateMembership).toHaveBeenCalledExactlyOnceWith(
+      {
+        userId: 'removed-user-1',
+        organizationId: 'org-new',
+        facilityId: 'facility-new',
+        role: 'hr',
+      },
+      IN_ACCEPT_TX,
+    );
     expect(mockEnrollUserForRoleTargets).toHaveBeenCalledExactlyOnceWith('ou-relink-1', 'org-new');
     expect(mockEnrollInviteCourses).toHaveBeenCalledExactlyOnceWith('ou-relink-1', 'invite-relink');
   });
@@ -632,5 +650,91 @@ describe('POST /api/invite/accept — Q-23 deleted identity', () => {
     expect(prismaMock.user.create).not.toHaveBeenCalled();
     expect(prismaMock.invite.update).not.toHaveBeenCalled();
     expect(mockCreateMembership).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/invite/accept — soft-deleted organization', () => {
+  const body = {
+    token: 'tok-deleted-org',
+    firstName: 'Jane',
+    lastName: 'Doe',
+    password: VALID_PASSWORD,
+  };
+  const invite = {
+    id: 'invite-deleted-org',
+    token: 'tok-deleted-org',
+    email: 'newhire@acme.com',
+    organizationId: 'org-deleted',
+    facilityId: 'facility-1',
+    role: 'nurse',
+    invitedBy: null,
+    expiresAt: FUTURE,
+  };
+
+  it('the invite lookup itself excludes a deleted organization, answering like an unknown token', async () => {
+    prismaMock.invite.findUnique.mockResolvedValueOnce(null);
+
+    const res = await POST(makeReq(body));
+
+    expect(prismaMock.invite.findUnique).toHaveBeenCalledWith({
+      where: { token: 'tok-deleted-org', status: 'pending', organization: { deletedAt: null } },
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe('Invalid or expired invite');
+  });
+
+  it('answers 400 with the generic copy when the org is deleted between lookup and accept, and writes nothing', async () => {
+    prismaMock.invite.findUnique.mockResolvedValueOnce(invite);
+    mockOrgFindUnique.mockResolvedValue({ deletedAt: new Date('2026-10-08') });
+
+    const res = await POST(makeReq(body));
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe('Invalid or expired invite');
+    // Nothing the accept would have written — the transaction rolls back, so
+    // the password is not reset and the invite is not consumed.
+    expect(prismaMock.user.create).not.toHaveBeenCalled();
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
+    expect(prismaMock.invite.update).not.toHaveBeenCalled();
+    expect(mockCreateMembership).not.toHaveBeenCalled();
+    expect(mockEnrollUserForRoleTargets).not.toHaveBeenCalled();
+    expect(mockEnrollInviteCourses).not.toHaveBeenCalled();
+    expect(mockEmitNotificationEvent).not.toHaveBeenCalled();
+  });
+
+  it('does not reset an existing identity password when the org is deleted mid-accept', async () => {
+    prismaMock.invite.findUnique.mockResolvedValueOnce(invite);
+    prismaMock.user.findUnique.mockResolvedValueOnce({ id: 'existing-user', deletedAt: null });
+    prismaMock.organizationUser.findUnique.mockResolvedValueOnce(null);
+    mockOrgFindUnique.mockResolvedValue({ deletedAt: new Date('2026-10-08') });
+
+    const res = await POST(makeReq(body));
+
+    expect(res.status).toBe(400);
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
+  });
+
+  it('locks the organization first, then re-checks deletedAt, before the first write', async () => {
+    prismaMock.invite.findUnique.mockResolvedValueOnce({ ...invite, organizationId: 'org-live' });
+
+    await POST(makeReq(body));
+
+    const lockOrder = mockQueryRaw.mock.invocationCallOrder[0];
+    expect(lockOrder).toBeLessThan(mockOrgFindUnique.mock.invocationCallOrder[0]);
+    expect(mockOrgFindUnique.mock.invocationCallOrder[0]).toBeLessThan(
+      prismaMock.user.create.mock.invocationCallOrder[0],
+    );
+    expect(mockQueryRaw.mock.calls[0][1]).toEqual(['org-live']);
+  });
+
+  it('answers 400 when createMembership itself refuses a deleted org inside the transaction', async () => {
+    prismaMock.invite.findUnique.mockResolvedValueOnce(invite);
+    mockCreateMembership.mockRejectedValue(new DeletedOrganizationErrorMock());
+
+    const res = await POST(makeReq(body));
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe('Invalid or expired invite');
+    expect(mockEnrollUserForRoleTargets).not.toHaveBeenCalled();
   });
 });

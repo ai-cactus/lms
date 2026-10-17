@@ -77,19 +77,25 @@ export default async function SystemLayout({ children }: { children: React.React
         <nav className="flex items-center gap-1">
           <Link
             href="/system"
-            className="rounded-md px-3 py-1.5 text-sm font-medium text-[#334155] transition-colors hover:bg-[#f1f5f9] hover:text-[#0f172a]"
+            className="rounded-md px-3 py-1.5 text-sm font-medium text-text-secondary transition-colors hover:bg-background-secondary hover:text-foreground"
           >
             Users
           </Link>
           <Link
+            href="/system/organizations"
+            className="rounded-md px-3 py-1.5 text-sm font-medium text-text-secondary transition-colors hover:bg-background-secondary hover:text-foreground"
+          >
+            Organizations
+          </Link>
+          <Link
             href="/system/manual"
-            className="rounded-md px-3 py-1.5 text-sm font-medium text-[#334155] transition-colors hover:bg-[#f1f5f9] hover:text-[#0f172a]"
+            className="rounded-md px-3 py-1.5 text-sm font-medium text-text-secondary transition-colors hover:bg-background-secondary hover:text-foreground"
           >
             Manual
           </Link>
           <Link
             href="/system/video-courses"
-            className="rounded-md px-3 py-1.5 text-sm font-medium text-[#334155] transition-colors hover:bg-[#f1f5f9] hover:text-[#0f172a]"
+            className="rounded-md px-3 py-1.5 text-sm font-medium text-text-secondary transition-colors hover:bg-background-secondary hover:text-foreground"
           >
             Video Courses
           </Link>

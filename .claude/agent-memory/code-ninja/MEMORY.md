@@ -134,3 +134,6 @@
 - [Retry requests (Q-35)](project_retry_request_q35.md): pending is derived, no status; learner-scoped admin notices go through facility-audience.ts
 - [Training email ships OFF](gotcha_training_email_switch_ships_off.md): Q-34 gates the quiz-locked admin email on it, so a fresh org gets no email
 - [Global invite anchors an OUF row](gotcha_global_invite_anchor_ouf_row.md): org-wide invitees get a real facility row on the oldest facility
+- [Org soft-delete restore contract](gotcha_org_soft_delete_restore_contract.md): deactivatedAt == org.deletedAt is the restore key; createMembership always locks the org
+- [No onDelete in runtime DMMF](gotcha_no_dmmf_ondelete_at_runtime.md): FK-behaviour tests use src/test/prisma-schema.ts; no @prisma/internals
+- [Org hard delete cross-tenant edges](gotcha_org_hard_delete_cross_tenant_edges.md): org-keyed deletes cascade into OTHER orgs; refuse, and prefix-check client URIs
