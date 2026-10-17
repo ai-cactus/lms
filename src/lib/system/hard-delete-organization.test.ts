@@ -503,6 +503,7 @@ describe('stored files', () => {
         { url: `${BUCKET}/onboarding/u-1/1-c.pdf`, uploadedById: 'u-1' },
         { url: `${BUCKET}/onboarding/u-9/1-d.pdf`, uploadedById: 'u-1' },
         { url: 'not-a-storage-uri', uploadedById: 'u-1' },
+        { url: `${BUCKET}/onboarding/u-1/1-e.pdf`, uploadedById: null },
       ],
     };
     for (const model of Object.keys(rowsFor).concat(['user', 'standardManual'])) {

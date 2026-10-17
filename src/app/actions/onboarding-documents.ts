@@ -3,6 +3,10 @@
 import { auth } from '@/auth';
 import { uploadFile, deleteFile, parseStorageUri } from '@/lib/storage';
 import { logger } from '@/lib/logger';
+import {
+  isOwnOnboardingStorageKey,
+  onboardingStoragePrefix,
+} from '@/lib/onboarding/document-storage';
 
 /**
  * Onboarding compliance-document handling.
@@ -44,7 +48,7 @@ export async function uploadOnboardingDocument(formData: FormData): Promise<Uplo
     const buffer = Buffer.from(await file.arrayBuffer());
     const timestamp = Date.now();
     const safeName = file.name.replace(/[^a-z0-9.]/gi, '_').toLowerCase();
-    const key = `onboarding/${session.user.id}/${timestamp}-${safeName}`;
+    const key = `${onboardingStoragePrefix(session.user.id)}${timestamp}-${safeName}`;
     const mimeType = file.type || 'application/octet-stream';
     const { storageUri } = await uploadFile(key, buffer, mimeType);
 
@@ -76,7 +80,7 @@ export async function deleteOnboardingDocument(
     // Restrict deletion to the caller's own onboarding prefix — a user must
     // never be able to delete another tenant's parked upload.
     const { key } = parseStorageUri(storageUri);
-    if (!key.startsWith(`onboarding/${session.user.id}/`)) {
+    if (!isOwnOnboardingStorageKey(key, session.user.id)) {
       logger.warn({
         msg: '[onboarding] Rejected delete outside caller onboarding prefix',
         userId: session.user.id,

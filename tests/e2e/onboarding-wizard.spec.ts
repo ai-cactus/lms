@@ -387,6 +387,69 @@ test.describe('Onboarding wizard — 5-step happy path', () => {
     }
   });
 
+  test('SEC-20: a compliance document uploaded in step 2 is linked to the new facility under the founder onboarding prefix', async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    const seeded = await seedUnboardedOwner();
+    const orgName = `Onb Doc Co ${crypto.randomBytes(4).toString('hex')}`;
+
+    try {
+      await login(page, seeded.email, seeded.password);
+      await page.goto('/onboarding/step1');
+      await page.waitForLoadState('networkidle');
+
+      await fillStep1(page, {
+        orgName,
+        dba: 'Onb Doc DBA',
+        contactEmail: seeded.email,
+        staffCount: '1-10',
+        phone: '5551112222',
+      });
+
+      await page.getByRole('combobox').click();
+      await page.getByRole('option', { name: /^yes$/i }).click();
+      await page.locator('input[type="file"]').setInputFiles({
+        name: 'hipaa-policy.pdf',
+        mimeType: 'application/pdf',
+        buffer: Buffer.from('%PDF-1.4\n% sec-20 e2e fixture\n%%EOF\n'),
+      });
+      await expect(page.getByText('hipaa-policy.pdf')).toBeVisible({ timeout: 30000 });
+      await expect(page.getByText('Uploading…')).toHaveCount(0, { timeout: 30000 });
+      await page.getByRole('button', { name: /^next$/i }).click();
+      await page.waitForURL('**/onboarding/step3**', { timeout: 25000 });
+
+      await page.getByRole('combobox').click();
+      await page.getByRole('option', { name: /private practice/i }).click();
+      await page.getByRole('checkbox', { name: 'Outpatient Services' }).click();
+      await page.getByRole('button', { name: /^next$/i }).click();
+      await page.waitForURL('**/onboarding/step4**', { timeout: 25000 });
+      await page.getByRole('button', { name: /skip for now/i }).click();
+      await page.waitForURL('**/onboarding/step5**', { timeout: 25000 });
+      await page.getByRole('button', { name: /skip for now/i }).click();
+      await page.waitForURL('**/onboarding/complete**', { timeout: 30000 });
+
+      const client = new Client({ connectionString: DB_URL });
+      await client.connect();
+      try {
+        const res = await client.query(
+          `SELECT fd.url, fd.name FROM facility_documents fd
+           JOIN facilities f ON f.id = fd.facility_id
+           JOIN organizations o ON o.id = f.organization_id
+           WHERE o.name = $1`,
+          [orgName],
+        );
+        expect(res.rows).toHaveLength(1);
+        expect(res.rows[0].name).toBe('hipaa-policy.pdf');
+        expect(res.rows[0].url).toContain(`/onboarding/${seeded.userId}/`);
+      } finally {
+        await client.end();
+      }
+    } finally {
+      await cleanup(seeded, orgName);
+    }
+  });
+
   test('step3 "Other (Specify)" free text on primary and additional business type lands in the DB', async ({
     page,
   }) => {

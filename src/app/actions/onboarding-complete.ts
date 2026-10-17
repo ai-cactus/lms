@@ -17,11 +17,7 @@ import { createMembership } from '@/lib/auth/membership';
 import { seedDefaultDocumentCategories } from '@/lib/documents/document-categories';
 import { captureServer, identifyOrganization } from '@/lib/analytics/server';
 import { toCountBand } from '@/lib/analytics/events';
-
-// Define types for the data we expect
-// Note: We are using 'any' for simplicity here to match the flexible structure,
-// but in production, we would use Zod for stricter validation as planned.
-// We trust the structure passed from the client which is aggregating the steps.
+import { isOwnOnboardingDocumentUri } from '@/lib/onboarding/document-storage';
 
 export interface OnboardingStep1 {
   legalName: string;
@@ -104,6 +100,9 @@ const REQUIRED_STEP1_FIELDS: { key: keyof OnboardingStep1; label: string }[] = [
   { key: 'state', label: 'State' },
 ];
 
+const INVALID_DOCUMENTS_ERROR =
+  'One or more uploaded compliance documents could not be verified. Please remove and re-upload them, then try again.';
+
 export type CompleteOnboardingResult =
   | { success: true; organizationId: string }
   | { success: false; error: string; code?: 'MISSING_STEP1' };
@@ -149,6 +148,30 @@ export async function completeOnboarding(data: OnboardingData): Promise<Complete
       code: 'MISSING_STEP1',
     };
   }
+
+  // SEC-20: the profile page signs every FacilityDocument.url, so a URI the
+  // client chose would hand out a download link for any object it can name.
+  // Only uploads parked under the caller's own onboarding prefix are linked.
+  const documents: unknown = step2?.documents ?? [];
+  if (!Array.isArray(documents)) {
+    logger.warn({
+      msg: '[completeOnboarding] Rejected malformed compliance document list',
+      userId,
+    });
+    return { success: false, error: INVALID_DOCUMENTS_ERROR };
+  }
+  const foreignDocumentCount = documents.filter(
+    (doc: Partial<OnboardingDocument> | null) => !isOwnOnboardingDocumentUri(doc?.url, userId),
+  ).length;
+  if (foreignDocumentCount > 0) {
+    logger.warn({
+      msg: '[completeOnboarding] Rejected compliance documents outside the caller onboarding prefix',
+      userId,
+      rejectedCount: foreignDocumentCount,
+    });
+    return { success: false, error: INVALID_DOCUMENTS_ERROR };
+  }
+  const ownDocuments = documents as OnboardingDocument[];
 
   // One organisation per user — a user already in an org cannot create another.
   const existingMembership = await prisma.organizationUser.findFirst({
@@ -225,9 +248,9 @@ export async function completeOnboarding(data: OnboardingData): Promise<Complete
       // 1c. Persist any compliance documents uploaded during step 2. They were
       // parked under the founding user's onboarding storage prefix; now that the
       // facility exists, link them via FacilityDocument rows.
-      if (step2?.documents?.length) {
+      if (ownDocuments.length) {
         await tx.facilityDocument.createMany({
-          data: step2.documents.map((doc) => ({
+          data: ownDocuments.map((doc) => ({
             facilityId: facility.id,
             url: doc.url,
             name: doc.name,
@@ -239,7 +262,7 @@ export async function completeOnboarding(data: OnboardingData): Promise<Complete
         logger.info({
           msg: '[completeOnboarding] Facility documents linked',
           facilityId: facility.id,
-          count: step2.documents.length,
+          count: ownDocuments.length,
         });
       }
 

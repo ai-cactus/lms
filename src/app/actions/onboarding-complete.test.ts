@@ -590,6 +590,127 @@ describe('completeOnboarding — step2 compliance documents', () => {
 
     expect(txMock.facilityDocument.createMany).not.toHaveBeenCalled();
   });
+
+  // SEC-20: the profile page signs every FacilityDocument.url, so only uploads
+  // parked under the CALLER's own onboarding prefix may ever be linked.
+  const withDocumentUrls = (...urls: string[]): OnboardingData => ({
+    ...BASE_DATA,
+    step2: {
+      ...BASE_DATA.step2,
+      documents: urls.map((url, i) => ({
+        url,
+        name: `doc-${i}.pdf`,
+        sizeBytes: 100,
+        mimeType: 'application/pdf',
+      })),
+    },
+  });
+
+  const expectNothingWritten = () => {
+    expect(prisma.organizationUser.findFirst).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(txMock.organization.create).not.toHaveBeenCalled();
+    expect(txMock.facility.create).not.toHaveBeenCalled();
+    expect(txMock.facilityDocument.createMany).not.toHaveBeenCalled();
+    expect(mockCreateMembership).not.toHaveBeenCalled();
+  };
+
+  const INVALID_DOCUMENTS_RESULT = {
+    success: false,
+    error:
+      'One or more uploaded compliance documents could not be verified. Please remove and re-upload them, then try again.',
+  };
+
+  it.each([
+    ["another user's onboarding prefix", 'gcs://bucket/onboarding/user-2/1-cert.pdf'],
+    ['a prefix-of-another-id', 'gcs://bucket/onboarding/user-1x/1-cert.pdf'],
+    ["an organization's storage", 'gcs://bucket/organizations/org-9/compliance/1-a.pdf'],
+    ['a traversal out of the prefix', 'gcs://bucket/onboarding/user-1/../user-2/1-cert.pdf'],
+    ['a bare garbage string', 'not-a-storage-uri'],
+    ['a legacy local path', '/uploads/onboarding/user-1/1-cert.pdf'],
+  ])(
+    'rejects the whole submission for a document URL in %s and writes nothing',
+    async (_label, url) => {
+      const result = await completeOnboarding(withDocumentUrls(url));
+
+      expect(result).toEqual(INVALID_DOCUMENTS_RESULT);
+      expectNothingWritten();
+    },
+  );
+
+  it('rejects a mixed batch when even one document is outside the caller prefix', async () => {
+    const result = await completeOnboarding(
+      withDocumentUrls(
+        'gcs://bucket/onboarding/user-1/1-cert.pdf',
+        'gcs://bucket/onboarding/user-2/2-secret.pdf',
+        'minio://bucket/organizations/org-9/compliance/3-a.pdf',
+      ),
+    );
+
+    expect(result).toEqual(INVALID_DOCUMENTS_RESULT);
+    expectNothingWritten();
+  });
+
+  it('logs the rejection with the caller id and rejected count, never the URIs', async () => {
+    await completeOnboarding(
+      withDocumentUrls(
+        'gcs://bucket/onboarding/user-1/1-cert.pdf',
+        'gcs://bucket/onboarding/user-2/2-secret.pdf',
+        'minio://bucket/organizations/org-9/compliance/3-a.pdf',
+      ),
+    );
+
+    expect(mockLoggerWarn).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'user-1', rejectedCount: 2 }),
+    );
+    const logged = JSON.stringify(mockLoggerWarn.mock.calls);
+    expect(logged).not.toContain('onboarding/user-2');
+    expect(logged).not.toContain('organizations/org-9');
+  });
+
+  it('rejects a document entry that is not an object, or has no url, instead of throwing', async () => {
+    const data = {
+      ...BASE_DATA,
+      step2: { ...BASE_DATA.step2, documents: [null, { name: 'x.pdf' }] },
+    } as unknown as OnboardingData;
+
+    const result = await completeOnboarding(data);
+
+    expect(result).toEqual(INVALID_DOCUMENTS_RESULT);
+    expectNothingWritten();
+  });
+
+  it('rejects a documents value that is not an array', async () => {
+    const data = {
+      ...BASE_DATA,
+      step2: { ...BASE_DATA.step2, documents: 'gcs://bucket/onboarding/user-2/1-cert.pdf' },
+    } as unknown as OnboardingData;
+
+    const result = await completeOnboarding(data);
+
+    expect(result).toEqual(INVALID_DOCUMENTS_RESULT);
+    expectNothingWritten();
+  });
+
+  it('accepts documents under the caller prefix on either storage backend', async () => {
+    const result = await completeOnboarding(
+      withDocumentUrls(
+        'gcs://bucket/onboarding/user-1/1-cert.pdf',
+        'minio://lms-documents/onboarding/user-1/2-license.pdf',
+      ),
+    );
+
+    expect(result.success).toBe(true);
+    const created = txMock.facilityDocument.createMany.mock.calls[0][0].data as Array<{
+      url: string;
+      uploadedById: string;
+    }>;
+    expect(created.map((row) => row.url)).toEqual([
+      'gcs://bucket/onboarding/user-1/1-cert.pdf',
+      'minio://lms-documents/onboarding/user-1/2-license.pdf',
+    ]);
+    expect(created.every((row) => row.uploadedById === 'user-1')).toBe(true);
+  });
 });
 
 describe('completeOnboarding — step3 business type / services storage shape', () => {
