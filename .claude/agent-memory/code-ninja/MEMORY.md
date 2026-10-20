@@ -138,3 +138,4 @@
 - [No onDelete in runtime DMMF](gotcha_no_dmmf_ondelete_at_runtime.md): FK-behaviour tests use src/test/prisma-schema.ts; no @prisma/internals
 - [Org hard delete cross-tenant edges](gotcha_org_hard_delete_cross_tenant_edges.md): org-keyed deletes cascade into OTHER orgs; refuse, and prefix-check client URIs
 - [Worktrees have no docs/local](gotcha_worktree_has_no_docs_local.md): OPEN-ISSUES.md is gitignored; return tracker wording, never create it in a worktree
+- [Storage URI ownership is the key prefix](gotcha_storage_uri_ownership_is_key_prefix.md): providers ignore the URI bucket; validate client URIs with src/lib/onboarding/document-storage.ts
